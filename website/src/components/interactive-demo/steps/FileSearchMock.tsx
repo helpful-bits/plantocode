@@ -9,10 +9,11 @@
 import { useState, useEffect } from 'react';
 import { DesktopButton } from '../desktop-ui/DesktopButton';
 import { DesktopCheckbox } from '../desktop-ui/DesktopCheckbox';
-import { DesktopJobCard } from '../desktop-ui/DesktopJobCard';
+import { DesktopBadge } from '../desktop-ui/DesktopBadge';
+import { DesktopProgress } from '../desktop-ui/DesktopProgress';
 import { DesktopFilterModeToggle, FilterMode } from '../desktop-ui/DesktopFilterModeToggle';
 import { DesktopInput } from '../desktop-ui/DesktopInput';
-import { Search, RefreshCw, CheckSquare, Square, Sparkles, Filter, FileCheck, CheckCircle, Loader2, X, Undo2, Redo2, HelpCircle, FileText, ChevronUp, AlertTriangle } from 'lucide-react';
+import { Search, RefreshCw, CheckSquare, Square, Sparkles, Filter, FileCheck, CheckCircle, Loader2, X, Undo2, Redo2, HelpCircle, FileText, ChevronUp, AlertTriangle, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useInteractiveDemoContext } from '../contexts/InteractiveDemoContext';
 import { useTimedCycle, useTweenNumber } from '../hooks';
@@ -72,29 +73,66 @@ export function FileSearchMock({ isInView }: FileSearchMockProps) {
   const regexProgress = useTweenNumber({ 
     active: phaseName === 'ai-finding-regex', 
     from: 0, 
-    to: 100, 
-    durationMs: 2500 
+    to: 95, 
+    durationMs: 1600,
+    loop: true 
   });
   
   const relevanceProgress = useTweenNumber({ 
     active: phaseName === 'ai-finding-relevance', 
     from: 0, 
-    to: 100, 
-    durationMs: 2500 
+    to: 95, 
+    durationMs: 1600,
+    loop: true 
   });
   
   const pathProgress = useTweenNumber({ 
     active: phaseName === 'ai-finding-path', 
     from: 0, 
-    to: 100, 
-    durationMs: 2500 
+    to: 95, 
+    durationMs: 1600,
+    loop: true 
   });
   
   const correctionProgress = useTweenNumber({ 
     active: phaseName === 'ai-finding-correction', 
     from: 0, 
-    to: 100, 
-    durationMs: 2500 
+    to: 95, 
+    durationMs: 1600,
+    loop: true 
+  });
+  
+  // Token streaming animations for each job
+  const regexTokens = useTweenNumber({ 
+    active: phaseName === 'ai-finding-regex', 
+    from: 1200, 
+    to: 2300, // 1200 input + 1100 output
+    durationMs: 1600,
+    loop: true 
+  });
+  
+  const relevanceTokens = useTweenNumber({ 
+    active: phaseName === 'ai-finding-relevance', 
+    from: 2800, 
+    to: 5500, // 2800 input + 2700 output
+    durationMs: 1600,
+    loop: true 
+  });
+  
+  const pathTokens = useTweenNumber({ 
+    active: phaseName === 'ai-finding-path', 
+    from: 3400, 
+    to: 6700, // 3400 input + 3300 output
+    durationMs: 1600,
+    loop: true 
+  });
+  
+  const correctionTokens = useTweenNumber({ 
+    active: phaseName === 'ai-finding-correction', 
+    from: 2100, 
+    to: 4100, // 2100 input + 2000 output
+    durationMs: 1600,
+    loop: true 
   });
   
   const regexComplete = ['ai-finding-relevance', 'ai-finding-path', 'ai-finding-correction', 'results-shown'].includes(phaseName);
@@ -150,30 +188,32 @@ export function FileSearchMock({ isInView }: FileSearchMockProps) {
         {/* Search and Filter Controls - Row 1 */}
         <div className="flex flex-col gap-4 px-0 pt-2 sm:px-0 sm:pt-0 sm:flex-row sm:items-center mb-2 sm:mb-4">
           <div className="flex-1 relative">
-            <DesktopInput
-              type="search"
-              placeholder="Search files..."
-              value={searchTerm}
-              disabled={true}
-              icon={<Search className="h-4 w-4" />}
-              className="pr-20"
-            />
-            {searchTerm && (
-              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">
-                  {filteredFiles.length} result{filteredFiles.length !== 1 ? 's' : ''}
-                </span>
-                <DesktopButton
-                  compact
-                  variant="ghost"
-                  size="xs"
-                  className="h-5 w-5 p-0 text-muted-foreground hover:text-foreground"
-                  title="Clear search"
-                >
-                  <X className="h-3 w-3" />
-                </DesktopButton>
-              </div>
-            )}
+            <div className="relative grow border border-[oklch(0.90_0.04_195_/_0.5)] rounded-lg bg-background/80 backdrop-blur-sm focus-within:border-primary/30 focus-within:ring-2 focus-within:ring-ring/50 transition-all duration-200 hover:border-[oklch(0.90_0.04_195_/_0.7)]">
+              <DesktopInput
+                type="search"
+                placeholder="Search files..."
+                value={searchTerm}
+                disabled={true}
+                icon={<Search className="h-4 w-4" />}
+                className="border-0 bg-transparent focus-visible:ring-0 pr-20"
+              />
+              {searchTerm && (
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    {filteredFiles.length} result{filteredFiles.length !== 1 ? 's' : ''}
+                  </span>
+                  <DesktopButton
+                    compact
+                    variant="ghost"
+                    size="xs"
+                    className="h-5 w-5 p-0 text-muted-foreground hover:text-foreground"
+                    title="Clear search"
+                  >
+                    <X className="h-3 w-3" />
+                  </DesktopButton>
+                </div>
+              )}
+            </div>
           </div>
           
           {/* Filter Mode Toggle with counts - matching desktop */}
@@ -408,8 +448,8 @@ export function FileSearchMock({ isInView }: FileSearchMockProps) {
           </div>
         </div>
 
-      {/* Workflow Cards - Stable height container to prevent layout shifts */}
-      <div className="mt-6 min-h-[520px] transition-all duration-300 ease-in-out">
+      {/* Workflow Cards - Natural height container */}
+      <div className="mt-6 transition-all duration-300 ease-in-out">
         <div className={cn(
           "relative border border-dashed border-muted-foreground/40 rounded-lg p-[3px] w-fit transition-all duration-300 ease-in-out",
           showWorkflow ? "opacity-100" : "opacity-0 pointer-events-none"
@@ -421,291 +461,419 @@ export function FileSearchMock({ isInView }: FileSearchMockProps) {
               File Finding Workflow
             </div>
             
-            {/* Regex File Filter Job Card */}
+            {/* Regex File Filter Job Card - EXACT match to desktop */}
             <div className={cn(
-              "transition-all duration-500 ease-in-out min-h-[120px]",
+              "transition-all duration-500 ease-in-out",
               showWorkflow ? "opacity-100 transform translate-y-0" : "opacity-0 transform translate-y-2 pointer-events-none"
             )}>
-              <DesktopJobCard>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className={cn(
-                      "flex-shrink-0",
-                      regexComplete ? "text-green-600" : "text-gray-600"
-                    )}>
+              <div
+                className={cn(
+                  "border border-border/60 bg-background/80 dark:bg-muted/30 p-2 rounded-lg text-xs text-foreground cursor-pointer transition-colors flex flex-col w-full max-w-[320px] overflow-hidden shadow-soft backdrop-blur-sm min-w-0"
+                )}
+                role="button"
+                tabIndex={0}
+              >
+                {/* TOP ROW: Icon + Job Name + Badge | Close Button */}
+                <div className="flex items-center justify-between mb-2 w-full min-w-0">
+                  <div className="flex items-center gap-2 font-medium min-w-0 flex-1">
+                    <span className="w-4 h-4 inline-flex items-center justify-center flex-shrink-0">
                       {regexComplete ? (
-                        <CheckCircle className="h-5 w-5" />
+                        <CheckCircle className="h-3 w-3 text-success" />
+                      ) : regexProgress.value > 0 ? (
+                        <Loader2 className="h-3 w-3 text-primary animate-spin" />
                       ) : (
-                        <Filter className="h-5 w-5" />
+                        <Filter className="h-3 w-3 text-info" />
                       )}
-                    </div>
-                    <span className={cn(
-                      "font-medium text-xs",
-                      regexComplete ? "text-foreground" : "text-foreground"
-                    )}>
-                      {regexComplete ? 'Completed' : 'Processing'}
                     </span>
-                    <span className="font-medium text-foreground text-xs">
+                    <span className="truncate text-foreground">Regex File Filter</span>
+                    <DesktopBadge variant="outline" className="text-[10px] flex items-center gap-1.5 ml-1 flex-shrink-0">
                       Regex File Filter
-                    </span>
+                    </DesktopBadge>
+                  </div>
+                  <div className="w-6 h-6 flex-shrink-0">
+                    <DesktopButton
+                      variant="ghost"
+                      size="xs"
+                      className="w-6 h-6 p-0 text-muted-foreground hover:text-foreground"
+                      aria-label="Delete job"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </DesktopButton>
                   </div>
                 </div>
 
-                <div className="mb-3">
-                  <span className="text-muted-foreground text-xs">
-                    {regexComplete ? '2 minutes ago' : 'just now'}
-                  </span>
+                {/* TIME ROW */}
+                <div className="text-muted-foreground text-[10px] mt-2 flex items-center justify-between">
+                  <span>{regexComplete ? 'just now' : regexProgress.value > 0 ? 'just now' : 'just now'}</span>
                 </div>
 
+                {/* PROGRESS BAR (only for running jobs) */}
                 {!regexComplete && regexProgress.value > 0 && (
-                  <div className="mb-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-muted-foreground text-xs">Filtering by patterns...</span>
-                      <span className="text-muted-foreground text-xs font-medium">{Math.floor(regexProgress.value)}%</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-1 dark:bg-gray-700">
-                      <div 
-                        className="bg-gray-600 h-1 rounded-full transition-all duration-300 ease-out" 
-                        style={{ width: `${regexProgress.value}%` }}
-                      />
+                  <div className="mt-2 mb-1">
+                    <DesktopProgress value={regexProgress.value} className="h-1" />
+                    <div className="flex justify-between items-center min-w-0 overflow-hidden">
+                      <p className="text-[9px] text-muted-foreground mt-0.5 truncate">
+                        Generating regex patterns for file filtering...
+                      </p>
+                      <p className="text-[9px] text-muted-foreground mt-0.5 text-right">
+                        {Math.round(regexProgress.value)}%
+                      </p>
                     </div>
                   </div>
                 )}
 
-                <div className="space-y-1 mb-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground text-xs">
-                      Tokens: <span className="text-foreground font-medium">1.2k → 1.1k</span>
+                {/* TOKEN/MODEL INFO */}
+                <div className="text-muted-foreground text-[10px] mt-2 flex items-center justify-between  w-full min-w-0">
+                  <div className="flex flex-col gap-0.5 max-w-[90%] overflow-hidden min-w-0 flex-1">
+                    <span className="flex items-center gap-1 overflow-hidden min-w-0">
+                      <span className="text-[9px] text-muted-foreground flex-shrink-0">Tokens:</span>
+                      <span className="font-mono text-foreground text-[9px] flex-shrink-0">1.2K</span>
+                      <span className="text-[9px] text-muted-foreground flex-shrink-0">→</span>
+                      <span className="font-mono text-foreground text-[9px] flex-shrink-0">
+                        {phaseName === 'ai-finding-regex' ? 
+                          ((regexTokens.value - 1200) / 1000).toFixed(1) + 'K' : '1.1K'}
+                      </span>
                     </span>
-                    <span className="text-muted-foreground text-xs">2s</span>
+                    <span className="text-[9px] text-muted-foreground truncate max-w-full" title="anthropic/claude-sonnet-4-20250514">
+                      anthropic/claude-sonnet-4-20250514
+                    </span>
                   </div>
-                  <div className="text-muted-foreground text-xs">
-                    anthropic/claude-sonnet-4-20250514
-                  </div>
-                </div>
-
-                <div className="flex justify-end">
-                  <span className="text-muted-foreground text-xs">
-                    $0.002156
+                  <span className="text-[9px] text-muted-foreground flex-shrink-0 ml-1 self-end">
+                    {regexComplete ? '2.3s' : '—'}
                   </span>
                 </div>
-              </DesktopJobCard>
+
+                {/* BOTTOM SECTION: Results + Cost */}
+                <div className="flex-1 flex flex-col justify-end">
+                  <div className="text-[10px] mt-2 border-t border-border/60 pt-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 text-muted-foreground min-w-0 flex-1">
+                        <span className="font-medium text-foreground">
+                          {regexComplete ? '18 files found' : 'Filtering files...'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className="font-mono text-[9px] text-foreground">
+                          {/* Only show cost after job completes */}
+                          {regexComplete && '$0.002156'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {/* File Relevance Assessment Job Card */}
+            {/* File Relevance Assessment Job Card - EXACT match to desktop */}
             <div className={cn(
-              "mt-3 relative min-h-[120px] transition-all duration-500 ease-in-out",
+              "mt-3 relative transition-all duration-500 ease-in-out",
               regexComplete ? "opacity-100 transform translate-y-0" : "opacity-0 transform translate-y-2 pointer-events-none"
             )}>
               <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 w-0 h-3 border-l-2 border-dashed border-[oklch(0.90_0.04_195_/_0.6)]" />
-              <DesktopJobCard>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className={cn(
-                        "flex-shrink-0",
-                        relevanceComplete ? "text-green-600" : "text-gray-600"
-                      )}>
-                        {relevanceComplete ? (
-                          <CheckCircle className="h-5 w-5" />
-                        ) : (
-                          <FileCheck className="h-5 w-5" />
-                        )}
-                      </div>
-                      <span className={cn(
-                        "font-medium text-xs",
-                        relevanceComplete ? "text-foreground" : "text-foreground"
-                      )}>
-                        {relevanceComplete ? 'Completed' : 'Processing'}
-                      </span>
-                      <span className="font-medium text-foreground text-xs">
-                        File Relevance Assessment
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="mb-3">
-                    <span className="text-muted-foreground text-xs">
-                      {relevanceComplete ? '90 seconds ago' : 'just now'}
+              <div
+                className={cn(
+                  "border border-border/60 bg-background/80 dark:bg-muted/30 p-2 rounded-lg text-xs text-foreground cursor-pointer transition-colors flex flex-col w-full max-w-[320px] overflow-hidden shadow-soft backdrop-blur-sm min-w-0"
+                )}
+                role="button"
+                tabIndex={0}
+              >
+                {/* TOP ROW: Icon + Job Name + Badge | Close Button */}
+                <div className="flex items-center justify-between mb-2 w-full min-w-0">
+                  <div className="flex items-center gap-2 font-medium min-w-0 flex-1">
+                    <span className="w-4 h-4 inline-flex items-center justify-center flex-shrink-0">
+                      {relevanceComplete ? (
+                        <CheckCircle className="h-3 w-3 text-success" />
+                      ) : relevanceProgress.value > 0 ? (
+                        <Loader2 className="h-3 w-3 text-primary animate-spin" />
+                      ) : (
+                        <FileCheck className="h-3 w-3 text-info" />
+                      )}
                     </span>
+                    <span className="truncate text-foreground">File Relevance Assessment</span>
+                    <DesktopBadge variant="outline" className="text-[10px] flex items-center gap-1.5 ml-1 flex-shrink-0">
+                      File Relevance Assessment
+                    </DesktopBadge>
                   </div>
+                  <div className="w-6 h-6 flex-shrink-0">
+                    <DesktopButton
+                      variant="ghost"
+                      size="xs"
+                      className="w-6 h-6 p-0 text-muted-foreground hover:text-foreground"
+                      aria-label="Delete job"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </DesktopButton>
+                  </div>
+                </div>
 
-                  {!relevanceComplete && relevanceProgress.value > 0 && (
-                    <div className="mb-3">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-muted-foreground text-xs">Analyzing relevance...</span>
-                        <span className="text-muted-foreground text-xs font-medium">{Math.floor(relevanceProgress.value)}%</span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-1 dark:bg-gray-700">
-                        <div 
-                          className="bg-gray-600 h-1 rounded-full transition-all duration-300 ease-out" 
-                          style={{ width: `${relevanceProgress.value}%` }}
-                        />
-                      </div>
+                {/* TIME ROW */}
+                <div className="text-muted-foreground text-[10px] mt-2 flex items-center justify-between">
+                  <span>{relevanceComplete ? 'just now' : relevanceProgress.value > 0 ? 'just now' : 'just now'}</span>
+                </div>
+
+                {/* PROGRESS BAR (only for running jobs) */}
+                {!relevanceComplete && relevanceProgress.value > 0 && (
+                  <div className="mt-2 mb-1">
+                    <DesktopProgress value={relevanceProgress.value} className="h-1" />
+                    <div className="flex justify-between items-center min-w-0 overflow-hidden">
+                      <p className="text-[9px] text-muted-foreground mt-0.5 truncate">
+                        Analyzing file relevance for task context...
+                      </p>
+                      <p className="text-[9px] text-muted-foreground mt-0.5 text-right">
+                        {Math.round(relevanceProgress.value)}%
+                      </p>
                     </div>
-                  )}
+                  </div>
+                )}
 
-                  <div className="space-y-1 mb-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground text-xs">
-                        Tokens: <span className="text-foreground font-medium">2.8k → 2.7k</span>
+                {/* TOKEN/MODEL INFO */}
+                <div className="text-muted-foreground text-[10px] mt-2 flex items-center justify-between  w-full min-w-0">
+                  <div className="flex flex-col gap-0.5 max-w-[90%] overflow-hidden min-w-0 flex-1">
+                    <span className="flex items-center gap-1 overflow-hidden min-w-0">
+                      <span className="text-[9px] text-muted-foreground flex-shrink-0">Tokens:</span>
+                      <span className="font-mono text-foreground text-[9px] flex-shrink-0">2.8K</span>
+                      <span className="text-[9px] text-muted-foreground flex-shrink-0">→</span>
+                      <span className="font-mono text-foreground text-[9px] flex-shrink-0">
+                        {phaseName === 'ai-finding-relevance' ? 
+                          ((relevanceTokens.value - 2800) / 1000).toFixed(1) + 'K' : '2.7K'}
                       </span>
-                      <span className="text-muted-foreground text-xs">3s</span>
-                    </div>
-                    <div className="text-muted-foreground text-xs">
+                    </span>
+                    <span className="text-[9px] text-muted-foreground truncate max-w-full" title="google/gemini-2.5-flash">
                       google/gemini-2.5-flash
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end">
-                    <span className="text-muted-foreground text-xs">
-                      $0.001892
                     </span>
                   </div>
-                </DesktopJobCard>
+                  <span className="text-[9px] text-muted-foreground flex-shrink-0 ml-1 self-end">
+                    {relevanceComplete ? '3.1s' : '—'}
+                  </span>
+                </div>
+
+                {/* BOTTOM SECTION: Results + Cost */}
+                <div className="flex-1 flex flex-col justify-end">
+                  <div className="text-[10px] mt-2 border-t border-border/60 pt-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 text-muted-foreground min-w-0 flex-1">
+                        <span className="font-medium text-foreground">
+                          {relevanceComplete ? '12 relevant files identified' : 'Assessing relevance...'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className="font-mono text-[9px] text-foreground">
+                          {/* Only show cost after job completes */}
+                          {relevanceComplete && '$0.001892'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {/* Extended Path Finder Job Card */}
+            {/* Extended Path Finder Job Card - EXACT match to desktop */}
             <div className={cn(
-              "mt-3 relative min-h-[120px] transition-all duration-500 ease-in-out",
+              "mt-3 relative transition-all duration-500 ease-in-out",
               relevanceComplete ? "opacity-100 transform translate-y-0" : "opacity-0 transform translate-y-2 pointer-events-none"
             )}>
               <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 w-0 h-3 border-l-2 border-dashed border-[oklch(0.90_0.04_195_/_0.6)]" />
-              <DesktopJobCard>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className={cn(
-                        "flex-shrink-0",
-                        pathComplete ? "text-green-600" : "text-gray-600"
-                      )}>
-                        {pathComplete ? (
-                          <CheckCircle className="h-5 w-5" />
-                        ) : (
-                          <Search className="h-5 w-5" />
-                        )}
-                      </div>
-                      <span className={cn(
-                        "font-medium text-xs",
-                        pathComplete ? "text-foreground" : "text-foreground"
-                      )}>
-                        {pathComplete ? 'Completed' : 'Processing'}
-                      </span>
-                      <span className="font-medium text-foreground text-xs">
-                        Extended Path Finder
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="mb-3">
-                    <span className="text-muted-foreground text-xs">
-                      {pathComplete ? '60 seconds ago' : 'just now'}
+              <div
+                className={cn(
+                  "border border-border/60 bg-background/80 dark:bg-muted/30 p-2 rounded-lg text-xs text-foreground cursor-pointer transition-colors flex flex-col w-full max-w-[320px] overflow-hidden shadow-soft backdrop-blur-sm min-w-0"
+                )}
+                role="button"
+                tabIndex={0}
+              >
+                {/* TOP ROW: Icon + Job Name + Badge | Close Button */}
+                <div className="flex items-center justify-between mb-2 w-full min-w-0">
+                  <div className="flex items-center gap-2 font-medium min-w-0 flex-1">
+                    <span className="w-4 h-4 inline-flex items-center justify-center flex-shrink-0">
+                      {pathComplete ? (
+                        <CheckCircle className="h-3 w-3 text-success" />
+                      ) : pathProgress.value > 0 ? (
+                        <Loader2 className="h-3 w-3 text-primary animate-spin" />
+                      ) : (
+                        <Search className="h-3 w-3 text-info" />
+                      )}
                     </span>
+                    <span className="truncate text-foreground">Extended Path Finder</span>
+                    <DesktopBadge variant="outline" className="text-[10px] flex items-center gap-1.5 ml-1 flex-shrink-0">
+                      Extended Path Finder
+                    </DesktopBadge>
                   </div>
+                  <div className="w-6 h-6 flex-shrink-0">
+                    <DesktopButton
+                      variant="ghost"
+                      size="xs"
+                      className="w-6 h-6 p-0 text-muted-foreground hover:text-foreground"
+                      aria-label="Delete job"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </DesktopButton>
+                  </div>
+                </div>
 
-                  {!pathComplete && pathProgress.value > 0 && (
-                    <div className="mb-3">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-muted-foreground text-xs">Finding related paths...</span>
-                        <span className="text-muted-foreground text-xs font-medium">{Math.floor(pathProgress.value)}%</span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-1 dark:bg-gray-700">
-                        <div 
-                          className="bg-gray-600 h-1 rounded-full transition-all duration-300 ease-out" 
-                          style={{ width: `${pathProgress.value}%` }}
-                        />
-                      </div>
+                {/* TIME ROW */}
+                <div className="text-muted-foreground text-[10px] mt-2 flex items-center justify-between">
+                  <span>{pathComplete ? 'just now' : pathProgress.value > 0 ? 'just now' : 'just now'}</span>
+                </div>
+
+                {/* PROGRESS BAR (only for running jobs) */}
+                {!pathComplete && pathProgress.value > 0 && (
+                  <div className="mt-2 mb-1">
+                    <DesktopProgress value={pathProgress.value} className="h-1" />
+                    <div className="flex justify-between items-center min-w-0 overflow-hidden">
+                      <p className="text-[9px] text-muted-foreground mt-0.5 truncate">
+                        Discovering related file paths and dependencies...
+                      </p>
+                      <p className="text-[9px] text-muted-foreground mt-0.5 text-right">
+                        {Math.round(pathProgress.value)}%
+                      </p>
                     </div>
-                  )}
+                  </div>
+                )}
 
-                  <div className="space-y-1 mb-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground text-xs">
-                        Tokens: <span className="text-foreground font-medium">3.4k → 3.3k</span>
+                {/* TOKEN/MODEL INFO */}
+                <div className="text-muted-foreground text-[10px] mt-2 flex items-center justify-between  w-full min-w-0">
+                  <div className="flex flex-col gap-0.5 max-w-[90%] overflow-hidden min-w-0 flex-1">
+                    <span className="flex items-center gap-1 overflow-hidden min-w-0">
+                      <span className="text-[9px] text-muted-foreground flex-shrink-0">Tokens:</span>
+                      <span className="font-mono text-foreground text-[9px] flex-shrink-0">3.4K</span>
+                      <span className="text-[9px] text-muted-foreground flex-shrink-0">→</span>
+                      <span className="font-mono text-foreground text-[9px] flex-shrink-0">
+                        {phaseName === 'ai-finding-path' ? 
+                          ((pathTokens.value - 3400) / 1000).toFixed(1) + 'K' : '3.3K'}
                       </span>
-                      <span className="text-muted-foreground text-xs">4s</span>
-                    </div>
-                    <div className="text-muted-foreground text-xs">
+                    </span>
+                    <span className="text-[9px] text-muted-foreground truncate max-w-full" title="google/gemini-2.5-flash">
                       google/gemini-2.5-flash
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end">
-                    <span className="text-muted-foreground text-xs">
-                      $0.003421
                     </span>
                   </div>
-                </DesktopJobCard>
+                  <span className="text-[9px] text-muted-foreground flex-shrink-0 ml-1 self-end">
+                    {pathComplete ? '4.2s' : '—'}
+                  </span>
+                </div>
+
+                {/* BOTTOM SECTION: Results + Cost */}
+                <div className="flex-1 flex flex-col justify-end">
+                  <div className="text-[10px] mt-2 border-t border-border/60 pt-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 text-muted-foreground min-w-0 flex-1">
+                        <span className="font-medium text-foreground">
+                          {pathComplete ? '8 additional paths discovered' : 'Searching paths...'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className="font-mono text-[9px] text-foreground">
+                          {/* Only show cost after job completes */}
+                          {pathComplete && '$0.003421'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {/* Path Correction Job Card */}
+            {/* Path Correction Job Card - EXACT match to desktop */}
             <div className={cn(
-              "mt-3 relative min-h-[120px] transition-all duration-500 ease-in-out",
+              "mt-3 relative transition-all duration-500 ease-in-out",
               pathComplete ? "opacity-100 transform translate-y-0" : "opacity-0 transform translate-y-2 pointer-events-none"
             )}>
               <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 w-0 h-3 border-l-2 border-dashed border-[oklch(0.90_0.04_195_/_0.6)]" />
-              <DesktopJobCard>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className={cn(
-                        "flex-shrink-0",
-                        correctionComplete ? "text-green-600" : "text-gray-600"
-                      )}>
-                        {correctionComplete ? (
-                          <CheckCircle className="h-5 w-5" />
-                        ) : (
-                          <AlertTriangle className="h-5 w-5" />
-                        )}
-                      </div>
-                      <span className={cn(
-                        "font-medium text-xs",
-                        correctionComplete ? "text-foreground" : "text-foreground"
-                      )}>
-                        {correctionComplete ? 'Completed' : 'Processing'}
-                      </span>
-                      <span className="font-medium text-foreground text-xs">
-                        Path Correction
-                      </span>
+              <div
+                className={cn(
+                  "border border-border/60 bg-background/80 dark:bg-muted/30 p-2 rounded-lg text-xs text-foreground cursor-pointer transition-colors flex flex-col w-full max-w-[320px] overflow-hidden shadow-soft backdrop-blur-sm min-w-0"
+                )}
+                role="button"
+                tabIndex={0}
+              >
+                {/* TOP ROW: Icon + Job Name + Badge | Close Button */}
+                <div className="flex items-center justify-between mb-2 w-full min-w-0">
+                  <div className="flex items-center gap-2 font-medium min-w-0 flex-1">
+                    <span className="w-4 h-4 inline-flex items-center justify-center flex-shrink-0">
+                      {correctionComplete ? (
+                        <CheckCircle className="h-3 w-3 text-success" />
+                      ) : correctionProgress.value > 0 ? (
+                        <Loader2 className="h-3 w-3 text-primary animate-spin" />
+                      ) : (
+                        <AlertTriangle className="h-3 w-3 text-warning" />
+                      )}
+                    </span>
+                    <span className="truncate text-foreground">Path Correction</span>
+                    <DesktopBadge variant="outline" className="text-[10px] flex items-center gap-1.5 ml-1 flex-shrink-0">
+                      Path Correction
+                    </DesktopBadge>
+                  </div>
+                  <div className="w-6 h-6 flex-shrink-0">
+                    <DesktopButton
+                      variant="ghost"
+                      size="xs"
+                      className="w-6 h-6 p-0 text-muted-foreground hover:text-foreground"
+                      aria-label="Delete job"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </DesktopButton>
+                  </div>
+                </div>
+
+                {/* TIME ROW */}
+                <div className="text-muted-foreground text-[10px] mt-2 flex items-center justify-between">
+                  <span>{correctionComplete ? 'just now' : correctionProgress.value > 0 ? 'just now' : 'just now'}</span>
+                </div>
+
+                {/* PROGRESS BAR (only for running jobs) */}
+                {!correctionComplete && correctionProgress.value > 0 && (
+                  <div className="mt-2 mb-1">
+                    <DesktopProgress value={correctionProgress.value} className="h-1" />
+                    <div className="flex justify-between items-center min-w-0 overflow-hidden">
+                      <p className="text-[9px] text-muted-foreground mt-0.5 truncate">
+                        Correcting path mismatches and typos...
+                      </p>
+                      <p className="text-[9px] text-muted-foreground mt-0.5 text-right">
+                        {Math.round(correctionProgress.value)}%
+                      </p>
                     </div>
                   </div>
+                )}
 
-                  <div className="mb-3">
-                    <span className="text-muted-foreground text-xs">
-                      {correctionComplete ? '30 seconds ago' : 'just now'}
+                {/* TOKEN/MODEL INFO */}
+                <div className="text-muted-foreground text-[10px] mt-2 flex items-center justify-between  w-full min-w-0">
+                  <div className="flex flex-col gap-0.5 max-w-[90%] overflow-hidden min-w-0 flex-1">
+                    <span className="flex items-center gap-1 overflow-hidden min-w-0">
+                      <span className="text-[9px] text-muted-foreground flex-shrink-0">Tokens:</span>
+                      <span className="font-mono text-foreground text-[9px] flex-shrink-0">2.1K</span>
+                      <span className="text-[9px] text-muted-foreground flex-shrink-0">→</span>
+                      <span className="font-mono text-foreground text-[9px] flex-shrink-0">
+                        {phaseName === 'ai-finding-correction' ? 
+                          ((correctionTokens.value - 2100) / 1000).toFixed(1) + 'K' : '2.0K'}
+                      </span>
+                    </span>
+                    <span className="text-[9px] text-muted-foreground truncate max-w-full" title="google/gemini-2.5-flash">
+                      google/gemini-2.5-flash
                     </span>
                   </div>
+                  <span className="text-[9px] text-muted-foreground flex-shrink-0 ml-1 self-end">
+                    {correctionComplete ? '2.1s' : '—'}
+                  </span>
+                </div>
 
-                  {!correctionComplete && correctionProgress.value > 0 && (
-                    <div className="mb-3">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-muted-foreground text-xs">Correcting path mismatches...</span>
-                        <span className="text-muted-foreground text-xs font-medium">{Math.floor(correctionProgress.value)}%</span>
+                {/* BOTTOM SECTION: Results + Cost */}
+                <div className="flex-1 flex flex-col justify-end">
+                  <div className="text-[10px] mt-2 border-t border-border/60 pt-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 text-muted-foreground min-w-0 flex-1">
+                        <span className="font-medium text-foreground">
+                          {correctionComplete ? '3 path corrections applied' : 'Correcting paths...'}
+                        </span>
                       </div>
-                      <div className="w-full bg-gray-200 rounded-full h-1 dark:bg-gray-700">
-                        <div 
-                          className="bg-gray-600 h-1 rounded-full transition-all duration-300 ease-out" 
-                          style={{ width: `${correctionProgress.value}%` }}
-                        />
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className="font-mono text-[9px] text-foreground">
+                          {/* Only show cost after job completes */}
+                          {correctionComplete && '$0.001845'}
+                        </span>
                       </div>
-                    </div>
-                  )}
-
-                  <div className="space-y-1 mb-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground text-xs">
-                        Tokens: <span className="text-foreground font-medium">2.1k → 2.0k</span>
-                      </span>
-                      <span className="text-muted-foreground text-xs">2s</span>
-                    </div>
-                    <div className="text-muted-foreground text-xs">
-                      anthropic/claude-sonnet-4-20250514
                     </div>
                   </div>
-
-                  <div className="flex justify-end">
-                    <span className="text-muted-foreground text-xs">
-                      $0.001845
-                    </span>
-                  </div>
-                </DesktopJobCard>
+                </div>
+              </div>
             </div>
 
           </div>

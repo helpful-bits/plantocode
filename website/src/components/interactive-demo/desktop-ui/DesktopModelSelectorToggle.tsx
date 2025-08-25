@@ -41,15 +41,19 @@ export function DesktopModelSelectorToggle({
               className={`
                 flex items-center h-7 px-3 text-xs border-0 rounded-none transition-all duration-200 backdrop-blur-sm whitespace-nowrap
                 ${isSelected 
-                  ? "bg-primary/10 hover:bg-primary/15" 
+                  ? "teal-glow-subtle shadow-teal" 
                   : "hover:bg-accent/30"
                 }
                 ${isSelected 
-                  ? "text-primary font-medium hover:text-primary cursor-pointer" 
+                  ? "text-white font-bold cursor-pointer" 
                   : "text-muted-foreground hover:text-accent-foreground cursor-pointer"
                 }
                 ${disabled ? "opacity-50 cursor-default" : ""}
               `}
+              style={{
+                background: isSelected ? 'linear-gradient(135deg, oklch(0.48 0.15 195), oklch(0.58 0.12 195))' : undefined,
+                border: isSelected ? '1px solid oklch(0.68 0.08 195)' : undefined
+              }}
             >
               {model.name}
             </button>

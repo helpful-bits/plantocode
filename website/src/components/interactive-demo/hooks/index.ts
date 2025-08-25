@@ -8,3 +8,6 @@ export {
   useTweenNumber,
   useIntervalGate
 } from './useScrollOrchestration';
+
+// Utility hooks
+export { useDebounced } from './useDebounced';

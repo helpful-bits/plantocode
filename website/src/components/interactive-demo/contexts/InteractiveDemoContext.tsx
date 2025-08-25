@@ -7,6 +7,7 @@ interface InteractiveDemoState {
   videoRecordingState: 'idle' | 'dialog-open' | 'capturing' | 'recording' | 'stopping' | 'completed';
   deepResearchState: 'idle' | 'ready' | 'processing' | 'completed';
   fileSearchState: 'idle' | 'searching' | 'ai-finding-regex' | 'ai-finding-relevance' | 'ai-finding-path' | 'ai-finding-correction' | 'results-shown';
+  taskDescription: string;
 }
 
 interface InteractiveDemoContextType extends InteractiveDemoState {
@@ -14,6 +15,7 @@ interface InteractiveDemoContextType extends InteractiveDemoState {
   setVideoRecordingState: (state: InteractiveDemoState['videoRecordingState']) => void;
   setDeepResearchState: (state: InteractiveDemoState['deepResearchState']) => void;
   setFileSearchState: (state: InteractiveDemoState['fileSearchState']) => void;
+  setTaskDescription: (taskDescription: string) => void;
 }
 
 const InteractiveDemoContext = createContext<InteractiveDemoContextType | undefined>(undefined);
@@ -27,6 +29,7 @@ export function InteractiveDemoProvider({ children }: InteractiveDemoProviderPro
   const [videoRecordingState, setVideoRecordingState] = useState<InteractiveDemoState['videoRecordingState']>('idle');
   const [deepResearchState, setDeepResearchState] = useState<InteractiveDemoState['deepResearchState']>('idle');
   const [fileSearchState, setFileSearchState] = useState<InteractiveDemoState['fileSearchState']>('idle');
+  const [taskDescription, setTaskDescription] = useState<string>("I need to understand how user authentication works in this React application. Specifically, I want to analyze the login functionality and JWT token implementation, ensuring that routes are properly protected so users cannot access unauthorized content. Additionally, I want to verify that session management is working correctly and that security best practices are being followed throughout the application.");
 
   return (
     <InteractiveDemoContext.Provider
@@ -35,10 +38,12 @@ export function InteractiveDemoProvider({ children }: InteractiveDemoProviderPro
         videoRecordingState,
         deepResearchState,
         fileSearchState,
+        taskDescription,
         setTextEnhancementState,
         setVideoRecordingState,
         setDeepResearchState,
         setFileSearchState,
+        setTaskDescription,
       }}
     >
       {children}

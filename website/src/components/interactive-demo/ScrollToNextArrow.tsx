@@ -10,15 +10,30 @@ export function ScrollToNextArrow({ nextStepId, label = "Next Step", isVisible =
   if (!isVisible) return null;
 
   const handleClick = () => {
-    const nextStep = document.querySelector(`[data-step="${nextStepId}"]`);
-    if (nextStep) {
+    try {
+      const nextStep = document.querySelector(`[data-step="${nextStepId}"]`);
+      if (!nextStep) {
+        console.warn(`Next step element with id ${nextStepId} not found`);
+        return;
+      }
+
       const elementTop = nextStep.getBoundingClientRect().top;
       const offsetPosition = elementTop + window.scrollY - (window.innerHeight * 0.25);
       
-      window.scrollTo({
-        top: offsetPosition,
-        behavior: 'smooth'
-      });
+      // Check if smooth scrolling is supported
+      if ('scrollBehavior' in document.documentElement.style) {
+        window.scrollTo({
+          top: offsetPosition,
+          behavior: 'smooth'
+        });
+      } else {
+        // Fallback for older browsers
+        window.scrollTo(0, offsetPosition);
+      }
+    } catch (error) {
+      console.warn('Error scrolling to next step:', error);
+      // Fallback: scroll to top
+      window.scrollTo(0, 0);
     }
   };
 

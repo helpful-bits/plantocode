@@ -18,15 +18,11 @@ import {
 } from 'lucide-react';
 import type { SoftwareApplication, FAQPage } from 'schema-dts';
 import { SectionDividerOrbs, SectionDividerMesh } from '@/components/ui/SectionDivider';
-import { cdnUrl } from '@/lib/cdn';
 
 const Features = dynamic(() => import('@/components/landing/Features').then(mod => ({ default: mod.Features })), {
   loading: () => <div className="h-[50vh]" />,
 });
 
-const HowItWorks = dynamic(() => import('@/components/landing/HowItWorks').then(mod => ({ default: mod.HowItWorks })), {
-  loading: () => <div className="h-[60vh]" />,
-});
 
 const Pricing = dynamic(() => import('@/components/landing/Pricing').then(mod => ({ default: mod.Pricing })), {
   loading: () => <div className="h-[40vh]" />,
@@ -42,6 +38,10 @@ const Community = dynamic(() => import('@/components/landing/Community').then(mo
 
 const CallToAction = dynamic(() => import('@/components/landing/CallToAction').then(mod => ({ default: mod.CallToAction })), {
   loading: () => <div className="h-[30vh]" />,
+});
+
+const HowItWorksInteractive = dynamic(() => import('@/components/interactive-demo/HowItWorksInteractive').then(mod => ({ default: mod.HowItWorksInteractive })), {
+  loading: () => <div className="h-[40vh]" />,
 });
 
 
@@ -169,53 +169,6 @@ export default function Home() {
     },
   ];
 
-  const steps = [
-    {
-      title: 'The Briefing: Task Input & Refinement',
-      description: 'Three ways to communicate your vision: speak your thoughts and GPT-4 transcribes perfectly, type and let Gemini 2.5 Pro refine your description, or record your screen while demonstrating the issue. Every input method gets transformed into precise specifications.',
-      subSteps: [
-        {
-          title: 'Text Input & AI Refinement',
-          video: cdnUrl('/videos/step-1-text.mp4'),
-          poster: cdnUrl('/images/step-1-text-poster.jpg'),
-        },
-        {
-          title: 'Voice Dictation & Transcription',
-          video: cdnUrl('/videos/step-1-voice.mp4'),
-          poster: cdnUrl('/images/step-1-voice-poster.jpg'),
-        },
-        {
-          title: 'Screen Recording & AI Analysis',
-          video: cdnUrl('/videos/step-1-video.mp4'),
-          poster: cdnUrl('/images/step-1-video-poster.jpg'),
-        },
-      ],
-    },
-    {
-      title: 'The Recon Mission: Finding What Matters',
-      description: 'The File Finder decomposes your task into logical areas, creates targeted search patterns, then AI assesses actual file content for relevance. Can expand to find critical dependencies when needed. Real-time intelligence finding what matters.',
-      video: cdnUrl('/videos/step-2-find.mp4'),
-      poster: cdnUrl('/images/step-2-poster.jpg'),
-    },
-    {
-      title: 'Phoning a Friend: Deep Research',
-      description: "Your LLM's knowledge is frozen in time. The Deep Research workflow fixes that by searching for current documentation to fill knowledge gaps. Get up-to-date answers for your specific implementation problems, integrated with your code's context.",
-      video: cdnUrl('/videos/step-3-generate.mp4'),
-      poster: cdnUrl('/images/step-3-poster.jpg'),
-    },
-    {
-      title: 'The Board Meeting: Council of LLMs',
-      description: 'Generate plans from multiple models. The architect AI performs deep synthesis, detecting blind spots and creating emergent solutions. Review with floating notes and edit plans directly before execution.',
-      video: cdnUrl('/videos/step-4-merge.mp4'),
-      poster: cdnUrl('/images/step-4-poster.jpg'),
-    },
-    {
-      title: 'The Executive Override: Taking Command',
-      description: 'Override any system prompt. Customize the copy button instructions. Your customizations are saved per project. Every aspect of the tool bends to your will - because you are the CEO of your development workflow.',
-      video: cdnUrl('/videos/step-5-customize.mp4'),
-      poster: cdnUrl('/images/step-5-poster.jpg'),
-    },
-  ];
 
 
   return (
@@ -234,26 +187,37 @@ export default function Home() {
           </section>
           <SectionDividerMesh />
 
-          <Features features={features} />
+          <section className="py-16">
+            <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center mb-16">
+              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-foreground mb-6">
+                How It Works
+              </h2>
+              <p className="text-lg text-muted-foreground max-w-3xl mx-auto">
+                Experience Vibe Manager's complete workflow through this interactive demonstration. 
+                Each step shows exactly how the tool helps you find the right files, generate better plans, and ship correct changes.
+              </p>
+            </div>
+            <HowItWorksInteractive />
+          </section>
           <SectionDividerOrbs />
 
-          <HowItWorks steps={steps} />
+          <Features features={features} />
           <SectionDividerMesh />
 
           <section className="pb-8">
             <Pricing />
           </section>
-          <SectionDividerOrbs />
+          <SectionDividerMesh />
 
           <section className="pt-8">
             <FAQ items={faqItems} />
           </section>
-          <SectionDividerMesh />
+          <SectionDividerOrbs />
 
           <section className="pb-8">
             <Community />
           </section>
-          <SectionDividerOrbs />
+          <SectionDividerMesh />
 
           <section className="pt-8">
             <CallToAction
