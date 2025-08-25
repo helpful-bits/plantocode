@@ -71,6 +71,37 @@ const nextConfig: NextConfig = {
     dirs: ['src', 'app'],
   },
   
+  // Redirects to eliminate chains shown in Google Search Console
+  async redirects() {
+    return [
+      // Fix HTTP to HTTPS redirect chains
+      {
+        source: '/:path*',
+        has: [
+          {
+            type: 'header',
+            key: 'x-forwarded-proto',
+            value: 'http',
+          },
+        ],
+        destination: 'https://www.vibemanager.app/:path*',
+        permanent: true,
+      },
+      // Fix non-www to www redirect chains
+      {
+        source: '/:path*',
+        has: [
+          {
+            type: 'host',
+            value: 'vibemanager.app',
+          },
+        ],
+        destination: 'https://www.vibemanager.app/:path*',
+        permanent: true,
+      },
+    ];
+  },
+
   // Headers for performance and Core Web Vitals
   async headers() {
     return [

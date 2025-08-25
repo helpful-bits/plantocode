@@ -15,6 +15,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Check if this is a search engine crawler - CRITICAL for SEO
+  const userAgent = request.headers.get('user-agent') || '';
+  const isSearchBot = /googlebot|bingbot|slurp|duckduckbot|baiduspider|yandexbot|facebookexternalhit|twitterbot|rogerbot|linkedinbot|embedly|quora|showyoubot|outbrain|pinterest|slackbot|vkshare|w3c_validator|redditbot/i.test(userAgent);
+
   // Get country from multiple sources (do this for ALL requests)
   const country = getCountryFromRequest(
     request.headers,
@@ -25,6 +29,14 @@ export async function middleware(request: NextRequest) {
   if (path === '/api/geo' || path.startsWith('/api/health')) {
     const response = NextResponse.next();
     response.headers.set('X-User-Country', country);
+    return response;
+  }
+
+  // CRITICAL: Allow all search engine crawlers unrestricted access for SEO
+  if (isSearchBot) {
+    const response = NextResponse.next();
+    response.headers.set('X-User-Country', country);
+    response.headers.set('X-Bot-Detected', 'true');
     return response;
   }
 
