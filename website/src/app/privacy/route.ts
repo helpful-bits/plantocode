@@ -2,13 +2,26 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCountryFromRequest, isApprovedRegion } from '@/lib/territories';
 
 export async function GET(request: NextRequest) {
-  // Get the user's country from headers (set by middleware)
+  // Check if this is a crawler/bot
+  const userAgent = request.headers.get('user-agent') || '';
+  const isBot = /bot|crawler|spider|facebookexternalhit|twitterbot|linkedinbot|googlebot/i.test(userAgent);
+  
+  // For bots, use consistent redirect to EU (GDPR-compliant) version
+  // This ensures consistent indexing and follows 2025 SEO best practices
+  if (isBot) {
+    return NextResponse.redirect(
+      new URL('/legal/eu/privacy', request.url),
+      { status: 301 } // Permanent redirect for SEO
+    );
+  }
+  
+  // For human users, perform geo-based routing
   const country = getCountryFromRequest(
     request.headers,
     (request as any).geo
   );
   
-  // Determine the appropriate region
+  // Determine the appropriate region for human users
   let region: 'eu' | 'us';
   
   if (country === 'US') {
@@ -30,7 +43,7 @@ export async function GET(request: NextRequest) {
   
   return NextResponse.redirect(
     redirectUrl,
-    { status: 302 } // Use 302 for temporary redirect since it's based on location
+    { status: 302 } // Temporary for geo-based user redirects
   );
 }
 
