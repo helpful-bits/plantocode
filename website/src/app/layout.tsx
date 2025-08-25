@@ -9,6 +9,7 @@ import { ClientProviders } from '@/components/providers/ClientProviders';
 import { ConditionalBackground } from '@/components/system/ConditionalBackground';
 import { Footer } from '@/components/landing/Footer';
 import { SpeedInsights } from '@vercel/speed-insights/next';
+import Script from 'next/script';
 import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
@@ -148,11 +149,6 @@ export default function RootLayout({
             <link rel="preconnect" href="https://www.google-analytics.com" crossOrigin="anonymous" />
           </>
         )}
-        {/* Plausible Analytics */}
-        <script data-domain="vibemanager.app" src="https://plausible.io/js/script.js"></script>
-        <script dangerouslySetInnerHTML={{
-          __html: `window.plausible = window.plausible || function() { (window.plausible.q = window.plausible.q || []).push(arguments) }`
-        }} />
       </head>
       <body className={`${fontClasses.sans} bg-transparent overflow-x-hidden`}>
         <ConditionalBackground />
@@ -162,6 +158,32 @@ export default function RootLayout({
         </ClientProviders>
         <SpeedInsights />
         <StructuredData data={websiteJsonLd} />
+        {/* Plausible Analytics */}
+        <Script
+          src="https://plausible.io/js/script.js"
+          data-domain="vibemanager.app"
+          strategy="afterInteractive"
+        />
+        <Script
+          id="plausible-init"
+          strategy="afterInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `window.plausible = window.plausible || function() { (window.plausible.q = window.plausible.q || []).push(arguments) }`
+          }}
+        />
+        {/* Twitter/X conversion tracking */}
+        <Script
+          id="twitter-pixel"
+          strategy="afterInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `
+              !function(e,t,n,s,u,a){e.twq||(s=e.twq=function(){s.exe?s.exe.apply(s,arguments):s.queue.push(arguments);
+              },s.version='1.1',s.queue=[],u=t.createElement(n),u.async=!0,u.src='https://static.ads-twitter.com/uwt.js',
+              a=t.getElementsByTagName(n)[0],a.parentNode.insertBefore(u,a))}(window,document,'script');
+              twq('config','qd2ik');
+            `
+          }}
+        />
       </body>
     </html>
   );
