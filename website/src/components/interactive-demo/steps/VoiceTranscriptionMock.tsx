@@ -39,24 +39,29 @@ export function VoiceTranscriptionMock({ isInView }: VoiceTranscriptionMockProps
   // Separate interval for smooth sine wave animation during recording
   useEffect(() => {
     let sineInterval: NodeJS.Timeout | null = null;
+    let isMounted = true; // Track mount status
     
     if (recordingState === 'recording') {
       let sineTime = 0;
       
       sineInterval = setInterval(() => {
+        if (!isMounted) return; // Prevent state updates after unmount
+        
         sineTime += 0.15; // Increment time for sine wave
         const sineWave = Math.sin(sineTime * 0.8) * 0.5 + 0.5;
         const pseudoRandom = ((sineTime * 0.7919) % 1) * 0.3;
         const level = sineWave * 0.7 + pseudoRandom * 0.3;
         setAudioLevel(level);
       }, 50); // 20fps for smooth animation
-    } else {
+    } else if (isMounted) {
       setAudioLevel(0);
     }
 
     return () => {
+      isMounted = false;
       if (sineInterval) {
         clearInterval(sineInterval);
+        sineInterval = null;
       }
     };
   }, [recordingState]);
@@ -159,7 +164,7 @@ export function VoiceTranscriptionMock({ isInView }: VoiceTranscriptionMockProps
         {(recordingState === 'idle' || recordingState === 'transcribed') && (
           <div className="flex items-center gap-1.5">
             <DesktopSelect value={languageCode} onChange={setLanguageCode}>
-              <div className="h-6 w-[100px] text-sm border-0 bg-muted/50 hover:bg-muted focus:ring-1 focus:ring-ring transition-colors cursor-pointer flex items-center justify-between px-2 rounded">
+              <div className="h-6 w-[100px] text-sm bg-muted/50 hover:bg-muted focus:ring-1 focus:ring-ring transition-colors cursor-pointer flex items-center justify-between px-2 rounded">
                 <span className="text-xs">English</span>
                 <ChevronDown className="h-3 w-3" />
               </div>
@@ -170,11 +175,11 @@ export function VoiceTranscriptionMock({ isInView }: VoiceTranscriptionMockProps
             </DesktopSelect>
 
             <DesktopSelect value="default">
-              <div className="h-6 px-2 text-sm border-0 bg-muted/50 hover:bg-muted focus:ring-1 focus:ring-ring transition-colors cursor-pointer flex items-center justify-between rounded">
-                <span className="text-xs">Default</span>
+              <div className="h-6 px-2 text-sm bg-muted/50 hover:bg-muted focus:ring-1 focus:ring-ring transition-colors cursor-pointer flex items-center justify-between rounded">
+                <span className="text-xs">AirPods Max</span>
                 <ChevronDown className="h-3 w-3 ml-1" />
               </div>
-              <DesktopSelectOption value="default">Default</DesktopSelectOption>
+              <DesktopSelectOption value="default">AirPods Max</DesktopSelectOption>
               <DesktopSelectOption value="external">External USB Microphone</DesktopSelectOption>
               <DesktopSelectOption value="headset">Bluetooth Headset</DesktopSelectOption>
             </DesktopSelect>

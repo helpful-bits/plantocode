@@ -1,7 +1,7 @@
 // Unified timing orchestration hooks - COMPLETELY STABILIZED
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 
 // Timer types
 type TimerRef = ReturnType<typeof setTimeout>;
@@ -153,51 +153,51 @@ export function useTimedCycle(options: UseTimedCycleOptions): UseTimedCycleRetur
   const cycleStartRef = useRef<number | null>(null);
   const phaseStartRef = useRef<number | null>(null);
   const currentPhaseIndexRef = useRef(0);
-  const activeRef = useRef(active);
-  const wasInactiveRef = useRef(!active);
+  const phasesRef = useRef(phases);
+  const loopRef = useRef(loop);
+  
+  // Keep refs updated
+  phasesRef.current = phases;
+  loopRef.current = loop;
 
-  // Update refs
-  activeRef.current = active;
+  // Memoize total cycle duration to avoid recalculation
+  const totalCycleDuration = useMemo(() => 
+    phases.reduce((sum, phase) => sum + phase.durationMs, 0), 
+    [phases]
+  );
 
-  // Initialize immediately if active on first render
-  if (!intervalRef.current && active) {
-    currentPhaseIndexRef.current = 0;
-    setPhaseIndex(0);
-    cycleStartRef.current = Date.now();
-    phaseStartRef.current = Date.now();
-    wasInactiveRef.current = false;
-  }
+  // Main effect that manages the interval lifecycle
+  useEffect(() => {
+    // Clean up existing interval
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
 
-  // Start interval immediately on first render - runs continuously
-  if (!intervalRef.current) {
-    intervalRef.current = setInterval(() => {
-      // Check if we just became active
-      if (activeRef.current && wasInactiveRef.current) {
-        // Reset on activation
-        currentPhaseIndexRef.current = 0;
+    if (!active) {
+      if (resetOnDeactivate) {
         setPhaseIndex(0);
-        cycleStartRef.current = Date.now();
-        phaseStartRef.current = Date.now();
-        wasInactiveRef.current = false;
+        currentPhaseIndexRef.current = 0;
+        cycleStartRef.current = null;
+        phaseStartRef.current = null;
       }
-      
-      // Check if we just became inactive
-      if (!activeRef.current && !wasInactiveRef.current) {
-        if (resetOnDeactivate) {
-          currentPhaseIndexRef.current = 0;
-          setPhaseIndex(0);
-          cycleStartRef.current = null;
-          phaseStartRef.current = null;
-        }
-        wasInactiveRef.current = true;
-        return; // Don't process when inactive
-      }
+      return;
+    }
 
-      // Only process when active
-      if (!activeRef.current) return;
+    // Initialize on activation
+    if (!cycleStartRef.current) {
+      currentPhaseIndexRef.current = 0;
+      setPhaseIndex(0);
+      cycleStartRef.current = Date.now();
+      phaseStartRef.current = Date.now();
+    }
 
+    // Create new interval with fresh closures
+    intervalRef.current = setInterval(() => {
+      const currentPhases = phasesRef.current;
+      const currentLoop = loopRef.current;
       const now = Date.now();
-      const currentPhaseData = phases[currentPhaseIndexRef.current];
+      const currentPhaseData = currentPhases[currentPhaseIndexRef.current];
       
       if (!currentPhaseData || !phaseStartRef.current) return;
       
@@ -205,12 +205,12 @@ export function useTimedCycle(options: UseTimedCycleOptions): UseTimedCycleRetur
 
       // Check if current phase is complete
       if (phaseElapsed >= currentPhaseData.durationMs) {
-        if (currentPhaseIndexRef.current < phases.length - 1) {
+        if (currentPhaseIndexRef.current < currentPhases.length - 1) {
           // Move to next phase
           currentPhaseIndexRef.current++;
           setPhaseIndex(currentPhaseIndexRef.current);
           phaseStartRef.current = now;
-        } else if (loop) {
+        } else if (currentLoop) {
           // Loop back to first phase
           currentPhaseIndexRef.current = 0;
           setPhaseIndex(0);
@@ -219,27 +219,23 @@ export function useTimedCycle(options: UseTimedCycleOptions): UseTimedCycleRetur
         }
       }
     }, 50); // 50ms = 20fps
-  }
 
-  // Calculate current values without causing re-renders
-  const now = Date.now();
-  const currentPhase = phases[phaseIndex];
-  const phaseElapsed = phaseStartRef.current && active ? now - phaseStartRef.current : 0;
-  const cycleElapsed = cycleStartRef.current && active ? now - cycleStartRef.current : 0;
-  
-  const phaseProgress01 = currentPhase && active ? Math.min(phaseElapsed / currentPhase.durationMs, 1) : 0;
-  const totalCycleDuration = phases.reduce((sum, phase) => sum + phase.durationMs, 0);
-  const cycleProgress01 = totalCycleDuration > 0 && active ? Math.min(cycleElapsed / totalCycleDuration, 1) : 0;
-
-  // Minimal useEffect only for cleanup on unmount
-  useEffect(() => {
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
     };
-  }, []);
+  }, [active, resetOnDeactivate]); // Proper dependencies
+
+  // Calculate current values
+  const now = Date.now();
+  const currentPhase = phases[phaseIndex];
+  const phaseElapsed = phaseStartRef.current && active ? now - phaseStartRef.current : 0;
+  const cycleElapsed = cycleStartRef.current && active ? now - cycleStartRef.current : 0;
+  
+  const phaseProgress01 = currentPhase && active ? Math.min(phaseElapsed / currentPhase.durationMs, 1) : 0;
+  const cycleProgress01 = totalCycleDuration > 0 && active ? Math.min(cycleElapsed / totalCycleDuration, 1) : 0;
 
   return {
     phaseName: currentPhase?.name || '',
@@ -440,7 +436,9 @@ export function useTweenNumber(options: UseTweenNumberOptions): UseTweenNumberRe
       const progress = Math.min(elapsed / durationMs, 1);
       const easedProgress = easing(progress);
       
-      setValue(from + (to - from) * easedProgress);
+      // Round to 2 decimal places to reduce unnecessary re-renders
+      const newValue = Math.round((from + (to - from) * easedProgress) * 100) / 100;
+      setValue(newValue);
       
       if (progress >= 1) {
         setIsDone(true);

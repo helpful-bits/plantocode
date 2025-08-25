@@ -47,69 +47,73 @@
 import React from 'react';
 import dynamic from 'next/dynamic';
 import { StepController } from './StepController';
+
+// Initialize Monaco Editor workers
+import '../../monaco-workers';
 import { ScrollToNextArrow } from './ScrollToNextArrow';
+import { StepErrorBoundary } from './StepErrorBoundary';
 import './interactive-demo.css';
 import { InteractiveDemoProvider } from './contexts/InteractiveDemoContext';
 
 // Lazy-load all step components
 const ProjectSelectorMock = dynamic(() => import('./steps').then(m => ({ default: m.ProjectSelectorMock })), { 
   ssr: false, 
-  loading: () => <div className="h-24" /> 
+  loading: () => <div className="h-16" /> 
 });
 
 const SessionManagerMock = dynamic(() => import('./steps').then(m => ({ default: m.SessionManagerMock })), { 
   ssr: false, 
-  loading: () => <div className="h-24" /> 
+  loading: () => <div className="h-16" /> 
 });
 
 const TaskDescriptionMock = dynamic(() => import('./steps').then(m => ({ default: m.TaskDescriptionMock })), { 
   ssr: false, 
-  loading: () => <div className="h-24" /> 
+  loading: () => <div className="h-16" /> 
 });
 
 const VoiceTranscriptionMock = dynamic(() => import('./steps').then(m => ({ default: m.VoiceTranscriptionMock })), { 
   ssr: false, 
-  loading: () => <div className="h-24" /> 
+  loading: () => <div className="h-16" /> 
 });
 
 const VideoRecordingMock = dynamic(() => import('./steps').then(m => ({ default: m.VideoRecordingMock })), { 
   ssr: false, 
-  loading: () => <div className="h-24" /> 
+  loading: () => <div className="h-16" /> 
 });
 
 const TextImprovementMock = dynamic(() => import('./steps').then(m => ({ default: m.TextImprovementMock })), { 
   ssr: false, 
-  loading: () => <div className="h-24" /> 
+  loading: () => <div className="h-16" /> 
 });
 
 const DeepResearchMock = dynamic(() => import('./steps').then(m => ({ default: m.DeepResearchMock })), { 
   ssr: false, 
-  loading: () => <div className="h-24" /> 
+  loading: () => <div className="h-16" /> 
 });
 
 const FileSearchMock = dynamic(() => import('./steps').then(m => ({ default: m.FileSearchMock })), { 
   ssr: false, 
-  loading: () => <div className="h-24" /> 
+  loading: () => <div className="h-16" /> 
 });
 
 const PlanCardsStreamMock = dynamic(() => import('./steps').then(m => ({ default: m.PlanCardsStreamMock })), { 
   ssr: false, 
-  loading: () => <div className="h-24" /> 
+  loading: () => <div className="h-16" /> 
 });
 
 const MergeInstructionsMock = dynamic(() => import('./steps').then(m => ({ default: m.MergeInstructionsMock })), { 
   ssr: false, 
-  loading: () => <div className="h-24" /> 
+  loading: () => <div className="h-16" /> 
 });
 
 const SettingsMock = dynamic(() => import('./steps').then(m => ({ default: m.SettingsMock })), { 
   ssr: false, 
-  loading: () => <div className="h-24" /> 
+  loading: () => <div className="h-16" /> 
 });
 
 const CopyButtonsMock = dynamic(() => import('./steps').then(m => ({ default: m.CopyButtonsMock })), { 
   ssr: false, 
-  loading: () => <div className="h-24" /> 
+  loading: () => <div className="h-16" /> 
 });
 
 
@@ -144,9 +148,9 @@ export function HowItWorksInteractive() {
     <InteractiveDemoProvider>
       <div className="relative">
         {/* Main steps list */}
-        <div className="interactive-demo-container max-w-4xl mx-auto px-0 sm:px-4 space-y-16">
+        <div className="interactive-demo-container max-w-4xl mx-auto px-0 sm:px-4 space-y-[250px] sm:space-y-[300px] lg:space-y-[450px]">
           {STEPS.map(({ id, title, Component }, index) => (
-            <StepController key={id} className="min-h-[60vh] py-8">
+            <StepController key={id} className="py-4">
               {({ isInView, resetKey }) => (
                 <div className="space-y-4">
                   <div 
@@ -165,7 +169,13 @@ export function HowItWorksInteractive() {
                     
                     {/* Content */}
                     <div className={[8, 9, 10].includes(id) ? "p-[2px] sm:p-6" : "p-6"}>
-                      <Component key={resetKey} isInView={isInView} resetKey={resetKey} />
+                      <StepErrorBoundary 
+                        stepId={id} 
+                        stepTitle={title}
+                        onError={(stepId, error) => console.error(`Step ${stepId} failed:`, error)}
+                      >
+                        <Component key={resetKey} isInView={isInView} resetKey={resetKey} />
+                      </StepErrorBoundary>
                     </div>
                   </div>
                   

@@ -7,47 +7,21 @@ import { Undo2, Redo2, Mic, Video, ChevronDown, Settings } from 'lucide-react';
 import { useTimedLoop, useTypewriter, useIntervalGate } from '../hooks';
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
+import { safeStorage } from '../utils/safeStorage';
+import { useInteractiveDemoContext } from '../contexts/InteractiveDemoContext';
 
 interface TaskDescriptionMockProps {
   isInView: boolean;
 }
 
 export function TaskDescriptionMock({ isInView }: TaskDescriptionMockProps) {
+  const { taskDescription } = useInteractiveDemoContext();
   const [undoPressed, setUndoPressed] = useState(false);
   const [redoPressed, setRedoPressed] = useState(false);
   const [textHistory, setTextHistory] = useState<string[]>([]);
   const [currentHistoryIndex, setCurrentHistoryIndex] = useState(-1);
   const [manualTextOverride, setManualTextOverride] = useState<string | null>(null);
   
-  const taskDescription = `We need to create an interactive demo for the "How It Works" section on mobile and tablet devices. This demo will showcase the critical components of our desktop application through a guided, scroll-based experience.
-
-**Interactive Demo Requirements:**
-
-The demo should guide users through the complete workflow via scroll-triggered animations:
-- Forms automatically populate with sample data
-- Buttons simulate clicks
-- Captions appear dynamically
-- Users experience a cohesive story demonstrating all application features
-
-**Implementation Steps:**
-
-1. **Audit Current State:** Review existing video-based "How It Works" section and identify replacement areas
-
-2. **Identify Critical Components:** Determine essential desktop application elements to showcase
-
-3. **Design Interactive Elements:** Create hardcoded, non-functional components that visually match desktop counterparts exactly
-- No real data connections required
-- Sample text and interactions only
-
-**User Journey Flow:**
-
-The interactive demo must guide users through this sequence:
-
-1. Project folder selection
-2. Session creation
-3. Task description entry
-4. Voice transcription`;
-
   const shortTaskDescription = `Create an interactive demo showcasing our desktop application workflow through scroll-triggered animations.
 
 Key requirements:
@@ -70,36 +44,32 @@ Key requirements:
   // Use typewriter for text during 0.3-0.7 window
   const showTyping = t >= 0.3 && t < 0.7;
   const { displayText, isDone } = useTypewriter({ active: showTyping, text: taskDescription, durationMs: 2000 });
-  const [savedText, setSavedText] = useState(taskDescription);
-
-  useEffect(() => {
-    const saved = typeof window !== "undefined" ? localStorage.getItem("demo/taskDescription") : null;
-    if (saved && !showTyping) setSavedText(saved);
-  }, [showTyping]);
 
   useEffect(() => {
     if (!isInView) return;
     if (isDone && showTyping) {
-      localStorage.setItem("demo/taskDescription", displayText);
+      safeStorage.setItem("demo/taskDescription", displayText);
     }
   }, [isDone, showTyping, isInView, displayText]);
   
   // Timing-driven state calculation
   const isEmpty = t < 0.3;
   
-  // Use interval gates for button pulses
-  const undoPressedGate = useIntervalGate(t, [{ startPct: 0.40, endPct: 0.43 }]);
-  const redoPressedGate = useIntervalGate(t, [{ startPct: 0.50, endPct: 0.53 }]);
-  const micPressed = useIntervalGate(t, [{ startPct: 0.60, endPct: 0.63 }]);
-  const videoPressed = useIntervalGate(t, [{ startPct: 0.70, endPct: 0.73 }]);
+  // Use interval gates for button pulses - start 1.25s after typing completes
+  const undoPressedGate = useIntervalGate(t, [{ startPct: 0.503, endPct: 0.533 }]);
+  const redoPressedGate = useIntervalGate(t, [{ startPct: 0.578, endPct: 0.608 }]);
+  const micPressed = useIntervalGate(t, [{ startPct: 0.653, endPct: 0.683 }]);
+  const videoPressed = useIntervalGate(t, [{ startPct: 0.728, endPct: 0.758 }]);
 
   // Handle undo/redo functionality
   const handleUndo = () => {
     if (currentHistoryIndex > 0) {
       const newIndex = currentHistoryIndex - 1;
       const newValue = textHistory[newIndex];
-      setCurrentHistoryIndex(newIndex);
-      setManualTextOverride(newValue);
+      if (newValue !== undefined) {
+        setCurrentHistoryIndex(newIndex);
+        setManualTextOverride(newValue);
+      }
     }
   };
 
@@ -107,8 +77,10 @@ Key requirements:
     if (currentHistoryIndex < textHistory.length - 1) {
       const newIndex = currentHistoryIndex + 1;
       const newValue = textHistory[newIndex];
-      setCurrentHistoryIndex(newIndex);
-      setManualTextOverride(newValue);
+      if (newValue !== undefined) {
+        setCurrentHistoryIndex(newIndex);
+        setManualTextOverride(newValue);
+      }
     }
   };
 
@@ -180,25 +152,16 @@ Key requirements:
             </div>
           </div>
           
-          <div className="flex items-center gap-1 sm:gap-2 flex-wrap w-full sm:w-auto">
-            <DesktopButton
-              variant="ghost" 
-              size="sm"
-              className="h-6 flex-1 sm:flex-initial px-2 text-xs text-foreground"
-            >
-              English
-              <ChevronDown className="h-3 w-3 ml-1" />
-            </DesktopButton>
+          <div className="flex items-center gap-1.5 flex-wrap w-full sm:w-auto">
+            <div className="h-6 w-[100px] px-2 text-sm border border-[oklch(0.90_0.04_195_/_0.5)] bg-muted/50 hover:bg-muted focus:ring-1 focus:ring-ring transition-colors cursor-pointer flex items-center justify-between rounded">
+              <span className="text-xs">English</span>
+              <ChevronDown className="h-3 w-3" />
+            </div>
             
-            <DesktopButton
-              variant="ghost"
-              size="sm" 
-              className="h-6 flex-1 sm:flex-initial px-2 text-xs text-foreground"
-            >
-              <Settings className="h-3 w-3 mr-1" />
-              Default
+            <div className="h-6 px-2 text-sm border border-[oklch(0.90_0.04_195_/_0.5)] bg-muted/50 hover:bg-muted focus:ring-1 focus:ring-ring transition-colors cursor-pointer flex items-center justify-between rounded">
+              <span className="text-xs">AirPods Max</span>
               <ChevronDown className="h-3 w-3 ml-1" />
-            </DesktopButton>
+            </div>
 
             <DesktopButton
               variant="ghost"
@@ -227,16 +190,11 @@ Key requirements:
             className={`border rounded-xl bg-background backdrop-blur-sm text-foreground p-4 w-full resize-y font-normal shadow-soft min-h-[400px] ${
               isEmpty ? "border-destructive/20 bg-destructive/5" : "border-[oklch(0.90_0.04_195_/_0.5)]"
             }`}
-            value={manualTextOverride ?? (showTyping ? displayText : (textHistory[currentHistoryIndex] || savedText))}
+            value={manualTextOverride ?? (showTyping ? displayText : taskDescription)}
             placeholder="Clearly describe the changes or features you want the AI to implement. You can use the voice recorder below or type directly."
             readOnly
           />
 
-          {isEmpty && (
-            <div className="text-xs text-destructive mt-1 pl-1">
-              Please enter a task description to proceed
-            </div>
-          )}
 
           {/* Bottom buttons */}
           <div className="flex flex-col gap-3 mt-4">

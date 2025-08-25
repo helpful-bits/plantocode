@@ -33,7 +33,7 @@ const buttonVariants = {
   secondary: 'desktop-glass bg-secondary/80 border border-secondary/40 text-secondary-foreground hover:bg-secondary hover:border-secondary/60',
   destructive: 'desktop-glass bg-destructive/90 border border-destructive/30 text-destructive-foreground hover:bg-destructive hover:border-destructive/40',
   filter: 'border-0 rounded-none text-muted-foreground hover:bg-accent/30 hover:text-accent-foreground transition-all duration-200 backdrop-blur-sm',
-  'filter-active': 'border-0 rounded-none bg-primary/10 text-primary font-medium hover:bg-primary/15 transition-all duration-200 backdrop-blur-sm',
+  'filter-active': 'border-0 rounded-none text-white font-bold shadow-teal teal-glow-subtle transition-all duration-200 backdrop-blur-sm',
 };
 
 const buttonSizes = {
@@ -67,6 +67,10 @@ export function DesktopButton({
         !compact && variant !== 'filter' && variant !== 'filter-active' && 'min-h-[44px] min-w-[44px]',
         className
       )}
+      style={{
+        background: variant === 'filter-active' ? 'linear-gradient(135deg, oklch(0.48 0.15 195), oklch(0.58 0.12 195))' : undefined,
+        border: variant === 'filter-active' ? '1px solid oklch(0.68 0.08 195)' : undefined
+      }}
       disabled={disabled || isLoading}
       onClick={onClick}
       aria-label={ariaLabel}

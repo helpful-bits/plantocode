@@ -51,7 +51,7 @@ export function SessionManagerMock({ isInView }: SessionManagerMockProps) {
   const { displayText: typedText } = useTypewriter({
     text: newSessionName,
     active: phase === 'typing',
-    durationMs: 3000
+    durationMs: 1364, // 2.2x faster than original 3000ms
   });
   
   // For non-typing phases, show appropriate text
@@ -112,7 +112,10 @@ export function SessionManagerMock({ isInView }: SessionManagerMockProps) {
             <DesktopButton
               size="sm"
               variant="outline"
-              className={`transition-transform duration-200 ${newButtonPressed ? 'scale-95 bg-primary/80' : ''}`}
+              className={cn(
+                "transition-transform duration-200",
+                newButtonPressed && "scale-95 bg-primary/80 ring-2 ring-primary/40"
+              )}
             >
               <PlusCircle className="h-3 w-3 mr-1" />
               New
@@ -126,16 +129,19 @@ export function SessionManagerMock({ isInView }: SessionManagerMockProps) {
         <div className="border-b border-[oklch(0.90_0.04_195_/_0.2)]">
           <div className="animate-in fade-in-0 slide-in-from-top-2 duration-300 p-3">
             <div className="flex items-center gap-2">
-              <div className="relative grow">
+              <div className="relative grow border border-[oklch(0.90_0.04_195_/_0.5)] rounded-lg bg-background/80 backdrop-blur-sm focus-within:border-primary/30 focus-within:ring-2 focus-within:ring-ring/50 transition-all duration-200 hover:border-[oklch(0.90_0.04_195_/_0.7)]">
                 <DesktopInput
                   value={displayText}
                   placeholder="New session name..."
-                  className="w-full h-8 sm:h-9 text-sm"
+                  className="border-0 bg-transparent focus-visible:ring-0 w-full h-8 sm:h-9 text-sm"
                 />
               </div>
               <DesktopButton
                 size="sm"
-                className={`transition-transform duration-200 ${saveButtonPressed ? 'scale-95 bg-primary/80' : ''}`}
+                className={cn(
+                  "transition-transform duration-200",
+                  saveButtonPressed && "scale-95 bg-primary/80 ring-2 ring-primary/40"
+                )}
                 disabled={step < 4}
               >
                 <Save className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1" />
@@ -176,7 +182,7 @@ export function SessionManagerMock({ isInView }: SessionManagerMockProps) {
                 className="h-6 w-6"
                 aria-label="Clone session"
               >
-                <Copy className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                <Copy className="h-5 w-5 sm:h-6 sm:w-6" />
               </DesktopButton>
               <DesktopButton
                 compact
@@ -185,7 +191,7 @@ export function SessionManagerMock({ isInView }: SessionManagerMockProps) {
                 className="h-6 w-6"
                 aria-label="Rename session"
               >
-                <Pencil className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                <Pencil className="h-5 w-5 sm:h-6 sm:w-6" />
               </DesktopButton>
               <DesktopButton
                 compact
@@ -194,7 +200,7 @@ export function SessionManagerMock({ isInView }: SessionManagerMockProps) {
                 className="h-6 w-6 text-destructive"
                 aria-label="Delete session"
               >
-                <Trash2 className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-destructive" />
+                <Trash2 className="h-5 w-5 sm:h-6 sm:w-6 text-destructive" />
               </DesktopButton>
             </div>
           </div>

@@ -140,8 +140,7 @@ export function PlanContentStreamingMock({ isInView }: { isInView: boolean; rese
   const { displayText, isDone } = useTypewriter({
     active: isInView,
     text: implementationContent,
-    durationMs: 9000,
-    loop: true
+    durationMs: 9000
   });
   
   const progress = isDone || t >= 0.8 ? 100 : Math.round((displayText.length / implementationContent.length) * 100);
