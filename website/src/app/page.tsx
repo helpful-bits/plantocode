@@ -6,6 +6,7 @@ import dynamic from 'next/dynamic';
 import { StructuredData } from '@/components/seo/StructuredData';
 import { Header } from '@/components/landing/Header';
 import { HeroSection } from '@/components/landing/HeroSection';
+import { cdnUrl } from '@/lib/cdn';
 import {
   Search,
   Globe,
@@ -40,7 +41,7 @@ const CallToAction = dynamic(() => import('@/components/landing/CallToAction').t
   loading: () => <div className="h-[30vh]" />,
 });
 
-const HowItWorksInteractive = dynamic(() => import('@/components/interactive-demo/HowItWorksInteractive').then(mod => ({ default: mod.HowItWorksInteractive })), {
+const HowItWorks = dynamic(() => import('@/components/landing/HowItWorks').then(mod => ({ default: mod.HowItWorks })), {
   loading: () => <div className="h-[40vh]" />,
 });
 
@@ -126,6 +127,54 @@ export default function Home() {
     })),
   };
 
+  const videoSteps = [
+    {
+      title: "Task Description Input",
+      description: "Describe your task naturally with text input and get AI assistance with enhancement",
+      subSteps: [
+        {
+          title: "Text Input Method",
+          video: cdnUrl('/videos/step-1-text.mp4'),
+          poster: cdnUrl('/images/step-1-text-poster.jpg')
+        },
+        {
+          title: "Voice Transcription",
+          video: cdnUrl('/videos/step-1-voice.mp4'), 
+          poster: cdnUrl('/images/step-1-voice-poster.jpg')
+        },
+        {
+          title: "Video Recording & Analysis",
+          video: cdnUrl('/videos/step-1-video.mp4'),
+          poster: cdnUrl('/images/step-1-video-poster.jpg')
+        }
+      ]
+    },
+    {
+      title: "File Discovery & Search",
+      description: "Watch how AI finds relevant files in your codebase using intelligent search patterns",
+      video: cdnUrl('/videos/step-2-find.mp4'),
+      poster: cdnUrl('/images/step-2-poster.jpg')
+    },
+    {
+      title: "Implementation Plans Generation", 
+      description: "Generate and compare implementation plans from multiple AI models",
+      video: cdnUrl('/videos/step-3-generate.mp4'),
+      poster: cdnUrl('/images/step-3-poster.jpg')
+    },
+    {
+      title: "Plan Selection & Merge Instructions",
+      description: "Select the best plan and get detailed merge instructions for implementation",
+      video: cdnUrl('/videos/step-4-merge.mp4'), 
+      poster: cdnUrl('/images/step-4-poster.jpg')
+    },
+    {
+      title: "Customize & Export Results",
+      description: "Customize your implementation plan and export results to your development environment",
+      video: cdnUrl('/videos/step-5-customize.mp4'),
+      poster: cdnUrl('/images/step-5-poster.jpg')
+    }
+  ];
+
   const features = [
     {
       title: 'File Finder',
@@ -187,39 +236,28 @@ export default function Home() {
           </section>
           <SectionDividerMesh />
 
-          <section className="py-16">
-            <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center mb-16">
-              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-foreground mb-6">
-                How It Works
-              </h2>
-              <p className="text-lg text-muted-foreground max-w-3xl mx-auto">
-                Experience Vibe Manager's complete workflow through this interactive demonstration. 
-                Each step shows exactly how the tool helps you find the right files, generate better plans, and ship correct changes.
-              </p>
-            </div>
-            <HowItWorksInteractive />
-          </section>
+          <HowItWorks steps={videoSteps} />
           <SectionDividerOrbs />
 
           <Features features={features} />
           <SectionDividerMesh />
 
-          <section className="pb-8">
+          <section id="pricing" className="pb-8">
             <Pricing />
           </section>
           <SectionDividerMesh />
 
-          <section className="pt-8">
+          <section id="faq" className="pt-8">
             <FAQ items={faqItems} />
           </section>
           <SectionDividerOrbs />
 
-          <section className="pb-8">
+          <section id="community" className="pb-8">
             <Community />
           </section>
           <SectionDividerMesh />
 
-          <section className="pt-8">
+          <section id="cta" className="pt-8">
             <CallToAction
               buttonLink="/download"
               buttonText="Download for Mac"

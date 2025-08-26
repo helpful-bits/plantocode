@@ -11,6 +11,7 @@ import { ConditionalVercelAnalytics } from '@/components/system/ConditionalVerce
 import { WebAuthProvider } from '@/components/auth/WebAuthProvider';
 import { useLenisLifecycle } from '@/hooks/useLenisLifecycle';
 import { usePerformanceSignals } from '@/hooks/usePerformanceSignals';
+import { useScrollTracking } from '@/hooks/useAnalytics';
 
 interface ClientProvidersProps {
   children: ReactNode;
@@ -28,6 +29,12 @@ function PerformanceSignalsManager() {
   return null;
 }
 
+// Component to manage analytics tracking
+function AnalyticsManager() {
+  useScrollTracking();
+  return null;
+}
+
 export function ClientProviders({ children }: ClientProvidersProps) {
   return (
     <ConsentProvider>
@@ -37,6 +44,7 @@ export function ClientProviders({ children }: ClientProvidersProps) {
             <SmoothScroll>
               <PerformanceSignalsManager />
               <LenisLifecycleManager />
+              <AnalyticsManager />
               <ConditionalAnalytics />
               <ConditionalVercelAnalytics />
               {children}

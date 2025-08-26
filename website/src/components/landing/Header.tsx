@@ -9,6 +9,7 @@ import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { cn } from '@/lib/utils';
 import { defaultEase, defaultDuration } from '@/lib/animations';
 import { usePlausible } from '@/hooks/usePlausible';
+import { trackXDownloadConversion } from '@/lib/analytics';
 
 export function Header() {
   const [scrolled, setScrolled] = useState(false);
@@ -17,6 +18,7 @@ export function Header() {
 
   const handleDownloadClick = (location: string) => {
     trackEvent('download_click', { location });
+    trackXDownloadConversion(location);
   };
 
   useEffect(() => {

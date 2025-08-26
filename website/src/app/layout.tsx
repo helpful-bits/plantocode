@@ -171,26 +171,36 @@ export default function RootLayout({
             __html: `window.plausible = window.plausible || function() { (window.plausible.q = window.plausible.q || []).push(arguments) }`
           }}
         />
-        {/* Twitter/X conversion tracking */}
-        <Script
-          id="twitter-pixel"
-          strategy="afterInteractive"
-          dangerouslySetInnerHTML={{
-            __html: `
-              !function(e,t,n,s,u,a){e.twq||(s=e.twq=function(){s.exe?s.exe.apply(s,arguments):s.queue.push(arguments);
-              },s.version='1.1',s.queue=[],u=t.createElement(n),u.async=!0,u.src='https://static.ads-twitter.com/uwt.js',
-              a=t.getElementsByTagName(n)[0],a.parentNode.insertBefore(u,a))}(window,document,'script');
-              twq('config','qd2ik');
-            `
-          }}
-        />
-        <Script
-          id="twitter-event"
-          strategy="afterInteractive"
-          dangerouslySetInnerHTML={{
-            __html: `twq('event', 'tw-qd2ik-qd2io', {});`
-          }}
-        />
+        {/* Twitter/X conversion tracking - Production only */}
+        {process.env.NODE_ENV === 'production' ? (
+          <Script
+            id="twitter-pixel"
+            strategy="afterInteractive"
+            dangerouslySetInnerHTML={{
+              __html: `
+                !function(e,t,n,s,u,a){e.twq||(s=e.twq=function(){s.exe?s.exe.apply(s,arguments):s.queue.push(arguments);
+                },s.version='1.1',s.queue=[],u=t.createElement(n),u.async=!0,u.src='https://static.ads-twitter.com/uwt.js',
+                a=t.getElementsByTagName(n)[0],a.parentNode.insertBefore(u,a))}(window,document,'script');
+                twq('config','qd2ik');
+              `
+            }}
+          />
+        ) : (
+          <Script
+            id="twitter-pixel-dev"
+            strategy="afterInteractive"
+            dangerouslySetInnerHTML={{
+              __html: `
+                // Development fallback - creates mock twq function
+                window.twq = window.twq || function() {
+                  console.log('🐦 X.com tracking (dev):', arguments);
+                };
+                window.twq.version = '1.1-dev';
+                window.twq.queue = [];
+              `
+            }}
+          />
+        )}
       </body>
     </html>
   );

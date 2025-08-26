@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
 import Reveal from '@/components/motion/Reveal';
 import { usePlausible } from '@/hooks/usePlausible';
+import { trackXDownloadConversion } from '@/lib/analytics';
 
 const VibeChevron = () => (
   <div className="vibe-chevron">
@@ -22,11 +23,16 @@ const VibeChevron = () => (
 );
 
 export function HeroSection() {
-  const { trackEvent } = usePlausible();
+  const { trackDownload, trackSectionView } = usePlausible();
 
   const handleDownloadClick = () => {
-    trackEvent('download_click', { location: 'hero_section' });
+    trackDownload('hero_section', 'mac');
+    trackXDownloadConversion('hero_section');
   };
+
+  React.useEffect(() => {
+    trackSectionView('hero');
+  }, [trackSectionView]);
 
 
   return (

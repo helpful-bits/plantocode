@@ -7,12 +7,14 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { motion } from 'framer-motion';
 import Reveal from '@/components/motion/Reveal';
 import { usePlausible } from '@/hooks/usePlausible';
+import { trackXDownloadConversion } from '@/lib/analytics';
 
 export function Pricing() {
   const { trackEvent } = usePlausible();
 
   const handleDownloadClick = () => {
     trackEvent('download_click', { location: 'pricing' });
+    trackXDownloadConversion('pricing');
   };
 
   return (
