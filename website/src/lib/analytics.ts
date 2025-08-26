@@ -12,7 +12,13 @@ declare global {
         u?: string;
       }
     ) => void;
-    twq: (action: string, pixelId?: string, parameters?: Record<string, any>) => void;
+    twq: {
+      (action: string, ...args: any[]): void;
+      exe?: (...args: any[]) => void;
+      queue?: any[];
+      version?: string;
+      loaded?: boolean;
+    };
   }
 }
 
@@ -91,6 +97,12 @@ export const trackDownloadClick = (downloadType: string = 'desktop-app') => {
 export const trackXDownloadConversion = (location: string, version: string = '1.0.17') => {
   if (typeof window !== 'undefined' && window.twq && process.env.NEXT_PUBLIC_X_PIXEL_ID) {
     try {
+      // Check if it's the real Twitter pixel (has exe property) not just a stub
+      if (!window.twq.exe) {
+        // It's a stub function, silently return
+        return;
+      }
+      
       // Download Tracker event from X Ads Manager
       const eventId = process.env.NEXT_PUBLIC_X_DOWNLOAD_EVENT_ID || 'qd2io';
       const eventName = `tw-${process.env.NEXT_PUBLIC_X_PIXEL_ID}-${eventId}`;
@@ -106,7 +118,7 @@ export const trackXDownloadConversion = (location: string, version: string = '1.
         conversion_id: `download-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
       });
     } catch (error) {
-      console.warn('X.com conversion tracking error:', error);
+      // Silently handle errors - no need to log as it might be blocked
     }
   }
 };

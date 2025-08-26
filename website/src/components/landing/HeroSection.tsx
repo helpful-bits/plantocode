@@ -2,7 +2,6 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
 import { usePlausible } from '@/hooks/usePlausible';
@@ -24,14 +23,15 @@ const VibeChevron = () => (
 
 export function HeroSection() {
   const { trackDownload, trackSectionView } = usePlausible();
-  const router = useRouter();
 
   const handleDownloadClick = (e: React.MouseEvent) => {
     e.preventDefault();
-    trackDownload('hero_section', 'latest', () => {
-      trackXDownload('hero_section', 'latest');
-      router.push('/download');
-    });
+    // Track client-side for immediate feedback
+    trackDownload('hero_section', 'latest');
+    trackXDownload('hero_section', 'latest');
+    
+    // Use server-side tracking route that will also track and then redirect
+    window.location.href = '/api/download/mac?source=hero_section';
   };
 
   React.useEffect(() => {

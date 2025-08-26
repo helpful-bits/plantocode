@@ -1,20 +1,20 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { usePlausible } from '@/hooks/usePlausible';
 import { trackXDownload } from '@/lib/x-pixel-events';
 
 export function Footer() {
   const { trackDownload } = usePlausible();
-  const router = useRouter();
 
   const handleDownloadClick = (e: React.MouseEvent) => {
     e.preventDefault();
-    trackDownload('footer', 'latest', () => {
-      trackXDownload('footer', 'latest');
-      router.push('/download');
-    });
+    // Track client-side for immediate feedback
+    trackDownload('footer', 'latest');
+    trackXDownload('footer', 'latest');
+    
+    // Use server-side tracking route
+    window.location.href = '/api/download/mac?source=footer';
   };
 
   return (

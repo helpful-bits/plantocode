@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Menu, X, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -17,14 +16,15 @@ export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isMac, setIsMac] = useState(true);
   const { trackDownload } = usePlausible();
-  const router = useRouter();
 
   const handleDownloadClick = (e: React.MouseEvent, location: string) => {
     e.preventDefault();
-    trackDownload(location, 'latest', () => {
-      trackXDownload(location, 'latest');
-      router.push('/download');
-    });
+    // Track client-side for immediate feedback
+    trackDownload(location, 'latest');
+    trackXDownload(location, 'latest');
+    
+    // Use server-side tracking route
+    window.location.href = `/api/download/mac?source=${location}`;
   };
 
   useEffect(() => {
