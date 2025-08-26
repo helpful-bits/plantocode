@@ -20,6 +20,10 @@ import {
 import type { SoftwareApplication, FAQPage } from 'schema-dts';
 import { SectionDividerOrbs, SectionDividerMesh } from '@/components/ui/SectionDivider';
 
+const FounderProof = dynamic(() => import('@/components/landing/FounderProof').then(mod => ({ default: mod.FounderProof })), {
+  loading: () => <div className="h-[20vh]" />,
+});
+
 const Features = dynamic(() => import('@/components/landing/Features').then(mod => ({ default: mod.Features })), {
   loading: () => <div className="h-[50vh]" />,
 });
@@ -47,21 +51,28 @@ const HowItWorks = dynamic(() => import('@/components/landing/HowItWorks').then(
 
 
 export const metadata: Metadata = {
-  title: 'Vibe code cleanup specialist',
-  description: 'Find the right files, merge plans from multiple models, and ship correct changes—without sending your whole codebase to the cloud. Local-first.',
+  title: 'Vibe Manager - AI code cleanup specialist for macOS',
+  description: 'Vibe Manager helps AI agents map files, merge multi-model plans, and ship correct changes - without sending your whole codebase to the cloud. Local-first.',
   keywords: [
     'AI coding assistant',
+    'cursor alternative',
+    'github copilot alternative',
+    'claude code',
+    'gpt-4 coding',
+    'gpt-5',
+    'gemini 2.5 pro',
+    'deepseek',
+    'o3 model',
+    'vs code ai',
+    'xcode ai',
     'codebase context',
-    'find relevant files',
-    'LLM orchestration',
-    'implementation plan',
-    'local-first',
-    'multi-model planning',
-    'deep research for code',
-    'large codebase navigation',
-    'developer tools',
-    'code intelligence',
-    'file discovery',
+    'monorepo tools',
+    'code refactoring',
+    'tech debt',
+    'semantic kernel',
+    'langchain integration',
+    'agentic workflow',
+    'macOS dev tools',
   ],
 };
 
@@ -75,9 +86,9 @@ export default function Home() {
     description: 'AI coding assistant for large codebases: finds relevant files, runs deep research, and merges multi-model plans. Local-first.',
     offers: {
       '@type': 'Offer',
-      price: '0',
-      priceCurrency: 'USD',
+      price: 0, // Numeric 0 for free apps, no priceCurrency needed per Google guidance
     },
+    // Note: aggregateRating and review should be added when visible on the page
   };
 
   const faqItems = [
@@ -91,7 +102,7 @@ export default function Home() {
     },
     {
       question: 'Which models does it use?',
-      answer: 'Gemini 2.5, GPT-5/4.1, Claude 4, o3/o4, Grok 4, DeepSeek R1, Kimi K2—merge AI synthesizes their plans. (List evolves as new models appear.)',
+      answer: 'Gemini 2.5, GPT-5/4.1, Claude 4, o3/o4, Grok 4, DeepSeek R1, Kimi K2 - merge AI synthesizes their plans. (List evolves as new models appear.)',
     },
     {
       question: 'What exactly does File Finder do?',
@@ -99,7 +110,7 @@ export default function Home() {
     },
     {
       question: 'Can it research current docs?',
-      answer: 'Yes—Deep Research pulls up-to-date sources to fill knowledge gaps and ties them back to your code.',
+      answer: 'Yes - Deep Research pulls up-to-date sources to fill knowledge gaps and ties them back to your code.',
     },
     {
       question: 'Pricing?',
@@ -177,14 +188,24 @@ export default function Home() {
 
   const features = [
     {
-      title: 'File Finder',
-      description: "Decomposes your task into logical areas, creates targeted search patterns, then AI assesses actual file content for relevance. Can expand to find critical dependencies when needed. Real-time intelligence finding what matters.",
+      title: 'Enhanced Task Description Creation',
+      description: 'Transform your raw ideas into structured, actionable plans. Use voice-to-text dictation for natural input, selective text editing for precision, and get AI assistance to enhance your task descriptions with goals, constraints, and affected areas.',
+      icon: <Video className="w-8 h-8" />,
+    },
+    {
+      title: 'Visual Context Capture',
+      description: 'Record your screen to capture complex workflows and visual context. Gemini 2.5 Pro analyzes your recordings to extract technical details, UI states, and implementation requirements, seamlessly integrating with your IDE and CLI workflows.',
       icon: <Search className="w-8 h-8" />,
     },
     {
-      title: 'Voice Dictation & Screen Recording',
-      description: 'Just talk - GPT-4 transcribes it. Can\'t explain it? Record your screen. Gemini extracts every technical detail from your recording and adds it to your task description.',
-      icon: <Video className="w-8 h-8" />,
+      title: 'Intelligent Web Research',
+      description: 'Automatically formulate research questions based on your tasks and pull in real-time documentation, API references, and best practices. Get up-to-date answers that connect directly to your specific implementation needs.',
+      icon: <Globe className="w-8 h-8" />,
+    },
+    {
+      title: 'File Finder',
+      description: "Decomposes your task into logical areas, creates targeted search patterns, then AI assesses actual file content for relevance. Can expand to find critical dependencies when needed. Real-time intelligence finding what matters.",
+      icon: <BrainCircuit className="w-8 h-8" />,
     },
     {
       title: 'The Council of LLMs',
@@ -234,6 +255,7 @@ export default function Home() {
           <section className="mb-0">
             <HeroSection />
           </section>
+          <FounderProof />
           <SectionDividerMesh />
 
           <HowItWorks steps={videoSteps} />
@@ -261,7 +283,7 @@ export default function Home() {
             <CallToAction
               buttonLink="/download"
               buttonText="Download for Mac"
-              description="Download the app, point it to your project, and get your first AI-curated implementation plan in minutes. It's time to get back to building."
+              description="Join early access - ship your first AI-curated implementation plan in minutes."
               title="Ready to Stop Babysitting Your AI?"
             />
           </section>

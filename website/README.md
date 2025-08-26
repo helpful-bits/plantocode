@@ -435,6 +435,84 @@ Before deployment, verify:
 - [ ] Cross-step integration works correctly
 - [ ] Data attributes are present and functional
 
+## Analytics Setup
+
+### Plausible Configuration
+
+To set up Plausible analytics for the website:
+
+#### Custom Event Goals
+Create the following goals in your Plausible dashboard:
+- **Download Click**: Tracks when users click download links
+- **CTA Click**: Tracks call-to-action button interactions  
+- **Signup Start**: Tracks when users begin the signup process
+
+#### Custom Properties
+Enable custom properties in Plausible and add these keys:
+- **cta_name**: Identifies which specific CTA was clicked
+- **location**: Tracks where on the page the event occurred
+- **version**: Records version information for downloads
+
+#### Script Configuration
+- **Script URL**: `https://plausible.io/js/script.js`
+- The script is loaded conditionally based on user consent
+
+#### Guardrails
+- **No PII**: Never send personally identifiable information in events
+- **Scalar Properties**: Only use simple string/number values, no objects
+- **Property Limit**: Maximum 30 properties per event
+
+### X Pixel Configuration
+
+To set up X (Twitter) Pixel tracking:
+
+#### Base Pixel Setup
+- Verify `NEXT_PUBLIC_X_PIXEL_ID` environment variable is set
+- Base pixel loads automatically when consent is granted
+
+#### Download Event Configuration
+- Confirm Download event ID uses string format (not numeric)
+- Event fires on download button clicks with relevant metadata
+
+#### Validation Tools
+- Use **X Pixel Helper** browser extension to verify:
+  - Base pixel loads correctly
+  - Events fire with proper parameters
+  - No console errors or warnings
+
+## Troubleshooting Analytics
+
+### Plausible Issues
+
+#### Script Loading Problems
+- **Check head section**: Verify Plausible stub/loader appears in page `<head>`
+- **Ad blockers**: Test with ad blockers disabled - they often block analytics scripts
+- **Network connectivity**: Ensure `plausible.io` domain is accessible
+
+#### Event Tracking Problems
+- **Goal name matching**: Event names must match Plausible dashboard goals exactly
+- **Case sensitivity**: Goal names are case-sensitive in Plausible
+- **Custom properties**: Verify property keys are enabled in dashboard settings
+
+### X Pixel Issues
+
+#### Base Configuration
+- **Pixel ID validation**: Confirm `NEXT_PUBLIC_X_PIXEL_ID` matches X Ads Manager
+- **Script loading**: Check browser developer tools for pixel script in Network tab
+- **Console errors**: Look for X Pixel related JavaScript errors
+
+#### Event Tracking
+- **X Pixel Helper**: Use browser extension to validate event firing
+- **Supported fields**: Only use X Pixel supported event parameters
+- **CSP headers**: Ensure Content Security Policy allows `ads-twitter.com` domain
+
+#### Debug Steps
+1. Open browser developer tools
+2. Check Network tab for pixel requests
+3. Verify events appear in X Pixel Helper
+4. Test with different browsers/devices
+5. Confirm CSP allows necessary domains
+
 ## License
 
 Copyright (c) 2024 Vibe Manager. All rights reserved.

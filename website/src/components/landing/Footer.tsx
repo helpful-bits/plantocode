@@ -1,15 +1,20 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { usePlausible } from '@/hooks/usePlausible';
-import { trackXDownloadConversion } from '@/lib/analytics';
+import { trackXDownload } from '@/lib/x-pixel-events';
 
 export function Footer() {
-  const { trackEvent } = usePlausible();
+  const { trackDownload } = usePlausible();
+  const router = useRouter();
 
-  const handleDownloadClick = () => {
-    trackEvent('download_click', { location: 'footer' });
-    trackXDownloadConversion('footer');
+  const handleDownloadClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    trackDownload('footer', 'latest', () => {
+      trackXDownload('footer', 'latest');
+      router.push('/download');
+    });
   };
 
   return (
@@ -32,7 +37,7 @@ export function Footer() {
                 </h3>
               </Link>
               <p className="text-muted-foreground mb-6 max-w-md text-sm leading-relaxed">
-                AI coding assistant for large codebases. Find the right files, merge plans from multiple models, and ship correct changes—without sending your whole codebase to the cloud.
+                AI coding assistant for large codebases. Find the right files, merge plans from multiple models, and ship correct changes - without sending your whole codebase to the cloud.
               </p>
 
               {/* Social Links */}
@@ -76,14 +81,12 @@ export function Footer() {
                     </Link>
                   </li>
                   <li>
-                    <Link 
-                      className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 clickable-text-underline" 
-                      href="/download"
-                      prefetch={false}
+                    <span 
+                      className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 clickable-text-underline cursor-pointer" 
                       onClick={handleDownloadClick}
                     >
                       Download for Mac
-                    </Link>
+                    </span>
                   </li>
                 </ul>
               </div>

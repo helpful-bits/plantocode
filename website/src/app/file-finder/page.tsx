@@ -4,6 +4,8 @@ import { Search } from 'lucide-react';
 import Reveal from '@/components/motion/Reveal';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { StructuredData } from '@/components/seo/StructuredData';
+import type { BreadcrumbList } from 'schema-dts';
 
 export const metadata: Metadata = {
   title: 'Find the exact files to change | Vibe Manager',
@@ -20,8 +22,27 @@ export const metadata: Metadata = {
 };
 
 export default function FileFinderPage() {
+  const breadcrumbJsonLd: BreadcrumbList = {
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      {
+        '@type': 'ListItem',
+        position: 1,
+        name: 'Home',
+        item: 'https://www.vibemanager.app'
+      },
+      {
+        '@type': 'ListItem',
+        position: 2,
+        name: 'File Finder',
+        item: 'https://www.vibemanager.app/file-finder'
+      }
+    ]
+  };
+
   return (
     <>
+      <StructuredData data={breadcrumbJsonLd} />
       <div className="fixed inset-0 -z-20" style={{ background: 'var(--background-gradient)' }} />
       <div className="relative z-0 bg-transparent">
         <Header />

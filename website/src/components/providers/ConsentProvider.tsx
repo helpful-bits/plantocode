@@ -108,6 +108,26 @@ export function ConsentProvider({ children }: ConsentProviderProps) {
     if (typeof window !== 'undefined') {
       try {
         localStorage.setItem(CONSENT_STORAGE_KEY, JSON.stringify(newConsent));
+        
+        // Update Google Analytics consent mode
+        if ((window as any).gtag) {
+          (window as any).gtag('consent', 'update', {
+            'analytics_storage': newConsent.analytics ? 'granted' : 'denied',
+            'ad_storage': newConsent.marketing ? 'granted' : 'denied',
+            'ad_user_data': newConsent.marketing ? 'granted' : 'denied',
+            'ad_personalization': newConsent.marketing ? 'granted' : 'denied',
+            'functionality_storage': newConsent.functional ? 'granted' : 'denied',
+            'security_storage': 'granted'
+          });
+        }
+        
+        // Fire Plausible event for tracking consent choices
+        if ((window as any).plausible) {
+          const action = newConsent.analytics && newConsent.marketing ? 'accept_all' : 
+                        !newConsent.analytics && !newConsent.marketing ? 'reject_all' : 
+                        'custom';
+          (window as any).plausible('Cookie Consent', { props: { action } });
+        }
       } catch (error) {
         console.error('Error saving consent to localStorage:', error);
       }

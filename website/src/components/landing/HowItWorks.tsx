@@ -11,7 +11,7 @@
  */
 'use client';
 
-import React, { memo, useEffect, useRef } from 'react';
+import React, { memo, useEffect, useRef, useState } from 'react';
 import { useReducedMotion } from 'framer-motion';
 import Reveal from '@/components/motion/Reveal';
 import { ErrorBoundary } from '@/components/interactive-demo/ErrorBoundary';
@@ -37,6 +37,73 @@ interface HowItWorksProps {
 }
 
 const defaultSteps: Step[] = [];
+
+// Memoized video card component with lazy loading
+const VideoCard = memo(function VideoCard({ 
+  step, 
+  index, 
+  trackVideoPlay 
+}: { 
+  step: Step & { isSubStep?: boolean }, 
+  index: number, 
+  trackVideoPlay: (title: string) => void 
+}) {
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    if (!cardRef.current) return;
+    const io = new IntersectionObserver(([entry]) => {
+      if (entry?.isIntersecting) { 
+        setIsVisible(true); 
+        io.disconnect(); 
+      }
+    }, { rootMargin: '200px 0px', threshold: 0.2 });
+    io.observe(cardRef.current);
+    return () => io.disconnect();
+  }, []);
+
+  return (
+    <div 
+      ref={cardRef}
+      className="flex-none w-80 bg-card/60 border border-border/50 rounded-lg p-4"
+      style={{ scrollSnapAlign: 'start' }}
+    >
+      <div className="aspect-video bg-primary/10 rounded-lg mb-3 overflow-hidden">
+        {step.video && isVisible ? (
+          <video 
+            className="w-full h-full object-cover rounded-lg"
+            poster={step.poster?.replace(/\.(jpg|jpeg)$/i, '.webp') || step.poster}
+            controls
+            preload="metadata"
+            playsInline
+            onPlay={() => trackVideoPlay(step.title)}
+            onError={(e) => {
+              console.log('Video error handled:', e);
+            }}
+            onAbort={(e) => {
+              console.log('Video abort handled:', e);
+            }}
+          >
+            <source src={step.video} type="video/mp4" />
+            Your browser does not support the video tag.
+          </video>
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <svg className="w-8 h-8 text-primary" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M8 5v14l11-7z"/>
+            </svg>
+          </div>
+        )}
+      </div>
+      <div className="flex gap-2 mb-2">
+        <span className="text-primary font-bold text-sm">{index + 1}</span>
+        <h4 className="text-sm font-semibold">{step.title}</h4>
+      </div>
+      <p className="text-xs text-muted-foreground line-clamp-2">{step.description}</p>
+    </div>
+  );
+});
 
 // Memoized main component for performance
 export const HowItWorks = memo(function HowItWorks({ steps = defaultSteps }: HowItWorksProps) {
@@ -149,44 +216,12 @@ export const HowItWorks = memo(function HowItWorks({ steps = defaultSteps }: How
           <div className="overflow-x-auto">
             <div className="flex gap-4 pb-4 px-4" style={{ scrollSnapType: 'x mandatory', width: 'max-content' }}>
               {flattenedSteps.map((step, index) => (
-                <div 
-                  key={index}
-                  className="flex-none w-80 bg-card/60 border border-border/50 rounded-lg p-4"
-                  style={{ scrollSnapAlign: 'start' }}
-                >
-                  <div className="aspect-video bg-primary/10 rounded-lg mb-3 overflow-hidden">
-                    {step.video ? (
-                      <video 
-                        className="w-full h-full object-cover rounded-lg"
-                        poster={step.poster}
-                        controls
-                        preload="metadata"
-                        playsInline
-                        onPlay={() => trackVideoPlay(step.title)}
-                        onError={(e) => {
-                          console.log('Video error handled:', e);
-                        }}
-                        onAbort={(e) => {
-                          console.log('Video abort handled:', e);
-                        }}
-                      >
-                        <source src={step.video} type="video/mp4" />
-                        Your browser does not support the video tag.
-                      </video>
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <svg className="w-8 h-8 text-primary" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M8 5v14l11-7z"/>
-                        </svg>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex gap-2 mb-2">
-                    <span className="text-primary font-bold text-sm">{index + 1}</span>
-                    <h4 className="text-sm font-semibold">{step.title}</h4>
-                  </div>
-                  <p className="text-xs text-muted-foreground line-clamp-2">{step.description}</p>
-                </div>
+                <VideoCard 
+                  key={index} 
+                  step={step} 
+                  index={index} 
+                  trackVideoPlay={trackVideoPlay} 
+                />
               ))}
             </div>
           </div>

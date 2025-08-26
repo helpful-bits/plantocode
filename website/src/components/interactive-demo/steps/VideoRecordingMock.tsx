@@ -462,7 +462,7 @@ export function VideoRecordingMock({ isInView }: VideoRecordingMockProps) {
                 </span>
               </div>
               <span className="text-[9px] text-muted-foreground flex-shrink-0 ml-1 self-end">
-                {recordingState === 'final' ? '45.2s' : '—'}
+                {recordingState === 'final' ? '45.2s' : '-'}
               </span>
             </div>
 

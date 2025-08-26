@@ -4,67 +4,92 @@ import { useCallback } from 'react';
 
 declare global {
   interface Window {
-    plausible: (eventName: string, options?: { props?: Record<string, string | number> }) => void;
+    plausible: (
+      event: string, 
+      options?: { 
+        props?: Record<string, string | number | boolean>;
+        callback?: () => void;
+        revenue?: { currency: string; amount: number | string };
+        interactive?: boolean;
+        u?: string;
+      }
+    ) => void;
   }
 }
 
 export function usePlausible() {
-  const trackEvent = useCallback((eventName: string, props?: Record<string, string | number>) => {
+  const trackEvent = useCallback((eventName: string, options?: {
+    props?: Record<string, string | number | boolean>;
+    callback?: () => void;
+    interactive?: boolean;
+    revenue?: { currency: string; amount: number };
+    u?: string;
+  }) => {
     if (typeof window !== 'undefined' && window.plausible) {
-      window.plausible(eventName, props ? { props } : undefined);
+      window.plausible(eventName, options);
     }
   }, []);
 
   // Specific funnel event handlers
-  const trackDownload = useCallback((location: string, version?: string) => {
+  const trackDownload = useCallback((location: string, version?: string, callback?: () => void) => {
     trackEvent('Download Click', { 
-      location, 
-      version: version || 'latest',
-      page: window.location.pathname 
+      props: {
+        location, 
+        version: version || 'latest'
+      },
+      ...(callback ? { callback } : {})
     });
   }, [trackEvent]);
 
   const trackSignupStart = useCallback((source: string) => {
     trackEvent('Signup Start', { 
-      source,
-      page: window.location.pathname 
+      props: {
+        source
+      }
     });
   }, [trackEvent]);
 
-  const trackCTAClick = useCallback((ctaName: string, location: string) => {
+  const trackCTAClick = useCallback((ctaName: string, location: string, callback?: () => void) => {
     trackEvent('CTA Click', { 
-      cta_name: ctaName,
-      location,
-      page: window.location.pathname 
+      props: {
+        cta_name: ctaName,
+        location
+      },
+      ...(callback ? { callback } : {})
     });
   }, [trackEvent]);
 
   const trackFeatureView = useCallback((featureName: string) => {
     trackEvent('Feature View', { 
-      feature: featureName,
-      page: window.location.pathname 
+      props: {
+        feature: featureName
+      }
     });
   }, [trackEvent]);
 
   const trackSectionView = useCallback((sectionName: string) => {
     trackEvent('Section View', { 
-      section: sectionName,
-      page: window.location.pathname 
+      props: {
+        section: sectionName
+      },
+      interactive: false
     });
   }, [trackEvent]);
 
   const trackVideoPlay = useCallback((videoTitle: string) => {
     trackEvent('Video Play', { 
-      video: videoTitle,
-      page: window.location.pathname 
+      props: {
+        video: videoTitle
+      }
     });
   }, [trackEvent]);
 
   const trackDemoInteraction = useCallback((stepName: string, action?: string) => {
     trackEvent('Demo Interaction', { 
-      step: stepName,
-      action: action || 'view',
-      page: window.location.pathname 
+      props: {
+        step: stepName,
+        action: action || 'view'
+      }
     });
   }, [trackEvent]);
 

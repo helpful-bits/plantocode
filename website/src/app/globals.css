@@ -61,7 +61,7 @@
     
     /* Muted variations - Teal-tinted, no grey */
     --color-muted: oklch(0.97 0.025 195);  /* Very light teal */
-    --color-muted-foreground: oklch(0.35 0 0);  /* Darker for better contrast */
+    --color-muted-foreground: oklch(0.38 0 0);  /* WCAG AA compliant: 4.5:1 contrast ratio */
     
     /* Accent: Enhanced with adaptive system */
     --color-accent: oklch(0.96 0.045 195);
@@ -183,7 +183,7 @@
     
     /* Muted variations - No grey, teal-tinted */
     --color-muted: oklch(0.20 0.035 206);
-    --color-muted-foreground: oklch(0.7 0 0);  /* Brighter for contrast */
+    --color-muted-foreground: oklch(0.75 0 0);  /* WCAG AA compliant: 4.5:1 contrast ratio */
     
     /* Accent: Enhanced with adaptive system */
     --color-accent: oklch(0.28 0.032 195);

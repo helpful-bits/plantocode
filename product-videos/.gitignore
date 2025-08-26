@@ -84,3 +84,4 @@ coverage/
 
 # Optional eslint cache
 .eslintcache
+/screenshots/*

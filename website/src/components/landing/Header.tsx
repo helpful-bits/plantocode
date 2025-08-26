@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Menu, X, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -9,17 +10,31 @@ import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { cn } from '@/lib/utils';
 import { defaultEase, defaultDuration } from '@/lib/animations';
 import { usePlausible } from '@/hooks/usePlausible';
-import { trackXDownloadConversion } from '@/lib/analytics';
+import { trackXDownload } from '@/lib/x-pixel-events';
 
 export function Header() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { trackEvent } = usePlausible();
+  const [isMac, setIsMac] = useState(true);
+  const { trackDownload } = usePlausible();
+  const router = useRouter();
 
-  const handleDownloadClick = (location: string) => {
-    trackEvent('download_click', { location });
-    trackXDownloadConversion(location);
+  const handleDownloadClick = (e: React.MouseEvent, location: string) => {
+    e.preventDefault();
+    trackDownload(location, 'latest', () => {
+      trackXDownload(location, 'latest');
+      router.push('/download');
+    });
   };
+
+  useEffect(() => {
+    try {
+      const plat = (navigator as any)?.userAgentData?.platform || navigator.platform || navigator.userAgent || '';
+      setIsMac(/mac/i.test(plat));
+    } catch {
+      setIsMac(true);
+    }
+  }, []);
 
   useEffect(() => {
     let ticking = false;
@@ -139,24 +154,33 @@ export function Header() {
                 transition={{ delay: 0.7, duration: defaultDuration, ease: defaultEase }}
               >
                 <ThemeToggle />
+                {!isMac && (
+                  <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                    <Button asChild size="lg" variant="gradient-outline">
+                      <Link href="#how-it-works" className="no-hover-effect cursor-pointer">Try Demo</Link>
+                    </Button>
+                  </motion.div>
+                )}
                 <div className="flex flex-col items-center ml-2">
                   <motion.div
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                   >
                     <Button
-                      asChild
                       className="relative"
                       size="lg"
                       variant="cta"
-                      onClick={() => handleDownloadClick('header_desktop')}
+                      onClick={(e) => handleDownloadClick(e, 'header_desktop')}
                     >
-                      <Link href="/download" prefetch={false} className="no-hover-effect cursor-pointer">
+                      <span className="no-hover-effect cursor-pointer">
                         Download for Mac
-                      </Link>
+                      </span>
                     </Button>
                   </motion.div>
-                  <span className="text-xs text-muted-foreground mt-1 whitespace-nowrap">Windows coming soon</span>
+                  <div className="flex flex-col items-center gap-1 mt-1">
+                    <em className="text-xs text-muted-foreground">Signed & notarized for macOS</em>
+                    <a href="mailto:support@vibemanager.app?subject=Windows%20Waitlist" className="text-xs text-muted-foreground underline hover:text-primary">Join Windows waitlist</a>
+                  </div>
                 </div>
               </motion.div>
             </nav>
@@ -301,6 +325,11 @@ export function Header() {
                 transition={{ delay: 0.6, duration: 0.4 }}
               >
                 <ThemeToggle />
+                <motion.div className="flex-1" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                  <Button asChild className="w-full" size="xl" variant="gradient-outline" onClick={() => setMobileMenuOpen(false)}>
+                    <Link href="#how-it-works" className="no-hover-effect cursor-pointer">Try Demo</Link>
+                  </Button>
+                </motion.div>
                 <motion.div
                   className="flex-1"
                   whileHover={{ scale: 1.05 }}
@@ -308,20 +337,22 @@ export function Header() {
                 >
                   <div className="flex flex-col items-center w-full">
                     <Button
-                      asChild
                       className="w-full"
                       size="xl"
                       variant="cta"
-                      onClick={() => {
-                        handleDownloadClick('header_mobile');
+                      onClick={(e) => {
+                        handleDownloadClick(e, 'header_mobile');
                         setMobileMenuOpen(false);
                       }}
                     >
-                      <Link href="/download" prefetch={false} className="no-hover-effect cursor-pointer">
+                      <span className="no-hover-effect cursor-pointer">
                         Download for Mac
-                      </Link>
+                      </span>
                     </Button>
-                    <span className="text-xs text-muted-foreground mt-2">Windows coming soon</span>
+                    <div className="flex flex-col items-center gap-1 mt-1">
+                      <em className="text-xs text-muted-foreground">Signed & notarized for macOS</em>
+                      <a href="mailto:support@vibemanager.app?subject=Windows%20Waitlist" className="text-xs text-muted-foreground underline hover:text-primary">Join Windows waitlist</a>
+                    </div>
                   </div>
                 </motion.div>
               </motion.div>

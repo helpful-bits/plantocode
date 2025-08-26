@@ -68,14 +68,14 @@ VALUES (
         "temperature": 0.2
       },
       "web_search_prompts_generation": {
-        "model": "google/gemini-2.5-flash",
-        "allowed_models": ["google/gemini-2.5-flash", "google/gemini-2.5-pro", "openai/o4-mini"],
+        "model": "openai/gpt-5",
+        "allowed_models": ["google/gemini-2.5-flash", "google/gemini-2.5-pro", "openai/o4-mini", "openai/gpt-5"],
         "max_tokens": 30000,
         "temperature": 0.2
       },
       "web_search_execution": {
-        "model": "openai/o4-mini",
-        "allowed_models": ["openai/o3", "openai/o4-mini"],
+        "model": "openai/gpt-5",
+        "allowed_models": ["openai/o3", "openai/o4-mini", "openai/gpt-5"],
         "max_tokens": 10000,
         "temperature": 0.3
       },

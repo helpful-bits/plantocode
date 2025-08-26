@@ -2,11 +2,11 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
-import Reveal from '@/components/motion/Reveal';
 import { usePlausible } from '@/hooks/usePlausible';
-import { trackXDownloadConversion } from '@/lib/analytics';
+import { trackXDownload } from '@/lib/x-pixel-events';
 
 const VibeChevron = () => (
   <div className="vibe-chevron">
@@ -24,10 +24,14 @@ const VibeChevron = () => (
 
 export function HeroSection() {
   const { trackDownload, trackSectionView } = usePlausible();
+  const router = useRouter();
 
-  const handleDownloadClick = () => {
-    trackDownload('hero_section', 'mac');
-    trackXDownloadConversion('hero_section');
+  const handleDownloadClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    trackDownload('hero_section', 'latest', () => {
+      trackXDownload('hero_section', 'latest');
+      router.push('/download');
+    });
   };
 
   React.useEffect(() => {
@@ -39,16 +43,14 @@ export function HeroSection() {
     <section className="relative h-auto sm:min-h-screen flex items-start sm:items-center justify-center overflow-hidden bg-transparent py-20 sm:py-16 md:py-14 lg:py-14">
       <div className="relative text-center px-4 sm:px-6 lg:px-8 w-full max-w-7xl mx-auto my-8">
         {/* Primary heading */}
-        <Reveal as="h1" className="relative text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-6 leading-tight" delay={0.1}>
-          <span className="text-hero-title-gradient">
-            Capture intent → ship the right change.
-          </span>
-        </Reveal>
+        <h1 className="relative text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-6 leading-tight text-hero-title">
+          Vibe Manager: Stop babysitting your AI agent.
+        </h1>
 
         {/* Subtitle */}
-        <Reveal as="p" className="text-xl sm:text-2xl md:text-3xl text-description-muted mb-8 leading-relaxed" delay={0.2}>
-          Holds the map: relevant files, then a reviewable plan.
-        </Reveal>
+        <p className="text-xl sm:text-2xl md:text-3xl text-description-muted mb-8 leading-relaxed max-w-4xl mx-auto">
+          Create better prompts and implementation plans for your coding agents. Use voice-to-text and selective text edits, capture screen context, and pull in real-time research to produce structured, self-consistent tasks - fast.
+        </p>
 
         {/* Vibe Manager Panels Flow - Exact ad design with website colors */}
         <div className="vibe-panels-container">
@@ -115,8 +117,7 @@ export function HeroSection() {
               </div>
 
               <p className="vibe-panel__description">
-                Leading models draft competing plans with explicit trade-offs.
-                2 button clicks - find files and create implementation plan.
+                Top models incl. GPT-5, Claude, Gemini, o-series, & DeepSeek draft competing plans with explicit trade-offs. 2 button clicks - find files and create implementation plan.
               </p>
             </div>
 
@@ -213,8 +214,7 @@ export function HeroSection() {
                     </div>
 
                     <p className="vibe-panel__description">
-                      Leading models draft competing plans with explicit trade-offs.
-                      2 button clicks - find files and create implementation plan.
+                      Top models incl. GPT-5, Claude, Gemini, o-series, & DeepSeek draft competing plans with explicit trade-offs. 2 button clicks - find files and create implementation plan.
                     </p>
                   </div>
                 </div>
@@ -306,8 +306,7 @@ export function HeroSection() {
                     </div>
 
                     <p className="vibe-panel__description">
-                      Leading models draft competing plans with explicit trade-offs.
-                      2 button clicks - find files and create implementation plan.
+                      Top models incl. GPT-5, Claude, Gemini, o-series, & DeepSeek draft competing plans with explicit trade-offs. 2 button clicks - find files and create implementation plan.
                     </p>
                   </div>
                 </div>
@@ -347,7 +346,7 @@ export function HeroSection() {
         </div>
 
         {/* Story - Hidden by default, expandable */}
-        <Reveal className="max-w-3xl mx-auto mb-8" delay={0.35}>
+        <div className="max-w-3xl mx-auto mb-8">
           <details className="group">
             <summary className="cursor-pointer list-none focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-2xl">
               <div className="relative overflow-hidden rounded-2xl bg-background/60 backdrop-blur-md border border-border/40 hover:border-border/60 transition-all duration-300 hover:shadow-lg hover:shadow-primary/5 group-hover:bg-background/80">
@@ -387,52 +386,55 @@ export function HeroSection() {
               </div>
             </div>
           </details>
-        </Reveal>
+        </div>
 
         {/* Action buttons */}
         <div className="flex flex-col items-center gap-4">
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-            <Reveal delay={0.3}>
-              <motion.div
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <Button asChild className="relative overflow-hidden" size="xl" variant="cta" onClick={handleDownloadClick}>
-                  <Link href="/download" prefetch={false} className="no-hover-effect cursor-pointer">
+            <motion.div
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+                <Button className="relative overflow-hidden" size="xl" variant="cta" onClick={handleDownloadClick}>
+                  <span className="no-hover-effect cursor-pointer">
                     Download for Mac
-                  </Link>
+                  </span>
                 </Button>
-              </motion.div>
-            </Reveal>
+            </motion.div>
 
-            <Reveal delay={0.35}>
-              <motion.div
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
+            <motion.div
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
                 <Button asChild size="lg" variant="gradient-outline">
                   <Link href="#how-it-works" className="no-hover-effect cursor-pointer">
-                    See How It Works
+                    Try the interactive demo
                   </Link>
                 </Button>
-              </motion.div>
-            </Reveal>
+            </motion.div>
           </div>
-          <span className="text-sm text-muted-foreground whitespace-nowrap">Windows coming soon</span>
+          <div className="flex flex-col items-center gap-2 mt-2">
+            <em className="text-xs text-muted-foreground">
+              <a className="underline hover:text-primary" target="_blank" rel="noreferrer noopener" href="https://support.apple.com/guide/security/gatekeeper-and-runtime-protection-sec5599b66df/web">
+                Signed & notarized for macOS - safer installs via Gatekeeper.
+              </a>
+            </em>
+            <a href="mailto:support@vibemanager.app?subject=Windows%20Waitlist" className="text-sm text-muted-foreground underline hover:text-primary transition-colors">Join the Windows waitlist</a>
+          </div>
         </div>
 
         {/* Trust indicators */}
-        <Reveal className="mt-8 sm:mt-12 flex flex-wrap gap-x-8 gap-y-4 justify-center text-sm text-muted-foreground" delay={0.4}>
-          <span className="flex items-center gap-2">
-            <span className="text-primary">✓</span> Built by a developer, for developers
-          </span>
-          <span className="flex items-center gap-2">
-            <span className="text-primary">✓</span> 100% local-first
-          </span>
-          <span className="flex items-center gap-2">
-            <span className="text-primary">✓</span> No subscriptions
-          </span>
-        </Reveal>
+        <div className="mt-8 sm:mt-12">
+          <div className="flex flex-wrap gap-x-2 gap-y-2 justify-center items-center text-sm text-muted-foreground">
+            <Link href="/local-first" className="px-2 py-1 hover:text-primary transition-colors">Local-first</Link>
+            <span className="select-none text-primary/50" aria-hidden="true">•</span>
+            <Link href="/security/notarization" className="px-2 py-1 hover:text-primary transition-colors">Apple-notarized</Link>
+            <span className="select-none text-primary/50" aria-hidden="true">•</span>
+            <Link href="#pricing" className="px-2 py-1 hover:text-primary transition-colors">Free credits</Link>
+            <span className="select-none text-primary/50" aria-hidden="true">•</span>
+            <Link href="/changelog" className="px-2 py-1 hover:text-primary transition-colors">Changelog</Link>
+          </div>
+        </div>
       </div>
 
     </section>
