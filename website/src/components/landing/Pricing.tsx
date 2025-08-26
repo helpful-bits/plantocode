@@ -1,7 +1,6 @@
 'use client';
 
 import React from 'react';
-import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { motion } from 'framer-motion';
@@ -11,14 +10,15 @@ import { trackXDownload } from '@/lib/x-pixel-events';
 
 export function Pricing() {
   const { trackDownload } = usePlausible();
-  const router = useRouter();
 
   const handleDownloadClick = (e: React.MouseEvent) => {
     e.preventDefault();
-    trackDownload('pricing', 'latest', () => {
-      trackXDownload('pricing', 'latest');
-      router.push('/download');
-    });
+    // Track client-side for immediate feedback
+    trackDownload('pricing', 'latest');
+    trackXDownload('pricing', 'latest');
+    
+    // Use server-side tracking route
+    window.location.href = '/api/download/mac?source=pricing';
   };
 
   return (

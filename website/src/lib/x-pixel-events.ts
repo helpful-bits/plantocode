@@ -3,7 +3,13 @@
 
 declare global {
   interface Window {
-    twq: (action: string, eventId?: string, parameters?: Record<string, any>) => void;
+    twq: {
+      (action: string, ...args: any[]): void;
+      exe?: (...args: any[]) => void;
+      queue?: any[];
+      version?: string;
+      loaded?: boolean;
+    };
   }
 }
 
@@ -19,15 +25,31 @@ const X_EVENTS = {
 
 // Helper to check if X Pixel is loaded and consent given
 const canTrackXPixel = (): boolean => {
-  if (typeof window === 'undefined' || !window.twq || !X_PIXEL_ID) {
+  if (typeof window === 'undefined' || !X_PIXEL_ID) {
+    return false;
+  }
+  
+  // Check if twq function exists and is not just a fallback
+  if (!window.twq || typeof window.twq !== 'function') {
+    return false;
+  }
+  
+  // Check if it's a stub function (no exe property and no version or empty queue)
+  // The real Twitter pixel will have exe property when loaded
+  if (window.twq && !window.twq.exe) {
+    // It's likely a stub function from ad blocker detection
     return false;
   }
   
   // Check for consent (if using consent management)
-  const consent = localStorage.getItem('cookie-consent');
-  if (consent) {
-    const parsed = JSON.parse(consent);
-    return parsed.marketing === true;
+  try {
+    const consent = localStorage.getItem('cookie-consent');
+    if (consent) {
+      const parsed = JSON.parse(consent);
+      return parsed.marketing === true;
+    }
+  } catch (e) {
+    // Ignore localStorage errors
   }
   
   return false;

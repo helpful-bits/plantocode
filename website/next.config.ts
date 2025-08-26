@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withPlausibleProxy } from "next-plausible";
 
 const nextConfig: NextConfig = {
   // Enable source maps in production
@@ -74,6 +75,52 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
     dirs: ['src', 'app'],
+  },
+
+  // Rewrites for analytics proxying (bypasses ad blockers)
+  async rewrites() {
+    return [
+      // Plausible Analytics proxy (handled by withPlausibleProxy wrapper)
+      // These are added automatically by withPlausibleProxy
+      
+      // Google Analytics proxy - proxy through our domain
+      {
+        source: '/ga/gtag.js',
+        destination: 'https://www.googletagmanager.com/gtag/js',
+      },
+      {
+        source: '/ga/analytics.js',
+        destination: 'https://www.google-analytics.com/analytics.js',
+      },
+      {
+        source: '/ga/collect',
+        destination: 'https://www.google-analytics.com/collect',
+      },
+      {
+        source: '/ga/g/collect',
+        destination: 'https://www.google-analytics.com/g/collect',
+      },
+      {
+        source: '/ga/mp/collect',
+        destination: 'https://www.google-analytics.com/mp/collect',
+      },
+      
+      // X/Twitter pixel proxy - proxy through our domain
+      {
+        source: '/x/pixel.js',
+        destination: 'https://static.ads-twitter.com/uwt.js',
+      },
+      // X/Twitter events endpoint proxy
+      {
+        source: '/x/event',
+        destination: 'https://t.co/1/i/adsct',
+      },
+      // Additional X/Twitter endpoints that might be used
+      {
+        source: '/x/config',
+        destination: 'https://analytics.twitter.com/1/i/config/account',
+      },
+    ];
   },
   
   // Redirects to eliminate chains shown in Google Search Console
@@ -313,4 +360,5 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// Wrap config with Plausible proxy (adds /js/script.js and /api/event rewrites)
+export default withPlausibleProxy()(nextConfig);

@@ -10,6 +10,7 @@ import { ConditionalBackground } from '@/components/system/ConditionalBackground
 import { Footer } from '@/components/landing/Footer';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { cdnUrl } from '@/lib/cdn';
+import { XPixel } from '@/components/analytics/XPixel';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://www.vibemanager.app'),
@@ -161,11 +162,7 @@ export default function RootLayout({
         <link rel="preconnect" href="https://va.vercel-scripts.com" crossOrigin="anonymous" />
         <link rel="preconnect" href="https://cdn.jsdelivr.net" crossOrigin="anonymous" />
         <link rel="dns-prefetch" href="https://cdn.jsdelivr.net" />
-        {/* Google Analytics */}
-        <link rel="dns-prefetch" href="https://www.googletagmanager.com" />
-        <link rel="preconnect" href="https://www.googletagmanager.com" crossOrigin="anonymous" />
-        <link rel="dns-prefetch" href="https://www.google-analytics.com" />
-        <link rel="preconnect" href="https://www.google-analytics.com" crossOrigin="anonymous" />
+        {/* Analytics are now proxied through our domain - no need to prefetch/preconnect */}
         {/* Google Analytics with Consent Mode v2 */}
         <script dangerouslySetInnerHTML={{
           __html: `
@@ -193,37 +190,13 @@ export default function RootLayout({
             });
           `
         }} />
-        {/* Load GA script AFTER consent defaults are set */}
-        <script async src={`https://www.googletagmanager.com/gtag/js?id=${process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || 'G-SNQQT3LLEB'}`}></script>
-        {/* Plausible Analytics */}
-        <script defer data-domain={process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN || 'vibemanager.app'} src="https://plausible.io/js/script.js"></script>
+        {/* Load GA script AFTER consent defaults are set - Using proxied endpoint */}
+        <script async src={`/ga/gtag.js?id=${process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || 'G-SNQQT3LLEB'}`}></script>
+        {/* Plausible Analytics - Using proxied endpoint to bypass ad blockers */}
+        <script defer data-domain={process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN || 'vibemanager.app'} src="/js/script.js"></script>
         <script dangerouslySetInnerHTML={{
           __html: `window.plausible = window.plausible || function() { (window.plausible.q = window.plausible.q || []).push(arguments) }`
         }} />
-        {/* X Pixel - Base snippet with proper configuration */}
-        {process.env.NEXT_PUBLIC_X_PIXEL_ID && (
-          <script dangerouslySetInnerHTML={{
-            __html: `
-              !function(e,t,n,s,u,a){e.twq||(s=e.twq=function(){s.exe?s.exe.apply(s,arguments):s.queue.push(arguments);
-              },s.version='1.1',s.queue=[],u=t.createElement(n),u.async=!0,u.src='https://static.ads-twitter.com/uwt.js',
-              a=t.getElementsByTagName(n)[0],a.parentNode.insertBefore(u,a))}(window,document,'script');
-              twq('config','${process.env.NEXT_PUBLIC_X_PIXEL_ID}');
-            `
-          }} />
-        )}
-        {/* Development fallback for X Pixel when env var not set */}
-        {!process.env.NEXT_PUBLIC_X_PIXEL_ID && (
-          <script dangerouslySetInnerHTML={{
-            __html: `
-              // Development fallback - creates mock twq function
-              window.twq = window.twq || function() {
-                console.log('\u{1F426} X.com tracking (dev):', arguments);
-              };
-              window.twq.version = '1.1-dev';
-              window.twq.queue = [];
-            `
-          }} />
-        )}
       </head>
       <body className={`${fontClasses.sans} bg-transparent overflow-x-hidden`}>
         <ConditionalBackground />
@@ -232,6 +205,7 @@ export default function RootLayout({
           <Footer />
         </ClientProviders>
         <SpeedInsights />
+        <XPixel />
         <StructuredData data={websiteJsonLd} />
         <StructuredData data={organizationJsonLd} />
       </body>

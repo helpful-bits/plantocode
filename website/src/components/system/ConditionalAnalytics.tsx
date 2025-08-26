@@ -21,9 +21,9 @@ export function ConditionalAnalytics() {
 
   return (
     <>
-      {/* Google Analytics */}
+      {/* Google Analytics - Using proxied endpoint */}
       <Script
-        src={`https://www.googletagmanager.com/gtag/js?id=${gaMeasurementId}`}
+        src={`/ga/gtag.js?id=${gaMeasurementId}`}
         strategy="afterInteractive"
       />
       <Script id="google-analytics" strategy="afterInteractive">

@@ -32,7 +32,7 @@ export function FAQ({ items }: FAQProps) {
           </Reveal>
         </div>
 
-        <div className="space-y-8">
+        <div className="p-2 space-y-8">
           {items.map((item, index) => (
             <Reveal
               key={index}
