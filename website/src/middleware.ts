@@ -7,12 +7,157 @@ import {
   shouldGatePath,
 } from '@/lib/territories';
 
+// Helper function to get client's real IP
+function getClientIp(request: NextRequest): string {
+  const forwardedFor = request.headers.get('x-forwarded-for');
+  const realIp = request.headers.get('x-real-ip');
+  const cfConnectingIp = request.headers.get('cf-connecting-ip');
+  
+  return cfConnectingIp || (forwardedFor ? forwardedFor.split(',')[0]?.trim() || '' : '') || realIp || '';
+}
+
+// Handle analytics proxy with proper header forwarding
+async function handleAnalyticsProxy(request: NextRequest): Promise<NextResponse | null> {
+  const url = request.nextUrl.clone();
+  const clientIp = getClientIp(request);
+  
+  // Handle Plausible script proxy
+  if (url.pathname.startsWith('/js/script')) {
+    const plausibleUrl = new URL(`https://plausible.io${url.pathname}`);
+    
+    const response = await fetch(plausibleUrl.toString(), {
+      headers: {
+        'User-Agent': request.headers.get('user-agent') || '',
+        'X-Forwarded-For': clientIp,
+        'X-Real-IP': clientIp,
+        'X-Forwarded-Host': request.headers.get('host') || '',
+        'X-Forwarded-Proto': request.headers.get('x-forwarded-proto') || 'https',
+        'Accept-Language': request.headers.get('accept-language') || '',
+        'Referer': request.headers.get('referer') || '',
+      },
+    });
+    
+    const newResponse = new NextResponse(response.body, response);
+    response.headers.forEach((value, key) => {
+      if (key.toLowerCase() !== 'content-encoding') {
+        newResponse.headers.set(key, value);
+      }
+    });
+    newResponse.headers.set('Access-Control-Allow-Origin', '*');
+    return newResponse;
+  }
+  
+  // Handle Plausible event proxy
+  if (url.pathname === '/api/event') {
+    const plausibleUrl = new URL('https://plausible.io/api/event');
+    
+    const response = await fetch(plausibleUrl.toString(), {
+      method: request.method,
+      body: request.body,
+      headers: {
+        'User-Agent': request.headers.get('user-agent') || '',
+        'X-Forwarded-For': clientIp,
+        'X-Real-IP': clientIp,
+        'X-Forwarded-Host': request.headers.get('host') || '',
+        'X-Forwarded-Proto': request.headers.get('x-forwarded-proto') || 'https',
+        'Content-Type': request.headers.get('content-type') || 'application/json',
+        'Accept-Language': request.headers.get('accept-language') || '',
+        'Referer': request.headers.get('referer') || '',
+      },
+    });
+    
+    return new NextResponse(response.body, response);
+  }
+  
+  // Handle Google Analytics proxy
+  if (url.pathname.startsWith('/ga/')) {
+    let gaUrl: string;
+    if (url.pathname === '/ga/gtag.js') {
+      gaUrl = `https://www.googletagmanager.com/gtag/js${url.search}`;
+    } else if (url.pathname === '/ga/analytics.js') {
+      gaUrl = 'https://www.google-analytics.com/analytics.js';
+    } else if (url.pathname === '/ga/collect') {
+      gaUrl = `https://www.google-analytics.com/collect${url.search}`;
+    } else if (url.pathname === '/ga/g/collect') {
+      gaUrl = `https://www.google-analytics.com/g/collect${url.search}`;
+    } else if (url.pathname === '/ga/mp/collect') {
+      gaUrl = `https://www.google-analytics.com/mp/collect${url.search}`;
+    } else {
+      return null;
+    }
+    
+    const response = await fetch(gaUrl, {
+      method: request.method,
+      body: request.body,
+      headers: {
+        'User-Agent': request.headers.get('user-agent') || '',
+        'X-Forwarded-For': clientIp,
+        'X-Real-IP': clientIp,
+        'Accept-Language': request.headers.get('accept-language') || '',
+        'Referer': request.headers.get('referer') || '',
+        'Content-Type': request.headers.get('content-type') || '',
+      },
+    });
+    
+    const newResponse = new NextResponse(response.body, response);
+    response.headers.forEach((value, key) => {
+      if (key.toLowerCase() !== 'content-encoding') {
+        newResponse.headers.set(key, value);
+      }
+    });
+    return newResponse;
+  }
+  
+  // Handle X/Twitter pixel proxy
+  if (url.pathname.startsWith('/x/')) {
+    let xUrl: string;
+    if (url.pathname === '/x/pixel.js') {
+      xUrl = 'https://static.ads-twitter.com/uwt.js';
+    } else if (url.pathname === '/x/event') {
+      xUrl = 'https://t.co/1/i/adsct';
+    } else if (url.pathname === '/x/config') {
+      xUrl = 'https://analytics.twitter.com/1/i/config/account';
+    } else {
+      return null;
+    }
+    
+    const response = await fetch(xUrl, {
+      method: request.method,
+      body: request.body,
+      headers: {
+        'User-Agent': request.headers.get('user-agent') || '',
+        'X-Forwarded-For': clientIp,
+        'X-Real-IP': clientIp,
+        'Accept-Language': request.headers.get('accept-language') || '',
+        'Referer': request.headers.get('referer') || '',
+        'Content-Type': request.headers.get('content-type') || '',
+      },
+    });
+    
+    const newResponse = new NextResponse(response.body, response);
+    response.headers.forEach((value, key) => {
+      if (key.toLowerCase() !== 'content-encoding') {
+        newResponse.headers.set(key, value);
+      }
+    });
+    return newResponse;
+  }
+  
+  return null;
+}
+
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
   
   // Skip geo-check for static assets
   if (path.startsWith('/_next')) {
     return NextResponse.next();
+  }
+  
+  // Handle analytics proxy requests first (before geo-blocking)
+  const analyticsResponse = await handleAnalyticsProxy(request);
+  if (analyticsResponse) {
+    return analyticsResponse;
   }
 
   // Check if this is a search engine crawler - CRITICAL for SEO
@@ -89,7 +234,17 @@ export const config = {
      * - favicon.ico (favicon file)
      * - public folder
      * Note: Legal pages remain accessible worldwide for transparency
+     * 
+     * Also explicitly match analytics proxy paths:
+     * - /js/script* (Plausible scripts)
+     * - /api/event (Plausible events)
+     * - /ga/* (Google Analytics)
+     * - /x/* (X/Twitter pixel)
      */
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/js/script:path*',
+    '/api/event',
+    '/ga/:path*',
+    '/x/:path*',
   ],
 };

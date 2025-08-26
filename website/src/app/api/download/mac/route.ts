@@ -13,11 +13,10 @@ export async function GET(req: NextRequest) {
   const source = searchParams.get('source') || 'direct';
   const version = searchParams.get('version') || 'latest';
   
-  // Track with Plausible (server-side) - use absolute URL for server-side
+  // Track with Plausible (server-side) - direct call with proper headers
   try {
-    // Use the proxied endpoint through our domain
-    const plausibleUrl = `${req.nextUrl.origin}/api/event`;
-    await fetch(plausibleUrl, {
+    // Call Plausible directly from server-side with proper client headers
+    await fetch('https://plausible.io/api/event', {
       method: 'POST',
       headers: {
         'User-Agent': userAgent,
@@ -80,9 +79,8 @@ export async function GET(req: NextRequest) {
       const clientId = req.cookies.get('_ga')?.value?.replace(/^GA\d\.\d\./, '') || 
                       `${Date.now()}.${Math.random().toString(36).substr(2, 9)}`;
       
-      // Use proxied endpoint for GA as well
-      const gaUrl = `${req.nextUrl.origin}/ga/mp/collect?measurement_id=${measurementId}&api_secret=${apiSecret}`;
-      await fetch(gaUrl, {
+      // Call GA directly from server-side
+      await fetch(`https://www.google-analytics.com/mp/collect?measurement_id=${measurementId}&api_secret=${apiSecret}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
