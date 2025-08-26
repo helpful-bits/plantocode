@@ -69,16 +69,16 @@ export const useJobProgress = (jobId: string) => {
   const [progress, setProgress] = useState(0);
   
   useEffect(() => {
-    const socket = new WebSocket('/api/jobs/stream');
+    const eventSource = new EventSource('/api/jobs/stream');
     
-    socket.onmessage = (event) => {
+    eventSource.onmessage = (event) => {
       const update = JSON.parse(event.data);
       if (update.jobId === jobId) {
         setProgress(update.progress);
       }
     };
     
-    return () => socket.close();
+    return () => eventSource.close();
   }, [jobId]);
   
   return progress;

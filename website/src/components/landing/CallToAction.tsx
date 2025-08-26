@@ -2,13 +2,13 @@
 
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { motion } from 'framer-motion';
 import { CheckCircle2, Zap } from 'lucide-react';
 import Reveal from '@/components/motion/Reveal';
 import { usePlausible } from '@/hooks/usePlausible';
-import { trackXDownloadConversion } from '@/lib/analytics';
+import { trackXDownload } from '@/lib/x-pixel-events';
 
 interface CallToActionProps {
   title: string;
@@ -19,10 +19,14 @@ interface CallToActionProps {
 
 export function CallToAction({ title, description, buttonText, buttonLink }: CallToActionProps) {
   const { trackDownload, trackSectionView } = usePlausible();
+  const router = useRouter();
 
-  const handleDownloadClick = () => {
-    trackDownload('cta_section', 'mac');
-    trackXDownloadConversion('cta_section');
+  const handleDownloadClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    trackDownload('cta_section', 'latest', () => {
+      trackXDownload('cta_section', 'latest');
+      router.push(buttonLink);
+    });
   };
 
   React.useEffect(() => {
@@ -116,24 +120,26 @@ export function CallToAction({ title, description, buttonText, buttonLink }: Cal
                   <div className="flex flex-col items-center">
                     <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                     <Button
-                      asChild
+                      className="inline-flex items-center justify-center gap-3 no-hover-effect cursor-pointer"
                       size="xl"
                       variant="primary"
+                      onClick={handleDownloadClick}
                     >
-                      <Link className="inline-flex items-center justify-center gap-3 no-hover-effect cursor-pointer" href={buttonLink} prefetch={false} onClick={handleDownloadClick}>
-                        {buttonText}
-                        <svg
-                          className="w-5 h-5 flex-shrink-0"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path d="M13 7l5 5m0 0l-5 5m5-5H6" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
-                        </svg>
-                      </Link>
+                      {buttonText}
+                      <svg
+                        className="w-5 h-5 flex-shrink-0"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path d="M13 7l5 5m0 0l-5 5m5-5H6" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+                      </svg>
                     </Button>
                     </motion.div>
-                    <span className="text-sm text-muted-foreground mt-3">Windows coming soon</span>
+                    <div className="flex flex-col items-center gap-2 mt-3">
+                      <em className="text-xs text-muted-foreground">Signed & notarized for macOS - safer installs via Gatekeeper.</em>
+                      <a href="mailto:support@vibemanager.app?subject=Windows%20Waitlist" className="text-sm text-muted-foreground underline hover:text-primary transition-colors">Join the Windows waitlist</a>
+                    </div>
                   </div>
                 </Reveal>
 

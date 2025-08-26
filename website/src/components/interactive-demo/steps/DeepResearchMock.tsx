@@ -290,7 +290,7 @@ Modern React applications implement route protection through:
                   </span>
                 </div>
                 <span className="text-[9px] text-muted-foreground flex-shrink-0 ml-1 self-end">
-                  {['prompts-complete', 'search-executing', 'research-complete'].includes(currentState) ? '3.4s' : '—'}
+                  {['prompts-complete', 'search-executing', 'research-complete'].includes(currentState) ? '3.4s' : '-'}
                 </span>
               </div>
 
@@ -400,7 +400,7 @@ Modern React applications implement route protection through:
                   </span>
                 </div>
                 <span className="text-[9px] text-muted-foreground flex-shrink-0 ml-1 self-end">
-                  {currentState === 'research-complete' ? '5.2s' : '—'}
+                  {currentState === 'research-complete' ? '5.2s' : '-'}
                 </span>
               </div>
 

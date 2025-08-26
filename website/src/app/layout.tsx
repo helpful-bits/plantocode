@@ -4,21 +4,20 @@ import '@/styles/vibe-panels.css';
 // import '@/styles/desktop-compat.css';
 import { fontClasses } from './fonts';
 import { StructuredData } from '@/components/seo/StructuredData';
-import type { WebSite } from 'schema-dts';
+import type { WebSite, Organization } from 'schema-dts';
 import { ClientProviders } from '@/components/providers/ClientProviders';
 import { ConditionalBackground } from '@/components/system/ConditionalBackground';
 import { Footer } from '@/components/landing/Footer';
 import { SpeedInsights } from '@vercel/speed-insights/next';
-import Script from 'next/script';
 import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://www.vibemanager.app'),
   title: {
     template: '%s | Vibe Manager',
-    default: 'Vibe code cleanup specialist',
+    default: 'Vibe Manager - AI code cleanup specialist',
   },
-  description: 'Find the right files, merge plans from multiple models, and ship correct changes—without sending your whole codebase to the cloud. Local-first.',
+  description: 'Vibe Manager helps AI agents map files, merge multi-model plans, and ship correct changes - without sending your whole codebase to the cloud. Local-first.',
   keywords: ['AI coding assistant', 'codebase context', 'find relevant files', 'LLM orchestration', 'implementation plan', 'local-first', 'multi-model planning', 'deep research for code', 'large codebase navigation', 'developer tools', 'code intelligence', 'file discovery'],
   authors: [{ name: 'Vibe Manager Team' }],
   creator: 'Vibe Manager',
@@ -34,8 +33,8 @@ export const metadata: Metadata = {
     canonical: 'https://www.vibemanager.app/',
   },
   openGraph: {
-    title: 'Vibe code cleanup specialist',
-    description: 'Find the right files, merge plans from multiple models, and ship correct changes—without sending your whole codebase to the cloud. Local-first.',
+    title: 'Vibe Manager - AI code cleanup specialist',
+    description: 'Vibe Manager helps AI agents map files, merge multi-model plans, and ship correct changes - without sending your whole codebase to the cloud. Local-first.',
     url: 'https://www.vibemanager.app/',
     siteName: 'Vibe Manager',
     images: [{
@@ -50,8 +49,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Vibe code cleanup specialist',
-    description: 'Find the right files, merge plans from multiple models, and ship correct changes—without sending your whole codebase to the cloud. Local-first.',
+    title: 'Vibe Manager - AI code cleanup specialist',
+    description: 'Vibe Manager helps AI agents map files, merge multi-model plans, and ship correct changes - without sending your whole codebase to the cloud. Local-first.',
     images: [{
       url: cdnUrl('/images/og-image.png'),
       alt: 'Vibe Manager - AI-Powered Context Curation for Large Codebases',
@@ -130,7 +129,24 @@ const websiteJsonLd: WebSite = {
   '@type': 'WebSite',
   name: 'Vibe Manager',
   url: 'https://www.vibemanager.app',
-  description: 'Find the right files, merge plans from multiple models, and ship correct changes—without sending your whole codebase to the cloud. Local-first.',
+  description: 'Vibe Manager helps AI agents map files, merge multi-model plans, and ship correct changes - without sending your whole codebase to the cloud. Local-first.',
+};
+
+const organizationJsonLd: Organization = {
+  '@type': 'Organization',
+  name: 'Vibe Manager',
+  url: 'https://www.vibemanager.app',
+  logo: {
+    '@type': 'ImageObject',
+    url: 'https://www.vibemanager.app/images/icon.png',
+    width: '512',
+    height: '512'
+  },
+  sameAs: [
+    'https://twitter.com/vibemanagerapp',
+    'https://github.com/vibemanager'
+  ],
+  description: 'Vibe Manager - AI-powered code cleanup specialist for macOS developers'
 };
 
 export default function RootLayout({
@@ -142,12 +158,71 @@ export default function RootLayout({
     <html suppressHydrationWarning className={fontClasses.variables} lang="en">
       <head>
         {/* Preconnect to critical third-party origins - from Lighthouse report */}
-        {/* Additional preconnects for analytics if enabled */}
-        {process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID && (
-          <>
-            <link rel="dns-prefetch" href="https://www.google-analytics.com" />
-            <link rel="preconnect" href="https://www.google-analytics.com" crossOrigin="anonymous" />
-          </>
+        <link rel="preconnect" href="https://va.vercel-scripts.com" crossOrigin="anonymous" />
+        <link rel="preconnect" href="https://cdn.jsdelivr.net" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://cdn.jsdelivr.net" />
+        {/* Google Analytics */}
+        <link rel="dns-prefetch" href="https://www.googletagmanager.com" />
+        <link rel="preconnect" href="https://www.googletagmanager.com" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://www.google-analytics.com" />
+        <link rel="preconnect" href="https://www.google-analytics.com" crossOrigin="anonymous" />
+        {/* Google Analytics with Consent Mode v2 */}
+        <script dangerouslySetInnerHTML={{
+          __html: `
+            // Initialize dataLayer and gtag function BEFORE loading GA
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            
+            // Set default consent state (will be updated by ConsentBanner)
+            gtag('consent', 'default', {
+              'analytics_storage': 'denied',
+              'ad_storage': 'denied',
+              'ad_user_data': 'denied',
+              'ad_personalization': 'denied',
+              'functionality_storage': 'granted',
+              'security_storage': 'granted',
+              'wait_for_update': 2000 // Wait up to 2 seconds for consent update
+            });
+            
+            // Configure GA4 with your measurement ID
+            gtag('js', new Date());
+            gtag('config', '${process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || 'G-SNQQT3LLEB'}', {
+              'anonymize_ip': true, // Additional privacy protection
+              'allow_google_signals': false, // Disable Google Signals for GDPR
+              'allow_ad_personalization_signals': false // Disable ad personalization
+            });
+          `
+        }} />
+        {/* Load GA script AFTER consent defaults are set */}
+        <script async src={`https://www.googletagmanager.com/gtag/js?id=${process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || 'G-SNQQT3LLEB'}`}></script>
+        {/* Plausible Analytics */}
+        <script defer data-domain={process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN || 'vibemanager.app'} src="https://plausible.io/js/script.js"></script>
+        <script dangerouslySetInnerHTML={{
+          __html: `window.plausible = window.plausible || function() { (window.plausible.q = window.plausible.q || []).push(arguments) }`
+        }} />
+        {/* X Pixel - Base snippet with proper configuration */}
+        {process.env.NEXT_PUBLIC_X_PIXEL_ID && (
+          <script dangerouslySetInnerHTML={{
+            __html: `
+              !function(e,t,n,s,u,a){e.twq||(s=e.twq=function(){s.exe?s.exe.apply(s,arguments):s.queue.push(arguments);
+              },s.version='1.1',s.queue=[],u=t.createElement(n),u.async=!0,u.src='https://static.ads-twitter.com/uwt.js',
+              a=t.getElementsByTagName(n)[0],a.parentNode.insertBefore(u,a))}(window,document,'script');
+              twq('config','${process.env.NEXT_PUBLIC_X_PIXEL_ID}');
+            `
+          }} />
+        )}
+        {/* Development fallback for X Pixel when env var not set */}
+        {!process.env.NEXT_PUBLIC_X_PIXEL_ID && (
+          <script dangerouslySetInnerHTML={{
+            __html: `
+              // Development fallback - creates mock twq function
+              window.twq = window.twq || function() {
+                console.log('\u{1F426} X.com tracking (dev):', arguments);
+              };
+              window.twq.version = '1.1-dev';
+              window.twq.queue = [];
+            `
+          }} />
         )}
       </head>
       <body className={`${fontClasses.sans} bg-transparent overflow-x-hidden`}>
@@ -158,49 +233,7 @@ export default function RootLayout({
         </ClientProviders>
         <SpeedInsights />
         <StructuredData data={websiteJsonLd} />
-        {/* Plausible Analytics */}
-        <Script
-          src="https://plausible.io/js/script.js"
-          data-domain="vibemanager.app"
-          strategy="afterInteractive"
-        />
-        <Script
-          id="plausible-init"
-          strategy="afterInteractive"
-          dangerouslySetInnerHTML={{
-            __html: `window.plausible = window.plausible || function() { (window.plausible.q = window.plausible.q || []).push(arguments) }`
-          }}
-        />
-        {/* Twitter/X conversion tracking - Production only */}
-        {process.env.NODE_ENV === 'production' ? (
-          <Script
-            id="twitter-pixel"
-            strategy="afterInteractive"
-            dangerouslySetInnerHTML={{
-              __html: `
-                !function(e,t,n,s,u,a){e.twq||(s=e.twq=function(){s.exe?s.exe.apply(s,arguments):s.queue.push(arguments);
-                },s.version='1.1',s.queue=[],u=t.createElement(n),u.async=!0,u.src='https://static.ads-twitter.com/uwt.js',
-                a=t.getElementsByTagName(n)[0],a.parentNode.insertBefore(u,a))}(window,document,'script');
-                twq('config','qd2ik');
-              `
-            }}
-          />
-        ) : (
-          <Script
-            id="twitter-pixel-dev"
-            strategy="afterInteractive"
-            dangerouslySetInnerHTML={{
-              __html: `
-                // Development fallback - creates mock twq function
-                window.twq = window.twq || function() {
-                  console.log('🐦 X.com tracking (dev):', arguments);
-                };
-                window.twq.version = '1.1-dev';
-                window.twq.queue = [];
-              `
-            }}
-          />
-        )}
+        <StructuredData data={organizationJsonLd} />
       </body>
     </html>
   );

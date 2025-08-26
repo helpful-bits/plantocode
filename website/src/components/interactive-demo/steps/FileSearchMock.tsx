@@ -539,7 +539,7 @@ export function FileSearchMock({ isInView }: FileSearchMockProps) {
                     </span>
                   </div>
                   <span className="text-[9px] text-muted-foreground flex-shrink-0 ml-1 self-end">
-                    {regexComplete ? '2.3s' : '—'}
+                    {regexComplete ? '2.3s' : '-'}
                   </span>
                 </div>
 
@@ -643,7 +643,7 @@ export function FileSearchMock({ isInView }: FileSearchMockProps) {
                     </span>
                   </div>
                   <span className="text-[9px] text-muted-foreground flex-shrink-0 ml-1 self-end">
-                    {relevanceComplete ? '3.1s' : '—'}
+                    {relevanceComplete ? '3.1s' : '-'}
                   </span>
                 </div>
 
@@ -747,7 +747,7 @@ export function FileSearchMock({ isInView }: FileSearchMockProps) {
                     </span>
                   </div>
                   <span className="text-[9px] text-muted-foreground flex-shrink-0 ml-1 self-end">
-                    {pathComplete ? '4.2s' : '—'}
+                    {pathComplete ? '4.2s' : '-'}
                   </span>
                 </div>
 
@@ -851,7 +851,7 @@ export function FileSearchMock({ isInView }: FileSearchMockProps) {
                     </span>
                   </div>
                   <span className="text-[9px] text-muted-foreground flex-shrink-0 ml-1 self-end">
-                    {correctionComplete ? '2.1s' : '—'}
+                    {correctionComplete ? '2.1s' : '-'}
                   </span>
                 </div>
 

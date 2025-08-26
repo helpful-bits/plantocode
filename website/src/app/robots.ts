@@ -32,6 +32,9 @@ export default function robots(): MetadataRoute.Robots {
           '/_next/',
           '/debug/',
           '/private/',
+          '/(callbacks)/',
+          '/auth/',
+          '/billing/',
         ],
       },
       // OpenAI Crawlers (2025) - ALLOWED for developer tool visibility

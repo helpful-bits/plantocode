@@ -2,14 +2,39 @@
 
 declare global {
   interface Window {
-    plausible: (event: string, options?: { props?: Record<string, string | number> }) => void;
+    plausible: (
+      event: string, 
+      options?: { 
+        props?: Record<string, string | number | boolean>;
+        callback?: () => void;
+        revenue?: { currency: string; amount: number | string };
+        interactive?: boolean;
+        u?: string;
+      }
+    ) => void;
     twq: (action: string, pixelId?: string, parameters?: Record<string, any>) => void;
   }
 }
 
-export const trackPlausibleEvent = (eventName: string, props?: Record<string, string | number>) => {
+export const trackPlausibleEvent = (
+  eventName: string, 
+  props?: Record<string, string | number | boolean>,
+  options?: {
+    callback?: () => void;
+    interactive?: boolean;
+    revenue?: { currency: string; amount: number | string };
+    u?: string;
+  }
+) => {
   if (typeof window !== 'undefined' && window.plausible) {
-    window.plausible(eventName, props ? { props } : undefined);
+    const plausibleOptions: any = {};
+    if (props) plausibleOptions.props = props;
+    if (options?.callback) plausibleOptions.callback = options.callback;
+    if (options?.interactive !== undefined) plausibleOptions.interactive = options.interactive;
+    if (options?.revenue) plausibleOptions.revenue = options.revenue;
+    if (options?.u) plausibleOptions.u = options.u;
+    
+    window.plausible(eventName, Object.keys(plausibleOptions).length > 0 ? plausibleOptions : undefined);
   }
 };
 
@@ -33,8 +58,7 @@ export const trackScrollDepth = (): (() => void) | undefined => {
         if (scrollPercent >= milestone && !trackedMilestones.has(milestone)) {
           trackedMilestones.add(milestone);
           trackPlausibleEvent('Scroll Depth', { 
-            percentage: milestone,
-            page: window.location.pathname 
+            percentage: milestone
           });
         }
       });
@@ -53,32 +77,32 @@ export const trackScrollDepth = (): (() => void) | undefined => {
 export const trackCTAClick = (ctaName: string, location: string) => {
   trackPlausibleEvent('CTA Click', { 
     cta_name: ctaName,
-    location,
-    page: typeof window !== 'undefined' ? window.location.pathname : ''
+    location
   });
 };
 
 export const trackDownloadClick = (downloadType: string = 'desktop-app') => {
   trackPlausibleEvent('Download Click', { 
-    download_type: downloadType,
-    page: typeof window !== 'undefined' ? window.location.pathname : ''
+    download_type: downloadType
   });
 };
 
 // X.com (Twitter) conversion tracking
 export const trackXDownloadConversion = (location: string, version: string = '1.0.17') => {
-  if (typeof window !== 'undefined' && window.twq) {
+  if (typeof window !== 'undefined' && window.twq && process.env.NEXT_PUBLIC_X_PIXEL_ID) {
     try {
-      window.twq('event', 'tw-qd2ik-qd2io', {
+      // Download Tracker event from X Ads Manager
+      const eventId = process.env.NEXT_PUBLIC_X_DOWNLOAD_EVENT_ID || 'qd2io';
+      const eventName = `tw-${process.env.NEXT_PUBLIC_X_PIXEL_ID}-${eventId}`;
+      
+      window.twq('event', eventName, {
         contents: [{
           content_id: `vibe-manager-mac-${version}`,
           content_name: 'Vibe Manager Mac App',
           content_type: 'Software',
-          content_category: 'Desktop Application',
           num_items: 1
         }],
-        event_label: location,
-        source_url: window.location.href,
+        description: `Download from ${location}`,
         conversion_id: `download-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
       });
     } catch (error) {
@@ -89,36 +113,31 @@ export const trackXDownloadConversion = (location: string, version: string = '1.
 
 export const trackSignupStart = (source: string) => {
   trackPlausibleEvent('Signup Start', { 
-    source,
-    page: typeof window !== 'undefined' ? window.location.pathname : ''
+    source
   });
 };
 
 export const trackFeatureView = (featureName: string) => {
   trackPlausibleEvent('Feature View', { 
-    feature: featureName,
-    page: typeof window !== 'undefined' ? window.location.pathname : ''
+    feature: featureName
   });
 };
 
 export const trackSectionView = (sectionName: string) => {
   trackPlausibleEvent('Section View', { 
-    section: sectionName,
-    page: typeof window !== 'undefined' ? window.location.pathname : ''
+    section: sectionName
   });
 };
 
 export const trackVideoPlay = (videoTitle: string) => {
   trackPlausibleEvent('Video Play', { 
-    video: videoTitle,
-    page: typeof window !== 'undefined' ? window.location.pathname : ''
+    video: videoTitle
   });
 };
 
 export const trackDemoInteraction = (stepName: string) => {
   trackPlausibleEvent('Demo Interaction', { 
-    step: stepName,
-    page: typeof window !== 'undefined' ? window.location.pathname : ''
+    step: stepName
   });
 };
 

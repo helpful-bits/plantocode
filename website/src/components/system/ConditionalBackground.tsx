@@ -3,13 +3,13 @@
 import { usePathname } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { ErrorBoundary } from '@/components/system/ErrorBoundary';
+import dynamic from 'next/dynamic';
 
-// Import the 3D background directly to bypass webpack module issues  
-import { LazyInteractiveBackground } from '@/components/landing/LazyInteractiveBackground';
+const InteractiveBackground = dynamic(() => import('@/components/landing/InteractiveBackground').then(mod => ({ default: mod.InteractiveBackground })), { ssr: false, loading: () => null });
 
 export function ConditionalBackground() {
   const pathname = usePathname();
-  const [shouldRender, setShouldRender] = useState(false);
+  const [ready, setReady] = useState(false);
   
   // Check if we're on a legal page (but don't return early to maintain hook order)
   const isLegalPage = pathname === '/privacy' || 
@@ -22,35 +22,24 @@ export function ConditionalBackground() {
       return;
     }
     
-    // Defer loading the 3D background until after critical content
-    if ('requestIdleCallback' in window) {
-      const handle = (window as any).requestIdleCallback(() => {
-        setShouldRender(true);
-      }, { timeout: 2000 });
-      
-      return () => {
-        if ('cancelIdleCallback' in window) {
-          (window as any).cancelIdleCallback(handle);
-        }
-      };
-    } else {
-      const timer = setTimeout(() => {
-        setShouldRender(true);
-      }, 1000);
-      
-      return () => clearTimeout(timer);
-    }
+    const rib = (window as any).requestIdleCallback || ((cb: Function) => setTimeout(cb, 800));
+    const id = rib(() => setReady(true));
+    return () => { 
+      if ((window as any).cancelIdleCallback) {
+        (window as any).cancelIdleCallback(id);
+      }
+    };
   }, [isLegalPage]);
   
   // Don't render particles on legal pages or before idle callback
-  if (isLegalPage || !shouldRender) {
+  if (isLegalPage || !ready) {
     return null;
   }
   
   return (
     <Suspense fallback={null}>
       <ErrorBoundary fallback={null}>
-        <LazyInteractiveBackground />
+        {ready ? <InteractiveBackground /> : null}
       </ErrorBoundary>
     </Suspense>
   );

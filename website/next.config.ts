@@ -1,6 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Enable source maps in production
+  productionBrowserSourceMaps: true,
+  // Enable compression for better performance
+  compress: true,
+  // Remove powered by header for security
+  poweredByHeader: false,
+
   // Cross-origin development configuration
   allowedDevOrigins: ['192.168.0.38', 'localhost'],
 
@@ -58,9 +65,7 @@ const nextConfig: NextConfig = {
   },
 
   // Performance optimizations
-  poweredByHeader: false,
   generateEtags: false,
-  compress: true,
   
   // Enable static optimization
   output: 'standalone',
@@ -200,11 +205,27 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      // Cache headers for images
+      {
+        source: '/:all*.(png|jpg|jpeg|gif|webp|avif|svg)',
+        headers: [
+          { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }
+        ]
+      },
+      // Cache headers for videos
+      {
+        source: '/:all*.(mp4|webm|ogg)',
+        headers: [
+          { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }
+        ]
+      }
     ];
   },
 
   // Webpack optimizations
-  webpack: (config, { isServer }) => {
+  webpack: (config, { isServer, dev }) => {
+    // Enable source maps in production
+    if (!dev) config.devtool = 'source-map';
     // Shader files loader
     config.module.rules.push({
       test: /\.(glsl|vert|frag)$/,

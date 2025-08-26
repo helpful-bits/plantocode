@@ -1,20 +1,24 @@
 'use client';
 
 import React from 'react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { motion } from 'framer-motion';
 import Reveal from '@/components/motion/Reveal';
 import { usePlausible } from '@/hooks/usePlausible';
-import { trackXDownloadConversion } from '@/lib/analytics';
+import { trackXDownload } from '@/lib/x-pixel-events';
 
 export function Pricing() {
-  const { trackEvent } = usePlausible();
+  const { trackDownload } = usePlausible();
+  const router = useRouter();
 
-  const handleDownloadClick = () => {
-    trackEvent('download_click', { location: 'pricing' });
-    trackXDownloadConversion('pricing');
+  const handleDownloadClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    trackDownload('pricing', 'latest', () => {
+      trackXDownload('pricing', 'latest');
+      router.push('/download');
+    });
   };
 
   return (
@@ -77,18 +81,20 @@ export function Pricing() {
                       whileTap={{ scale: 0.95 }}
                     >
                       <Button
-                        asChild
                         className="w-full sm:w-auto"
                         size="xl"
                         variant="cta"
                         onClick={handleDownloadClick}
                       >
-                        <Link href="/download" prefetch={false} className="no-hover-effect cursor-pointer">
+                        <span className="no-hover-effect cursor-pointer">
                           Download for Mac
-                        </Link>
+                        </span>
                       </Button>
                     </motion.div>
-                    <span className="text-xs text-muted-foreground mt-2">Windows coming soon</span>
+                    <div className="flex flex-col items-center gap-2 mt-2">
+                      <em className="text-xs text-muted-foreground">Signed & notarized for macOS - safer installs via Gatekeeper.</em>
+                      <a href="mailto:support@vibemanager.app?subject=Windows%20Waitlist" className="text-sm text-muted-foreground underline hover:text-primary transition-colors">Join the Windows waitlist</a>
+                    </div>
                   </div>
                 </Reveal>
               </div>

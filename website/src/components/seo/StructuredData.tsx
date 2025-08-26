@@ -5,10 +5,16 @@ interface StructuredDataProps {
 }
 
 export function StructuredData({ data }: StructuredDataProps) {
+  // Ensure @context is always present in JSON-LD
+  const dataWithContext: any = data;
+  if (!dataWithContext['@context']) {
+    dataWithContext['@context'] = 'https://schema.org';
+  }
+
   return (
     <script
       dangerouslySetInnerHTML={{
-        __html: JSON.stringify(data),
+        __html: JSON.stringify(dataWithContext),
       }}
       type="application/ld+json"
     />

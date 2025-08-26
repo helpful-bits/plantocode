@@ -320,7 +320,7 @@ export function TextImprovementMock({ isInView }: TextImprovementMockProps) {
                 </span>
               </div>
               <span className="text-[9px] text-muted-foreground flex-shrink-0 ml-1 self-end">
-                {enhancementState === 'completed' || enhancementState === 'wait' ? '2.3s' : '—'}
+                {enhancementState === 'completed' || enhancementState === 'wait' ? '2.3s' : '-'}
               </span>
             </div>
 

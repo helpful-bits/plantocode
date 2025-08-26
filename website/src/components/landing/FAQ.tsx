@@ -15,7 +15,10 @@ interface FAQProps {
 }
 
 export function FAQ({ items }: FAQProps) {
-  const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const [openIndices, setOpenIndices] = useState<number[]>([0, 1, 2]);
+  const toggleOpen = (index: number) => {
+    setOpenIndices((cur) => cur.includes(index) ? cur.filter(i => i !== index) : [...cur, index]);
+  };
 
   return (
     <section className="relative py-12 sm:py-16 md:py-20 lg:py-24 px-4 overflow-hidden" id="faq">
@@ -44,26 +47,26 @@ export function FAQ({ items }: FAQProps) {
                 <motion.div
                   initial={{ backgroundColor: 'rgba(0, 0, 0, 0)' }}
                   animate={{
-                    backgroundColor: openIndex === index ? 'rgba(var(--primary-rgb), 0.02)' : 'rgba(0, 0, 0, 0)',
+                    backgroundColor: openIndices.includes(index) ? 'rgba(var(--primary-rgb), 0.02)' : 'rgba(0, 0, 0, 0)',
                   }}
                   transition={{ duration: 0.3, ease: 'easeInOut' }}
                 >
                   <motion.button
                     className="w-full px-4 py-4 sm:p-6 text-left flex justify-between items-center group relative"
                     whileTap={{ scale: 0.98 }}
-                    onClick={() => setOpenIndex(openIndex === index ? null : index)}
+                    onClick={() => toggleOpen(index)}
                   >
                     <span
                       className={`font-semibold text-lg text-foreground pr-4 ${
-                        openIndex === index ? 'text-primary' : ''
+                        openIndices.includes(index) ? 'text-primary' : ''
                       }`}
                     >
                       {item.question}
                     </span>
                     <motion.div
                       animate={{
-                        scale: openIndex === index ? 1.1 : 1,
-                        rotate: openIndex === index ? 180 : 0,
+                        scale: openIndices.includes(index) ? 1.1 : 1,
+                        rotate: openIndices.includes(index) ? 180 : 0,
                       }}
                       className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center relative"
                       transition={{
@@ -75,14 +78,14 @@ export function FAQ({ items }: FAQProps) {
                     >
                       <div
                         className={`absolute inset-0 rounded-full ${
-                          openIndex === index
+                          openIndices.includes(index)
                             ? 'bg-gradient-to-br from-primary/30 to-primary/40'
                             : 'bg-gradient-to-br from-primary/5 to-primary/10'
                         }`}
                       />
                       <div
                         className={`absolute inset-0 rounded-full ring-1 ${
-                          openIndex === index ? 'ring-primary/40' : 'ring-primary/15'
+                          openIndices.includes(index) ? 'ring-primary/40' : 'ring-primary/15'
                         }`}
                       />
                       <svg
@@ -102,7 +105,7 @@ export function FAQ({ items }: FAQProps) {
                   </motion.button>
 
                   <AnimatePresence mode="wait">
-                    {openIndex === index && (
+                    {openIndices.includes(index) && (
                       <motion.div
                         animate={{
                           height: 'auto',
