@@ -69,10 +69,18 @@ const VideoCard = memo(function VideoCard({
       className="flex-none w-80 bg-card/60 border border-border/50 rounded-lg p-4"
       style={{ scrollSnapAlign: 'start' }}
     >
-      <div className="aspect-video bg-primary/10 rounded-lg mb-3 overflow-hidden">
+      <div 
+        className="aspect-video bg-primary/10 rounded-lg mb-3 overflow-hidden relative"
+        style={{
+          backgroundImage: step.poster ? `url(${step.poster})` : undefined,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat'
+        }}
+      >
         {step.video && isVisible ? (
           <video 
-            className="w-full h-full object-cover rounded-lg"
+            className="w-full h-full object-cover rounded-lg relative z-10"
             poster={step.poster?.replace(/\.(jpg|jpeg)$/i, '.webp') || step.poster}
             controls
             preload="metadata"
@@ -89,7 +97,7 @@ const VideoCard = memo(function VideoCard({
             Your browser does not support the video tag.
           </video>
         ) : (
-          <div className="w-full h-full flex items-center justify-center">
+          <div className="w-full h-full flex items-center justify-center absolute inset-0 z-20">
             <svg className="w-8 h-8 text-primary" fill="currentColor" viewBox="0 0 24 24">
               <path d="M8 5v14l11-7z"/>
             </svg>

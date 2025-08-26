@@ -35,20 +35,24 @@ export function HeroSection() {
   };
 
   React.useEffect(() => {
-    trackSectionView('hero');
+    // Delay tracking to not block initial render
+    const timer = setTimeout(() => {
+      trackSectionView('hero');
+    }, 100);
+    return () => clearTimeout(timer);
   }, [trackSectionView]);
 
 
   return (
     <section className="relative h-auto sm:min-h-screen flex items-start sm:items-center justify-center overflow-hidden bg-transparent py-20 sm:py-16 md:py-14 lg:py-14">
       <div className="relative text-center px-4 sm:px-6 lg:px-8 w-full max-w-7xl mx-auto my-8">
-        {/* Primary heading */}
-        <h1 className="relative text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-6 leading-tight text-hero-title">
+        {/* Primary heading - Priority content for LCP */}
+        <h1 className="relative text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-6 leading-tight text-hero-title" style={{ contentVisibility: 'auto' }}>
           Vibe Manager: Stop babysitting your AI agent.
         </h1>
 
-        {/* Subtitle */}
-        <p className="text-xl sm:text-2xl md:text-3xl text-description-muted mb-8 leading-relaxed max-w-4xl mx-auto">
+        {/* Subtitle - Priority content for LCP */}
+        <p className="text-xl sm:text-2xl md:text-3xl text-description-muted mb-8 leading-relaxed max-w-4xl mx-auto" style={{ contentVisibility: 'auto' }}>
           Create better prompts and implementation plans for your coding agents. Use voice-to-text and selective text edits, capture screen context, and pull in real-time research to produce structured, self-consistent tasks - fast.
         </p>
 
