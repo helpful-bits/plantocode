@@ -2,12 +2,14 @@
 
 import Link from 'next/link';
 import { usePlausible } from '@/hooks/usePlausible';
+import { trackXDownloadConversion } from '@/lib/analytics';
 
 export function Footer() {
   const { trackEvent } = usePlausible();
 
   const handleDownloadClick = () => {
     trackEvent('download_click', { location: 'footer' });
+    trackXDownloadConversion('footer');
   };
 
   return (

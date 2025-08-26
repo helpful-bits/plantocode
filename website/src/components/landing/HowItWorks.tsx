@@ -41,9 +41,8 @@ const defaultSteps: Step[] = [];
 // Memoized main component for performance
 export const HowItWorks = memo(function HowItWorks({ steps = defaultSteps }: HowItWorksProps) {
   const prefersReducedMotion = useReducedMotion();
-  const { trackEvent } = usePlausible();
+  const { trackVideoPlay } = usePlausible();
   const demoStartTracked = useRef(false);
-  const [fullScreenVideo, setFullScreenVideo] = React.useState<string | null>(null);
 
   // Track demo_start event when section comes into view
   useEffect(() => {
@@ -53,7 +52,7 @@ export const HowItWorks = memo(function HowItWorks({ steps = defaultSteps }: How
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting && !demoStartTracked.current) {
-            trackEvent('demo_start', { location: 'how_it_works' });
+            trackVideoPlay('demo_section_view');
             demoStartTracked.current = true;
           }
         });
@@ -71,19 +70,7 @@ export const HowItWorks = memo(function HowItWorks({ steps = defaultSteps }: How
         observer.unobserve(section);
       }
     };
-  }, [trackEvent]);
-
-  // Handle full screen video playback
-  const handleWatchDemo = (videoUrl: string, stepTitle: string) => {
-    if (videoUrl) {
-      setFullScreenVideo(videoUrl);
-      trackEvent('video_demo_start', { step: stepTitle, location: 'how_it_works' });
-    }
-  };
-
-  const closeFullScreenVideo = () => {
-    setFullScreenVideo(null);
-  };
+  }, [trackVideoPlay]);
 
   // Flatten steps to include substeps as individual items
   const flattenedSteps = React.useMemo(() => {
@@ -127,10 +114,11 @@ export const HowItWorks = memo(function HowItWorks({ steps = defaultSteps }: How
           </Reveal>
           <Reveal 
             as="p" 
-            className="text-base sm:text-lg md:text-xl max-w-2xl mx-auto leading-relaxed font-medium text-foreground/80 px-4 sm:px-0" 
+            className="text-base sm:text-lg md:text-xl max-w-3xl mx-auto leading-relaxed font-medium text-foreground/80 px-4 sm:px-0" 
             delay={prefersReducedMotion ? 0 : 0.05}
           >
-            From task description to implementation plan in minutes
+            Experience Vibe Manager's complete workflow through this interactive demonstration. 
+            Each step shows exactly how the tool helps you find the right files, generate better plans, and ship correct changes.
           </Reveal>
         </div>
 
@@ -163,22 +151,23 @@ export const HowItWorks = memo(function HowItWorks({ steps = defaultSteps }: How
               {flattenedSteps.map((step, index) => (
                 <div 
                   key={index}
-                  className="flex-none w-80 bg-card/60 border border-border/50 rounded-lg p-4 hover:bg-card/80 cursor-pointer transition-colors"
+                  className="flex-none w-80 bg-card/60 border border-border/50 rounded-lg p-4"
                   style={{ scrollSnapAlign: 'start' }}
-                  onClick={() => step.video && handleWatchDemo(step.video, step.title)}
                 >
                   <div className="aspect-video bg-primary/10 rounded-lg mb-3 overflow-hidden">
                     {step.video ? (
                       <video 
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-cover rounded-lg"
                         poster={step.poster}
+                        controls
                         preload="metadata"
-                        muted
                         playsInline
-                        onMouseEnter={(e) => e.currentTarget.play()}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.pause();
-                          e.currentTarget.currentTime = 0;
+                        onPlay={() => trackVideoPlay(step.title)}
+                        onError={(e) => {
+                          console.log('Video error handled:', e);
+                        }}
+                        onAbort={(e) => {
+                          console.log('Video abort handled:', e);
                         }}
                       >
                         <source src={step.video} type="video/mp4" />
@@ -197,40 +186,11 @@ export const HowItWorks = memo(function HowItWorks({ steps = defaultSteps }: How
                     <h4 className="text-sm font-semibold">{step.title}</h4>
                   </div>
                   <p className="text-xs text-muted-foreground line-clamp-2">{step.description}</p>
-                  <div className="text-xs text-primary mt-2">Watch Demo →</div>
                 </div>
               ))}
             </div>
           </div>
         </div>
-
-        {/* Full Screen Video Modal */}
-        {fullScreenVideo && (
-          <div 
-            className="fixed inset-0 z-50 bg-black"
-            onClick={closeFullScreenVideo}
-          >
-            <button
-              onClick={closeFullScreenVideo}
-              className="absolute top-4 right-4 z-[60] text-white hover:text-gray-300 transition-colors bg-black/50 rounded-full p-2"
-              aria-label="Close video"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-            <video
-              className="absolute inset-0 w-full h-full object-contain z-[55]"
-              controls
-              autoPlay
-              preload="metadata"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <source src={fullScreenVideo} type="video/mp4" />
-              Your browser does not support the video tag.
-            </video>
-          </div>
-        )}
 
       </div>
     </section>

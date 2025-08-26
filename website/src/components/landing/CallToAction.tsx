@@ -7,6 +7,8 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { motion } from 'framer-motion';
 import { CheckCircle2, Zap } from 'lucide-react';
 import Reveal from '@/components/motion/Reveal';
+import { usePlausible } from '@/hooks/usePlausible';
+import { trackXDownloadConversion } from '@/lib/analytics';
 
 interface CallToActionProps {
   title: string;
@@ -16,6 +18,17 @@ interface CallToActionProps {
 }
 
 export function CallToAction({ title, description, buttonText, buttonLink }: CallToActionProps) {
+  const { trackDownload, trackSectionView } = usePlausible();
+
+  const handleDownloadClick = () => {
+    trackDownload('cta_section', 'mac');
+    trackXDownloadConversion('cta_section');
+  };
+
+  React.useEffect(() => {
+    trackSectionView('cta');
+  }, [trackSectionView]);
+
   return (
     <section className="relative py-16 sm:py-20 md:py-24 lg:py-32 px-4 overflow-hidden">
       <motion.div
@@ -107,7 +120,7 @@ export function CallToAction({ title, description, buttonText, buttonLink }: Cal
                       size="xl"
                       variant="primary"
                     >
-                      <Link className="inline-flex items-center justify-center gap-3 no-hover-effect cursor-pointer" href={buttonLink} prefetch={false}>
+                      <Link className="inline-flex items-center justify-center gap-3 no-hover-effect cursor-pointer" href={buttonLink} prefetch={false} onClick={handleDownloadClick}>
                         {buttonText}
                         <svg
                           className="w-5 h-5 flex-shrink-0"
