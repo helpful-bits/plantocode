@@ -144,7 +144,7 @@ export default function Home() {
       description: "Describe your task naturally with text input and get AI assistance with enhancement",
       subSteps: [
         {
-          title: "Text Input Method",
+          title: "AI Text Enhancement",
           video: cdnUrl('/videos/step-1-text.mp4'),
           poster: cdnUrl('/images/step-1-text-poster.jpg')
         },
@@ -167,20 +167,20 @@ export default function Home() {
       poster: cdnUrl('/images/step-2-poster.jpg')
     },
     {
-      title: "Implementation Plans Generation", 
-      description: "Generate and compare implementation plans from multiple AI models",
+      title: "Deep Research & Context Analysis", 
+      description: "Watch AI perform comprehensive research across your codebase to gather context and understand dependencies",
       video: cdnUrl('/videos/step-3-generate.mp4'),
       poster: cdnUrl('/images/step-3-poster.jpg')
     },
     {
-      title: "Plan Selection & Merge Instructions",
-      description: "Select the best plan and get detailed merge instructions for implementation",
+      title: "Plan Creation & Merge",
+      description: "Generate multiple implementation plans from different AI models and merge the best approaches into a unified solution",
       video: cdnUrl('/videos/step-4-merge.mp4'), 
       poster: cdnUrl('/images/step-4-poster.jpg')
     },
     {
-      title: "Customize & Export Results",
-      description: "Customize your implementation plan and export results to your development environment",
+      title: "Settings & Prompt Customization",
+      description: "Configure AI models, edit system prompts, and customize settings to match your workflow",
       video: cdnUrl('/videos/step-5-customize.mp4'),
       poster: cdnUrl('/images/step-5-poster.jpg')
     }
