@@ -161,25 +161,25 @@ export function Header() {
                     </Button>
                   </motion.div>
                 )}
-                <div className="flex flex-col items-center ml-2">
+                <div className="flex flex-col items-center justify-center ml-2">
                   <motion.div
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                   >
                     <Button
                       className="relative"
-                      size="lg"
+                      size="sm"
                       variant="cta"
                       onClick={(e) => handleDownloadClick(e, 'header_desktop')}
                     >
-                      <span className="no-hover-effect cursor-pointer">
+                      <span className="no-hover-effect cursor-pointer text-sm">
                         Download for Mac
                       </span>
                     </Button>
                   </motion.div>
-                  <div className="flex flex-col items-center gap-1 mt-1">
-                    <em className="text-xs text-muted-foreground">Signed & notarized for macOS</em>
-                    <a href="mailto:support@vibemanager.app?subject=Windows%20Waitlist" className="text-xs text-muted-foreground underline hover:text-primary">Join Windows waitlist</a>
+                  <div className="flex flex-col items-center gap-0.5 mt-0.5">
+                    <em className="text-[10px] text-muted-foreground">Signed & notarized for macOS</em>
+                    <a href="mailto:support@vibemanager.app?subject=Windows%20Waitlist" className="text-[10px] text-muted-foreground underline hover:text-primary">Join Windows waitlist</a>
                   </div>
                 </div>
               </motion.div>
