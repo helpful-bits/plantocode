@@ -15,7 +15,7 @@ export function Header() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isMac, setIsMac] = useState(true);
-  const { trackDownload } = usePlausible();
+  const { trackDownload, trackAnchorClick } = usePlausible();
 
   const handleDownloadClick = (e: React.MouseEvent, location: string) => {
     e.preventDefault();
@@ -129,6 +129,7 @@ export function Header() {
                         : 'text-foreground/90 hover:text-foreground drop-shadow-md',
                     )}
                     href={link.href}
+                    onClick={() => trackAnchorClick(link.href, 'header_desktop')}
                   >
                     <motion.span
                       className="relative z-10"
@@ -158,7 +159,7 @@ export function Header() {
                 {!isMac && (
                   <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                     <Button asChild size="lg" variant="gradient-outline">
-                      <Link href="#how-it-works" className="no-hover-effect cursor-pointer">Try Demo</Link>
+                      <Link href="#how-it-works" className="no-hover-effect cursor-pointer" onClick={() => trackAnchorClick('#how-it-works', 'header_desktop_demo')}>Try Demo</Link>
                     </Button>
                   </motion.div>
                 )}
@@ -297,7 +298,10 @@ export function Header() {
                           'relative overflow-hidden',
                         )}
                         href={link.href}
-                        onClick={() => setMobileMenuOpen(false)}
+                        onClick={() => {
+                          trackAnchorClick(link.href, 'header_mobile');
+                          setMobileMenuOpen(false);
+                        }}
                       >
                         <span className="relative z-10">{link.label}</span>
                         <motion.div
@@ -327,7 +331,10 @@ export function Header() {
               >
                 <ThemeToggle />
                 <motion.div className="flex-1" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                  <Button asChild className="w-full" size="xl" variant="gradient-outline" onClick={() => setMobileMenuOpen(false)}>
+                  <Button asChild className="w-full" size="xl" variant="gradient-outline" onClick={() => {
+                    trackAnchorClick('#how-it-works', 'header_mobile_demo');
+                    setMobileMenuOpen(false);
+                  }}>
                     <Link href="#how-it-works" className="no-hover-effect cursor-pointer">Try Demo</Link>
                   </Button>
                 </motion.div>

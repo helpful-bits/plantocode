@@ -42,11 +42,13 @@ const defaultSteps: Step[] = [];
 const VideoCard = memo(function VideoCard({ 
   step, 
   index, 
-  trackVideoPlay 
+  trackVideoPlay,
+  trackVideoComplete
 }: { 
   step: Step & { isSubStep?: boolean }, 
   index: number, 
-  trackVideoPlay: (title: string) => void 
+  trackVideoPlay: (title: string) => void,
+  trackVideoComplete: (title: string, duration?: number) => void
 }) {
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [isVisible, setIsVisible] = useState(false);
@@ -86,6 +88,10 @@ const VideoCard = memo(function VideoCard({
             preload="metadata"
             playsInline
             onPlay={() => trackVideoPlay(step.title)}
+            onEnded={(e) => {
+              const video = e.currentTarget;
+              trackVideoComplete(step.title, video.duration);
+            }}
             onError={(e) => {
               console.log('Video error handled:', e);
             }}
@@ -116,7 +122,7 @@ const VideoCard = memo(function VideoCard({
 // Memoized main component for performance
 export const HowItWorks = memo(function HowItWorks({ steps = defaultSteps }: HowItWorksProps) {
   const prefersReducedMotion = useReducedMotion();
-  const { trackVideoPlay } = usePlausible();
+  const { trackVideoPlay, trackVideoComplete } = usePlausible();
   const demoStartTracked = useRef(false);
 
   // Track demo_start event when section comes into view
@@ -228,7 +234,8 @@ export const HowItWorks = memo(function HowItWorks({ steps = defaultSteps }: How
                   key={index} 
                   step={step} 
                   index={index} 
-                  trackVideoPlay={trackVideoPlay} 
+                  trackVideoPlay={trackVideoPlay}
+                  trackVideoComplete={trackVideoComplete}
                 />
               ))}
             </div>
