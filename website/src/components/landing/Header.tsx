@@ -19,12 +19,13 @@ export function Header() {
 
   const handleDownloadClick = (e: React.MouseEvent, location: string) => {
     e.preventDefault();
-    // Track client-side for immediate feedback
-    trackDownload(location, 'latest');
-    trackXDownload(location, 'latest');
     
-    // Use server-side tracking route
-    window.location.href = `/api/download/mac?source=${location}`;
+    // Track with callback to ensure event is sent before redirect
+    trackDownload(location, 'latest', () => {
+      trackXDownload(location, 'latest');
+      // Redirect after tracking completes
+      window.location.href = `/api/download/mac?source=${location}`;
+    });
   };
 
   useEffect(() => {

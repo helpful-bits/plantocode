@@ -13,12 +13,13 @@ export function Pricing() {
 
   const handleDownloadClick = (e: React.MouseEvent) => {
     e.preventDefault();
-    // Track client-side for immediate feedback
-    trackDownload('pricing', 'latest');
-    trackXDownload('pricing', 'latest');
     
-    // Use server-side tracking route
-    window.location.href = '/api/download/mac?source=pricing';
+    // Track with callback to ensure event is sent before redirect
+    trackDownload('pricing', 'latest', () => {
+      trackXDownload('pricing', 'latest');
+      // Redirect after tracking completes
+      window.location.href = '/api/download/mac?source=pricing';
+    });
   };
 
   return (

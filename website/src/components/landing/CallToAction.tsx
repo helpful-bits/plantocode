@@ -23,16 +23,17 @@ export function CallToAction({ title, description, buttonText, buttonLink }: Cal
 
   const handleDownloadClick = (e: React.MouseEvent) => {
     e.preventDefault();
-    // Track client-side for immediate feedback
-    trackDownload('cta_section', 'latest');
-    trackXDownload('cta_section', 'latest');
     
-    // Use server-side tracking route if it's a download link
-    if (buttonLink === '/download') {
-      window.location.href = '/api/download/mac?source=cta_section';
-    } else {
-      router.push(buttonLink);
-    }
+    // Track with callback to ensure event is sent before redirect
+    trackDownload('cta_section', 'latest', () => {
+      trackXDownload('cta_section', 'latest');
+      // Redirect after tracking completes
+      if (buttonLink === '/download') {
+        window.location.href = '/api/download/mac?source=cta_section';
+      } else {
+        router.push(buttonLink);
+      }
+    });
   };
 
   React.useEffect(() => {

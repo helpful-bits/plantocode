@@ -9,12 +9,13 @@ export function Footer() {
 
   const handleDownloadClick = (e: React.MouseEvent) => {
     e.preventDefault();
-    // Track client-side for immediate feedback
-    trackDownload('footer', 'latest');
-    trackXDownload('footer', 'latest');
     
-    // Use server-side tracking route
-    window.location.href = '/api/download/mac?source=footer';
+    // Track with callback to ensure event is sent before redirect
+    trackDownload('footer', 'latest', () => {
+      trackXDownload('footer', 'latest');
+      // Redirect after tracking completes
+      window.location.href = '/api/download/mac?source=footer';
+    });
   };
 
   return (
