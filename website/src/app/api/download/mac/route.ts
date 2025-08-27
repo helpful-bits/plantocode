@@ -109,7 +109,7 @@ export async function GET(req: NextRequest) {
 
   // Redirect to the actual download URL
   const downloadUrl = process.env.NEXT_PUBLIC_MAC_DOWNLOAD_URL || 
-                     'https://d2tyb0wucqqf48.cloudfront.net/releases/VibeManager.dmg';
+                     'https://d2tyb0wucqqf48.cloudfront.net/desktop/mac/Vibe Manager_1.0.17_aarch64.dmg';
   
   // Use 302 redirect to ensure download starts
   return NextResponse.redirect(downloadUrl, {
