@@ -26,12 +26,13 @@ export function HeroSection() {
 
   const handleDownloadClick = (e: React.MouseEvent) => {
     e.preventDefault();
-    // Track client-side for immediate feedback
-    trackDownload('hero_section', 'latest');
-    trackXDownload('hero_section', 'latest');
     
-    // Use server-side tracking route that will also track and then redirect
-    window.location.href = '/api/download/mac?source=hero_section';
+    // Track with callback to ensure event is sent before redirect
+    trackDownload('hero_section', 'latest', () => {
+      trackXDownload('hero_section', 'latest');
+      // Redirect after tracking completes
+      window.location.href = '/api/download/mac?source=hero_section';
+    });
   };
 
   React.useEffect(() => {
