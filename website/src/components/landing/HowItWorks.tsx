@@ -127,7 +127,7 @@ export const HowItWorks = memo(function HowItWorks({ steps = defaultSteps }: How
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting && !demoStartTracked.current) {
-            trackVideoPlay('demo_section_view');
+            trackVideoPlay('demo_start');
             demoStartTracked.current = true;
           }
         });
