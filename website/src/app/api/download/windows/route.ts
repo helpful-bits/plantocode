@@ -24,12 +24,12 @@ export async function GET(req: NextRequest) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        name: 'Download',
+        name: 'download_click',
         url: 'https://www.vibemanager.app/download/windows',
         domain: 'vibemanager.app',
         referrer: referer,
         props: {
-          source,
+          location: source,
           version,
           platform: 'windows'
         }
