@@ -1,18 +1,6 @@
 // X (Twitter) Pixel Event Tracking Functions
 // Based on your X Ads Manager configuration
 
-declare global {
-  interface Window {
-    twq: {
-      (action: string, ...args: any[]): void;
-      exe?: (...args: any[]) => void;
-      queue?: any[];
-      version?: string;
-      loaded?: boolean;
-    };
-  }
-}
-
 // Event IDs from your X Ads Manager
 const X_PIXEL_ID = process.env.NEXT_PUBLIC_X_PIXEL_ID || 'qd2ik';
 const X_EVENTS = {

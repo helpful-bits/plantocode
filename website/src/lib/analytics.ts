@@ -1,26 +1,4 @@
-// Plausible analytics utilities for funnel tracking
-
-declare global {
-  interface Window {
-    plausible: (
-      event: string, 
-      options?: { 
-        props?: Record<string, string | number | boolean>;
-        callback?: () => void;
-        revenue?: { currency: string; amount: number | string };
-        interactive?: boolean;
-        u?: string;
-      }
-    ) => void;
-    twq: {
-      (action: string, ...args: any[]): void;
-      exe?: (...args: any[]) => void;
-      queue?: any[];
-      version?: string;
-      loaded?: boolean;
-    };
-  }
-}
+// Plausible analytics utilities - core functions used by hooks/useAnalytics.ts
 
 export const trackPlausibleEvent = (
   eventName: string, 
@@ -63,7 +41,7 @@ export const trackScrollDepth = (): (() => void) | undefined => {
       milestones.forEach(milestone => {
         if (scrollPercent >= milestone && !trackedMilestones.has(milestone)) {
           trackedMilestones.add(milestone);
-          trackPlausibleEvent('Scroll Depth', { 
+          trackPlausibleEvent('scroll_depth', { 
             percentage: milestone
           });
         }
@@ -79,77 +57,10 @@ export const trackScrollDepth = (): (() => void) | undefined => {
   };
 };
 
-// CTA and conversion events
-export const trackCTAClick = (ctaName: string, location: string) => {
-  trackPlausibleEvent('CTA Click', { 
-    cta_name: ctaName,
-    location
-  });
-};
-
-export const trackDownloadClick = (downloadType: string = 'desktop-app') => {
-  trackPlausibleEvent('Download Click', { 
-    download_type: downloadType
-  });
-};
-
-// X.com (Twitter) conversion tracking
-export const trackXDownloadConversion = (location: string, version: string = '1.0.17') => {
-  if (typeof window !== 'undefined' && window.twq && process.env.NEXT_PUBLIC_X_PIXEL_ID) {
-    try {
-      // Check if it's the real Twitter pixel (has exe property) not just a stub
-      if (!window.twq.exe) {
-        // It's a stub function, silently return
-        return;
-      }
-      
-      // Download Tracker event from X Ads Manager
-      const eventId = process.env.NEXT_PUBLIC_X_DOWNLOAD_EVENT_ID || 'qd2io';
-      const eventName = `tw-${process.env.NEXT_PUBLIC_X_PIXEL_ID}-${eventId}`;
-      
-      window.twq('event', eventName, {
-        contents: [{
-          content_id: `vibe-manager-mac-${version}`,
-          content_name: 'Vibe Manager Mac App',
-          content_type: 'Software',
-          num_items: 1
-        }],
-        description: `Download from ${location}`,
-        conversion_id: `download-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-      });
-    } catch (error) {
-      // Silently handle errors - no need to log as it might be blocked
-    }
-  }
-};
-
-export const trackSignupStart = (source: string) => {
-  trackPlausibleEvent('Signup Start', { 
-    source
-  });
-};
-
-export const trackFeatureView = (featureName: string) => {
-  trackPlausibleEvent('Feature View', { 
-    feature: featureName
-  });
-};
-
-export const trackSectionView = (sectionName: string) => {
+// Internal helper for section visibility tracking
+const trackSectionView = (sectionName: string) => {
   trackPlausibleEvent('Section View', { 
     section: sectionName
-  });
-};
-
-export const trackVideoPlay = (videoTitle: string) => {
-  trackPlausibleEvent('Video Play', { 
-    video: videoTitle
-  });
-};
-
-export const trackDemoInteraction = (stepName: string) => {
-  trackPlausibleEvent('Demo Interaction', { 
-    step: stepName
   });
 };
 

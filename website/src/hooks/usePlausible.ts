@@ -2,21 +2,6 @@
 
 import { useCallback } from 'react';
 
-declare global {
-  interface Window {
-    plausible: (
-      event: string, 
-      options?: { 
-        props?: Record<string, string | number | boolean>;
-        callback?: () => void;
-        revenue?: { currency: string; amount: number | string };
-        interactive?: boolean;
-        u?: string;
-      }
-    ) => void;
-  }
-}
-
 export function usePlausible() {
   const trackEvent = useCallback((eventName: string, options?: {
     props?: Record<string, string | number | boolean>;
@@ -93,6 +78,67 @@ export function usePlausible() {
     });
   }, [trackEvent]);
 
+  const trackScrollDepth = useCallback((percentage: number) => {
+    trackEvent('scroll_depth', { 
+      props: {
+        percentage
+      }
+    });
+  }, [trackEvent]);
+
+  const trackAnchorClick = useCallback((anchor: string, from: string) => {
+    trackEvent('anchor_click', { 
+      props: {
+        anchor,
+        from
+      }
+    });
+  }, [trackEvent]);
+
+  const trackVideoComplete = useCallback((videoTitle: string, duration?: number) => {
+    trackEvent('video_complete', { 
+      props: {
+        video: videoTitle,
+        ...(duration ? { duration } : {})
+      }
+    });
+  }, [trackEvent]);
+
+  const trackFAQExpand = useCallback((question: string, index: number) => {
+    trackEvent('faq_expand', { 
+      props: {
+        question,
+        index
+      }
+    });
+  }, [trackEvent]);
+
+  const trackCopyCommand = useCallback((command: string, location: string) => {
+    trackEvent('copy_command', { 
+      props: {
+        command,
+        location
+      }
+    });
+  }, [trackEvent]);
+
+  const trackEngagementTime = useCallback((sectionName: string, timeSpent: number) => {
+    trackEvent('engagement_time', { 
+      props: {
+        section: sectionName,
+        time_seconds: Math.round(timeSpent)
+      }
+    });
+  }, [trackEvent]);
+
+  const trackHeaderClick = useCallback((item: string) => {
+    trackEvent('header_click', { 
+      props: {
+        item
+      }
+    });
+  }, [trackEvent]);
+
   return { 
     trackEvent,
     trackDownload,
@@ -101,6 +147,13 @@ export function usePlausible() {
     trackFeatureView,
     trackSectionView,
     trackVideoPlay,
-    trackDemoInteraction
+    trackDemoInteraction,
+    trackScrollDepth,
+    trackAnchorClick,
+    trackVideoComplete,
+    trackFAQExpand,
+    trackCopyCommand,
+    trackEngagementTime,
+    trackHeaderClick
   };
 }

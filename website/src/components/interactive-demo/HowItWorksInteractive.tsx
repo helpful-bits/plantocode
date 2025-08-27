@@ -150,7 +150,7 @@ export function HowItWorksInteractive() {
         {/* Main steps list */}
         <div className="interactive-demo-container max-w-4xl mx-auto px-0 sm:px-4 space-y-[250px] sm:space-y-[300px] lg:space-y-[450px]">
           {STEPS.map(({ id, title, Component }, index) => (
-            <StepController key={id} className="py-4">
+            <StepController key={id} className="py-4" stepName={title}>
               {({ isInView, resetKey }) => (
                 <div className="space-y-4">
                   <div 

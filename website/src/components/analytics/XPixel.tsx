@@ -3,18 +3,6 @@
 import { useEffect } from 'react';
 import Script from 'next/script';
 
-declare global {
-  interface Window {
-    twq: {
-      (action: string, ...args: any[]): void;
-      exe?: (...args: any[]) => void;
-      queue?: any[];
-      version?: string;
-      loaded?: boolean;
-    };
-  }
-}
-
 export function XPixel() {
   const pixelId = process.env.NEXT_PUBLIC_X_PIXEL_ID;
 
