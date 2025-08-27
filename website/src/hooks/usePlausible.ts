@@ -32,7 +32,7 @@ export function usePlausible() {
 
   // Specific funnel event handlers
   const trackDownload = useCallback((location: string, version?: string, callback?: () => void) => {
-    trackEvent('Download Click', { 
+    trackEvent('download_click', { 
       props: {
         location, 
         version: version || 'latest'
