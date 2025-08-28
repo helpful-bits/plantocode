@@ -23,30 +23,28 @@ pub async fn list_project_files_command(
         project_directory
     );
 
-    // Validate project_directory parameter
-    let project_path = std::path::Path::new(&project_directory);
-    if !project_path.is_absolute() {
-        return Err(format!(
-            "Project directory path must be absolute: {}",
-            project_directory
-        ));
-    }
+    // Use canonicalize to properly handle all path formats (UNC, relative, symlinks, etc.)
+    let project_path = match std::path::Path::new(&project_directory).canonicalize() {
+        Ok(path) => path,
+        Err(e) => {
+            return Err(format!(
+                "Failed to resolve project directory path '{}': {}",
+                project_directory, e
+            ));
+        }
+    };
 
-    if !project_path.exists() {
-        return Err(format!(
-            "Project directory does not exist: {}",
-            project_directory
-        ));
-    }
+    // canonicalize() already ensures the path exists and is absolute
+    info!("Canonical path: {}", project_path.display());
 
     // Use git_utils to get all non-ignored files
     let (relative_paths, is_git_repo) =
-        git_utils::get_all_non_ignored_files(&project_directory).map_err(|e| e.to_string())?;
+        git_utils::get_all_non_ignored_files(&project_path).map_err(|e| e.to_string())?;
 
     if !is_git_repo {
         return Err(format!(
             "Directory is not a git repository: {}",
-            project_directory
+            project_path.display()
         ));
     }
 

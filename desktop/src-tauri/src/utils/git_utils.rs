@@ -29,6 +29,19 @@ pub fn get_all_non_ignored_files(path: impl AsRef<Path>) -> AppResult<(Vec<PathB
 
     // Use git command to get tracked and untracked files (excluding ignored ones)
     // This matches the frontend approach: git ls-files --cached --others --exclude-standard
+    #[cfg(target_os = "windows")]
+    let output = {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        
+        std::process::Command::new("git")
+            .args(&["ls-files", "--cached", "--others", "--exclude-standard"])
+            .current_dir(path)
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+    };
+    
+    #[cfg(not(target_os = "windows"))]
     let output = std::process::Command::new("git")
         .args(&["ls-files", "--cached", "--others", "--exclude-standard"])
         .current_dir(path)

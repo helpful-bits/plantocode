@@ -1130,12 +1130,12 @@ export async function logError(
     
     void invoke('log_client_error', {
       level: 'ERROR',
-      error_type: errorInfo.type ?? 'UNKNOWN_ERROR',
+      errorType: errorInfo.type ?? 'UNKNOWN_ERROR',
       message: errorInfo.message,
       context: context || undefined,
       stack: errorLike?.stack || undefined,
       metadata: enrichedMetadata ? JSON.stringify(enrichedMetadata) : undefined,
-      app_version: appVersion,
+      appVersion: appVersion,
       platform: platform
     });
   } catch (loggingError) {
