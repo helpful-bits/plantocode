@@ -18,8 +18,8 @@ export const metadata: Metadata = {
     template: '%s | Vibe Manager',
     default: 'Vibe Manager - AI code cleanup specialist',
   },
-  description: 'Vibe Manager helps AI agents map files, merge multi-model plans, and ship correct changes - without sending your whole codebase to the cloud. Local-first.',
-  keywords: ['AI coding assistant', 'codebase context', 'find relevant files', 'LLM orchestration', 'implementation plan', 'local-first', 'multi-model planning', 'deep research for code', 'large codebase navigation', 'developer tools', 'code intelligence', 'file discovery'],
+  description: 'Vibe Manager helps AI agents map files, merge multi-model plans, and ship correct changes. Sends only selected context to AI providers. Local storage for sessions.',
+  keywords: ['AI coding assistant', 'codebase context', 'find relevant files', 'LLM orchestration', 'implementation plan', 'local storage', 'multi-model planning', 'deep research for code', 'large codebase navigation', 'developer tools', 'code intelligence', 'file discovery'],
   authors: [{ name: 'Vibe Manager Team' }],
   creator: 'Vibe Manager',
   publisher: 'Vibe Manager',
@@ -35,7 +35,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: 'Vibe Manager - AI code cleanup specialist',
-    description: 'Vibe Manager helps AI agents map files, merge multi-model plans, and ship correct changes - without sending your whole codebase to the cloud. Local-first.',
+    description: 'Vibe Manager helps AI agents map files, merge multi-model plans, and ship correct changes. Sends only selected context to AI providers. Local storage for sessions.',
     url: 'https://www.vibemanager.app/',
     siteName: 'Vibe Manager',
     images: [{
@@ -51,7 +51,7 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: 'Vibe Manager - AI code cleanup specialist',
-    description: 'Vibe Manager helps AI agents map files, merge multi-model plans, and ship correct changes - without sending your whole codebase to the cloud. Local-first.',
+    description: 'Vibe Manager helps AI agents map files, merge multi-model plans, and ship correct changes. Sends only selected context to AI providers. Local storage for sessions.',
     images: [{
       url: cdnUrl('/images/og-image.png'),
       alt: 'Vibe Manager - AI-Powered Context Curation for Large Codebases',
@@ -130,7 +130,7 @@ const websiteJsonLd: WebSite = {
   '@type': 'WebSite',
   name: 'Vibe Manager',
   url: 'https://www.vibemanager.app',
-  description: 'Vibe Manager helps AI agents map files, merge multi-model plans, and ship correct changes - without sending your whole codebase to the cloud. Local-first.',
+  description: 'Vibe Manager helps AI agents map files, merge multi-model plans, and ship correct changes. Sends only selected context to AI providers. Local storage for sessions.',
 };
 
 const organizationJsonLd: Organization = {

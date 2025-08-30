@@ -14,9 +14,16 @@ import App from "./app";
 // Initialize network error interceptor
 initializeFetchInterceptor();
 
-// Attach Rust console to forward logs to DevTools
+// Initialize simple performance logging
 (async () => {
+  // Attach Rust console to forward logs to DevTools
   await attachConsole();
+  
+  // Initialize React performance profiler
+  if (import.meta.env.DEV) {
+    const { initReactProfiler } = await import("./utils/react-performance-profiler");
+    initReactProfiler();
+  }
 })();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(

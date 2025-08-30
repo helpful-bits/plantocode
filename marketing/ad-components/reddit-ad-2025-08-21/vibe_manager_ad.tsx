@@ -51,12 +51,12 @@ export default function VibeManagerAd() {
     <div className="ad-container">
       {/* Title */}
       <h1 className="title">
-        Capture intent → ship the right change.
+        From idea to solid plan. Fast.
       </h1>
 
       {/* Subtitle */}
       <p className="subtitle">
-        Holds the map: relevant files, then a reviewable plan.
+        Type it. Voice it. Show it on screen. Get a plan that works.
       </p>
 
       {/* Panels */}
@@ -70,8 +70,8 @@ export default function VibeManagerAd() {
         </div>
 
         <p className="panel__description">
-          Type or talk your mental flow. We structure goals, constraints, and
-          affected areas. Video optional - great when complex.
+          Describe what you want. Type it, speak it, or record your screen.
+          We extract goals, constraints, and context automatically.
         </p>
 
         {/* Easy to use stamp */}
@@ -103,8 +103,8 @@ export default function VibeManagerAd() {
         </div>
 
         <p className="panel__description">
-          Leading models draft competing plans with explicit trade-offs.
-          2 button clicks - find files and create implementation plan.
+          15+ models available. Run one or all in parallel.
+          Click "Find Files" first, then "Create Plan".
         </p>
       </Panel>
 
@@ -131,8 +131,8 @@ export default function VibeManagerAd() {
         </div>
 
         <p className="panel__description">
-          One blueprint with exact file ops, diffs, and validation checkpoints.
-          Honest work, ready to ship.
+          Select multiple plans. Click merge. Get one unified blueprint
+          with the best of each approach.
         </p>
       </Panel>
 
@@ -142,7 +142,7 @@ export default function VibeManagerAd() {
 
       {/* Footer tagline */}
       <footer className="footer">
-        Local-first. Code stays in your Git repo, .gitignore respected, large/binary files auto-filtered; inputs cleaned.
+        Local storage. Direct to AI providers. We handle auth and billing, nothing else.
       </footer>
     </div>
   );

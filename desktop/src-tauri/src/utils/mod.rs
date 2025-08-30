@@ -16,6 +16,7 @@ pub mod job_ui_metadata_builder;
 pub mod markdown_utils;
 pub mod path_extraction;
 pub mod path_utils;
+pub mod title_generation;
 pub mod token_estimator;
 pub mod xml_utils;
 

@@ -5,8 +5,6 @@ use std::env;
 
 use tauri::Emitter;
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-use tauri_plugin_updater::UpdaterExt;
 
 pub mod api_clients;
 pub mod app_setup;
@@ -28,6 +26,7 @@ use crate::auth::auth0_state::{Auth0StateStore, cleanup_old_attempts};
 use crate::db_utils::{BackgroundJobRepository, SessionRepository, SettingsRepository};
 use crate::error::AppError;
 use crate::services::config_cache_service::ConfigCache;
+use crate::services::terminal_manager::TerminalManager;
 use crate::utils::FileLockManager;
 use dotenvy::dotenv;
 use log::{debug, error, info, warn};
@@ -106,6 +105,8 @@ pub(crate) static FILE_LOCK_MANAGER: OnceCell<Arc<FileLockManager>> = OnceCell::
 pub(crate) static GLOBAL_APP_HANDLE: OnceCell<tauri::AppHandle> = OnceCell::const_new();
 
 fn main() {
+    fix_path_env::fix();
+    
     dotenv().ok();
 
     // Initialize env_logger for console logging
@@ -131,7 +132,9 @@ fn main() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_store::Builder::default().build());
+        .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(tauri_plugin_os::init());
+    
     
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
@@ -151,6 +154,7 @@ fn main() {
 
             // Store global app handle for error logging
             let _ = GLOBAL_APP_HANDLE.set(app.handle().clone());
+            
 
             // Keyring is used for secure storage (OS native credential vault)
             info!("Using OS keyring for secure credential storage.");
@@ -162,6 +166,10 @@ fn main() {
                     panic!("CRITICAL: Async initialization failed: {}", e);
                 }
             });
+
+            // Initialize TerminalManager for managing Claude CLI processes
+            let terminal_manager = Arc::new(TerminalManager::new(app.handle().clone()));
+            app.manage(terminal_manager);
 
             // NOTE: Auto-sync cache service and cache health monitoring are now initialized
             // in app_setup::services::initialize_api_clients after TokenManager is registered
@@ -383,6 +391,18 @@ fn main() {
             commands::backup_commands::delete_backup_command,
             // Error logging commands
             commands::logging_commands::log_client_error,
+            commands::logging_commands::append_to_log_file,
+            // Terminal logging commands
+            commands::terminal_commands::append_terminal_log_command,
+            commands::terminal_commands::read_terminal_log_command,
+            commands::terminal_commands::clear_terminal_log_command,
+            commands::terminal_commands::delete_terminal_log_command,
+            commands::terminal_commands::start_terminal_session_command,
+            commands::terminal_commands::write_terminal_input_command,
+            commands::terminal_commands::send_ctrl_c_to_terminal_command,
+            commands::terminal_commands::resize_terminal_session_command,
+            commands::terminal_commands::kill_terminal_session_command,
+            commands::terminal_commands::get_terminal_session_status_command,
         ])
         // Use the context we created earlier
         .run(tauri_context)

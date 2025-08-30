@@ -103,12 +103,13 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         // Create LLM task runner
         let task_runner = LlmTaskRunner::new(app_handle.clone(), job.clone(), llm_config);
 
-        // Add initial paths context to the task description
-        let initial_paths_text = if payload.initial_paths.is_empty() {
-            "No initial paths were found through AI relevance assessment.".to_string()
+        // Create task description with initial paths context
+        let task_with_context = if payload.initial_paths.is_empty() {
+            payload.task_description.clone()
         } else {
             format!(
-                "Initial paths found through AI relevance assessment:\n{}",
+                "{}\n\nPreviously identified files:\n{}",
+                payload.task_description,
                 payload
                     .initial_paths
                     .iter()
@@ -118,14 +119,9 @@ impl JobProcessor for ExtendedPathFinderProcessor {
             )
         };
 
-        let enhanced_task_description = format!(
-            "The primary task is: '{}'.\nBased on prior analysis, the following files are considered highly relevant: \n{}.\n\nYour specific goal is to identify any OTHER CRITICALLY IMPORTANT files that were missed AND are directly related to or utilized by the files listed above, or are essential auxiliary files (e.g. test files, configuration for these specific files). Do NOT re-list files from the list above. Be conservative; only add files if they are truly necessary additions. Provide the additions as a JSON list like [\"path/to/new_file1.ext\"]. If no additional files are critical, return an empty list.",
-            payload.task_description, initial_paths_text
-        );
-
         // Create prompt context
         let prompt_context = LlmPromptContext {
-            task_description: enhanced_task_description,
+            task_description: task_with_context,
             file_contents: Some(file_contents),
             directory_tree: Some(directory_tree.clone()),
         };

@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 
-import type React from "react";
+import React, { Profiler } from "react";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { logError } from "@/utils/error-handling";
+import { onRender } from "@/utils/react-performance-profiler";
 
 // Force client-side only rendering to avoid hydration issues
 // This component will only render its children when running in browser
@@ -29,6 +30,15 @@ import { TextImprovementProvider } from "@/contexts/text-improvement";
 import { BillingProvider } from "@/contexts/billing-context";
 import { TooltipProvider } from "@/ui/tooltip";
 import { ScreenRecordingProvider } from "@/contexts/screen-recording";
+import { TerminalSessionsProvider } from "@/contexts/terminal-sessions";
+
+// Helper component for profiling individual providers when needed
+// @ts-expect-error Intentionally unused - available for developers to use when profiling
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const Profiled = ({ id, children }: { id: string; children: React.ReactNode }) => {
+  if (!import.meta.env.DEV) return <>{children}</>;
+  return <Profiler id={id} onRender={onRender}>{children}</Profiler>;
+};
 
 export interface ProvidersWrapperProps {
   children: React.ReactNode;
@@ -82,11 +92,13 @@ export function ProvidersWrapper({
                 <ProjectProvider>
                   <SessionProvider>
                     <BackgroundJobsProvider>
-                      <BillingProvider>
-                        <TextImprovementProvider>
-                          {children}
-                        </TextImprovementProvider>
-                      </BillingProvider>
+                      <TerminalSessionsProvider>
+                        <BillingProvider>
+                          <TextImprovementProvider>
+                            {children}
+                          </TextImprovementProvider>
+                        </BillingProvider>
+                      </TerminalSessionsProvider>
                     </BackgroundJobsProvider>
                   </SessionProvider>
                 </ProjectProvider>

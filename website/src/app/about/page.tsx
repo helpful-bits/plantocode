@@ -32,7 +32,7 @@ export default function AboutPage() {
                 Vibe Manager acts as the competent middle manager your AI agents need. We curate the perfect context from your codebase, ensuring your agents have exactly what they need to understand your project and build correctly from the start.
               </p>
               <p className="text-muted-foreground leading-relaxed">
-                We believe your code should remain yours. Vibe Manager operates with a local-first architecture, meaning your codebase and project files stay on your machine. Only the specific context you choose to share is transmitted to AI providers when needed.
+                We believe in transparency. Vibe Manager stores sessions locally and acts as a proxy to AI providers. When you use AI features, the context you select is sent to providers like OpenAI, Google, or Anthropic for processing. You always see what's being sent before confirming.
               </p>
             </section>
 

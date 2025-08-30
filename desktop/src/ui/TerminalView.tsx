@@ -1,23 +1,54 @@
 import React, { useEffect, useRef } from "react";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal, type IDisposable } from "@xterm/xterm";
-import { Command, Child } from "@tauri-apps/plugin-shell";
 import "@xterm/xterm/css/xterm.css";
 
 interface TerminalViewProps {
-  command: Command<string> | null;
-  initialPrompt?: string;
+  onData?: (data: string) => void;
+  onReady?: (term: import('@xterm/xterm').Terminal) => void;
+  onResize?: (cols: number, rows: number) => void;
+  height?: number | string;
 }
 
-export const TerminalView: React.FC<TerminalViewProps> = ({ command, initialPrompt }) => {
+export const TerminalView: React.FC<TerminalViewProps> = ({ onData, onReady, onResize, height = "100%" }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const dataListenerRef = useRef<IDisposable | null>(null);
-  const childProcessRef = useRef<Child | null>(null);
+  const resizeListenerRef = useRef<IDisposable | null>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  const disposedRef = useRef<boolean>(false);
+  
+  // Store callbacks in refs to avoid re-creation issues
+  const onDataRef = useRef<((data: string) => void) | undefined>(onData);
+  const onReadyRef = useRef<((term: Terminal) => void) | undefined>(onReady);
+  const onResizeRef = useRef<((cols: number, rows: number) => void) | undefined>(onResize);
+  
+  // Update callback refs when props change
+  onDataRef.current = onData;
+  onReadyRef.current = onReady;
+  onResizeRef.current = onResize;
+
+  // Safe fit function with guards
+  const safeFit = () => {
+    if (disposedRef.current || !fitAddonRef.current || !containerRef.current) return;
+    
+    const container = containerRef.current;
+    const rect = container.getBoundingClientRect();
+    
+    // Guard against zero dimensions to prevent "_renderer.value.dimensions" errors
+    if (rect.width > 0 && rect.height > 0) {
+      try {
+        fitAddonRef.current.fit();
+      } catch (error) {
+        // Silently ignore fit errors that can occur during rapid resize or disposal
+        console.warn('Terminal fit error:', error);
+      }
+    }
+  };
 
   useEffect(() => {
-    if (!containerRef.current) return;
+    if (!containerRef.current || disposedRef.current) return;
 
     const term = new Terminal({
       theme: {
@@ -41,91 +72,74 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ command, initialProm
     term.loadAddon(fitAddon);
     term.open(containerRef.current);
 
-    requestAnimationFrame(() => {
-      fitAddon.fit();
+    // Use callback refs to prevent re-creation
+    dataListenerRef.current = term.onData((data) => {
+      if (!disposedRef.current) {
+        onDataRef.current?.(data);
+      }
     });
 
-    const resizeObserver = new ResizeObserver(() => {
-      fitAddon.fit();
+    // Initial fit with proper timing and guards
+    requestAnimationFrame(() => {
+      if (disposedRef.current) return;
+      
+      safeFit();
+      
+      if (!disposedRef.current && termRef.current) {
+        termRef.current.focus();
+        
+        // Register resize handler after fit
+        resizeListenerRef.current = termRef.current.onResize(({ cols, rows }) => {
+          if (!disposedRef.current) {
+            onResizeRef.current?.(cols, rows);
+          }
+        });
+        
+        onReadyRef.current?.(termRef.current);
+      }
     });
+
+    // Setup resize observer with safe fit
+    const resizeObserver = new ResizeObserver(() => {
+      if (!disposedRef.current) {
+        safeFit();
+      }
+    });
+    resizeObserverRef.current = resizeObserver;
     resizeObserver.observe(containerRef.current);
 
     return () => {
-      resizeObserver.disconnect();
-      term.dispose();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!command || !termRef.current) return;
-
-    const terminal = termRef.current;
-    let isClaudeReady = false;
-
-    dataListenerRef.current = terminal.onData((data) => {
-      if (childProcessRef.current) {
-        childProcessRef.current.write(data).catch((err) => {
-          console.error("Failed to write to stdin:", err);
-        });
-      }
-    });
-
-    command.stdout.on("data", (data: string) => {
-      terminal.write(data);
+      disposedRef.current = true;
       
-      if (!isClaudeReady && (data.includes("You:") || data.includes(">") || data.includes("Claude:"))) {
-        isClaudeReady = true;
-        
-        if (initialPrompt && childProcessRef.current) {
-          setTimeout(() => {
-            childProcessRef.current?.write(initialPrompt + "\n").catch((err) => {
-              console.error("Failed to send initial prompt:", err);
-            });
-          }, 100);
-        }
+      if (resizeObserverRef.current) {
+        resizeObserverRef.current.disconnect();
+        resizeObserverRef.current = null;
       }
-    });
-
-    command.stderr.on("data", (data: string) => {
-      terminal.write(data);
-    });
-
-    command.on("close", (data) => {
-      terminal.writeln(`\n\x1b[33mClaude session ended (exit code: ${data.code})\x1b[0m`);
-    });
-
-    command.on("error", (error: string) => {
-      terminal.writeln(`\x1b[31mError: ${error}\x1b[0m`);
-    });
-
-    command.spawn()
-      .then((childProcess) => {
-        childProcessRef.current = childProcess;
-      })
-      .catch((error) => {
-        terminal.writeln(`\x1b[31mFailed to start Claude: ${error}\x1b[0m`);
-      });
-
-    return () => {
+      
+      if (resizeListenerRef.current) {
+        resizeListenerRef.current.dispose();
+        resizeListenerRef.current = null;
+      }
+      
       if (dataListenerRef.current) {
         dataListenerRef.current.dispose();
-      }
-
-      if (childProcessRef.current) {
-        childProcessRef.current.kill().catch(() => {});
-        childProcessRef.current = null;
+        dataListenerRef.current = null;
       }
       
-      command.stdout.removeAllListeners();
-      command.stderr.removeAllListeners();
-      command.removeAllListeners();
+      if (termRef.current) {
+        termRef.current.dispose();
+        termRef.current = null;
+      }
+      
+      fitAddonRef.current = null;
     };
-  }, [command, initialPrompt]);
+  }, []); // Empty dependency array ensures terminal is created only once
+
 
   return (
     <div 
       ref={containerRef} 
-      style={{ width: "100%", height: "100%", backgroundColor: "#1e1e1e" }}
+      style={{ width: "100%", height: height, backgroundColor: "#1e1e1e" }}
     />
   );
 };

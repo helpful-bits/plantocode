@@ -19,6 +19,7 @@ import {
   AlertDialogTitle,
 } from "@/ui/alert-dialog";
 import { Button } from "@/ui/button";
+import { Badge } from "@/ui/badge";
 import { ModelSelectorToggle } from "./_components/ModelSelectorToggle";
 import { setProjectTaskSetting } from "@/actions/project-settings.actions";
 import { type ModelInfo } from "@/types/config-types";
@@ -41,6 +42,8 @@ import { replacePlaceholders } from "@/utils/placeholder-utils";
 import { getContentForStep } from "./_utils/plan-content-parser";
 import { normalizeJobResponse } from '@/utils/response-utils';
 import { usePlausible } from "@/hooks/use-plausible";
+import { useTerminalSessions } from "@/contexts/terminal-sessions/useTerminalSessions";
+import { PlanTerminalModal } from "./_components/PlanTerminalModal";
 
 interface ImplementationPlansPanelProps {
   sessionId: string | null;
@@ -86,6 +89,10 @@ export function ImplementationPlansPanel({
   // State for plan content modal - now only stores the jobId
   const [openedPlanJobId, setOpenedPlanJobId] = useState<string | null>(null);
 
+  // State for terminal modal
+  const [terminalPlanId, setTerminalPlanId] = useState<string | null>(null);
+  const { getActiveCount } = useTerminalSessions();
+
   // Derive the live plan from the context using the jobId
   const livePlanForModal = useMemo(() => {
     if (!openedPlanJobId) return null;
@@ -121,6 +128,11 @@ export function ImplementationPlansPanel({
     setOpenedPlanJobId(null);
   }, []);
 
+  // Handle opening the terminal modal
+  const handleViewTerminal = useCallback((planId: string) => {
+    setTerminalPlanId(planId);
+  }, []);
+
   const { currentSession } = useSessionStateContext();
   const { showNotification } = useNotification();
   
@@ -154,6 +166,19 @@ export function ImplementationPlansPanel({
     setPreloadedPromptContent(null);
     setPreloadedPlanContent({});
   }, [taskDescription, currentSession?.taskDescription, includedPaths, sessionId, projectDirectory]);
+
+  // Listen for terminal open events
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const ce = e as CustomEvent<{ jobId?: string }>;
+      const jobId = ce.detail?.jobId;
+      if (typeof jobId === 'string' && jobId.length > 0) {
+        setTerminalPlanId(jobId); 
+      }
+    };
+    window.addEventListener('open-plan-terminal', handler as EventListener);
+    return () => window.removeEventListener('open-plan-terminal', handler as EventListener);
+  }, []);
 
   // Validation for create functionality
   const canCreatePlan = Boolean(
@@ -527,7 +552,14 @@ export function ImplementationPlansPanel({
       onMouseEnter={handlePreloadPrompt}
     >
       <header className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-semibold text-foreground">Implementation Plans</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-semibold text-foreground">Implementation Plans</h2>
+          {getActiveCount() > 0 && (
+            <Badge variant="secondary" className="text-xs">
+              {getActiveCount()} active terminal{getActiveCount() > 1 ? 's' : ''}
+            </Badge>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           {onCreatePlan && allowedModelsForPlan.length > 1 && (
             <ModelSelectorToggle
@@ -651,6 +683,7 @@ export function ImplementationPlansPanel({
                 onPreloadPlanContent={() => handlePreloadPlanContent(plan)}
                 isSelected={selectedPlanIds.includes(plan.id)}
                 onToggleSelection={handleTogglePlanSelection}
+                onViewTerminal={handleViewTerminal}
               />
             ))}
           </div>
@@ -693,6 +726,8 @@ export function ImplementationPlansPanel({
           mergeInstructions={mergeInstructions}
           onMergeInstructionsChange={handleMergeInstructionsChange}
           selectedCount={selectedPlanIds.length}
+          // Terminal props
+          onOpenTerminal={handleViewTerminal}
         />
       )}
 
@@ -707,6 +742,16 @@ export function ImplementationPlansPanel({
         error={promptCopyModal.error}
         sessionName={currentSession?.name || ""}
       />
+
+      {/* Terminal Modal */}
+      {terminalPlanId && (
+        <PlanTerminalModal
+          open={true}
+          onOpenChange={(open) => !open && setTerminalPlanId(null)}
+          planJobId={terminalPlanId}
+          title={implementationPlans.find(p => p.id === terminalPlanId)?.prompt}
+        />
+      )}
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog

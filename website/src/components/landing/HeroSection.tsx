@@ -49,12 +49,12 @@ export function HeroSection() {
       <div className="relative text-center px-4 sm:px-6 lg:px-8 w-full max-w-7xl mx-auto my-8">
         {/* Primary heading - Priority content for LCP */}
         <h1 className="relative text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-6 leading-tight text-hero-title" style={{ contentVisibility: 'auto' }}>
-          Vibe Manager: Stop babysitting your AI agent.
+          From idea to solid plan. Fast.
         </h1>
 
         {/* Subtitle - Priority content for LCP */}
         <p className="text-xl sm:text-2xl md:text-3xl text-description-muted mb-8 leading-relaxed max-w-4xl mx-auto" style={{ contentVisibility: 'auto' }}>
-          Create better prompts and implementation plans for your coding agents. Use voice-to-text and selective text edits, capture screen context, and pull in real-time research to produce structured, self-consistent tasks - fast.
+          Tell it what you want to build. Type, talk, or show it on screen. AI finds the right files, generates plans with multiple models, and gives you a blueprint your coding agent can actually use.
         </p>
 
         {/* Vibe Manager Panels Flow - Exact ad design with website colors */}
@@ -76,8 +76,8 @@ export function HeroSection() {
               </div>
 
               <p className="vibe-panel__description">
-                Type or talk your mental flow. We structure goals, constraints, and
-                affected areas. Video optional - great when complex.
+                Describe what you want. Type it, speak it, or record your screen.
+                We extract goals, constraints, and context automatically.
               </p>
             </div>
 
@@ -122,7 +122,8 @@ export function HeroSection() {
               </div>
 
               <p className="vibe-panel__description">
-                Top models incl. GPT-5, Claude, Gemini, o-series, & DeepSeek draft competing plans with explicit trade-offs. 2 button clicks - find files and create implementation plan.
+                15+ models available. Run one or run them all in parallel. 
+                Click "Find Files" first, then "Create Plan". Watch the tokens and costs before you commit.
               </p>
             </div>
 
@@ -149,8 +150,8 @@ export function HeroSection() {
               </div>
 
               <p className="vibe-panel__description">
-                One blueprint with exact file ops, diffs, and validation checkpoints.
-                Honest work, ready to ship.
+                Select multiple plans. Click merge. Get one unified blueprint 
+                with the best of each approach. Copy it straight to your agent.
               </p>
             </div>
           </div>
@@ -172,8 +173,8 @@ export function HeroSection() {
                     </div>
 
                     <p className="vibe-panel__description">
-                      Type or talk your mental flow. We structure goals, constraints, and
-                      affected areas. Video optional - great when complex.
+                      Describe what you want. Type it, speak it, or record your screen.
+                      We extract goals, constraints, and context automatically.
                     </p>
                   </div>
                 </div>
@@ -219,7 +220,8 @@ export function HeroSection() {
                     </div>
 
                     <p className="vibe-panel__description">
-                      Top models incl. GPT-5, Claude, Gemini, o-series, & DeepSeek draft competing plans with explicit trade-offs. 2 button clicks - find files and create implementation plan.
+                      15+ models available. Run one or run them all in parallel. 
+                      Click "Find Files" first, then "Create Plan". Watch the tokens and costs before you commit.
                     </p>
                   </div>
                 </div>
@@ -247,8 +249,8 @@ export function HeroSection() {
                     </div>
 
                     <p className="vibe-panel__description">
-                      One blueprint with exact file ops, diffs, and validation checkpoints.
-                      Honest work, ready to ship.
+                      Select multiple plans. Click merge. Get one unified blueprint 
+                      with the best of each approach. Copy it straight to your agent.
                     </p>
                   </div>
                 </div>
@@ -265,8 +267,8 @@ export function HeroSection() {
                     </div>
 
                     <p className="vibe-panel__description">
-                      Type or talk your mental flow. We structure goals, constraints, and
-                      affected areas. Video optional - great when complex.
+                      Describe what you want. Type it, speak it, or record your screen.
+                      We extract goals, constraints, and context automatically.
                     </p>
                   </div>
                 </div>
@@ -311,7 +313,8 @@ export function HeroSection() {
                     </div>
 
                     <p className="vibe-panel__description">
-                      Top models incl. GPT-5, Claude, Gemini, o-series, & DeepSeek draft competing plans with explicit trade-offs. 2 button clicks - find files and create implementation plan.
+                      15+ models available. Run one or run them all in parallel. 
+                      Click "Find Files" first, then "Create Plan". Watch the tokens and costs before you commit.
                     </p>
                   </div>
                 </div>
@@ -338,8 +341,8 @@ export function HeroSection() {
                     </div>
 
                     <p className="vibe-panel__description">
-                      One blueprint with exact file ops, diffs, and validation checkpoints.
-                      Honest work, ready to ship.
+                      Select multiple plans. Click merge. Get one unified blueprint 
+                      with the best of each approach. Copy it straight to your agent.
                     </p>
                   </div>
                 </div>
@@ -412,7 +415,7 @@ export function HeroSection() {
               whileTap={{ scale: 0.95 }}
             >
                 <Button asChild size="lg" variant="gradient-outline">
-                  <Link href="#how-it-works" className="no-hover-effect cursor-pointer">
+                  <Link href="/demo" className="no-hover-effect cursor-pointer">
                     Try the interactive demo
                   </Link>
                 </Button>

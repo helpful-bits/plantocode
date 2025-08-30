@@ -187,6 +187,9 @@ pub enum AppError {
 
     #[error("Video analysis error: {0}")]
     VideoAnalysisError(String),
+
+    #[error("Terminal error: {0}")]
+    TerminalError(String),
 }
 
 impl From<std::io::Error> for AppError {
@@ -312,6 +315,7 @@ impl From<AppError> for SerializableError {
             AppError::TaskFinalizationFailed(_) => "TASK_FINALIZATION_FAILED",
             AppError::VideoAnalysisError(_) => "VIDEO_ANALYSIS_ERROR",
             AppError::UpdaterError(_) => "UPDATER_ERROR",
+            AppError::TerminalError(_) => "TERMINAL_ERROR",
         }
         .to_string();
 

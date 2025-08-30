@@ -1,6 +1,8 @@
 use log::{error, info, warn};
 use serde_json::Value;
 use uuid::Uuid;
+use crate::utils::title_generation::generate_plan_title;
+use tokio::time::{timeout, Duration};
 
 use crate::error::{AppError, AppResult};
 use crate::jobs::types::{JobPayload, JobUIMetadata};
@@ -206,6 +208,40 @@ pub async fn create_and_queue_background_job(
     // Create a unique job ID
     let job_id = format!("job_{}", Uuid::new_v4());
 
+    // Generate title for ImplementationPlan jobs
+    let mut generated_title_opt: Option<String> = None;
+    if matches!(task_type_enum, TaskType::ImplementationPlan) {
+        let req_id = format!("{}:title", job_id);
+        let td = prompt_text.to_string();
+        let app_handle_clone = app_handle.clone();
+        let handle = tokio::spawn(async move {
+            generate_plan_title(&app_handle_clone, &td, Some(req_id), None).await
+        });
+        match timeout(Duration::from_millis(2500), handle).await {
+            Ok(Ok(Ok(Some(t)))) => { generated_title_opt = Some(t); }
+            Ok(Ok(Ok(None))) => { /* empty title, keep None */ }
+            Ok(Ok(Err(e))) => { warn!("Title generation failed: {:?}", e); }
+            Ok(Err(join_err)) => { warn!("Title join error: {:?}", join_err); }
+            Err(_) => { warn!("Title generation timed out"); }
+        }
+    }
+
+    // Compute display name using generated title if available
+    let default_display_name = prompt_text
+        .lines()
+        .next()
+        .unwrap_or(prompt_text)
+        .trim()
+        .chars()
+        .take(70)
+        .collect::<String>();
+
+    let display_name = if matches!(task_type_enum, TaskType::ImplementationPlan) {
+        generated_title_opt.clone().unwrap_or_else(|| default_display_name.clone())
+    } else {
+        default_display_name.clone()
+    };
+
     // Inject job_id into the payload by cloning and updating it
     let mut payload_with_job_id = payload_for_worker.clone();
     inject_job_id_into_payload(&mut payload_with_job_id, &job_id);
@@ -242,6 +278,15 @@ pub async fn create_and_queue_background_job(
             }
         }
 
+        // Add generated title to workflow metadata if it's an implementation plan workflow
+        if matches!(task_type_enum, TaskType::ImplementationPlan) {
+            if let Some(ref t) = generated_title_opt {
+                if let serde_json::Value::Object(ref mut task_data_map) = workflow_metadata.task_data {
+                    task_data_map.insert("generated_title".to_string(), serde_json::Value::String(t.clone()));
+                }
+            }
+        }
+
         workflow_metadata
     } else {
         // Simple job
@@ -272,15 +317,7 @@ pub async fn create_and_queue_background_job(
             }
         }
 
-        builder = builder.task_data(task_data).display_name(Some(
-            prompt_text
-                .lines()
-                .next()
-                .unwrap_or("Untitled Job")
-                .chars()
-                .take(60)
-                .collect::<String>(),
-        ));
+        builder = builder.task_data(task_data).display_name(Some(display_name.clone()));
         builder.build()
     };
 
@@ -288,6 +325,13 @@ pub async fn create_and_queue_background_job(
     let mut metadata_value = serde_json::to_value(&ui_metadata).map_err(|e| {
         AppError::SerializationError(format!("Failed to serialize JobUIMetadata: {}", e))
     })?;
+
+    // Add generated_title to metadata if present
+    if let Some(t) = &generated_title_opt {
+        if let Some(obj) = metadata_value.as_object_mut() {
+            obj.insert("generated_title".to_string(), serde_json::Value::String(t.clone()));
+        }
+    }
 
     // Add additional workflow parameters at the top level for workflow jobs
     if let Some(ref additional_data) = additional_params {

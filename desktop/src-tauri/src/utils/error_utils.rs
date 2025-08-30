@@ -150,6 +150,7 @@ pub fn format_user_error(error: &AppError) -> String {
         AppError::TaskFinalizationFailed(msg) => format!("Task finalization failed: {}", msg),
         AppError::VideoAnalysisError(msg) => format!("Video analysis error: {}", msg),
         AppError::UpdaterError(msg) => format!("Update error: {}", msg),
+        AppError::TerminalError(msg) => format!("Terminal error: {}", msg),
     }
 }
 

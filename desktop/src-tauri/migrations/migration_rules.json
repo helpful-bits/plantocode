@@ -62,6 +62,15 @@
       "description": "Add audit logging tables for compliance",
       "required": false,
       "priority": 50
+    },
+    {
+      "id": "add_terminal_sessions",
+      "from_version": "*",
+      "to_version": ">=1.0.17",
+      "migration_file": "migrations/features/terminal_sessions.sql",
+      "description": "Add terminal sessions table for Claude CLI integration",
+      "required": true,
+      "priority": 25
     }
   ]
 }

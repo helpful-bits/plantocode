@@ -5,6 +5,7 @@ pub mod job_metadata_updates;
 pub mod migration_system;
 pub mod session_repository;
 pub mod settings_repository;
+pub mod terminal_sessions_repository;
 
 // Re-export modules
 pub use background_job_repository::BackgroundJobRepository;
@@ -13,6 +14,7 @@ pub use error_log_repository::ErrorLogRepository;
 pub use migration_system::MigrationSystem;
 pub use session_repository::SessionRepository;
 pub use settings_repository::SettingsRepository;
+pub use terminal_sessions_repository::TerminalSessionsRepository;
 
 use crate::error::{AppError, AppResult};
 use crate::models::{DatabaseInfo, TableInfo};

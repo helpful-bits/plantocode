@@ -11,7 +11,7 @@ const MIME_CANDIDATES = [
   'video/mp4;codecs=avc1.42E01E,mp4a.40.2'  // Fallback MP4
 ];
 
-interface AnalysisMetadata extends Omit<StartVideoAnalysisJobParams, 'videoPath' | 'durationMs'> {}
+interface AnalysisMetadata extends Omit<StartVideoAnalysisJobParams, 'videoPath' | 'durationMs' | 'framerate'> {}
 
 interface ScreenRecordingContextValue {
   isRecording: boolean;
@@ -221,7 +221,8 @@ export function ScreenRecordingProvider({ children }: ScreenRecordingProviderPro
                     const result = await startVideoAnalysisJob({
                       ...analysisMetadataRef.current,
                       videoPath: filePath,
-                      durationMs
+                      durationMs,
+                      framerate: options.frameRate || 5
                     });
                     await emit('video-analysis-started', { jobId: result.jobId });
                   } catch (error) {

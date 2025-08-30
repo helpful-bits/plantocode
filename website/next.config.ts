@@ -54,6 +54,12 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'd2tyb0wucqqf48.cloudfront.net',
+        port: '',
+        pathname: '/**',
+      },
     ],
     // Enable modern image formats
     formats: ['image/webp', 'image/avif'],

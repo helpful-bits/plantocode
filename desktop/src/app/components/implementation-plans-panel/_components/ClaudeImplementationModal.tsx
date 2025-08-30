@@ -13,8 +13,6 @@ interface ClaudeImplementationModalProps {
 export const ClaudeImplementationModal: React.FC<ClaudeImplementationModalProps> = ({
   isOpen,
   onClose,
-  command,
-  prompt
 }) => {
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -23,7 +21,7 @@ export const ClaudeImplementationModal: React.FC<ClaudeImplementationModalProps>
           <DialogTitle>Implement with Claude Code</DialogTitle>
         </DialogHeader>
         <div className="flex-1 overflow-hidden bg-[#1e1e1e] rounded-md p-2">
-          <TerminalView command={command} initialPrompt={prompt} />
+          <TerminalView />
         </div>
       </DialogContent>
     </Dialog>

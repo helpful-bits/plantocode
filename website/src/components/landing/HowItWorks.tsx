@@ -1,9 +1,8 @@
 /**
- * HowItWorks - Main component showing workflow demonstration with conditional mobile/desktop rendering.
+ * HowItWorks - Video-based workflow demonstration component.
  * 
  * Features:
- * - Mobile: Interactive demo with step-by-step navigation
- * - Desktop: Video-based demonstration with optimized playback
+ * - Video-based demonstration with optimized playback
  * - Accessibility compliance with ARIA labels and semantic structure
  * - Performance optimizations with dynamic imports and lazy loading
  * - Reduced motion support respecting user preferences
@@ -14,11 +13,8 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
 import { useReducedMotion } from 'framer-motion';
 import Reveal from '@/components/motion/Reveal';
-import { ErrorBoundary } from '@/components/interactive-demo/ErrorBoundary';
 import { usePlausible } from '@/hooks/usePlausible';
-
-// Import the interactive component directly to bypass webpack module issues
-import { HowItWorksInteractive } from '../interactive-demo/HowItWorksInteractive';
+import { ScreenshotGallery } from '@/components/demo/ScreenshotGallery';
 
 interface Step {
   title: string;
@@ -68,7 +64,7 @@ const VideoCard = memo(function VideoCard({
   return (
     <div 
       ref={cardRef}
-      className="flex-none w-80 bg-card/60 border border-border/50 rounded-lg p-4"
+      className="flex-none w-96 bg-card/60 border border-border/50 rounded-lg p-5"
       style={{ scrollSnapAlign: 'start' }}
     >
       <div 
@@ -82,11 +78,33 @@ const VideoCard = memo(function VideoCard({
       >
         {step.video && isVisible ? (
           <video 
-            className="w-full h-full object-cover rounded-lg relative z-10"
+            className="w-full h-full object-cover rounded-lg relative z-10 cursor-pointer"
             poster={step.poster?.replace(/\.(jpg|jpeg)$/i, '.webp') || step.poster}
             controls
             preload="metadata"
             playsInline
+            onClick={(e) => {
+              const video = e.currentTarget;
+              // Prevent default click behavior
+              e.preventDefault();
+              
+              // Cross-browser fullscreen support
+              if (video.requestFullscreen) {
+                video.requestFullscreen();
+              } else if ((video as any).webkitRequestFullscreen) {
+                // Safari/old Chrome
+                (video as any).webkitRequestFullscreen();
+              } else if ((video as any).mozRequestFullScreen) {
+                // Firefox
+                (video as any).mozRequestFullScreen();
+              } else if ((video as any).msRequestFullscreen) {
+                // IE/Edge
+                (video as any).msRequestFullscreen();
+              } else if ((video as any).webkitEnterFullscreen) {
+                // iOS Safari
+                (video as any).webkitEnterFullscreen();
+              }
+            }}
             onPlay={() => trackVideoPlay(step.title)}
             onEnded={(e) => {
               const video = e.currentTarget;
@@ -110,11 +128,11 @@ const VideoCard = memo(function VideoCard({
           </div>
         )}
       </div>
-      <div className="flex gap-2 mb-2">
-        <span className="text-primary font-bold text-sm">{index + 1}</span>
-        <h4 className="text-sm font-semibold">{step.title}</h4>
+      <div className="flex gap-2 mb-3">
+        <span className="text-primary font-bold text-base">{index + 1}</span>
+        <h4 className="text-base font-semibold">{step.title}</h4>
       </div>
-      <p className="text-xs text-muted-foreground line-clamp-2">{step.description}</p>
+      <p className="text-sm text-muted-foreground line-clamp-3">{step.description}</p>
     </div>
   );
 });
@@ -188,7 +206,7 @@ export const HowItWorks = memo(function HowItWorks({ steps = defaultSteps }: How
         <div className="text-center mb-12 sm:mb-16">
           <Reveal 
             as="h2" 
-            className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl mb-4 sm:mb-6 text-primary-emphasis font-bold"
+            className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl mb-4 sm:mb-6 text-primary font-bold"
             delay={prefersReducedMotion ? 0 : 0}
           >
             How It Works
@@ -198,35 +216,13 @@ export const HowItWorks = memo(function HowItWorks({ steps = defaultSteps }: How
             className="text-base sm:text-lg md:text-xl max-w-3xl mx-auto leading-relaxed font-medium text-foreground/80 px-4 sm:px-0" 
             delay={prefersReducedMotion ? 0 : 0.05}
           >
-            Experience Vibe Manager's complete workflow through this interactive demonstration. 
-            Each step shows exactly how the tool helps you find the right files, generate better plans, and ship correct changes.
-          </Reveal>
-        </div>
-
-        {/* Always show interactive demo */}
-        <div className="max-w-4xl mx-auto mb-12">
-          <ErrorBoundary>
-            <HowItWorksInteractive />
-          </ErrorBoundary>
-        </div>
-
-        {/* "See it in action" video section */}
-        <div className="max-w-4xl mx-auto mb-8">
-          <Reveal 
-            className="text-center mb-8"
-            delay={prefersReducedMotion ? 0 : 0.1}
-          >
-            <h3 className="text-2xl sm:text-3xl font-bold text-foreground mb-3">
-              See It In Action
-            </h3>
-            <p className="text-base sm:text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-              Watch detailed video demonstrations of each workflow step
-            </p>
+            Type it. Voice it. Record your screen showing the problem. 
+            AI finds the right files, runs multiple models in parallel, then merges their best ideas. Five minutes later, you have a plan.
           </Reveal>
         </div>
 
         {/* Full-width scrollable video container */}
-        <div className="w-full overflow-hidden">
+        <div className="w-full overflow-hidden mb-16">
           <div className="overflow-x-auto">
             <div className="flex gap-4 pb-4 px-4" style={{ scrollSnapType: 'x mandatory', width: 'max-content' }}>
               {flattenedSteps.map((step, index) => (
@@ -241,6 +237,9 @@ export const HowItWorks = memo(function HowItWorks({ steps = defaultSteps }: How
             </div>
           </div>
         </div>
+
+        {/* Screenshot Gallery Section */}
+        <ScreenshotGallery />
 
       </div>
     </section>

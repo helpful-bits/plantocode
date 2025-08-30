@@ -8,6 +8,20 @@ import { useNotification } from "@/contexts/notification-context";
 import { type BackgroundJob } from "@/types/session-types";
 import { setSidebarWidth } from "@/utils/ui-utils";
 import { retryWorkflowStageAction, retryWorkflowAction } from "@/actions/workflows/workflow.actions";
+import { useTerminalSessions } from "@/contexts/terminal-sessions/useTerminalSessions";
+import { invoke } from "@tauri-apps/api/core";
+
+const PROMPT_SENT_KEY_PREFIX = "terminal_prompt_sent:";
+
+// Helper to clear persisted flag
+async function clearPromptSent(jobId: string) {
+  try {
+    await invoke("set_key_value_command", { key: PROMPT_SENT_KEY_PREFIX + jobId, value: "" });
+  } catch (error) {
+    // Silently ignore errors when clearing prompt sent flag
+    console.debug("Failed to clear prompt sent flag:", error);
+  }
+}
 
 export interface SidebarState {
   selectedJob: BackgroundJob | null;
@@ -38,13 +52,16 @@ export interface SidebarManager extends SidebarState {
  */
 export function useSidebarStateManager(): SidebarManager {
   const backgroundJobsContext = useContext(BackgroundJobsContext);
-  const { cancelJob, deleteJob, clearHistory, refreshJobs } = backgroundJobsContext;
+  const { cancelJob, deleteJob, clearHistory, refreshJobs, jobs } = backgroundJobsContext;
 
   // Use the UI layout context
   const { setIsSidebarCollapsed } = useUILayout();
 
   // Use the notification context
   const { showNotification } = useNotification();
+
+  // Use terminal sessions context
+  const { getSession, kill, deleteLog } = useTerminalSessions();
 
   // State as a combined object
   const [state, setState] = useState<SidebarState>({
@@ -256,7 +273,36 @@ export function useSidebarStateManager(): SidebarManager {
       }));
 
       try {
+        const job = jobs?.find(j => j.id === jobId);
+        const isImplementationPlan = job?.taskType === "implementation_plan" || job?.taskType === "implementation_plan_merge";
+        
         await deleteJob(jobId);
+        
+        if (isImplementationPlan) {
+          // Clean up terminal session if running or stuck
+          const session = getSession(jobId);
+          if (session && (session.status === "running" || session.status === "stuck")) {
+            try {
+              await kill(jobId);
+            } catch (error) {
+              console.warn("Failed to kill terminal session during deletion:", error);
+            }
+          }
+          
+          // Delete terminal log
+          try {
+            await deleteLog(jobId);
+          } catch (error) {
+            console.warn("Failed to delete terminal log during deletion:", error);
+          }
+          
+          // Clear persisted prompt sent flag
+          try {
+            await clearPromptSent(jobId);
+          } catch (error) {
+            console.warn("Failed to clear prompt sent flag during deletion:", error);
+          }
+        }
       } finally {
         setState((prev: SidebarState) => ({
           ...prev,
@@ -264,7 +310,7 @@ export function useSidebarStateManager(): SidebarManager {
         }));
       }
     },
-    [deleteJob]
+    [deleteJob, jobs, getSession, kill, deleteLog]
   );
 
   // Handle sidebar collapse toggle

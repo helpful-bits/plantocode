@@ -6,8 +6,8 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
-  title: 'Your repo stays on your machine | Vibe Manager',
-  description: 'Local SQLite storage, you control what\'s sent and when.',
+  title: 'Local Storage, Direct to AI | Vibe Manager',
+  description: 'Local SQLite storage. When you create plans, code goes to AI providers. You control what and when.',
   keywords: [
     'local-first',
     'privacy',
@@ -35,29 +35,29 @@ export default function LocalFirstPage() {
               </Reveal>
               
               <Reveal as="h1" className="text-4xl sm:text-5xl font-bold mb-6 text-foreground">
-                Your repo stays on your machine
+                Local storage. Direct to AI providers.
               </Reveal>
               
               <Reveal className="text-xl text-muted-foreground mb-8 max-w-3xl mx-auto">
-                All code, sessions, and history in local SQLite. Vibe Manager is just a secure proxy to AI providers. You control every byte sent.
+                Sessions and history stored locally. When you create plans, your code goes to OpenAI, Google, or Anthropic. We handle auth and billing.
               </Reveal>
 
               <div className="grid md:grid-cols-2 gap-8 mt-12 text-left">
                 <Reveal className="space-y-4">
                   <h3 className="text-2xl font-semibold text-foreground">Complete Data Sovereignty</h3>
                   <p className="text-muted-foreground">
-                    Everything stored locally: file selections, session history, task descriptions, 
-                    search patterns, workflow states. No cloud dependencies for core functionality. 
-                    Your intellectual property never leaves without explicit approval.
+                    Sessions, history, and settings stored locally in SQLite. 
+                    When you click "Create Plan" or "Find Files", selected code is sent to AI providers. 
+                    You see token counts and costs before confirming.
                   </p>
                 </Reveal>
 
                 <Reveal className="space-y-4" delay={0.1}>
                   <h3 className="text-2xl font-semibold text-foreground">Zero-Trust Architecture</h3>
                   <p className="text-muted-foreground">
-                    Acts purely as authentication and billing proxy. Code flows 
-                    directly to AI providers without intermediate storage or analysis. 
-                    Real-time token cost tracking with full transparency.
+                    Vibe Manager proxies your requests to AI providers, handling authentication and billing. 
+                    Your code goes directly to OpenAI, Google, Anthropic, etc. when you use AI features. 
+                    We don't store your code on our servers.
                   </p>
                 </Reveal>
 
@@ -96,7 +96,7 @@ export default function LocalFirstPage() {
                 <div className="space-y-6">
                   <Reveal className="border border-primary/10 rounded-lg p-6">
                     <h3 className="font-semibold text-foreground mb-2">What exactly stays local?</h3>
-                    <p className="text-muted-foreground">All your code, file selections, session history, and task descriptions are stored in SQLite on your machine. Only specific context you approve gets sent to AI providers.</p>
+                    <p className="text-muted-foreground">Sessions and history are stored locally in SQLite. When you use AI features (Create Plan, Find Files), your selected code and context are sent to AI provider APIs (OpenAI, Google, Anthropic, etc.).</p>
                   </Reveal>
                   <Reveal className="border border-primary/10 rounded-lg p-6" delay={0.1}>
                     <h3 className="font-semibold text-foreground mb-2">How does billing work if it's local?</h3>
@@ -104,7 +104,7 @@ export default function LocalFirstPage() {
                   </Reveal>
                   <Reveal className="border border-primary/10 rounded-lg p-6" delay={0.2}>
                     <h3 className="font-semibold text-foreground mb-2">Can I work offline?</h3>
-                    <p className="text-muted-foreground">File finding, session management, and history work offline. AI features require internet for model API calls, but your code stays on your machine.</p>
+                    <p className="text-muted-foreground">File browsing and session management work offline. AI features send your code to provider APIs. The AI providers process your code on their servers to generate plans.</p>
                   </Reveal>
                 </div>
               </div>

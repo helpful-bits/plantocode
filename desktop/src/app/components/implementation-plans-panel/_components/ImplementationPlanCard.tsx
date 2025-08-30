@@ -1,7 +1,7 @@
 "use client";
 
 import { formatDistanceToNow } from "date-fns";
-import { Info, Eye, Trash2, Loader2, Copy } from "lucide-react";
+import { Info, Eye, Trash2, Loader2, Copy, Terminal, Circle, Check, AlertTriangle } from "lucide-react";
 import React from "react";
 
 import { type BackgroundJob, JOB_STATUSES } from "@/types/session-types";
@@ -20,6 +20,11 @@ import { Checkbox } from "@/ui/checkbox";
 import { getParsedMetadata } from "../../background-jobs-sidebar/utils";
 import { getJobDisplaySessionName } from "../../background-jobs-sidebar/_utils/job-display-utils";
 import { useLiveProgress } from "@/hooks/use-live-progress";
+import { useTerminalSessions } from "@/contexts/terminal-sessions/useTerminalSessions";
+
+// Performance profiling example (enable locally during investigations):
+// import { withProfiler } from "@/utils/react-performance-profiler";
+// export default withProfiler(ImplementationPlanCard, "ImplementationPlanCard");
 
 interface ImplementationPlanCardProps {
   plan: BackgroundJob;
@@ -32,6 +37,7 @@ interface ImplementationPlanCardProps {
   onPreloadPlanContent?: () => void;
   isSelected?: boolean;
   onToggleSelection?: (jobId: string) => void;
+  onViewTerminal?: (planId: string) => void;
 }
 
 
@@ -46,7 +52,10 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
   onPreloadPlanContent,
   isSelected = false,
   onToggleSelection,
+  onViewTerminal,
 }) => {
+  const { getSession } = useTerminalSessions();
+  const terminalSession = getSession(plan.id);
   const parsedMeta = getParsedMetadata(plan.metadata);
   
   // Extract the plan title from metadata
@@ -101,6 +110,24 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
   // For running jobs with content, we can view the delivered content
   const hasContent = JOB_STATUSES.COMPLETED.includes(plan.status) || isStreaming || hasResponseContent;
 
+  // Get terminal status icon
+  const getTerminalStatusIcon = () => {
+    if (!terminalSession) return null;
+    
+    switch (terminalSession.status) {
+      case 'running':
+        return <Circle className="h-3 w-3 fill-green-500 text-green-500 animate-pulse" data-testid="terminal-status-running" />;
+      case 'completed':
+        return <Check className="h-3 w-3 text-green-500" data-testid="terminal-status-completed" />;
+      case 'failed':
+        return <AlertTriangle className="h-3 w-3 text-red-500" data-testid="terminal-status-failed" />;
+      case 'stuck':
+        return <AlertTriangle className="h-3 w-3 text-amber-500" data-testid="terminal-status-stuck" />;
+      default:
+        return null;
+    }
+  };
+
   return (
     <Card 
       className="relative mb-4 overflow-hidden"
@@ -131,9 +158,12 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
               </div>
             )}
             <div className="flex-1">
-              <CardTitle className="text-base">
-                {truncateTitle(planTitle || plan.prompt || sessionName || "Implementation Plan")}
-              </CardTitle>
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-base">
+                  {truncateTitle(planTitle || plan.prompt || sessionName || "Implementation Plan")}
+                </CardTitle>
+                {getTerminalStatusIcon()}
+              </div>
               <CardDescription className="flex flex-wrap gap-x-2 text-xs mt-1">
                 {plan.taskType === "implementation_plan_merge" && (
                   <>
@@ -219,6 +249,20 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
           </div>
 
           <div className="space-x-1">
+            {onViewTerminal && (
+              <Button
+                key="terminal"
+                variant="outline"
+                size="sm"
+                className="text-xs h-7 px-2 py-1"
+                onClick={() => onViewTerminal(plan.id)}
+                data-testid="terminal-button"
+              >
+                <Terminal className="mr-1 h-3.5 w-3.5" />
+                Terminal
+              </Button>
+            )}
+
             <Button
               key="details"
               variant="outline"

@@ -11,7 +11,7 @@ export default function EUPrivacyContent() {
       <blockquote className="border-l-4 border-primary/50 pl-6 py-4 my-6 bg-muted/30 dark:bg-muted/20 rounded-lg">
         <h3 className="font-semibold mb-2">Key Information Summary</h3>
         <p className="text-sm text-muted-foreground">
-          We operate on a local-first principle where your data stays on your device. We are the data controller based in Germany and follow GDPR requirements. We use consent-based analytics and do not sell or share your personal information. Contact legal@vibemanager.app to exercise your privacy rights.
+          We employ a hybrid data processing model combining local storage with cloud-based AI services. As the data controller based in Germany, we comply with GDPR requirements. We process personal data based on consent and legitimate interests, and do not sell or share your personal information. Contact legal@vibemanager.app to exercise your privacy rights.
         </p>
       </blockquote>
 
@@ -85,7 +85,7 @@ export default function EUPrivacyContent() {
         
         <h3 className="text-xl font-medium mb-3 mt-6">Desktop Application Data</h3>
         <p>
-          Our desktop application operates on a local-first principle. Your workflow data, project files, and configurations are primarily stored locally on your device. <strong>We do not scan, index, or transmit the contents of your source code or project files unless you explicitly include them in a workflow prompt.</strong> We may collect anonymized usage statistics and error reports to improve our application performance.
+          Our desktop application employs a distributed architecture where primary data storage occurs locally on your device. Your workflow data, project files, and configurations remain under your direct control. <strong>We do not automatically scan, index, or transmit the contents of your source code or project files. Such content is only processed when you explicitly submit it for AI-powered analysis.</strong> We may collect anonymized usage statistics and error reports to improve our service performance.
         </p>
       </section>
 
@@ -106,19 +106,19 @@ export default function EUPrivacyContent() {
       <section>
         <h2 id="desktop-application" className="text-2xl font-semibold mb-4">Desktop Application</h2>
         <p>
-          Our desktop application is designed with privacy-first principles and operates on a local-first architecture:
+          Our desktop application is designed with a hybrid architecture that combines local data storage with cloud-based AI processing:
         </p>
         <ul className="list-disc list-inside space-y-2 mt-4">
-          <li><strong>Local-First Design:</strong> Your workflow data, project files, configurations, and personal content remain stored locally on your device</li>
+          <li><strong>Local Data Storage:</strong> Your workflow sessions, history, and application configurations remain stored locally on your device</li>
           <li><strong>Limited Transmission:</strong> We don't transmit project contents <strong>except</strong> when you send them in prompts or enable diagnostics. Limited <strong>technical metadata</strong> (e.g., device, version, network) may be sent for security/updates</li>
           <li><strong>Optional Telemetry:</strong> We may collect anonymized usage statistics and error reports to improve application performance. You can opt out of telemetry collection in the application settings</li>
           <li><strong>Data Minimization:</strong> Only essential data required for AI processing is transmitted when you use AI features</li>
         </ul>
         <p className="mt-4">
-          <strong>What Stays Local:</strong> Source code, project files, personal documents, local configurations, workflow history, and any data not explicitly sent through AI prompts.
+          <strong>Local Data:</strong> Your project files, session history, application settings, and any content not explicitly submitted for AI processing remain on your device.
         </p>
         <p className="mt-2">
-          <strong>What's Transmitted:</strong> Only content you explicitly include in AI workflow prompts, anonymized error reports (if enabled), basic usage analytics (if enabled), and limited technical metadata for security/updates.
+          <strong>Data Transmission:</strong> When you utilize AI-powered features within the Service, the content you explicitly select for processing is transmitted to third-party AI service providers. Additionally, we may collect anonymized error reports (if enabled), usage analytics (subject to your consent), and limited technical metadata necessary for security and service updates.
         </p>
       </section>
 

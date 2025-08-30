@@ -395,6 +395,9 @@ Your role is to:
 Filter files effectively to reduce noise and focus on task-relevant content.', 'System prompt for local file filtering workflow stage', '1.0'),
 
 ('default_extended_path_finder', 'extended_path_finder', 'You are an enhanced path finder that identifies comprehensive file paths for complex implementation tasks.
+Given the task description, directory structure, and file contents below, identify which files are most relevant for implementing the task.
+
+If "Previously identified files" are listed in the task description, your goal is to find ANY OTHER CRITICALLY IMPORTANT files that were missed AND are directly related to or utilized by those files, or are essential auxiliary files (e.g. test files, configuration for those specific files). Do NOT re-list files that are already in the "Previously identified files" list.
 
 {{DIRECTORY_TREE}}
 
@@ -405,10 +408,12 @@ Your role is to:
 - Focus on files that will likely need modification
 - Include only the most critical dependencies
 - Provide file paths ordered by implementation priority
+- If previously identified files are provided, find ONLY additional files not in that list
+- Be conservative; only add files if they are truly necessary
 
 Remember: Quality over quantity. Be conservative in your selection.
 
-Return ONLY file paths, one per line, with no additional commentary.', 'Enhanced extended path finder with file count limits and exclusion rules', '2.0'),
+Respond ONLY with the list of relevant file paths from your analysis, one per line. Do not include any other text, explanations, or commentary. If no files are relevant, return an empty response.', 'Enhanced extended path finder with file count limits and exclusion rules', '2.1'),
 
 
 ('default_file_relevance_assessment', 'file_relevance_assessment', 'You are an AI assistant helping to refine a list of files for a software development task.

@@ -9,8 +9,22 @@ import { useNotification } from "@/contexts/notification-context";
 import { createLogger } from "@/utils/logger";
 import { deleteBackgroundJobAction } from "@/actions/background-jobs/jobs.actions";
 import { createMergedImplementationPlanAction } from "@/actions/ai/implementation-plan.actions";
+import { useTerminalSessions } from "@/contexts/terminal-sessions/useTerminalSessions";
+import { invoke } from "@tauri-apps/api/core";
 
 const logger = createLogger({ namespace: "ImplPlansLogic" });
+
+const PROMPT_SENT_KEY_PREFIX = "terminal_prompt_sent:";
+
+// Helper to clear persisted flag
+async function clearPromptSent(jobId: string) {
+  try {
+    await invoke("set_key_value_command", { key: PROMPT_SENT_KEY_PREFIX + jobId, value: "" });
+  } catch (error) {
+    // Silently ignore errors when clearing prompt sent flag
+    console.debug("Failed to clear prompt sent flag:", error);
+  }
+}
 
 interface UseImplementationPlansLogicProps {
   sessionId: string | null;
@@ -22,6 +36,7 @@ export function useImplementationPlansLogic({
   const { jobs, isLoading, refreshJobs } = useBackgroundJobs();
   const { projectDirectory } = useProject();
   const { showNotification } = useNotification();
+  const { getSession, kill, deleteLog } = useTerminalSessions();
 
   // UI state
   const [copiedPlanId, setCopiedPlanId] = useState<string | undefined>(undefined);
@@ -165,6 +180,30 @@ export function useImplementationPlansLogic({
       try {
         const result = await deleteBackgroundJobAction(jobToDelete.id);
         if (result.isSuccess) {
+          // Clean up terminal session if running or stuck
+          const session = getSession(jobToDelete.id);
+          if (session && (session.status === "running" || session.status === "stuck")) {
+            try {
+              await kill(jobToDelete.id);
+            } catch (error) {
+              logger.warn("Failed to kill terminal session during deletion:", error);
+            }
+          }
+          
+          // Delete terminal log
+          try {
+            await deleteLog(jobToDelete.id);
+          } catch (error) {
+            logger.warn("Failed to delete terminal log during deletion:", error);
+          }
+          
+          // Clear persisted prompt sent flag
+          try {
+            await clearPromptSent(jobToDelete.id);
+          } catch (error) {
+            logger.warn("Failed to clear prompt sent flag during deletion:", error);
+          }
+          
           showNotification({
             title: "Plan deleted",
             message: "The implementation plan has been deleted",
@@ -190,7 +229,7 @@ export function useImplementationPlansLogic({
         setIsDeleting((prev) => ({ ...prev, [jobToDelete.id]: false }));
       }
     },
-    [jobToDelete, showNotification, refreshJobs]
+    [jobToDelete, showNotification, refreshJobs, getSession, kill, deleteLog]
   );
 
 

@@ -56,14 +56,14 @@ VALUES (
         "temperature": 0.3
       },
       "extended_path_finder": {
-        "model": "google/gemini-2.5-flash",
-        "allowed_models": ["google/gemini-2.5-flash", "openai/o4-mini"],
+        "model": "openai/gpt-5-mini",
+        "allowed_models": ["google/gemini-2.5-flash", "openai/o4-mini", "openai/gpt-5-mini"],
         "max_tokens": 8192,
         "temperature": 0.15
       },
       "file_relevance_assessment": {
-        "model": "google/gemini-2.5-flash",
-        "allowed_models": ["google/gemini-2.5-flash", "openai/o4-mini"],
+        "model": "openai/gpt-5-mini",
+        "allowed_models": ["google/gemini-2.5-flash", "openai/o4-mini", "openai/gpt-5-mini"],
         "max_tokens": 24000,
         "temperature": 0.2
       },
