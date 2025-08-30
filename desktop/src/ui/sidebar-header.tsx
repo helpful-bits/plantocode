@@ -1,6 +1,6 @@
 "use client";
 
-import { RefreshCw, Trash2, ChevronRight, ChevronLeft } from "lucide-react";
+import { RefreshCw, Trash2, ChevronRight, ChevronLeft, Bell } from "lucide-react";
 import { FC, ComponentType } from "react";
 
 import { Button } from "@/ui/button";
@@ -18,6 +18,7 @@ interface SidebarHeaderProps {
   refreshDisabled: boolean;
   onRefresh: () => void;
   onClearHistory: (daysToKeep?: number) => void;
+  onToggleMonitoringView?: () => void;
   CollapsibleTrigger: ComponentType<any>;
 }
 
@@ -35,6 +36,7 @@ export const SidebarHeader: FC<SidebarHeaderProps> = ({
   refreshDisabled,
   onRefresh,
   onClearHistory,
+  onToggleMonitoringView,
   CollapsibleTrigger,
 }) => {
   return (
@@ -91,6 +93,17 @@ export const SidebarHeader: FC<SidebarHeaderProps> = ({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+
+            {onToggleMonitoringView && (
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8"
+                onClick={onToggleMonitoringView}
+              >
+                <Bell className="h-4 w-4 text-foreground" />
+              </Button>
+            )}
           </>
         )}
 

@@ -385,10 +385,8 @@ section .max-w-5xl {
     transition: transform 0.1s ease-out;
 }
 
-/* Pause animation on hover - works when hovering anywhere in the ticker area */
-.vibe-ticker-container:hover .vibe-ticker-track {
-    animation-play-state: paused;
-}
+/* Animation continues regardless of user interaction */
+/* Removed hover pause to keep continuous scrolling */
 
 
 @keyframes ticker-scroll {

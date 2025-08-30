@@ -15,6 +15,7 @@ pub async fn start_video_analysis_job(
     video_path: String,
     prompt: String,
     duration_ms: i64,
+    framerate: u32,
 ) -> Result<JobCommandResponse, String> {
     info!("Starting video analysis job for file: {}", video_path);
     
@@ -33,8 +34,8 @@ pub async fn start_video_analysis_job(
     let (resolved_model, resolved_temperature, resolved_max_tokens) = model_settings
         .ok_or_else(|| "Failed to get model settings for video analysis".to_string())?;
     
-    debug!("Video analysis parameters - model: {}, temperature: {}, max_tokens: {}, duration_ms: {}", 
-        resolved_model, resolved_temperature, resolved_max_tokens, duration_ms);
+    debug!("Video analysis parameters - model: {}, temperature: {}, max_tokens: {}, duration_ms: {}, framerate: {}", 
+        resolved_model, resolved_temperature, resolved_max_tokens, duration_ms, framerate);
 
     // Generate project hash
     let project_hash = generate_project_hash(&project_directory);
@@ -61,6 +62,7 @@ pub async fn start_video_analysis_job(
         temperature: resolved_temperature,
         system_prompt: Some(composed_prompt.system_prompt),
         duration_ms,
+        framerate,
     };
     
     let job_id = job_creation_utils::create_and_queue_background_job(

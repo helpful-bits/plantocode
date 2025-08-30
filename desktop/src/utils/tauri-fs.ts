@@ -159,3 +159,8 @@ export async function listProjectFiles(
     projectDirectory,
   });
 }
+
+export async function appendToLogFile(relPath: string, content: string): Promise<void> {
+  // Writes one line (command adds newline); do not buffer or read existing content
+  return tauriInvoke("append_to_log_file", { app: undefined, relPath, content });
+}

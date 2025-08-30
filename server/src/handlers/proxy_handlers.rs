@@ -1482,7 +1482,7 @@ pub async fn video_analysis_handler(
     user: web::ReqData<AuthenticatedUser>,
 ) -> Result<HttpResponse, AppError> {
     // Parse multipart payload
-    let (video_file, prompt, model, temperature, system_prompt, duration_ms, request_id) = 
+    let (video_file, prompt, model, temperature, system_prompt, duration_ms, framerate, request_id) = 
         process_video_analysis_multipart(payload).await?;
     
     // Parse provider from model string
@@ -1591,36 +1591,37 @@ pub async fn video_analysis_handler(
     let process_result = async {
         // Choose upload method based on file size
         if file_size < INLINE_SIZE_LIMIT {
-            // Small file: use inline upload with 24 FPS
-            tracing::info!("Using inline upload for video ({} MB) with 24 FPS", file_size / (1024 * 1024));
+            // Small file: use inline upload with specified FPS
+            tracing::info!("Using inline upload for video ({} MB) with {} FPS", file_size / (1024 * 1024), framerate);
             
             // Read video file bytes
             let video_bytes = std::fs::read(&video_path)
                 .map_err(|e| AppError::Internal(format!("Failed to read video file: {}", e)))?;
             
-            // Use inline upload method with 24 FPS
+            // Use inline upload method with user-specified FPS
             google_client.generate_multimodal_content_inline(
                 clean_model_id,
                 &video_bytes,
                 mime_type,
-                24, // 24 FPS (maximum allowed by Google API)
+                framerate, // User-specified FPS
                 &prompt,
                 system_prompt,
                 temperature,
                 api_key
             ).await
         } else {
-            // Large file: use File API upload (default 1 FPS)
-            tracing::info!("Using File API upload for video ({} MB) with default FPS", file_size / (1024 * 1024));
+            // Large file: use File API upload with specified FPS
+            tracing::info!("Using File API upload for video ({} MB) with {} FPS", file_size / (1024 * 1024), framerate);
             
             // Upload video file to Google
             let (file_uri, _) = google_client.upload_file(video_path, mime_type, api_key).await?;
             
-            // Generate content with multimodal API
-            google_client.generate_multimodal_content(
+            // Generate content with multimodal API with user-specified FPS
+            google_client.generate_multimodal_content_with_fps(
                 clean_model_id,
                 &file_uri,
                 mime_type,
+                framerate, // User-specified FPS
                 &prompt,
                 system_prompt,
                 temperature,

@@ -1222,6 +1222,7 @@ impl ServerProxyClient {
         temperature: f32,
         system_prompt: Option<String>,
         duration_ms: i64,
+        framerate: u32,
         request_id: Option<String>,
     ) -> AppResult<VideoAnalysisResponse> {
         info!("Sending video analysis request through server proxy");
@@ -1241,7 +1242,8 @@ impl ServerProxyClient {
             .text("prompt", prompt.to_string())
             .text("model", model.to_string())
             .text("temperature", temperature.to_string())
-            .text("duration_ms", duration_ms.to_string());
+            .text("duration_ms", duration_ms.to_string())
+            .text("framerate", framerate.to_string());
 
         // Add system prompt if provided
         if let Some(system_prompt) = system_prompt {

@@ -30,7 +30,7 @@ export function Pricing() {
             No-Nonsense Pricing
           </Reveal>
           <Reveal as="p" className="text-lg sm:text-xl max-w-3xl mx-auto leading-relaxed font-medium text-description-muted" delay={0.1}>
-            Let's be frank: with heavy use, LLM API tokens can cost $100+ a month. But this investment pays for itself in productivity and peace of mind. Every operation reports its exact token cost in real-time, so you are always in control.
+            Let's be frank: LLM API tokens add up. But you'll know exactly what you're spending. Every operation reports its exact token cost in real-time, so you're always in control.
           </Reveal>
         </div>
 

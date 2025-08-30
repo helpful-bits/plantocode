@@ -43,6 +43,15 @@ pub async fn initialize_database_light(app_handle: &AppHandle) -> Result<(), App
     info!("Connecting to database at: {}", db_path.display());
     let db = SqlitePoolOptions::new()
         .max_connections(10)
+        .after_connect(|conn, _meta| {
+            Box::pin(async move {
+                // Enable foreign key constraints for this connection
+                sqlx::query("PRAGMA foreign_keys = ON")
+                    .execute(conn)
+                    .await?;
+                Ok(())
+            })
+        })
         .connect(&db_url)
         .await
         .map_err(|e| AppError::DatabaseError(format!("Failed to connect to database: {}", e)))?;
@@ -212,20 +221,23 @@ pub async fn run_deferred_db_tasks(app_handle: &tauri::AppHandle) -> Result<(), 
         error!("Deferred DB: failed to ensure DB permissions: {}", e);
     }
     
-    // Create and manage remaining repositories: SessionRepository and BackgroundJobRepository
+    // Create and manage remaining repositories: SessionRepository, BackgroundJobRepository, and TerminalSessionsRepository
     let session_repo = crate::db_utils::SessionRepository::new(pool_arc.clone());
     let background_job_repo = crate::db_utils::BackgroundJobRepository::new_with_app_handle(
         pool_arc.clone(),
         app_handle.clone()
     );
+    let terminal_sessions_repo = crate::db_utils::terminal_sessions_repository::TerminalSessionsRepository::new(pool_arc.clone());
     
     // Wrap repositories in Arc
     let session_repo_arc = Arc::new(session_repo);
     let background_job_repo_arc = Arc::new(background_job_repo);
+    let terminal_sessions_repo_arc = Arc::new(terminal_sessions_repo);
     
     // Manage state with Tauri
     app_handle.manage(session_repo_arc.clone());
     app_handle.manage(background_job_repo_arc.clone());
+    app_handle.manage(terminal_sessions_repo_arc.clone());
     
     info!("Deferred DB: repositories (session, background jobs) wired.");
     

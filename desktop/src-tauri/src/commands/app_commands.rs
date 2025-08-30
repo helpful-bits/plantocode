@@ -26,8 +26,7 @@ pub async fn get_database_info_command(app_handle: AppHandle) -> AppResult<Datab
     let db: sqlx::SqlitePool = app_handle.state::<sqlx::SqlitePool>().inner().clone();
     let db_arc = Arc::new(db);
 
-    db_utils::get_database_info(db_arc)
-        .await
+    db_utils::get_database_info(db_arc).await
         .map_err(|e| AppError::DatabaseError(format!("Failed to get database info: {}", e)))
 }
 

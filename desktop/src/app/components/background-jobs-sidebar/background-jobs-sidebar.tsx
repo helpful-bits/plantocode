@@ -15,6 +15,7 @@ import { extractFilesFromResponse } from "@/utils/response-utils";
 import { toProjectRelativePath } from "@/utils/path-utils";
 
 import { JobContent } from "./_components/job-content";
+import { MonitoringPanel } from "./_components/MonitoringPanel";
 import { useJobFiltering } from "./hooks/use-job-filtering";
 import { useSidebarStateManager } from "./hooks/use-sidebar-state-manager";
 import { JobDetailsModal } from "./job-details-modal";
@@ -31,6 +32,9 @@ export const BackgroundJobsSidebar = () => {
   const { activeSessionId, currentSession } = useSessionStateContext();
   const { updateCurrentSessionFields, applyFileSelectionUpdate } = useSessionActionsContext();
   const { showNotification } = useNotification();
+  
+  // View state management
+  const [view, setView] = useState<'jobs' | 'monitoring'>('jobs');
   
   // System prompt cache for web search execution
   const [webSearchSystemPrompt, setWebSearchSystemPrompt] = useState<string>('');
@@ -127,6 +131,14 @@ export const BackgroundJobsSidebar = () => {
     });
     
   }, [currentSession, updateCurrentSessionFields]);
+
+  const handleToggleMonitoringView = useCallback(() => {
+    setView(prev => prev === 'jobs' ? 'monitoring' : 'jobs');
+  }, []);
+
+  const handleOpenTerminal = useCallback((jobId: string) => {
+    window.dispatchEvent(new CustomEvent('open-plan-terminal', { detail: { jobId } }));
+  }, []);
 
   // Function to continue workflow from a completed web search prompts generation job
   const handleContinueWorkflow = useCallback(async (job: BackgroundJob) => {
@@ -269,6 +281,7 @@ export const BackgroundJobsSidebar = () => {
             refreshDisabled={refreshClickedRef.current ?? false}
             onRefresh={handleRefresh}
             onClearHistory={handleClearHistory}
+            onToggleMonitoringView={handleToggleMonitoringView}
             CollapsibleTrigger={CollapsibleTrigger}
           />
 
@@ -277,28 +290,37 @@ export const BackgroundJobsSidebar = () => {
             className="overflow-y-auto"
             style={{ height: "calc(100vh - 48px)" }}
           >
-            {/* Status messages (errors, feedback) */}
-            <StatusMessages
-              error={error}
-              clearFeedback={clearFeedback}
-              isCollapsed={activeCollapsed}
-            />
+            {view === 'jobs' ? (
+              <>
+                {/* Status messages (errors, feedback) */}
+                <StatusMessages
+                  error={error}
+                  clearFeedback={clearFeedback}
+                  isCollapsed={activeCollapsed}
+                />
 
-            {/* Job listings content */}
-            <JobContent
-              shouldShowLoading={shouldShowLoading}
-              shouldShowEmpty={shouldShowEmpty}
-              allJobsSorted={allJobsSorted}
-              handleCancel={handleCancelJob}
-              handleDelete={handleDeleteJob}
-              isCancelling={isCancelling}
-              isDeleting={isDeleting}
-              onSelect={handleSelectJob}
-              onApplyFiles={handleApplyFilesFromJob}
-              onContinueWorkflow={handleContinueWorkflow}
-              webSearchSystemPrompt={webSearchSystemPrompt}
-              currentSessionId={activeSessionId || undefined}
-            />
+                {/* Job listings content */}
+                <JobContent
+                  shouldShowLoading={shouldShowLoading}
+                  shouldShowEmpty={shouldShowEmpty}
+                  allJobsSorted={allJobsSorted}
+                  handleCancel={handleCancelJob}
+                  handleDelete={handleDeleteJob}
+                  isCancelling={isCancelling}
+                  isDeleting={isDeleting}
+                  onSelect={handleSelectJob}
+                  onApplyFiles={handleApplyFilesFromJob}
+                  onContinueWorkflow={handleContinueWorkflow}
+                  webSearchSystemPrompt={webSearchSystemPrompt}
+                  currentSessionId={activeSessionId || undefined}
+                />
+              </>
+            ) : (
+              <MonitoringPanel
+                onBack={() => setView('jobs')}
+                onOpenTerminal={handleOpenTerminal}
+              />
+            )}
           </CollapsibleContent>
         </Collapsible>
       </div>

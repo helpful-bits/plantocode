@@ -296,11 +296,6 @@ pub async fn get_prompt_command(
     relevant_files: Vec<String>,
     app_handle: AppHandle,
 ) -> AppResult<PromptResponse> {
-    info!(
-        "Getting {} prompt for task: {}",
-        task_type, task_description
-    );
-
     // Validate required fields
     if session_id.is_empty() {
         return Err(AppError::ValidationError(

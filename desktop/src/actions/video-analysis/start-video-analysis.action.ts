@@ -7,6 +7,7 @@ export interface StartVideoAnalysisJobParams {
   videoPath: string;
   prompt: string;
   durationMs: number;
+  framerate: number;
 }
 
 export async function startVideoAnalysisJob(params: StartVideoAnalysisJobParams): Promise<VideoAnalysisJobResponse> {
@@ -15,6 +16,7 @@ export async function startVideoAnalysisJob(params: StartVideoAnalysisJobParams)
     projectDirectory: params.projectDirectory,
     videoPath: params.videoPath,
     prompt: params.prompt,
-    durationMs: params.durationMs
+    durationMs: params.durationMs,
+    framerate: params.framerate
   });
 }

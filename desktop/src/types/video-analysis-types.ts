@@ -11,6 +11,7 @@ export interface VideoAnalysisPayload {
   temperature: number;
   systemPrompt?: string;
   durationMs: number;
+  framerate: number;
 }
 
 export interface VideoAnalysisMetadata {

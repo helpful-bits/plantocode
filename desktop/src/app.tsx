@@ -9,9 +9,11 @@
  * - Credit management
  */
 
+import React, { Profiler } from "react";
 import { useEffect, useState, useCallback } from "react";
 import { safeListen } from "@/utils/tauri-event-utils";
 import { Routes, Route } from "react-router-dom";
+import { onRender } from "./utils/react-performance-profiler";
 
 import { AppShell } from "@/app/components/app-shell";
 import { isTauriEnvironment } from "@/utils/platform";
@@ -255,5 +257,15 @@ export default function App() {
     return <LoadingScreen loadingType="initializing" />;
   }
 
-  return <SafeAppContent />;
+  return (
+    <>
+      {import.meta.env.DEV ? (
+        <Profiler id="AppRoot" onRender={onRender}>
+          <SafeAppContent />
+        </Profiler>
+      ) : (
+        <SafeAppContent />
+      )}
+    </>
+  );
 }

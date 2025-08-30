@@ -28,6 +28,7 @@ pub mod video_analysis_commands;
 pub mod web_search_commands;
 pub mod workflow_commands;
 pub mod logging_commands;
+pub mod terminal_commands;
 
 // Re-export all command functions for easier imports
 pub use app_commands::{get_app_info, get_config_load_error, get_database_info_command};
@@ -172,12 +173,20 @@ pub use error_recovery_commands::{
 pub use video_analysis_commands::start_video_analysis_job;
 
 // Re-exports from logging commands module
-pub use logging_commands::log_client_error;
+pub use logging_commands::{log_client_error, append_to_log_file};
 
 // Re-exports from consent commands module
 pub use consent_commands::{
     accept_consent_command, get_consent_status_command, get_current_legal_documents_command,
     verify_consent_command,
+};
+
+// Re-exports from terminal commands module
+pub use terminal_commands::{
+    append_terminal_log_command, read_terminal_log_command, clear_terminal_log_command,
+    delete_terminal_log_command, start_terminal_session_command, write_terminal_input_command,
+    send_ctrl_c_to_terminal_command, kill_terminal_session_command, resize_terminal_session_command,
+    get_terminal_session_status_command,
 };
 
 // All command functions will return AppResult<T> directly

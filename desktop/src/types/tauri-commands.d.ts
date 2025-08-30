@@ -534,6 +534,7 @@ export interface StartVideoAnalysisJobCommandArgs {
   videoPath: string;
   prompt: string;
   durationMs: number;
+  framerate: number;
 }
 
 
@@ -757,6 +758,18 @@ export type TauriInvoke = {
   "get_consent_status_command": (args: { region: 'eu' | 'us' }) => Promise<ConsentStatusResponse>;
   "verify_consent_command": (args: { region: 'eu' | 'us' }) => Promise<ConsentVerificationResponse>;
   "accept_consent_command": (args: { docType: 'terms' | 'privacy'; region: 'eu' | 'us'; metadata?: Record<string, unknown> }) => Promise<void>;
+  
+  // Terminal commands
+  "append_terminal_log_command": (args: AppendTerminalLogCommandArgs) => Promise<void>;
+  "read_terminal_log_command": (args: ReadTerminalLogCommandArgs) => Promise<string>;
+  "clear_terminal_log_command": (args: ClearTerminalLogCommandArgs) => Promise<void>;
+  "delete_terminal_log_command": (args: DeleteTerminalLogCommandArgs) => Promise<void>;
+  "start_terminal_session_command": (args: StartTerminalSessionCommandArgs) => Promise<void>;
+  "write_terminal_input_command": (args: WriteTerminalInputCommandArgs) => Promise<void>;
+  "resize_terminal_session_command": (args: ResizeTerminalSessionCommandArgs) => Promise<void>;
+  "send_ctrl_c_to_terminal_command": (args: SendCtrlCToTerminalCommandArgs) => Promise<void>;
+  "kill_terminal_session_command": (args: KillTerminalSessionCommandArgs) => Promise<void>;
+  "get_performance_summary": () => Promise<any>;
 };
 
 // Billing-related types
@@ -1106,6 +1119,54 @@ export interface ListInvoicesResponse {
   invoices: Invoice[];
   totalInvoices: number;
   hasMore: boolean;
+}
+
+// Commands from terminal_commands
+export interface AppendTerminalLogCommandArgs {
+  jobId: string;
+  chunk: string;
+}
+
+export interface ReadTerminalLogCommandArgs {
+  jobId: string;
+}
+
+export interface ClearTerminalLogCommandArgs {
+  jobId: string;
+}
+
+export interface DeleteTerminalLogCommandArgs {
+  jobId: string;
+}
+
+export interface StartTerminalSessionCommandArgs {
+  jobId: string;
+  options: {
+    workingDirectory?: string | null;
+    environment?: Record<string, string> | null;
+    rows?: number | null;
+    cols?: number | null;
+  };
+  output: import("@tauri-apps/api/core").Channel<Uint8Array>;
+}
+
+export interface WriteTerminalInputCommandArgs {
+  jobId: string;
+  data: number[];
+}
+
+export interface ResizeTerminalSessionCommandArgs {
+  jobId: string;
+  cols: number;
+  rows: number;
+}
+
+export interface SendCtrlCToTerminalCommandArgs {
+  jobId: string;
+}
+
+export interface KillTerminalSessionCommandArgs {
+  jobId: string;
 }
 
 // Strongly typed invoke function

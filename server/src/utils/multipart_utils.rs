@@ -120,13 +120,14 @@ pub async fn process_transcription_multipart(mut payload: Multipart) -> Result<T
 
 pub async fn process_video_analysis_multipart(
     mut payload: Multipart
-) -> Result<(NamedTempFile, String, String, f32, Option<String>, i64, Option<String>), AppError> {
+) -> Result<(NamedTempFile, String, String, f32, Option<String>, i64, u32, Option<String>), AppError> {
     let mut video_file: Option<NamedTempFile> = None;
     let mut prompt = String::new();
     let mut model = String::from("google/gemini-2.5-pro"); // Default model
     let mut temperature: f32 = 0.4; // Default temperature
     let mut system_prompt: Option<String> = None;
     let mut duration_ms: i64 = 0;
+    let mut framerate: u32 = 1; // Default framerate (1 FPS)
     let mut request_id: Option<String> = None;
 
     while let Some(item) = payload.next().await {
@@ -209,6 +210,17 @@ pub async fn process_video_analysis_multipart(
                     .parse::<i64>()
                     .map_err(|_| AppError::InvalidArgument("Invalid duration_ms value".to_string()))?;
             },
+            "framerate" => {
+                let mut framerate_data = Vec::new();
+                while let Some(chunk) = field.next().await {
+                    framerate_data.extend_from_slice(&chunk?);
+                }
+                framerate = String::from_utf8(framerate_data)
+                    .map_err(|_| AppError::InvalidArgument("Invalid framerate encoding".to_string()))?
+                    .trim()
+                    .parse::<u32>()
+                    .map_err(|_| AppError::InvalidArgument("Invalid framerate value".to_string()))?;
+            },
             "request_id" => {
                 let mut request_id_data = Vec::new();
                 while let Some(chunk) = field.next().await {
@@ -237,5 +249,5 @@ pub async fn process_video_analysis_multipart(
         return Err(AppError::InvalidArgument("Missing or invalid 'duration_ms' field".to_string()));
     }
 
-    Ok((video_file, prompt, model, temperature, system_prompt, duration_ms, request_id))
+    Ok((video_file, prompt, model, temperature, system_prompt, duration_ms, framerate, request_id))
 }

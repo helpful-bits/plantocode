@@ -57,6 +57,10 @@ pub async fn delete_background_job_command(job_id: String, app_handle: AppHandle
         .await
         .map_err(|e| AppError::DatabaseError(format!("Failed to delete job: {}", e)))?;
 
+    // Terminal logs are now handled via the database terminal_sessions table
+    // which has a foreign key constraint to background_jobs with ON DELETE CASCADE
+    // So they're automatically cleaned up when the job is deleted
+
     emit_job_deleted(&app_handle, JobDeletedEvent {
         job_id: job_id.clone(),
     });

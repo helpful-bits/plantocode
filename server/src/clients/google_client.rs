@@ -959,6 +959,71 @@ impl GoogleClient {
         self.execute_generate_content(model, request, api_key).await
     }
 
+    /// Generate multimodal content with File API and custom FPS
+    pub async fn generate_multimodal_content_with_fps(
+        &self,
+        model: &str,
+        file_uri: &str,
+        mime_type: &str,
+        fps: u32,
+        prompt: &str,
+        system_prompt: Option<String>,
+        temperature: f32,
+        api_key: &str
+    ) -> Result<GoogleChatResponse, AppError> {
+        // Create the file part with video metadata including FPS
+        let file_part = GooglePart {
+            file_data: Some(GoogleFileData {
+                file_uri: file_uri.to_string(),
+                mime_type: mime_type.to_string(),
+            }),
+            video_metadata: Some(GoogleVideoMetadata {
+                fps: Some(fps),
+            }),
+            ..Default::default()
+        };
+        
+        let text_part = GooglePart {
+            text: Some(prompt.to_string()),
+            ..Default::default()
+        };
+        
+        // Create user content
+        let user_content = GoogleContent {
+            role: "user".to_string(),
+            parts: vec![file_part, text_part],
+        };
+        
+        let contents = vec![user_content];
+        
+        // Create system instruction if provided
+        let system_instruction = system_prompt.map(|prompt| GoogleSystemInstruction {
+            parts: vec![GooglePart { text: Some(prompt), ..Default::default() }],
+        });
+        
+        // Create generation config
+        let generation_config = Some(GoogleGenerationConfig {
+            temperature: Some(temperature),
+            max_output_tokens: Some(100000),
+            top_p: None,
+            top_k: None,
+            candidate_count: None,
+            stop_sequences: None,
+            thinking_config: None,
+        });
+        
+        let request = GoogleChatRequest {
+            contents,
+            system_instruction,
+            generation_config,
+            safety_settings: None,
+            stream: None,
+        };
+        
+        // Use the shared helper to execute the request
+        self.execute_generate_content(model, request, api_key).await
+    }
+
     /// Helper function to execute generate content request
     async fn execute_generate_content(
         &self,

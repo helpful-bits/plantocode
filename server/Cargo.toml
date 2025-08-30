@@ -1,6 +1,6 @@
 [package]
 name = "vibe-manager-server"
-version = "0.2.14"
+version = "0.2.15"
 edition = "2024"
 default-run = "server"
 

@@ -52,7 +52,7 @@ const HowItWorks = dynamic(() => import('@/components/landing/HowItWorks').then(
 
 export const metadata: Metadata = {
   title: 'Vibe Manager - AI code cleanup specialist for macOS',
-  description: 'Vibe Manager helps AI agents map files, merge multi-model plans, and ship correct changes - without sending your whole codebase to the cloud. Local-first.',
+  description: 'Vibe Manager helps AI agents map files, merge multi-model plans, and ship correct changes. Sends only selected context to AI providers. Local storage for sessions.',
   keywords: [
     'AI coding assistant',
     'cursor alternative',
@@ -83,7 +83,7 @@ export default function Home() {
     applicationCategory: 'DeveloperApplication',
     operatingSystem: 'macOS',
     url: 'https://vibemanager.app',
-    description: 'AI coding assistant for large codebases: finds relevant files, runs deep research, and merges multi-model plans. Local-first.',
+    description: 'AI coding assistant for large codebases: finds relevant files, runs deep research, and merges multi-model plans. Local storage with direct AI provider integration.',
     offers: {
       '@type': 'Offer',
       price: 0, // Numeric 0 for free apps, no priceCurrency needed per Google guidance
@@ -98,7 +98,7 @@ export default function Home() {
     },
     {
       question: 'Does my repo leave my machine?',
-      answer: "It's local-first: code, sessions, and history live in SQLite on your machine. You control what (if anything) gets sent to model providers.",
+      answer: "Sessions and history are stored locally in SQLite. When you use AI features, selected code is sent to AI providers (OpenAI, Google, Anthropic) for processing. You see token counts before confirming.",
     },
     {
       question: 'Which models does it use?',
@@ -145,44 +145,44 @@ export default function Home() {
       subSteps: [
         {
           title: "AI Text Enhancement",
-          video: cdnUrl('/videos/step-1-text.mp4'),
-          poster: cdnUrl('/images/step-1-text-poster.jpg')
+          video: cdnUrl('/assets/videos/step-1-text.mp4'),
+          poster: cdnUrl('/assets/images/step-1-text-poster.jpg')
         },
         {
           title: "Voice Transcription",
-          video: cdnUrl('/videos/step-1-voice.mp4'), 
-          poster: cdnUrl('/images/step-1-voice-poster.jpg')
+          video: cdnUrl('/assets/videos/step-1-voice.mp4'), 
+          poster: cdnUrl('/assets/images/step-1-voice-poster.jpg')
         },
         {
           title: "Video Recording & Analysis",
-          video: cdnUrl('/videos/step-1-video.mp4'),
-          poster: cdnUrl('/images/step-1-video-poster.jpg')
+          video: cdnUrl('/assets/videos/step-1-video.mp4'),
+          poster: cdnUrl('/assets/images/step-1-video-poster.jpg')
         }
       ]
     },
     {
       title: "File Discovery & Search",
       description: "Watch how AI finds relevant files in your codebase using intelligent search patterns",
-      video: cdnUrl('/videos/step-2-find.mp4'),
-      poster: cdnUrl('/images/step-2-poster.jpg')
+      video: cdnUrl('/assets/videos/step-2-find.mp4'),
+      poster: cdnUrl('/assets/images/step-2-poster.jpg')
     },
     {
       title: "Deep Research & Context Analysis", 
       description: "Watch AI perform comprehensive research across your codebase to gather context and understand dependencies",
-      video: cdnUrl('/videos/step-3-generate.mp4'),
-      poster: cdnUrl('/images/step-3-poster.jpg')
+      video: cdnUrl('/assets/videos/step-3-generate.mp4'),
+      poster: cdnUrl('/assets/images/step-3-poster.jpg')
     },
     {
       title: "Plan Creation & Merge",
       description: "Generate multiple implementation plans from different AI models and merge the best approaches into a unified solution",
-      video: cdnUrl('/videos/step-4-merge.mp4'), 
-      poster: cdnUrl('/images/step-4-poster.jpg')
+      video: cdnUrl('/assets/videos/step-4-merge.mp4'), 
+      poster: cdnUrl('/assets/images/step-4-poster.jpg')
     },
     {
       title: "Settings & Prompt Customization",
       description: "Configure AI models, edit system prompts, and customize settings to match your workflow",
-      video: cdnUrl('/videos/step-5-customize.mp4'),
-      poster: cdnUrl('/images/step-5-poster.jpg')
+      video: cdnUrl('/assets/videos/step-5-customize.mp4'),
+      poster: cdnUrl('/assets/images/step-5-poster.jpg')
     }
   ];
 
@@ -223,8 +223,8 @@ export default function Home() {
       icon: <Globe className="w-8 h-8" />,
     },
     {
-      title: 'Your Data Stays Yours',
-      description: 'True local-first. All your code, sessions, and history live in SQLite on your machine. Vibe Manager is just a secure proxy to AI providers - handling auth and billing while your code flows directly through. You control what gets sent and when.',
+      title: 'You Control Your Data',
+      description: 'Sessions and history stored locally in SQLite. When you use AI features, your code is sent to AI providers (OpenAI, Google, Anthropic) for processing. We handle auth and billing. You see exactly what gets sent before confirming.',
       icon: <Shield className="w-8 h-8" />,
     },
     {

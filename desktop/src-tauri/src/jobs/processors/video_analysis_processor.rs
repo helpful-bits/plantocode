@@ -78,6 +78,7 @@ impl JobProcessor for VideoAnalysisProcessor {
                 payload.temperature,
                 payload.system_prompt.clone(),
                 payload.duration_ms,
+                payload.framerate,
                 Some(job.id.to_string()),
             )
             .await

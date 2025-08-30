@@ -136,6 +136,7 @@ pub struct VideoAnalysisPayload {
     pub temperature: f32,
     pub system_prompt: Option<String>,
     pub duration_ms: i64,
+    pub framerate: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

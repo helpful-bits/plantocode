@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Menu, X, Sparkles } from 'lucide-react';
@@ -15,6 +16,7 @@ export function Header() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isMac, setIsMac] = useState(true);
+  const [mounted, setMounted] = useState(false);
   const { trackDownload, trackAnchorClick } = usePlausible();
 
   const handleDownloadClick = (e: React.MouseEvent, location: string) => {
@@ -29,6 +31,7 @@ export function Header() {
   };
 
   useEffect(() => {
+    setMounted(true);
     try {
       const plat = (navigator as any)?.userAgentData?.platform || navigator.platform || navigator.userAgent || '';
       setIsMac(/mac/i.test(plat));
@@ -235,14 +238,23 @@ export function Header() {
         </div>
       </motion.header>
 
-      {/* Mobile Navigation Menu */}
-      <AnimatePresence>
-        {mobileMenuOpen && (
+      {/* Mobile Navigation Menu - Portal Based */}
+      {mounted && mobileMenuOpen && createPortal(
+        <AnimatePresence>
           <>
             {/* Backdrop */}
             <motion.div
               animate={{ opacity: 1 }}
               className="fixed inset-0 z-40 bg-background/60 backdrop-blur-md md:hidden"
+              style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                width: '100vw',
+                height: '100vh'
+              }}
               exit={{ opacity: 0 }}
               initial={{ opacity: 0 }}
               transition={{ duration: defaultDuration * 0.6, ease: defaultEase }}
@@ -253,17 +265,23 @@ export function Header() {
             <motion.nav
               animate={{ opacity: 1, y: 0, scale: 1 }}
               className={cn(
-                'fixed top-20 left-4 right-4 z-50 md:hidden',
-                'max-w-[calc(100vw-2rem)]',
-                'max-h-[calc(100vh-6rem)]',
+                'fixed z-50 md:hidden',
                 'glass',
                 'rounded-2xl',
-                'p-4 sm:p-6',
+                'p-6 sm:p-8',
                 // Enhanced background for light mode visibility
-                'bg-background/95 backdrop-blur-xl border border-border/80',
-                'shadow-2xl shadow-black/10',
+                'bg-card/98 dark:bg-background/95 backdrop-blur-xl border border-border/60',
+                'shadow-2xl shadow-black/20 dark:shadow-black/40',
                 'overflow-y-auto',
               )}
+              style={{
+                position: 'fixed',
+                top: '5rem', // Account for header height in viewport
+                left: '1rem',
+                right: '1rem',
+                maxWidth: 'calc(100vw - 2rem)',
+                maxHeight: 'calc(100vh - 6rem)',
+              }}
               exit={{ opacity: 0, y: -30, scale: 0.9 }}
               initial={{ opacity: 0, y: -30, scale: 0.9 }}
               transition={{
@@ -272,7 +290,16 @@ export function Header() {
                 opacity: { duration: defaultDuration * 0.6 },
               }}
             >
-              <div className="space-y-2">
+              {/* Close button inside the menu */}
+              <button
+                onClick={() => setMobileMenuOpen(false)}
+                className="absolute top-3 right-3 p-2 rounded-full bg-background/80 hover:bg-background border border-border/50 hover:border-primary/50 transition-all z-10"
+                aria-label="Close menu"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="space-y-1">
                 {navLinks.map((link, index) => (
                   <motion.div
                     key={link.href}
@@ -291,11 +318,12 @@ export function Header() {
                     >
                       <Link
                         className={cn(
-                          'block px-4 py-3 rounded-xl font-medium text-base cursor-pointer clickable-text-underline',
-                          // Consistent with desktop nav colors
-                          'text-muted-foreground hover:text-foreground',
-                          'hover:bg-accent/50 active:bg-accent/70',
+                          'block px-4 py-3.5 rounded-xl font-semibold text-lg cursor-pointer',
+                          // Consistent teal/primary color
+                          'text-primary hover:text-primary/80',
+                          'hover:bg-primary/10 active:bg-primary/20',
                           'relative overflow-hidden',
+                          'transition-all duration-200',
                         )}
                         href={link.href}
                         onClick={() => {
@@ -318,56 +346,58 @@ export function Header() {
 
               <motion.div
                 animate={{ scaleX: 1 }}
-                className="h-px bg-gradient-to-r from-transparent via-border to-transparent my-6"
+                className="h-px bg-gradient-to-r from-transparent via-border/50 to-transparent my-5"
                 initial={{ scaleX: 0 }}
                 transition={{ delay: 0.5, duration: 0.5 }}
               />
 
               <motion.div
                 animate={{ opacity: 1, y: 0 }}
-                className="flex items-center justify-between gap-4"
+                className="flex flex-col gap-3"
                 initial={{ opacity: 0, y: 20 }}
                 transition={{ delay: 0.6, duration: 0.4 }}
               >
-                <ThemeToggle />
-                <motion.div className="flex-1" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                  <Button asChild className="w-full" size="xl" variant="gradient-outline" onClick={() => {
-                    trackAnchorClick('#how-it-works', 'header_mobile_demo');
-                    setMobileMenuOpen(false);
-                  }}>
-                    <Link href="#how-it-works" className="no-hover-effect cursor-pointer">Try Demo</Link>
-                  </Button>
-                </motion.div>
-                <motion.div
-                  className="flex-1"
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  <div className="flex flex-col items-center w-full">
-                    <Button
-                      className="w-full"
-                      size="xl"
-                      variant="cta"
-                      onClick={(e) => {
-                        handleDownloadClick(e, 'header_mobile');
-                        setMobileMenuOpen(false);
-                      }}
-                    >
-                      <span className="no-hover-effect cursor-pointer">
-                        Download for Mac
-                      </span>
+                <div className="flex items-center gap-3">
+                  <ThemeToggle />
+                  <motion.div className="flex-1" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                    <Button asChild className="w-full" size="lg" variant="gradient-outline" onClick={() => {
+                      trackAnchorClick('#how-it-works', 'header_mobile_demo');
+                      setMobileMenuOpen(false);
+                    }}>
+                      <Link href="#how-it-works" className="no-hover-effect cursor-pointer">Try Demo</Link>
                     </Button>
-                    <div className="flex flex-col items-center gap-1 mt-1">
-                      <em className="text-xs text-muted-foreground">Signed & notarized for macOS</em>
-                      <a href="mailto:support@vibemanager.app?subject=Windows%20Waitlist" className="text-xs text-muted-foreground underline hover:text-primary">Join Windows waitlist</a>
-                    </div>
+                  </motion.div>
+                </div>
+                
+                <motion.div
+                  className="w-full"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  <Button
+                    className="w-full"
+                    size="lg"
+                    variant="cta"
+                    onClick={(e) => {
+                      handleDownloadClick(e, 'header_mobile');
+                      setMobileMenuOpen(false);
+                    }}
+                  >
+                    <span className="no-hover-effect cursor-pointer">
+                      Download for Mac
+                    </span>
+                  </Button>
+                  <div className="flex flex-col items-center gap-0.5 mt-2">
+                    <em className="text-xs text-muted-foreground">Signed & notarized for macOS</em>
+                    <a href="mailto:support@vibemanager.app?subject=Windows%20Waitlist" className="text-xs text-muted-foreground underline hover:text-primary">Join Windows waitlist</a>
                   </div>
                 </motion.div>
               </motion.div>
             </motion.nav>
           </>
-        )}
-      </AnimatePresence>
+        </AnimatePresence>,
+        document.body
+      )}
     </>
   );
 }
