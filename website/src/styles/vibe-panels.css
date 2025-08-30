@@ -39,67 +39,98 @@ section .max-w-5xl {
 /* Desktop layout - static horizontal layout at lg+ (1024px+) */
 @media (min-width: 1024px) {
     .vibe-panels-container .hidden.lg\\:flex {
-        gap: clamp(1rem, 2vw, 1.5rem);
-        align-items: center;
-        justify-content: space-between;
+        gap: 1.25rem;
+        align-items: stretch;
+        justify-content: center;
         width: 100%;
-        max-width: none;
+        max-width: 1280px;
+        margin: 0 auto;
     }
 
-    /* Desktop panels - same dimensions as base vibe-panel */
+    /* Desktop panels - consistent dimensions and professional appearance */
     .hidden.lg\\:flex .vibe-panel {
-        width: clamp(280px, 30vw, 360px);
-        height: clamp(400px, 50vh, 480px);
-        flex: 1;
-        max-width: 360px;
-        box-shadow: 0 8px 32px color-mix(in oklch, var(--color-foreground) 8%, transparent);
+        width: 340px;
+        height: 460px;
+        flex: 0 0 auto;
+        box-shadow: 
+            0 4px 6px -1px rgba(0, 0, 0, 0.1),
+            0 2px 4px -2px rgba(0, 0, 0, 0.1),
+            0 20px 25px -5px rgba(0, 0, 0, 0.1),
+            0 8px 10px -6px rgba(0, 0, 0, 0.1);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    
+    /* Subtle hover effect for interactivity */
+    .hidden.lg\\:flex .vibe-panel:hover {
+        transform: translateY(-4px);
+        box-shadow: 
+            0 10px 15px -3px rgba(0, 0, 0, 0.1),
+            0 4px 6px -4px rgba(0, 0, 0, 0.1),
+            0 25px 30px -5px rgba(0, 0, 0, 0.15),
+            0 10px 12px -6px rgba(0, 0, 0, 0.1);
     }
 
-    /* Enhanced glow effect for accent panel on desktop - match ad aesthetic */
+    /* Enhanced glow effect for accent panel on desktop - professional and subtle */
     .hidden.lg\\:flex .vibe-panel--glow {
         box-shadow:
-                0 0 40px color-mix(in oklch, var(--color-primary) 30%, transparent),
-                0 0 60px color-mix(in oklch, var(--color-primary) 20%, transparent),
-                0 0 100px color-mix(in oklch, var(--color-primary) 12%, transparent),
-                0 12px 40px color-mix(in oklch, var(--color-foreground) 15%, transparent);
+                0 0 30px color-mix(in oklch, var(--color-primary) 25%, transparent),
+                0 0 50px color-mix(in oklch, var(--color-primary) 15%, transparent),
+                0 20px 40px -5px rgba(0, 0, 0, 0.15),
+                0 8px 16px -8px rgba(0, 0, 0, 0.2);
         border-color: var(--color-primary);
+        border-width: 2px;
         animation: pulse-glow 4s ease-in-out infinite alternate;
     }
+    
+    /* Ensure glow panel also lifts on hover */
+    .hidden.lg\\:flex .vibe-panel--glow:hover {
+        transform: translateY(-4px);
+        box-shadow:
+                0 0 35px color-mix(in oklch, var(--color-primary) 30%, transparent),
+                0 0 60px color-mix(in oklch, var(--color-primary) 20%, transparent),
+                0 25px 45px -5px rgba(0, 0, 0, 0.2),
+                0 10px 18px -8px rgba(0, 0, 0, 0.25);
+    }
 
-    /* Subtle pulsing glow animation for accent panel */
+    /* Subtle pulsing glow animation for accent panel - more professional */
     @keyframes pulse-glow {
         0% {
             box-shadow:
-                    0 0 40px color-mix(in oklch, var(--color-primary) 30%, transparent),
-                    0 0 60px color-mix(in oklch, var(--color-primary) 20%, transparent),
-                    0 0 100px color-mix(in oklch, var(--color-primary) 12%, transparent),
-                    0 12px 40px color-mix(in oklch, var(--color-foreground) 15%, transparent);
+                    0 0 30px color-mix(in oklch, var(--color-primary) 25%, transparent),
+                    0 0 50px color-mix(in oklch, var(--color-primary) 15%, transparent),
+                    0 20px 40px -5px rgba(0, 0, 0, 0.15),
+                    0 8px 16px -8px rgba(0, 0, 0, 0.2);
+            border-color: var(--color-primary);
         }
         100% {
             box-shadow:
-                    0 0 50px color-mix(in oklch, var(--color-primary) 35%, transparent),
-                    0 0 80px color-mix(in oklch, var(--color-primary) 25%, transparent),
-                    0 0 120px color-mix(in oklch, var(--color-primary) 15%, transparent),
-                    0 12px 40px color-mix(in oklch, var(--color-foreground) 18%, transparent);
+                    0 0 40px color-mix(in oklch, var(--color-primary) 30%, transparent),
+                    0 0 65px color-mix(in oklch, var(--color-primary) 20%, transparent),
+                    0 20px 40px -5px rgba(0, 0, 0, 0.18),
+                    0 8px 16px -8px rgba(0, 0, 0, 0.25);
+            border-color: color-mix(in oklch, var(--color-primary) 90%, transparent);
         }
     }
 
-    /* Enhanced chevron styling for desktop */
+    /* Enhanced chevron styling for desktop - more subtle and professional */
     .hidden.lg\\:flex .vibe-chevron {
         background: linear-gradient(135deg,
-        color-mix(in oklch, var(--color-primary) 25%, transparent),
-        color-mix(in oklch, var(--color-primary) 15%, transparent));
-        border: 1px solid color-mix(in oklch, var(--color-primary) 50%, transparent);
+        color-mix(in oklch, var(--color-primary) 20%, transparent),
+        color-mix(in oklch, var(--color-primary) 10%, transparent));
+        border: 1px solid color-mix(in oklch, var(--color-primary) 40%, transparent);
         transition: all 0.3s ease;
+        width: 36px;
+        height: 36px;
+        flex-shrink: 0;
     }
 
     .hidden.lg\\:flex .vibe-chevron:hover {
         background: linear-gradient(135deg,
-        color-mix(in oklch, var(--color-primary) 35%, transparent),
-        color-mix(in oklch, var(--color-primary) 20%, transparent));
-        border-color: color-mix(in oklch, var(--color-primary) 60%, transparent);
-        transform: scale(1.1);
-        box-shadow: 0 0 20px color-mix(in oklch, var(--color-primary) 20%, transparent);
+        color-mix(in oklch, var(--color-primary) 30%, transparent),
+        color-mix(in oklch, var(--color-primary) 15%, transparent));
+        border-color: color-mix(in oklch, var(--color-primary) 50%, transparent);
+        transform: scale(1.08);
+        box-shadow: 0 0 15px color-mix(in oklch, var(--color-primary) 15%, transparent);
     }
 }
 
@@ -138,11 +169,12 @@ section .max-w-5xl {
 }
 
 .vibe-panel__title {
-    font-size: clamp(1.25rem, 3vw, 1.75rem);
+    font-size: 1.625rem;
     font-weight: 600;
     color: var(--color-foreground);
-    margin: 0;
+    margin: 0 0 0.75rem 0;
     line-height: 1.2;
+    letter-spacing: -0.01em;
 }
 
 .vibe-panel__title--accent {
@@ -150,11 +182,12 @@ section .max-w-5xl {
 }
 
 .vibe-panel__description {
-    font-size: clamp(0.8rem, 2vw, 1.1rem);
-    line-height: 1.4;
+    font-size: 0.9375rem;
+    line-height: 1.5;
     color: var(--color-muted-foreground);
     margin: 0;
     margin-top: auto;
+    letter-spacing: -0.005em;
 }
 
 /* Intent Box */
@@ -168,6 +201,9 @@ section .max-w-5xl {
     flex-direction: column;
     justify-content: space-around;
     min-height: 120px;
+    max-width: 400px;
+    margin-left: auto;
+    margin-right: auto;
 }
 
 .vibe-intent-box__item {
@@ -314,7 +350,154 @@ section .max-w-5xl {
     transform: scale(1.05);
 }
 
-/* News Ticker Style Auto-Scrolling Cards */
+/* Mobile Single Card */
+.vibe-mobile-single-container {
+    width: 100%;
+    padding: 0 1rem;
+    box-sizing: border-box;
+    display: flex;
+    justify-content: center;
+}
+
+.vibe-mobile-single-container .vibe-panel {
+    width: 100%;
+    max-width: 500px;
+    padding: 1rem; /* Reduce panel padding on mobile */
+    height: auto; /* Remove fixed height constraints */
+    min-height: auto; /* Remove min-height */
+}
+
+/* Larger text for mobile single card */
+.vibe-mobile-single-container .vibe-panel__title {
+    font-size: 1.75rem; /* 28px */
+    margin-bottom: 0.5rem; /* Further reduced */
+    margin-top: 0; /* Remove any top margin */
+}
+
+.vibe-mobile-single-container .vibe-panel__description {
+    font-size: 1.125rem; /* 18px - larger for better readability */
+    line-height: 1.5; /* Slightly tighter line height */
+    margin-top: 0.5rem; /* Reduced space before description */
+}
+
+.vibe-mobile-single-container .vibe-models-container {
+    gap: 0.375rem; /* Further reduce gap between model cards */
+    margin: 0.5rem 0; /* Further reduce vertical margins */
+    padding: 0.5rem; /* Reduce container padding */
+    flex: unset; /* Remove flex-1 to not force expansion */
+}
+
+.vibe-mobile-single-container .vibe-model-card {
+    padding: 0.5rem; /* Further reduce padding */
+}
+
+.vibe-mobile-single-container .vibe-model-card__name {
+    font-size: 1rem; /* 16px */
+    font-weight: 600;
+}
+
+.vibe-mobile-single-container .vibe-model-card__progress {
+    font-size: 1rem; /* 16px */
+    font-weight: 600;
+}
+
+.vibe-mobile-single-container .vibe-model-card__status {
+    font-size: 0.875rem; /* 14px */
+    margin-top: 0.25rem; /* Reduce top margin */
+}
+
+.vibe-mobile-single-container .vibe-progress-bar {
+    height: 5px; /* Slightly thinner to save space */
+    margin: 0.25rem 0; /* Reduce vertical margins */
+}
+
+.vibe-mobile-single-container .vibe-model-card__header {
+    margin-bottom: 0.25rem; /* Add explicit margin control */
+}
+
+/* Tablet - Two Cards Side by Side */
+.vibe-mobile-cards-container {
+    width: 100%;
+    padding: 0;
+    box-sizing: border-box;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.vibe-mobile-cards-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    width: fit-content;
+    max-width: 100%;
+    padding: 0 1rem;
+    box-sizing: border-box;
+    margin: 0 auto;
+    justify-items: center;
+    align-items: center;
+}
+
+.vibe-mobile-card {
+    width: 100%;
+    max-width: 360px;
+    display: flex;
+    justify-content: center;
+}
+
+.vibe-mobile-card .vibe-panel {
+    width: 100%;
+    height: 100%;
+    min-height: 400px;
+}
+
+/* Adjust panel padding for mobile */
+@media (max-width: 1023px) {
+    .vibe-mobile-card .vibe-panel {
+        padding: clamp(1rem, 3vw, 1.5rem);
+    }
+    
+    .vibe-mobile-card .vibe-panel__title {
+        font-size: clamp(1rem, 3vw, 1.25rem);
+        margin-bottom: 1rem;
+    }
+    
+    .vibe-mobile-card .vibe-intent-box {
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+    }
+    
+    .vibe-mobile-card .vibe-intent-box__item {
+        padding: 0.375rem 0.75rem;
+        font-size: clamp(0.75rem, 2vw, 0.875rem);
+    }
+    
+    .vibe-mobile-card .vibe-panel__description {
+        font-size: 0.875rem; /* Keep consistent size across mobile and tablet */
+    }
+    
+    .vibe-mobile-card .vibe-models-container {
+        gap: 0.5rem;
+    }
+    
+    .vibe-mobile-card .vibe-model-card {
+        padding: 0.5rem;
+    }
+    
+    .vibe-mobile-card .vibe-model-card__name {
+        font-size: clamp(0.625rem, 1.8vw, 0.75rem);
+    }
+    
+    .vibe-mobile-card .vibe-model-card__progress {
+        font-size: clamp(0.625rem, 1.8vw, 0.75rem);
+    }
+    
+    .vibe-mobile-card .vibe-model-card__status {
+        font-size: clamp(0.5rem, 1.5vw, 0.625rem);
+    }
+}
+
+/* Old ticker styles - kept for reference but unused */
 .vibe-ticker-container {
     position: relative;
     overflow-x: auto;

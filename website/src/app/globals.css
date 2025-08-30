@@ -405,11 +405,18 @@
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     
-    border: 1px solid oklch(0.90 0.04 195 / 0.5);
-    box-shadow: 0 8px 32px oklch(0.48 0.15 195 / 0.06);
+    /* Gradient-like glow effect similar to hero panels */
+    border: 1px solid oklch(0.68 0.085 195 / 0.4);
+    box-shadow: 
+      0 0 30px oklch(0.68 0.085 195 / 0.15),
+      0 0 60px oklch(0.68 0.085 195 / 0.08),
+      0 8px 32px oklch(0.48 0.15 195 / 0.06);
     
     position: relative;
     overflow: hidden;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    transform: translateZ(0); /* Force GPU acceleration */
+    backface-visibility: hidden; /* Prevent flickering */
   }
   
   
@@ -419,19 +426,31 @@
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     
-    border: 1px solid oklch(0.68 0.085 195 / 0.34);
-    box-shadow: 0 16px 48px oklch(0.68 0.085 195 / 0.20);
+    /* Gradient-like glow for dark mode */
+    border: 1px solid oklch(0.68 0.085 195 / 0.5);
+    box-shadow: 
+      0 0 40px oklch(0.68 0.085 195 / 0.25),
+      0 0 80px oklch(0.68 0.085 195 / 0.12),
+      0 16px 48px oklch(0.68 0.085 195 / 0.20);
+    transform: translateZ(0); /* Force GPU acceleration */
+    backface-visibility: hidden; /* Prevent flickering */
   }
   
   .glass:hover {
-    /* Optimized hover state - no blur change for performance */
-    border: 1px solid oklch(0.48 0.15 195 / 0.3);
-    box-shadow: 0 8px 24px oklch(0.48 0.15 195 / 0.1);
+    /* Enhanced hover state with gradient glow */
+    border-color: oklch(0.68 0.085 195 / 0.6);
+    box-shadow: 
+      0 0 40px oklch(0.68 0.085 195 / 0.2),
+      0 0 80px oklch(0.68 0.085 195 / 0.1),
+      0 12px 40px oklch(0.48 0.15 195 / 0.12);
   }
   
   .dark .glass:hover {
-    border: 1px solid oklch(0.68 0.085 195 / 0.5);
-    box-shadow: 0 16px 48px oklch(0.68 0.085 195 / 0.35);
+    border-color: oklch(0.68 0.085 195 / 0.7);
+    box-shadow: 
+      0 0 50px oklch(0.68 0.085 195 / 0.35),
+      0 0 100px oklch(0.68 0.085 195 / 0.15),
+      0 20px 56px oklch(0.68 0.085 195 / 0.25);
   }
   
   /* Glass highlighted - for important CTA sections */
@@ -447,12 +466,14 @@
     backdrop-filter: blur(12px) saturate(1.2);
     -webkit-backdrop-filter: blur(12px) saturate(1.2);
     
-    border: 1px solid oklch(0.68 0.085 195 / 0.3);
+    /* Prominent gradient glow for highlighted cards */
+    border: 1px solid oklch(0.68 0.085 195 / 0.6);
     
     box-shadow: 
       inset 0 1px 2px oklch(1 0 0 / 0.2),
       inset 0 -1px 2px oklch(0.68 0.085 195 / 0.1),
-      0 0 0 1px oklch(0.68 0.085 195 / 0.1),
+      0 0 60px oklch(0.68 0.085 195 / 0.3),
+      0 0 120px oklch(0.68 0.085 195 / 0.15),
       0 20px 40px -8px oklch(0.68 0.085 195 / 0.25),
       0 8px 32px -4px oklch(0.48 0.15 195 / 0.2);
     
@@ -496,12 +517,13 @@
       oklch(0.23 0.026 206 / 0.88) 100%
     );
     
-    border: 1px solid oklch(0.68 0.085 195 / 0.5);
+    border: 1px solid oklch(0.68 0.085 195 / 0.7);
     
     box-shadow: 
       inset 0 1px 2px oklch(1 0 0 / 0.1),
       inset 0 -1px 2px oklch(0.68 0.085 195 / 0.15),
-      0 0 0 1px oklch(0.68 0.085 195 / 0.2),
+      0 0 80px oklch(0.68 0.085 195 / 0.4),
+      0 0 160px oklch(0.68 0.085 195 / 0.2),
       0 30px 60px -12px oklch(0.68 0.085 195 / 0.4),
       0 12px 36px -8px oklch(0.48 0.15 195 / 0.3);
   }
@@ -515,21 +537,19 @@
   }
   
   .glass-highlighted:hover {
-    border: 1px solid oklch(0.68 0.085 195 / 0.4);
+    border: 1px solid oklch(0.68 0.085 195 / 0.6);
     box-shadow: 
       inset 0 1px 2px oklch(1 0 0 / 0.25),
       inset 0 -1px 2px oklch(0.68 0.085 195 / 0.15),
-      0 0 0 2px oklch(0.68 0.085 195 / 0.15),
       0 24px 48px -8px oklch(0.68 0.085 195 / 0.3),
       0 12px 36px -4px oklch(0.48 0.15 195 / 0.25);
   }
   
   .dark .glass-highlighted:hover {
-    border: 1px solid oklch(0.68 0.085 195 / 0.6);
+    border: 1px solid oklch(0.68 0.085 195 / 0.75);
     box-shadow: 
       inset 0 1px 2px oklch(1 0 0 / 0.15),
       inset 0 -1px 2px oklch(0.68 0.085 195 / 0.2),
-      0 0 0 2px oklch(0.68 0.085 195 / 0.25),
       0 36px 72px -16px oklch(0.68 0.085 195 / 0.5),
       0 16px 48px -8px oklch(0.48 0.15 195 / 0.35);
   }

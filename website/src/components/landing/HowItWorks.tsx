@@ -211,19 +211,41 @@ export const HowItWorks = memo(function HowItWorks({ steps = defaultSteps }: How
           >
             How It Works
           </Reveal>
+        </div>
+
+        {/* Screenshot Gallery Section */}
+        <ScreenshotGallery />
+
+        {/* Videos Section */}
+        <div className="mt-16 mb-8">
+          <Reveal 
+            as="h3" 
+            className="text-2xl sm:text-3xl md:text-4xl mb-4 text-center text-primary font-bold"
+            delay={prefersReducedMotion ? 0 : 0}
+          >
+            Watch It In Action
+          </Reveal>
           <Reveal 
             as="p" 
-            className="text-base sm:text-lg md:text-xl max-w-3xl mx-auto leading-relaxed font-medium text-foreground/80 px-4 sm:px-0" 
+            className="text-base sm:text-lg text-center text-muted-foreground mb-8"
             delay={prefersReducedMotion ? 0 : 0.05}
           >
-            Type it. Voice it. Record your screen showing the problem. 
-            AI finds the right files, runs multiple models in parallel, then merges their best ideas. Five minutes later, you have a plan.
+            Explore each feature with interactive video demos
           </Reveal>
         </div>
 
         {/* Full-width scrollable video container */}
-        <div className="w-full overflow-hidden mb-16">
-          <div className="overflow-x-auto">
+        <div className="w-full overflow-hidden relative">
+          {/* Scroll indicator for mobile */}
+          <div className="sm:hidden absolute right-4 top-0 z-10 flex items-center gap-2 text-sm text-muted-foreground bg-background/80 backdrop-blur-sm px-3 py-1.5 rounded-full">
+            <span>Swipe for more</span>
+            <svg className="w-4 h-4 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+            </svg>
+          </div>
+          
+          {/* Video container with improved mobile UX */}
+          <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-primary/20 scrollbar-track-transparent">
             <div className="flex gap-4 pb-4 px-4" style={{ scrollSnapType: 'x mandatory', width: 'max-content' }}>
               {flattenedSteps.map((step, index) => (
                 <VideoCard 
@@ -236,10 +258,11 @@ export const HowItWorks = memo(function HowItWorks({ steps = defaultSteps }: How
               ))}
             </div>
           </div>
+          
+          {/* Gradient fade indicators for desktop */}
+          <div className="hidden sm:block absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-background to-transparent pointer-events-none" />
+          <div className="hidden sm:block absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-background to-transparent pointer-events-none" />
         </div>
-
-        {/* Screenshot Gallery Section */}
-        <ScreenshotGallery />
 
       </div>
     </section>

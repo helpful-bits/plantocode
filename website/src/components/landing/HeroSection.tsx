@@ -48,7 +48,16 @@ export function HeroSection() {
     <section className="relative h-auto sm:min-h-screen flex items-start sm:items-center justify-center overflow-hidden bg-transparent py-20 sm:py-16 md:py-14 lg:py-14">
       <div className="relative text-center px-4 sm:px-6 lg:px-8 w-full max-w-7xl mx-auto my-8">
         {/* Primary heading - Priority content for LCP */}
-        <h1 className="relative text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-6 leading-tight text-hero-title" style={{ contentVisibility: 'auto' }}>
+        <h1 
+          className="relative text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-6 leading-tight bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent" 
+          style={{ 
+            contentVisibility: 'auto',
+            backgroundImage: 'linear-gradient(135deg, var(--color-adaptive-primary), var(--color-adaptive-accent), var(--teal-bright))',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
+          }}
+        >
           From idea to solid plan. Fast.
         </h1>
 
@@ -57,34 +66,34 @@ export function HeroSection() {
           Tell it what you want to build. Type, talk, or show it on screen. AI finds the right files, generates plans with multiple models, and gives you a blueprint your coding agent can actually use.
         </p>
 
-        {/* Vibe Manager Panels Flow - Exact ad design with website colors */}
+        {/* Vibe Manager Panels Flow - Two Key Features */}
         <div className="vibe-panels-container">
-          {/* Screen reader description for carousel */}
-          <div id="carousel-description" className="sr-only">
-            This carousel demonstrates the three-step workflow: 1) Capture Intent where you describe goals and constraints, 
-            2) Parallel Planning where multiple AI models create competing plans, and 3) Merge Plan where you get a machine-usable blueprint.
+          {/* Screen reader description for features */}
+          <div id="features-description" className="sr-only">
+            Two core features: 1) Find Files - AI discovers and analyzes the exact files you need, 
+            2) Parallel Planning - Multiple AI models create competing implementation plans.
           </div>
           {/* Desktop Static Layout */}
           <div className="hidden lg:flex items-center justify-center gap-6">
             <div className="vibe-panel">
-              <h2 className="vibe-panel__title">1. Capture Intent</h2>
+              <h2 className="vibe-panel__title">Find Files</h2>
               
               <div className="vibe-intent-box">
-                <div className="vibe-intent-box__item">Goals</div>
-                <div className="vibe-intent-box__item">Constraints</div>
-                <div className="vibe-intent-box__item">Affected Areas</div>
+                <div className="vibe-intent-box__item">Regex Filter</div>
+                <div className="vibe-intent-box__item">AI Relevance</div>
+                <div className="vibe-intent-box__item">Path Finding</div>
               </div>
 
               <p className="vibe-panel__description">
-                Describe what you want. Type it, speak it, or record your screen.
-                We extract goals, constraints, and context automatically.
+                AI reads your code, not just names. Finds dependencies you forgot existed.
+                From 1,000 files to the 10 that matter. Results persist - use them forever.
               </p>
             </div>
 
             <VibeChevron />
 
             <div className="vibe-panel vibe-panel--accent vibe-panel--glow">
-              <h2 className="vibe-panel__title vibe-panel__title--accent">2. Parallel Planning</h2>
+              <h2 className="vibe-panel__title vibe-panel__title--accent">Parallel Planning</h2>
               
               <div className="vibe-models-container">
                 <div className="vibe-model-card">
@@ -106,7 +115,7 @@ export function HeroSection() {
                   <div className="vibe-progress-bar">
                     <div className="vibe-progress-bar__fill" style={{width: '72%'}}></div>
                   </div>
-                  <div className="vibe-model-card__status">Generating plans...</div>
+                  <div className="vibe-model-card__status">Structuring approach...</div>
                 </div>
                 
                 <div className="vibe-model-card">
@@ -122,15 +131,15 @@ export function HeroSection() {
               </div>
 
               <p className="vibe-panel__description">
-                15+ models available. Run one or run them all in parallel. 
-                Click "Find Files" first, then "Create Plan". Watch the tokens and costs before you commit.
+                15+ models compete. Same task, different approaches. 
+                Pick the winner or merge them all. Best ideas win, bad ideas die.
               </p>
             </div>
 
             <VibeChevron />
 
             <div className="vibe-panel">
-              <h2 className="vibe-panel__title">3. Merge a Machine-Usable Plan</h2>
+              <h2 className="vibe-panel__title">Plan for Claude Code</h2>
               
               <div className="vibe-code-block">
                 <pre className="vibe-code-block__content">{`<plan>
@@ -150,39 +159,70 @@ export function HeroSection() {
               </div>
 
               <p className="vibe-panel__description">
-                Select multiple plans. Click merge. Get one unified blueprint 
-                with the best of each approach. Copy it straight to your agent.
+                Blueprint your agent understands. Copy straight to Claude Code.
+                Merge multiple approaches into one perfect plan.
               </p>
             </div>
           </div>
 
-          {/* Mobile Auto-Scrolling News Ticker Style Cards */}
-          <div className="block lg:hidden">
-            <div className="vibe-ticker-container">
-              <div className="vibe-ticker-track">
+          {/* Mobile - Single Card */}
+          <div className="block md:hidden">
+            <div className="vibe-mobile-single-container">
+              <div className="vibe-panel vibe-panel--accent vibe-panel--glow">
+                <h2 className="vibe-panel__title vibe-panel__title--accent">Parallel Planning</h2>
                 
-                {/* Card 1: Capture Intent */}
-                <div className="vibe-ticker-card">
-                  <div className="vibe-panel">
-                    <h2 className="vibe-panel__title">1. Capture Intent</h2>
-                    
-                    <div className="vibe-intent-box">
-                      <div className="vibe-intent-box__item">Goals</div>
-                      <div className="vibe-intent-box__item">Constraints</div>
-                      <div className="vibe-intent-box__item">Affected Areas</div>
+                <div className="vibe-models-container">
+                  <div className="vibe-model-card">
+                    <div className="vibe-model-card__header">
+                      <span className="vibe-model-card__name">Claude 4</span>
+                      <span className="vibe-model-card__progress">85%</span>
                     </div>
-
-                    <p className="vibe-panel__description">
-                      Describe what you want. Type it, speak it, or record your screen.
-                      We extract goals, constraints, and context automatically.
-                    </p>
+                    <div className="vibe-progress-bar">
+                      <div className="vibe-progress-bar__fill" style={{width: '85%'}}></div>
+                    </div>
+                    <div className="vibe-model-card__status">Analyzing patterns...</div>
+                  </div>
+                  
+                  <div className="vibe-model-card">
+                    <div className="vibe-model-card__header">
+                      <span className="vibe-model-card__name">GPT-5</span>
+                      <span className="vibe-model-card__progress">72%</span>
+                    </div>
+                    <div className="vibe-progress-bar">
+                      <div className="vibe-progress-bar__fill" style={{width: '72%'}}></div>
+                    </div>
+                    <div className="vibe-model-card__status">Structuring approach...</div>
+                  </div>
+                  
+                  <div className="vibe-model-card">
+                    <div className="vibe-model-card__header">
+                      <span className="vibe-model-card__name">Gemini 2.5 Pro</span>
+                      <span className="vibe-model-card__progress">91%</span>
+                    </div>
+                    <div className="vibe-progress-bar">
+                      <div className="vibe-progress-bar__fill" style={{width: '91%'}}></div>
+                    </div>
+                    <div className="vibe-model-card__status">Reviewing trade-offs...</div>
                   </div>
                 </div>
 
-                {/* Card 2: Parallel Planning (Accent with Glow) */}
-                <div className="vibe-ticker-card">
+                <p className="vibe-panel__description">
+                  15+ models compete. Same task, different approaches. 
+                  Pick the winner or merge them all. Best ideas win, bad ideas die.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Tablet - Two Cards Side by Side */}
+          <div className="hidden md:block lg:hidden">
+            <div className="vibe-mobile-cards-container">
+              <div className="vibe-mobile-cards-grid">
+                
+                {/* Card 1: Parallel Planning */}
+                <div className="vibe-mobile-card">
                   <div className="vibe-panel vibe-panel--accent vibe-panel--glow">
-                    <h2 className="vibe-panel__title vibe-panel__title--accent">2. Parallel Planning</h2>
+                    <h2 className="vibe-panel__title vibe-panel__title--accent">Parallel Planning</h2>
                     
                     <div className="vibe-models-container">
                       <div className="vibe-model-card">
@@ -204,7 +244,7 @@ export function HeroSection() {
                         <div className="vibe-progress-bar">
                           <div className="vibe-progress-bar__fill" style={{width: '72%'}}></div>
                         </div>
-                        <div className="vibe-model-card__status">Generating plans...</div>
+                        <div className="vibe-model-card__status">Structuring approach...</div>
                       </div>
                       
                       <div className="vibe-model-card">
@@ -220,16 +260,16 @@ export function HeroSection() {
                     </div>
 
                     <p className="vibe-panel__description">
-                      15+ models available. Run one or run them all in parallel. 
-                      Click "Find Files" first, then "Create Plan". Watch the tokens and costs before you commit.
+                      15+ models compete. Same task, different approaches. 
+                      Pick the winner or merge them all. Best ideas win, bad ideas die.
                     </p>
                   </div>
                 </div>
 
-                {/* Card 3: Merge Plan */}
-                <div className="vibe-ticker-card">
+                {/* Card 2: Plan for Claude Code */}
+                <div className="vibe-mobile-card">
                   <div className="vibe-panel">
-                    <h2 className="vibe-panel__title">3. Merge a Machine-Usable Plan</h2>
+                    <h2 className="vibe-panel__title">Plan for Claude Code</h2>
                     
                     <div className="vibe-code-block">
                       <pre className="vibe-code-block__content">{`<plan>
@@ -249,100 +289,8 @@ export function HeroSection() {
                     </div>
 
                     <p className="vibe-panel__description">
-                      Select multiple plans. Click merge. Get one unified blueprint 
-                      with the best of each approach. Copy it straight to your agent.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Duplicate cards for seamless loop */}
-                <div className="vibe-ticker-card">
-                  <div className="vibe-panel">
-                    <h2 className="vibe-panel__title">1. Capture Intent</h2>
-                    
-                    <div className="vibe-intent-box">
-                      <div className="vibe-intent-box__item">Goals</div>
-                      <div className="vibe-intent-box__item">Constraints</div>
-                      <div className="vibe-intent-box__item">Affected Areas</div>
-                    </div>
-
-                    <p className="vibe-panel__description">
-                      Describe what you want. Type it, speak it, or record your screen.
-                      We extract goals, constraints, and context automatically.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="vibe-ticker-card">
-                  <div className="vibe-panel vibe-panel--accent vibe-panel--glow">
-                    <h2 className="vibe-panel__title vibe-panel__title--accent">2. Parallel Planning</h2>
-                    
-                    <div className="vibe-models-container">
-                      <div className="vibe-model-card">
-                        <div className="vibe-model-card__header">
-                          <span className="vibe-model-card__name">Claude 4</span>
-                          <span className="vibe-model-card__progress">85%</span>
-                        </div>
-                        <div className="vibe-progress-bar">
-                          <div className="vibe-progress-bar__fill" style={{width: '85%'}}></div>
-                        </div>
-                        <div className="vibe-model-card__status">Analyzing patterns...</div>
-                      </div>
-                      
-                      <div className="vibe-model-card">
-                        <div className="vibe-model-card__header">
-                          <span className="vibe-model-card__name">GPT-5</span>
-                          <span className="vibe-model-card__progress">72%</span>
-                        </div>
-                        <div className="vibe-progress-bar">
-                          <div className="vibe-progress-bar__fill" style={{width: '72%'}}></div>
-                        </div>
-                        <div className="vibe-model-card__status">Generating plans...</div>
-                      </div>
-                      
-                      <div className="vibe-model-card">
-                        <div className="vibe-model-card__header">
-                          <span className="vibe-model-card__name">Gemini 2.5 Pro</span>
-                          <span className="vibe-model-card__progress">91%</span>
-                        </div>
-                        <div className="vibe-progress-bar">
-                          <div className="vibe-progress-bar__fill" style={{width: '91%'}}></div>
-                        </div>
-                        <div className="vibe-model-card__status">Reviewing trade-offs...</div>
-                      </div>
-                    </div>
-
-                    <p className="vibe-panel__description">
-                      15+ models available. Run one or run them all in parallel. 
-                      Click "Find Files" first, then "Create Plan". Watch the tokens and costs before you commit.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="vibe-ticker-card">
-                  <div className="vibe-panel">
-                    <h2 className="vibe-panel__title">3. Merge a Machine-Usable Plan</h2>
-                    
-                    <div className="vibe-code-block">
-                      <pre className="vibe-code-block__content">{`<plan>
-  <step>
-    <file_operation>
-      <path>src/components/</path>
-      <changes>...</changes>
-      <validation>tests</validation>
-    </file_operation>
-  </step>
-  <step>
-    <file_operation>
-      <path>docs/README.md</path>
-    </file_operation>
-  </step>
-</plan>`}</pre>
-                    </div>
-
-                    <p className="vibe-panel__description">
-                      Select multiple plans. Click merge. Get one unified blueprint 
-                      with the best of each approach. Copy it straight to your agent.
+                      Blueprint your agent understands. Copy straight to Claude Code.
+                      Merge multiple approaches into one perfect plan.
                     </p>
                   </div>
                 </div>

@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { cdnUrl } from '@/lib/cdn';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
+import { GlassCard } from '@/components/ui/GlassCard';
 import { 
   Search, 
   FileText, 
@@ -170,16 +171,6 @@ export function ScreenshotGallery() {
   return (
     <>
       <div className="py-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
-        <div className="text-center mb-16">
-          <h2 className="text-4xl sm:text-5xl font-bold mb-6 text-foreground">
-            This Is What You Get
-          </h2>
-          <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-            No mockups. No concepts. These are actual screenshots from actual sessions.
-            This is the tool you'll use tomorrow.
-          </p>
-        </div>
-
         {/* Structured Single-Column Layout */}
         <div className="space-y-20">
           {screenshots.map((screenshot, index) => (
@@ -194,22 +185,21 @@ export function ScreenshotGallery() {
               }}
               className="group"
             >
-              <div className="bg-card border border-border rounded-3xl overflow-hidden hover:border-primary/30 transition-all duration-500 hover:shadow-2xl">
+              <GlassCard 
+                className="!p-0 !rounded-3xl hover:shadow-2xl hover:shadow-primary/20"
+                highlighted={index === 0}
+              >
                 <div className={`lg:flex ${index % 2 === 1 ? 'lg:flex-row-reverse' : ''}`}>
                   {/* Content Section - Left/Right alternating */}
                   <div className="lg:w-2/5 p-8 lg:p-12 flex flex-col justify-center">
                     <div className="flex items-center gap-4 mb-6">
-                      <div className="p-3 rounded-2xl bg-primary/10 text-primary [&>svg]:w-8 [&>svg]:h-8">
+                      <div className="p-3 rounded-2xl bg-primary/15 dark:bg-primary/20 text-primary [&>svg]:w-8 [&>svg]:h-8">
                         {screenshot.icon}
                       </div>
-                      <span className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
-                        Feature {index + 1}
-                      </span>
+                      <h3 className="text-3xl lg:text-4xl font-bold text-foreground">
+                        {screenshot.title}
+                      </h3>
                     </div>
-                    
-                    <h3 className="text-3xl lg:text-4xl font-bold text-foreground mb-4">
-                      {screenshot.title}
-                    </h3>
                     
                     <p className="text-lg text-muted-foreground leading-relaxed mb-8">
                       {screenshot.description}
@@ -219,8 +209,8 @@ export function ScreenshotGallery() {
                     {screenshot.features && (
                       <ul className="space-y-3">
                         {screenshot.features.map((feature, idx) => (
-                          <li key={idx} className="flex items-start gap-3">
-                            <span className="text-primary mt-1">✓</span>
+                          <li key={idx} className="flex items-center gap-3">
+                            <span className="text-primary flex-shrink-0">✓</span>
                             <span className="text-base text-muted-foreground">{feature}</span>
                           </li>
                         ))}
@@ -233,10 +223,14 @@ export function ScreenshotGallery() {
                     className="lg:w-3/5 bg-gradient-to-br from-background/50 to-background/20 p-6 lg:p-8 cursor-pointer"
                     onClick={() => setSelectedImage(screenshot)}
                   >
-                    <div className="relative rounded-2xl overflow-hidden shadow-xl hover:shadow-2xl transition-all duration-300 border border-border/20 bg-background/50">
+                    <div className="relative rounded-2xl overflow-hidden shadow-xl hover:shadow-2xl transition-all duration-300 border border-primary/20 dark:border-primary/25 bg-background/50">
                       <div 
                         className="relative"
-                        style={{ aspectRatio: screenshot.aspectRatio || '16/10' }}
+                        style={{ 
+                          aspectRatio: screenshot.aspectRatio || '16/10',
+                          maxWidth: (screenshot.id === 'file-finder-workflow' || screenshot.id === 'background-tasks' || screenshot.id === 'plans-monitor') ? '400px' : undefined,
+                          margin: (screenshot.id === 'file-finder-workflow' || screenshot.id === 'background-tasks' || screenshot.id === 'plans-monitor') ? '0 auto' : undefined
+                        }}
                       >
                         <Image
                           src={screenshot.image}
@@ -249,7 +243,7 @@ export function ScreenshotGallery() {
                         />
                         {/* Hover Overlay */}
                         <div className="absolute inset-0 bg-gradient-to-t from-background/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-center pb-6">
-                          <div className="bg-background/95 backdrop-blur-md rounded-full px-4 py-2 shadow-lg border border-border/40 flex items-center gap-2">
+                          <div className="bg-background/95 backdrop-blur-md rounded-full px-4 py-2 shadow-lg border border-primary/30 dark:border-primary/40 flex items-center gap-2">
                             <Maximize2 className="w-4 h-4" />
                             <span className="text-sm font-medium">View full size</span>
                           </div>
@@ -258,7 +252,7 @@ export function ScreenshotGallery() {
                     </div>
                   </div>
                 </div>
-              </div>
+              </GlassCard>
             </motion.div>
           ))}
         </div>
@@ -315,10 +309,10 @@ export function ScreenshotGallery() {
             {/* Close Button - Fixed position */}
             <button
               onClick={() => setSelectedImage(null)}
-              className="fixed top-4 right-4 p-3 rounded-full bg-background/90 hover:bg-background border border-border/50 hover:border-primary/50 transition-all z-[51] shadow-lg"
+              className="fixed top-4 right-4 p-3 rounded-full glass border border-primary/30 hover:border-primary/50 transition-all z-[51] shadow-lg"
               style={{ position: 'fixed', top: '1rem', right: '1rem' }}
             >
-              <X className="w-6 h-6" />
+              <X className="w-6 h-6 text-foreground" />
             </button>
 
             <motion.div
@@ -344,7 +338,7 @@ export function ScreenshotGallery() {
 
               {/* Title Overlay - Bottom */}
               <div className="absolute bottom-4 left-4 right-4 flex justify-center pointer-events-none">
-                <div className="bg-card/95 dark:bg-background/90 backdrop-blur-md rounded-xl px-6 py-3 shadow-lg border border-border/50 dark:border-border/30 max-w-2xl">
+                <div className="glass backdrop-blur-md rounded-xl px-6 py-3 shadow-lg border border-primary/30 dark:border-primary/40 max-w-2xl">
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-primary/20 dark:bg-primary/10 text-primary dark:text-primary">
                       {selectedImage.icon}
