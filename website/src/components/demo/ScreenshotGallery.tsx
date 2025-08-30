@@ -199,8 +199,8 @@ export function ScreenshotGallery() {
                   {/* Content Section - Left/Right alternating */}
                   <div className="lg:w-2/5 p-8 lg:p-12 flex flex-col justify-center">
                     <div className="flex items-center gap-4 mb-6">
-                      <div className="p-3 rounded-2xl bg-primary/10 text-primary">
-                        {React.cloneElement(screenshot.icon as React.ReactElement, { className: "w-8 h-8" })}
+                      <div className="p-3 rounded-2xl bg-primary/10 text-primary [&>svg]:w-8 [&>svg]:h-8">
+                        {screenshot.icon}
                       </div>
                       <span className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
                         Feature {index + 1}
