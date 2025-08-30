@@ -140,6 +140,24 @@ export default function Home() {
 
   const videoSteps = [
     {
+      title: "File Discovery & Search",
+      description: "Watch how AI finds relevant files in your codebase using intelligent search patterns",
+      video: cdnUrl('/assets/videos/step-2-find.mp4'),
+      poster: cdnUrl('/assets/images/step-2-poster.jpg')
+    },
+    {
+      title: "Plan Creation & Merge",
+      description: "Generate multiple implementation plans from different AI models and merge the best approaches into a unified solution",
+      video: cdnUrl('/assets/videos/step-4-merge.mp4'), 
+      poster: cdnUrl('/assets/images/step-4-poster.jpg')
+    },
+    {
+      title: "Deep Research & Context Analysis", 
+      description: "Watch AI perform comprehensive research across your codebase to gather context and understand dependencies",
+      video: cdnUrl('/assets/videos/step-3-generate.mp4'),
+      poster: cdnUrl('/assets/images/step-3-poster.jpg')
+    },
+    {
       title: "Task Description Input",
       description: "Describe your task naturally with text input and get AI assistance with enhancement",
       subSteps: [
@@ -159,24 +177,6 @@ export default function Home() {
           poster: cdnUrl('/assets/images/step-1-video-poster.jpg')
         }
       ]
-    },
-    {
-      title: "File Discovery & Search",
-      description: "Watch how AI finds relevant files in your codebase using intelligent search patterns",
-      video: cdnUrl('/assets/videos/step-2-find.mp4'),
-      poster: cdnUrl('/assets/images/step-2-poster.jpg')
-    },
-    {
-      title: "Deep Research & Context Analysis", 
-      description: "Watch AI perform comprehensive research across your codebase to gather context and understand dependencies",
-      video: cdnUrl('/assets/videos/step-3-generate.mp4'),
-      poster: cdnUrl('/assets/images/step-3-poster.jpg')
-    },
-    {
-      title: "Plan Creation & Merge",
-      description: "Generate multiple implementation plans from different AI models and merge the best approaches into a unified solution",
-      video: cdnUrl('/assets/videos/step-4-merge.mp4'), 
-      poster: cdnUrl('/assets/images/step-4-poster.jpg')
     },
     {
       title: "Settings & Prompt Customization",

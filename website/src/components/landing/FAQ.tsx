@@ -45,12 +45,8 @@ export function FAQ({ items }: FAQProps) {
               key={index}
               delay={0.1 + index * 0.05}
             >
-              <motion.div
-                className="faq-item"
-                transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-                whileHover={{ scale: 1.02 }}
-              >
-              <GlassCard className="overflow-hidden">
+              <div className="faq-item">
+              <GlassCard className="overflow-hidden transition-transform duration-200 hover:scale-[1.01]">
                 <motion.div
                   initial={{ backgroundColor: 'rgba(0, 0, 0, 0)' }}
                   animate={{
@@ -156,7 +152,7 @@ export function FAQ({ items }: FAQProps) {
                   </AnimatePresence>
                 </motion.div>
               </GlassCard>
-              </motion.div>
+              </div>
             </Reveal>
           ))}
         </div>
