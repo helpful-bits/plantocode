@@ -80,8 +80,8 @@ export function HeroSection() {
               
               <div className="vibe-intent-box">
                 <div className="vibe-intent-box__item">Regex Filter</div>
-                <div className="vibe-intent-box__item">AI Relevance</div>
-                <div className="vibe-intent-box__item">Path Finding</div>
+                <div className="vibe-intent-box__item">File Content Relevance</div>
+                <div className="vibe-intent-box__item">Dependencies</div>
               </div>
 
               <p className="vibe-panel__description">
@@ -159,7 +159,7 @@ export function HeroSection() {
               </div>
 
               <p className="vibe-panel__description">
-                Blueprint your agent understands. Copy straight to Claude Code.
+                Blueprint your agent understands. Copy straight to Claude Code or Cursor.
                 Merge multiple approaches into one perfect plan.
               </p>
             </div>
