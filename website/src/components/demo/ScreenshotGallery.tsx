@@ -63,15 +63,15 @@ const screenshots: ScreenshotCard[] = [
   {
     id: 'implementation-plans',
     title: 'All Models. All At Once.',
-    description: 'Claude thinking. GPT-5 analyzing. Gemini processing. Same task, different approaches. Pick the winner. Or merge them all.',
+    description: 'Generate multiple plans with one click. Review and edit each approach. Merge the best ideas into one blueprint for Claude Code or Cursor.',
     image: cdnUrl('/assets/images/demo-implementation-plans.jpg'),
     icon: <FileText className="w-5 h-5" />,
     aspectRatio: '1714/1574',
     features: [
-      '15+ models ready to compete',
-      'See the cost before you commit',
-      'Parallel execution - why wait?',
-      'Best ideas win, bad ideas die'
+      'Click multiple times for more plans',
+      'Review and edit each approach',
+      'Merge the best ideas together',
+      'Export to Claude Code or Cursor'
     ]
   },
   {
