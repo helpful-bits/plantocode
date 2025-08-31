@@ -11,9 +11,9 @@ Add these environment variables in your Vercel project settings (Settings → En
 # Plausible Analytics (Optional - defaults to 'vibemanager.app')
 NEXT_PUBLIC_PLAUSIBLE_DOMAIN=vibemanager.app
 
-# X (Twitter) Pixel - Required for conversion tracking
-NEXT_PUBLIC_X_PIXEL_ID=your_pixel_id_here  # Get from X Ads Manager
-NEXT_PUBLIC_X_DOWNLOAD_EVENT_ID=your_event_id  # Get from X Events Manager (e.g., 'qd2io')
+# X (Twitter) Conversions API - Required for conversion tracking
+X_DOWNLOAD_EVENT_ID=your-single-event-tag-id  # Get from X Ads Manager → Events Manager
+X_ADS_API_TOKEN=your_api_token  # Secret - get from X Ads API
 
 # Google Site Verification (Optional - for Search Console)
 GOOGLE_SITE_VERIFICATION_CODE=your_verification_code
@@ -116,7 +116,7 @@ pnpm start
 ## Common Issues & Solutions
 
 ### Issue: X Pixel Not Firing
-- **Solution**: Ensure `NEXT_PUBLIC_X_PIXEL_ID` is set in Vercel
+- **Solution**: Ensure `X_DOWNLOAD_EVENT_ID` and `X_ADS_API_TOKEN` are set in Vercel
 - Check browser ad blockers aren't blocking `ads-twitter.com`
 
 ### Issue: Plausible Events Not Showing
