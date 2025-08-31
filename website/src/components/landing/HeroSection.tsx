@@ -52,7 +52,13 @@ export function HeroSection() {
             backgroundClip: 'text',
           }}
         >
-          From idea to solid plan. Fast.
+          From idea to <span className="solid-highlight">solid</span> plan. <span className="fast-velocity">
+            <span className="fast-letter" style={{ animationDelay: '0ms' }}>F</span>
+            <span className="fast-letter" style={{ animationDelay: '50ms' }}>a</span>
+            <span className="fast-letter" style={{ animationDelay: '100ms' }}>s</span>
+            <span className="fast-letter" style={{ animationDelay: '150ms' }}>t</span>
+            <span className="fast-dot">.</span>
+          </span>
         </h1>
 
         {/* Subtitle - Priority content for LCP */}
