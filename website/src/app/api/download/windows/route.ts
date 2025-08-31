@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
 
   // For now, redirect to coming soon page or waitlist
   // When Windows version is ready, update this to redirect to actual download
-  const comingSoonUrl = 'https://www.vibemanager.app/#pricing';
+  const comingSoonUrl = 'https://vibemanager.app/#pricing';
   
   return NextResponse.redirect(comingSoonUrl, {
     status: 302,
