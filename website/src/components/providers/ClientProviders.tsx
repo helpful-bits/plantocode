@@ -88,7 +88,7 @@ export function ClientProviders({ children }: ClientProvidersProps) {
       domain={plausibleDomain}
       customDomain="https://www.vibemanager.app"
       selfHosted={true}
-      trackOutboundLinks={true}
+      trackOutboundLinks={false}
     >
       <ConsentProvider>
         <WebAuthProvider>
