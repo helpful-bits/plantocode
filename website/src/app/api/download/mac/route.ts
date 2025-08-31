@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
       },
       body: JSON.stringify({
         event: 'download_click',
-        url: 'https://www.vibemanager.app/download/mac',
+        url: 'https://vibemanager.app/download/mac',
         props: {
           location: source,
           version,
