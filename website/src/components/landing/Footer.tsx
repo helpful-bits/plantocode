@@ -1,11 +1,21 @@
 'use client';
 
 import Link from 'next/link';
+import { track } from '@/lib/track';
 
 export function Footer() {
-  const handleDownloadClick = (e: React.MouseEvent) => {
+  const handleDownloadClick = async (e: React.MouseEvent) => {
     e.preventDefault();
-    // Direct redirect to API - server-side handles all tracking (Plausible + Twitter/X + GA4)
+    // Track download click on client-side to preserve user context
+    await track({ 
+      event: 'download_click', 
+      props: { 
+        location: 'footer',
+        platform: 'mac',
+        version: 'latest'
+      } 
+    });
+    // Redirect to download endpoint
     window.location.href = '/api/download/mac?source=footer';
   };
 

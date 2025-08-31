@@ -7,6 +7,7 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { motion } from 'framer-motion';
 import { CheckCircle2, Zap } from 'lucide-react';
 import Reveal from '@/components/motion/Reveal';
+import { track } from '@/lib/track';
 
 interface CallToActionProps {
   title: string;
@@ -18,10 +19,19 @@ interface CallToActionProps {
 export function CallToAction({ title, description, buttonText, buttonLink }: CallToActionProps) {
   const router = useRouter();
 
-  const handleDownloadClick = (e: React.MouseEvent) => {
+  const handleDownloadClick = async (e: React.MouseEvent) => {
     e.preventDefault();
-    // Direct redirect to API - server-side handles all tracking (Plausible + Twitter/X + GA4)
     if (buttonLink === '/download') {
+      // Track download click on client-side to preserve user context
+      await track({ 
+        event: 'download_click', 
+        props: { 
+          location: 'cta_section',
+          platform: 'mac',
+          version: 'latest'
+        } 
+      });
+      // Redirect to download endpoint
       window.location.href = '/api/download/mac?source=cta_section';
     } else {
       router.push(buttonLink);

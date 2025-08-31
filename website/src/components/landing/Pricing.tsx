@@ -5,11 +5,21 @@ import { Button } from '@/components/ui/button';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { motion } from 'framer-motion';
 import Reveal from '@/components/motion/Reveal';
+import { track } from '@/lib/track';
 
 export function Pricing() {
-  const handleDownloadClick = (e: React.MouseEvent) => {
+  const handleDownloadClick = async (e: React.MouseEvent) => {
     e.preventDefault();
-    // Direct redirect to API - server-side handles all tracking (Plausible + Twitter/X + GA4)
+    // Track download click on client-side to preserve user context
+    await track({ 
+      event: 'download_click', 
+      props: { 
+        location: 'pricing',
+        platform: 'mac',
+        version: 'latest'
+      } 
+    });
+    // Redirect to download endpoint
     window.location.href = '/api/download/mac?source=pricing';
   };
 

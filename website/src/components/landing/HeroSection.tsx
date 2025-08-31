@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
+import { track } from '@/lib/track';
 
 const VibeChevron = () => (
   <div className="vibe-chevron">
@@ -20,9 +21,18 @@ const VibeChevron = () => (
 );
 
 export function HeroSection() {
-  const handleDownloadClick = (e: React.MouseEvent) => {
+  const handleDownloadClick = async (e: React.MouseEvent) => {
     e.preventDefault();
-    // Direct redirect to API - server-side handles all tracking (Plausible + Twitter/X + GA4)
+    // Track download click on client-side to preserve user context
+    await track({ 
+      event: 'download_click', 
+      props: { 
+        location: 'hero_section',
+        platform: 'mac',
+        version: 'latest'
+      } 
+    });
+    // Redirect to download endpoint
     window.location.href = '/api/download/mac?source=hero_section';
   };
 

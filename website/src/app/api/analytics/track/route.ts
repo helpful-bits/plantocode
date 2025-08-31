@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
         method: 'POST',
         headers: plausibleHeaders,
         body: JSON.stringify({
-          name: event,
+          name: event, // Correct: Plausible API requires 'name' field
           url: plausibleUrl,
           domain: plausibleDomain,
           referrer: clientReferrer || referer || undefined,

@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { cn } from '@/lib/utils';
 import { defaultEase, defaultDuration } from '@/lib/animations';
+import { track } from '@/lib/track';
 
 export function Header() {
   const [scrolled, setScrolled] = useState(false);
@@ -16,9 +17,18 @@ export function Header() {
   const [isMac, setIsMac] = useState(true);
   const [mounted, setMounted] = useState(false);
 
-  const handleDownloadClick = (e: React.MouseEvent, location: string) => {
+  const handleDownloadClick = async (e: React.MouseEvent, location: string) => {
     e.preventDefault();
-    // Direct redirect to API - server-side handles all tracking (Plausible + Twitter/X + GA4)
+    // Track download click on client-side to preserve user context
+    await track({ 
+      event: 'download_click', 
+      props: { 
+        location,
+        platform: 'mac',
+        version: 'latest'
+      } 
+    });
+    // Redirect to download endpoint
     window.location.href = `/api/download/mac?source=${location}`;
   };
 
