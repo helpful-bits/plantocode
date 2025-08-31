@@ -13,6 +13,7 @@ import { useLenisLifecycle } from '@/hooks/useLenisLifecycle';
 import { usePerformanceSignals } from '@/hooks/usePerformanceSignals';
 import { trackScroll, trackPageview } from '@/lib/track';
 import { useEffect, useRef } from 'react';
+import PlausibleProvider from 'next-plausible';
 
 interface ClientProvidersProps {
   children: ReactNode;
@@ -79,23 +80,33 @@ function AnalyticsManager() {
 }
 
 export function ClientProviders({ children }: ClientProvidersProps) {
+  // Get domain from environment or use default
+  const plausibleDomain = process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN || 'vibemanager.app';
+  
   return (
-    <ConsentProvider>
-      <WebAuthProvider>
-        <ThemeProvider>
-          <MotionProvider>
-            <SmoothScroll>
-              <PerformanceSignalsManager />
-              <LenisLifecycleManager />
-              <AnalyticsManager />
-              <ConditionalAnalytics />
-              <ConditionalVercelAnalytics />
-              {children}
-              <CookieConsentBanner />
-            </SmoothScroll>
-          </MotionProvider>
-        </ThemeProvider>
-      </WebAuthProvider>
-    </ConsentProvider>
+    <PlausibleProvider 
+      domain={plausibleDomain}
+      customDomain="https://www.vibemanager.app"
+      selfHosted={true}
+      trackOutboundLinks={true}
+    >
+      <ConsentProvider>
+        <WebAuthProvider>
+          <ThemeProvider>
+            <MotionProvider>
+              <SmoothScroll>
+                <PerformanceSignalsManager />
+                <LenisLifecycleManager />
+                <AnalyticsManager />
+                <ConditionalAnalytics />
+                <ConditionalVercelAnalytics />
+                {children}
+                <CookieConsentBanner />
+              </SmoothScroll>
+            </MotionProvider>
+          </ThemeProvider>
+        </WebAuthProvider>
+      </ConsentProvider>
+    </PlausibleProvider>
   );
 }
