@@ -80,7 +80,7 @@ function AnalyticsManager() {
 }
 
 export function ClientProviders({ children }: ClientProvidersProps) {
-  // Get domain from environment or use default
+  // Get domain from environment or use default (must match Plausible dashboard exactly)
   const plausibleDomain = process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN || 'vibemanager.app';
   
   return (
