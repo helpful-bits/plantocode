@@ -26,25 +26,61 @@ export async function POST(req: NextRequest) {
     const trackingUrl = url || referer || 'https://www.vibemanager.app';
 
     // Track with Plausible (server-side) - handles all event types
+    const plausibleDomain = process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN || 'vibemanager.app';
+    const canonicalOrigin = `https://${plausibleDomain}`;
+
+    // Make URL absolute
+    let plausibleUrl = trackingUrl;
+    if (plausibleUrl.startsWith('/')) {
+      plausibleUrl = canonicalOrigin.replace(/\/$/, '') + plausibleUrl;
+    }
+
+    // Sanitize props (flat, scalar, ≤30 keys)
+    const sanitizedProps: Record<string, string | number | boolean> = {};
+    if (props && typeof props === 'object' && !Array.isArray(props)) {
+      const keys = Object.keys(props).slice(0, 30);
+      for (const k of keys) {
+        const v = props[k];
+        if (v == null) continue;
+        const t = typeof v;
+        if (t === 'string' || t === 'number' || t === 'boolean') {
+          const key = k.length > 300 ? k.slice(0, 300) : k;
+          const val = t === 'string' && (v as string).length > 2000 ? (v as string).slice(0, 2000) : v;
+          sanitizedProps[key] = val;
+        }
+      }
+    }
+
+    // Build headers
+    const plausibleHeaders: Record<string, string> = {
+      'User-Agent': userAgent || 'unknown',
+      'Content-Type': 'application/json',
+    };
+    if (clientIp) {
+      plausibleHeaders['X-Forwarded-For'] = clientIp;
+    }
+    if (process.env.NEXT_PUBLIC_PLAUSIBLE_DEBUG === 'true') {
+      plausibleHeaders['X-Debug-Request'] = 'true';
+    }
+
     try {
-      await fetch('https://plausible.io/api/event', {
+      const plausibleRes = await fetch('https://plausible.io/api/event', {
         method: 'POST',
-        headers: {
-          'User-Agent': userAgent,
-          'X-Forwarded-For': clientIp,
-          'Content-Type': 'application/json',
-        },
+        headers: plausibleHeaders,
         body: JSON.stringify({
           name: event,
-          url: trackingUrl,
-          domain: 'vibemanager.app',
-          referrer: referer,
-          props: props
+          url: plausibleUrl,
+          domain: plausibleDomain,
+          referrer: referer || undefined,
+          props: Object.keys(sanitizedProps).length ? sanitizedProps : undefined,
         }),
       });
+
+      if (![202, 200].includes(plausibleRes.status)) {
+        console.warn('Plausible tracking returned non-202/200:', plausibleRes.status, await plausibleRes.text());
+      }
     } catch (error) {
       console.error('Plausible tracking error:', error);
-      // Don't block the response if tracking fails
     }
 
     // Special handling for download events - also track with X/Twitter and GA4
@@ -52,30 +88,47 @@ export async function POST(req: NextRequest) {
       const location = props.location as string || 'unknown';
       const version = props.version as string || 'latest';
 
-      // Track with X/Twitter pixel (server-side)
-      if (process.env.NEXT_PUBLIC_X_PIXEL_ID && process.env.NEXT_PUBLIC_X_DOWNLOAD_EVENT_ID) {
+      // Track with X Conversions API (server-side)
+      if (process.env.X_ADS_API_TOKEN && process.env.X_DOWNLOAD_EVENT_ID) {
         try {
-          const pixelId = process.env.NEXT_PUBLIC_X_PIXEL_ID;
-          const eventId = process.env.NEXT_PUBLIC_X_DOWNLOAD_EVENT_ID;
-          
-          const xTrackingUrl = new URL('https://t.co/1/i/adsct');
-          xTrackingUrl.searchParams.append('bci', pixelId);
-          xTrackingUrl.searchParams.append('eci', eventId);
-          xTrackingUrl.searchParams.append('event_id', `download-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
-          xTrackingUrl.searchParams.append('p_id', 'Twitter');
-          xTrackingUrl.searchParams.append('tw_sale_amount', '0');
-          xTrackingUrl.searchParams.append('tw_order_quantity', '1');
-          
-          await fetch(xTrackingUrl.toString(), {
-            method: 'GET',
+          const eventId = process.env.X_DOWNLOAD_EVENT_ID;
+          const conversionId = `download-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+
+          // Build identifiers (prefer twclid when available)
+          const identifiers: Array<Record<string, string>> = [];
+          const twclid = (props.twclid as string) || '';
+          if (twclid) {
+            identifiers.push({ twclid });
+          }
+          // Include ip + ua for better attribution
+          identifiers.push({ ip_address: clientIp || '', user_agent: userAgent || '' });
+
+          const xApiUrl = `https://ads-api.x.com/12/measurement/conversions/${eventId}`;
+          const xApiPayload = {
+            conversions: [
+              {
+                conversion_time: new Date().toISOString(),
+                event_id: eventId,
+                conversion_id: conversionId,
+                identifiers,
+              },
+            ],
+          };
+
+          const xRes = await fetch(xApiUrl, {
+            method: 'POST',
             headers: {
-              'User-Agent': userAgent,
-              'X-Forwarded-For': clientIp,
-              'Referer': referer,
+              'Authorization': `Bearer ${process.env.X_ADS_API_TOKEN}`,
+              'Content-Type': 'application/json',
             },
+            body: JSON.stringify(xApiPayload),
           });
+
+          if (!xRes.ok) {
+            console.warn('X Conversions API returned non-ok:', xRes.status, await xRes.text());
+          }
         } catch (error) {
-          console.error('X/Twitter tracking error:', error);
+          console.error('X Conversions API error:', error);
         }
       }
 

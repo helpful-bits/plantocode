@@ -108,40 +108,6 @@ async function handleAnalyticsProxy(request: NextRequest): Promise<NextResponse 
     return newResponse;
   }
   
-  // Handle X/Twitter pixel proxy
-  if (url.pathname.startsWith('/x/')) {
-    let xUrl: string;
-    if (url.pathname === '/x/pixel.js') {
-      xUrl = 'https://static.ads-twitter.com/uwt.js';
-    } else if (url.pathname === '/x/event') {
-      xUrl = 'https://t.co/1/i/adsct';
-    } else if (url.pathname === '/x/config') {
-      xUrl = 'https://analytics.twitter.com/1/i/config/account';
-    } else {
-      return null;
-    }
-    
-    const response = await fetch(xUrl, {
-      method: request.method,
-      body: request.body,
-      headers: {
-        'User-Agent': request.headers.get('user-agent') || '',
-        'X-Forwarded-For': clientIp,
-        'X-Real-IP': clientIp,
-        'Accept-Language': request.headers.get('accept-language') || '',
-        'Referer': request.headers.get('referer') || '',
-        'Content-Type': request.headers.get('content-type') || '',
-      },
-    });
-    
-    const newResponse = new NextResponse(response.body, response);
-    response.headers.forEach((value, key) => {
-      if (key.toLowerCase() !== 'content-encoding') {
-        newResponse.headers.set(key, value);
-      }
-    });
-    return newResponse;
-  }
   
   return null;
 }
@@ -239,12 +205,10 @@ export const config = {
      * - /js/script* (Plausible scripts)
      * - /api/event (Plausible events)
      * - /ga/* (Google Analytics)
-     * - /x/* (X/Twitter pixel)
      */
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
     '/js/script:path*',
     '/api/event',
     '/ga/:path*',
-    '/x/:path*',
   ],
 };

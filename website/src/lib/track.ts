@@ -26,9 +26,34 @@ export const track = async (options: TrackEventOptions): Promise<void> => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(options),
+      keepalive: true, // Improve delivery during unload
     });
   } catch (error) {
-    // Silently fail - don't block user experience for tracking issues
+    // Fallback: try sendBeacon
+    try {
+      if (typeof navigator !== 'undefined' && 'sendBeacon' in navigator) {
+        const blob = new Blob([JSON.stringify(options)], { type: 'application/json' });
+        navigator.sendBeacon('/api/analytics/track', blob);
+        return;
+      }
+    } catch {
+      // ignore beacon errors
+    }
+    
+    // Last-resort fetch without keepalive
+    try {
+      fetch('/api/analytics/track', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(options),
+      }).catch(() => {});
+    } catch {
+      // ignore final fallback errors
+    }
+    
+    // Original debug logging
     console.debug('Tracking failed:', error);
   }
 };

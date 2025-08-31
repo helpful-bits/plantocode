@@ -74,8 +74,8 @@ VALUES (
         "temperature": 0.2
       },
       "web_search_execution": {
-        "model": "openai/gpt-5",
-        "allowed_models": ["openai/o3", "openai/o4-mini", "openai/gpt-5"],
+        "model": "openai/gpt-5-mini",
+        "allowed_models": ["openai/o3", "openai/o4-mini", "openai/gpt-5", "openai/gpt-5-mini"],
         "max_tokens": 10000,
         "temperature": 0.3
       },
