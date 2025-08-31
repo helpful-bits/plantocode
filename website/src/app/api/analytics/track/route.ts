@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Event name is required' }, { status: 400 });
     }
 
-    const trackingUrl = url || referer || 'https://www.vibemanager.app';
+    const trackingUrl = url || referer || 'https://vibemanager.app';
 
     // Track with Plausible (server-side) - handles all event types
     const plausibleDomain = process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN || 'vibemanager.app';
