@@ -462,13 +462,13 @@ Enable custom properties in Plausible and add these keys:
 - **Scalar Properties**: Only use simple string/number values, no objects
 - **Property Limit**: Maximum 30 properties per event
 
-### X Conversions API Configuration
+### X Pixel Configuration
 
-To set up X (Twitter) Conversions API tracking:
+To set up X (Twitter) Pixel server-side tracking:
 
-#### Server-side Setup
-- Verify `X_DOWNLOAD_EVENT_ID` and `X_ADS_API_TOKEN` environment variables are set
-- Tracking happens server-side automatically when download events occur
+#### Server-side Implementation
+- Verify `NEXT_PUBLIC_X_PIXEL_ID` and `NEXT_PUBLIC_X_DOWNLOAD_EVENT_ID` environment variables are set
+- Pixel tracking happens server-side automatically when download events occur
 
 #### Download Event Configuration
 - Confirm Download event ID uses string format (not numeric)
@@ -494,12 +494,12 @@ To set up X (Twitter) Conversions API tracking:
 - **Case sensitivity**: Goal names are case-sensitive in Plausible
 - **Custom properties**: Verify property keys are enabled in dashboard settings
 
-### X Conversions API Issues
+### X Pixel Issues
 
 #### Base Configuration
-- **Event ID validation**: Confirm `X_DOWNLOAD_EVENT_ID` matches X Ads Manager Events
-- **API Token**: Verify `X_ADS_API_TOKEN` is valid and has proper permissions
-- **Server logs**: Check server logs for Conversions API response errors
+- **Pixel ID validation**: Confirm `NEXT_PUBLIC_X_PIXEL_ID` matches X Ads Manager
+- **Event ID validation**: Confirm `NEXT_PUBLIC_X_DOWNLOAD_EVENT_ID` matches X Events Manager
+- **Server logs**: Check server logs for pixel endpoint response errors
 
 #### Event Tracking
 - **X Pixel Helper**: Use browser extension to validate event firing
