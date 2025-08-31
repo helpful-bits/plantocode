@@ -21,8 +21,8 @@ async function handleAnalyticsProxy(request: NextRequest): Promise<NextResponse 
   const url = request.nextUrl.clone();
   const clientIp = getClientIp(request);
   
-  // Handle Plausible script proxy
-  if (url.pathname.startsWith('/js/script')) {
+  // Handle Plausible script proxy (including extension scripts like outbound-links)
+  if (url.pathname.startsWith('/js/script') || url.pathname.startsWith('/js/plausible')) {
     const plausibleUrl = new URL(`https://plausible.io${url.pathname}`);
     
     const response = await fetch(plausibleUrl.toString(), {
@@ -208,6 +208,7 @@ export const config = {
      */
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
     '/js/script:path*',
+    '/js/plausible:path*',
     '/api/event',
     '/ga/:path*',
   ],
