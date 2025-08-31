@@ -43,7 +43,7 @@ export default function VibeManagerAd() {
 
   const models = [
     { name: "Claude 4", progress: 85, status: "Analyzing patterns..." },
-    { name: "GPT-5", progress: 72, status: "Generating plans..." },
+    { name: "GPT-5", progress: 72, status: "Structuring approach..." },
     { name: "Gemini 2.5 Pro", progress: 91, status: "Reviewing trade-offs..." }
   ];
 
@@ -56,33 +56,44 @@ export default function VibeManagerAd() {
 
       {/* Subtitle */}
       <p className="subtitle">
-        Type it. Voice it. Show it on screen. Get a plan that works.
+        AI finds the right files. Then builds you a plan.
       </p>
 
       {/* Panels */}
       <Panel x={40} y={145}>
-        <h2 className="panel__title">1. Capture Intent</h2>
+        <h2 className="panel__title">Find Files</h2>
         
         <div className="intent-box">
-          <div className="intent-box__item">Goals</div>
-          <div className="intent-box__item">Constraints</div>
-          <div className="intent-box__item">Affected Areas</div>
+          <div className="intent-box__item">
+            <svg className="intent-box__check" width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+              <path d="M8 12l3 3 5-6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Regex Filter
+          </div>
+          <div className="intent-box__item">
+            <svg className="intent-box__check" width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+              <path d="M8 12l3 3 5-6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            File Content Relevance
+          </div>
+          <div className="intent-box__item">
+            <svg className="intent-box__check" width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+              <path d="M8 12l3 3 5-6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Dependencies
+          </div>
         </div>
 
         <p className="panel__description">
-          Describe what you want. Type it, speak it, or record your screen.
-          We extract goals, constraints, and context automatically.
+          AI reads actual code content. From 1,000 files to the 10 that matter.
         </p>
-
-        {/* Easy to use stamp */}
-        <div className="stamp">
-          <div className="stamp__checkbox">✓</div>
-          VERY EASY TO USE!
-        </div>
       </Panel>
 
       <Panel x={440} y={145} accent glow>
-        <h2 className="panel__title panel__title--accent">2. Parallel Planning</h2>
+        <h2 className="panel__title panel__title--accent">Parallel Planning</h2>
         
         <div className="models-container">
           {models.map((model, i) => (
@@ -103,13 +114,12 @@ export default function VibeManagerAd() {
         </div>
 
         <p className="panel__description">
-          15+ models available. Run one or all in parallel.
-          Click "Find Files" first, then "Create Plan".
+          Click multiple times for more plans. Merge the best ideas.
         </p>
       </Panel>
 
       <Panel x={840} y={145}>
-        <h2 className="panel__title">3. Merge a Machine-Usable Plan</h2>
+        <h2 className="panel__title">Plan for Claude Code</h2>
         
         <div className="code-block">
           <pre className="code-block__content">
@@ -131,8 +141,7 @@ export default function VibeManagerAd() {
         </div>
 
         <p className="panel__description">
-          Select multiple plans. Click merge. Get one unified blueprint
-          with the best of each approach.
+          Copy straight to Claude Code or Cursor. Ready to ship.
         </p>
       </Panel>
 
@@ -142,7 +151,7 @@ export default function VibeManagerAd() {
 
       {/* Footer tagline */}
       <footer className="footer">
-        Local storage. Direct to AI providers. We handle auth and billing, nothing else.
+        Local-first. Free credits. No subscriptions.
       </footer>
     </div>
   );

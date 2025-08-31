@@ -11,7 +11,8 @@ import { ConditionalVercelAnalytics } from '@/components/system/ConditionalVerce
 import { WebAuthProvider } from '@/components/auth/WebAuthProvider';
 import { useLenisLifecycle } from '@/hooks/useLenisLifecycle';
 import { usePerformanceSignals } from '@/hooks/usePerformanceSignals';
-import { useScrollTracking } from '@/hooks/useAnalytics';
+import { trackScroll } from '@/lib/track';
+import { useEffect, useRef } from 'react';
 
 interface ClientProvidersProps {
   children: ReactNode;
@@ -31,7 +32,43 @@ function PerformanceSignalsManager() {
 
 // Component to manage analytics tracking
 function AnalyticsManager() {
-  useScrollTracking();
+  const maxScrollRef = useRef(0);
+  const trackedMilestonesRef = useRef(new Set<number>());
+  
+  useEffect(() => {
+    const milestones = [25, 50, 75, 100];
+    
+    const handleScroll = () => {
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+      const scrollPercent = Math.round((scrollTop / docHeight) * 100);
+
+      if (scrollPercent > maxScrollRef.current) {
+        maxScrollRef.current = scrollPercent;
+        
+        milestones.forEach(milestone => {
+          if (scrollPercent >= milestone && !trackedMilestonesRef.current.has(milestone)) {
+            trackedMilestonesRef.current.add(milestone);
+            trackScroll(milestone);
+          }
+        });
+      }
+    };
+
+    // Throttle function
+    let throttleTimer: NodeJS.Timeout | null = null;
+    const throttledScroll = () => {
+      if (throttleTimer) return;
+      throttleTimer = setTimeout(() => {
+        handleScroll();
+        throttleTimer = null;
+      }, 250);
+    };
+
+    window.addEventListener('scroll', throttledScroll, { passive: true });
+    return () => window.removeEventListener('scroll', throttledScroll);
+  }, []);
+  
   return null;
 }
 

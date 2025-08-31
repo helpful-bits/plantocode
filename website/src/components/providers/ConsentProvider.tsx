@@ -121,13 +121,18 @@ export function ConsentProvider({ children }: ConsentProviderProps) {
           });
         }
         
-        // Fire Plausible event for tracking consent choices
-        if ((window as any).plausible) {
-          const action = newConsent.analytics && newConsent.marketing ? 'accept_all' : 
-                        !newConsent.analytics && !newConsent.marketing ? 'reject_all' : 
-                        'custom';
-          (window as any).plausible('Cookie Consent', { props: { action } });
-        }
+        // Fire server-side tracking event for consent choices
+        const action = newConsent.analytics && newConsent.marketing ? 'accept_all' : 
+                      !newConsent.analytics && !newConsent.marketing ? 'reject_all' : 
+                      'custom';
+        fetch('/api/analytics/track', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            event: 'Cookie Consent',
+            props: { action }
+          }),
+        }).catch(() => {});
       } catch (error) {
         console.error('Error saving consent to localStorage:', error);
       }

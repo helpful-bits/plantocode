@@ -4,8 +4,6 @@ import React from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
-import { usePlausible } from '@/hooks/usePlausible';
-import { trackXDownload } from '@/lib/x-pixel-events';
 
 const VibeChevron = () => (
   <div className="vibe-chevron">
@@ -22,26 +20,12 @@ const VibeChevron = () => (
 );
 
 export function HeroSection() {
-  const { trackDownload, trackSectionView } = usePlausible();
-
   const handleDownloadClick = (e: React.MouseEvent) => {
     e.preventDefault();
-    
-    // Track with callback to ensure event is sent before redirect
-    trackDownload('hero_section', 'latest', () => {
-      trackXDownload('hero_section', 'latest');
-      // Redirect after tracking completes
-      window.location.href = '/api/download/mac?source=hero_section';
-    });
+    // Direct redirect to API - server-side handles all tracking (Plausible + Twitter/X + GA4)
+    window.location.href = '/api/download/mac?source=hero_section';
   };
 
-  React.useEffect(() => {
-    // Delay tracking to not block initial render
-    const timer = setTimeout(() => {
-      trackSectionView('hero');
-    }, 100);
-    return () => clearTimeout(timer);
-  }, [trackSectionView]);
 
 
   return (

@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { motion, AnimatePresence } from 'framer-motion';
 import Reveal from '@/components/motion/Reveal';
-import { usePlausible } from '@/hooks/usePlausible';
+import { trackFAQ } from '@/lib/track';
 
 interface FAQItem {
   question: string;
@@ -17,12 +17,11 @@ interface FAQProps {
 
 export function FAQ({ items }: FAQProps) {
   const [openIndices, setOpenIndices] = useState<number[]>([0, 1, 2]);
-  const { trackFAQExpand } = usePlausible();
   
   const toggleOpen = (index: number) => {
     const isExpanding = !openIndices.includes(index);
     if (isExpanding && items[index]) {
-      trackFAQExpand(items[index].question, index);
+      trackFAQ(items[index].question, index);
     }
     setOpenIndices((cur) => cur.includes(index) ? cur.filter(i => i !== index) : [...cur, index]);
   };
