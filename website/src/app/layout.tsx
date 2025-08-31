@@ -10,7 +10,6 @@ import { ConditionalBackground } from '@/components/system/ConditionalBackground
 import { Footer } from '@/components/landing/Footer';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { cdnUrl } from '@/lib/cdn';
-import { XPixel } from '@/components/analytics/XPixel';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://www.vibemanager.app'),
@@ -192,11 +191,6 @@ export default function RootLayout({
         }} />
         {/* Load GA script AFTER consent defaults are set - Using proxied endpoint */}
         <script async src={`/ga/gtag.js?id=${process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || 'G-SNQQT3LLEB'}`}></script>
-        {/* Plausible Analytics - Using proxied endpoint to bypass ad blockers */}
-        <script defer data-domain={process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN || 'vibemanager.app'} src="/js/script.js"></script>
-        <script dangerouslySetInnerHTML={{
-          __html: `window.plausible = window.plausible || function() { (window.plausible.q = window.plausible.q || []).push(arguments) }`
-        }} />
       </head>
       <body className={`${fontClasses.sans} bg-transparent overflow-x-hidden`}>
         <ConditionalBackground />
@@ -205,7 +199,6 @@ export default function RootLayout({
           <Footer />
         </ClientProviders>
         <SpeedInsights />
-        <XPixel />
         <StructuredData data={websiteJsonLd} />
         <StructuredData data={organizationJsonLd} />
       </body>

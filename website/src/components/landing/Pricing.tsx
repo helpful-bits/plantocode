@@ -5,21 +5,12 @@ import { Button } from '@/components/ui/button';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { motion } from 'framer-motion';
 import Reveal from '@/components/motion/Reveal';
-import { usePlausible } from '@/hooks/usePlausible';
-import { trackXDownload } from '@/lib/x-pixel-events';
 
 export function Pricing() {
-  const { trackDownload } = usePlausible();
-
   const handleDownloadClick = (e: React.MouseEvent) => {
     e.preventDefault();
-    
-    // Track with callback to ensure event is sent before redirect
-    trackDownload('pricing', 'latest', () => {
-      trackXDownload('pricing', 'latest');
-      // Redirect after tracking completes
-      window.location.href = '/api/download/mac?source=pricing';
-    });
+    // Direct redirect to API - server-side handles all tracking (Plausible + Twitter/X + GA4)
+    window.location.href = '/api/download/mac?source=pricing';
   };
 
   return (

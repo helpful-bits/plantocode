@@ -13,7 +13,7 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
 import { useReducedMotion } from 'framer-motion';
 import Reveal from '@/components/motion/Reveal';
-import { usePlausible } from '@/hooks/usePlausible';
+import { trackVideo } from '@/lib/track';
 import { ScreenshotGallery } from '@/components/demo/ScreenshotGallery';
 
 interface Step {
@@ -37,14 +37,10 @@ const defaultSteps: Step[] = [];
 // Memoized video card component with lazy loading
 const VideoCard = memo(function VideoCard({ 
   step, 
-  index, 
-  trackVideoPlay,
-  trackVideoComplete
+  index
 }: { 
   step: Step & { isSubStep?: boolean }, 
-  index: number, 
-  trackVideoPlay: (title: string) => void,
-  trackVideoComplete: (title: string, duration?: number) => void
+  index: number
 }) {
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [isVisible, setIsVisible] = useState(false);
@@ -105,10 +101,10 @@ const VideoCard = memo(function VideoCard({
                 (video as any).webkitEnterFullscreen();
               }
             }}
-            onPlay={() => trackVideoPlay(step.title)}
+            onPlay={() => trackVideo(step.title, 'play')}
             onEnded={(e) => {
               const video = e.currentTarget;
-              trackVideoComplete(step.title, video.duration);
+              trackVideo(step.title, 'complete', video.duration);
             }}
             onError={(e) => {
               console.log('Video error handled:', e);
@@ -140,7 +136,6 @@ const VideoCard = memo(function VideoCard({
 // Memoized main component for performance
 export const HowItWorks = memo(function HowItWorks({ steps = defaultSteps }: HowItWorksProps) {
   const prefersReducedMotion = useReducedMotion();
-  const { trackVideoPlay, trackVideoComplete } = usePlausible();
   const demoStartTracked = useRef(false);
 
   // Track demo_start event when section comes into view
@@ -151,7 +146,7 @@ export const HowItWorks = memo(function HowItWorks({ steps = defaultSteps }: How
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting && !demoStartTracked.current) {
-            trackVideoPlay('demo_start');
+            trackVideo('demo_start', 'play');
             demoStartTracked.current = true;
           }
         });
@@ -169,7 +164,7 @@ export const HowItWorks = memo(function HowItWorks({ steps = defaultSteps }: How
         observer.unobserve(section);
       }
     };
-  }, [trackVideoPlay]);
+  }, []);
 
   // Flatten steps to include substeps as individual items
   const flattenedSteps = React.useMemo(() => {
@@ -251,9 +246,7 @@ export const HowItWorks = memo(function HowItWorks({ steps = defaultSteps }: How
                 <VideoCard 
                   key={index} 
                   step={step} 
-                  index={index} 
-                  trackVideoPlay={trackVideoPlay}
-                  trackVideoComplete={trackVideoComplete}
+                  index={index}
                 />
               ))}
             </div>

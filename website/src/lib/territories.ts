@@ -57,6 +57,10 @@ export const SANCTIONED_REGIONS = new Set([
 
 // Helper functions
 export function isApprovedRegion(country: string): boolean {
+  // Always allow in development environment
+  if (process.env.NODE_ENV === 'development') {
+    return true;
+  }
   return APPROVED_REGIONS.has(country);
 }
 

@@ -5,7 +5,7 @@
 "use client";
 
 import { ReactNode, useRef, useState, useEffect } from 'react';
-import { usePlausible } from '@/hooks/usePlausible';
+import { trackDemo } from '@/lib/track';
 
 interface StepControllerProps {
   children: ReactNode | ((props: { 
@@ -24,7 +24,6 @@ export function StepController({ children, className, onEnter, onLeave, stepName
   const [isInView, setIsInView] = useState(false);
   const [resetCounter, setResetCounter] = useState(0);
   const previousIsInViewRef = useRef(false);
-  const { trackDemoInteraction } = usePlausible();
 
   // Simple intersection observer with minimal threshold and error handling
   useEffect(() => {
@@ -48,7 +47,7 @@ export function StepController({ children, className, onEnter, onLeave, stepName
                 onEnter?.();
                 // Track demo interaction when entering view
                 if (stepName) {
-                  trackDemoInteraction(stepName, 'view');
+                  trackDemo(stepName, 'view');
                 }
               } catch (error) {
                 console.warn('Error in onEnter callback:', error);
@@ -86,7 +85,7 @@ export function StepController({ children, className, onEnter, onLeave, stepName
       // Fallback: assume always in view
       setIsInView(true);
     }
-  }, [onEnter, onLeave, stepName, trackDemoInteraction]);
+  }, [onEnter, onLeave, stepName]);
 
   return (
     <div ref={ref} className={className}>

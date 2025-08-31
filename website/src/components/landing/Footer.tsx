@@ -1,21 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { usePlausible } from '@/hooks/usePlausible';
-import { trackXDownload } from '@/lib/x-pixel-events';
 
 export function Footer() {
-  const { trackDownload } = usePlausible();
-
   const handleDownloadClick = (e: React.MouseEvent) => {
     e.preventDefault();
-    
-    // Track with callback to ensure event is sent before redirect
-    trackDownload('footer', 'latest', () => {
-      trackXDownload('footer', 'latest');
-      // Redirect after tracking completes
-      window.location.href = '/api/download/mac?source=footer';
-    });
+    // Direct redirect to API - server-side handles all tracking (Plausible + Twitter/X + GA4)
+    window.location.href = '/api/download/mac?source=footer';
   };
 
   return (

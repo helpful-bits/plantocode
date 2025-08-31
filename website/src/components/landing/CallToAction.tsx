@@ -7,8 +7,6 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { motion } from 'framer-motion';
 import { CheckCircle2, Zap } from 'lucide-react';
 import Reveal from '@/components/motion/Reveal';
-import { usePlausible } from '@/hooks/usePlausible';
-import { trackXDownload } from '@/lib/x-pixel-events';
 
 interface CallToActionProps {
   title: string;
@@ -18,27 +16,18 @@ interface CallToActionProps {
 }
 
 export function CallToAction({ title, description, buttonText, buttonLink }: CallToActionProps) {
-  const { trackDownload, trackSectionView } = usePlausible();
   const router = useRouter();
 
   const handleDownloadClick = (e: React.MouseEvent) => {
     e.preventDefault();
-    
-    // Track with callback to ensure event is sent before redirect
-    trackDownload('cta_section', 'latest', () => {
-      trackXDownload('cta_section', 'latest');
-      // Redirect after tracking completes
-      if (buttonLink === '/download') {
-        window.location.href = '/api/download/mac?source=cta_section';
-      } else {
-        router.push(buttonLink);
-      }
-    });
+    // Direct redirect to API - server-side handles all tracking (Plausible + Twitter/X + GA4)
+    if (buttonLink === '/download') {
+      window.location.href = '/api/download/mac?source=cta_section';
+    } else {
+      router.push(buttonLink);
+    }
   };
 
-  React.useEffect(() => {
-    trackSectionView('cta');
-  }, [trackSectionView]);
 
   return (
     <section className="relative py-16 sm:py-20 md:py-24 lg:py-32 px-4 overflow-hidden">

@@ -2,32 +2,26 @@ import { NextRequest, NextResponse } from 'next/server';
 
 // Server-side download tracking for Windows (preparation for future release)
 export async function GET(req: NextRequest) {
-  // Extract headers for proper analytics attribution
-  const userAgent = req.headers.get('user-agent') || '';
-  const xForwardedFor = req.headers.get('x-forwarded-for') || '';
-  const clientIp = xForwardedFor ? xForwardedFor.split(',')[0]?.trim() || '' : '';
-  const referer = req.headers.get('referer') || '';
-  
   // Get query parameters for tracking context
   const searchParams = req.nextUrl.searchParams;
   const source = searchParams.get('source') || 'direct';
   const version = searchParams.get('version') || 'latest';
   
-  // Track with Plausible (server-side) - direct call with proper headers
+  // Track download event using unified analytics endpoint
   try {
-    // Call Plausible directly from server-side with proper client headers
-    await fetch('https://plausible.io/api/event', {
+    const trackingUrl = new URL('/api/analytics/track', req.url);
+    await fetch(trackingUrl.toString(), {
       method: 'POST',
       headers: {
-        'User-Agent': userAgent,
-        'X-Forwarded-For': clientIp,
         'Content-Type': 'application/json',
+        // Forward original request headers for proper attribution
+        'User-Agent': req.headers.get('user-agent') || '',
+        'X-Forwarded-For': req.headers.get('x-forwarded-for') || '',
+        'Referer': req.headers.get('referer') || '',
       },
       body: JSON.stringify({
-        name: 'download_click',
+        event: 'download_click',
         url: 'https://www.vibemanager.app/download/windows',
-        domain: 'vibemanager.app',
-        referrer: referer,
         props: {
           location: source,
           version,
@@ -36,7 +30,8 @@ export async function GET(req: NextRequest) {
       }),
     });
   } catch (error) {
-    console.error('Plausible tracking error:', error);
+    console.error('Download tracking error:', error);
+    // Don't block download if tracking fails
   }
 
   // For now, redirect to coming soon page or waitlist
