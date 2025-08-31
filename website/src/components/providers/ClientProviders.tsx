@@ -11,7 +11,7 @@ import { ConditionalVercelAnalytics } from '@/components/system/ConditionalVerce
 import { WebAuthProvider } from '@/components/auth/WebAuthProvider';
 import { useLenisLifecycle } from '@/hooks/useLenisLifecycle';
 import { usePerformanceSignals } from '@/hooks/usePerformanceSignals';
-import { trackScroll } from '@/lib/track';
+import { trackScroll, trackPageview } from '@/lib/track';
 import { useEffect, useRef } from 'react';
 
 interface ClientProvidersProps {
@@ -34,6 +34,12 @@ function PerformanceSignalsManager() {
 function AnalyticsManager() {
   const maxScrollRef = useRef(0);
   const trackedMilestonesRef = useRef(new Set<number>());
+  
+  // Track pageview on mount
+  useEffect(() => {
+    // Track initial pageview with enhanced data (screen width, referrer, etc.)
+    trackPageview();
+  }, []);
   
   useEffect(() => {
     const milestones = [25, 50, 75, 100];

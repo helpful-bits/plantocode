@@ -4,6 +4,8 @@ interface TrackingEvent {
   event: string;
   props?: Record<string, string | number | boolean>;
   url?: string;
+  screen_width?: number;
+  referrer?: string;
 }
 
 // Unified server-side analytics tracking that bypasses ad blockers
@@ -17,7 +19,7 @@ export async function POST(req: NextRequest) {
     
     // Parse request body
     const body: TrackingEvent = await req.json();
-    const { event, props = {}, url } = body;
+    const { event, props = {}, url, screen_width, referrer: clientReferrer } = body;
     
     if (!event) {
       return NextResponse.json({ error: 'Event name is required' }, { status: 400 });
@@ -71,7 +73,8 @@ export async function POST(req: NextRequest) {
           name: event,
           url: plausibleUrl,
           domain: plausibleDomain,
-          referrer: referer || undefined,
+          referrer: clientReferrer || referer || undefined,
+          screen_width: screen_width || undefined,
           props: Object.keys(sanitizedProps).length ? sanitizedProps : undefined,
         }),
       });
@@ -88,47 +91,84 @@ export async function POST(req: NextRequest) {
       const location = props.location as string || 'unknown';
       const version = props.version as string || 'latest';
 
-      // Track with X Conversions API (server-side)
-      if (process.env.X_ADS_API_TOKEN && process.env.X_DOWNLOAD_EVENT_ID) {
+      // Track with X Pixel (server-side emulation of client pixel)
+      if (process.env.NEXT_PUBLIC_X_PIXEL_ID && process.env.NEXT_PUBLIC_X_DOWNLOAD_EVENT_ID) {
         try {
-          const eventId = process.env.X_DOWNLOAD_EVENT_ID;
-          const conversionId = `download-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-
-          // Build identifiers (prefer twclid when available)
-          const identifiers: Array<Record<string, string>> = [];
+          const pixelId = process.env.NEXT_PUBLIC_X_PIXEL_ID;
+          const eventId = process.env.NEXT_PUBLIC_X_DOWNLOAD_EVENT_ID;
+          const conversionId = `download-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+          
+          // Extract Twitter Click ID if available (critical for attribution)
           const twclid = (props.twclid as string) || '';
-          if (twclid) {
-            identifiers.push({ twclid });
-          }
-          // Include ip + ua for better attribution
-          identifiers.push({ ip_address: clientIp || '', user_agent: userAgent || '' });
-
-          const xApiUrl = `https://ads-api.x.com/12/measurement/conversions/${eventId}`;
-          const xApiPayload = {
-            conversions: [
-              {
-                conversion_time: new Date().toISOString(),
-                event_id: eventId,
-                conversion_id: conversionId,
-                identifiers,
-              },
-            ],
-          };
-
-          const xRes = await fetch(xApiUrl, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${process.env.X_ADS_API_TOKEN}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(xApiPayload),
+          
+          // Build X Pixel parameters (emulating client-side pixel)
+          const pixelParams = new URLSearchParams({
+            // Core pixel parameters
+            bci: pixelId, // Base/Brand Conversion ID
+            eci: eventId, // Event Conversion ID  
+            event_id: conversionId, // Unique event identifier for deduplication
+            p_id: 'Twitter', // Platform identifier
+            
+            // Transaction parameters
+            tw_sale_amount: '0', // Sale amount (can be customized)
+            tw_order_quantity: '1', // Order quantity
+            
+            // User context parameters (if available)
+            ...(twclid && { twclid }), // Twitter Click ID for attribution
+            ...(clientReferrer && { tw_document_href: clientReferrer }),
+            
+            // Additional context
+            tw_iframe: '0', // Not in iframe
+            tpd: plausibleDomain, // Third party domain
+            
+            // Screen dimensions (if available)
+            ...(screen_width && { tw_fio: screen_width.toString() }),
+            
+            // Language/locale (from props if available)  
+            ...(props.language && { tw_lang: props.language as string }),
           });
-
-          if (!xRes.ok) {
-            console.warn('X Conversions API returned non-ok:', xRes.status, await xRes.text());
-          }
+          
+          // Send to both tracking endpoints (mobile + desktop)
+          const endpoints = [
+            'https://t.co/1/i/adsct', // Mobile tracking
+            'https://analytics.twitter.com/1/i/adsct', // Desktop tracking
+          ];
+          
+          const pixelHeaders = {
+            'User-Agent': userAgent || 'Mozilla/5.0 (compatible; ServerSidePixel/1.0)',
+            'Accept': 'image/gif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5',
+            'Accept-Language': (props.language as string) || 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            ...(clientIp && { 'X-Forwarded-For': clientIp }),
+            ...(clientReferrer && { 'Referer': clientReferrer }),
+          };
+          
+          // Send pixel requests to both endpoints
+          const pixelPromises = endpoints.map(async (endpoint) => {
+            try {
+              const pixelUrl = `${endpoint}?${pixelParams.toString()}`;
+              const pixelRes = await fetch(pixelUrl, {
+                method: 'GET',
+                headers: pixelHeaders,
+                // Pixel requests should be fire-and-forget
+              });
+              
+              if (!pixelRes.ok && pixelRes.status !== 204) {
+                console.warn(`X Pixel endpoint ${endpoint} returned ${pixelRes.status}`);
+              }
+            } catch (err) {
+              console.debug(`X Pixel endpoint ${endpoint} failed:`, err);
+            }
+          });
+          
+          // Execute all pixel requests in parallel
+          await Promise.allSettled(pixelPromises);
+          
         } catch (error) {
-          console.error('X Conversions API error:', error);
+          console.error('X Pixel tracking error:', error);
         }
       }
 
