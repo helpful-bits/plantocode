@@ -95,7 +95,7 @@ export function Pricing() {
                     </motion.div>
                     <div className="flex flex-col items-center gap-2 mt-2">
                       <em className="text-xs text-muted-foreground">Signed & notarized for macOS - safer installs via Gatekeeper.</em>
-                      <a href="mailto:support@vibemanager.app?subject=Windows%20Waitlist" className="text-sm text-muted-foreground underline hover:text-primary transition-colors">Join the Windows waitlist</a>
+                      <a href="mailto:support@vibemanager.app?subject=Windows%20Waitlist" className="text-sm text-muted-foreground hover:text-primary transition-colors">Join the Windows waitlist</a>
                     </div>
                   </div>
                 </Reveal>

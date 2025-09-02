@@ -169,7 +169,11 @@ export function Footer() {
 
           {/* Bottom bar */}
           <div className="py-6 border-t border-primary/10">
-            <div className="flex justify-center">
+            <div className="flex flex-col items-center gap-2">
+              <div className="flex items-center gap-2 text-muted-foreground text-xs">
+                <span>🇩🇪</span>
+                <span>Made in Germany by a German Company</span>
+              </div>
               <p className="text-muted-foreground text-xs">
                 © 2025 helpful bits GmbH
               </p>

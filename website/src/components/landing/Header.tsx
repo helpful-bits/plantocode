@@ -61,8 +61,8 @@ export function Header() {
   }, []);
 
   const navLinks = [
-    { href: '#features', label: 'Features' },
     { href: '#how-it-works', label: 'How It Works' },
+    { href: '#features', label: 'Features' },
     { href: '#pricing', label: 'Pricing' },
     { href: '#faq', label: 'FAQ' },
   ];
@@ -185,7 +185,7 @@ export function Header() {
                   </motion.div>
                   <div className="flex flex-col items-center gap-0.5 mt-0.5">
                     <em className="text-[10px] text-muted-foreground">Signed & notarized for macOS</em>
-                    <a href="mailto:support@vibemanager.app?subject=Windows%20Waitlist" className="text-[10px] text-muted-foreground underline hover:text-primary">Join Windows waitlist</a>
+                    <a href="mailto:support@vibemanager.app?subject=Windows%20Waitlist" className="text-[10px] text-muted-foreground hover:text-primary">Join Windows waitlist</a>
                   </div>
                 </div>
               </motion.div>
@@ -384,7 +384,7 @@ export function Header() {
                   </Button>
                   <div className="flex flex-col items-center gap-0.5 mt-2">
                     <em className="text-xs text-muted-foreground">Signed & notarized for macOS</em>
-                    <a href="mailto:support@vibemanager.app?subject=Windows%20Waitlist" className="text-xs text-muted-foreground underline hover:text-primary">Join Windows waitlist</a>
+                    <a href="mailto:support@vibemanager.app?subject=Windows%20Waitlist" className="text-xs text-muted-foreground hover:text-primary">Join Windows waitlist</a>
                   </div>
                 </motion.div>
               </motion.div>
