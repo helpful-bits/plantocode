@@ -33,7 +33,7 @@ const screenshots: ScreenshotCard[] = [
   {
     id: 'file-finder',
     title: 'Stop Playing Hide and Seek',
-    description: 'Codebase sprawling. Files everywhere. AI reading, understanding, connecting. Finding the needles in your haystack. One click.',
+    description: 'Your codebase is vast. Thousand files. AI reads, understands, and connects the dots - finding exactly what you need with one click.',
     image: cdnUrl('/assets/images/demo-file-finder.jpg'),
     icon: <Search className="w-5 h-5" />,
     aspectRatio: '1478/1364',
@@ -46,7 +46,7 @@ const screenshots: ScreenshotCard[] = [
   },
   {
     id: 'file-finder-workflow',
-    title: 'Find Once. Use Forever.',
+    title: 'Find It. Keep It.',
     description: 'Three stages of discovery. Every result saved. Every file list reusable. Nothing lost, everything ready when you need it again.',
     image: cdnUrl('/assets/images/demo-file-finder-workflow.jpg'),
     icon: <Search className="w-5 h-5" />,
@@ -60,8 +60,8 @@ const screenshots: ScreenshotCard[] = [
   },
   {
     id: 'implementation-plans',
-    title: 'All Models. All At Once.',
-    description: 'Generate multiple plans with one click. Review and edit each approach. Merge the best ideas into one blueprint for Claude Code or Cursor.',
+    title: 'Every Model. One Click.',
+    description: 'Generate multiple plans with one click. Review and edit each approach. Don\'t like something? Add merge instructions to refine it. Combine the best ideas into one blueprint for Claude Code or Cursor.',
     image: cdnUrl('/assets/images/demo-implementation-plans.jpg'),
     icon: <FileText className="w-5 h-5" />,
     aspectRatio: '1714/1574',
@@ -74,16 +74,16 @@ const screenshots: ScreenshotCard[] = [
   },
   {
     id: 'background-tasks',
-    title: 'Watch Your Money Work',
-    description: 'Plans generating. Tokens flowing. Costs accumulating. Everything visible, nothing hidden. Cancel anytime.',
+    title: 'Track Every Penny',
+    description: 'Plans generating. Tokens counting. Full transparency. Cancel anytime.',
     image: cdnUrl('/assets/images/demo-background-tasks.jpg'),
     icon: <Zap className="w-5 h-5" />,
     aspectRatio: '642/1654',
     features: [
-      'Live progress, real numbers',
-      'Token counts updating in real-time',
+      'Live progress and costs',
+      'Real-time token counts',
       'Know if it\'s worth the wait',
-      'Pull the plug before it gets expensive'
+      'Stop before it gets expensive'
     ]
   },
   {

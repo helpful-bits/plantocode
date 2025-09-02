@@ -51,7 +51,7 @@ const HowItWorks = dynamic(() => import('@/components/landing/HowItWorks').then(
 
 
 export const metadata: Metadata = {
-  title: 'Vibe Manager - Less file chaos, more shipping',
+  title: 'Vibe Manager - Context control for AI coding sessions',
   description: 'Vibe Manager helps AI agents map files, merge multi-model plans, and ship correct changes. Sends only selected context to AI providers. Local storage for sessions.',
   keywords: [
     'AI coding assistant',
@@ -284,7 +284,7 @@ export default function Home() {
               buttonLink="/download"
               buttonText="Download for Mac"
               description="Join early access - ship your first AI-curated implementation plan in minutes."
-              title="Ready to Stop Babysitting Your AI?"
+              title="Ready to Take Control of Your AI Context?"
             />
           </section>
         </main>

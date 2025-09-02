@@ -179,11 +179,11 @@ export function HeroSection() {
           </div>
           <div className="flex flex-col items-center gap-2 mt-2">
             <em className="text-xs text-muted-foreground">
-              <a className="underline hover:text-primary" target="_blank" rel="noreferrer noopener" href="https://support.apple.com/guide/security/gatekeeper-and-runtime-protection-sec5599b66df/web">
+              <a className="hover:text-primary" target="_blank" rel="noreferrer noopener" href="https://support.apple.com/guide/security/gatekeeper-and-runtime-protection-sec5599b66df/web">
                 Signed & notarized for macOS - safer installs via Gatekeeper.
               </a>
             </em>
-            <a href="mailto:support@vibemanager.app?subject=Windows%20Waitlist" className="text-sm text-muted-foreground underline hover:text-primary transition-colors">Join the Windows waitlist</a>
+            <a href="mailto:support@vibemanager.app?subject=Windows%20Waitlist" className="text-sm text-muted-foreground hover:text-primary transition-colors">Join the Windows waitlist</a>
           </div>
         </div>
 
