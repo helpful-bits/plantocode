@@ -51,7 +51,7 @@ const HowItWorks = dynamic(() => import('@/components/landing/HowItWorks').then(
 
 
 export const metadata: Metadata = {
-  title: 'Vibe Manager - AI code cleanup specialist for macOS',
+  title: 'Vibe Manager - Less file chaos, more shipping',
   description: 'Vibe Manager helps AI agents map files, merge multi-model plans, and ship correct changes. Sends only selected context to AI providers. Local storage for sessions.',
   keywords: [
     'AI coding assistant',

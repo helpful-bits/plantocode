@@ -89,20 +89,6 @@ const screenshots: ScreenshotCard[] = [
     ]
   },
   {
-    id: 'plans-monitor',
-    title: 'Claude Code Agents. Working in Parallel.',
-    description: 'Multiple terminals. Separate Claude Code instances. All running locally, implementing your plans. Your machine, your code, total visibility.',
-    image: cdnUrl('/assets/images/demo-plans-monitor.jpg'),
-    icon: <Monitor className="w-5 h-5" />,
-    aspectRatio: '642/1362',
-    features: [
-      'Multiple Claude Code instances running locally',
-      'Parallel execution on your machine',
-      'Each agent implementing parts of your plan',
-      'Watch all terminals simultaneously'
-    ]
-  },
-  {
     id: 'settings-prompts',
     title: 'Your Tool. Your Rules.',
     description: 'System prompts exposed. Every stage customizable. Change how it thinks. Make it work your way.',
@@ -142,20 +128,6 @@ const screenshots: ScreenshotCard[] = [
       'Real costs, not estimates',
       'Export for accounting',
       'Know before you overspend'
-    ]
-  },
-  {
-    id: 'billing-usage',
-    title: 'Who\'s Burning Your Cash?',
-    description: 'GPT-5: $6.61. Gemini: $2.88. Claude: $0.50. Same task, different bills. Now you know.',
-    image: cdnUrl('/assets/images/demo-billing-usage.jpg'),
-    icon: <DollarSign className="w-5 h-5" />,
-    aspectRatio: '1838/1626',
-    features: [
-      'Model costs, side by side',
-      'Token hogs exposed',
-      'Track spending patterns',
-      'Pick winners, drop losers'
     ]
   }
 ];

@@ -27,7 +27,7 @@ export function FAQ({ items }: FAQProps) {
   };
 
   return (
-    <section className="relative py-12 sm:py-16 md:py-20 lg:py-24 px-4 overflow-hidden" id="faq">
+    <section className="relative py-12 sm:py-16 md:py-20 lg:py-24 px-4" id="faq">
       <div className="container mx-auto max-w-3xl relative z-10">
         <div className="text-center mb-12 sm:mb-16">
           <Reveal as="h2" className="text-3xl sm:text-4xl lg:text-5xl mb-4 text-primary-emphasis">
@@ -38,14 +38,14 @@ export function FAQ({ items }: FAQProps) {
           </Reveal>
         </div>
 
-        <div className="p-2 space-y-8">
+        <div className="p-4 space-y-6">
           {items.map((item, index) => (
             <Reveal
               key={index}
               delay={0.1 + index * 0.05}
             >
-              <div className="faq-item">
-              <GlassCard className="overflow-hidden transition-transform duration-200 hover:scale-[1.01]">
+              <div className="faq-item relative">
+              <GlassCard className="hover:shadow-lg hover:shadow-primary/5 transition-shadow duration-200">
                 <motion.div
                   initial={{ backgroundColor: 'rgba(0, 0, 0, 0)' }}
                   animate={{

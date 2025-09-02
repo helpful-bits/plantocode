@@ -18,8 +18,8 @@ export function Community() {
               </Reveal>
               
               <Reveal as="p" className="text-lg sm:text-xl mb-8 leading-relaxed text-foreground/80 max-w-3xl mx-auto" delay={0.1}>
-                Look, I built this because I was drowning in AI babysitting duty. But this isn't just my tool - it's ours. 
-                I want us all to be more productive, to spend less time wrestling with context and more time building cool stuff.
+                I built this to stop the file chaos. To edit in the right place, every time. This isn't just my tool - it's ours. 
+                Let's ship features without cleanup duty, without duplicate files, without the mess.
               </Reveal>
 
               <Reveal as="p" className="text-lg font-semibold mb-8 text-foreground" delay={0.15}>
