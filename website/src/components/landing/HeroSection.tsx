@@ -60,24 +60,46 @@ export function HeroSection() {
         </h1>
       </div>
 
-      {/* Video Container - responsive with max width on larger screens */}
-      <div className="relative w-full max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        <video
-          ref={videoRef}
-          className="w-full h-auto object-cover cursor-pointer rounded-lg shadow-2xl"
-          autoPlay
-          loop
-          muted
-          playsInline
-          controls={showControls}
-          onClick={handleVideoClick}
-        >
-          {/* VP9 WebM for better compression and quality - primary source */}
-          <source src={cdnUrl('/assets/videos/hero-section_vp9.webm')} type="video/webm; codecs=vp9" />
-          {/* H.264 MP4 fallback for broader compatibility */}
-          <source src={cdnUrl('/assets/videos/hero-section.mp4')} type="video/mp4" />
-          Your browser does not support the video tag.
-        </video>
+      {/* Video Container - responsive with different videos for different screen sizes */}
+      <div className="relative w-full px-4 sm:px-6 lg:px-8">
+        {/* Desktop/Tablet Video - 16:9 aspect ratio */}
+        <div className="hidden sm:block max-w-6xl mx-auto">
+          <video
+            ref={videoRef}
+            className="w-full h-auto object-cover cursor-pointer rounded-lg shadow-2xl"
+            autoPlay
+            loop
+            muted
+            playsInline
+            controls={showControls}
+            onClick={handleVideoClick}
+          >
+            {/* VP9 WebM for better compression and quality - primary source */}
+            <source src={cdnUrl('/assets/videos/hero-section-16by9_vp9.webm')} type="video/webm; codecs=vp9" />
+            {/* H.264 MP4 fallback for broader compatibility */}
+            <source src={cdnUrl('/assets/videos/hero-section-16by9.mp4')} type="video/mp4" />
+            Your browser does not support the video tag.
+          </video>
+        </div>
+
+        {/* Mobile Video - Portrait aspect ratio */}
+        <div className="sm:hidden max-w-md mx-auto">
+          <video
+            className="w-full h-auto object-cover cursor-pointer rounded-lg shadow-2xl"
+            autoPlay
+            loop
+            muted
+            playsInline
+            controls={showControls}
+            onClick={handleVideoClick}
+          >
+            {/* VP9 WebM for better compression and quality - primary source */}
+            <source src={cdnUrl('/assets/videos/hero-section_vp9.webm')} type="video/webm; codecs=vp9" />
+            {/* H.264 MP4 fallback for broader compatibility */}
+            <source src={cdnUrl('/assets/videos/hero-section.mp4')} type="video/mp4" />
+            Your browser does not support the video tag.
+          </video>
+        </div>
       </div>
 
       {/* Previous hero content now below the video */}
