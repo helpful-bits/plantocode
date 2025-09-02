@@ -12,11 +12,9 @@ import {
   Search, 
   FileText, 
   Zap, 
-  Monitor, 
   Settings, 
   CreditCard,
   Copy,
-  DollarSign,
   X,
   Maximize2
 } from 'lucide-react';
