@@ -109,6 +109,24 @@ export function HeroSection() {
           Tell it what you want to build. Type, talk, or show it on screen. AI finds the right files, generates plans with multiple models, and gives you a blueprint your coding agent can actually use.
         </p>
 
+        {/* Product Hunt Badge */}
+        <div className="flex justify-center mb-8">
+          <a 
+            href="https://www.producthunt.com/products/vibe-manager?embed=true&utm_source=badge-featured&utm_medium=badge&utm_source=badge-vibe-manager" 
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block hover:opacity-90 transition-opacity"
+          >
+            <img 
+              src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1009288&theme=light&t=1756883029716" 
+              alt="Vibe Manager - Context control for AI coding sessions | Product Hunt" 
+              width="250" 
+              height="54"
+              className="dark:brightness-90 dark:contrast-110"
+            />
+          </a>
+        </div>
+
         {/* Story - Hidden by default, expandable */}
         <div className="max-w-3xl mx-auto mb-8">
           <details className="group">
