@@ -16,7 +16,8 @@ import {
   CreditCard,
   Copy,
   X,
-  Maximize2
+  Maximize2,
+  Video
 } from 'lucide-react';
 
 interface ScreenshotCard {
@@ -56,6 +57,20 @@ const screenshots: ScreenshotCard[] = [
       '"Use Files" - instant context reuse',
       'Build your knowledge base over time',
       'Never search for the same files twice'
+    ]
+  },
+  {
+    id: 'video-analysis',
+    title: 'Show. Don\'t Tell.',
+    description: 'Record your screen. Add voice notes. AI watches every frame, understands your workflow, and generates implementation plans from what it sees.',
+    image: cdnUrl('/assets/images/demo-video-analysis.jpg'),
+    icon: <Video className="w-5 h-5" />,
+    aspectRatio: '1024/1366',
+    features: [
+      'Record up to 2 minutes of workflow',
+      'Include voice dictation for context',
+      'AI analyzes frame by frame',
+      'Turn demos into detailed specs'
     ]
   },
   {
