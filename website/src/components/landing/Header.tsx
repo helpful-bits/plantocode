@@ -116,6 +116,34 @@ export function Header() {
               </Link>
             </motion.div>
 
+            {/* Promo Badge - Tailwind CSS 4 optimized */}
+            <div className="hidden md:flex items-center">
+              <motion.div
+                animate={{ opacity: 1, scale: 1 }}
+                initial={{ opacity: 0, scale: 0.8 }}
+                transition={{ delay: 0.5, duration: 0.3, type: 'spring' }}
+                className="relative isolate overflow-hidden rounded-full px-3 lg:px-6 py-2 lg:py-3 mr-2 lg:mr-4"
+                whileHover={{ scale: 1.05 }}
+              >
+                {/* Modern gradient background with improved performance */}
+                <div className="absolute inset-0 -z-10 bg-gradient-to-r from-orange-500 via-pink-500 to-pink-600" />
+                
+                {/* Glossy effect overlay */}
+                <div className="absolute inset-0 -z-10 bg-gradient-to-b from-white/25 via-transparent to-transparent opacity-90" />
+                
+                {/* Content */}
+                <div className="relative flex items-center gap-1 lg:gap-2">
+                  <span className="text-base lg:text-xl drop-shadow-md" role="img" aria-label="gift">🎁</span>
+                  <span className="text-white text-xs lg:text-sm font-black tracking-wide lg:tracking-wider uppercase drop-shadow-md whitespace-nowrap">
+                    First 100: $10 FREE
+                  </span>
+                </div>
+                
+                {/* Enhanced shadow effect - only on larger screens */}
+                <div className="hidden lg:block absolute inset-0 -z-20 blur-xl bg-gradient-to-r from-orange-400/50 via-pink-400/50 to-pink-500/50 translate-y-2" />
+              </motion.div>
+            </div>
+
             {/* Desktop Navigation */}
             <nav className="hidden md:flex items-center gap-1 lg:gap-2">
               {navLinks.map((link, index) => (
@@ -193,6 +221,27 @@ export function Header() {
 
             {/* Mobile actions */}
             <div className="flex md:hidden items-center gap-2">
+              {/* Mobile Promo Badge - Tailwind CSS 4 optimized */}
+              <motion.div
+                animate={{ opacity: 1, scale: 1 }}
+                initial={{ opacity: 0, scale: 0.8 }}
+                transition={{ delay: 0.3, duration: 0.3, type: 'spring' }}
+                className="relative isolate overflow-hidden rounded-full px-4 py-2"
+              >
+                {/* Modern gradient background */}
+                <div className="absolute inset-0 -z-10 bg-gradient-to-r from-orange-500 via-pink-500 to-pink-600" />
+                
+                {/* Glossy effect overlay */}
+                <div className="absolute inset-0 -z-10 bg-gradient-to-b from-white/20 to-transparent" />
+                
+                {/* Content */}
+                <div className="relative flex items-center gap-1.5">
+                  <span className="text-lg drop-shadow" role="img" aria-label="gift">🎁</span>
+                  <span className="text-white text-[11px] font-black tracking-wide uppercase">
+                    First 100: $10 FREE
+                  </span>
+                </div>
+              </motion.div>
               <ThemeToggle />
               <motion.button
                 animate={{ opacity: 1 }}
