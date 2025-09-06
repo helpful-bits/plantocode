@@ -4,6 +4,7 @@
  */
 
 import { logError } from './error-handling';
+import { triggerGlobalAuthErrorHandler } from '@/utils/auth-error-handler';
 
 // Store the original fetch
 const originalFetch = window.fetch;
@@ -41,6 +42,10 @@ export function initializeFetchInterceptor(): void {
 
     try {
       const response = await originalFetch(input, init);
+      
+      if (response.status === 401) {
+        triggerGlobalAuthErrorHandler();
+      }
       
       // Log slow requests (> 5 seconds)
       const duration = performance.now() - startTime;

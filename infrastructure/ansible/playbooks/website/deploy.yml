@@ -1,0 +1,106 @@
+---
+# Vibe Manager Website Deployment - Consolidated Playbook
+# 
+# USAGE:
+#   ansible-playbook deploy.yml -i inventory/hosts
+#   ansible-playbook deploy.yml -i inventory/hosts --tags docker
+#   ansible-playbook deploy.yml -i inventory/hosts --tags nginx
+#
+# PREREQUISITES:
+#   1. Build locally first: cd website && ./build-and-deploy.sh
+#   2. Configure secrets in group_vars/[region]/secrets.yml
+
+- name: Deploy Vibe Manager Website
+  hosts: all
+  become: yes
+  
+  vars:
+    deployment_dir: /opt/vibe-website
+    website_deploy_source: "{{ playbook_dir }}/../../../../website/deploy"
+    domain_name: vibemanager.app
+    container_name: vibe-website
+    container_port: 3000
+    
+  # Auto-load region-specific secrets
+  vars_files:
+    - "{{ playbook_dir }}/../../group_vars/{{ group_names[0] | default('interserver') }}/secrets.yml"
+    
+  tasks:
+    # ========================================
+    # PREPARATION
+    # ========================================
+    - name: Create deployment directory
+      file:
+        path: "{{ deployment_dir }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+      tags: [always]
+      
+    # ========================================
+    # DOCKER SETUP
+    # ========================================
+    - name: Install Docker
+      include_tasks: tasks/install-docker.yml
+      tags: [docker]
+      
+    # ========================================
+    # DEPLOY APPLICATION
+    # ========================================
+    - name: Sync deployment artifacts
+      include_tasks: tasks/sync-artifacts.yml
+      tags: [deploy]
+      
+    - name: Create environment file
+      template:
+        src: templates/env.production.j2
+        dest: "{{ deployment_dir }}/.env.production"
+        mode: '0600'
+        owner: root
+        group: root
+      tags: [deploy, env]
+      
+    - name: Deploy container
+      include_tasks: tasks/deploy-container.yml
+      tags: [deploy, docker]
+      
+    # ========================================
+    # NGINX PROXY
+    # ========================================
+    - name: Configure nginx proxy
+      include_tasks: tasks/configure-nginx.yml
+      when: configure_nginx | default(true)
+      tags: [nginx]
+      
+    # ========================================
+    # VERIFICATION
+    # ========================================
+    - name: Health check
+      uri:
+        url: "http://127.0.0.1:{{ container_port }}/api/health"
+        status_code: [200, 404]
+      retries: 5
+      delay: 2
+      tags: [verify]
+      
+    - name: Create management scripts
+      template:
+        src: "templates/{{ item }}.j2"
+        dest: "{{ deployment_dir }}/{{ item }}"
+        mode: '0755'
+      loop:
+        - manage.sh
+        - logs.sh
+      tags: [scripts]
+      
+  handlers:
+    - name: restart container
+      docker_container:
+        name: "{{ container_name }}"
+        state: restarted
+        
+    - name: reload nginx
+      systemd:
+        name: nginx
+        state: reloaded

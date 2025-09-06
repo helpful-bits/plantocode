@@ -324,6 +324,7 @@ async fn create_abstract_stage_job_with_lock(
 
     // Convert to WorkflowStage for model configuration
     let stage = match task_type {
+        TaskType::RootFolderSelection => WorkflowStage::RootFolderSelection,
         TaskType::RegexFileFilter => WorkflowStage::RegexFileFilter,
         TaskType::FileRelevanceAssessment => WorkflowStage::FileRelevanceAssessment,
         TaskType::ExtendedPathFinder => WorkflowStage::ExtendedPathFinder,

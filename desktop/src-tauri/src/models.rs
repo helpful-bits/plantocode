@@ -195,6 +195,7 @@ pub enum TaskType {
     RegexFileFilter,
     FileFinderWorkflow,
     // New individual workflow stage types
+    RootFolderSelection,
     FileRelevanceAssessment,
     ExtendedPathFinder,
     WebSearchPromptsGeneration,
@@ -217,6 +218,7 @@ impl ToString for TaskType {
             TaskType::GenericLlmStream => "generic_llm_stream".to_string(),
             TaskType::RegexFileFilter => "regex_file_filter".to_string(),
             TaskType::FileFinderWorkflow => "file_finder_workflow".to_string(),
+            TaskType::RootFolderSelection => "root_folder_selection".to_string(),
             TaskType::FileRelevanceAssessment => "file_relevance_assessment".to_string(),
             TaskType::ExtendedPathFinder => "extended_path_finder".to_string(),
             TaskType::WebSearchPromptsGeneration => "web_search_prompts_generation".to_string(),
@@ -243,6 +245,7 @@ impl std::str::FromStr for TaskType {
             "generic_llm_stream" => Ok(TaskType::GenericLlmStream),
             "regex_file_filter" => Ok(TaskType::RegexFileFilter),
             "file_finder_workflow" => Ok(TaskType::FileFinderWorkflow),
+            "root_folder_selection" => Ok(TaskType::RootFolderSelection),
             "file_relevance_assessment" => Ok(TaskType::FileRelevanceAssessment),
             "extended_path_finder" => Ok(TaskType::ExtendedPathFinder),
             "web_search_prompts_generation" => Ok(TaskType::WebSearchPromptsGeneration),
@@ -273,8 +276,9 @@ impl TaskType {
             | TaskType::RegexFileFilter
             | TaskType::WebSearchPromptsGeneration
             | TaskType::WebSearchExecution
+            | TaskType::RootFolderSelection
             | TaskType::VideoAnalysis => true,
-            // Workflows don't require LLM - they are orchestrated, not processed
+            // Workflows and local filesystem operations don't require LLM
             TaskType::FileFinderWorkflow | TaskType::WebSearchWorkflow => false,
             // Streaming and Unknown default to true for safety
             TaskType::Streaming | TaskType::Unknown => true,
@@ -289,7 +293,8 @@ impl TaskType {
             // Extended workflow stages use OpenRouter API
             TaskType::FileRelevanceAssessment
             | TaskType::ExtendedPathFinder
-            | TaskType::ImplementationPlanMerge => ApiType::OpenRouter,
+            | TaskType::ImplementationPlanMerge
+            | TaskType::RootFolderSelection => ApiType::OpenRouter,
             // All other LLM tasks use OpenRouter API
             _ => ApiType::OpenRouter,
         }

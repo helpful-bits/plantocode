@@ -79,6 +79,12 @@ VALUES (
         "max_tokens": 10000,
         "temperature": 0.3
       },
+      "root_folder_selection": {
+        "model": "openai/gpt-5-mini",
+        "allowed_models": ["google/gemini-2.5-flash", "openai/gpt-5-mini", "anthropic/claude-sonnet-4-20250514"],
+        "max_tokens": 4096,
+        "temperature": 0.2
+      },
       "video_analysis": {
         "model": "google/gemini-2.5-pro",
         "allowed_models": ["google/gemini-2.5-pro", "google/gemini-2.5-flash"],
@@ -117,7 +123,7 @@ ON CONFLICT (config_key) DO UPDATE SET
 INSERT INTO application_configurations (config_key, config_value, description)
 VALUES 
   ('billing_free_credits_expiry_days', '"3"', 'Number of days before free credits expire for new users'),
-  ('billing_free_credits_amount', '"2.00"', 'Amount of free credits (USD) granted to new users'),
+  ('billing_free_credits_amount', '"10.00"', 'Amount of free credits (USD) granted to new users'),
   ('billing_max_credit_purchase', '1000', 'Maximum amount of credits that can be purchased in a single transaction')
 ON CONFLICT (config_key) DO UPDATE SET
   config_value = EXCLUDED.config_value,

@@ -7,6 +7,8 @@
   become: yes
   vars:
     domain_name: "{{ ssl_domain | default('example.com') }}"
+    base_domain: "{{ ssl_base_domain | default('vibemanager.app') }}"
+    use_wildcard: "{{ ssl_use_wildcard | default(false) }}"
     email_address: "{{ ssl_email | default('admin@example.com') }}"
     app_port: 8080
     nginx_ssl_protocols: "TLSv1.2 TLSv1.3"
@@ -26,6 +28,7 @@
           - nginx
           - certbot
           - python3-certbot-nginx
+          - python3-certbot-dns-cloudflare
         state: present
         update_cache: yes
         
@@ -91,19 +94,54 @@
     # ========================================
     # SSL CERTIFICATE
     # ========================================
+    - name: Check if wildcard certificate exists
+      stat:
+        path: "/etc/letsencrypt/live/{{ base_domain }}/fullchain.pem"
+      register: wildcard_cert
+      when: use_wildcard
+      
     - name: Check if SSL certificate exists
       stat:
         path: "/etc/letsencrypt/live/{{ domain_name }}/fullchain.pem"
       register: ssl_cert
+      when: not use_wildcard
       
-    - name: Obtain SSL certificate
+    - name: Create Cloudflare credentials file for wildcard
+      copy:
+        dest: /root/.cloudflare.ini
+        content: |
+          dns_cloudflare_api_token = {{ cloudflare_api_token }}
+        mode: '0600'
+        owner: root
+        group: root
+      when: use_wildcard and cloudflare_api_token is defined and not (wildcard_cert.stat.exists | default(false))
+      
+    - name: Obtain wildcard certificate via Cloudflare DNS-01
+      command: >
+        certbot certonly
+        --dns-cloudflare
+        --dns-cloudflare-credentials /root/.cloudflare.ini
+        --non-interactive
+        --agree-tos
+        --email {{ email_address }}
+        --domains "*.{{ base_domain }},{{ base_domain }}"
+        --cert-name {{ base_domain }}
+      when: use_wildcard and cloudflare_api_token is defined and not (wildcard_cert.stat.exists | default(false))
+      
+    - name: Clean up Cloudflare credentials
+      file:
+        path: /root/.cloudflare.ini
+        state: absent
+      when: use_wildcard
+      
+    - name: Obtain SSL certificate via HTTP-01
       command: >
         certbot certonly --nginx
         --non-interactive
         --agree-tos
         --email {{ email_address }}
         --domains {{ domain_name }}
-      when: not ssl_cert.stat.exists
+      when: not use_wildcard and not (ssl_cert.stat.exists | default(false))
       
     # ========================================
     # HTTPS CONFIGURATION
@@ -139,9 +177,9 @@
               server_name {{ domain_name }};
               
               # SSL Configuration
-              ssl_certificate /etc/letsencrypt/live/{{ domain_name }}/fullchain.pem;
-              ssl_certificate_key /etc/letsencrypt/live/{{ domain_name }}/privkey.pem;
-              ssl_trusted_certificate /etc/letsencrypt/live/{{ domain_name }}/chain.pem;
+              ssl_certificate /etc/letsencrypt/live/{{ base_domain if use_wildcard else domain_name }}/fullchain.pem;
+              ssl_certificate_key /etc/letsencrypt/live/{{ base_domain if use_wildcard else domain_name }}/privkey.pem;
+              ssl_trusted_certificate /etc/letsencrypt/live/{{ base_domain if use_wildcard else domain_name }}/chain.pem;
               
               # SSL Security Settings
               ssl_protocols {{ nginx_ssl_protocols }};

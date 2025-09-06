@@ -605,6 +605,7 @@ export const WorkflowUtils = {
   mapTaskTypeToEnum(taskType: string): WorkflowStage | null {
     const upperCaseTaskType = taskType.toUpperCase();
     const validStages: WorkflowStage[] = [
+      'ROOT_FOLDER_SELECTION',
       'REGEX_FILE_FILTER',
       'FILE_RELEVANCE_ASSESSMENT', 
       'EXTENDED_PATH_FINDER',
@@ -621,7 +622,7 @@ export const WorkflowUtils = {
   calculateProgress(stageJobs: any[]): number {
     if (stageJobs.length === 0) return 0;
     
-    const totalStages = 6; // Updated to match FileFinderWorkflow: REGEX_FILE_FILTER, FILE_RELEVANCE_ASSESSMENT, EXTENDED_PATH_FINDER, PATH_CORRECTION, WEB_SEARCH_PROMPTS_GENERATION, WEB_SEARCH_EXECUTION
+    const totalStages = 5; // Updated to match FileFinderWorkflow: ROOT_FOLDER_SELECTION, REGEX_FILE_FILTER, FILE_RELEVANCE_ASSESSMENT, EXTENDED_PATH_FINDER, PATH_CORRECTION
     const completedStages = stageJobs.filter(job => job.status === 'completed' || job.status === 'completedByTag').length;
     const runningStages = stageJobs.filter(job => 
       job.status === 'running' || 
@@ -641,6 +642,7 @@ export const WorkflowUtils = {
    */
   getStageName(stage: string): string {
     const stageNames: Record<string, string> = {
+      'ROOT_FOLDER_SELECTION': 'Root Folder Selection',
       'REGEX_FILE_FILTER': 'Filtering Files with Regex',
       'FILE_RELEVANCE_ASSESSMENT': 'AI File Relevance Assessment',
       'EXTENDED_PATH_FINDER': 'Extended Path Finding',
@@ -656,6 +658,7 @@ export const WorkflowUtils = {
    */
   getStageDescription(stage: string): string {
     const descriptions: Record<string, string> = {
+      'ROOT_FOLDER_SELECTION': 'Selecting the root folder for file analysis',
       'REGEX_FILE_FILTER': 'Creating regex patterns to filter relevant files',
       'FILE_RELEVANCE_ASSESSMENT': 'Using AI to assess relevance of filtered files to the task',
       'EXTENDED_PATH_FINDER': 'Finding additional relevant paths for comprehensive results',

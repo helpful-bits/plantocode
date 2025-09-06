@@ -26,9 +26,14 @@ export function useImplementationPlanActions() {
   /**
    * Create an implementation plan based on task description and selected files
    * Uses direct Tauri command invocation for backend processing
+   * @param selectedRootDirectories - Optional array of root directories to scope the directory tree
    */
   const handleCreateImplementationPlan = useCallback(
-    async (taskDescription: string, includedPaths: string[]) => {
+    async (
+      taskDescription: string, 
+      includedPaths: string[],
+      selectedRootDirectories?: string[] | null
+    ) => {
       // Input validation
       if (!projectDirectory || !taskDescription.trim() || !activeSessionId) {
         showNotification({
@@ -65,6 +70,7 @@ export function useImplementationPlanActions() {
             taskDescription,
             projectDirectory: projectDirectory || "",
             relevantFiles: includedPaths,
+            selectedRootDirectories: selectedRootDirectories || undefined,
             projectStructure: undefined,
             model: undefined,
             temperature: undefined,

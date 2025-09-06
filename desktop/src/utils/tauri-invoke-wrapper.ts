@@ -5,17 +5,8 @@
 
 import { invoke as tauriInvoke, type InvokeArgs } from '@tauri-apps/api/core';
 import { logError } from './error-handling';
+import { triggerGlobalAuthErrorHandler } from '@/utils/auth-error-handler';
 
-// Global auth error handler callback
-let authErrorHandler: (() => void) | null = null;
-
-/**
- * Set the global auth error handler
- * This will be called when an authentication error is detected
- */
-export function setAuthErrorHandler(handler: () => void) {
-  authErrorHandler = handler;
-}
 
 /**
  * Wrapped invoke function that automatically logs all errors and handles auth failures
@@ -47,10 +38,9 @@ export async function invoke<T>(
                        errorStr.includes('Token expired') ||
                        errorStr.includes('Unauthorized');
     
-    // If it's an auth error and we have a handler, trigger it
-    if (isAuthError && authErrorHandler) {
-      console.warn('Authentication error detected, triggering auth handler');
-      authErrorHandler();
+    // If it's an auth error, trigger the global handler
+    if (isAuthError) {
+      triggerGlobalAuthErrorHandler();
     }
     
     // Centralized error logging for ALL Tauri command failures

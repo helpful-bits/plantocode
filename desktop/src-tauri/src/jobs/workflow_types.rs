@@ -25,6 +25,7 @@ impl Default for WorkflowStatus {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Hash, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum WorkflowStage {
+    RootFolderSelection,
     RegexFileFilter,
     FileRelevanceAssessment,
     ExtendedPathFinder,
@@ -43,6 +44,7 @@ impl WorkflowStage {
     /// Get the next stage in the workflow
     pub fn next_stage(&self) -> Option<WorkflowStage> {
         match self {
+            WorkflowStage::RootFolderSelection => Some(WorkflowStage::RegexFileFilter),
             WorkflowStage::RegexFileFilter => Some(WorkflowStage::FileRelevanceAssessment),
             WorkflowStage::FileRelevanceAssessment => Some(WorkflowStage::ExtendedPathFinder),
             WorkflowStage::ExtendedPathFinder => Some(WorkflowStage::PathCorrection),
@@ -55,7 +57,8 @@ impl WorkflowStage {
     /// Get the previous stage in the workflow
     pub fn previous_stage(&self) -> Option<WorkflowStage> {
         match self {
-            WorkflowStage::RegexFileFilter => None,
+            WorkflowStage::RootFolderSelection => None,
+            WorkflowStage::RegexFileFilter => Some(WorkflowStage::RootFolderSelection),
             WorkflowStage::FileRelevanceAssessment => Some(WorkflowStage::RegexFileFilter),
             WorkflowStage::ExtendedPathFinder => Some(WorkflowStage::FileRelevanceAssessment),
             WorkflowStage::PathCorrection => Some(WorkflowStage::ExtendedPathFinder),
@@ -67,18 +70,20 @@ impl WorkflowStage {
     /// Get stage index for progress calculation (0-based)
     pub fn stage_index(&self) -> usize {
         match self {
-            WorkflowStage::RegexFileFilter => 0,
-            WorkflowStage::FileRelevanceAssessment => 1,
-            WorkflowStage::ExtendedPathFinder => 2,
-            WorkflowStage::PathCorrection => 3,
-            WorkflowStage::WebSearchPromptsGeneration => 4,
-            WorkflowStage::WebSearchExecution => 5,
+            WorkflowStage::RootFolderSelection => 0,
+            WorkflowStage::RegexFileFilter => 1,
+            WorkflowStage::FileRelevanceAssessment => 2,
+            WorkflowStage::ExtendedPathFinder => 3,
+            WorkflowStage::PathCorrection => 4,
+            WorkflowStage::WebSearchPromptsGeneration => 5,
+            WorkflowStage::WebSearchExecution => 6,
         }
     }
 
     /// Get stage display name
     pub fn display_name(&self) -> &'static str {
         match self {
+            WorkflowStage::RootFolderSelection => "Root Folder Selection",
             WorkflowStage::RegexFileFilter => "Regex File Filtering",
             WorkflowStage::FileRelevanceAssessment => "AI File Relevance Assessment",
             WorkflowStage::ExtendedPathFinder => "Extended Path Finding",
@@ -91,6 +96,8 @@ impl WorkflowStage {
     /// Convert from stage display name to WorkflowStage enum
     pub fn from_display_name(display_name: &str) -> Option<WorkflowStage> {
         match display_name {
+            "Root Folder Selection" => Some(WorkflowStage::RootFolderSelection),
+            "RootFolderSelection" => Some(WorkflowStage::RootFolderSelection), // Handle enum variant name
             "Regex File Filtering" => Some(WorkflowStage::RegexFileFilter),
             "RegexFileFilter" => Some(WorkflowStage::RegexFileFilter), // Handle enum variant name
             "AI File Relevance Assessment" => Some(WorkflowStage::FileRelevanceAssessment),
@@ -110,6 +117,7 @@ impl WorkflowStage {
     /// Convert from TaskType to WorkflowStage enum
     pub fn from_task_type(task_type: &TaskType) -> Option<WorkflowStage> {
         match task_type {
+            TaskType::RootFolderSelection => Some(WorkflowStage::RootFolderSelection),
             TaskType::RegexFileFilter => Some(WorkflowStage::RegexFileFilter),
             TaskType::FileRelevanceAssessment => Some(WorkflowStage::FileRelevanceAssessment),
             TaskType::ExtendedPathFinder => Some(WorkflowStage::ExtendedPathFinder),
@@ -414,6 +422,7 @@ impl WorkflowState {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkflowIntermediateData {
+    pub selected_root_directories: Vec<String>,
     pub directory_tree_content: Option<String>,
     pub raw_regex_patterns: Option<serde_json::Value>,
     pub locally_filtered_files: Vec<String>,
@@ -436,6 +445,7 @@ impl Default for WorkflowIntermediateData {
 impl WorkflowIntermediateData {
     pub fn new() -> Self {
         Self {
+            selected_root_directories: Vec::new(),
             directory_tree_content: None,
             raw_regex_patterns: None,
             locally_filtered_files: Vec::new(),

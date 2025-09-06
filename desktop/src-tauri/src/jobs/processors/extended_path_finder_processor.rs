@@ -14,6 +14,7 @@ use crate::jobs::types::{
 };
 use crate::models::TaskType;
 use crate::utils::directory_tree::get_directory_tree_with_defaults;
+use crate::jobs::processors::utils::path_resolution_utils::to_absolute_path;
 
 pub struct ExtendedPathFinderProcessor;
 
@@ -66,23 +67,47 @@ impl JobProcessor for ExtendedPathFinderProcessor {
             ));
         }
 
-        // Get project directory and directory tree from session
+        // Get project directory from session
         let project_directory = &session.project_directory;
-        let directory_tree = match get_directory_tree_with_defaults(project_directory).await {
-            Ok(tree) => tree,
-            Err(e) => {
-                warn!(
-                    "Failed to generate directory tree: {}. Using empty fallback.",
-                    e
-                );
-                "No directory structure available".to_string()
+        
+        // Generate directory tree scoped to selected root directories if available
+        let directory_tree = if !payload.selected_root_directories.is_empty() {
+            debug!("Generating scoped directory tree for {} selected root directories", 
+                payload.selected_root_directories.len());
+            
+            // Generate combined directory tree for selected roots only
+            match crate::utils::directory_tree::get_combined_directory_tree_for_roots(
+                &payload.selected_root_directories
+            ).await {
+                Ok(tree) => tree,
+                Err(e) => {
+                    warn!("Failed to generate scoped directory tree: {}. Falling back to full tree.", e);
+                    // Fallback to full directory tree
+                    match get_directory_tree_with_defaults(project_directory).await {
+                        Ok(tree) => tree,
+                        Err(e) => {
+                            warn!("Failed to generate directory tree: {}. Using empty fallback.", e);
+                            "No directory structure available".to_string()
+                        }
+                    }
+                }
+            }
+        } else {
+            // No selected roots, use full project directory tree
+            debug!("No selected root directories, using full project tree");
+            match get_directory_tree_with_defaults(project_directory).await {
+                Ok(tree) => tree,
+                Err(e) => {
+                    warn!("Failed to generate directory tree: {}. Using empty fallback.", e);
+                    "No directory structure available".to_string()
+                }
             }
         };
 
         // Read file contents for all initial paths to provide complete context
         let mut file_contents = std::collections::HashMap::new();
         for path in &payload.initial_paths {
-            let absolute_path = Path::new(project_directory).join(path);
+            let absolute_path = to_absolute_path(path, &session.project_directory);
             match fs::read_to_string(&absolute_path).await {
                 Ok(content) => {
                     file_contents.insert(path.clone(), content);
@@ -170,7 +195,7 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         let mut unverified_extended_paths = Vec::new();
 
         for relative_path in &extended_paths {
-            let absolute_path = std::path::Path::new(project_directory).join(relative_path);
+            let absolute_path = to_absolute_path(relative_path, &session.project_directory);
             match fs::metadata(&absolute_path).await {
                 Ok(metadata) if metadata.is_file() => {
                     validated_extended_paths.push(relative_path.clone());

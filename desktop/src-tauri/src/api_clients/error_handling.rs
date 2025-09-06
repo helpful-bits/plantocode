@@ -1,8 +1,10 @@
-use log::{debug, error};
+use log::{debug, error, warn};
 use serde_json::Value;
 
 use crate::constants::ErrorType;
 use crate::error::AppError;
+use crate::auth::token_manager::TokenManager;
+use std::sync::Arc;
 
 /// Check if an error message indicates token limit exceeded
 fn is_token_limit_error(message: &str) -> bool {
@@ -209,5 +211,24 @@ pub fn map_server_proxy_error(status_code: u16, response_text: &str) -> AppError
                 status_code, response_text
             )),
         }
+    }
+}
+
+pub async fn handle_api_error(
+    status_code: u16,
+    error_text: &str,
+    token_manager: &Arc<TokenManager>,
+) -> AppError {
+    if status_code == 401 {
+        warn!(
+            "Received 401 Unauthorized. Clearing token. Details: {}",
+            error_text
+        );
+        if let Err(e) = token_manager.set(None).await {
+            error!("Failed to clear invalid token: {}", e);
+        }
+        AppError::AuthError("Authentication token expired. Please re-authenticate.".to_string())
+    } else {
+        map_server_proxy_error(status_code, error_text)
     }
 }

@@ -11,6 +11,8 @@ import { logError } from "@/utils/error-handling";
 
 export interface ProjectContextValue extends ProjectDirectoryState {
   setProjectDirectory: (dir: string) => Promise<void>;
+  externalFolders: string[];
+  setExternalFolders: (folders: string[]) => Promise<void>;
 }
 
 // Create the context without default values, will force provider usage
@@ -23,6 +25,8 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     isLoading,
     error,
     setProjectDirectory,
+    externalFolders,
+    setExternalFolders,
   } = useProjectDirectoryManager();
 
   // AuthFlowManager now controls app initialization state
@@ -33,8 +37,10 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       setProjectDirectory,
       isLoading,
       error,
+      externalFolders,
+      setExternalFolders,
     }),
-    [projectDirectory, setProjectDirectory, isLoading, error]
+    [projectDirectory, setProjectDirectory, isLoading, error, externalFolders, setExternalFolders]
   );
 
   return (

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
@@ -10,6 +10,24 @@ import { cdnUrl } from '@/lib/cdn';
 export function HeroSection() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [showControls, setShowControls] = useState(false);
+  const [isMobile, setIsMobile] = useState<boolean | null>(null);
+  
+  useEffect(() => {
+    // Check if window is available (client-side)
+    if (typeof window !== 'undefined') {
+      // Initial check
+      const checkMobile = () => window.innerWidth < 640; // sm breakpoint is 640px in Tailwind
+      setIsMobile(checkMobile());
+      
+      // Update on resize
+      const handleResize = () => {
+        setIsMobile(checkMobile());
+      };
+      
+      window.addEventListener('resize', handleResize);
+      return () => window.removeEventListener('resize', handleResize);
+    }
+  }, []);
   
   const handleVideoClick = () => {
     setShowControls(!showControls);
@@ -62,51 +80,58 @@ export function HeroSection() {
 
       {/* Video Container - responsive with different videos for different screen sizes */}
       <div className="relative w-full px-4 sm:px-6 lg:px-8">
-        {/* Desktop/Tablet Video - 16:9 aspect ratio */}
-        <div className="hidden sm:block max-w-6xl mx-auto">
-          <video
-            ref={videoRef}
-            className="w-full h-auto object-cover cursor-pointer rounded-lg shadow-2xl"
-            autoPlay
-            loop
-            muted
-            playsInline
-            controls={showControls}
-            onClick={handleVideoClick}
-          >
-            {/* VP9 WebM for better compression and quality - primary source */}
-            <source src={cdnUrl('/assets/videos/hero-section-16by9_vp9.webm')} type="video/webm; codecs=vp9" />
-            {/* H.264 MP4 fallback for broader compatibility */}
-            <source src={cdnUrl('/assets/videos/hero-section-16by9.mp4')} type="video/mp4" />
-            Your browser does not support the video tag.
-          </video>
-        </div>
-
-        {/* Mobile Video - Portrait aspect ratio */}
-        <div className="sm:hidden max-w-md mx-auto">
-          <video
-            className="w-full h-auto object-cover cursor-pointer rounded-lg shadow-2xl"
-            autoPlay
-            loop
-            muted
-            playsInline
-            controls={showControls}
-            onClick={handleVideoClick}
-          >
-            {/* VP9 WebM for better compression and quality - primary source */}
-            <source src={cdnUrl('/assets/videos/hero-section_vp9.webm')} type="video/webm; codecs=vp9" />
-            {/* H.264 MP4 fallback for broader compatibility */}
-            <source src={cdnUrl('/assets/videos/hero-section.mp4')} type="video/mp4" />
-            Your browser does not support the video tag.
-          </video>
-        </div>
+        {/* Render only the appropriate video based on screen size */}
+        {isMobile === null ? (
+          // During SSR or initial load, show a placeholder to prevent layout shift
+          <div className="max-w-6xl mx-auto aspect-video sm:aspect-video aspect-[9/16] sm:aspect-[16/9]" />
+        ) : isMobile ? (
+          // Mobile Video - Portrait aspect ratio
+          <div className="max-w-md mx-auto">
+            <video
+              ref={videoRef}
+              className="w-full h-auto object-cover cursor-pointer rounded-lg shadow-2xl"
+              autoPlay
+              loop
+              muted
+              playsInline
+              controls={showControls}
+              onClick={handleVideoClick}
+            >
+              {/* VP9 WebM for better compression and quality - primary source */}
+              <source src={cdnUrl('/assets/videos/hero-section_vp9.webm')} type="video/webm; codecs=vp9" />
+              {/* H.264 MP4 fallback for broader compatibility */}
+              <source src={cdnUrl('/assets/videos/hero-section.mp4')} type="video/mp4" />
+              Your browser does not support the video tag.
+            </video>
+          </div>
+        ) : (
+          // Desktop/Tablet Video - 16:9 aspect ratio
+          <div className="max-w-6xl mx-auto">
+            <video
+              ref={videoRef}
+              className="w-full h-auto object-cover cursor-pointer rounded-lg shadow-2xl"
+              autoPlay
+              loop
+              muted
+              playsInline
+              controls={showControls}
+              onClick={handleVideoClick}
+            >
+              {/* VP9 WebM for better compression and quality - primary source */}
+              <source src={cdnUrl('/assets/videos/hero-section-16by9_vp9.webm')} type="video/webm; codecs=vp9" />
+              {/* H.264 MP4 fallback for broader compatibility */}
+              <source src={cdnUrl('/assets/videos/hero-section-16by9.mp4')} type="video/mp4" />
+              Your browser does not support the video tag.
+            </video>
+          </div>
+        )}
       </div>
 
       {/* Previous hero content now below the video */}
       <div className="relative text-center px-4 sm:px-6 lg:px-8 w-full max-w-7xl mx-auto mt-12">
         {/* Subtitle */}
         <p className="text-xl sm:text-2xl md:text-3xl text-description-muted mb-8 leading-relaxed max-w-4xl mx-auto">
-          Tell it what you want to build. Type, talk, or show it on screen. AI finds the right files, generates plans with multiple models, and gives you a blueprint your coding agent can actually use.
+          Tell it what you want to build. Type it out, describe it 10x faster with voice, or capture bugs instantly on screen. AI finds the right files, generates plans with multiple models, and gives you a blueprint your coding agent can actually use.
         </p>
 
         {/* Product Hunt Badge */}

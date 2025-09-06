@@ -38,8 +38,8 @@ export function Footer() {
                   Vibe Manager
                 </h3>
               </Link>
-              <p className="text-muted-foreground mb-6 max-w-md text-sm leading-relaxed">
-                AI coding assistant for large codebases. Find the right files, merge plans from multiple models, and ship correct changes - without sending your whole codebase to the cloud.
+              <p className="text-foreground/60 dark:text-foreground/50 mb-6 max-w-md text-sm leading-relaxed">
+                Planning assistant for Claude Code. Find the right files, merge plans from multiple models, and ship correct changes with multi-model intelligence.
               </p>
 
               {/* Social Links */}
@@ -96,12 +96,22 @@ export function Footer() {
               {/* Resources */}
               <div>
                 <h4 className="font-semibold text-foreground mb-4 text-sm uppercase tracking-wide">
-                  Resources
+                  Claude Code
                 </h4>
                 <ul className="space-y-3">
                   <li>
-                    <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 clickable-text-underline" href="/changelog">
-                      Changelog
+                    <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 clickable-text-underline" href="/docs/claude-code-install">
+                      Install Guide
+                    </Link>
+                  </li>
+                  <li>
+                    <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 clickable-text-underline" href="/docs/claude-code-vs-cursor">
+                      Maximize Claude & Cursor
+                    </Link>
+                  </li>
+                  <li>
+                    <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 clickable-text-underline" href="/docs/claude-code-alternative">
+                      Extensions & Enhancements
                     </Link>
                   </li>
                   <li>

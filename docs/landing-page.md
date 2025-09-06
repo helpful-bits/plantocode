@@ -126,6 +126,100 @@ Let's be frank: with heavy use, this can cost $300+ a month. But this investment
 
 No subscriptions. No hidden fees. Pay only for what you use.
 
+## Website Endpoint Inventory (Cloudflare Migration)
+
+### API Routes
+The website contains 4 core API endpoints that need to be preserved during the Cloudflare migration:
+
+#### `/api/geo` - Geo Detection Endpoint
+- **Methods**: GET, HEAD
+- **Purpose**: Returns user's country code for geo-based features
+- **Response**: HTTP 204 with `X-User-Country` header
+- **Dependencies**: Uses `CF-IPCountry` or `x-vercel-ip-country` headers
+- **Cloudflare Note**: This endpoint relies on Cloudflare's `CF-IPCountry` header for accurate geo-detection
+
+#### `/api/analytics/track` - Server-Side Analytics Proxy
+- **Methods**: POST, HEAD
+- **Purpose**: Bypasses ad blockers by server-side tracking to Plausible, X/Twitter, and GA4
+- **Request Body**: JSON with `event`, `props`, `url`, `screen_width`, `referrer`
+- **Third-Party Integrations**:
+  - Plausible.io (plausible.io/api/event)
+  - X/Twitter Ads API (t.co/1/i/adsct, analytics.twitter.com/1/i/adsct)
+  - Google Analytics 4 (google-analytics.com/mp/collect)
+- **IP Forwarding**: Preserves client IP through `X-Forwarded-For` headers
+
+#### `/api/download/mac` - macOS Download Redirect
+- **Methods**: GET, HEAD
+- **Purpose**: Redirects to CloudFront CDN for macOS app download
+- **Response**: HTTP 302 redirect to `d2tyb0wucqqf48.cloudfront.net/desktop/mac/stable/latest.dmg`
+- **Headers**: `Cache-Control: no-cache, no-store, must-revalidate`
+
+#### `/api/download/windows` - Windows Download Redirect
+- **Methods**: GET, HEAD  
+- **Purpose**: Currently redirects to pricing page (Windows version preparation)
+- **Response**: HTTP 302 redirect to `/#pricing`
+- **Future**: Will redirect to Windows installer when ready
+
+### Legacy Route Redirects
+#### `/download` - Legacy Download Router
+- **Methods**: GET
+- **Purpose**: Query-based download router (`?os=mac|windows|mac-dmg|mac-zip`)
+- **Redirects**: Maps to appropriate CDN URLs based on OS parameter
+- **Default**: Falls back to macOS DMG if no OS specified
+
+#### `/privacy` and `/terms` - Legal Document Routing
+- **Methods**: GET, HEAD
+- **Purpose**: Geo-based legal document routing
+- **Bot Handling**: Crawlers get permanent 301 redirects to EU versions for SEO
+- **User Routing**: US users → `/legal/us/*`, Others → `/legal/eu/*`
+- **Headers Used**: `CF-IPCountry`, `x-vercel-ip-country`
+
+### Middleware Behaviors
+
+#### Analytics Proxy Middleware
+The middleware handles analytics proxying before geo-checks:
+- **Plausible Scripts**: `/js/script*`, `/js/plausible*` → `plausible.io`
+- **Plausible Events**: `/api/event` → `plausible.io/api/event`
+- **Google Analytics**: `/ga/*` paths → various `google-analytics.com` and `googletagmanager.com` endpoints
+- **IP Preservation**: Forwards client IP via `X-Forwarded-For`, `X-Real-IP`
+- **Header Management**: Removes `content-encoding`, adds CORS headers
+
+#### Geo-Gating Behavior
+- **Search Bots**: Full access with `X-Bot-Detected: true` header for SEO
+- **Sanctioned Countries**: Redirected to `/legal/restricted` (Russia, Belarus, Iran, North Korea, Syria, Cuba)
+- **Approved Regions**: US, UK, EU/EEA countries get full access
+- **Gated Paths**: `/api/*`, `/app/*`, `/download/*` restricted to approved regions
+- **API Errors**: Return HTTP 451 with JSON error response for non-approved regions
+- **Vary Headers**: `CF-IPCountry, X-Vercel-IP-Country` for CDN cache control
+
+### Static Assets
+All static assets served from `/public/`:
+- **Images**: Hero backgrounds (light/dark), icons, favicons
+- **Config**: `particle-config.json` for UI effects
+- **PWA**: `manifest.json`, `site.webmanifest`
+- **Favicons**: Complete set for cross-platform compatibility
+
+### CDN Configuration
+- **CloudFront Domain**: `d2tyb0wucqqf48.cloudfront.net`
+- **Purpose**: Serves desktop application binaries
+- **Content-Disposition**: Configured to trigger downloads
+- **Paths**:
+  - `/desktop/mac/stable/latest.dmg` - macOS installer
+  - `/desktop/windows/Vibe-Manager-1.0.18.exe` - Windows installer
+  - `/desktop/mac/stable/latest.tar.gz` - macOS archive
+
+### Reimplementation Assessment
+
+**No endpoints require reimplementation during the Cloudflare migration.** All functionality can be preserved with minor configuration adjustments:
+
+1. **Header Dependencies**: Ensure Cloudflare passes `CF-IPCountry` header to origin
+2. **Analytics Proxying**: Verify middleware analytics paths work through Cloudflare
+3. **IP Forwarding**: Configure Cloudflare to preserve client IPs in `CF-Connecting-IP`
+4. **Cache Configuration**: Set appropriate cache rules for API endpoints (no-cache) vs static assets (cache-friendly)
+5. **Geo Rules**: Cloudflare can handle some geo-blocking at edge, but middleware logic should remain for fine-grained control
+
+The website architecture is well-designed for CDN deployment with clear separation between static assets, API endpoints, and dynamic routing logic.
+
 ---
 
 [Download](#) | [Documentation](#) | [API Reference](#) | [Contact](#)

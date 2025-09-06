@@ -3,10 +3,16 @@
   "description": "Finds relevant files based on a task description.",
   "stages": [
     {
+      "stageName": "RootFolderSelection",
+      "taskType": "root_folder_selection",
+      "processorName": null,
+      "dependencies": []
+    },
+    {
       "stageName": "RegexFileFilter", 
       "taskType": "regex_file_filter",
       "processorName": null,
-      "dependencies": []
+      "dependencies": ["RootFolderSelection"]
     },
     {
       "stageName": "FileRelevanceAssessment",

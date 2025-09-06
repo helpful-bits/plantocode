@@ -513,6 +513,45 @@ To set up X (Twitter) Pixel server-side tracking:
 4. Test with different browsers/devices
 5. Confirm CSP allows necessary domains
 
+## Analytics Configuration
+
+This project uses Plausible Analytics with server-side tracking to bypass ad blockers.
+
+### Plausible Setup Checklist
+
+1. **Domain Configuration**: Ensure `NEXT_PUBLIC_PLAUSIBLE_DOMAIN` in `.env` matches your domain in the Plausible dashboard (typically without www)
+2. **Custom Events**: Each custom event name in the code must match a configured Goal in Plausible exactly (case-sensitive)
+3. **Custom Properties**: Enable "Custom properties" in Plausible Site Settings, then use "Add all" after first events
+4. **Network Verification**: 
+   - Single `/js/script.js` load per session
+   - Single `/api/event` call per navigation (should return 202 Accepted)
+5. **Server-side Attribution**: Headers include User-Agent and X-Forwarded-For for accurate visitor/geo data
+6. **Debug Mode**: Set `PLAUSIBLE_DEBUG=true` in `.env` to verify IP resolution (returns 200 with debug info)
+
+### Environment Variables
+
+```bash
+# Domain as configured in Plausible dashboard
+NEXT_PUBLIC_PLAUSIBLE_DOMAIN=vibemanager.app
+
+# Enable debug mode for troubleshooting
+PLAUSIBLE_DEBUG=false
+
+# Track events in development
+NEXT_PUBLIC_TRACK_DEV=false
+```
+
+### Custom Events
+
+The application tracks these custom events (configure matching Goals in Plausible):
+- `pageview` - Automatic via PlausibleProvider
+- `scroll_depth` - 25%, 50%, 75%, 100% milestones
+- `Demo Interaction` - Demo step interactions
+- `faq_expand` - FAQ question expansions
+- `Video Play` - Video play events
+- `video_complete` - Video completion events
+- `download_click` - Download button clicks
+
 ## License
 
 Copyright (c) 2024 Vibe Manager. All rights reserved.

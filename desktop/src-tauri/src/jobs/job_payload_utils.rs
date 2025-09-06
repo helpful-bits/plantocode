@@ -27,6 +27,7 @@ pub fn convert_db_job_to_job(db_job: &BackgroundJob) -> AppResult<Job> {
         session_id: db_job.session_id.clone(),
         process_after: None,
         created_at: db_job.created_at,
+        result_json: None,
     })
 }
 
@@ -41,8 +42,9 @@ pub fn deserialize_value_to_job_payload(
         ExtendedPathFinderPayload, FileFinderWorkflowPayload, FileRelevanceAssessmentPayload,
         GenericLlmStreamPayload, ImplementationPlanMergePayload, ImplementationPlanPayload,
         JobPayload, OpenRouterLlmPayload, PathCorrectionPayload, RegexFileFilterPayload,
-        TaskRefinementPayload, TextImprovementPayload, VideoAnalysisPayload, WebSearchExecutionPayload,
-        WebSearchPromptsGenerationPayload, WebSearchWorkflowPayload,
+        RootFolderSelectionPayload, TaskRefinementPayload, TextImprovementPayload, 
+        VideoAnalysisPayload, WebSearchExecutionPayload, WebSearchPromptsGenerationPayload, 
+        WebSearchWorkflowPayload,
     };
     use crate::models::TaskType;
 
@@ -193,6 +195,16 @@ pub fn deserialize_value_to_job_payload(
                     ))
                 })?;
             Ok(JobPayload::VideoAnalysis(payload))
+        }
+        TaskType::RootFolderSelection => {
+            let payload: RootFolderSelectionPayload = 
+                serde_json::from_value(json_value.clone()).map_err(|e| {
+                    AppError::JobError(format!(
+                        "Failed to deserialize RootFolderSelectionPayload: {}",
+                        e
+                    ))
+                })?;
+            Ok(JobPayload::RootFolderSelection(payload))
         }
         // Streaming and Unknown are not retryable job types
         TaskType::Streaming | TaskType::Unknown => Err(AppError::JobError(format!(

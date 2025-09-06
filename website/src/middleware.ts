@@ -16,58 +16,14 @@ function getClientIp(request: NextRequest): string {
   return cfConnectingIp || (forwardedFor ? forwardedFor.split(',')[0]?.trim() || '' : '') || realIp || '';
 }
 
+
 // Handle analytics proxy with proper header forwarding
 async function handleAnalyticsProxy(request: NextRequest): Promise<NextResponse | null> {
   const url = request.nextUrl.clone();
   const clientIp = getClientIp(request);
   
-  // Handle Plausible script proxy (including extension scripts like outbound-links)
-  if (url.pathname.startsWith('/js/script') || url.pathname.startsWith('/js/plausible')) {
-    const plausibleUrl = new URL(`https://plausible.io${url.pathname}`);
-    
-    const response = await fetch(plausibleUrl.toString(), {
-      headers: {
-        'User-Agent': request.headers.get('user-agent') || '',
-        'X-Forwarded-For': clientIp,
-        'X-Real-IP': clientIp,
-        'X-Forwarded-Host': request.headers.get('host') || '',
-        'X-Forwarded-Proto': request.headers.get('x-forwarded-proto') || 'https',
-        'Accept-Language': request.headers.get('accept-language') || '',
-        'Referer': request.headers.get('referer') || '',
-      },
-    });
-    
-    const newResponse = new NextResponse(response.body, response);
-    response.headers.forEach((value, key) => {
-      if (key.toLowerCase() !== 'content-encoding') {
-        newResponse.headers.set(key, value);
-      }
-    });
-    newResponse.headers.set('Access-Control-Allow-Origin', '*');
-    return newResponse;
-  }
-  
-  // Handle Plausible event proxy
-  if (url.pathname === '/api/event') {
-    const plausibleUrl = new URL('https://plausible.io/api/event');
-    
-    const response = await fetch(plausibleUrl.toString(), {
-      method: request.method,
-      body: request.body,
-      headers: {
-        'User-Agent': request.headers.get('user-agent') || '',
-        'X-Forwarded-For': clientIp,
-        'X-Real-IP': clientIp,
-        'X-Forwarded-Host': request.headers.get('host') || '',
-        'X-Forwarded-Proto': request.headers.get('x-forwarded-proto') || 'https',
-        'Content-Type': request.headers.get('content-type') || 'application/json',
-        'Accept-Language': request.headers.get('accept-language') || '',
-        'Referer': request.headers.get('referer') || '',
-      },
-    });
-    
-    return new NextResponse(response.body, response);
-  }
+  // Note: Plausible proxy is now handled by withPlausibleProxy in next.config.ts
+  // Only handle Google Analytics proxy here
   
   // Handle Google Analytics proxy
   if (url.pathname.startsWith('/ga/')) {
@@ -105,6 +61,7 @@ async function handleAnalyticsProxy(request: NextRequest): Promise<NextResponse 
         newResponse.headers.set(key, value);
       }
     });
+    newResponse.headers.set('Cache-Control', 'no-store');
     return newResponse;
   }
   
@@ -173,7 +130,7 @@ export async function middleware(request: NextRequest) {
         { status: 451 } // 451 Unavailable For Legal Reasons
       );
       // Add Vary header to prevent CDN caching issues
-      response.headers.set('Vary', 'CF-IPCountry, X-Vercel-IP-Country');
+      response.headers.set('Vary', 'CF-IPCountry, X-Vercel-IP-Country, CF-Connecting-IP');
       response.headers.set('X-User-Country', country);
       return response;
     }
@@ -186,7 +143,7 @@ export async function middleware(request: NextRequest) {
   const response = NextResponse.next();
   response.headers.set('X-User-Country', country);
   // Add Vary header to ensure CDN doesn't cache wrong response
-  response.headers.set('Vary', 'CF-IPCountry, X-Vercel-IP-Country');
+  response.headers.set('Vary', 'CF-IPCountry, X-Vercel-IP-Country, CF-Connecting-IP');
   
   return response;
 }
@@ -202,14 +159,10 @@ export const config = {
      * Note: Legal pages remain accessible worldwide for transparency
      * 
      * Also explicitly match analytics proxy paths:
-     * - /js/script* (Plausible scripts)
-     * - /api/event (Plausible events)
      * - /ga/* (Google Analytics)
+     * Note: Plausible proxy paths (/js/script*, /api/event) are now handled by withPlausibleProxy
      */
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
-    '/js/script:path*',
-    '/js/plausible:path*',
-    '/api/event',
     '/ga/:path*',
   ],
 };

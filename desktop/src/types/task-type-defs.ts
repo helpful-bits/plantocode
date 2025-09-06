@@ -20,6 +20,7 @@ export type TaskType =
   | "web_search_workflow"
   | "streaming"
   // New orchestrated workflow stage types
+  | "root_folder_selection"
   | "local_file_filtering"
   | "file_relevance_assessment"
   | "extended_path_finder"
@@ -38,6 +39,7 @@ export type TaskTypeSupportingSystemPrompts =
   | "task_refinement"
   | "regex_file_filter"
   | "generic_llm_stream"
+  | "root_folder_selection"
   | "extended_path_finder"
   | "file_relevance_assessment"
   | "web_search_prompts_generation"
@@ -57,6 +59,7 @@ export const ALL_TASK_TYPES: readonly TaskType[] = [
   "file_finder_workflow",
   "web_search_workflow",
   "streaming",
+  "root_folder_selection",
   "local_file_filtering",
   "file_relevance_assessment",
   "extended_path_finder",
@@ -76,6 +79,7 @@ export const SYSTEM_PROMPT_TASK_TYPES: readonly TaskTypeSupportingSystemPrompts[
   "task_refinement",
   "regex_file_filter",
   "generic_llm_stream",
+  "root_folder_selection",
   "extended_path_finder",
   "file_relevance_assessment",
   "web_search_prompts_generation",
@@ -167,6 +171,14 @@ export const TaskTypeDetails: Record<TaskType, {
     description: "Generate regex patterns and filter relevant files",
     defaultProvider: "anthropic"
   },
+  root_folder_selection: {
+    requiresLlm: true,
+    displayName: "Root Folder Selection",
+    category: "Workflow Stage",
+    description: "AI-powered selection of relevant root folders for file search",
+    defaultProvider: "openai",
+    apiType: "llm"
+  },
   file_finder_workflow: { 
     requiresLlm: false, 
     displayName: "File Finder Workflow", 
@@ -189,7 +201,6 @@ export const TaskTypeDetails: Record<TaskType, {
     defaultProvider: "google"
   },
   
-  // Workflow stage tasks (non-LLM)
   local_file_filtering: { 
     requiresLlm: false, 
     displayName: "Local File Filtering", 

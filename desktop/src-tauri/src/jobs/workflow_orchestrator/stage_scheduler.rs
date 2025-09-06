@@ -172,6 +172,7 @@ pub(super) async fn count_running_jobs_in_workflow_internal(
 /// Convert workflow stage to task type
 pub(super) fn stage_to_task_type_internal(stage: &WorkflowStage) -> TaskType {
     match stage {
+        WorkflowStage::RootFolderSelection => TaskType::RootFolderSelection,
         WorkflowStage::RegexFileFilter => TaskType::RegexFileFilter,
         WorkflowStage::FileRelevanceAssessment => TaskType::FileRelevanceAssessment,
         WorkflowStage::ExtendedPathFinder => TaskType::ExtendedPathFinder,

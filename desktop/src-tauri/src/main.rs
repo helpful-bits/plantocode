@@ -301,6 +301,7 @@ fn main() {
             commands::implementation_plan_commands::create_merged_implementation_plan_command,
             // Workflow commands (new stage-based approach)
             commands::workflow_commands::start_file_finder_workflow,
+            commands::workflow_commands::get_file_finder_roots_for_session,
             commands::web_search_commands::start_web_search_workflow,
             commands::web_search_commands::start_web_search_prompts_generation_job,
             commands::workflow_commands::get_workflow_status,
@@ -355,6 +356,8 @@ fn main() {
             commands::settings_commands::get_selected_server_url_command,
             commands::settings_commands::set_selected_server_url_command,
             commands::settings_commands::change_server_url_and_reset_command,
+            commands::settings_commands::get_external_folders_command,
+            commands::settings_commands::set_external_folders_command,
             // Session commands
             commands::session_commands::create_session_command,
             commands::session_commands::get_session_command,

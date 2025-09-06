@@ -45,6 +45,7 @@ pub struct OpenRouterLlmPayload {
 pub struct ImplementationPlanPayload {
     pub task_description: String,
     pub relevant_files: Vec<String>,
+    pub selected_root_directories: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,15 +78,24 @@ pub struct GenericLlmStreamPayload {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RootFolderSelectionPayload {
+    pub task_description: String,
+    pub candidate_roots: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ExtendedPathFinderPayload {
     pub task_description: String,
     pub initial_paths: Vec<String>,
+    pub selected_root_directories: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RegexFileFilterPayload {
     pub task_description: String,
+    pub root_directories: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -220,6 +230,7 @@ pub enum JobPayload {
     TextImprovement(TextImprovementPayload),
     GenericLlmStream(GenericLlmStreamPayload),
     // Individual workflow stage payloads
+    RootFolderSelection(RootFolderSelectionPayload),
     ExtendedPathFinder(ExtendedPathFinderPayload),
     RegexFileFilter(RegexFileFilterPayload),
     FileRelevanceAssessment(FileRelevanceAssessmentPayload),
@@ -400,6 +411,7 @@ pub struct Job {
     pub session_id: String,
     pub process_after: Option<i64>,
     pub created_at: i64,
+    pub result_json: Option<String>,
 }
 
 impl Job {

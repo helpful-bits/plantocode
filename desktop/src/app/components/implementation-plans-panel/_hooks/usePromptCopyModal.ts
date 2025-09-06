@@ -20,6 +20,7 @@ interface UsePromptCopyModalReturn {
     projectDirectory: string;
     relevantFiles: string[];
     projectStructure?: string;
+    selectedRootDirectories?: string[];
   }) => Promise<void>;
   closeModal: () => void;
 }
@@ -36,6 +37,7 @@ export function usePromptCopyModal(): UsePromptCopyModalReturn {
     projectDirectory: string;
     relevantFiles: string[];
     projectStructure?: string;
+    selectedRootDirectories?: string[];
   }) => {
     setIsOpen(true);
     setIsLoading(true);

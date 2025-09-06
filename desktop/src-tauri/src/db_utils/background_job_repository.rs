@@ -638,46 +638,51 @@ impl BackgroundJobRepository {
     }
 
     /// Get all jobs, sorted by status priority and updated time
+    /// Prioritizes recent jobs and deprioritizes old stuck jobs
     pub async fn get_all_visible_jobs(&self) -> AppResult<Vec<BackgroundJob>> {
+        // Get current timestamp for recency calculation 
+        let thirty_minutes_ago = get_timestamp() - (30 * 60 * 1000); // 30 minutes in milliseconds
+        let seven_days_ago = get_timestamp() - (7 * 24 * 60 * 60 * 1000); // For completed jobs history
+        
         let rows = sqlx::query(
             r#"
             SELECT * FROM background_jobs 
             ORDER BY 
+                -- First priority: Active jobs updated in last 30 minutes
                 CASE 
-                    WHEN status IN ($1, $2, $3, $4, $5, $6) THEN 0
-                    ELSE 1
+                    WHEN status = $1 AND updated_at > $2 THEN 0  -- Running (recent)
+                    WHEN status = $3 AND updated_at > $2 THEN 1  -- Preparing (recent)
+                    WHEN status = $4 AND updated_at > $2 THEN 2  -- Queued (recent)
+                    WHEN status = $5 AND updated_at > $2 THEN 3  -- AcknowledgedByWorker (recent)
+                    WHEN status = $6 AND updated_at > $2 THEN 4  -- Created (recent)
+                    WHEN status = $7 AND updated_at > $2 THEN 5  -- Idle (recent)
+                    -- Recent completed/failed/canceled jobs (last 7 days for history)
+                    WHEN status = $8 AND created_at > $9 THEN 6   -- Completed (recent)
+                    WHEN status = $10 AND created_at > $9 THEN 7  -- Failed (recent)
+                    WHEN status = $11 AND created_at > $9 THEN 8  -- Canceled (recent)
+                    -- Older completed/failed/canceled jobs
+                    WHEN status = $8 THEN 9   -- Completed (old)
+                    WHEN status = $10 THEN 10 -- Failed (old)
+                    WHEN status = $11 THEN 11 -- Canceled (old)
+                    -- Everything else (stuck jobs older than 30 minutes)
+                    ELSE 12
                 END,
-                CASE 
-                    WHEN status = $7 THEN 0
-                    WHEN status = $8 THEN 1
-                    WHEN status = $9 THEN 2
-                    WHEN status = $10 THEN 3
-                    WHEN status = $11 THEN 4
-                    WHEN status = $12 THEN 5
-                    WHEN status = $13 THEN 6
-                    WHEN status = $14 THEN 7
-                    WHEN status = $15 THEN 8
-                    ELSE 9
-                END,
+                -- Within each priority group, sort by most recently updated
                 updated_at DESC
-            LIMIT 500
+            LIMIT 100
             "#,
         )
-        .bind(JobStatus::Running.to_string())
-        .bind(JobStatus::Preparing.to_string())
-        .bind(JobStatus::Queued.to_string())
-        .bind(JobStatus::AcknowledgedByWorker.to_string())
-        .bind(JobStatus::Created.to_string())
-        .bind(JobStatus::Idle.to_string())
-        .bind(JobStatus::Running.to_string())
-        .bind(JobStatus::Queued.to_string())
-        .bind(JobStatus::Preparing.to_string())
-        .bind(JobStatus::AcknowledgedByWorker.to_string())
-        .bind(JobStatus::Created.to_string())
-        .bind(JobStatus::Idle.to_string())
-        .bind(JobStatus::Completed.to_string())
-        .bind(JobStatus::Failed.to_string())
-        .bind(JobStatus::Canceled.to_string())
+        .bind(JobStatus::Running.to_string())        // $1
+        .bind(thirty_minutes_ago)                    // $2
+        .bind(JobStatus::Preparing.to_string())      // $3
+        .bind(JobStatus::Queued.to_string())         // $4
+        .bind(JobStatus::AcknowledgedByWorker.to_string()) // $5
+        .bind(JobStatus::Created.to_string())        // $6
+        .bind(JobStatus::Idle.to_string())           // $7
+        .bind(JobStatus::Completed.to_string())      // $8
+        .bind(seven_days_ago)                        // $9
+        .bind(JobStatus::Failed.to_string())         // $10
+        .bind(JobStatus::Canceled.to_string())       // $11
         .fetch_all(&*self.pool)
         .await
         .map_err(|e| AppError::DatabaseError(format!("Failed to fetch jobs: {}", e)))?;

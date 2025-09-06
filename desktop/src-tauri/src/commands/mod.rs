@@ -58,6 +58,7 @@ pub use workflow_commands::{
     get_workflow_details_command, get_workflow_results, get_workflow_results_legacy,
     get_workflow_state, get_workflow_status, pause_workflow, resume_workflow,
     retry_workflow_command, retry_workflow_stage_command, start_file_finder_workflow,
+    get_file_finder_roots_for_session,
 };
 
 // Re-exports from web search commands module

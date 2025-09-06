@@ -7,11 +7,10 @@ import { ConsentProvider } from './ConsentProvider';
 import MotionProvider from '@/components/providers/MotionProvider';
 import { CookieConsentBanner } from '@/components/system/CookieConsentBanner';
 import { ConditionalAnalytics } from '@/components/system/ConditionalAnalytics';
-import { ConditionalVercelAnalytics } from '@/components/system/ConditionalVercelAnalytics';
 import { WebAuthProvider } from '@/components/auth/WebAuthProvider';
 import { useLenisLifecycle } from '@/hooks/useLenisLifecycle';
 import { usePerformanceSignals } from '@/hooks/usePerformanceSignals';
-import { trackScroll, trackPageview } from '@/lib/track';
+import { trackScroll } from '@/lib/track';
 import { useEffect, useRef } from 'react';
 import PlausibleProvider from 'next-plausible';
 
@@ -36,11 +35,6 @@ function AnalyticsManager() {
   const maxScrollRef = useRef(0);
   const trackedMilestonesRef = useRef(new Set<number>());
   
-  // Track pageview on mount
-  useEffect(() => {
-    // Track initial pageview with enhanced data (screen width, referrer, etc.)
-    trackPageview();
-  }, []);
   
   useEffect(() => {
     const milestones = [25, 50, 75, 100];
@@ -86,9 +80,15 @@ export function ClientProviders({ children }: ClientProvidersProps) {
   return (
     <PlausibleProvider 
       domain={plausibleDomain}
-      customDomain="https://www.vibemanager.app"
-      selfHosted={true}
-      trackOutboundLinks={false}
+      // Note: customDomain and selfHosted are handled by withPlausibleProxy in next.config.ts
+      trackOutboundLinks={true}
+      trackFileDownloads={true}
+      taggedEvents={true}
+      hash={true}
+      pageviewProps={{
+        author: 'vibe-manager',
+        section: 'website'
+      }}
     >
       <ConsentProvider>
         <WebAuthProvider>
@@ -99,7 +99,6 @@ export function ClientProviders({ children }: ClientProvidersProps) {
                 <LenisLifecycleManager />
                 <AnalyticsManager />
                 <ConditionalAnalytics />
-                <ConditionalVercelAnalytics />
                 {children}
                 <CookieConsentBanner />
               </SmoothScroll>

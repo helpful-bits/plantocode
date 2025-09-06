@@ -94,6 +94,7 @@ pub async fn generate_regex_patterns_command(
     // Create the payload for the RegexFileFilterProcessor
     let processor_payload = RegexFileFilterPayload {
         task_description: args.task_description.clone(),
+        root_directories: vec![],  // Will be populated by workflow orchestrator
     };
 
     // Create additional metadata for the job

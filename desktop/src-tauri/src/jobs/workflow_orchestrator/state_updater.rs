@@ -14,6 +14,23 @@ pub(super) fn update_intermediate_data_internal(
     stage_data: serde_json::Value,
 ) -> AppResult<()> {
     match stage {
+        WorkflowStage::RootFolderSelection => {
+            // Extract root directories from the RootFolderSelection stage
+            if let Some(root_dirs) = stage_data.get("root_directories").and_then(|v| v.as_array()) {
+                let roots: Vec<String> = root_dirs
+                    .iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect();
+                debug!(
+                    "RootFolderSelection identified {} root directories",
+                    roots.len()
+                );
+                // Store these in workflow state for use by RegexFileFilter
+                workflow_state.intermediate_data.selected_root_directories = roots;
+            } else {
+                warn!("RootFolderSelection stage_data missing 'root_directories' array");
+            }
+        }
         WorkflowStage::RegexFileFilter => {
             // Expect stage_data as JSON array of strings (file paths)
             if let Some(files_array) = stage_data.as_array() {

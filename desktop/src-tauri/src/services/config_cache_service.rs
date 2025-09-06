@@ -366,6 +366,7 @@ pub fn validate_all_task_types_have_configs(
         TaskType::ExtendedPathFinder,
         TaskType::WebSearchPromptsGeneration,
         TaskType::WebSearchExecution,
+        TaskType::RootFolderSelection,
         TaskType::VideoAnalysis,
         TaskType::Streaming,
         TaskType::Unknown,

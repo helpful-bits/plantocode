@@ -18,6 +18,7 @@ export const taskSettingsKeyToTaskType: Record<keyof TaskSettings, TaskType> = {
   taskRefinement: "task_refinement",
   genericLlmStream: "generic_llm_stream",
   regexFileFilter: "regex_file_filter",
+  rootFolderSelection: "root_folder_selection",
   streaming: "streaming",
   unknown: "unknown",
   webSearchPromptsGeneration: "web_search_prompts_generation",

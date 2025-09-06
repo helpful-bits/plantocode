@@ -5,6 +5,7 @@ import { type AuthContextType } from "../auth/auth-context-interface";
 import { useAuth0AuthHandler } from "../auth/use-auth0-auth-handler";
 import { logError } from "@/utils/error-handling";
 import { usePlausible } from "@/hooks/use-plausible";
+import { setGlobalAuthErrorHandler } from '@/utils/auth-error-handler';
 
 // No more need for separate handleRedirectResult in the context
 export type DesktopAuthContextType = AuthContextType;
@@ -44,6 +45,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
   }, [user, token, hasTrackedLogin, trackEvent]);
+
+  useEffect(() => {
+    setGlobalAuthErrorHandler(() => {
+      setTokenExpired(true);
+    });
+  }, []);
 
   const value: DesktopAuthContextType = useMemo(() => ({
     user,
