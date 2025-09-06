@@ -82,18 +82,16 @@ impl RegexFileFilterProcessor {
 
     /// Static version of file content matching for use in async closures
     async fn file_content_matches_pattern_static(
-        file_path: &str,
+        absolute_file_path: &str,
         content_regex: &Regex,
-        project_directory: &str,
     ) -> bool {
-        let full_path = std::path::Path::new(project_directory).join(file_path);
-        match tokio_fs::read(&full_path).await {
+        match tokio_fs::read(absolute_file_path).await {
             Ok(bytes) => {
                 // If file is >50MB, treat as binary automatically
                 if bytes.len() > 50 * 1024 * 1024 {
                     debug!(
                         "Skipping large file (>50MB) for pattern matching: {}",
-                        file_path
+                        absolute_file_path
                     );
                     return false;
                 }
@@ -101,7 +99,7 @@ impl RegexFileFilterProcessor {
                 // Check for binary files by looking for null bytes in first 8192 bytes
                 let check_size = std::cmp::min(bytes.len(), 8192);
                 if bytes[..check_size].contains(&0) {
-                    debug!("Skipping binary file for pattern matching: {}", file_path);
+                    debug!("Skipping binary file for pattern matching: {}", absolute_file_path);
                     return false;
                 }
 
@@ -114,7 +112,7 @@ impl RegexFileFilterProcessor {
                         match content_regex.is_match(&content) {
                             Ok(matches) => matches,
                             Err(e) => {
-                                debug!("Regex matching error for file {}: {}", file_path, e);
+                                debug!("Regex matching error for file {}: {}", absolute_file_path, e);
                                 false
                             }
                         }
@@ -122,7 +120,7 @@ impl RegexFileFilterProcessor {
                     Err(_) => {
                         debug!(
                             "Skipping non-UTF-8 file for pattern matching: {}",
-                            file_path
+                            absolute_file_path
                         );
                         false
                     }
@@ -131,7 +129,7 @@ impl RegexFileFilterProcessor {
             Err(_) => {
                 debug!(
                     "Could not read file content for pattern matching: {}",
-                    file_path
+                    absolute_file_path
                 );
                 false
             }
@@ -143,7 +141,6 @@ impl RegexFileFilterProcessor {
         &self,
         compiled_group: &CompiledPatternGroup,
         all_files: &[String],
-        project_directory: &str,
     ) -> Vec<String> {
         // If neither path nor content pattern is available, skip this group
         if compiled_group.path_regex.is_none() && compiled_group.content_regex.is_none() {
@@ -153,13 +150,11 @@ impl RegexFileFilterProcessor {
         // Clone the regex patterns to avoid lifetime issues in async closures
         let path_regex = compiled_group.path_regex.clone();
         let content_regex = compiled_group.content_regex.clone();
-        let project_dir = project_directory.to_string();
 
         // Apply positive filtering (BOTH path AND content must match if both are specified)
         let file_check_futures = all_files.iter().cloned().map(|file_path| {
             let path_regex = path_regex.clone();
             let content_regex = content_regex.clone();
-            let project_dir = project_dir.clone();
             async move {
                 // Add rate limiting to prevent filesystem overload
                 sleep(Duration::from_millis(1)).await;
@@ -167,7 +162,7 @@ impl RegexFileFilterProcessor {
                 let mut path_matches = true;
                 let mut content_matches = true;
 
-                // Check path pattern (if specified)
+                // Check path pattern (if specified) - works with absolute paths
                 if let Some(ref path_regex) = path_regex {
                     // fancy-regex returns Result, handle potential errors
                     path_matches = match path_regex.is_match(&file_path) {
@@ -179,12 +174,11 @@ impl RegexFileFilterProcessor {
                     };
                 }
 
-                // Check content pattern (if specified)
+                // Check content pattern (if specified) - file_path is already absolute
                 if let Some(ref content_regex) = content_regex {
                     content_matches = Self::file_content_matches_pattern_static(
                         &file_path,
                         content_regex,
-                        &project_dir,
                     )
                     .await;
                 }
@@ -238,15 +232,31 @@ impl JobProcessor for RegexFileFilterProcessor {
     }
 
     async fn process(&self, job: Job, app_handle: AppHandle) -> AppResult<JobProcessResult> {
-        // Extract task description from workflow payload
-        let task_description_for_prompt = match &job.payload {
-            JobPayload::RegexFileFilter(p) => p.task_description.clone(),
+        // Extract task description and root directories from workflow payload
+        let (task_description_for_prompt, roots) = match &job.payload {
+            JobPayload::RegexFileFilter(p) => (p.task_description.clone(), p.root_directories.clone()),
             _ => {
                 return Err(AppError::JobError(
                     "Invalid payload type for RegexFileFilterProcessor".to_string(),
                 ));
             }
         };
+
+        // Guard: if payload.roots is empty, return success with empty matches
+        if roots.is_empty() {
+            info!("RegexFileFilter received empty roots - returning empty result");
+            let result = JobProcessResult::success(
+                job.id.clone(),
+                JobResultData::Json(json!({
+                    "files": Vec::<String>::new(),
+                    "count": 0,
+                    "summary": "No root directories provided",
+                    "message": "No root directories were provided to search in. Please select root directories first.",
+                    "isEmptyResult": true
+                })),
+            );
+            return Ok(result);
+        }
 
         // Setup job processing
         let (repo, session_repo, settings_repo, db_job) =
@@ -258,17 +268,17 @@ impl JobProcessor for RegexFileFilterProcessor {
             .await?
             .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?;
 
-        // Generate directory tree using session-based utility (avoids duplicate session lookup)
+        // Generate combined directory tree for all roots
         let directory_tree_for_prompt =
-            match get_directory_tree_with_defaults(&session.project_directory).await {
+            match crate::utils::directory_tree::get_combined_directory_tree_for_roots(&roots).await {
                 Ok(tree) => Some(tree),
                 Err(e) => {
                     error!(
-                        "Failed to generate directory tree using session-based utility: {}",
+                        "Failed to generate combined directory tree for roots: {}",
                         e
                     );
                     return Err(AppError::JobError(format!(
-                        "Failed to generate directory tree: {}",
+                        "Failed to generate combined directory tree: {}",
                         e
                     )));
                 }
@@ -359,44 +369,75 @@ impl JobProcessor for RegexFileFilterProcessor {
                     .map(|group| self.compile_pattern_group(group))
                     .collect::<AppResult<Vec<_>>>()?;
 
-                // Normalize the project directory path - fail if canonicalization fails
-                let project_path = Path::new(&session.project_directory);
-                let normalized_project_dir = fs::canonicalize(project_path).map_err(|e| {
-                    AppError::JobError(format!(
-                        "Failed to canonicalize project directory {}: {}",
-                        session.project_directory, e
-                    ))
-                })?;
+                // Enumerate files from all roots using absolute paths
+                use crate::utils::git_utils;
+                use std::collections::HashSet;
+                use std::path::PathBuf;
 
-                // Use proven git utilities for file discovery (same as directory_tree.rs)
-                let normalized_project_dir_clone = normalized_project_dir.clone();
-                let git_files = task::spawn_blocking(move || {
-                    git_utils::get_all_non_ignored_files(&normalized_project_dir_clone)
-                })
-                .await
-                .map_err(|e| {
-                    AppError::JobError(format!("Failed to spawn blocking task for git: {}", e))
-                })?
-                .map_err(|e| AppError::JobError(format!("Failed to get git files: {}", e)))?;
-
-                let all_files: Vec<String> = git_files
-                    .0
-                    .iter()
-                    .filter_map(|path| {
-                        let full_path = normalized_project_dir.join(path);
-                        // Check if file actually exists on filesystem
-                        if full_path.exists() {
-                            Some(path.to_string_lossy().to_string())
-                        } else {
-                            // Skip files that don't exist (deleted but still in git index)
-                            None
+                let mut all_absolute_files: HashSet<String> = HashSet::new();
+                
+                // Find the git repository root (usually the project root)
+                let git_root = {
+                    let mut current = std::path::Path::new(&session.project_directory);
+                    loop {
+                        if git_utils::is_git_repository(current) {
+                            break current;
                         }
-                    })
-                    .collect();
-
-                // Convert normalized directory to string for pattern matching
-                let normalized_project_dir_str =
-                    normalized_project_dir.to_string_lossy().to_string();
+                        if let Some(parent) = current.parent() {
+                            current = parent;
+                        } else {
+                            // Fallback to project directory if no git root found
+                            break std::path::Path::new(&session.project_directory);
+                        }
+                    }
+                };
+                
+                // Get ALL files from the git repository
+                let all_git_files = git_utils::get_all_non_ignored_files(git_root)?;
+                
+                // Filter to only include files under the selected root directories
+                for root in &roots {
+                    let root_path = std::path::Path::new(root);
+                    if !root_path.is_dir() { continue; }
+                    
+                    // For each file in the git repo, check if it's under this root directory
+                    for rel_path in &all_git_files.0 {
+                        let abs_path = git_root.join(rel_path);
+                        
+                        // Check if this file is under the current root directory
+                        if abs_path.starts_with(root_path) && abs_path.is_file() {
+                            all_absolute_files.insert(abs_path.to_string_lossy().to_string());
+                        }
+                    }
+                }
+                
+                // ADDITIONALLY, always include root-level files from the project directory
+                // This ensures files like package.json, Cargo.toml, README.md are always available
+                let project_root = std::path::Path::new(&session.project_directory);
+                let mut root_level_files_added = Vec::new();
+                if project_root.is_dir() {
+                    // Get all non-ignored files from the project root using git
+                    if let Ok((all_git_files, _is_git)) = git_utils::get_all_non_ignored_files(project_root) {
+                        // Filter to only root-level files (no path separators)
+                        for rel_path in all_git_files {
+                            // Check if it's a root-level file (no directory separators in path)
+                            if !rel_path.to_string_lossy().contains('/') && !rel_path.to_string_lossy().contains('\\') {
+                                let abs_path = project_root.join(&rel_path);
+                                if abs_path.is_file() {
+                                    let abs_path_str = abs_path.to_string_lossy().to_string();
+                                    if all_absolute_files.insert(abs_path_str.clone()) {
+                                        root_level_files_added.push(rel_path.to_string_lossy().to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                let all_files: Vec<String> = all_absolute_files.into_iter().collect();
+                
+                // Debug: Print ALL collected files (newline separated)
+                debug!("All files collected for regex filtering:\n{}", all_files.join("\n"));
 
                 // Use HashSet to collect unique files across all groups (OR logic between groups)
                 let mut all_matching_files = HashSet::new();
@@ -410,7 +451,6 @@ impl JobProcessor for RegexFileFilterProcessor {
                         self.process_pattern_group(
                             &compiled_group,
                             &all_files,
-                            &normalized_project_dir_str,
                         ),
                     )
                     .await

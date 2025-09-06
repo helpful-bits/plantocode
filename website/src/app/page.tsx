@@ -51,27 +51,37 @@ const HowItWorks = dynamic(() => import('@/components/landing/HowItWorks').then(
 
 
 export const metadata: Metadata = {
-  title: 'Vibe Manager - Context control for AI coding sessions',
-  description: 'Vibe Manager helps AI agents map files, merge multi-model plans, and ship correct changes. Sends only selected context to AI providers. Local storage for sessions.',
+  title: 'Vibe Manager - Multi-Model Planning for Claude Code | Install Claude Code Companion',
+  description: 'Planning assistant for Claude Code. Install Claude Code and enhance it with multi-model planning. Works with claude code agents, claude code mcp, and claudecode CLI for superior AI coding.',
   keywords: [
+    'claude code install',
+    'install claude code',
+    'claudecode',
+    'claude code planning',
+    'claude code companion',
+    'claude code agents',
+    'claude code mcp',
+    'claude code cli',
+    'claude code router',
+    'claude code subagents',
+    'claude code vs cursor',
+    'cursor vs claude code',
+    'claude code github',
+    'claude code vscode',
+    'claude code hooks',
+    'claude code sdk',
+    'claude code plan mode',
+    'claude code windows',
+    'claude code docs',
+    'how to use claude code',
+    'claude code update',
     'AI coding assistant',
-    'cursor alternative',
-    'github copilot alternative',
-    'claude code',
-    'gpt-4 coding',
+    'multi-model planning',
     'gpt-5',
     'gemini 2.5 pro',
     'deepseek',
-    'o3 model',
-    'vs code ai',
-    'xcode ai',
     'codebase context',
-    'monorepo tools',
-    'code refactoring',
-    'tech debt',
-    'semantic kernel',
-    'langchain integration',
-    'agentic workflow',
+    'file discovery',
     'macOS dev tools',
   ],
 };
@@ -79,50 +89,60 @@ export const metadata: Metadata = {
 export default function Home() {
   const softwareApplicationJsonLd: SoftwareApplication = {
     '@type': 'SoftwareApplication',
-    name: 'Vibe Manager',
+    name: 'Vibe Manager for Claude Code',
     applicationCategory: 'DeveloperApplication',
     operatingSystem: 'macOS',
     url: 'https://vibemanager.app',
-    description: 'AI coding assistant for large codebases: finds relevant files, runs deep research, and merges multi-model plans. Local storage with direct AI provider integration.',
+    description: 'Multi-model planning assistant for Claude Code. Enhances Claude Code CLI, agents, and MCP with intelligent context curation. Install Claude Code then add Vibe Manager for superior AI coding.',
     offers: {
       '@type': 'Offer',
       price: 0, // Numeric 0 for free apps, no priceCurrency needed per Google guidance
+    },
+    // @ts-ignore - isRelatedTo is a valid schema.org property but not in the TypeScript types
+    isRelatedTo: {
+      '@type': 'SoftwareApplication',
+      name: 'Claude Code',
+      applicationCategory: 'DeveloperApplication',
+      creator: {
+        '@type': 'Organization',
+        name: 'Anthropic'
+      }
     },
     // Note: aggregateRating and review should be added when visible on the page
   };
 
   const faqItems = [
     {
-      question: 'What is Vibe Manager?',
-      answer: 'An AI coding assistant that curates the right repo context and merges multi-model plans so agents make correct changes.',
+      question: 'What is Vibe Manager for Claude Code?',
+      answer: 'A planning assistant for Claude Code that enhances it with multi-model intelligence. It curates context and merges plans from GPT-5, Claude 4, and Gemini 2.5 before Claude Code agents execute.',
     },
     {
-      question: 'Does my repo leave my machine?',
-      answer: "Sessions and history are stored locally in SQLite. When you use AI features, selected code is sent to AI providers (OpenAI, Google, Anthropic) for processing. You see token counts before confirming.",
+      question: 'How do I install Claude Code with Vibe Manager?',
+      answer: 'First install Claude Code via npm: "npm install -g @anthropic/claude-cli" or pip: "pip install claude-cli". Then download Vibe Manager to add multi-model planning capabilities to your Claude Code workflow.',
     },
     {
-      question: 'Which models does it use?',
-      answer: 'Gemini 2.5, GPT-5/4.1, Claude 4, o3/o4, Grok 4, DeepSeek R1, Kimi K2 - merge AI synthesizes their plans. (List evolves as new models appear.)',
+      question: 'Does Vibe Manager replace Claude Code or Cursor?',
+      answer: 'No - Vibe Manager enhances Claude Code, not replaces it. It adds planning and context curation layers that make Claude Code agents more effective. Works alongside Claude Code CLI, Claude Code MCP, and Claude Code VSCode.',
     },
     {
-      question: 'What exactly does File Finder do?',
-      answer: 'Decomposes the task, builds search patterns, then scores actual file content for relevance and can expand to dependencies.',
+      question: 'How does it work with Claude Code agents and subagents?',
+      answer: 'Vibe Manager plans tasks using multiple AI models, then Claude Code agents execute them. It ensures Claude Code subagents have the right context and files, improving success rates dramatically.',
     },
     {
-      question: 'Can it research current docs?',
-      answer: 'Yes - Deep Research pulls up-to-date sources to fill knowledge gaps and ties them back to your code.',
+      question: 'What about Claude Code vs Cursor comparison?',
+      answer: 'While Claude Code and Cursor debate continues, Vibe Manager works with both. It adds multi-model planning that neither Claude Code plan mode nor Cursor offers natively.',
     },
     {
-      question: 'Pricing?',
-      answer: 'Free welcome credits, then pay-as-you-go; every operation shows real-time token cost. No subscriptions.',
+      question: 'Which AI models does it use for planning?',
+      answer: 'Gemini 2.5, GPT-5/4.1, Claude 4, o3/o4, Grok 4, DeepSeek R1, Kimi K2 - all working together to create superior plans for Claude Code execution.',
     },
     {
-      question: 'Platforms?',
-      answer: 'macOS now, Windows coming soon.',
+      question: 'Does it support Claude Code GitHub and Claude Code hooks?',
+      answer: 'Yes! Works seamlessly with Claude Code GitHub integration and respects Claude Code hooks. Adds its own customization layer for even more control.',
     },
     {
-      question: 'Security & keys?',
-      answer: 'Vibe Manager acts as a secure proxy to AI providers; you handle auth/billing, and code flows directly through under your control.',
+      question: 'Platforms and Claude Code Windows support?',
+      answer: 'macOS now with Windows coming soon. Currently enhances Claude Code on Mac while Claude Code Windows users await our Windows release.',
     },
   ];
 
@@ -159,7 +179,7 @@ export default function Home() {
     },
     {
       title: "Task Description Input",
-      description: "Describe your task naturally with text input and get AI assistance with enhancement",
+      description: "Describe your task naturally with text input and get AI assistance with enhancement. Skip typing entirely with voice dictation or capture visual context with screen recording",
       subSteps: [
         {
           title: "AI Text Enhancement",
@@ -167,12 +187,12 @@ export default function Home() {
           poster: cdnUrl('/assets/images/step-1-text-poster.jpg')
         },
         {
-          title: "Voice Transcription",
+          title: "Voice Dictation - 10x Faster Input",
           video: cdnUrl('/assets/videos/step-1-voice.mp4'), 
           poster: cdnUrl('/assets/images/step-1-voice-poster.jpg')
         },
         {
-          title: "Video Recording & Analysis",
+          title: "Screen Recording - Instant Error Capture",
           video: cdnUrl('/assets/videos/step-1-video.mp4'),
           poster: cdnUrl('/assets/images/step-1-video-poster.jpg')
         }
@@ -189,12 +209,12 @@ export default function Home() {
   const features = [
     {
       title: 'Enhanced Task Description Creation',
-      description: 'Transform your raw ideas into structured, actionable plans. Use voice-to-text dictation for natural input, selective text editing for precision, and get AI assistance to enhance your task descriptions with goals, constraints, and affected areas.',
+      description: 'Transform your raw ideas into structured, actionable plans. Describe your task 10x faster with voice dictation for natural input, selective text editing for precision, and get AI assistance to enhance your task descriptions with goals, constraints, and affected areas.',
       icon: <Video className="w-8 h-8" />,
     },
     {
       title: 'Visual Context Capture',
-      description: 'Record your screen to capture complex workflows and visual context. Gemini 2.5 Pro analyzes your recordings to extract technical details, UI states, and implementation requirements, seamlessly integrating with your IDE and CLI workflows.',
+      description: 'Capture errors and UI issues instantly with screen recording. Record your screen to capture complex workflows and visual context. Gemini 2.5 Pro analyzes your recordings to extract technical details, UI states, and implementation requirements, seamlessly integrating with your IDE and CLI workflows.',
       icon: <Search className="w-8 h-8" />,
     },
     {

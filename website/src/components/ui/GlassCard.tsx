@@ -12,7 +12,7 @@ export interface GlassCardProps extends HTMLAttributes<HTMLDivElement> {
 const GlassCardComponent = forwardRef<HTMLDivElement, GlassCardProps & { whileHover?: any; transition?: any }>(
   ({ className, highlighted = false, children, whileHover, transition, ...props }, ref) => {
     const glassClass = highlighted ? 'glass-highlighted' : 'glass';
-    const hasCustomPadding = className?.includes('p-');
+    const hasCustomPadding = className?.match(/p[xy]?-|p[trbl]-/);
 
     return (
       <div

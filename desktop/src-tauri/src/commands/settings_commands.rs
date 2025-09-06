@@ -5,6 +5,8 @@ use crate::models::RuntimeAIConfig;
 use crate::models::{DefaultSystemPrompt, ProjectSystemPrompt, TaskType};
 use crate::services::config_cache_service::ConfigCache;
 use crate::utils::hash_utils::hash_string;
+use std::fs;
+use std::path::Path;
 use heck::{ToLowerCamelCase, ToSnakeCase};
 use log;
 use serde::{Deserialize, Serialize};
@@ -426,6 +428,49 @@ pub async fn get_project_task_model_settings_command(
     }
 
     Ok(serde_json::Value::Object(result).to_string())
+}
+
+#[tauri::command]
+pub async fn get_external_folders_command(app_handle: tauri::AppHandle, project_directory: String) -> crate::error::AppResult<Vec<String>> {
+    let project_hash = hash_string(&project_directory);
+    let key = format!("external_folders:{}", project_hash);
+    let repo = app_handle
+        .state::<std::sync::Arc<SettingsRepository>>()
+        .inner()
+        .clone();
+    if let Some(json) = repo.get_value(&key).await? {
+        let v: Vec<String> = serde_json::from_str(&json).unwrap_or_default();
+        Ok(v)
+    } else {
+        Ok(vec![])
+    }
+}
+
+#[tauri::command]
+pub async fn set_external_folders_command(app_handle: tauri::AppHandle, project_directory: String, folders: Vec<String>) -> crate::error::AppResult<()> {
+    let project_hash = hash_string(&project_directory);
+    let key = format!("external_folders:{}", project_hash);
+    let repo = app_handle
+        .state::<std::sync::Arc<SettingsRepository>>()
+        .inner()
+        .clone();
+    // Canonicalize + validate, dedupe
+    let mut seen = std::collections::HashSet::new();
+    let mut normalized: Vec<String> = Vec::new();
+    let main_root = fs::canonicalize(&project_directory)?;
+    for f in folders {
+        if let Ok(path) = fs::canonicalize(&f) {
+            if path.is_dir() && path != main_root {
+                let s = path.to_string_lossy().to_string();
+                if seen.insert(s.clone()) {
+                    normalized.push(s);
+                }
+            }
+        }
+    }
+    let json = serde_json::to_string(&normalized)?;
+    repo.set_value(&key, &json).await?;
+    Ok(())
 }
 
 #[tauri::command]

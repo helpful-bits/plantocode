@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 
 import { useProjectPersistenceService } from "@/hooks/useProjectPersistenceService";
 import { AppError, getErrorMessage } from "@/utils/error-handling";
+import { getExternalFoldersAction, setExternalFoldersAction } from "../../actions/project-settings/external-folders.actions";
 
 import { useNotification } from "../notification-context";
 
@@ -16,6 +17,8 @@ export interface ProjectDirectoryState {
 export interface ProjectDirectoryManager extends ProjectDirectoryState {
   setProjectDirectory: (dir: string) => Promise<void>;
   isInitialLoadingRef: React.RefObject<boolean>;
+  externalFolders: string[];
+  setExternalFolders: (folders: string[]) => Promise<void>;
 }
 
 export function useProjectDirectoryManager(): ProjectDirectoryManager {
@@ -27,6 +30,7 @@ export function useProjectDirectoryManager(): ProjectDirectoryManager {
     isLoading: true,
     error: null,
   });
+  const [externalFolders, setExternalFoldersState] = useState<string[]>([]);
 
   const isInitialLoadingRef = useRef<boolean>(true);
 
@@ -75,6 +79,17 @@ export function useProjectDirectoryManager(): ProjectDirectoryManager {
     };
   }, [loadProjectDirectory, showNotification]);
 
+  useEffect(() => {
+    if (!state.projectDirectory) { 
+      setExternalFoldersState([]); 
+      return; 
+    }
+    (async () => {
+      const res = await getExternalFoldersAction(state.projectDirectory);
+      if (res.isSuccess && res.data) setExternalFoldersState(res.data);
+    })();
+  }, [state.projectDirectory]);
+
   const setProjectDirectory = useCallback(
     async (dir: string) => {
       if (!dir || dir === state.projectDirectory) return;
@@ -98,9 +113,17 @@ export function useProjectDirectoryManager(): ProjectDirectoryManager {
     [state.projectDirectory, saveProjectDirectory, showNotification]
   );
 
+  const setExternalFolders = useCallback(async (folders: string[]) => {
+    if (!state.projectDirectory) return;
+    const res = await setExternalFoldersAction(state.projectDirectory, folders);
+    if (res.isSuccess) setExternalFoldersState(folders);
+  }, [state.projectDirectory]);
+
   return {
     ...state,
     setProjectDirectory,
     isInitialLoadingRef,
+    externalFolders,
+    setExternalFolders
   };
 }

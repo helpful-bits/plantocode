@@ -34,14 +34,15 @@ pub async fn create_abstract_stage_job_with_lock_internal(
     )
     .await?;
 
-    // Convert to WorkflowStage for model configuration
+    // Convert to WorkflowStage for model configuration (only for stages that have WorkflowStage equivalents)
     let stage = match task_type {
-        TaskType::RegexFileFilter => WorkflowStage::RegexFileFilter,
-        TaskType::FileRelevanceAssessment => WorkflowStage::FileRelevanceAssessment,
-        TaskType::ExtendedPathFinder => WorkflowStage::ExtendedPathFinder,
-        TaskType::PathCorrection => WorkflowStage::PathCorrection,
-        TaskType::WebSearchPromptsGeneration => WorkflowStage::WebSearchPromptsGeneration,
-        TaskType::WebSearchExecution => WorkflowStage::WebSearchExecution,
+        TaskType::RootFolderSelection => Some(WorkflowStage::RootFolderSelection),
+        TaskType::RegexFileFilter => Some(WorkflowStage::RegexFileFilter),
+        TaskType::FileRelevanceAssessment => Some(WorkflowStage::FileRelevanceAssessment),
+        TaskType::ExtendedPathFinder => Some(WorkflowStage::ExtendedPathFinder),
+        TaskType::PathCorrection => Some(WorkflowStage::PathCorrection),
+        TaskType::WebSearchPromptsGeneration => Some(WorkflowStage::WebSearchPromptsGeneration),
+        TaskType::WebSearchExecution => Some(WorkflowStage::WebSearchExecution),
         _ => {
             return Err(crate::error::AppError::JobError(format!(
                 "Unsupported task type for workflow stage: {:?}",
@@ -81,7 +82,7 @@ pub async fn create_abstract_stage_job_with_lock_internal(
         Some(stage_definition.stage_name.clone()), // workflow_stage
         Some(serde_json::json!({
             "workflowId": workflow_state.workflow_id,
-            "workflowStage": serde_json::to_value(&stage).unwrap().as_str().unwrap(),
+            "workflowStage": stage.map(|s| serde_json::to_value(&s).unwrap().as_str().unwrap().to_string()).unwrap_or_else(|| stage_definition.stage_name.clone()),
             "stageName": stage_definition.stage_name,
             "workflowTaskDescription": workflow_state.task_description.clone()
         })),

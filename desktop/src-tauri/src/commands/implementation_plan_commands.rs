@@ -24,6 +24,7 @@ pub struct CreateImplementationPlanArgs {
     pub task_description: String,
     pub project_directory: String,
     pub relevant_files: Vec<String>,
+    pub selected_root_directories: Option<Vec<String>>,
     pub project_structure: Option<String>,
     pub model: Option<String>,
     pub temperature: Option<f32>,
@@ -37,6 +38,7 @@ pub async fn create_implementation_plan_command(
     task_description: String,
     project_directory: String,
     relevant_files: Vec<String>,
+    selected_root_directories: Option<Vec<String>>,
     project_structure: Option<String>,
     model: Option<String>,
     temperature: Option<f32>,
@@ -48,6 +50,7 @@ pub async fn create_implementation_plan_command(
         task_description,
         project_directory,
         relevant_files,
+        selected_root_directories,
         project_structure,
         model,
         temperature,
@@ -92,6 +95,7 @@ pub async fn create_implementation_plan_command(
     let payload = crate::jobs::types::ImplementationPlanPayload {
         task_description: args.task_description.clone(),
         relevant_files: args.relevant_files,
+        selected_root_directories: args.selected_root_directories,
     };
 
     // Create and queue the job
@@ -163,6 +167,7 @@ pub async fn estimate_prompt_tokens_command(
     task_description: String,
     project_directory: String,
     relevant_files: Vec<String>,
+    selected_root_directories: Option<Vec<String>>,
     app_handle: AppHandle,
 ) -> AppResult<PromptTokenEstimateResponse> {
     info!("Estimating tokens for {} prompt", task_type);
@@ -226,18 +231,56 @@ pub async fn estimate_prompt_tokens_command(
     let file_contents_map: std::collections::HashMap<String, String> =
         results.into_iter().filter_map(|result| result).collect();
 
-    let directory_tree = match crate::utils::directory_tree::get_directory_tree_with_defaults(
-        actual_project_directory,
-    )
-    .await
-    {
-        Ok(tree) => Some(tree),
-        Err(e) => {
-            log::warn!(
-                "Failed to generate directory tree for prompt context: {}",
-                e
-            );
-            None
+    // Generate directory tree - use scoped tree if root directories are provided
+    let directory_tree = if let Some(ref root_dirs) = selected_root_directories {
+        if !root_dirs.is_empty() {
+            log::debug!("Using scoped directory tree for {} root directories", root_dirs.len());
+            match crate::utils::directory_tree::get_combined_directory_tree_for_roots(root_dirs)
+                .await
+            {
+                Ok(tree) => Some(tree),
+                Err(e) => {
+                    log::warn!("Failed to generate scoped directory tree: {}, falling back to full tree", e);
+                    // Fallback to full directory tree
+                    match crate::utils::directory_tree::get_directory_tree_with_defaults(
+                        actual_project_directory,
+                    )
+                    .await
+                    {
+                        Ok(tree) => Some(tree),
+                        Err(e) => {
+                            log::warn!("Failed to generate fallback directory tree: {}", e);
+                            None
+                        }
+                    }
+                }
+            }
+        } else {
+            // Empty root directories - use full tree
+            match crate::utils::directory_tree::get_directory_tree_with_defaults(
+                actual_project_directory,
+            )
+            .await
+            {
+                Ok(tree) => Some(tree),
+                Err(e) => {
+                    log::warn!("Failed to generate directory tree for prompt context: {}", e);
+                    None
+                }
+            }
+        }
+    } else {
+        // No root directories specified - use full tree
+        match crate::utils::directory_tree::get_directory_tree_with_defaults(
+            actual_project_directory,
+        )
+        .await
+        {
+            Ok(tree) => Some(tree),
+            Err(e) => {
+                log::warn!("Failed to generate directory tree for prompt context: {}", e);
+                None
+            }
         }
     };
 
@@ -294,6 +337,7 @@ pub async fn get_prompt_command(
     task_description: String,
     project_directory: String,
     relevant_files: Vec<String>,
+    selected_root_directories: Option<Vec<String>>,
     app_handle: AppHandle,
 ) -> AppResult<PromptResponse> {
     // Validate required fields
@@ -355,18 +399,56 @@ pub async fn get_prompt_command(
     let file_contents_map: std::collections::HashMap<String, String> =
         results.into_iter().filter_map(|result| result).collect();
 
-    let directory_tree = match crate::utils::directory_tree::get_directory_tree_with_defaults(
-        actual_project_directory,
-    )
-    .await
-    {
-        Ok(tree) => Some(tree),
-        Err(e) => {
-            log::warn!(
-                "Failed to generate directory tree for prompt context: {}",
-                e
-            );
-            None
+    // Generate directory tree - use scoped tree if root directories are provided
+    let directory_tree = if let Some(ref root_dirs) = selected_root_directories {
+        if !root_dirs.is_empty() {
+            log::debug!("Using scoped directory tree for {} root directories", root_dirs.len());
+            match crate::utils::directory_tree::get_combined_directory_tree_for_roots(root_dirs)
+                .await
+            {
+                Ok(tree) => Some(tree),
+                Err(e) => {
+                    log::warn!("Failed to generate scoped directory tree: {}, falling back to full tree", e);
+                    // Fallback to full directory tree
+                    match crate::utils::directory_tree::get_directory_tree_with_defaults(
+                        actual_project_directory,
+                    )
+                    .await
+                    {
+                        Ok(tree) => Some(tree),
+                        Err(e) => {
+                            log::warn!("Failed to generate fallback directory tree: {}", e);
+                            None
+                        }
+                    }
+                }
+            }
+        } else {
+            // Empty root directories - use full tree
+            match crate::utils::directory_tree::get_directory_tree_with_defaults(
+                actual_project_directory,
+            )
+            .await
+            {
+                Ok(tree) => Some(tree),
+                Err(e) => {
+                    log::warn!("Failed to generate directory tree for prompt context: {}", e);
+                    None
+                }
+            }
+        }
+    } else {
+        // No root directories specified - use full tree
+        match crate::utils::directory_tree::get_directory_tree_with_defaults(
+            actual_project_directory,
+        )
+        .await
+        {
+            Ok(tree) => Some(tree),
+            Err(e) => {
+                log::warn!("Failed to generate directory tree for prompt context: {}", e);
+                None
+            }
         }
     };
 

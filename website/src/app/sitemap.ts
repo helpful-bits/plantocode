@@ -12,6 +12,36 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 1,
     },
     {
+      url: `${baseUrl}/docs`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.95,
+    },
+    {
+      url: `${baseUrl}/docs/vibe-manager-architecture`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.94,
+    },
+    {
+      url: `${baseUrl}/docs/claude-code-install`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.93,
+    },
+    {
+      url: `${baseUrl}/docs/claude-code-vs-cursor`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.92,
+    },
+    {
+      url: `${baseUrl}/docs/claude-code-alternative`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.91,
+    },
+    {
       url: `${baseUrl}/download`,
       lastModified: now,
       changeFrequency: 'weekly',

@@ -323,6 +323,7 @@ fn find_subsequent_stages_in_definition(
 /// Convert WorkflowStage to TaskType for stage definition lookup
 fn stage_to_task_type_for_retry(stage: &WorkflowStage) -> TaskType {
     match stage {
+        WorkflowStage::RootFolderSelection => TaskType::RootFolderSelection,
         WorkflowStage::RegexFileFilter => TaskType::RegexFileFilter,
         WorkflowStage::FileRelevanceAssessment => TaskType::FileRelevanceAssessment,
         WorkflowStage::ExtendedPathFinder => TaskType::ExtendedPathFinder,
@@ -335,6 +336,7 @@ fn stage_to_task_type_for_retry(stage: &WorkflowStage) -> TaskType {
 /// Convert TaskType back to WorkflowStage for job matching
 fn task_type_to_workflow_stage(task_type: TaskType) -> Option<WorkflowStage> {
     match task_type {
+        TaskType::RootFolderSelection => Some(WorkflowStage::RootFolderSelection),
         TaskType::RegexFileFilter => Some(WorkflowStage::RegexFileFilter),
         TaskType::FileRelevanceAssessment => Some(WorkflowStage::FileRelevanceAssessment),
         TaskType::ExtendedPathFinder => Some(WorkflowStage::ExtendedPathFinder),

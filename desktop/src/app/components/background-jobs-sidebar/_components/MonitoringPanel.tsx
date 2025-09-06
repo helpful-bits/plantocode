@@ -34,7 +34,9 @@ export const MonitoringPanel = ({ onBack, onOpenTerminal }: MonitoringPanelProps
     return allImplementationPlanJobs.filter(job => {
       // Search in job metadata for title/description
       try {
-        const metadata = job.metadata ? JSON.parse(job.metadata) : {};
+        const metadata = typeof job.metadata === 'string' 
+          ? JSON.parse(job.metadata) 
+          : job.metadata || {};
         // Check for title in multiple places: planTitle, generated_title, displayName
         const title = metadata.planTitle || metadata.generated_title || metadata.displayName || "";
         const description = metadata.description || "";
@@ -75,14 +77,6 @@ export const MonitoringPanel = ({ onBack, onOpenTerminal }: MonitoringPanelProps
       default:
         return null;
     }
-  };
-
-  const getCombinedStatus = (job: any) => {
-    const session = getSession(job.id);
-    if (session) {
-      return `Job: ${job.status}, Terminal: ${session.status}`;
-    }
-    return `Job: ${job.status}`;
   };
 
   // Count statuses for summary (use all jobs, not filtered)
@@ -161,7 +155,9 @@ export const MonitoringPanel = ({ onBack, onOpenTerminal }: MonitoringPanelProps
                 let planTitle = "";
                 let planDescription = "";
                 try {
-                  const metadata = job.metadata ? JSON.parse(job.metadata) : {};
+                  const metadata = typeof job.metadata === 'string' 
+                    ? JSON.parse(job.metadata) 
+                    : job.metadata || {};
                   // Check for title in multiple places: planTitle, generated_title, displayName
                   planTitle = metadata.planTitle || metadata.generated_title || metadata.displayName || "";
                   planDescription = metadata.description || "";

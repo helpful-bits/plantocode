@@ -24,30 +24,37 @@ interface TaskModelSettingsProps {
 
 
 const FILE_FINDING_WORKFLOW_STAGES = [
+  {
+    key: 'rootFolderSelection',
+    stageNumber: 1,
+    displayName: 'Root Folder Selection',
+    nextStage: 'Regex File Filter',
+    description: 'AI selects relevant folders to search'
+  },
   { 
     key: 'regexFileFilter', 
-    stageNumber: 1, 
+    stageNumber: 2, 
     displayName: 'Regex File Filter',
     nextStage: 'Relevance Assessment',
     description: 'Generate regex patterns to identify relevant files'
   },
   { 
     key: 'fileRelevanceAssessment', 
-    stageNumber: 2, 
+    stageNumber: 3, 
     displayName: 'Relevance Assessment',
     nextStage: 'Extended Path Finding',
     description: 'AI-powered assessment of file relevance'
   },
   { 
     key: 'extendedPathFinder', 
-    stageNumber: 3, 
+    stageNumber: 4, 
     displayName: 'Extended Path Finding',
     nextStage: 'Path Correction',
     description: 'Deep analysis to find related files'
   },
   { 
     key: 'pathCorrection', 
-    stageNumber: 4, 
+    stageNumber: 5, 
     displayName: 'Path Correction',
     nextStage: null,
     description: 'Final refinement and path validation'

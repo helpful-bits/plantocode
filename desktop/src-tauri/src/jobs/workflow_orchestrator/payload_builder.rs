@@ -4,6 +4,7 @@ use crate::jobs::workflow_types::{
     WorkflowDefinition, WorkflowStage, WorkflowStageDefinition, WorkflowState,
 };
 use crate::models::TaskType;
+use crate::utils;
 use log::{debug, warn};
 use tauri::Manager;
 
@@ -17,11 +18,46 @@ pub(super) async fn create_abstract_stage_payload(
     let task_type = stage_definition.task_type;
 
     match task_type {
+        TaskType::RootFolderSelection => {
+            use crate::jobs::types::RootFolderSelectionPayload;
+            use crate::utils;
+
+            let candidate_paths = utils::workspace_roots::list_root_level_folders(&app_handle, &workflow_state.project_directory).await?;
+            let candidate_roots: Vec<String> = candidate_paths
+                .into_iter()
+                .map(|path| path.to_string_lossy().to_string())
+                .collect();
+
+            let payload = RootFolderSelectionPayload {
+                task_description: workflow_state.task_description.clone(),
+                candidate_roots,
+            };
+            Ok(JobPayload::RootFolderSelection(payload))
+        }
         TaskType::RegexFileFilter => {
             use crate::jobs::types::RegexFileFilterPayload;
 
+            // Get root directories from the workflow state (stored by RootFolderSelection)
+            let root_directories = if !workflow_state.intermediate_data.selected_root_directories.is_empty() {
+                // Use the directories selected by the RootFolderSelection stage
+                workflow_state.intermediate_data.selected_root_directories.clone()
+            } else {
+                // Fallback to default workspace roots if no selection was made
+                let roots = utils::workspace_roots::resolve_workspace_roots(
+                    &app_handle,
+                    &workflow_state.project_directory,
+                )
+                .await?;
+                
+                roots
+                    .iter()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .collect()
+            };
+
             let payload = RegexFileFilterPayload {
                 task_description: workflow_state.task_description.clone(),
+                root_directories,
             };
             Ok(JobPayload::RegexFileFilter(payload))
         }
@@ -64,9 +100,13 @@ pub(super) async fn create_abstract_stage_payload(
                 );
             }
 
+            // Pass the selected root directories for scoped directory tree generation
+            let selected_root_directories = workflow_state.intermediate_data.selected_root_directories.clone();
+
             let payload = ExtendedPathFinderPayload {
                 task_description: workflow_state.task_description.clone(),
                 initial_paths,
+                selected_root_directories,
             };
 
             Ok(JobPayload::ExtendedPathFinder(payload))

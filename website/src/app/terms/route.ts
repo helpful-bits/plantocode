@@ -34,9 +34,14 @@ export async function GET(request: NextRequest) {
     region = 'eu';
   }
   
+  // Build the redirect URL - use the correct base URL
+  const protocol = request.headers.get('x-forwarded-proto') || 'http';
+  const host = request.headers.get('host') || 'localhost:3000';
+  const baseUrl = `${protocol}://${host}`;
+  
   // Redirect to the appropriate regional terms page
   return NextResponse.redirect(
-    new URL(`/legal/${region}/terms`, request.url),
+    new URL(`/legal/${region}/terms`, baseUrl),
     { status: 302 } // Temporary for geo-based user redirects
   );
 }

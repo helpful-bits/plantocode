@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '@/utils/tauri-invoke-wrapper';
 import type { 
   CreditDetailsResponse,
   CreditTransactionEntry,

@@ -38,8 +38,12 @@ export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const hash = url.hash;
   
-  // Redirect to the appropriate regional privacy page
-  const redirectUrl = new URL(`/legal/${region}/privacy${hash}`, request.url);
+  // Build the redirect URL - use the correct base URL
+  const protocol = request.headers.get('x-forwarded-proto') || 'http';
+  const host = request.headers.get('host') || 'localhost:3000';
+  const baseUrl = `${protocol}://${host}`;
+  
+  const redirectUrl = new URL(`/legal/${region}/privacy${hash}`, baseUrl);
   
   return NextResponse.redirect(
     redirectUrl,

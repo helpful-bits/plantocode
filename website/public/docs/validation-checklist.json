@@ -1,0 +1,12 @@
+{
+  "tauriCommandsRef": "/docs/tauri-commands.json",
+  "dbRef": "/docs/database-overview.json",
+  "appBehaviorRef": "/docs/app-behavior.json",
+  "checkedPages": [
+    "claude-code-install",
+    "claude-code-vs-cursor",
+    "claude-code-alternative",
+    "blog index"
+  ],
+  "status": "complete"
+}

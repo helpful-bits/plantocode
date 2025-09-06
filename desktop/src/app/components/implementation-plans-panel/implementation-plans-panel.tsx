@@ -2,6 +2,7 @@
 
 import { FileCode, Eye, ClipboardCopy, Loader2 } from "lucide-react";
 import { useCallback, useState, useEffect, useMemo } from "react";
+import { ExternalFoldersManager } from "../generate-prompt/_components/external-folders-manager";
 
 import { JobDetailsModal } from "@/app/components/background-jobs-sidebar/job-details-modal";
 import { useNotification } from "@/contexts/notification-context";
@@ -53,7 +54,7 @@ interface ImplementationPlansPanelProps {
   includedPaths?: string[];
   isCreatingPlan?: boolean;
   planCreationState?: "idle" | "submitting" | "submitted";
-  onCreatePlan?: (taskDescription: string, includedPaths: string[]) => Promise<void>;
+  onCreatePlan?: (taskDescription: string, includedPaths: string[], selectedRootDirectories?: string[] | null) => Promise<void>;
 }
 
 export function ImplementationPlansPanel({
@@ -92,6 +93,9 @@ export function ImplementationPlansPanel({
   // State for terminal modal
   const [terminalPlanId, setTerminalPlanId] = useState<string | null>(null);
   const { getActiveCount } = useTerminalSessions();
+  
+  // State for selected root directories from file finder workflow
+  const [selectedRootDirectories, setSelectedRootDirectories] = useState<string[] | null>(null);
 
   // Derive the live plan from the context using the jobId
   const livePlanForModal = useMemo(() => {
@@ -329,6 +333,7 @@ export function ImplementationPlansPanel({
           taskDescription: finalTaskDescription,
           projectDirectory: projectDirectory!,
           relevantFiles: finalIncludedPaths,
+          selectedRootDirectories: selectedRootDirectories || undefined,
           taskType: "implementation_plan",
           model: selectedModelId
         });
@@ -351,7 +356,7 @@ export function ImplementationPlansPanel({
     // Debounce token estimation
     const timeoutId = setTimeout(estimateTokens, 500);
     return () => clearTimeout(timeoutId);
-  }, [canCreatePlan, sessionId, taskDescription, currentSession?.taskDescription, projectDirectory, includedPaths, selectedModelId]);
+  }, [canCreatePlan, sessionId, taskDescription, currentSession?.taskDescription, projectDirectory, includedPaths, selectedRootDirectories, selectedModelId]);
 
 
   // Handle view prompt (renamed from copy prompt)
@@ -374,6 +379,7 @@ export function ImplementationPlansPanel({
         taskDescription: finalTaskDescription,
         projectDirectory: projectDirectory!,
         relevantFiles: finalIncludedPaths,
+        selectedRootDirectories: selectedRootDirectories || undefined,
       });
     } catch (error) {
       showNotification({
@@ -382,7 +388,7 @@ export function ImplementationPlansPanel({
         type: "error",
       });
     }
-  }, [canCreatePlan, sessionId, taskDescription, currentSession?.taskDescription, projectDirectory, includedPaths, promptCopyModal, showNotification]);
+  }, [canCreatePlan, sessionId, taskDescription, currentSession?.taskDescription, projectDirectory, includedPaths, selectedRootDirectories, promptCopyModal, showNotification]);
 
   // Handle preload prompt on hover
   const handlePreloadPrompt = useCallback(async () => {
@@ -401,6 +407,7 @@ export function ImplementationPlansPanel({
         taskDescription: finalTaskDescription,
         projectDirectory: projectDirectory!,
         relevantFiles: finalIncludedPaths,
+        selectedRootDirectories: selectedRootDirectories || undefined,
         taskType: "implementation_plan"
       });
 
@@ -453,6 +460,7 @@ export function ImplementationPlansPanel({
         taskDescription: finalTaskDescription,
         projectDirectory: projectDirectory!,
         relevantFiles: finalIncludedPaths,
+        selectedRootDirectories: selectedRootDirectories || undefined,
         taskType: "implementation_plan"
       });
 
@@ -495,10 +503,11 @@ export function ImplementationPlansPanel({
       trackEvent('desktop_plan_created', {
         files_count: finalIncludedPaths.length,
         has_task_description: Boolean(finalTaskDescription.trim()).toString(),
+        has_root_directories: Boolean(selectedRootDirectories && selectedRootDirectories.length > 0).toString(),
         location: 'implementation_plans_panel'
       });
       
-      await onCreatePlan(finalTaskDescription, finalIncludedPaths);
+      await onCreatePlan(finalTaskDescription, finalIncludedPaths, selectedRootDirectories);
     } catch (error) {
       showNotification({
         title: "Implementation Plan Creation Failed",
@@ -506,7 +515,7 @@ export function ImplementationPlansPanel({
         type: "error",
       });
     }
-  }, [onCreatePlan, canCreatePlan, taskDescription, currentSession?.taskDescription, includedPaths, showNotification]);
+  }, [onCreatePlan, canCreatePlan, taskDescription, currentSession?.taskDescription, includedPaths, selectedRootDirectories, showNotification, trackEvent]);
 
   // Memoized callback for clearing selection
   const handleClearSelection = useCallback(() => {
@@ -578,6 +587,12 @@ export function ImplementationPlansPanel({
         <Card className="bg-card p-6 rounded-lg border border-border shadow-sm mb-6">
           <div>
             <h3 className="text-sm font-medium mb-3 text-foreground">Create New Plan</h3>
+            
+            {/* External Folders Manager - for selecting root directories */}
+            <ExternalFoldersManager
+              onRootsChange={setSelectedRootDirectories}
+              className="mb-4"
+            />
             
             {/* Token count display with warnings */}
             {(estimatedTokens !== null || isEstimatingTokens) && (

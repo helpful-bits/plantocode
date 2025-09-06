@@ -1,0 +1,40 @@
+---
+# Sync deployment artifacts from local build
+
+- name: Archive deployment artifacts locally
+  archive:
+    path: 
+      - "{{ website_deploy_source }}/standalone"
+      - "{{ website_deploy_source }}/public"
+      - "{{ website_deploy_source }}/static"
+      - "{{ website_deploy_source }}/Dockerfile"
+    dest: "/tmp/website-deploy.tar.gz"
+    format: gz
+    exclude_path:
+      - "{{ website_deploy_source }}/standalone/cache"
+  delegate_to: localhost
+  become: no
+  
+- name: Copy archive to server
+  copy:
+    src: "/tmp/website-deploy.tar.gz"
+    dest: "/tmp/website-deploy.tar.gz"
+    mode: '0644'
+    
+- name: Extract artifacts
+  unarchive:
+    src: "/tmp/website-deploy.tar.gz"
+    dest: "{{ deployment_dir }}"
+    remote_src: yes
+    
+- name: Set ownership
+  file:
+    path: "{{ deployment_dir }}"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    recurse: yes
+    
+- name: Clean up archive
+  file:
+    path: "/tmp/website-deploy.tar.gz"
+    state: absent

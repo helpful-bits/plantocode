@@ -1256,6 +1256,7 @@ impl WorkflowOrchestrator {
 
         // Convert the stage name to WorkflowStage
         let workflow_stage = match stage_job.name.as_str() {
+            "RootFolderSelection" | "Root Folder Selection" => WorkflowStage::RootFolderSelection,
             "RegexFileFilter" | "Regex File Filter" => WorkflowStage::RegexFileFilter,
             "FileRelevanceAssessment" | "File Relevance Assessment" => {
                 WorkflowStage::FileRelevanceAssessment

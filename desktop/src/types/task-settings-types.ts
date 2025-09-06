@@ -19,6 +19,7 @@ export interface TaskSettings {
   genericLlmStream: TaskModelSettings;
   streaming: TaskModelSettings;
   unknown: TaskModelSettings;
+  rootFolderSelection: TaskModelSettings;
   fileRelevanceAssessment: TaskModelSettings;
   extendedPathFinder: TaskModelSettings;
   webSearchPromptsGeneration?: TaskModelSettings;

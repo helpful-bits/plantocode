@@ -1,10 +1,117 @@
 use log::debug;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use crate::error::{AppError, AppResult};
 use crate::utils::fs_utils;
 use crate::utils::git_utils;
+
+pub async fn get_combined_directory_tree_for_roots(roots: &[String]) -> AppResult<String> {
+    use std::collections::HashSet;
+    
+    // Find the common git repository root for all roots
+    let git_root = {
+        let mut common_git_root: Option<PathBuf> = None;
+        
+        for root_str in roots {
+            let mut current = Path::new(root_str);
+            
+            // Walk up to find git root
+            loop {
+                if git_utils::is_git_repository(current) {
+                    let git_path = current.to_path_buf();
+                    
+                    // Check if this matches our previously found git root
+                    if let Some(ref existing_root) = common_git_root {
+                        if existing_root != &git_path {
+                            // Different git roots - fall back to individual processing
+                            return get_combined_directory_tree_for_roots_fallback(roots).await;
+                        }
+                    } else {
+                        common_git_root = Some(git_path);
+                    }
+                    break;
+                }
+                
+                if let Some(parent) = current.parent() {
+                    current = parent;
+                } else {
+                    // No git root found - fall back to individual processing
+                    return get_combined_directory_tree_for_roots_fallback(roots).await;
+                }
+            }
+        }
+        
+        common_git_root.ok_or_else(|| {
+            AppError::JobError("No git repository found for roots".to_string())
+        })?
+    };
+    
+    // Get ALL non-ignored files from the git repository
+    let (all_git_files, _) = git_utils::get_all_non_ignored_files(&git_root)?;
+    
+    // Convert to absolute paths and filter by roots
+    let mut sections = Vec::new();
+    
+    for root_str in roots {
+        let root_path = Path::new(root_str);
+        let header = format!("===== ROOT: {} =====\n", root_str);
+        
+        // Filter files that belong to this root
+        let mut root_files = Vec::new();
+        for rel_path in &all_git_files {
+            let abs_path = git_root.join(rel_path);
+            
+            // Check if this file is under the current root
+            if abs_path.starts_with(&root_path) {
+                // Make path relative to this root (not git root)
+                if let Ok(root_relative) = abs_path.strip_prefix(&root_path) {
+                    root_files.push(root_relative.to_path_buf());
+                }
+            }
+        }
+        
+        // Also collect directories (from file paths)
+        let mut all_paths = HashSet::new();
+        for file_path in &root_files {
+            // Add the file itself
+            all_paths.insert(file_path.clone());
+            
+            // Add all parent directories
+            let mut parent = file_path.parent();
+            while let Some(p) = parent {
+                if !p.as_os_str().is_empty() {
+                    all_paths.insert(p.to_path_buf());
+                }
+                parent = p.parent();
+            }
+        }
+        
+        // Convert to sorted vector
+        let mut sorted_paths: Vec<PathBuf> = all_paths.into_iter().collect();
+        sorted_paths.sort();
+        
+        // Format as tree
+        let tree = format_directory_tree(&sorted_paths);
+        sections.push(format!("{}{}", header, tree));
+    }
+    
+    Ok(sections.join("\n\n"))
+}
+
+// Fallback for when roots have different git repositories or no git
+async fn get_combined_directory_tree_for_roots_fallback(roots: &[String]) -> AppResult<String> {
+    let mut sections = Vec::new();
+    
+    for r in roots {
+        let header = format!("===== ROOT: {} =====\n", r);
+        let body = get_directory_tree_with_defaults(r).await?;
+        sections.push(format!("{}{}", header, body));
+    }
+    
+    Ok(sections.join("\n\n"))
+}
 
 /// Options for directory tree generation
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -95,8 +202,30 @@ pub async fn generate_directory_tree(
             all_paths.push(absolute_path);
         }
     } else {
-        // Only git repositories are supported
-        return Err(AppError::FileSystemError("Directory is not a git repository. Only git repositories are supported for directory tree generation.".to_string()));
+        // Handle non-git directories with filesystem traversal
+        debug!("Directory is not a git repository, using filesystem traversal for: {}", project_dir_str);
+        
+        // Perform filesystem traversal
+        let project_dir_path_for_traversal = project_dir_path.to_path_buf();
+        let exclude_patterns = options.exclude_patterns.clone();
+        let include_hidden = options.include_hidden;
+        let max_depth = options.max_depth;
+        
+        all_paths = tokio::task::spawn_blocking(move || {
+            traverse_directory_non_git(
+                &project_dir_path_for_traversal,
+                &exclude_patterns,
+                include_hidden,
+                max_depth,
+            )
+        })
+        .await
+        .map_err(|e| {
+            AppError::JobError(format!(
+                "Failed to spawn blocking task for directory traversal: {}",
+                e
+            ))
+        })??;
     }
 
     // Filter out binary files - but do it more efficiently without file locks
@@ -152,6 +281,171 @@ fn format_directory_tree(paths: &[PathBuf]) -> String {
     }
 
     result
+}
+
+/// Traverse directory without git, respecting exclude patterns
+/// This is a synchronous function meant to be called from spawn_blocking
+fn traverse_directory_non_git(
+    base_path: &Path,
+    exclude_patterns: &Option<Vec<String>>,
+    include_hidden: bool,
+    max_depth: Option<usize>,
+) -> AppResult<Vec<PathBuf>> {
+    let mut all_paths = Vec::new();
+    let mut visited_dirs = HashSet::new();
+    
+    // Default exclude patterns for common directories we should skip
+    let default_excludes = vec![
+        ".git",
+        "node_modules",
+        "target",
+        "dist",
+        "build",
+        ".vscode",
+        ".idea",
+        "__pycache__",
+        ".pytest_cache",
+        ".mypy_cache",
+        "venv",
+        ".venv",
+        "env",
+        ".env",
+        ".next",
+        ".nuxt",
+        "coverage",
+        ".coverage",
+        ".tox",
+        ".eggs",
+        "*.egg-info",
+        ".DS_Store",
+        "Thumbs.db",
+    ];
+    
+    // Combine default and custom exclude patterns
+    let mut exclude_set = HashSet::new();
+    for pattern in &default_excludes {
+        exclude_set.insert(pattern.to_string());
+    }
+    if let Some(custom_patterns) = exclude_patterns {
+        for pattern in custom_patterns {
+            exclude_set.insert(pattern.clone());
+        }
+    }
+    
+    // Recursive directory traversal
+    traverse_directory_recursive(
+        base_path,
+        base_path,
+        &exclude_set,
+        include_hidden,
+        max_depth,
+        0,
+        &mut visited_dirs,
+        &mut all_paths,
+    )?;
+    
+    Ok(all_paths)
+}
+
+/// Recursive helper function for directory traversal
+fn traverse_directory_recursive(
+    base_path: &Path,
+    current_path: &Path,
+    exclude_patterns: &HashSet<String>,
+    include_hidden: bool,
+    max_depth: Option<usize>,
+    current_depth: usize,
+    visited_dirs: &mut HashSet<PathBuf>,
+    results: &mut Vec<PathBuf>,
+) -> AppResult<()> {
+    // Check depth limit
+    if let Some(max) = max_depth {
+        if current_depth > max {
+            return Ok(());
+        }
+    }
+    
+    // Avoid infinite loops with symlinks
+    let canonical_path = match current_path.canonicalize() {
+        Ok(p) => p,
+        Err(_) => return Ok(()), // Skip if we can't canonicalize
+    };
+    
+    if !visited_dirs.insert(canonical_path.clone()) {
+        return Ok(()); // Already visited this directory
+    }
+    
+    // Read directory entries
+    let entries = match std::fs::read_dir(current_path) {
+        Ok(entries) => entries,
+        Err(e) => {
+            debug!("Failed to read directory {:?}: {}", current_path, e);
+            return Ok(()); // Skip directories we can't read
+        }
+    };
+    
+    for entry in entries {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue, // Skip problematic entries
+        };
+        
+        let path = entry.path();
+        let file_name = match path.file_name() {
+            Some(name) => name.to_string_lossy().to_string(),
+            None => continue,
+        };
+        
+        // Check if we should skip hidden files/directories
+        if !include_hidden && file_name.starts_with('.') {
+            continue;
+        }
+        
+        // Check exclude patterns
+        let should_exclude = exclude_patterns.iter().any(|pattern| {
+            // Simple pattern matching (could be enhanced with glob patterns)
+            if pattern.contains('*') {
+                // Handle simple wildcard patterns like "*.egg-info"
+                if let Some(suffix) = pattern.strip_prefix('*') {
+                    return file_name.ends_with(suffix);
+                }
+                if let Some(prefix) = pattern.strip_suffix('*') {
+                    return file_name.starts_with(prefix);
+                }
+            }
+            // Exact match
+            file_name == *pattern
+        });
+        
+        if should_exclude {
+            continue;
+        }
+        
+        let file_type = match entry.file_type() {
+            Ok(ft) => ft,
+            Err(_) => continue,
+        };
+        
+        if file_type.is_file() {
+            // Add file to results
+            results.push(path.clone());
+        } else if file_type.is_dir() {
+            // Recursively traverse subdirectory
+            traverse_directory_recursive(
+                base_path,
+                &path,
+                exclude_patterns,
+                include_hidden,
+                max_depth,
+                current_depth + 1,
+                visited_dirs,
+                results,
+            )?;
+        }
+        // Skip symlinks and other special files
+    }
+    
+    Ok(())
 }
 
 /// On-demand directory tree generation utility for processors

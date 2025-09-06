@@ -66,3 +66,4 @@ pub use unified_prompt_system::{
     get_template_for_display, substitute_placeholders,
 };
 pub mod stream_debug_logger;
+pub mod workspace_roots;

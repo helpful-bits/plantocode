@@ -396,6 +396,51 @@ pub(super) async fn extract_and_store_stage_data_internal(
                     "searchResultsCount": search_results.len()
                 })
             }
+            TaskType::RootFolderSelection => {
+                // Extract root directories from structured response
+                let response_json = match job_result_data {
+                    Some(crate::jobs::types::JobResultData::Json(json_data)) => json_data,
+                    Some(crate::jobs::types::JobResultData::Text(text_data)) => {
+                        serde_json::from_str(&text_data).map_err(|e| {
+                            warn!(
+                                "Failed to parse text response as JSON for {:?} job {}: {}",
+                                stage_job.task_type, job_id, e
+                            );
+                            AppError::JobError(format!(
+                                "Invalid response format for {:?} job {}",
+                                stage_job.task_type, job_id
+                            ))
+                        })?
+                    }
+                    None => {
+                        return Err(AppError::JobError(format!(
+                            "No response data found for {:?} job {}",
+                            stage_job.task_type, job_id
+                        )));
+                    }
+                };
+
+                let root_directories = response_json
+                    .get("root_directories")
+                    .and_then(|v| v.as_array())
+                    .ok_or_else(|| {
+                        AppError::JobError(format!(
+                            "Missing or invalid 'root_directories' field in root folder selection job {}",
+                            job_id
+                        ))
+                    })?;
+
+                debug!(
+                    "Extracted {} root directories from job {}",
+                    root_directories.len(),
+                    job_id
+                );
+                
+                serde_json::json!({
+                    "root_directories": root_directories,
+                    "directoryCount": root_directories.len()
+                })
+            }
             _ => {
                 warn!(
                     "No stage data extraction implemented for task type {:?} in job {}",

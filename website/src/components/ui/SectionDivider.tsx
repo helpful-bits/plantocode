@@ -4,7 +4,7 @@ import React from 'react';
 
 export function SectionDivider() {
   return (
-    <div className="relative w-full h-8 sm:h-12 md:h-16 -my-8 sm:-my-12 md:-my-16 overflow-visible pointer-events-none">
+    <div className="relative w-full h-8 sm:h-12 md:h-16 overflow-visible pointer-events-none">
       {/* Base gradient layer for smooth blending */}
       <div className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/[0.02] to-transparent" />
       
@@ -44,7 +44,7 @@ export function SectionDivider() {
 // Alternative style with orbs - Static version
 export function SectionDividerOrbs() {
   return (
-    <div className="relative w-full h-8 sm:h-12 md:h-16 -my-8 sm:-my-12 md:-my-16 overflow-visible pointer-events-none">
+    <div className="relative w-full h-8 sm:h-12 md:h-16 overflow-visible pointer-events-none">
       {/* Glass morphism base layer */}
       <div className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/[0.02] to-transparent backdrop-blur-[2px]" />
       
@@ -99,7 +99,7 @@ export function SectionDividerOrbs() {
 // Mesh gradient style - Static version
 export function SectionDividerMesh() {
   return (
-    <div className="relative w-full h-8 sm:h-12 md:h-16 -my-8 sm:-my-12 md:-my-16 overflow-hidden pointer-events-none">
+    <div className="relative w-full h-8 sm:h-12 md:h-16 overflow-hidden pointer-events-none">
       <div className="absolute inset-0">
         {/* Static mesh background */}
         <div
@@ -135,7 +135,7 @@ export function SectionDividerMesh() {
 // Ultra-smooth liquid divider - Static version
 export function SectionDividerLiquid() {
   return (
-    <div className="relative w-full h-8 sm:h-12 md:h-16 -my-8 sm:-my-12 md:-my-16 overflow-visible pointer-events-none">
+    <div className="relative w-full h-8 sm:h-12 md:h-16 overflow-visible pointer-events-none">
       {/* Liquid flow effect - static */}
       <div className="absolute inset-0">
         {/* Base liquid layer */}

@@ -61,6 +61,7 @@ export function Header() {
   }, []);
 
   const navLinks = [
+    { href: '/docs', label: 'Docs' },
     { href: '#how-it-works', label: 'How It Works' },
     { href: '#features', label: 'Features' },
     { href: '#pricing', label: 'Pricing' },
@@ -406,6 +407,11 @@ export function Header() {
               >
                 <div className="flex items-center gap-3">
                   <ThemeToggle />
+                  <motion.div className="flex-1" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                    <Button asChild className="w-full" size="lg" variant="outline" onClick={() => setMobileMenuOpen(false)}>
+                      <Link href="/docs" className="no-hover-effect cursor-pointer">Docs</Link>
+                    </Button>
+                  </motion.div>
                   <motion.div className="flex-1" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
                     <Button asChild className="w-full" size="lg" variant="gradient-outline" onClick={() => setMobileMenuOpen(false)}>
                       <Link href="#how-it-works" className="no-hover-effect cursor-pointer">Try Demo</Link>

@@ -117,6 +117,7 @@ fn validate_task_type_configurations(runtime_config: &RuntimeAIConfig) -> Result
         TaskType::GenericLlmStream,
         TaskType::RegexFileFilter,
         TaskType::FileFinderWorkflow,
+        TaskType::RootFolderSelection,
         TaskType::FileRelevanceAssessment,
         TaskType::ExtendedPathFinder,
         TaskType::WebSearchPromptsGeneration,

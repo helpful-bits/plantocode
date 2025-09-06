@@ -9,7 +9,7 @@
  * - Credit management
  */
 
-import React, { Profiler } from "react";
+import { Profiler } from "react";
 import { useEffect, useState, useCallback } from "react";
 import { safeListen } from "@/utils/tauri-event-utils";
 import { Routes, Route } from "react-router-dom";
@@ -25,35 +25,14 @@ import SettingsPage from "@/app/settings/page";
 import AccountPage from "@/app/account/page";
 import FeedbackPage from "@/app/feedback/page";
 import NotFoundPage from "@/app/not-found";
-import { AuthProvider, useAuth } from "@/contexts/auth-context";
+import { AuthProvider } from "@/contexts/auth-context";
 import { UILayoutProvider } from "@/contexts/ui-layout-context";
 import { EmptyState, LoadingScreen } from "@/ui";
-import { setAuthErrorHandler } from "@/utils/tauri-invoke-wrapper";
 
 import { RuntimeConfigProvider } from "./contexts/runtime-config-context";
 // Custom provider for desktop-specific functionality
 import { TauriEnvironmentChecker } from "./providers/tauri-environment-checker";
 
-
-// Component to set up auth error handling
-function AuthErrorInterceptor({ children }: { children: React.ReactNode }) {
-  const { setTokenExpired } = useAuth();
-  
-  useEffect(() => {
-    // Set up the global auth error handler
-    setAuthErrorHandler(() => {
-      console.warn('Token expired, redirecting to login...');
-      setTokenExpired(true);
-    });
-    
-    // Cleanup on unmount
-    return () => {
-      setAuthErrorHandler(() => null);
-    };
-  }, [setTokenExpired]);
-  
-  return <>{children}</>;
-}
 
 // Safe app structure to ensure proper provider nesting and prevent remounting
 function SafeAppContent() {
@@ -62,8 +41,7 @@ function SafeAppContent() {
     <ThemeProvider defaultTheme="system" enableSystem>
       <RuntimeConfigProvider>
         <AuthProvider>
-          <AuthErrorInterceptor>
-            <TauriEnvironmentChecker>
+          <TauriEnvironmentChecker>
               <UILayoutProvider>
                 <AuthFlowManager>
                   <ProvidersWrapper environmentConfig={{ isDesktop: true }}>
@@ -80,8 +58,7 @@ function SafeAppContent() {
                   </ProvidersWrapper>
                 </AuthFlowManager>
               </UILayoutProvider>
-            </TauriEnvironmentChecker>
-          </AuthErrorInterceptor>
+          </TauriEnvironmentChecker>
         </AuthProvider>
       </RuntimeConfigProvider>
     </ThemeProvider>

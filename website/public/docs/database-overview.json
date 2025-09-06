@@ -1,0 +1,22 @@
+{
+  "engine": "sqlite",
+  "init": "desktop/src-tauri/src/app_setup/database.rs",
+  "schema_files": [
+    "desktop/src-tauri/migrations/consolidated_schema.sql"
+  ],
+  "core_tables": [
+    "sessions",
+    "background_jobs",
+    "terminal_sessions",
+    "key_value_store",
+    "project_system_prompts",
+    "task_description_history",
+    "file_selection_history",
+    "error_logs"
+  ],
+  "notes": [
+    "Local-first session and job persistence",
+    "Migrations applied by app-managed system on startup",
+    "LLM model availability is server-managed; not configured locally"
+  ]
+}

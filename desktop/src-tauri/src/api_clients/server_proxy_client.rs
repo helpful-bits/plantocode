@@ -10,7 +10,7 @@ use tauri::{AppHandle, Manager};
 use uuid;
 
 use super::client_trait::{ApiClient, ApiClientOptions, TranscriptionClient};
-use super::error_handling::map_server_proxy_error;
+use super::error_handling::{map_server_proxy_error, handle_api_error};
 use crate::auth::TokenManager;
 use crate::constants::{APP_HTTP_REFERER, APP_X_TITLE, SERVER_API_URL};
 use crate::error::{AppError, AppResult};
@@ -392,18 +392,7 @@ impl ServerProxyClient {
 
     /// Handle authentication error by suggesting token refresh
     async fn handle_auth_error(&self, status_code: u16, error_text: &str) -> AppError {
-        if status_code == 401 {
-            warn!(
-                "Received 401 Unauthorized. Token may be expired. User needs to refresh token manually."
-            );
-            // Clear the invalid token
-            if let Err(e) = self.token_manager.set(None).await {
-                error!("Failed to clear invalid token: {}", e);
-            }
-            AppError::AuthError("Authentication token expired. Please use refresh_app_jwt_auth0 command to refresh your token or re-authenticate.".to_string())
-        } else {
-            map_server_proxy_error(status_code, error_text)
-        }
+        handle_api_error(status_code, error_text, &self.token_manager).await
     }
 
     /// Execute chat completion with duration measurement and retry logic

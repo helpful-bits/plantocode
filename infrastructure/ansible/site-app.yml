@@ -52,6 +52,14 @@
   tags: [deploy]
 
 # ========================================
+# WEBSITE DEPLOYMENT
+# ========================================
+# Note: Website deployment requires region-specific secrets to be loaded
+# Run with: ansible-playbook -i inventory/hosts.yml site-app.yml --vault-password-file .vault_pass
+- import_playbook: playbooks/website/website-docker-deploy.yml
+  tags: [website, deploy]
+
+# ========================================
 # APPLICATION MANAGEMENT
 # ========================================
 - import_playbook: playbooks/app-vibe-manager/maintenance.yml

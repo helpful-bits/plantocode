@@ -1,0 +1,42 @@
+---
+# Configure nginx as reverse proxy
+
+- name: Install nginx
+  apt:
+    name: nginx
+    state: present
+    
+- name: Check if SSL certificate exists
+  stat:
+    path: "/etc/letsencrypt/live/{{ domain_name }}/fullchain.pem"
+  register: ssl_cert
+  
+- name: Display certificate status
+  debug:
+    msg: "SSL certificate {{ ssl_cert.stat.exists | ternary('exists', 'not found') }} for {{ domain_name }}"
+    
+- name: Configure nginx site
+  template:
+    src: templates/nginx-site.j2
+    dest: "/etc/nginx/sites-available/{{ domain_name }}"
+    mode: '0644'
+  notify: reload nginx
+  
+- name: Enable site
+  file:
+    src: "/etc/nginx/sites-available/{{ domain_name }}"
+    dest: "/etc/nginx/sites-enabled/{{ domain_name }}"
+    state: link
+    
+- name: Remove default site
+  file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+    
+- name: Test nginx configuration
+  command: nginx -t
+  
+- name: Reload nginx
+  systemd:
+    name: nginx
+    state: reloaded

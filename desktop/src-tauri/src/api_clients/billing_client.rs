@@ -1,3 +1,4 @@
+use crate::api_clients::error_handling::handle_api_error;
 use crate::auth::token_manager::TokenManager;
 use crate::commands::billing_commands::{
     BillingDashboardData, BillingPortalResponse, CreditBalanceResponse, CreditHistoryResponse,
@@ -138,10 +139,13 @@ impl BillingClient {
             .map_err(|e| AppError::NetworkError(format!("Request failed: {}", e)))?;
 
         if !response.status().is_success() {
-            return Err(AppError::ExternalServiceError(format!(
-                "Server error: {}",
-                response.status()
-            )));
+            let status = response.status();
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Failed to get error text from response".to_string());
+            let app_err = handle_api_error(status.as_u16(), &error_text, &self.token_manager).await;
+            return Err(app_err);
         }
 
         let result: T = response

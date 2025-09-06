@@ -9,6 +9,7 @@ export async function estimatePromptTokensAction(params: {
   taskDescription: string;
   projectDirectory: string;
   relevantFiles: string[];
+  selectedRootDirectories?: string[];
   taskType: TaskType;
   model: string;
 }): Promise<ActionState<{
@@ -28,6 +29,7 @@ export async function estimatePromptTokensAction(params: {
       taskDescription: params.taskDescription,
       projectDirectory: params.projectDirectory,
       relevantFiles: params.relevantFiles,
+      selectedRootDirectories: params.selectedRootDirectories,
       taskType: params.taskType,
       model: params.model,
     });
@@ -57,6 +59,7 @@ export async function getPromptAction(params: {
   taskDescription: string;
   projectDirectory: string;
   relevantFiles: string[];
+  selectedRootDirectories?: string[];
   taskType: TaskType;
 }): Promise<ActionState<{
   systemPrompt: string;
@@ -73,6 +76,7 @@ export async function getPromptAction(params: {
       taskDescription: params.taskDescription,
       projectDirectory: params.projectDirectory,
       relevantFiles: params.relevantFiles,
+      selectedRootDirectories: params.selectedRootDirectories,
       taskType: params.taskType,
     });
 

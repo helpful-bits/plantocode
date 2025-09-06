@@ -25,6 +25,7 @@ pub(super) async fn get_stage_model_config(
                 TaskType::PathCorrection => "PathCorrection_model",
                 TaskType::WebSearchPromptsGeneration => "WebSearchPromptsGeneration_model",
                 TaskType::WebSearchExecution => "WebSearchExecution_model",
+                TaskType::RootFolderSelection => "RootFolderSelection_model",
                 _ => "",
             };
 

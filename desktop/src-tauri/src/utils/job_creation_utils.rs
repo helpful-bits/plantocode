@@ -424,6 +424,7 @@ pub async fn create_and_queue_background_job(
         session_id: session_id.to_string(),
         process_after: None, // New jobs are ready for immediate processing
         created_at: crate::utils::date_utils::get_timestamp(),
+        result_json: None,
     };
 
     // Dispatch the job to the queue (except for workflow jobs which are handled by the orchestrator)
@@ -530,6 +531,9 @@ fn inject_job_id_into_payload(payload: &mut JobPayload, job_id: &str) {
         
         // Video analysis payload
         JobPayload::VideoAnalysis(_) => {}
+        
+        // Root folder selection payload
+        JobPayload::RootFolderSelection(_) => {}
     }
 }
 

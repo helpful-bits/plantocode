@@ -30,6 +30,7 @@ use self::processors::{
     ImplementationPlanProcessor,
     PathCorrectionProcessor,
     RegexFileFilterProcessor,
+    RootFolderSelectionProcessor,
     TaskRefinementProcessor,
     TextImprovementProcessor,
     VideoAnalysisProcessor,
@@ -70,6 +71,7 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     let text_improvement_processor = Arc::new(TextImprovementProcessor::new());
     let generic_llm_stream_processor = Arc::new(GenericLlmStreamProcessor::new());
     let regex_file_filter_processor = Arc::new(RegexFileFilterProcessor::new());
+    let root_folder_selection_processor = Arc::new(RootFolderSelectionProcessor::new());
     // Individual workflow stage processors
     let extended_path_finder_processor = Arc::new(ExtendedPathFinderProcessor::new());
     // File relevance assessment processor
@@ -87,6 +89,7 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     registry.register(text_improvement_processor).await;
     registry.register(generic_llm_stream_processor).await;
     registry.register(regex_file_filter_processor).await;
+    registry.register(root_folder_selection_processor).await;
     // Individual workflow stage processors
     registry.register(extended_path_finder_processor).await;
     // File relevance assessment processor

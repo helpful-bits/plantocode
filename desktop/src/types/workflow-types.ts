@@ -6,6 +6,7 @@
 // Core workflow stage definitions - aligned with backend WorkflowStage enum string representations
 // These match the SCREAMING_SNAKE_CASE enum variants from the Rust backend
 export type WorkflowStage =
+  | 'ROOT_FOLDER_SELECTION'
   | 'REGEX_FILE_FILTER'
   | 'FILE_RELEVANCE_ASSESSMENT'
   | 'EXTENDED_PATH_FINDER'

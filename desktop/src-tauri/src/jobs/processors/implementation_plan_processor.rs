@@ -81,7 +81,43 @@ impl JobProcessor for ImplementationPlanProcessor {
             }
         }
         let file_contents = Some(file_contents_map);
-        let directory_tree =
+        
+        // Generate directory tree - use scoped tree if root directories are provided
+        let directory_tree = if let Some(ref root_dirs) = payload.selected_root_directories {
+            if !root_dirs.is_empty() {
+                debug!("Using scoped directory tree for {} root directories", root_dirs.len());
+                match crate::utils::directory_tree::get_combined_directory_tree_for_roots(root_dirs)
+                    .await
+                {
+                    Ok(tree) => Some(tree),
+                    Err(e) => {
+                        warn!("Failed to generate scoped directory tree: {}, falling back to full tree", e);
+                        // Fallback to full directory tree
+                        match crate::utils::directory_tree::get_directory_tree_with_defaults(project_directory)
+                            .await
+                        {
+                            Ok(tree) => Some(tree),
+                            Err(e) => {
+                                warn!("Failed to generate fallback directory tree: {}", e);
+                                None
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Empty root directories - use full tree
+                match crate::utils::directory_tree::get_directory_tree_with_defaults(project_directory)
+                    .await
+                {
+                    Ok(tree) => Some(tree),
+                    Err(e) => {
+                        warn!("Failed to generate directory tree: {}", e);
+                        None
+                    }
+                }
+            }
+        } else {
+            // No root directories specified - use full tree
             match crate::utils::directory_tree::get_directory_tree_with_defaults(project_directory)
                 .await
             {
@@ -90,15 +126,16 @@ impl JobProcessor for ImplementationPlanProcessor {
                     warn!("Failed to generate directory tree: {}", e);
                     None
                 }
-            };
+            }
+        };
 
         // Build unified prompt using full content without preemptive truncation
         let composed_prompt = prompt_utils::build_unified_prompt(
             &job,
             &app_handle,
             payload.task_description.clone(),
-            file_contents,
-            directory_tree,
+            file_contents.clone(),
+            directory_tree.clone(),
             &model_used,
         )
         .await?;
@@ -161,33 +198,11 @@ impl JobProcessor for ImplementationPlanProcessor {
         // Create LLM task runner
         let task_runner = LlmTaskRunner::new(app_handle.clone(), job.clone(), llm_config);
 
-        // Create prompt context
-        let mut file_contents_map = std::collections::HashMap::new();
-        for relative_path_str in &payload.relevant_files {
-            let full_path = std::path::Path::new(project_directory).join(relative_path_str);
-            match fs::read_to_string(&full_path).await {
-                Ok(content) => {
-                    file_contents_map.insert(relative_path_str.clone(), content);
-                }
-                Err(e) => {
-                    warn!("Failed to read file {}: {}", full_path.display(), e);
-                }
-            }
-        }
+        // Create prompt context - reuse the file contents we already loaded
         let prompt_context = LlmPromptContext {
             task_description: payload.task_description.clone(),
-            file_contents: Some(file_contents_map),
-            directory_tree: match crate::utils::directory_tree::get_directory_tree_with_defaults(
-                project_directory,
-            )
-            .await
-            {
-                Ok(tree) => Some(tree),
-                Err(e) => {
-                    warn!("Failed to generate directory tree: {}", e);
-                    None
-                }
-            },
+            file_contents,
+            directory_tree, // Use the same tree we generated above
         };
 
         // Check if job has been canceled before calling the LLM

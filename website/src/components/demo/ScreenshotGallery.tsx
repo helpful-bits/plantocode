@@ -8,6 +8,7 @@ import { cdnUrl } from '@/lib/cdn';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { GlassCard } from '@/components/ui/GlassCard';
+import { track } from '@/lib/track';
 import { 
   Search, 
   FileText, 
@@ -148,6 +149,21 @@ const screenshots: ScreenshotCard[] = [
 export function ScreenshotGallery() {
   const [selectedImage, setSelectedImage] = useState<ScreenshotCard | null>(null);
   const [mounted, setMounted] = useState(false);
+  
+  const handleDownloadClick = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    // Track download click on client-side to preserve user context
+    await track({ 
+      event: 'download_click', 
+      props: { 
+        location: 'demo_screenshots',
+        platform: 'mac',
+        version: 'latest'
+      } 
+    });
+    // Redirect to download endpoint
+    window.location.href = '/api/download/mac?source=demo_screenshots';
+  };
 
   useEffect(() => {
     setMounted(true);
@@ -252,10 +268,8 @@ export function ScreenshotGallery() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
-              <Button asChild size="lg" variant="cta">
-                <Link href="/api/download/mac?source=demo_screenshots">
-                  Download for Mac
-                </Link>
+              <Button size="lg" variant="cta" onClick={handleDownloadClick}>
+                Download for Mac
               </Button>
             </motion.div>
             <motion.div

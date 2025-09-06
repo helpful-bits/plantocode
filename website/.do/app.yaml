@@ -1,3 +1,6 @@
+# DEPRECATED: This file has been replaced by website/deploy/docker-compose.yml
+# Kept for historical reference only
+
 name: vibe-manager-website
 services:
 - name: landing-page

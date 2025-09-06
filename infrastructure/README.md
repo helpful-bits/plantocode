@@ -330,6 +330,139 @@ To add new features:
 - No manual scripts to maintain
 - Built-in error handling and recovery
 
+## Website Deployment with Ansible (LOCAL BUILD)
+
+### Build Process - IMPORTANT!
+
+**The website is built LOCALLY on your development machine, NOT on the server.**
+
+1. **Build Next.js Locally**:
+   ```bash
+   cd website/
+   ./build-and-deploy.sh
+   ```
+   This creates optimized production build and prepares artifacts in `deploy/` folder.
+
+### Secrets Management
+
+The website deployment uses Ansible Vault for secret management:
+
+1. **Configure Secrets** (one-time setup):
+   ```bash
+   cd infrastructure/ansible
+   cp group_vars/interserver/secrets.yml.example group_vars/interserver/secrets.yml
+   # Edit secrets.yml with your actual values
+   vim group_vars/interserver/secrets.yml
+   ```
+
+2. **Encrypt Secrets**:
+   ```bash
+   ansible-vault encrypt group_vars/interserver/secrets.yml --vault-password-file .vault_pass
+   ```
+
+### Deploy to Server
+
+After building locally, deploy to server:
+
+```bash
+cd infrastructure/ansible
+
+# CORRECT: Deploy with region-specific secrets (for analytics, tracking, CDN)
+ansible-playbook -i inventory/hosts.yml playbooks/website/website-docker-deploy.yml \
+  --limit interserver-us --vault-password-file .vault_pass \
+  -e @group_vars/interserver/secrets.yml
+
+# ALTERNATIVE: Use main app playbook (automatically includes secrets)
+ansible-playbook -i inventory/hosts.yml site-app.yml \
+  --limit interserver-us --vault-password-file .vault_pass --tags website
+```
+
+**⚠️ Important**: Website deployment requires region-specific secrets (`website_env_vars`) for:
+- Analytics (Google Analytics, Plausible, Twitter Pixel)  
+- CDN URLs and API endpoints
+- Tracking and verification codes
+- These are stored in `group_vars/{region}/secrets.yml` and must be explicitly loaded
+
+The deployment will:
+- Install Docker and Docker Compose (if needed)
+- Sync pre-built artifacts from `website/deploy/`
+- Create `.env.production` from encrypted secrets
+- Start Docker containers with pre-built Next.js application
+- Configure Traefik with Let's Encrypt SSL via Cloudflare DNS-01
+
+## Cloudflare Setup Checklist (Let's Encrypt via DNS-01)
+
+When migrating to Cloudflare with Traefik and Let's Encrypt using DNS-01 challenge, follow this comprehensive setup checklist:
+
+### DNS Configuration
+- [ ] **DNS Records Setup**
+  - Add A record pointing your domain to the server IP
+  - Add CNAME records for subdomains (www, api, etc.)
+  - Ensure DNS propagation is complete (use `dig` or online tools to verify)
+  - Set TTL to a reasonable value (300-3600 seconds) for faster updates
+
+### Cloudflare SSL/TLS Mode Configuration
+- [ ] **SSL/TLS Mode**: Set to "Full (strict)" in Cloudflare dashboard
+  - Navigate to SSL/TLS > Overview
+  - Select "Full (strict)" - this ensures end-to-end encryption
+  - Avoid "Flexible" mode as it creates security vulnerabilities
+  - "Full" mode works but "Full (strict)" is recommended for production
+
+### API Token Requirements
+- [ ] **Cloudflare API Token Setup**
+  - Go to Cloudflare dashboard > My Profile > API Tokens
+  - Create token with the following permissions:
+    - **Zone:Zone:Read** (for all zones or specific zone)
+    - **Zone:DNS:Edit** (for all zones or specific zone)
+  - Note the token securely - it will be used by Traefik for DNS-01 challenge
+  - Test the token using Cloudflare API before deployment
+
+### Cache Rules Configuration
+Configure cache rules to bypass specific paths to prevent API and analytics interference:
+
+- [ ] **Cache Rules Setup** (Cloudflare dashboard > Caching > Cache Rules)
+  
+  **Rule 1: Bypass API Routes**
+  - **If**: Custom filter expression: `(http.request.uri.path matches "^/api/.*")`
+  - **Then**: Cache Status = Bypass
+  
+  **Rule 2: Bypass Analytics Routes**  
+  - **If**: Custom filter expression: `(http.request.uri.path matches "^/(ga|js/script|js/plausible)/.*")`
+  - **Then**: Cache Status = Bypass
+  
+  **Rule 3: General API Event Bypass**
+  - **If**: URI Path equals `/api/event`
+  - **Then**: Cache Status = Bypass
+
+- [ ] **Cache Level Configuration**
+  - Go to Caching > Configuration
+  - Set Cache Level to "Respect Existing Headers"
+  - This ensures Traefik and application cache headers are honored
+  - Alternative: Use "Standard" if you want Cloudflare to be more aggressive
+
+### Security Settings
+- [ ] **Security Configuration**
+  - Enable "Always Use HTTPS" in SSL/TLS > Edge Certificates
+  - Configure HSTS settings if desired
+  - Set minimum TLS version to 1.2 or higher
+  - Review and configure Bot Fight Mode and Security Level as needed
+
+### Verification Steps
+- [ ] **Post-Setup Verification**
+  - Verify SSL certificate is issued by Let's Encrypt (check browser)
+  - Test all cache bypass rules work correctly
+  - Check that API endpoints return proper responses
+  - Verify analytics and tracking scripts load properly
+  - Monitor Cloudflare analytics for traffic patterns
+  - Test site functionality with Cloudflare's development mode off
+
+### Monitoring and Maintenance
+- [ ] **Ongoing Monitoring**
+  - Set up Cloudflare analytics monitoring
+  - Monitor Let's Encrypt certificate renewals
+  - Review cache hit ratios and adjust rules if needed
+  - Monitor origin server performance through Cloudflare dashboard
+
 ## Additional Documentation
 
 - [RUST_DEPLOYMENT.md](./RUST_DEPLOYMENT.md) - Rust binary deployment guide

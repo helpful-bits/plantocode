@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getClientIpFromHeaders } from '@/lib/request';
 
 interface TrackingEvent {
   event: string;
@@ -13,8 +14,7 @@ export async function POST(req: NextRequest) {
   try {
     // Extract headers for proper analytics attribution
     const userAgent = req.headers.get('user-agent') || '';
-    const xForwardedFor = req.headers.get('x-forwarded-for') || '';
-    const clientIp = xForwardedFor ? xForwardedFor.split(',')[0]?.trim() || '' : '';
+    const clientIp = getClientIpFromHeaders(req.headers);
     const referer = req.headers.get('referer') || '';
     
     // Parse request body
@@ -55,15 +55,15 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Build headers
+    // Build headers - preserve User-Agent and client IP for accurate attribution
     const plausibleHeaders: Record<string, string> = {
-      'User-Agent': userAgent || 'unknown',
+      'User-Agent': userAgent,
       'Content-Type': 'application/json',
     };
     if (clientIp) {
       plausibleHeaders['X-Forwarded-For'] = clientIp;
     }
-    if (process.env.NEXT_PUBLIC_PLAUSIBLE_DEBUG === 'true') {
+    if (process.env.PLAUSIBLE_DEBUG === 'true') {
       plausibleHeaders['X-Debug-Request'] = 'true';
     }
 

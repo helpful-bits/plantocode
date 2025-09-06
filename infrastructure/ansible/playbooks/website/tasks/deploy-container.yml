@@ -1,0 +1,62 @@
+---
+# Deploy Docker container with zero-downtime strategy
+
+- name: Build new image
+  docker_image:
+    name: "{{ container_name }}:new"
+    source: build
+    build:
+      path: "{{ deployment_dir }}"
+    force_source: yes
+    
+- name: Start new container on staging port
+  docker_container:
+    name: "{{ container_name }}-staging"
+    image: "{{ container_name }}:new"
+    state: started
+    restart_policy: unless-stopped
+    ports:
+      - "127.0.0.1:3009:3000"
+    env_file: "{{ deployment_dir }}/.env.production"
+    env:
+      NODE_ENV: production
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
+      
+- name: Health check staging container
+  uri:
+    url: "http://127.0.0.1:3009/api/health"
+    status_code: [200, 404]
+  retries: 5
+  delay: 2
+  
+- name: Stop old container
+  docker_container:
+    name: "{{ container_name }}"
+    state: absent
+  ignore_errors: yes
+  
+- name: Deploy production container
+  docker_container:
+    name: "{{ container_name }}"
+    image: "{{ container_name }}:new"
+    state: started
+    restart_policy: unless-stopped
+    ports:
+      - "127.0.0.1:{{ container_port }}:3000"
+    env_file: "{{ deployment_dir }}/.env.production"
+    env:
+      NODE_ENV: production
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
+      
+- name: Remove staging container
+  docker_container:
+    name: "{{ container_name }}-staging"
+    state: absent
+    
+- name: Tag image as latest
+  shell: |
+    docker tag {{ container_name }}:new {{ container_name }}:latest
+    docker rmi {{ container_name }}:new || true
+  ignore_errors: yes
