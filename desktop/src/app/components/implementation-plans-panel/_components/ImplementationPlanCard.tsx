@@ -232,19 +232,21 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
 
             {/* Copy buttons */}
             {copyButtons.length > 0 && !isStreaming && hasContent && (
-              copyButtons.map((button) => (
-                <Button
-                  key={button.id}
-                  variant="outline"
-                  size="sm"
-                  className="text-xs h-7 px-2 py-1"
-                  onClick={() => onCopyButtonClick?.(button, plan)}
-                  title={`Copy: ${button.label}`}
-                >
-                  <Copy className="mr-1 h-3 w-3" />
-                  {button.label}
-                </Button>
-              ))
+              <>
+                {copyButtons.map((button) => (
+                  <Button
+                    key={button.id}
+                    variant="outline"
+                    size="sm"
+                    className="text-xs h-7 px-2 py-1"
+                    onClick={() => onCopyButtonClick?.(button, plan)}
+                    title={`Copy: ${button.label}`}
+                  >
+                    <Copy className="mr-1 h-3 w-3" />
+                    {button.label}
+                  </Button>
+                ))}
+              </>
             )}
           </div>
 

@@ -46,7 +46,33 @@ export function useMediaDeviceSettings() {
           const audioInputs = devices.filter(
             (device) => device.kind === "audioinput"
           );
-          setAvailableAudioInputs(audioInputs);
+          
+          // Deduplicate devices that have the same label
+          const uniqueDevices = audioInputs.reduce((acc, device) => {
+            // Skip "Default" prefixed duplicates if we already have the base device
+            if (device.label && device.label.startsWith("Default - ")) {
+              const baseLabel = device.label.replace("Default - ", "");
+              const hasBaseDevice = audioInputs.some(d => d.label === baseLabel);
+              if (hasBaseDevice) {
+                return acc;
+              }
+            }
+            
+            // Skip "Communications" prefixed duplicates
+            if (device.label && device.label.startsWith("Communications - ")) {
+              return acc;
+            }
+            
+            // Add device if not already present (by label)
+            const isDuplicate = acc.some(d => d.label === device.label && d.label !== "");
+            if (!isDuplicate) {
+              acc.push(device);
+            }
+            
+            return acc;
+          }, [] as MediaDeviceInfo[]);
+          
+          setAvailableAudioInputs(uniqueDevices);
         } catch (error) {
           console.error("[AudioDevices] Error enumerating media devices:", error);
         }
@@ -90,10 +116,34 @@ export function useMediaDeviceSettings() {
         const audioInputs = devices.filter(
           (device) => device.kind === "audioinput"
         );
-
+        
+        // Deduplicate devices that have the same label
+        const uniqueDevices = audioInputs.reduce((acc, device) => {
+          // Skip "Default" prefixed duplicates if we already have the base device
+          if (device.label && device.label.startsWith("Default - ")) {
+            const baseLabel = device.label.replace("Default - ", "");
+            const hasBaseDevice = audioInputs.some(d => d.label === baseLabel);
+            if (hasBaseDevice) {
+              return acc;
+            }
+          }
+          
+          // Skip "Communications" prefixed duplicates
+          if (device.label && device.label.startsWith("Communications - ")) {
+            return acc;
+          }
+          
+          // Add device if not already present (by label)
+          const isDuplicate = acc.some(d => d.label === device.label && d.label !== "");
+          if (!isDuplicate) {
+            acc.push(device);
+          }
+          
+          return acc;
+        }, [] as MediaDeviceInfo[]);
 
         // Check if the selected device is still available
-        const isSelectedDeviceAvailable = audioInputs.some(
+        const isSelectedDeviceAvailable = uniqueDevices.some(
           (device) => device.deviceId === selectedAudioInputId
         );
 
@@ -110,8 +160,8 @@ export function useMediaDeviceSettings() {
           }
         }
 
-        setAvailableAudioInputs(audioInputs);
-        return audioInputs;
+        setAvailableAudioInputs(uniqueDevices);
+        return uniqueDevices;
       } catch (error) {
         console.error(
           "[AudioDevices] Error re-enumerating devices after permission:",
