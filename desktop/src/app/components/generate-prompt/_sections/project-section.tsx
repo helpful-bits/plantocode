@@ -3,6 +3,7 @@
 import React, { useCallback } from "react";
 import ProjectDirectorySelector from "../_components/project-directory-selector";
 import SessionManager from "../_components/session-manager";
+import { ExternalFoldersSettings } from "../_components/external-folders-settings";
 import { useCorePromptContext } from "../_contexts/core-prompt-context";
 import { useTaskContext } from "../_contexts/task-context";
 import { useSessionActionsContext, useSessionStateContext } from "@/contexts/session";
@@ -58,6 +59,10 @@ const ProjectSection = React.memo(function ProjectSection({}: ProjectSectionProp
   return (
     <>
       <ProjectDirectorySelector disabled={lifecycleStatus !== 'READY' && lifecycleStatus !== 'IDLE'} />
+      
+      <div className="mt-3">
+        <ExternalFoldersSettings />
+      </div>
 
       <div className="mt-6">
         <SessionManager
