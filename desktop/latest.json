@@ -1,11 +1,11 @@
 {
-  "version": "1.0.17",
-  "notes": "Version 1.0.17 Release\n\n- Interactive demo features\n- Performance improvements and bug fixes\n- Enhanced stability and reliability\n- Improved user experience",
-  "pub_date": "2025-08-21T21:30:00Z",
+  "version": "1.0.19",
+  "notes": "Version 1.0.19 Release\n\n- Performance improvements and bug fixes\n- Enhanced stability and reliability\n- Improved user experience",
+  "pub_date": "2025-09-08T20:55:00Z",
   "platforms": {
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUXZZN0JwS05DN3Y5N2t0OGU0RDlsOVdySEhnanc1bUdZYXVab1d6b0t5R3gxUW5Vcys4OXRDa1RGWlAxNUNYSCtuRW01WEsxbVg1TE1kbFFWMnJGeUZ6Sit0U2ZBZXcwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzU1ODExMTA4CWZpbGU6VmliZSBNYW5hZ2VyXzEuMC4xN19hYXJjaDY0LmFwcC50YXIuZ3oKak5ESW9QYmlxemtJa09QZnZhMG5SVnRRamJqTk1FaDlNM1RaQWZvMnFKV1JqaWFCZzcyN3dnbjNQVTJtaE5FZFBtUmxZRkxTVnN4cC9MeTZtTkdlQ3c9PQo=",
-      "url": "https://d2tyb0wucqqf48.cloudfront.net/desktop/mac/Vibe%20Manager_1.0.17_aarch64.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUXZZN0JwS05DN21lNnF5KzdXU3MwMzY2YnJyM1Y5U1lFdnNIRWFHN056S2FnV3BuM3dhZDB6SkRWTXVrcXlUeWxONnZrc2g4bUlIc0w0c2dQVG1kVUhQMFl3U3lyUmdvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzU3MzY0ODM3CWZpbGU6VmliZSBNYW5hZ2VyXzEuMC4xOV9hYXJjaDY0LmFwcC50YXIuZ3oKL0xoZ0pLS3MrZytDYUh0alJSL0U5NTBxdWJQQUppMHRDNmFMUXVwNlZvd2RuL1VWaGxwN1B5bVFMYWtaU0dFQ2NGY2doZStySEo3dTdJSWVPQVZUREE9PQo=",
+      "url": "https://d2tyb0wucqqf48.cloudfront.net/desktop/mac/Vibe%20Manager_1.0.19_aarch64.app.tar.gz"
     }
   }
 }

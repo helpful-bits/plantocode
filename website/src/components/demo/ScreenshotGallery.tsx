@@ -77,7 +77,7 @@ const screenshots: ScreenshotCard[] = [
   {
     id: 'implementation-plans',
     title: 'Every Model. One Click.',
-    description: 'Generate multiple plans with one click. Review and edit each approach. Don\'t like something? Add merge instructions to refine it. Combine the best ideas into one blueprint for Claude Code or Cursor.',
+    description: 'Generate multiple plans with one click. Review and edit each approach. Don\'t like something? Add merge instructions to refine it. Combine the best ideas into one blueprint for Claude Code, Cursor, or OpenAI Codex.',
     image: cdnUrl('/assets/images/demo-implementation-plans.jpg'),
     icon: <FileText className="w-5 h-5" />,
     aspectRatio: '1714/1574',
@@ -85,7 +85,7 @@ const screenshots: ScreenshotCard[] = [
       'Click multiple times for more plans',
       'Review and edit each approach',
       'Merge the best ideas together',
-      'Export to Claude Code or Cursor'
+      'Export to Claude Code, Cursor, or OpenAI Codex'
     ]
   },
   {
@@ -171,7 +171,7 @@ export function ScreenshotGallery() {
 
   return (
     <>
-      <div className="py-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+      <div className="py-8 max-w-7xl mx-auto">
         {/* Structured Single-Column Layout */}
         <div className="space-y-20">
           {screenshots.map((screenshot, index) => (
@@ -237,7 +237,11 @@ export function ScreenshotGallery() {
                           src={screenshot.image}
                           alt={screenshot.title}
                           fill
-                          className="object-contain"
+                          className={`object-contain ${
+                            screenshot.id === 'copy-buttons' ? 'mobile-zoom-pan-zigzag' :
+                            (screenshot.id === 'settings-prompts' || screenshot.id === 'implementation-plans') ? 'mobile-zoom-pan-horizontal' : 
+                            (screenshot.id === 'file-finder' || screenshot.id === 'video-analysis' || screenshot.id === 'billing-transactions') ? 'mobile-zoom-pan' : ''
+                          }`}
                           sizes="(max-width: 768px) 100vw, 60vw"
                           quality={90}
                           priority={index < 2}

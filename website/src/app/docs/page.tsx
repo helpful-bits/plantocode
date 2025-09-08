@@ -12,6 +12,17 @@ export const metadata: Metadata = {
 
 const docArticles = [
   {
+    slug: 'openai-codex-cli',
+    title: 'OpenAI Codex CLI + Vibe Manager Integration',
+    excerpt: 'Complete guide to using OpenAI Codex CLI with Vibe Manager for enhanced AI-powered development. Multi-model planning meets o3-powered execution.',
+    date: '2025-09-08',
+    readTime: '12 min',
+    category: 'Integration Guide',
+    icon: <FileCode className="w-5 h-5" />,
+    featured: true,
+    keywords: ['openai codex cli', 'codex terminal', 'o3 model', 'agentic tools'],
+  },
+  {
     slug: 'vibe-manager-architecture',
     title: 'How Vibe Manager Enhances Claude Code & Cursor',
     excerpt: 'Desktop companion app that prepares context, plans implementations, and researches solutions to enhance your Claude Code and Cursor workflows.',
@@ -41,7 +52,7 @@ const docArticles = [
     readTime: '8 min',
     category: 'Workflow Enhancement',
     icon: <Zap className="w-5 h-5" />,
-    featured: true,
+    featured: false,
     keywords: ['claude code companion', 'cursor workflow', 'ai tool enhancement', 'context preparation'],
   },
   {

@@ -24,7 +24,7 @@ export function Features({ features = defaultFeatures }: FeaturesProps) {
           <Reveal as="h2" className="text-3xl sm:text-4xl lg:text-5xl mb-4 text-primary-emphasis font-bold text-shadow-subtle" delay={0}>
             Key Features
           </Reveal>
-          <Reveal as="p" className="text-lg sm:text-xl max-w-2xl mx-auto leading-relaxed font-medium text-description-muted" delay={0.05}>
+          <Reveal as="p" className="text-lg sm:text-xl max-w-2xl mx-auto leading-relaxed font-medium text-foreground/85 dark:text-foreground/90" delay={0.05}>
             Powerful tools designed for large codebase development and AI-assisted workflow optimization
           </Reveal>
         </div>
@@ -38,8 +38,8 @@ export function Features({ features = defaultFeatures }: FeaturesProps) {
             >
               <GlassCard className="h-full">
                 <div className="content-spacing text-safe-padding">
-                  {/* Icon container */}
-                  <div className="mx-auto mb-4 w-16 h-16 rounded-2xl flex items-center justify-center bg-gradient-to-br from-primary/10 to-primary/20 ring-1 ring-primary/20">
+                  {/* Icon container - hidden on mobile */}
+                  <div className="hidden sm:flex mx-auto mb-4 w-16 h-16 rounded-2xl items-center justify-center bg-gradient-to-br from-primary/10 to-primary/20 ring-1 ring-primary/20">
                     <div className="text-primary/80">
                       {feature.icon}
                     </div>

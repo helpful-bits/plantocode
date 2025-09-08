@@ -73,7 +73,7 @@
     
     /* Muted variations - Teal-tinted, no grey */
     --color-muted: oklch(0.97 0.025 195);  /* Very light teal */
-    --color-muted-foreground: oklch(0.38 0 0);  /* WCAG AA compliant: 4.5:1 contrast ratio */
+    --color-muted-foreground: oklch(0.42 0 0);  /* Enhanced contrast for better readability */
     
     /* Accent: Enhanced with adaptive system */
     --color-accent: oklch(0.96 0.045 195);
@@ -195,7 +195,7 @@
     
     /* Muted variations - No grey, teal-tinted */
     --color-muted: oklch(0.20 0.035 206);
-    --color-muted-foreground: oklch(0.75 0 0);  /* WCAG AA compliant: 4.5:1 contrast ratio */
+    --color-muted-foreground: oklch(0.88 0 0);  /* High contrast for dim screens - WCAG AAA */
     
     /* Accent: Enhanced with adaptive system */
     --color-accent: oklch(0.28 0.032 195);
@@ -408,61 +408,51 @@
     background: conic-gradient(from 180deg at 50% 50%, var(--grad-start) 0deg, var(--grad-mid) 180deg, var(--grad-end) 360deg);
   }
   
-  /* Unified Glass System - Modern, consistent glass morphism */
+  /* Unified Glass System - Simplified for clarity and mobile */
   .glass {
-    /* Light mode - Optimized for performance while maintaining visual appeal */
-    background: oklch(0.995 0.008 195 / 0.7);
-    
-    /* Simplified blur for better performance */
+    /* Light mode - Clean and simple */
+    background: oklch(0.995 0.008 195 / 0.75);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
-    
-    /* Gradient-like glow effect similar to hero panels */
-    border: 1px solid oklch(0.68 0.085 195 / 0.4);
-    box-shadow: 
-      0 0 30px oklch(0.68 0.085 195 / 0.15),
-      0 0 60px oklch(0.68 0.085 195 / 0.08),
-      0 8px 32px oklch(0.48 0.15 195 / 0.06);
-    
-    position: relative;
-    overflow: hidden;
-    transition: border-color 0.3s ease, box-shadow 0.3s ease;
-    transform: translateZ(0); /* Force GPU acceleration */
-    backface-visibility: hidden; /* Prevent flickering */
+    border: 1px solid oklch(0.85 0.02 195 / 0.3);
+    box-shadow: 0 4px 12px oklch(0 0 0 / 0.08);
+    transition: all 0.3s ease;
   }
   
   
   .dark .glass {
-    background: oklch(0.20 0.022 206 / 0.8);
-    
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    
-    /* Gradient-like glow for dark mode */
-    border: 1px solid oklch(0.68 0.085 195 / 0.5);
+    /* Dark mode - Higher contrast for visibility */
+    background: oklch(0.18 0.02 206 / 0.85);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid oklch(0.7 0.05 195 / 0.4);
     box-shadow: 
-      0 0 40px oklch(0.68 0.085 195 / 0.25),
-      0 0 80px oklch(0.68 0.085 195 / 0.12),
-      0 16px 48px oklch(0.68 0.085 195 / 0.20);
-    transform: translateZ(0); /* Force GPU acceleration */
-    backface-visibility: hidden; /* Prevent flickering */
+      0 4px 12px oklch(0 0 0 / 0.3),
+      0 0 24px oklch(0.68 0.085 195 / 0.1);
   }
   
   .glass:hover {
-    /* Enhanced hover state with gradient glow */
-    border-color: oklch(0.68 0.085 195 / 0.6);
+    /* Simple hover - no lift for feature cards */
+    border-color: oklch(0.68 0.085 195 / 0.5);
     box-shadow: 
-      0 0 40px oklch(0.68 0.085 195 / 0.2),
-      0 0 80px oklch(0.68 0.085 195 / 0.1),
-      0 12px 40px oklch(0.48 0.15 195 / 0.12);
+      0 8px 20px oklch(0.68 0.085 195 / 0.12),
+      0 4px 8px oklch(0 0 0 / 0.1);
   }
   
   .dark .glass:hover {
-    border-color: oklch(0.68 0.085 195 / 0.7);
+    border-color: oklch(0.68 0.085 195 / 0.6);
     box-shadow: 
-      0 0 50px oklch(0.68 0.085 195 / 0.35),
-      0 0 100px oklch(0.68 0.085 195 / 0.15),
-      0 20px 56px oklch(0.68 0.085 195 / 0.25);
+      0 8px 20px oklch(0.68 0.085 195 / 0.2),
+      0 4px 8px oklch(0 0 0 / 0.4);
+  }
+  
+  /* Feature cards - no hover lift */
+  .feature-card .glass:hover {
+    transform: none;
+  }
+  
+  .dark .feature-card .glass:hover {
+    transform: none;
   }
   
   /* Glass highlighted - for important CTA sections */
@@ -1017,12 +1007,26 @@
   contain: layout style paint;
 }
 
-/* Mobile-optimized video card styles */
+/* Mobile-optimized styles */
 @media (max-width: 640px) {
+  /* Feature cards - ensure borders are visible on mobile */
+  .feature-card .glass {
+    border: 1px solid oklch(0.85 0.02 195 / 0.35) !important;
+    background: oklch(0.995 0.008 195 / 0.85);
+    box-shadow: 0 2px 8px oklch(0 0 0 / 0.1);
+  }
+  
+  .dark .feature-card .glass {
+    border: 1px solid oklch(0.7 0.05 195 / 0.5) !important;
+    background: oklch(0.15 0.02 206 / 0.9);
+    box-shadow: 0 2px 8px oklch(0 0 0 / 0.4);
+  }
+  
+  /* Video cards - different treatment */
   .how-it-works-step .glass,
   .how-it-works-step .glass-highlighted {
     border-radius: 1rem;
-    border: none !important; /* Remove borders on mobile */
+    border: none !important;
     box-shadow: 
       0 1px 3px 0 oklch(0 0 0 / 0.1),
       0 1px 2px -1px oklch(0 0 0 / 0.1);
@@ -1632,12 +1636,102 @@ a:not(.no-hover-effect):focus-visible {
   }
 }
 
+/* Mobile zoom pan effect for screenshots - smooth diagonal */
+@media (max-width: 768px) {
+  .mobile-zoom-pan {
+    animation: zoomPanDiagonal 10s cubic-bezier(0.4, 0.0, 0.2, 1) infinite;
+    transform-origin: center center;
+    transform: scale(2.2) translate(-35%, -35%); /* Start at absolute top-left edge */
+  }
+  
+  @keyframes zoomPanDiagonal {
+    0% {
+      transform: scale(2.2) translate(-35%, -35%); /* Absolute top-left edge */
+    }
+    50% {
+      transform: scale(2.4) translate(25%, 25%); /* Bottom-right edge with peak zoom */
+    }
+    100% {
+      transform: scale(2.2) translate(-35%, -35%); /* Back to absolute top-left edge */
+    }
+  }
+  
+  /* Special animation for settings-prompts section - circular edge pan */
+  .mobile-zoom-pan-horizontal {
+    animation: zoomPanCircular 12s ease-in-out infinite;
+    transform-origin: center center;
+    transform: scale(2.5) translate(-30%, -25%); /* Start at top-left */
+  }
+  
+  @keyframes zoomPanCircular {
+    0% {
+      transform: scale(2.5) translate(-30%, -25%); /* Top-left corner - more left */
+    }
+    25% {
+      transform: scale(2.5) translate(30%, -25%); /* Top-right corner - more right */
+    }
+    50% {
+      transform: scale(2.5) translate(30%, 25%); /* Bottom-right corner */
+    }
+    75% {
+      transform: scale(2.5) translate(-30%, 25%); /* Bottom-left corner - more left */
+    }
+    100% {
+      transform: scale(2.5) translate(-30%, -25%); /* Back to top-left corner */
+    }
+  }
+  
+  /* Special animation for copy-buttons section - zigzag motion */
+  .mobile-zoom-pan-zigzag {
+    animation: zoomPanZigzag 12s cubic-bezier(0.4, 0.0, 0.6, 1) infinite;
+    transform-origin: center center;
+    transform: scale(1.6) translate(-15%, -20%); /* Start at top-left with less zoom */
+  }
+  
+  @keyframes zoomPanZigzag {
+    0% {
+      transform: scale(1.6) translate(-15%, -20%); /* Top-left */
+    }
+    20% {
+      transform: scale(1.7) translate(15%, -10%); /* Top-right */
+    }
+    40% {
+      transform: scale(1.7) translate(-15%, 0%); /* Middle-left */
+    }
+    60% {
+      transform: scale(1.8) translate(15%, 10%); /* Middle-right */
+    }
+    80% {
+      transform: scale(1.8) translate(-15%, 20%); /* Bottom-left */
+    }
+    100% {
+      transform: scale(1.6) translate(-15%, -20%); /* Back to top-left */
+    }
+  }
+}
+
+/* Reduce motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .mobile-zoom-pan {
+    animation: none;
+  }
+}
+
 /* Performance optimizations for animations */
 /* Removed excessive will-change usage to prevent GPU memory issues */
 
 /* Note: will-change should only be applied when animation is actively happening,
    not permanently on hover states as it keeps elements on GPU layers unnecessarily.
    Framer Motion handles this optimization automatically. */
+
+/* Hide scrollbar utility */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari and Opera */
+}
 
 /* Replace width transitions with transform for GPU optimization */
 

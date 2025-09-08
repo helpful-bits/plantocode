@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "serve .",
     "build": "echo 'Building ad components...'",
-    "preview": "serve reddit-ad-2025-08-21"
+    "preview": "serve reddit-ad-2025-08-21",
+    "preview:reddit-desktop": "open reddit-ad-2025-08-21/index.html",
+    "preview:reddit-mobile": "open reddit-ad-2025-08-21/mobile.html",
+    "preview:reddit-all": "open reddit-ad-2025-08-21/index.html && open reddit-ad-2025-08-21/mobile.html"
   },
   "keywords": [
     "marketing",
