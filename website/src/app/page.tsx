@@ -51,8 +51,8 @@ const HowItWorks = dynamic(() => import('@/components/landing/HowItWorks').then(
 
 
 export const metadata: Metadata = {
-  title: 'Vibe Manager - Multi-Model Planning for Claude Code | Install Claude Code Companion',
-  description: 'Planning assistant for Claude Code. Install Claude Code and enhance it with multi-model planning. Works with claude code agents, claude code mcp, and claudecode CLI for superior AI coding.',
+  title: 'Vibe Manager - Multi-Model Planning for Claude Code, Cursor & AI Agents',
+  description: 'Planning assistant for Claude Code, Cursor, OpenAI Codex CLI and agentic coding tools. Enhanced multi-model planning from GPT-5, Claude 4, and Gemini 2.5 for superior AI-assisted development.',
   keywords: [
     'claude code install',
     'install claude code',
@@ -66,6 +66,12 @@ export const metadata: Metadata = {
     'claude code subagents',
     'claude code vs cursor',
     'cursor vs claude code',
+    'cursor ide',
+    'cursor ai',
+    'openai codex cli',
+    'openai codex',
+    'agentic coding',
+    'ai coding agents',
     'claude code github',
     'claude code vscode',
     'claude code hooks',
@@ -89,60 +95,76 @@ export const metadata: Metadata = {
 export default function Home() {
   const softwareApplicationJsonLd: SoftwareApplication = {
     '@type': 'SoftwareApplication',
-    name: 'Vibe Manager for Claude Code',
+    name: 'Vibe Manager',
     applicationCategory: 'DeveloperApplication',
     operatingSystem: 'macOS',
     url: 'https://vibemanager.app',
-    description: 'Multi-model planning assistant for Claude Code. Enhances Claude Code CLI, agents, and MCP with intelligent context curation. Install Claude Code then add Vibe Manager for superior AI coding.',
+    description: 'Multi-model planning assistant for Claude Code, Cursor, OpenAI Codex CLI and agentic coding tools. Enhances any AI coding agent with intelligent context curation and plans from GPT-5, Claude 4, and Gemini 2.5.',
     offers: {
       '@type': 'Offer',
       price: 0, // Numeric 0 for free apps, no priceCurrency needed per Google guidance
     },
     // @ts-ignore - isRelatedTo is a valid schema.org property but not in the TypeScript types
-    isRelatedTo: {
-      '@type': 'SoftwareApplication',
-      name: 'Claude Code',
-      applicationCategory: 'DeveloperApplication',
-      creator: {
-        '@type': 'Organization',
-        name: 'Anthropic'
+    isRelatedTo: [
+      {
+        '@type': 'SoftwareApplication',
+        name: 'Claude Code',
+        applicationCategory: 'DeveloperApplication',
+        creator: {
+          '@type': 'Organization',
+          name: 'Anthropic'
+        }
+      },
+      {
+        '@type': 'SoftwareApplication',
+        name: 'Cursor',
+        applicationCategory: 'DeveloperApplication'
+      },
+      {
+        '@type': 'SoftwareApplication',
+        name: 'OpenAI Codex',
+        applicationCategory: 'DeveloperApplication',
+        creator: {
+          '@type': 'Organization',
+          name: 'OpenAI'
+        }
       }
-    },
+    ],
     // Note: aggregateRating and review should be added when visible on the page
   };
 
   const faqItems = [
     {
-      question: 'What is Vibe Manager for Claude Code?',
-      answer: 'A planning assistant for Claude Code that enhances it with multi-model intelligence. It curates context and merges plans from GPT-5, Claude 4, and Gemini 2.5 before Claude Code agents execute.',
+      question: 'What is Vibe Manager for AI coding agents?',
+      answer: 'A planning assistant that enhances any agentic tool with multi-model intelligence. It curates context and merges plans from GPT-5, Claude 4, and Gemini 2.5 before your preferred coding agent executes - whether that\'s Claude Code, Cursor, OpenAI Codex CLI, or other agentic tools.',
     },
     {
-      question: 'How do I install Claude Code with Vibe Manager?',
-      answer: 'First install Claude Code via npm: "npm install -g @anthropic/claude-cli" or pip: "pip install claude-cli". Then download Vibe Manager to add multi-model planning capabilities to your Claude Code workflow.',
+      question: 'How do I use Vibe Manager with my coding assistant?',
+      answer: 'Install your preferred agentic tool, then download Vibe Manager to add multi-model planning capabilities. The generated plans can be copied directly into any agentic tool that accepts structured instructions.',
     },
     {
-      question: 'Does Vibe Manager replace Claude Code or Cursor?',
-      answer: 'No - Vibe Manager enhances Claude Code, not replaces it. It adds planning and context curation layers that make Claude Code agents more effective. Works alongside Claude Code CLI, Claude Code MCP, and Claude Code VSCode.',
+      question: 'Does Vibe Manager replace my existing AI coding tools?',
+      answer: 'No - Vibe Manager enhances whatever you\'re already using. It adds planning and context curation layers that make any agentic tool more effective. Works alongside all agentic tools.',
     },
     {
-      question: 'How does it work with Claude Code agents and subagents?',
-      answer: 'Vibe Manager plans tasks using multiple AI models, then Claude Code agents execute them. It ensures Claude Code subagents have the right context and files, improving success rates dramatically.',
+      question: 'How does it work with AI agents and their execution?',
+      answer: 'Vibe Manager plans tasks using multiple AI models, then your chosen agentic tool executes them. It ensures agents have the right context and files, improving success rates dramatically regardless of which tool you prefer.',
     },
     {
-      question: 'What about Claude Code vs Cursor comparison?',
-      answer: 'While Claude Code and Cursor debate continues, Vibe Manager works with both. It adds multi-model planning that neither Claude Code plan mode nor Cursor offers natively.',
+      question: 'Which coding tools does it support?',
+      answer: 'Works with any agentic tool that accepts structured plans - Claude Code, Cursor, OpenAI Codex CLI, and countless others. It adds multi-model planning that most tools don\'t offer natively, making all of them more powerful.',
     },
     {
       question: 'Which AI models does it use for planning?',
-      answer: 'Gemini 2.5, GPT-5/4.1, Claude 4, o3/o4, Grok 4, DeepSeek R1, Kimi K2 - all working together to create superior plans for Claude Code execution.',
+      answer: 'Gemini 2.5, GPT-5, Claude 4, o3/o4, Grok 4, DeepSeek R1, Kimi K2 - all working together to create superior plans for any agentic tool to execute.',
     },
     {
-      question: 'Does it support Claude Code GitHub and Claude Code hooks?',
-      answer: 'Yes! Works seamlessly with Claude Code GitHub integration and respects Claude Code hooks. Adds its own customization layer for even more control.',
+      question: 'Does it support tool-specific features and integrations?',
+      answer: 'Yes! Works seamlessly with the unique features of any agentic tool - GitHub integrations, IDE features, CLI commands, and more. Adds its own customization layer for even greater control regardless of your chosen agentic environment.',
     },
     {
-      question: 'Platforms and Claude Code Windows support?',
-      answer: 'macOS now with Windows coming soon. Currently enhances Claude Code on Mac while Claude Code Windows users await our Windows release.',
+      question: 'Platform support for different coding tools?',
+      answer: 'macOS now with Windows coming soon. Currently enhances any agentic tool on Mac. Windows users of all agentic tools await our Windows release.',
     },
   ];
 
@@ -229,7 +251,7 @@ export default function Home() {
     },
     {
       title: 'The Council of LLMs',
-      description: 'Generate plans from Gemini 2.5, GPT-5, Claude 4, GPT-4.1, o3/o4, Grok 4, DeepSeek R1, and Kimi K2 - even multiple runs of the same model. The list evolves quickly as more capable models appear. The merge AI synthesizes their unique insights into one superior strategy.',
+      description: 'Generate plans from Gemini 2.5, GPT-5, Claude 4, o3/o4, Grok 4, DeepSeek R1, and Kimi K2 - even multiple runs of the same model. The list evolves quickly as more capable models appear. The merge AI synthesizes their unique insights into one superior strategy.',
       icon: <BrainCircuit className="w-8 h-8" />,
     },
     {

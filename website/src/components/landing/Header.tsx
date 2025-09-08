@@ -136,7 +136,7 @@ export function Header() {
                 <div className="relative flex items-center gap-1 lg:gap-2">
                   <span className="text-base lg:text-xl drop-shadow-md" role="img" aria-label="gift">🎁</span>
                   <span className="text-white text-xs lg:text-sm font-black tracking-wide lg:tracking-wider uppercase drop-shadow-md whitespace-nowrap">
-                    First 100: $10 FREE
+                    $10 FREE
                   </span>
                 </div>
                 
@@ -159,7 +159,7 @@ export function Header() {
                       'relative px-3 lg:px-4 py-2 rounded-xl font-medium text-sm lg:text-base',
                       'group nav-link-hover cursor-pointer clickable-text-underline',
                       scrolled
-                        ? 'text-muted-foreground hover:text-foreground'
+                        ? 'text-foreground/75 dark:text-foreground/85 hover:text-foreground font-medium'
                         : 'text-foreground/90 hover:text-foreground drop-shadow-md',
                     )}
                     href={link.href}
@@ -213,8 +213,8 @@ export function Header() {
                     </Button>
                   </motion.div>
                   <div className="flex flex-col items-center gap-0.5 mt-0.5">
-                    <em className="text-[10px] text-muted-foreground">Signed & notarized for macOS</em>
-                    <a href="mailto:support@vibemanager.app?subject=Windows%20Waitlist" className="text-[10px] text-muted-foreground hover:text-primary">Join Windows waitlist</a>
+                    <em className="text-[10px] text-foreground/70 dark:text-foreground/85 font-medium">Signed & notarized for macOS</em>
+                    <a href="mailto:support@vibemanager.app?subject=Windows%20Waitlist" className="text-[10px] text-foreground/70 dark:text-foreground/85 hover:text-primary font-medium">Join Windows waitlist</a>
                   </div>
                 </div>
               </motion.div>
@@ -239,7 +239,7 @@ export function Header() {
                 <div className="relative flex items-center gap-1.5">
                   <span className="text-lg drop-shadow" role="img" aria-label="gift">🎁</span>
                   <span className="text-white text-[11px] font-black tracking-wide uppercase">
-                    First 100: $10 FREE
+                    $10 FREE
                   </span>
                 </div>
               </motion.div>
@@ -438,8 +438,8 @@ export function Header() {
                     </span>
                   </Button>
                   <div className="flex flex-col items-center gap-0.5 mt-2">
-                    <em className="text-xs text-muted-foreground">Signed & notarized for macOS</em>
-                    <a href="mailto:support@vibemanager.app?subject=Windows%20Waitlist" className="text-xs text-muted-foreground hover:text-primary">Join Windows waitlist</a>
+                    <em className="text-xs text-foreground/70 dark:text-foreground/85 font-medium">Signed & notarized for macOS</em>
+                    <a href="mailto:support@vibemanager.app?subject=Windows%20Waitlist" className="text-xs text-foreground/70 dark:text-foreground/85 hover:text-primary font-medium">Join Windows waitlist</a>
                   </div>
                 </motion.div>
               </motion.div>

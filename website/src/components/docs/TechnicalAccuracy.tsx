@@ -3,7 +3,7 @@ import React from 'react';
 export default function TechnicalAccuracy() {
   return (
     <section aria-labelledby="technical-accuracy-title" className="mt-12 border rounded-lg p-5 bg-muted/30">
-      <h2 id="technical-accuracy-title" className="text-xl font-semibold">Technical Accuracy &amp; Capabilities</h2>
+      <h2 id="technical-accuracy-title" className="text-xl font-semibold">Technical Details</h2>
       <p className="text-sm text-muted-foreground mt-1">
         This section provides accurate technical information about what Vibe Manager actually does.
       </p>
