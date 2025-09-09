@@ -6,9 +6,11 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
-  title: 'Local Storage, Direct to AI | Vibe Manager',
-  description: 'Local SQLite storage. When you create plans, code goes to AI providers. You control what and when.',
+  title: 'Local-First Privacy - Your Code Stays Local | Vibe Manager',
+  description: 'Vibe Manager stores everything locally in SQLite. Your code only goes to AI providers when generating plans. Full control over your data. Works with Claude Code, Cursor.',
   keywords: [
+    'vibe code cleanup specialist',
+    'vibe manager',
     'local-first',
     'privacy',
     'local storage',

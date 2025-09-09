@@ -3,14 +3,14 @@ import GlassCard from '@/components/ui/GlassCard';
 import { Mail, MessageSquare } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'Contact',
-  description: 'Contact Vibe Manager for business, press, and partnership inquiries.',
+  title: 'Contact Vibe Manager - Business & Partnership Inquiries',
+  description: 'Contact Vibe Manager team for business inquiries, partnerships, or enterprise support. Multi-model AI planning tool for Claude Code, Cursor, and OpenAI Codex.',
   robots: {
     index: true,
     follow: true,
   },
   alternates: {
-    canonical: '/contact',
+    canonical: 'https://www.vibemanager.app/contact',
   },
 };
 

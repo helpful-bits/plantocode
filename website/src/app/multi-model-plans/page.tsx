@@ -4,11 +4,14 @@ import { BrainCircuit } from 'lucide-react';
 import Reveal from '@/components/motion/Reveal';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { StructuredData } from '@/components/seo/StructuredData';
+import type { BreadcrumbList } from 'schema-dts';
 
 export const metadata: Metadata = {
-  title: 'Merge plans from multiple LLMs | Vibe Manager',
-  description: 'Compare, de-duplicate, and synthesize into one executable plan.',
+  title: 'Multi-Model AI Planning - Merge GPT-5, Claude 4 & Gemini Plans',
+  description: 'Revolutionary multi-model planning: Generate implementation plans from GPT-5, Claude 4, Gemini 2.5, then merge into one superior strategy. Works with Claude Code, Cursor. See how it works →',
   keywords: [
+    'vibe code cleanup specialist',
     'multi-model planning',
     'LLM orchestration',
     'plan merging',
@@ -16,12 +19,34 @@ export const metadata: Metadata = {
     'council of LLMs',
     'implementation plans',
     'AI coding assistant',
+    'gpt-5 planning',
+    'claude 4 planning',
+    'gemini 2.5 planning',
   ],
 };
 
 export default function MultiModelPlansPage() {
+  const breadcrumbJsonLd: BreadcrumbList = {
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      {
+        '@type': 'ListItem',
+        position: 1,
+        name: 'Home',
+        item: 'https://www.vibemanager.app'
+      },
+      {
+        '@type': 'ListItem',
+        position: 2,
+        name: 'Multi-Model Plans',
+        item: 'https://www.vibemanager.app/multi-model-plans'
+      }
+    ]
+  };
+
   return (
     <>
+      <StructuredData data={breadcrumbJsonLd} />
       <div className="fixed inset-0 -z-20" style={{ background: 'var(--background-gradient)' }} />
       <div className="relative z-0 bg-transparent">
         <Header />

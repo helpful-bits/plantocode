@@ -13,11 +13,11 @@ import { cdnUrl } from '@/lib/cdn';
 export const metadata: Metadata = {
   metadataBase: new URL('https://www.vibemanager.app'),
   title: {
-    template: '%s | Vibe Manager for Claude Code',
-    default: 'Vibe Manager - Planning Assistant for Claude Code',
+    template: '%s | Vibe Manager',
+    default: 'Vibe Manager - Multi-Model AI Planning Tool for Coding',
   },
-  description: 'Planning assistant for Claude Code. Install Claude Code and enhance it with multi-model planning. Works with claude code agents, claude code mcp, claudecode CLI for superior AI coding.',
-  keywords: ['claude code install', 'install claude code', 'claudecode', 'claude code planning', 'claude code agents', 'claude code mcp', 'claude code cli', 'claude code vs cursor', 'claude code github', 'claude code vscode', 'claude code windows', 'claude code router', 'claude code subagents', 'claude code sdk', 'claude code hooks', 'claude code docs', 'AI coding assistant', 'multi-model planning', 'implementation plan', 'file discovery'],
+  description: 'Vibe Manager enhances AI coding with multi-model planning. Works with Claude Code, Cursor, OpenAI Codex. Generate better implementation plans from GPT-5, Claude 4, Gemini 2.5. Free Mac app.',
+  keywords: ['vibe manager', 'vibe code cleanup specialist', 'claude code install', 'install claude code', 'claudecode', 'claude code planning', 'claude code agents', 'claude code mcp', 'claude code cli', 'claude code vs cursor', 'claude code github', 'claude code vscode', 'claude code windows', 'claude code router', 'claude code subagents', 'claude code sdk', 'claude code hooks', 'claude code docs', 'AI coding assistant', 'multi-model planning', 'implementation plan', 'file discovery'],
   authors: [{ name: 'Vibe Manager Team' }],
   creator: 'Vibe Manager',
   publisher: 'Vibe Manager',
@@ -32,10 +32,10 @@ export const metadata: Metadata = {
     canonical: 'https://www.vibemanager.app/',
   },
   openGraph: {
-    title: 'Vibe Manager - Planning Assistant for Claude Code | Install Claude Code Companion',
-    description: 'Planning assistant for Claude Code. Install Claude Code and enhance it with multi-model planning. Works with claude code agents, claude code mcp, and claudecode CLI for superior AI coding.',
+    title: 'Vibe Manager - Multi-Model AI Planning Tool for Coding',
+    description: 'Vibe Manager enhances AI coding with multi-model planning. Works with Claude Code, Cursor, OpenAI Codex. Generate better implementation plans from GPT-5, Claude 4, Gemini 2.5.',
     url: 'https://www.vibemanager.app/',
-    siteName: 'Vibe Manager for Claude Code',
+    siteName: 'Vibe Manager',
     images: [{
       url: cdnUrl('/images/og-image.png'),
       width: 1200,
@@ -48,8 +48,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Vibe Manager - Planning Assistant for Claude Code',
-    description: 'Install Claude Code and enhance it with Vibe Manager. Multi-model planning for claude code agents, claude code mcp, and claudecode CLI.',
+    title: 'Vibe Manager - Multi-Model AI Planning Tool',
+    description: 'Multi-model planning for Claude Code, Cursor & OpenAI Codex. Generate better plans from GPT-5, Claude 4, Gemini 2.5. Free Mac app.',
     images: [{
       url: cdnUrl('/images/og-image.png'),
       alt: 'Vibe Manager - Multi-Model Planning for Claude Code',
@@ -126,9 +126,10 @@ export const viewport: Viewport = {
 
 const websiteJsonLd: WebSite = {
   '@type': 'WebSite',
-  name: 'Vibe Manager for Claude Code',
+  name: 'Vibe Manager',
+  alternateName: 'VibeManager',
   url: 'https://www.vibemanager.app',
-  description: 'Planning assistant for Claude Code. Install Claude Code and enhance it with multi-model planning. Works with claude code agents, claude code mcp, and claudecode CLI for superior AI coding.',
+  description: 'Multi-model AI planning tool for coding. Works with Claude Code, Cursor, and OpenAI Codex. Generate better implementation plans from multiple AI models.',
   potentialAction: {
     '@type': 'SearchAction',
     target: 'https://www.vibemanager.app/search?q={search_term_string}',
@@ -151,7 +152,7 @@ const organizationJsonLd: Organization = {
     'https://twitter.com/vibemanagerapp',
     'https://github.com/vibemanager'
   ],
-  description: 'Vibe Manager - Multi-model planning assistant for Claude Code. Enhances claudecode installations with intelligent context curation.'
+  description: 'Vibe Manager - Multi-model AI planning tool. Enhances Claude Code, Cursor, and OpenAI Codex with intelligent context curation and plan generation from multiple AI models.'
 };
 
 export default function RootLayout({

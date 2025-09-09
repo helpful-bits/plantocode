@@ -12,6 +12,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 1,
     },
     {
+      url: `${baseUrl}/vibe-code-cleanup-specialist`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.95,
+    },
+    {
       url: `${baseUrl}/docs`,
       lastModified: now,
       changeFrequency: 'weekly',
@@ -42,10 +48,22 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.91,
     },
     {
+      url: `${baseUrl}/docs/openai-codex-cli`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.9,
+    },
+    {
       url: `${baseUrl}/download`,
       lastModified: now,
       changeFrequency: 'weekly',
       priority: 0.9,
+    },
+    {
+      url: `${baseUrl}/demo`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.85,
     },
     {
       url: `${baseUrl}/file-finder`,

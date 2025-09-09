@@ -96,19 +96,19 @@ section .max-w-5xl {
     @keyframes pulse-glow {
         0% {
             box-shadow:
-                    0 0 30px color-mix(in oklch, var(--color-primary) 25%, transparent),
-                    0 0 50px color-mix(in oklch, var(--color-primary) 15%, transparent),
-                    0 20px 40px -5px rgba(0, 0, 0, 0.15),
-                    0 8px 16px -8px rgba(0, 0, 0, 0.2);
-            border-color: var(--color-primary);
+                    0 0 20px color-mix(in oklch, var(--color-primary) 15%, transparent),
+                    0 0 35px color-mix(in oklch, var(--color-primary) 10%, transparent),
+                    0 20px 30px -10px rgba(0, 0, 0, 0.08),
+                    0 8px 12px -8px rgba(0, 0, 0, 0.1);
+            border-color: color-mix(in oklch, var(--color-primary) 80%, transparent);
         }
         100% {
             box-shadow:
-                    0 0 40px color-mix(in oklch, var(--color-primary) 30%, transparent),
-                    0 0 65px color-mix(in oklch, var(--color-primary) 20%, transparent),
-                    0 20px 40px -5px rgba(0, 0, 0, 0.18),
-                    0 8px 16px -8px rgba(0, 0, 0, 0.25);
-            border-color: color-mix(in oklch, var(--color-primary) 90%, transparent);
+                    0 0 25px color-mix(in oklch, var(--color-primary) 20%, transparent),
+                    0 0 40px color-mix(in oklch, var(--color-primary) 12%, transparent),
+                    0 20px 30px -10px rgba(0, 0, 0, 0.1),
+                    0 8px 12px -8px rgba(0, 0, 0, 0.12);
+            border-color: color-mix(in oklch, var(--color-primary) 85%, transparent);
         }
     }
 
@@ -217,7 +217,7 @@ section .max-w-5xl {
     flex: 1;
     border-radius: 12px;
     border: 1px solid color-mix(in oklch, var(--color-border) 60%, transparent);
-    background: color-mix(in oklch, var(--color-background) 50%, var(--color-card) 50%);
+    background: color-mix(in oklch, var(--color-card) 92%, oklch(0.95 0.02 195) 8%);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     padding: clamp(1rem, 2.5vw, 1.5rem);
@@ -231,7 +231,7 @@ section .max-w-5xl {
 }
 
 .vibe-intent-box__item {
-    font-size: clamp(1.125rem, 2.8vw, 1.875rem);
+    font-size: clamp(0.875rem, 1.5vw, 1.125rem);
     font-weight: 500;
     color: var(--color-foreground);
     opacity: 0.95;
@@ -244,7 +244,7 @@ section .max-w-5xl {
     flex: 1;
     border-radius: 12px;
     border: 1px solid color-mix(in oklch, var(--color-primary) 40%, transparent);
-    background: color-mix(in oklch, var(--color-primary) 12%, var(--color-background) 88%);
+    background: color-mix(in oklch, oklch(0.95 0.03 195) 100%, transparent);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     padding: clamp(0.75rem, 2vw, 1rem);
@@ -268,7 +268,7 @@ section .max-w-5xl {
 }
 
 .vibe-model-card {
-    background: color-mix(in oklch, var(--color-card) 80%, var(--color-muted) 20%);
+    background: color-mix(in oklch, var(--color-card) 95%, oklch(0.98 0.01 195) 5%);
     border-radius: 6px;
     border: 1px solid var(--color-border);
     padding: clamp(4px, 1vw, 6px) clamp(6px, 1.5vw, 10px);
@@ -331,7 +331,7 @@ section .max-w-5xl {
     flex: 1;
     border-radius: 12px;
     border: 1px solid color-mix(in oklch, var(--color-border) 60%, transparent);
-    background: color-mix(in oklch, var(--color-background) 50%, var(--color-card) 50%);
+    background: color-mix(in oklch, var(--color-card) 90%, var(--color-muted) 10%);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     padding: clamp(0.75rem, 2vw, 1rem);

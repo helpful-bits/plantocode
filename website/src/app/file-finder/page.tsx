@@ -8,9 +8,10 @@ import { StructuredData } from '@/components/seo/StructuredData';
 import type { BreadcrumbList } from 'schema-dts';
 
 export const metadata: Metadata = {
-  title: 'Find the exact files to change | Vibe Manager',
-  description: 'Decompose tasks, search smart patterns, and rank files by actual content.',
+  title: 'Smart File Discovery - Find Relevant Code Files | Vibe Manager',
+  description: 'Intelligent file discovery for AI coding. Vibe Manager decomposes tasks, creates search patterns, and ranks files by relevance. Works with Claude Code, Cursor, OpenAI Codex.',
   keywords: [
+    'vibe code cleanup specialist',
     'file finder',
     'code search',
     'relevant files',
