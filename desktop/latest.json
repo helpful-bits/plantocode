@@ -1,11 +1,11 @@
 {
   "version": "1.0.19",
-  "notes": "Version 1.0.19 Release\n\n- Performance improvements and bug fixes\n- Enhanced stability and reliability\n- Improved user experience",
-  "pub_date": "2025-09-08T20:55:00Z",
+  "notes": "Version 1.0.19 Release\n\n- Auto-updater now checks for updates on login screen\n- Simplified onboarding flow (removed Keychain steps)\n- Performance improvements and bug fixes\n- Enhanced stability and reliability",
+  "pub_date": "2025-09-08T21:16:00Z",
   "platforms": {
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUXZZN0JwS05DN21lNnF5KzdXU3MwMzY2YnJyM1Y5U1lFdnNIRWFHN056S2FnV3BuM3dhZDB6SkRWTXVrcXlUeWxONnZrc2g4bUlIc0w0c2dQVG1kVUhQMFl3U3lyUmdvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzU3MzY0ODM3CWZpbGU6VmliZSBNYW5hZ2VyXzEuMC4xOV9hYXJjaDY0LmFwcC50YXIuZ3oKL0xoZ0pLS3MrZytDYUh0alJSL0U5NTBxdWJQQUppMHRDNmFMUXVwNlZvd2RuL1VWaGxwN1B5bVFMYWtaU0dFQ2NGY2doZStySEo3dTdJSWVPQVZUREE9PQo=",
-      "url": "https://d2tyb0wucqqf48.cloudfront.net/desktop/mac/Vibe%20Manager_1.0.19_aarch64.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUXZZN0JwS05DN3Bod28yL3AwWU9VQkFnS3k5S2JWZXB5enErU1pDZVVqTGpXZis4Um5uV2JkZURPSTY2Mi9JUVBFMGtqK0F3Nk1WVHpSWmtOeTN5WUJTSGZOQ21hL3dFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzU3MzY2MTg3CWZpbGU6VmliZSBNYW5hZ2VyLmFwcC50YXIuZ3oKZlR5QTVjT050RmlDeHo2ZE5Rc3dtV2QrbkIveUxiT3VkNFlQMlg3SkYzVnJqc3lHbkkvZXVSYmNuU3hSbkdPaUlJcU1vbFV4bjBzTk9yRkJVNWZqRHc9PQo=",
+      "url": "https://d2tyb0wucqqf48.cloudfront.net/desktop/mac/Vibe-Manager.app.tar.gz"
     }
   }
 }

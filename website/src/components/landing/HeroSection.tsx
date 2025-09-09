@@ -7,19 +7,27 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { track } from '@/lib/track';
 import { cdnUrl } from '@/lib/cdn';
 import { Play, X } from 'lucide-react';
+import { useTheme } from 'next-themes';
 
 export function HeroSection() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isMobile, setIsMobile] = useState<boolean | null>(null);
+  const [isDesktop, setIsDesktop] = useState<boolean | null>(null);
   const [showVideoModal, setShowVideoModal] = useState(false);
+  const { resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
   
   useEffect(() => {
+    setMounted(true);
     if (typeof window !== 'undefined') {
       const checkMobile = () => window.innerWidth < 640;
+      const checkDesktop = () => window.innerWidth >= 1024; // lg breakpoint
       setIsMobile(checkMobile());
+      setIsDesktop(checkDesktop());
       
       const handleResize = () => {
         setIsMobile(checkMobile());
+        setIsDesktop(checkDesktop());
       };
       
       window.addEventListener('resize', handleResize);
@@ -131,6 +139,40 @@ export function HeroSection() {
               </div>
             )}
 
+            {/* Arrow between Panel 1 and 2 - Desktop only */}
+            {isDesktop && (
+              <div className="flex items-center justify-center px-2 relative">
+                <div className="relative">
+                  <svg 
+                    className="w-10 h-10 animate-pulse" 
+                    fill="none" 
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                    style={{
+                      filter: 'drop-shadow(0 0 8px color-mix(in oklch, var(--color-primary) 40%, transparent))',
+                    }}
+                  >
+                    <defs>
+                      <linearGradient id="arrow-gradient-1" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stopColor="var(--color-primary)" stopOpacity="0.3" />
+                        <stop offset="50%" stopColor="var(--color-primary)" stopOpacity="0.8" />
+                        <stop offset="100%" stopColor="var(--color-primary)" stopOpacity="0.3" />
+                      </linearGradient>
+                    </defs>
+                    <path 
+                      strokeLinecap="round" 
+                      strokeLinejoin="round" 
+                      d="M13 7l5 5m0 0l-5 5m5-5H6" 
+                      stroke="url(#arrow-gradient-1)"
+                      strokeWidth="2.5"
+                    />
+                  </svg>
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="w-12 h-0.5 bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Panel 2: Parallel Planning */}
             <div className={isMobile ? "vibe-panel vibe-panel--accent vibe-panel--glow w-full" : "vibe-panel vibe-panel--accent vibe-panel--glow flex-shrink-0"} style={isMobile ? {} : {width: 'min(300px, 30vw)', height: 'min(380px, 45vh)'}}>
@@ -171,6 +213,42 @@ export function HeroSection() {
                 Click multiple times for more plans. Merge the best ideas.
               </p>
             </div>
+
+            {/* Arrow between Panel 2 and 3 - Desktop only */}
+            {isDesktop && (
+              <div className="flex items-center justify-center px-2 relative">
+                <div className="relative">
+                  <svg 
+                    className="w-10 h-10 animate-pulse" 
+                    fill="none" 
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                    style={{
+                      filter: 'drop-shadow(0 0 8px color-mix(in oklch, var(--color-primary) 40%, transparent))',
+                      animationDelay: '0.5s'
+                    }}
+                  >
+                    <defs>
+                      <linearGradient id="arrow-gradient-2" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stopColor="var(--color-primary)" stopOpacity="0.3" />
+                        <stop offset="50%" stopColor="var(--color-primary)" stopOpacity="0.8" />
+                        <stop offset="100%" stopColor="var(--color-primary)" stopOpacity="0.3" />
+                      </linearGradient>
+                    </defs>
+                    <path 
+                      strokeLinecap="round" 
+                      strokeLinejoin="round" 
+                      d="M13 7l5 5m0 0l-5 5m5-5H6" 
+                      stroke="url(#arrow-gradient-2)"
+                      strokeWidth="2.5"
+                    />
+                  </svg>
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="w-12 h-0.5 bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Panel 3: Ready for Agents - Show on mobile too */}
             {(isMobile || !isMobile) && (
@@ -218,26 +296,30 @@ export function HeroSection() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className={isMobile ? "fixed inset-0 z-50 bg-black" : "fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm"}
+            className="fixed inset-0 z-[100] bg-background/80 backdrop-blur-xl"
             onClick={handleCloseVideo}
           >
+            <button
+              onClick={handleCloseVideo}
+              className="fixed top-24 right-4 z-[110] p-3 text-white hover:text-white transition-colors bg-black/70 rounded-full backdrop-blur-sm border border-white/20"
+              aria-label="Close video"
+            >
+              <X className="w-6 h-6" />
+            </button>
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className={isMobile ? "relative w-full h-full flex items-center justify-center" : "relative w-full max-w-5xl mx-4"}
+              className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 ${isMobile ? 'w-[100vw]' : 'w-[90vw] max-w-[1600px]'}`}
+              style={{
+                aspectRatio: isMobile ? '9/16' : '16/9',
+                maxHeight: isMobile ? '100vh' : '90vh'
+              }}
               onClick={(e) => e.stopPropagation()}
             >
-              <button
-                onClick={handleCloseVideo}
-                className={isMobile ? "absolute top-4 right-4 z-10 p-2 text-white/80 hover:text-white transition-colors" : "absolute -top-12 right-0 p-2 text-foreground/70 hover:text-foreground transition-colors"}
-                aria-label="Close video"
-              >
-                <X className="w-6 h-6" />
-              </button>
               <video
                 ref={videoRef}
-                className={isMobile ? "w-full h-full object-contain" : "w-full h-auto rounded-lg shadow-2xl"}
+                className="w-full h-full object-contain"
                 style={{
                   filter: 'brightness(1.2) contrast(1.1)',
                   WebkitFilter: 'brightness(1.2) contrast(1.1)'
@@ -251,8 +333,23 @@ export function HeroSection() {
                   }
                 }}
               >
-                <source src={cdnUrl('/assets/videos/hero-section_vp9.webm')} type="video/webm; codecs=vp9" />
-                <source src={cdnUrl('/assets/videos/hero-section.mp4')} type="video/mp4" />
+                {isMobile === true ? (
+                  <>
+                    <source src={cdnUrl('/assets/videos/hero-section_vp9.webm')} type="video/webm; codecs=vp9" />
+                    <source src={cdnUrl('/assets/videos/hero-section.mp4')} type="video/mp4" />
+                  </>
+                ) : isMobile === false ? (
+                  <>
+                    <source src={cdnUrl('/assets/videos/hero-section-16by9_vp9.webm')} type="video/webm; codecs=vp9" />
+                    <source src={cdnUrl('/assets/videos/hero-section-16by9.mp4')} type="video/mp4" />
+                  </>
+                ) : (
+                  <>
+                    {/* Default to vertical video during initial load */}
+                    <source src={cdnUrl('/assets/videos/hero-section_vp9.webm')} type="video/webm; codecs=vp9" />
+                    <source src={cdnUrl('/assets/videos/hero-section.mp4')} type="video/mp4" />
+                  </>
+                )}
                 Your browser does not support the video tag.
               </video>
             </motion.div>
@@ -275,13 +372,22 @@ export function HeroSection() {
             rel="noopener noreferrer"
             className="inline-block hover:opacity-90 transition-opacity"
           >
-            <img 
-              src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1009288&theme=light&t=1756883029716" 
-              alt="Vibe Manager - Context control for AI coding sessions | Product Hunt" 
-              width="250" 
-              height="54"
-              className="dark:brightness-90 dark:contrast-110"
-            />
+            {mounted ? (
+              <img 
+                src={
+                  resolvedTheme === 'dark' 
+                    ? "https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1009288&theme=dark&t=1757410274822"
+                    : "https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1009288&theme=light&t=1757410294950"
+                } 
+                alt="Vibe Manager - Context control for AI coding sessions | Product Hunt" 
+                width="250" 
+                height="54"
+                style={{ width: '250px', height: '54px' }}
+              />
+            ) : (
+              // Placeholder to prevent layout shift while theme loads
+              <div style={{ width: '250px', height: '54px' }} />
+            )}
           </a>
         </div>
 

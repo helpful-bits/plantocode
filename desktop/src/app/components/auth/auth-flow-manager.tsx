@@ -9,6 +9,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { useUILayout } from "@/contexts/ui-layout-context";
 import { EmptyState, LoadingScreen } from "@/ui";
 import { OnboardingFlow } from "@/app/components/onboarding";
+import { UpdaterStatus } from "@/app/components/updater/updater-status";
 import { extractErrorInfo, createUserFriendlyErrorMessage, logError } from "@/utils/error-handling";
 import { useNotification } from "@/contexts/notification-context";
 import { useAuthTokenRefresher } from "@/hooks/use-auth-token-refresher";
@@ -289,27 +290,52 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
 
     // Show loading screen while checking onboarding status or server selection
     if (isOnboardingNeeded === null || selectedUrl === undefined) {
-      return <LoadingScreen loadingType="initializing" />;
+      return (
+        <>
+          <UpdaterStatus />
+          <LoadingScreen loadingType="initializing" />
+        </>
+      );
     }
 
     // Show onboarding flow if needed
     if (isOnboardingNeeded) {
-      return <OnboardingFlow onOnboardingComplete={handleOnboardingComplete} />;
+      return (
+        <>
+          <UpdaterStatus />
+          <OnboardingFlow onOnboardingComplete={handleOnboardingComplete} />
+        </>
+      );
     }
 
     // Show server selection page if no URL is selected and regions are available
     if (selectedUrl === null && availableRegions) {
-      return <ServerSelectionPage regions={availableRegions} onSelect={handleServerSelection} />;
+      return (
+        <>
+          <UpdaterStatus />
+          <ServerSelectionPage regions={availableRegions} onSelect={handleServerSelection} />
+        </>
+      );
     }
 
     // Show loading screen while authenticating
     if (loading) {
-      return <LoadingScreen loadingType="login" />;
+      return (
+        <>
+          <UpdaterStatus />
+          <LoadingScreen loadingType="login" />
+        </>
+      );
     }
 
     // Show loading screen while fetching configuration
     if (configLoading) {
-      return <LoadingScreen loadingType="configuration" />;
+      return (
+        <>
+          <UpdaterStatus />
+          <LoadingScreen loadingType="configuration" />
+        </>
+      );
     }
 
     // System prompts loading removed
@@ -317,20 +343,23 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
     // Show error screen if configuration failed
     if (configError) {
       return (
-        <div className="fixed inset-0 flex items-center justify-center bg-background">
-          <div className="max-w-md w-full p-8">
-            <EmptyState
-              variant="error"
-              title="Configuration Error"
-              description={configError}
-              actionText="Retry"
-              onAction={() => {
-                clearError();
-                void loadConfig();
-              }}
-            />
+        <>
+          <UpdaterStatus />
+          <div className="fixed inset-0 flex items-center justify-center bg-background">
+            <div className="max-w-md w-full p-8">
+              <EmptyState
+                variant="error"
+                title="Configuration Error"
+                description={configError}
+                actionText="Retry"
+                onAction={() => {
+                  clearError();
+                  void loadConfig();
+                }}
+              />
+            </div>
           </div>
-        </div>
+        </>
       );
     }
 
@@ -338,7 +367,12 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
 
     // Show login page if URL is selected but not authenticated or token is expired
     if ((!user || isTokenExpired) && selectedUrl) {
-      return <LoginPage />;
+      return (
+        <>
+          <UpdaterStatus />
+          <LoginPage />
+        </>
+      );
     }
 
     // Main app is ready to render - children include ProjectProvider and other contexts

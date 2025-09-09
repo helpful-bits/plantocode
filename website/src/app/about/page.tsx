@@ -3,14 +3,14 @@ import GlassCard from '@/components/ui/GlassCard';
 import { Building, Globe, Mail } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'About',
-  description: 'Learn about Vibe Manager, the AI coding assistant that acts as a middle-manager for your LLMs, curating perfect context from your codebase.',
+  title: 'About Vibe Manager - Multi-Model AI Planning Tool',
+  description: 'Learn about Vibe Manager, the multi-model planning tool that enhances Claude Code, Cursor, and OpenAI Codex with intelligent context curation and plan generation.',
   robots: {
     index: true,
     follow: true,
   },
   alternates: {
-    canonical: '/about',
+    canonical: 'https://www.vibemanager.app/about',
   },
 };
 

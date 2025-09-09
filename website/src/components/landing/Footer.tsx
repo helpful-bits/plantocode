@@ -83,6 +83,11 @@ export function Footer() {
                     </Link>
                   </li>
                   <li>
+                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/changelog">
+                      Changelog
+                    </Link>
+                  </li>
+                  <li>
                     <span 
                       className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline cursor-pointer" 
                       onClick={handleDownloadClick}
@@ -112,6 +117,11 @@ export function Footer() {
                   <li>
                     <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/docs/claude-code-alternative">
                       Extensions & Enhancements
+                    </Link>
+                  </li>
+                  <li>
+                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/vibe-code-cleanup-specialist">
+                      Code Cleanup Planning
                     </Link>
                   </li>
                   <li>

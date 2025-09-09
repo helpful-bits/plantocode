@@ -4,14 +4,23 @@ import GlassCard from '@/components/ui/GlassCard';
 import { Mail, HelpCircle } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'Support',
-  description: 'Get help with Vibe Manager - contact support and access help resources.',
+  title: 'Vibe Manager Support - Get Help, Report Issues, Request Features',
+  description: 'Get instant help with Vibe Manager installation and usage. Troubleshooting for Claude Code, Cursor, OpenAI Codex integration. Feature requests welcome. Response within 24h.',
+  keywords: [
+    'vibe manager support',
+    'vibe manager help',
+    'claude code help',
+    'cursor integration help',
+    'installation support',
+    'troubleshooting',
+    'feature requests',
+  ],
   robots: {
     index: true,
     follow: true,
   },
   alternates: {
-    canonical: '/support',
+    canonical: 'https://www.vibemanager.app/support',
   },
 };
 

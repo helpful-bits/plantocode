@@ -4,11 +4,14 @@ import { Globe } from 'lucide-react';
 import Reveal from '@/components/motion/Reveal';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { StructuredData } from '@/components/seo/StructuredData';
+import type { BreadcrumbList } from 'schema-dts';
 
 export const metadata: Metadata = {
-  title: 'Up-to-date answers for your stack | Vibe Manager',
-  description: 'Search docs and issues, tie findings back to your code.',
+  title: 'Deep Research for Developers - Real-Time Documentation AI Search',
+  description: 'AI-powered deep research finds current docs, API changes, and solutions for your exact code. Integrates findings with Claude Code, Cursor implementation. 10x faster than manual search.',
   keywords: [
+    'vibe code cleanup specialist',
     'deep research',
     'documentation search',
     'up-to-date answers',
@@ -16,12 +19,34 @@ export const metadata: Metadata = {
     'issue search',
     'knowledge gaps',
     'AI coding assistant',
+    'real-time documentation',
+    'API research',
+    'technical research',
   ],
 };
 
 export default function DeepResearchPage() {
+  const breadcrumbJsonLd: BreadcrumbList = {
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      {
+        '@type': 'ListItem',
+        position: 1,
+        name: 'Home',
+        item: 'https://www.vibemanager.app'
+      },
+      {
+        '@type': 'ListItem',
+        position: 2,
+        name: 'Deep Research',
+        item: 'https://www.vibemanager.app/deep-research'
+      }
+    ]
+  };
+
   return (
     <>
+      <StructuredData data={breadcrumbJsonLd} />
       <div className="fixed inset-0 -z-20" style={{ background: 'var(--background-gradient)' }} />
       <div className="relative z-0 bg-transparent">
         <Header />

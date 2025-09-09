@@ -16,6 +16,7 @@ import {
   Shield,
   Video,
   History,
+  Sparkles,
 } from 'lucide-react';
 import type { SoftwareApplication, FAQPage } from 'schema-dts';
 import { SectionDividerOrbs, SectionDividerMesh } from '@/components/ui/SectionDivider';
@@ -51,9 +52,12 @@ const HowItWorks = dynamic(() => import('@/components/landing/HowItWorks').then(
 
 
 export const metadata: Metadata = {
-  title: 'Vibe Manager - Multi-Model Planning for Claude Code, Cursor & AI Agents',
-  description: 'Planning assistant for Claude Code, Cursor, OpenAI Codex CLI and agentic coding tools. Enhanced multi-model planning from GPT-5, Claude 4, and Gemini 2.5 for superior AI-assisted development.',
+  title: 'Vibe Manager - Multi-Model AI Planning for Claude Code & Cursor',
+  description: 'Vibe Manager enhances Claude Code, Cursor, and OpenAI Codex with multi-model planning. Generate implementation plans from GPT-5, Claude 4, Gemini 2.5. Smart file discovery and context curation. Free Mac app.',
   keywords: [
+    'vibe manager',
+    'vibe code cleanup specialist',
+    'vibe code cleanup',
     'claude code install',
     'install claude code',
     'claudecode',
@@ -90,6 +94,23 @@ export const metadata: Metadata = {
     'file discovery',
     'macOS dev tools',
   ],
+  openGraph: {
+    title: 'Vibe Manager - AI Coding Planning Tool | Free Download',
+    description: 'Vibe Manager enhances Claude Code, Cursor, and OpenAI Codex with multi-model planning. Generate better implementation plans from GPT-5, Claude 4, Gemini 2.5. Download free for Mac.',
+    url: 'https://www.vibemanager.app',
+    siteName: 'Vibe Manager',
+    locale: 'en_US',
+    alternateLocale: ['en_GB', 'en_CA'],
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Vibe Manager - AI Coding Planning Tool',
+    description: 'Multi-model planning for Claude Code, Cursor & OpenAI Codex. Generate plans from GPT-5, Claude 4, Gemini 2.5. Free download.',
+  },
+  alternates: {
+    canonical: 'https://www.vibemanager.app',
+  },
 };
 
 export default function Home() {
@@ -98,8 +119,8 @@ export default function Home() {
     name: 'Vibe Manager',
     applicationCategory: 'DeveloperApplication',
     operatingSystem: 'macOS',
-    url: 'https://vibemanager.app',
-    description: 'Multi-model planning assistant for Claude Code, Cursor, OpenAI Codex CLI and agentic coding tools. Enhances any AI coding agent with intelligent context curation and plans from GPT-5, Claude 4, and Gemini 2.5.',
+    url: 'https://www.vibemanager.app',
+    description: 'Multi-model planning tool for Claude Code, Cursor, OpenAI Codex CLI and AI coding agents. Generates implementation plans from GPT-5, Claude 4, and Gemini 2.5. Smart file discovery and context curation for better AI coding.',
     offers: {
       '@type': 'Offer',
       price: 0, // Numeric 0 for free apps, no priceCurrency needed per Google guidance
@@ -248,6 +269,13 @@ export default function Home() {
       title: 'File Finder',
       description: "Decomposes your task into logical areas, creates targeted search patterns, then AI assesses actual file content for relevance. Can expand to find critical dependencies when needed. Real-time intelligence finding what matters.",
       icon: <BrainCircuit className="w-8 h-8" />,
+      link: '/file-finder',
+    },
+    {
+      title: 'Code Cleanup Planning',
+      description: 'Transform messy codebases with intelligent multi-model planning. Generate comprehensive cleanup strategies for refactoring, removing duplicated code, improving naming conventions, and modernizing legacy patterns.',
+      icon: <Sparkles className="w-8 h-8" />,
+      link: '/vibe-code-cleanup-specialist',
     },
     {
       title: 'The Council of LLMs',
@@ -294,6 +322,11 @@ export default function Home() {
         <Header />
         
         <main className="flex-grow">
+          {/* SR-only content for better Google snippets */}
+          <div className="sr-only">
+            <h1>Vibe Manager - Multi-Model AI Planning Tool</h1>
+            <p>Vibe Manager is a multi-model planning tool that enhances AI coding assistants like Claude Code, Cursor, and OpenAI Codex CLI. Generate implementation plans from GPT-5, Claude 4, Gemini 2.5, then merge them into superior strategies. Includes intelligent file discovery and context curation for better AI-assisted development.</p>
+          </div>
           <section className="mb-0">
             <HeroSection />
           </section>

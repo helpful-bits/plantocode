@@ -1,14 +1,16 @@
 import { Metadata } from 'next';
+import { GlassCard } from '@/components/ui/GlassCard';
+import { Calendar, Sparkles, Zap, Bug, Trash2 } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'Changelog',
-  description: 'Stay updated with the latest features, improvements, and fixes in Vibe Manager.',
+  title: 'Changelog - Latest Updates | Vibe Manager',
+  description: 'Latest features and improvements in Vibe Manager. Multi-model AI planning updates for Claude Code, Cursor, and OpenAI Codex integration.',
   robots: {
     index: true,
     follow: true,
   },
   alternates: {
-    canonical: '/changelog',
+    canonical: 'https://www.vibemanager.app/changelog',
   },
 };
 
@@ -25,6 +27,132 @@ interface ChangelogEntry {
 }
 
 const changelog: ChangelogEntry[] = [
+  {
+    version: '1.0.19',
+    date: '2025-09-07',
+    type: 'patch',
+    changes: {
+      improved: [
+        'Audio device selection with deduplication to prevent duplicate entries',
+        'Media device handling for cleaner device list'
+      ],
+      added: [
+        'Error logging database table for better debugging'
+      ]
+    }
+  },
+  {
+    version: '1.0.18',
+    date: '2025-08-28',
+    type: 'patch',
+    changes: {
+      added: [
+        'External folders support for including directories outside the main project',
+        'Workspace roots resolution for monorepo support',
+        'UI for managing external folders in project settings'
+      ],
+      fixed: [
+        'Windows-specific path handling and Git utilities',
+        'Billing commands error handling on Windows'
+      ],
+      improved: [
+        'Cross-platform compatibility'
+      ]
+    }
+  },
+  {
+    version: '1.0.17',
+    date: '2025-08-21',
+    type: 'patch',
+    changes: {
+      improved: [
+        'Version numbering alignment'
+      ],
+      fixed: [
+        'Minor UI adjustments'
+      ]
+    }
+  },
+  {
+    version: '1.0.16',
+    date: '2025-08-17',
+    type: 'minor',
+    changes: {
+      added: [
+        'Terminal session management with PTY support',
+        'Real-time terminal output monitoring in background jobs',
+        'Terminal output persistence and logging',
+        'Monitoring panel for terminal sessions'
+      ],
+      improved: [
+        'Background job UI with terminal integration'
+      ]
+    }
+  },
+  {
+    version: '1.0.15',
+    date: '2025-08-14',
+    type: 'minor',
+    changes: {
+      added: [
+        'Granular background job event system',
+        'Real-time job status updates with specific events',
+        'Detailed event tracking (created, deleted, status-changed, tokens-updated, cost-updated)'
+      ],
+      improved: [
+        'Background job repository with app handle integration',
+        'Job monitoring with more detailed event tracking'
+      ]
+    }
+  },
+  {
+    version: '1.0.14',
+    date: '2025-08-14',
+    type: 'patch',
+    changes: {
+      fixed: [
+        'Critical database initialization issue on fresh installs',
+        'Database resource bundling in build configuration'
+      ],
+      added: [
+        'Embedded database schema as fallback'
+      ],
+      improved: [
+        'Consent verification with retry logic'
+      ]
+    }
+  },
+  {
+    version: '1.0.13',
+    date: '2025-08-14',
+    type: 'patch',
+    changes: {
+      improved: [
+        'Onboarding flow with keychain access detection',
+        'Database initialization process'
+      ],
+      added: [
+        'Check for existing keychain access to skip redundant onboarding'
+      ],
+      fixed: [
+        'Payment method handling simplification'
+      ]
+    }
+  },
+  {
+    version: '1.0.12',
+    date: '2025-08-13',
+    type: 'patch',
+    changes: {
+      improved: [
+        'Application initialization and setup flow',
+        'Error handling with better user-friendly messages'
+      ],
+      fixed: [
+        'Database setup timing issues'
+      ]
+    }
+  },
   {
     version: '1.0.11',
     date: '2025-08-11',
@@ -101,28 +229,45 @@ const changelog: ChangelogEntry[] = [
 function getChangeTypeColor(type: ChangelogEntry['type']) {
   switch (type) {
     case 'major':
-      return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300';
+      return 'bg-red-500/10 text-red-600 dark:bg-red-500/20 dark:text-red-400';
     case 'minor':
-      return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300';
+      return 'bg-blue-500/10 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400';
     case 'patch':
-      return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300';
+      return 'bg-green-500/10 text-green-600 dark:bg-green-500/20 dark:text-green-400';
     default:
-      return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300';
+      return 'bg-muted text-muted-foreground';
   }
 }
 
-function ChangeList({ title, items, icon }: { title: string; items: string[]; icon: React.ReactNode }) {
+function getChangeIcon(type: keyof ChangelogEntry['changes']) {
+  switch (type) {
+    case 'added':
+      return <Sparkles className="w-4 h-4 text-green-600 dark:text-green-400" />;
+    case 'improved':
+      return <Zap className="w-4 h-4 text-blue-600 dark:text-blue-400" />;
+    case 'fixed':
+      return <Bug className="w-4 h-4 text-orange-600 dark:text-orange-400" />;
+    case 'removed':
+      return <Trash2 className="w-4 h-4 text-red-600 dark:text-red-400" />;
+    default:
+      return null;
+  }
+}
+
+function ChangeList({ title, items, type }: { title: string; items: string[]; type: keyof ChangelogEntry['changes'] }) {
   if (!items.length) return null;
 
   return (
-    <div>
-      <h4 className="font-medium text-foreground flex items-center gap-2 mb-2">
-        {icon}
-        {title}
-      </h4>
-      <ul className="space-y-1 ml-6">
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        {getChangeIcon(type)}
+        <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide">
+          {title}
+        </h4>
+      </div>
+      <ul className="space-y-2 ml-6">
         {items.map((item, index) => (
-          <li key={index} className="text-muted-foreground text-sm">
+          <li key={index} className="text-foreground/80 dark:text-foreground/90 text-sm leading-relaxed">
             {item}
           </li>
         ))}
@@ -133,94 +278,107 @@ function ChangeList({ title, items, icon }: { title: string; items: string[]; ic
 
 export default function ChangelogPage() {
   return (
-    <div className="container mx-auto max-w-4xl px-6 py-12 sm:py-16">
-      <div className="space-y-12">
-        <header className="text-center space-y-4">
-          <h1 className="text-4xl font-bold text-foreground">Changelog</h1>
-          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Stay updated with the latest features, improvements, and fixes in Vibe Manager.
+    <div className="relative pt-20 sm:pt-24 pb-16 sm:pb-20 lg:pb-24">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-5xl">
+        {/* Hero Section */}
+        <div className="text-center mb-12 sm:mb-16">
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-6 sm:mb-8 leading-tight bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent">
+            Changelog
+          </h1>
+          <p className="text-lg text-muted-foreground max-w-3xl mx-auto leading-relaxed">
+            Stay updated with the latest features, improvements, and fixes in Vibe Manager. Track our journey as we enhance your Claude Code and Cursor workflows.
           </p>
-        </header>
+        </div>
 
+        {/* Changelog Entries */}
         <div className="space-y-8">
           {changelog.map((entry) => (
-            <div key={entry.version} className="border border-border rounded-lg p-6 space-y-4">
-              <div className="flex items-center justify-between">
+            <GlassCard key={entry.version} className="p-6 sm:p-8 transition-all duration-300 hover:border-primary/40">
+              {/* Version Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
                 <div className="flex items-center gap-3">
-                  <h2 className="text-2xl font-bold text-foreground">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-foreground">
                     v{entry.version}
                   </h2>
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${getChangeTypeColor(entry.type)}`}>
+                  <span className={`px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide ${getChangeTypeColor(entry.type)}`}>
                     {entry.type}
                   </span>
                 </div>
-                <span className="text-sm text-muted-foreground">
-                  {entry.date}
-                </span>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Calendar className="w-4 h-4" />
+                  <time dateTime={entry.date}>
+                    {new Date(entry.date).toLocaleDateString('en-US', { 
+                      month: 'long', 
+                      day: 'numeric', 
+                      year: 'numeric' 
+                    })}
+                  </time>
+                </div>
               </div>
 
-              <div className="grid md:grid-cols-2 gap-6">
-                <div className="space-y-4">
+              {/* Changes Grid */}
+              <div className="grid md:grid-cols-2 gap-6 sm:gap-8">
+                <div className="space-y-6">
                   <ChangeList
                     title="Added"
                     items={entry.changes.added || []}
-                    icon={
-                      <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                      </svg>
-                    }
+                    type="added"
                   />
                   
                   <ChangeList
                     title="Improved"
                     items={entry.changes.improved || []}
-                    icon={
-                      <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                      </svg>
-                    }
+                    type="improved"
                   />
                 </div>
 
-                <div className="space-y-4">
+                <div className="space-y-6">
                   <ChangeList
                     title="Fixed"
                     items={entry.changes.fixed || []}
-                    icon={
-                      <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                      </svg>
-                    }
+                    type="fixed"
                   />
                   
                   <ChangeList
                     title="Removed"
                     items={entry.changes.removed || []}
-                    icon={
-                      <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-                      </svg>
-                    }
+                    type="removed"
                   />
                 </div>
               </div>
-            </div>
+            </GlassCard>
           ))}
         </div>
 
-        <div className="text-center">
-          <p className="text-muted-foreground">
-            Want to be notified about new releases?{' '}
-            <a href="https://x.com/vibemanagerapp" className="link-primary" target="_blank" rel="noopener noreferrer">
-              Follow us on X
-            </a>{' '}
-            or{' '}
-            <a href="https://vibemanager.featurebase.app" className="link-primary" target="_blank" rel="noopener noreferrer">
-              join our community
-            </a>
-            .
-          </p>
-        </div>
+        {/* Footer CTA */}
+        <footer className="mt-16 text-center">
+          <GlassCard className="p-8 space-y-4">
+            <h3 className="text-xl font-bold text-foreground">
+              Stay in the Loop
+            </h3>
+            <p className="text-muted-foreground leading-relaxed">
+              Want to be notified about new releases and features?
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+              <a 
+                href="https://x.com/vibemanagerapp" 
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-medium"
+                target="_blank" 
+                rel="noopener noreferrer"
+              >
+                Follow us on X
+              </a>
+              <a 
+                href="https://vibemanager.featurebase.app" 
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-medium"
+                target="_blank" 
+                rel="noopener noreferrer"
+              >
+                Join our Community
+              </a>
+            </div>
+          </GlassCard>
+        </footer>
       </div>
     </div>
   );
