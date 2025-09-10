@@ -63,8 +63,15 @@ impl JobProcessor for RootFolderSelectionProcessor {
         debug!("Directory tree sample (first 10):\n{}", 
             sorted_paths.iter().take(10).cloned().collect::<Vec<_>>().join("\n"));
         
+        // Add critical context about the primary project directory
+        let enhanced_task_description = format!(
+            "PRIMARY PROJECT DIRECTORY: {}\n\nTASK: {}",
+            session.project_directory,
+            payload.task_description
+        );
+        
         let prompt_context = LlmPromptContext {
-            task_description: payload.task_description.clone(),
+            task_description: enhanced_task_description,
             directory_tree: Some(directory_tree),
             file_contents: None,
         };

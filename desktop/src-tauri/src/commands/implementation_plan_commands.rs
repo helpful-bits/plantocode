@@ -549,11 +549,6 @@ pub async fn read_implementation_plan_command(
             metadata_json["planTitle"]
                 .as_str()
                 .map(|s| s.to_string())
-                .or_else(|| {
-                    metadata_json["generated_title"]
-                        .as_str()
-                        .map(|s| s.to_string())
-                })
         } else {
             None
         }

@@ -85,6 +85,10 @@ export default function robots(): MetadataRoute.Robots {
         allow: '/',
       },
     ],
-    sitemap: 'https://www.vibemanager.app/sitemap.xml',
+    sitemap: [
+      'https://www.vibemanager.app/sitemap.xml',
+      'https://www.vibemanager.app/sitemap-video.xml',
+      'https://www.vibemanager.app/sitemap-image.xml',
+    ],
   };
 }

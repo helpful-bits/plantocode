@@ -72,11 +72,13 @@ export async function getBackgroundJobAction(
 }
 
 /**
- * Gets all visible background jobs
+ * Gets all visible background jobs, optionally filtered by project directory
  */
-export async function getAllVisibleJobsAction(): Promise<ActionState<BackgroundJob[]>> {
+export async function getAllVisibleJobsAction(projectDirectory?: string): Promise<ActionState<BackgroundJob[]>> {
   try {
-    const jobs = await invoke("get_all_visible_jobs_command");
+    const jobs = await invoke("get_all_visible_jobs_command", { 
+      projectDirectory: projectDirectory || null 
+    });
     return {
       isSuccess: true,
       data: jobs as BackgroundJob[],

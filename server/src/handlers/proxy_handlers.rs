@@ -1349,12 +1349,16 @@ pub async fn transcription_handler(
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Model '{}' not found or inactive", model)))?;
 
-    // Validate user has sufficient credits
+    // Validate user has sufficient credits (check both paid and free credits)
     let balance = billing_service
         .get_credit_service()
         .get_user_balance(&user_id)
         .await?;
-    if balance.balance <= BigDecimal::from(0) {
+    
+    // Calculate total available credits (paid + free credits)
+    let total_available = &balance.balance + &balance.free_credit_balance;
+    
+    if total_available <= BigDecimal::from(0) {
         return Err(AppError::CreditInsufficient(
             "No credits available".to_string(),
         ));

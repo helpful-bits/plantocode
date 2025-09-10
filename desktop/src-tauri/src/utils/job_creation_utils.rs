@@ -278,14 +278,7 @@ pub async fn create_and_queue_background_job(
             }
         }
 
-        // Add generated title to workflow metadata if it's an implementation plan workflow
-        if matches!(task_type_enum, TaskType::ImplementationPlan) {
-            if let Some(ref t) = generated_title_opt {
-                if let serde_json::Value::Object(ref mut task_data_map) = workflow_metadata.task_data {
-                    task_data_map.insert("generated_title".to_string(), serde_json::Value::String(t.clone()));
-                }
-            }
-        }
+        // Title will be added at the root metadata level below
 
         workflow_metadata
     } else {
@@ -317,6 +310,8 @@ pub async fn create_and_queue_background_job(
             }
         }
 
+        // Title will be added at the root metadata level below
+
         builder = builder.task_data(task_data).display_name(Some(display_name.clone()));
         builder.build()
     };
@@ -326,10 +321,10 @@ pub async fn create_and_queue_background_job(
         AppError::SerializationError(format!("Failed to serialize JobUIMetadata: {}", e))
     })?;
 
-    // Add generated_title to metadata if present
+    // Add planTitle to metadata root level for UI access
     if let Some(t) = &generated_title_opt {
         if let Some(obj) = metadata_value.as_object_mut() {
-            obj.insert("generated_title".to_string(), serde_json::Value::String(t.clone()));
+            obj.insert("planTitle".to_string(), serde_json::Value::String(t.clone()));
         }
     }
 

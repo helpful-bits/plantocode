@@ -121,19 +121,29 @@ pub async fn cancel_session_jobs_command(
 
 #[command]
 pub async fn get_all_visible_jobs_command(
+    project_directory: Option<String>,
     app_handle: AppHandle,
 ) -> AppResult<Vec<crate::models::BackgroundJob>> {
-    info!("Fetching all visible jobs");
+    info!("Fetching all visible jobs for project: {:?}", project_directory);
 
     let repo = app_handle
         .state::<Arc<crate::db_utils::BackgroundJobRepository>>()
         .inner()
         .clone();
 
-    let mut jobs = repo
-        .get_all_visible_jobs()
-        .await
-        .map_err(|e| AppError::DatabaseError(format!("Failed to get all visible jobs: {}", e)))?;
+    let mut jobs = if let Some(dir) = project_directory {
+        // Generate project hash from directory
+        let project_hash = crate::utils::hash_utils::generate_project_hash(&dir);
+        
+        repo.get_all_visible_jobs_for_project(&project_hash)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to get all visible jobs: {}", e)))?
+    } else {
+        // If no project directory specified, get all jobs (backwards compatibility)
+        repo.get_all_visible_jobs()
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to get all visible jobs: {}", e)))?
+    };
 
     // Strip large content from implementation plans to reduce payload size
     strip_implementation_plan_content(&mut jobs);

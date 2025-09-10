@@ -14,6 +14,7 @@ import { getAllVisibleJobsAction } from "@/actions/background-jobs/jobs.actions"
 
 export interface UseOrchestratedBackgroundJobsStateParams {
   initialJobs?: BackgroundJob[];
+  projectDirectory?: string;
 }
 
 /**
@@ -30,6 +31,7 @@ export interface UseOrchestratedBackgroundJobsStateParams {
  */
 export function useOrchestratedBackgroundJobsState({
   initialJobs = [],
+  projectDirectory,
 }: UseOrchestratedBackgroundJobsStateParams = {}) {
   // Authoritative job store using Map for O(1) operations
   const jobsMapRef = useRef(new Map<string, BackgroundJob>());
@@ -85,8 +87,8 @@ export function useOrchestratedBackgroundJobsState({
         setIsLoading(true);
       }
 
-      // Use action to get all visible jobs
-      const result = await getAllVisibleJobsAction();
+      // Use action to get all visible jobs for the current project
+      const result = await getAllVisibleJobsAction(projectDirectory);
       
       if (!result.isSuccess) {
         throw new Error(result.error?.message || result.error?.toString() || 'Failed to fetch jobs');
@@ -138,7 +140,7 @@ export function useOrchestratedBackgroundJobsState({
         setInitialLoad(false);
       }
     }
-  }, [initialLoad]);
+  }, [initialLoad, projectDirectory]);
 
   // Manual refresh function - fetches all jobs and replaces Map contents
   const refreshJobs = useCallback(async () => {

@@ -13,9 +13,11 @@ use crate::security::rls_session_manager::RLSSessionManager;
 use crate::security::token_binding::{extract_token_binding_hash_from_service_request, TOKEN_BINDING_HEADER};
 use crate::services::auth::jwt;
 use crate::db::repositories::RevokedTokenRepository;
+use crate::db::repositories::user_repository::UserRepository;
 
 static RLS_MANAGER: OnceLock<Arc<RLSSessionManager>> = OnceLock::new();
 static REVOKED_TOKEN_REPO: OnceLock<Arc<RevokedTokenRepository>> = OnceLock::new();
+static USER_REPO: OnceLock<Arc<UserRepository>> = OnceLock::new();
 static AUTH_INIT_LOGGED: AtomicBool = AtomicBool::new(false);
 
 fn get_rls_manager() -> Option<Arc<RLSSessionManager>> {
@@ -32,6 +34,14 @@ fn get_revoked_token_repo() -> Option<Arc<RevokedTokenRepository>> {
 
 fn set_revoked_token_repo(repo: Arc<RevokedTokenRepository>) {
     let _ = REVOKED_TOKEN_REPO.set(repo);
+}
+
+fn set_user_repo(repo: Arc<UserRepository>) {
+    let _ = USER_REPO.set(repo);
+}
+
+fn get_user_repo() -> Option<Arc<UserRepository>> {
+    USER_REPO.get().cloned()
 }
 
 pub async fn validator(req: ServiceRequest, credentials: BearerAuth) -> Result<ServiceRequest, (Error, ServiceRequest)> {
@@ -104,12 +114,70 @@ pub async fn validator(req: ServiceRequest, credentials: BearerAuth) -> Result<S
                 }
             }
 
+            // Auto-provision user for cross-region support
+            let original_user_id = Uuid::parse_str(&claims.sub).ok();
+            let user_repo = match get_user_repo() {
+                Some(repo) => repo,
+                None => {
+                    error!("User repository not initialized");
+                    return Err((Error::from(actix_web::error::ErrorInternalServerError("User repository not initialized")), req));
+                }
+            };
+
+            let effective_user_id = if let Some(id) = original_user_id {
+                if user_repo.get_by_id(&id).await.is_ok() {
+                    id
+                } else if let Some(auth0_sub) = &claims.auth0_sub {
+                    match user_repo.find_or_create_by_auth0_details(auth0_sub, &claims.email, None).await {
+                        Ok(user) => user.id,
+                        Err(e) => {
+                            error!("Failed to find/create user by auth0_sub: {}", e);
+                            return Err((Error::from(actix_web::error::ErrorInternalServerError("Failed to establish user context")), req));
+                        }
+                    }
+                } else {
+                    match user_repo.get_by_email(&claims.email).await {
+                        Ok(user) => user.id,
+                        Err(_) => {
+                            match user_repo.create(&claims.email, None, None, None, Some(&claims.role)).await {
+                                Ok(user_id) => user_id,
+                                Err(e) => {
+                                    error!("Failed to create user: {}", e);
+                                    return Err((Error::from(actix_web::error::ErrorInternalServerError("Failed to create user")), req));
+                                }
+                            }
+                        }
+                    }
+                }
+            } else if let Some(auth0_sub) = &claims.auth0_sub {
+                match user_repo.find_or_create_by_auth0_details(auth0_sub, &claims.email, None).await {
+                    Ok(user) => user.id,
+                    Err(e) => {
+                        error!("Failed to find/create user by auth0_sub: {}", e);
+                        return Err((Error::from(actix_web::error::ErrorInternalServerError("Failed to establish user context")), req));
+                    }
+                }
+            } else {
+                match user_repo.get_by_email(&claims.email).await {
+                    Ok(user) => user.id,
+                    Err(_) => {
+                        match user_repo.create(&claims.email, None, None, None, Some(&claims.role)).await {
+                            Ok(user_id) => user_id,
+                            Err(e) => {
+                                error!("Failed to create user: {}", e);
+                                return Err((Error::from(actix_web::error::ErrorInternalServerError("Failed to create user")), req));
+                            }
+                        }
+                    }
+                }
+            };
+
             debug!("JWT valid for user {} (Role: {}) for route {}", user_id, user_role, path);
             
             if let Some(rls_manager) = get_rls_manager() {
                 let request_id = format!("auth_{}_{}", chrono::Utc::now().timestamp_millis(), uuid::Uuid::new_v4());
                 
-                match rls_manager.get_connection_with_user_context(user_id, Some(request_id.clone())).await {
+                match rls_manager.get_connection_with_user_context(effective_user_id, Some(request_id.clone())).await {
                     Ok(_conn) => {
                         debug!("RLS Session Manager successfully configured user context for user {} on route {} (request: {})", 
                                user_id, path, request_id);
@@ -126,7 +194,7 @@ pub async fn validator(req: ServiceRequest, credentials: BearerAuth) -> Result<S
             }
             
             let authenticated_user = AuthenticatedUser {
-                user_id,
+                user_id: effective_user_id,
                 email: user_email,
                 role: user_role,
             };
@@ -156,8 +224,11 @@ pub fn auth_middleware(user_pool: sqlx::PgPool, system_pool: sqlx::PgPool) -> Ht
     set_rls_manager(rls_manager);
     
     // Use system pool for revoked tokens table access (requires elevated permissions)
-    let revoked_token_repo = Arc::new(RevokedTokenRepository::new(system_pool));
+    let revoked_token_repo = Arc::new(RevokedTokenRepository::new(system_pool.clone()));
     set_revoked_token_repo(revoked_token_repo);
+    
+    let user_repo = Arc::new(UserRepository::new(system_pool.clone()));
+    set_user_repo(user_repo);
     
     HttpAuthentication::bearer(|req, creds| Box::pin(validator(req, creds)))
 }

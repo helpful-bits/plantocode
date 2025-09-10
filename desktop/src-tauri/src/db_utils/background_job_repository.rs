@@ -697,6 +697,68 @@ impl BackgroundJobRepository {
         Ok(jobs)
     }
 
+    /// Get all visible jobs for a specific project, sorted by status priority and updated time
+    pub async fn get_all_visible_jobs_for_project(&self, project_hash: &str) -> AppResult<Vec<BackgroundJob>> {
+        // Get current timestamp for recency calculation 
+        let thirty_minutes_ago = get_timestamp() - (30 * 60 * 1000); // 30 minutes in milliseconds
+        let seven_days_ago = get_timestamp() - (7 * 24 * 60 * 60 * 1000); // For completed jobs history
+        
+        let rows = sqlx::query(
+            r#"
+            SELECT bj.* FROM background_jobs bj
+            INNER JOIN sessions s ON bj.session_id = s.id
+            WHERE s.project_hash = $1
+            ORDER BY 
+                -- First priority: Active jobs updated in last 30 minutes
+                CASE 
+                    WHEN bj.status = $2 AND bj.updated_at > $3 THEN 0  -- Running (recent)
+                    WHEN bj.status = $4 AND bj.updated_at > $3 THEN 1  -- Preparing (recent)
+                    WHEN bj.status = $5 AND bj.updated_at > $3 THEN 2  -- Queued (recent)
+                    WHEN bj.status = $6 AND bj.updated_at > $3 THEN 3  -- AcknowledgedByWorker (recent)
+                    WHEN bj.status = $7 AND bj.updated_at > $3 THEN 4  -- Created (recent)
+                    WHEN bj.status = $8 AND bj.updated_at > $3 THEN 5  -- Idle (recent)
+                    -- Recent completed/failed/canceled jobs (last 7 days for history)
+                    WHEN bj.status = $9 AND bj.created_at > $10 THEN 6   -- Completed (recent)
+                    WHEN bj.status = $11 AND bj.created_at > $10 THEN 7  -- Failed (recent)
+                    WHEN bj.status = $12 AND bj.created_at > $10 THEN 8  -- Canceled (recent)
+                    -- Older completed/failed/canceled jobs
+                    WHEN bj.status = $9 THEN 9   -- Completed (old)
+                    WHEN bj.status = $11 THEN 10 -- Failed (old)
+                    WHEN bj.status = $12 THEN 11 -- Canceled (old)
+                    -- Everything else (stuck jobs older than 30 minutes)
+                    ELSE 12
+                END,
+                -- Within each priority group, sort by most recently updated
+                bj.updated_at DESC
+            LIMIT 100
+            "#,
+        )
+        .bind(project_hash)                          // $1
+        .bind(JobStatus::Running.to_string())        // $2
+        .bind(thirty_minutes_ago)                    // $3
+        .bind(JobStatus::Preparing.to_string())      // $4
+        .bind(JobStatus::Queued.to_string())         // $5
+        .bind(JobStatus::AcknowledgedByWorker.to_string()) // $6
+        .bind(JobStatus::Created.to_string())        // $7
+        .bind(JobStatus::Idle.to_string())           // $8
+        .bind(JobStatus::Completed.to_string())      // $9
+        .bind(seven_days_ago)                        // $10
+        .bind(JobStatus::Failed.to_string())         // $11
+        .bind(JobStatus::Canceled.to_string())       // $12
+        .fetch_all(&*self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to fetch jobs for project: {}", e)))?;
+
+        let mut jobs = Vec::new();
+
+        for row in rows {
+            let job = self.row_to_job(&row)?;
+            jobs.push(job);
+        }
+
+        Ok(jobs)
+    }
+
     /// Create a new job
     pub async fn create_job(&self, job: &BackgroundJob) -> AppResult<()> {
         sqlx::query(

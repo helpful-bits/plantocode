@@ -4,6 +4,7 @@ use crate::jobs::workflow_types::{WorkflowDefinition, WorkflowStage, WorkflowSta
 use crate::models::{JobStatus, TaskType};
 use log::{debug, error, info, warn};
 use std::sync::Arc;
+use tauri::Manager;
 
 /// Handle successful completion of a stage
 pub(super) async fn handle_stage_completion_internal(
@@ -104,6 +105,7 @@ pub(super) async fn handle_stage_completion_internal(
         .find(|stage_job| stage_job.job_id == job_id)
         .map(|stage_job| stage_job.task_type.clone())
         .ok_or_else(|| AppError::JobError(format!("Stage job not found for job_id: {}", job_id)))?;
+
 
     // Check if the regex file filter stage returned an empty result (no files found)
     if task_type == TaskType::RegexFileFilter {

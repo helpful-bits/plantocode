@@ -154,13 +154,15 @@ section .max-w-5xl {
     overflow: hidden;
 }
 
-/* Mobile panels - full width */
+/* Mobile panels - full width with explicit dimensions to prevent CLS */
 @media (max-width: 639px) {
     .vibe-panel.w-full {
         width: 100% !important;
         height: auto;
-        min-height: auto;
+        min-height: 166px; /* Prevent height collapse */
+        aspect-ratio: 396 / 166; /* Lock aspect ratio based on final dimensions */
         padding: 1rem;
+        contain: layout style; /* Prevent layout shifts */
     }
     
     .vibe-panel.w-full .vibe-panel__title {

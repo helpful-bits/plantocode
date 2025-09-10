@@ -83,6 +83,7 @@ pub fn generate_token(user_id: Uuid, email: &str, token_duration_days: i64) -> R
         iss: Some(JWT_ISSUER.to_string()),
         email: email.to_string(),
         role: "user".to_string(), // Default role
+        auth0_sub: None, // No auth0_sub by default
         tbh: None, // No token binding by default
         jti: Uuid::new_v4().to_string(),
     };
@@ -143,6 +144,7 @@ pub fn create_token(
     role: &str,
     email: &str,
     token_binding_value: Option<&str>,
+    auth0_sub: Option<&str>,
     token_duration_days: i64,
 ) -> Result<String, AppError> {
     let duration_days = token_duration_days;
@@ -162,6 +164,7 @@ pub fn create_token(
         email: email.to_string(),
         role: role.to_string(),
         iss: Some(JWT_ISSUER.to_string()),
+        auth0_sub: auth0_sub.map(|s| s.to_string()),
         // Add token binding hash if value is provided
         tbh: token_binding_value.map(hash_token_binding_value),
         jti: Uuid::new_v4().to_string(),
