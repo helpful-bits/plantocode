@@ -119,7 +119,7 @@ export function HeroSection() {
           <div className={isMobile ? "flex flex-col gap-4 pb-6 w-full" : "flex items-center justify-center gap-4 lg:gap-6 pb-6"}>
             {/* Panel 1: Find Files */}
             {isMobile ? (
-              <div className="vibe-panel w-full">
+              <div className="vibe-panel w-full" style={{minHeight: '166px'}}>
                 <h2 className="vibe-panel__title">Find Files</h2>
                 <p className="text-foreground/80 text-sm leading-relaxed">
                   AI uses <strong>Regex Filter</strong>, <strong>Content Relevance</strong>, and <strong>Dependencies</strong> to read actual code. From 1,000 files to the 10 that matter.
@@ -175,7 +175,7 @@ export function HeroSection() {
             )}
 
             {/* Panel 2: Parallel Planning */}
-            <div className={isMobile ? "vibe-panel vibe-panel--accent vibe-panel--glow w-full" : "vibe-panel vibe-panel--accent vibe-panel--glow flex-shrink-0"} style={isMobile ? {} : {width: 'min(300px, 30vw)', height: 'min(380px, 45vh)'}}>
+            <div className={isMobile ? "vibe-panel vibe-panel--accent vibe-panel--glow w-full" : "vibe-panel vibe-panel--accent vibe-panel--glow flex-shrink-0"} style={isMobile ? {minHeight: '166px'} : {width: 'min(300px, 30vw)', height: 'min(380px, 45vh)'}}>
               <h2 className="vibe-panel__title vibe-panel__title--accent">Parallel Planning</h2>
               <div className="vibe-models-container">
                 <div className="vibe-model-card">

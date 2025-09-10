@@ -15,6 +15,8 @@ pub struct Claims {
     pub email: String,
     /// User role (e.g., "user", "admin")
     pub role: String,
+    /// Auth0 subject identifier (for cross-region user recovery)
+    pub auth0_sub: Option<String>,
     /// Token binding hash (optional)
     pub tbh: Option<String>,
     /// JWT ID (unique identifier for the token)

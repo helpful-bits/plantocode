@@ -18,7 +18,7 @@ import {
   History,
   Sparkles,
 } from 'lucide-react';
-import type { SoftwareApplication, FAQPage } from 'schema-dts';
+import type { SoftwareApplication, FAQPage, VideoObject, ImageObject } from 'schema-dts';
 import { SectionDividerOrbs, SectionDividerMesh } from '@/components/ui/SectionDivider';
 
 const FounderProof = dynamic(() => import('@/components/landing/FounderProof').then(mod => ({ default: mod.FounderProof })), {
@@ -309,12 +309,125 @@ export default function Home() {
     },
   ];
 
+  // Video structured data for better indexing
+  const videoStructuredData: VideoObject[] = [
+    {
+      '@type': 'VideoObject',
+      name: 'File Discovery & Search in Your Codebase',
+      description: 'Watch how AI intelligently finds relevant files in your codebase using smart search patterns for better context curation.',
+      thumbnailUrl: cdnUrl('/assets/images/step-2-poster.jpg'),
+      contentUrl: cdnUrl('/assets/videos/step-2-find.mp4'),
+      uploadDate: '2025-08-01T00:00:00Z',
+      duration: 'PT50S',
+    },
+    {
+      '@type': 'VideoObject',
+      name: 'Plan Creation & Merge from Multiple AI Models',
+      description: 'Generate implementation plans from GPT-5, Claude 4, Gemini 2.5 and merge the best approaches into a unified solution.',
+      thumbnailUrl: cdnUrl('/assets/images/step-4-poster.jpg'),
+      contentUrl: cdnUrl('/assets/videos/step-4-merge.mp4'),
+      uploadDate: '2025-08-01T00:00:00Z',
+      duration: 'PT60S',
+    },
+    {
+      '@type': 'VideoObject',
+      name: 'Deep Research & Context Analysis',
+      description: 'See AI perform comprehensive research across your codebase to gather context and understand dependencies for accurate planning.',
+      thumbnailUrl: cdnUrl('/assets/images/step-3-poster.jpg'),
+      contentUrl: cdnUrl('/assets/videos/step-3-generate.mp4'),
+      uploadDate: '2025-08-01T00:00:00Z',
+      duration: 'PT55S',
+    },
+    {
+      '@type': 'VideoObject',
+      name: 'AI Text Enhancement - Task Description',
+      description: 'Learn how to describe tasks with AI assistance that enhances your descriptions with goals, constraints, and affected areas.',
+      thumbnailUrl: cdnUrl('/assets/images/step-1-text-poster.jpg'),
+      contentUrl: cdnUrl('/assets/videos/step-1-text.mp4'),
+      uploadDate: '2025-08-01T00:00:00Z',
+      duration: 'PT45S',
+    },
+    {
+      '@type': 'VideoObject',
+      name: 'Voice Dictation - 10x Faster Input',
+      description: 'Discover how voice dictation makes task input 10x faster for natural coding workflow with Claude Code and Cursor.',
+      thumbnailUrl: cdnUrl('/assets/images/step-1-voice-poster.jpg'),
+      contentUrl: cdnUrl('/assets/videos/step-1-voice.mp4'),
+      uploadDate: '2025-08-01T00:00:00Z',
+      duration: 'PT30S',
+    },
+    {
+      '@type': 'VideoObject',
+      name: 'Screen Recording - Instant Error Capture',
+      description: 'Capture complex workflows and visual context with screen recording. Gemini 2.5 Pro analyzes recordings to extract technical details.',
+      thumbnailUrl: cdnUrl('/assets/images/step-1-video-poster.jpg'),
+      contentUrl: cdnUrl('/assets/videos/step-1-video.mp4'),
+      uploadDate: '2025-08-01T00:00:00Z',
+      duration: 'PT40S',
+    },
+    {
+      '@type': 'VideoObject',
+      name: 'Settings & Prompt Customization',
+      description: 'Configure AI models, edit system prompts, and customize settings to match your workflow with Claude Code, Cursor, or OpenAI Codex.',
+      thumbnailUrl: cdnUrl('/assets/images/step-5-poster.jpg'),
+      contentUrl: cdnUrl('/assets/videos/step-5-customize.mp4'),
+      uploadDate: '2025-08-01T00:00:00Z',
+      duration: 'PT45S',
+    },
+  ];
+
+  // Image structured data for better indexing
+  const imageStructuredData: ImageObject[] = [
+    {
+      '@type': 'ImageObject',
+      name: 'Vibe Manager App Icon',
+      description: 'Vibe Manager logo featuring a compass navigation symbol in a white circle with mountain silhouettes at the bottom, on a teal-blue gradient background',
+      contentUrl: 'https://www.vibemanager.app/images/icon.png',
+      thumbnailUrl: 'https://www.vibemanager.app/images/icon.png',
+      width: '512',
+      height: '512',
+    },
+    {
+      '@type': 'ImageObject',
+      name: 'Vibe Manager File Discovery Screenshot',
+      description: 'Screenshot showing AI-powered file discovery interface with search patterns and codebase analysis for Claude Code and Cursor',
+      contentUrl: cdnUrl('/assets/images/demo-file-finder.jpg'),
+      thumbnailUrl: cdnUrl('/assets/images/demo-file-finder.jpg'),
+    },
+    {
+      '@type': 'ImageObject',
+      name: 'Multi-Model Implementation Plans',
+      description: 'Interface showing merged implementation plans from GPT-5, Claude 4, and Gemini 2.5 for superior coding strategies',
+      contentUrl: cdnUrl('/assets/images/demo-implementation-plans.jpg'),
+      thumbnailUrl: cdnUrl('/assets/images/demo-implementation-plans.jpg'),
+    },
+    {
+      '@type': 'ImageObject',
+      name: 'Video Analysis Feature',
+      description: 'Screen recording analysis interface showing Gemini 2.5 Pro extracting technical details from visual context',
+      contentUrl: cdnUrl('/assets/images/demo-video-analysis.jpg'),
+      thumbnailUrl: cdnUrl('/assets/images/demo-video-analysis.jpg'),
+    },
+    {
+      '@type': 'ImageObject',
+      name: 'Settings and Prompt Customization',
+      description: 'Configuration interface for AI models, system prompts, and workflow customization for Claude Code, Cursor, and OpenAI Codex',
+      contentUrl: cdnUrl('/assets/images/demo-settings-prompts.jpg'),
+      thumbnailUrl: cdnUrl('/assets/images/demo-settings-prompts.jpg'),
+    },
+  ];
 
 
   return (
     <>
       <StructuredData data={softwareApplicationJsonLd} />
       <StructuredData data={faqPageJsonLd} />
+      {videoStructuredData.map((video, index) => (
+        <StructuredData key={`video-${index}`} data={video} />
+      ))}
+      {imageStructuredData.map((image, index) => (
+        <StructuredData key={`image-${index}`} data={image} />
+      ))}
       {/* Background gradient */}
       <div className="fixed inset-0 -z-20" style={{ background: 'var(--background-gradient)' }} />
       {/* Page content */}

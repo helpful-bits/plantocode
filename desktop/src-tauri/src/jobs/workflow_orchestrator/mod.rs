@@ -746,7 +746,7 @@ impl WorkflowOrchestrator {
         // Get settings repository from app state
         let settings_repo = match self
             .app_handle
-            .try_state::<Arc<crate::db_utils::settings_repository::SettingsRepository>>()
+            .try_state::<std::sync::Arc<crate::db_utils::settings_repository::SettingsRepository>>()
         {
             Some(repo) => repo.inner().clone(),
             None => {
@@ -794,7 +794,7 @@ impl WorkflowOrchestrator {
         // Get settings repository from app state
         let settings_repo = match self
             .app_handle
-            .try_state::<Arc<crate::db_utils::settings_repository::SettingsRepository>>()
+            .try_state::<std::sync::Arc<crate::db_utils::settings_repository::SettingsRepository>>()
         {
             Some(repo) => repo.inner().clone(),
             None => {

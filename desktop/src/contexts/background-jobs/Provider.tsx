@@ -3,6 +3,7 @@
 import { createContext } from "react";
 
 import { type BackgroundJob } from "@/types/session-types";
+import { useProject } from "@/contexts/project-context";
 
 import { useOrchestratedBackgroundJobsState } from "./_hooks";
 
@@ -38,8 +39,13 @@ export function BackgroundJobsProvider({
 }: {
   children: ReactNode;
 }) {
+  // Get the current project directory from the project context
+  const { projectDirectory } = useProject();
+  
   // Use the orchestrated background jobs state hook to manage all job-related state and functions
-  const orchestratedState = useOrchestratedBackgroundJobsState();
+  const orchestratedState = useOrchestratedBackgroundJobsState({
+    projectDirectory: projectDirectory || undefined,
+  });
 
   // Provide context values to children
   return (

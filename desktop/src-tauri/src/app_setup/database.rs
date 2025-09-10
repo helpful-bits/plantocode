@@ -134,11 +134,13 @@ pub async fn initialize_database_light(app_handle: &AppHandle) -> Result<(), App
 
     // Manage ErrorLogRepository in Tauri state (assumes table exists via consolidated schema)
     let error_log_repo = crate::db_utils::ErrorLogRepository::new(pool_arc.clone());
-    app_handle.manage(error_log_repo.clone());
+    let error_log_repo_arc = Arc::new(error_log_repo);
+    app_handle.manage(error_log_repo_arc.clone());
 
     // Best-effort prune (30 days)
+    let error_log_repo_for_prune = error_log_repo_arc.clone();
     tauri::async_runtime::spawn(async move {
-      if let Err(e) = error_log_repo.prune_older_than_days(30).await {
+      if let Err(e) = error_log_repo_for_prune.prune_older_than_days(30).await {
         log::warn!("Error log prune failed: {}", e);
       }
     });

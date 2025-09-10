@@ -300,10 +300,10 @@ impl Auth0OAuthService {
 
         let token = if let Some(client_id) = client_id_from_header {
             debug!("Creating token with client binding for client_id: {}", client_id);
-            jwt::create_token(user.id, &user.role, &email, Some(client_id), self.jwt_token_duration_days)?
+            jwt::create_token(user.id, &user.role, &email, Some(client_id), Some(user_info.sub.as_str()), self.jwt_token_duration_days)?
         } else {
             debug!("Creating token without client binding");
-            jwt::create_token(user.id, &user.role, &email, None, self.jwt_token_duration_days)?
+            jwt::create_token(user.id, &user.role, &email, None, Some(user_info.sub.as_str()), self.jwt_token_duration_days)?
         };
 
         let expires_in = self.jwt_token_duration_days * 24 * 60 * 60;

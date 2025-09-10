@@ -59,7 +59,7 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
   const parsedMeta = getParsedMetadata(plan.metadata);
   
   // Extract the plan title from metadata
-  const planTitle = String(parsedMeta?.planTitle || parsedMeta?.generated_title || "");
+  const planTitle = String(parsedMeta?.planTitle || "");
   
   // Helper function to truncate long titles
   const truncateTitle = (title: string, maxLength: number = 80) => {

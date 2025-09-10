@@ -56,15 +56,29 @@ export async function transcribeAudioChunk(
     });
 
     if (!response.ok) {
-      const errorType = mapStatusToErrorType(response.status);
+      let errorType = mapStatusToErrorType(response.status);
       let errorMessage = `HTTP error! status: ${response.status}`;
       
       try {
-        // Parse JSON from response body to get server-provided error message
+        // Parse JSON from response body to get server-provided error message and type
         const errorData = await response.json();
         const serverMessage = errorData.error?.message || errorData.message;
         if (serverMessage) {
           errorMessage = serverMessage;
+        }
+        
+        // Check for server-provided error_type to get more accurate error classification
+        const serverErrorType = errorData.error_type || errorData.error?.type;
+        if (serverErrorType) {
+          // Map server error types to client ErrorType
+          if (serverErrorType === 'credit_insufficient' || serverErrorType === 'insufficient_credits') {
+            errorType = ErrorType.CREDIT_INSUFFICIENT;
+          } else if (serverErrorType === 'payment_failed') {
+            errorType = ErrorType.PAYMENT_FAILED;
+          } else if (serverErrorType === 'payment_required') {
+            errorType = ErrorType.PAYMENT_REQUIRED;
+          }
+          // Add more mappings as needed
         }
       } catch (parseError) {
         // If parsing fails, fallback to HTTP status message
