@@ -7,67 +7,8 @@ import {
   shouldGatePath,
 } from '@/lib/territories';
 
-// Helper function to get client's real IP
-function getClientIp(request: NextRequest): string {
-  const forwardedFor = request.headers.get('x-forwarded-for');
-  const realIp = request.headers.get('x-real-ip');
-  const cfConnectingIp = request.headers.get('cf-connecting-ip');
-  
-  return cfConnectingIp || (forwardedFor ? forwardedFor.split(',')[0]?.trim() || '' : '') || realIp || '';
-}
 
 
-// Handle analytics proxy with proper header forwarding
-async function handleAnalyticsProxy(request: NextRequest): Promise<NextResponse | null> {
-  const url = request.nextUrl.clone();
-  const clientIp = getClientIp(request);
-  
-  // Note: Plausible proxy is now handled by withPlausibleProxy in next.config.ts
-  // Only handle Google Analytics proxy here
-  
-  // Handle Google Analytics proxy
-  if (url.pathname.startsWith('/ga/')) {
-    let gaUrl: string;
-    if (url.pathname === '/ga/gtag.js') {
-      gaUrl = `https://www.googletagmanager.com/gtag/js${url.search}`;
-    } else if (url.pathname === '/ga/analytics.js') {
-      gaUrl = 'https://www.google-analytics.com/analytics.js';
-    } else if (url.pathname === '/ga/collect') {
-      gaUrl = `https://www.google-analytics.com/collect${url.search}`;
-    } else if (url.pathname === '/ga/g/collect') {
-      gaUrl = `https://www.google-analytics.com/g/collect${url.search}`;
-    } else if (url.pathname === '/ga/mp/collect') {
-      gaUrl = `https://www.google-analytics.com/mp/collect${url.search}`;
-    } else {
-      return null;
-    }
-    
-    const response = await fetch(gaUrl, {
-      method: request.method,
-      body: request.body,
-      headers: {
-        'User-Agent': request.headers.get('user-agent') || '',
-        'X-Forwarded-For': clientIp,
-        'X-Real-IP': clientIp,
-        'Accept-Language': request.headers.get('accept-language') || '',
-        'Referer': request.headers.get('referer') || '',
-        'Content-Type': request.headers.get('content-type') || '',
-      },
-    });
-    
-    const newResponse = new NextResponse(response.body, response);
-    response.headers.forEach((value, key) => {
-      if (key.toLowerCase() !== 'content-encoding') {
-        newResponse.headers.set(key, value);
-      }
-    });
-    newResponse.headers.set('Cache-Control', 'no-store');
-    return newResponse;
-  }
-  
-  
-  return null;
-}
 
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
@@ -77,11 +18,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
   
-  // Handle analytics proxy requests first (before geo-blocking)
-  const analyticsResponse = await handleAnalyticsProxy(request);
-  if (analyticsResponse) {
-    return analyticsResponse;
-  }
+  // Note: Plausible proxy is handled by withPlausibleProxy in next.config.ts
+  // No Google Analytics or other tracking proxies needed
 
   // Check if this is a search engine crawler - CRITICAL for SEO
   const userAgent = request.headers.get('user-agent') || '';
@@ -157,12 +95,8 @@ export const config = {
      * - favicon.ico (favicon file)
      * - public folder
      * Note: Legal pages remain accessible worldwide for transparency
-     * 
-     * Also explicitly match analytics proxy paths:
-     * - /ga/* (Google Analytics)
-     * Note: Plausible proxy paths (/js/script*, /api/event) are now handled by withPlausibleProxy
+     * Note: Plausible proxy paths (/js/script*, /api/event) are handled by withPlausibleProxy
      */
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
-    '/ga/:path*',
   ],
 };

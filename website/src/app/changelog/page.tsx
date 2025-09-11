@@ -28,6 +28,29 @@ interface ChangelogEntry {
 
 const changelog: ChangelogEntry[] = [
   {
+    version: '1.0.20',
+    date: '2025-09-10',
+    type: 'patch',
+    changes: {
+      fixed: [
+        'Critical workflow orchestrator initialization in production builds',
+        'Workflow JSON definitions and migration rules not bundled in production',
+        'Resource loading using compile-time paths instead of Tauri resource resolver',
+        'Error log repository Arc management preventing proper cleanup'
+      ],
+      improved: [
+        'Parallel processing in regex file filter for better performance with multiple root directories',
+        'Root folder selection with enhanced context about primary project directory',
+        'Background job repository with project-specific job visibility',
+        'Resource loading with proper production/development path resolution',
+        'Workflow orchestrator stability and error handling'
+      ],
+      added: [
+        'Method to retrieve all visible jobs for a specific project'
+      ]
+    }
+  },
+  {
     version: '1.0.19',
     date: '2025-09-07',
     type: 'patch',

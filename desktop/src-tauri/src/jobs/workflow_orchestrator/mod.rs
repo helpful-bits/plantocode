@@ -149,11 +149,11 @@ impl WorkflowOrchestrator {
 
     /// Load workflow definitions from configuration files
     async fn load_default_workflow_definitions(&self) -> AppResult<()> {
-        // Load workflow definitions from JSON files - NO FALLBACK
+        // Load workflow definitions from embedded sources only - NO FALLBACK
         let workflow_definitions = definition_loader::load_workflow_definitions_from_files()
             .map_err(|e| {
                 AppError::JobError(format!(
-                    "Failed to load workflow definitions from JSON files: {}",
+                    "Failed to load embedded workflow definitions: {}",
                     e
                 ))
             })?;
@@ -169,7 +169,7 @@ impl WorkflowOrchestrator {
             }
         }
 
-        info!("Loaded workflow definitions from JSON files");
+        info!("Loaded workflow definitions from embedded sources");
         Ok(())
     }
 
@@ -1320,7 +1320,7 @@ pub async fn init_workflow_orchestrator(
 
     // Load workflow definitions after creating the orchestrator - FAIL FAST, NO FALLBACKS
     orchestrator.load_default_workflow_definitions().await
-        .map_err(|e| AppError::JobError(format!("Failed to initialize workflow orchestrator - workflow definitions must be loaded from JSON files: {}", e)))?;
+        .map_err(|e| AppError::JobError(format!("Failed to initialize workflow orchestrator: embedded workflow definitions could not be loaded/parsed: {}", e)))?;
 
     if let Err(_) = WORKFLOW_ORCHESTRATOR.set(orchestrator.clone()) {
         return Err(AppError::JobError(
@@ -1339,10 +1339,33 @@ pub async fn init_workflow_orchestrator(
 
 /// Get the global workflow orchestrator instance
 pub async fn get_workflow_orchestrator() -> AppResult<Arc<WorkflowOrchestrator>> {
-    match WORKFLOW_ORCHESTRATOR.get() {
-        Some(orchestrator) => Ok(orchestrator.clone()),
-        None => Err(AppError::JobError(
-            "Workflow orchestrator not initialized".to_string(),
-        )),
+    if let Some(existing) = WORKFLOW_ORCHESTRATOR.get() {
+        return Ok(existing.clone());
     }
+
+    let Some(app_handle) = crate::GLOBAL_APP_HANDLE.get().cloned() else {
+        return Err(AppError::JobError("Workflow orchestrator not initialized (no AppHandle)".into()));
+    };
+
+    let mut attempts = 0usize;
+    while attempts < 50 && WORKFLOW_ORCHESTRATOR.get().is_none() {
+        if app_handle.try_state::<Arc<crate::db_utils::background_job_repository::BackgroundJobRepository>>().is_some() {
+            let init_future = init_workflow_orchestrator(app_handle.clone());
+            if let Ok(orchestrator) = Box::pin(init_future).await {
+                use tauri::Emitter;
+                let payload = serde_json::json!({
+                    "ts": chrono::Utc::now().to_rfc3339(),
+                    "status": "ready"
+                });
+                let _ = app_handle.emit("orchestrator:initialized", payload);
+                return Ok(orchestrator);
+            }
+        }
+        attempts += 1;
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    }
+
+    WORKFLOW_ORCHESTRATOR.get()
+        .cloned()
+        .ok_or_else(|| AppError::JobError("Workflow orchestrator not initialized (timeout)".into()))
 }

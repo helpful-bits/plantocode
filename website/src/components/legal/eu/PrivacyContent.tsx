@@ -1,10 +1,6 @@
 'use client';
 
-import { useConsent } from '@/components/providers/ConsentProvider';
-import { Button } from '@/components/ui/button';
-
 export default function EUPrivacyContent() {
-  const { openPreferences } = useConsent();
   
   return (
     <>
@@ -377,18 +373,6 @@ export default function EUPrivacyContent() {
           <li><strong>Withdraw Consent:</strong> You can withdraw your consent at any time through your browser settings or by clicking the "Manage cookie settings" button below</li>
         </ul>
 
-        <div className="mt-6 p-4 bg-muted/30 dark:bg-muted/20 rounded-lg">
-          <Button
-            onClick={openPreferences}
-            variant="outline"
-            size="default"
-          >
-            Manage Cookie Settings
-          </Button>
-          <p className="text-sm text-muted-foreground mt-2">
-            Click here to review and modify your cookie preferences at any time.
-          </p>
-        </div>
 
         <h3 className="text-xl font-medium mb-3 mt-6">Types of Cookies We Use</h3>
         <ul className="list-disc list-inside space-y-2">

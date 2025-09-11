@@ -6,7 +6,7 @@ import { fontClasses } from './fonts';
 import { StructuredData } from '@/components/seo/StructuredData';
 import type { WebSite, Organization } from 'schema-dts';
 import { ClientProviders } from '@/components/providers/ClientProviders';
-import { ConditionalBackground } from '@/components/system/ConditionalBackground';
+// import { ConditionalBackground } from '@/components/system/ConditionalBackground';
 import { Footer } from '@/components/landing/Footer';
 import { cdnUrl } from '@/lib/cdn';
 
@@ -144,7 +144,7 @@ const organizationJsonLd: Organization = {
   url: 'https://www.vibemanager.app',
   logo: {
     '@type': 'ImageObject',
-    url: 'https://www.vibemanager.app/images/icon.png',
+    url: 'https://www.vibemanager.app/images/icon.webp',
     width: '512',
     height: '512'
   },
@@ -167,39 +167,10 @@ export default function RootLayout({
         <link rel="preconnect" href="https://va.vercel-scripts.com" crossOrigin="anonymous" />
         <link rel="preconnect" href="https://cdn.jsdelivr.net" crossOrigin="anonymous" />
         <link rel="dns-prefetch" href="https://cdn.jsdelivr.net" />
-        {/* Analytics are now proxied through our domain - no need to prefetch/preconnect */}
-        {/* Google Analytics with Consent Mode v2 */}
-        <script dangerouslySetInnerHTML={{
-          __html: `
-            // Initialize dataLayer and gtag function BEFORE loading GA
-            window.dataLayer = window.dataLayer || [];
-            function gtag(){dataLayer.push(arguments);}
-            
-            // Set default consent state (will be updated by ConsentBanner)
-            gtag('consent', 'default', {
-              'analytics_storage': 'denied',
-              'ad_storage': 'denied',
-              'ad_user_data': 'denied',
-              'ad_personalization': 'denied',
-              'functionality_storage': 'granted',
-              'security_storage': 'granted',
-              'wait_for_update': 2000 // Wait up to 2 seconds for consent update
-            });
-            
-            // Configure GA4 with your measurement ID
-            gtag('js', new Date());
-            gtag('config', '${process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || 'G-SNQQT3LLEB'}', {
-              'anonymize_ip': true, // Additional privacy protection
-              'allow_google_signals': false, // Disable Google Signals for GDPR
-              'allow_ad_personalization_signals': false // Disable ad personalization
-            });
-          `
-        }} />
-        {/* Load GA script AFTER consent defaults are set - Using proxied endpoint */}
-        <script async src={`/ga/gtag.js?id=${process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || 'G-SNQQT3LLEB'}`}></script>
+        {/* No analytics - 100% cookie-free and GDPR compliant */}
       </head>
       <body className={`${fontClasses.sans} bg-transparent overflow-x-hidden`}>
-        <ConditionalBackground />
+        {/* <ConditionalBackground /> */}
         <ClientProviders>
           {children}
           <Footer />

@@ -1,8 +1,8 @@
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use serde_json::Value;
 use uuid::Uuid;
 use crate::utils::title_generation::generate_plan_title;
-use tokio::time::{timeout, Duration};
+// tokio::time imports removed - no longer needed for non-blocking title generation
 
 use crate::error::{AppError, AppResult};
 use crate::jobs::types::{JobPayload, JobUIMetadata};
@@ -16,6 +16,22 @@ use crate::utils::job_ui_metadata_builder::{
 use crate::validation::ConfigValidator;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
+
+/// Helper function to wait for BackgroundJobRepository to be available in app state
+/// This provides a bounded wait (2s) for the repository to become available during startup
+fn wait_for_background_job_repo(app_handle: &AppHandle) -> Option<Arc<crate::db_utils::BackgroundJobRepository>> {
+    for i in 0..40 { // ~2s total wait time
+        if let Some(repo) = app_handle.try_state::<Arc<crate::db_utils::BackgroundJobRepository>>() {
+            if i > 0 {
+                debug!("BackgroundJobRepository became available after {} attempts", i);
+            }
+            return Some(repo.inner().clone());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    warn!("BackgroundJobRepository not available after 2s wait");
+    None
+}
 
 /// Creates and queues a background job with consistent parameter handling
 ///
@@ -208,22 +224,55 @@ pub async fn create_and_queue_background_job(
     // Create a unique job ID
     let job_id = format!("job_{}", Uuid::new_v4());
 
-    // Generate title for ImplementationPlan jobs
-    let mut generated_title_opt: Option<String> = None;
+    // Create provisional title immediately for ImplementationPlan jobs
+    // Background generation will update it later without blocking
+    let provisional_title_opt = if matches!(task_type_enum, TaskType::ImplementationPlan) {
+        // Create smart provisional title from task description
+        let first_line = prompt_text
+            .lines()
+            .next()
+            .unwrap_or(prompt_text)
+            .trim();
+        
+        let provisional = if first_line.chars().count() <= 70 {
+            first_line.to_string()
+        } else {
+            first_line.chars().take(70).collect::<String>().trim_end().to_string()
+        };
+        
+        if !provisional.is_empty() {
+            Some(provisional)
+        } else {
+            Some("Implementation Plan".to_string())
+        }
+    } else {
+        None
+    };
+
+    // Start background title generation for ImplementationPlan jobs (non-blocking)
     if matches!(task_type_enum, TaskType::ImplementationPlan) {
-        let req_id = format!("{}:title", job_id);
+        let job_id_clone = job_id.clone();
+        let req_id = format!("{}:title", job_id_clone);
         let td = prompt_text.to_string();
         let app_handle_clone = app_handle.clone();
-        let handle = tokio::spawn(async move {
-            generate_plan_title(&app_handle_clone, &td, Some(req_id), None).await
+        
+        tokio::spawn(async move {
+            // Generate title in background
+            match generate_plan_title(&app_handle_clone, &td, Some(req_id), None).await {
+                Ok(Some(generated_title)) => {
+                    // Update job metadata with the generated title
+                    if let Err(e) = update_job_title_metadata(&app_handle_clone, &job_id_clone, &generated_title).await {
+                        warn!("Failed to update job title: {:?}", e);
+                    }
+                },
+                Ok(None) => {
+                    debug!("Title generation returned empty result for job {}", job_id_clone);
+                },
+                Err(e) => {
+                    warn!("Background title generation failed for job {}: {:?}", job_id_clone, e);
+                }
+            }
         });
-        match timeout(Duration::from_millis(2500), handle).await {
-            Ok(Ok(Ok(Some(t)))) => { generated_title_opt = Some(t); }
-            Ok(Ok(Ok(None))) => { /* empty title, keep None */ }
-            Ok(Ok(Err(e))) => { warn!("Title generation failed: {:?}", e); }
-            Ok(Err(join_err)) => { warn!("Title join error: {:?}", join_err); }
-            Err(_) => { warn!("Title generation timed out"); }
-        }
     }
 
     // Compute display name using generated title if available
@@ -237,7 +286,7 @@ pub async fn create_and_queue_background_job(
         .collect::<String>();
 
     let display_name = if matches!(task_type_enum, TaskType::ImplementationPlan) {
-        generated_title_opt.clone().unwrap_or_else(|| default_display_name.clone())
+        provisional_title_opt.clone().unwrap_or_else(|| default_display_name.clone())
     } else {
         default_display_name.clone()
     };
@@ -321,8 +370,8 @@ pub async fn create_and_queue_background_job(
         AppError::SerializationError(format!("Failed to serialize JobUIMetadata: {}", e))
     })?;
 
-    // Add planTitle to metadata root level for UI access
-    if let Some(t) = &generated_title_opt {
+    // Add provisional planTitle to metadata root level for immediate UI access
+    if let Some(t) = &provisional_title_opt {
         if let Some(obj) = metadata_value.as_object_mut() {
             obj.insert("planTitle".to_string(), serde_json::Value::String(t.clone()));
         }
@@ -389,15 +438,12 @@ pub async fn create_and_queue_background_job(
         error_details: None,
     };
 
-    // Get the background job repository from app state
-    let repo = match app_handle.try_state::<Arc<crate::db_utils::BackgroundJobRepository>>() {
-        Some(repo) => repo.inner().clone(),
-        None => {
-            return Err(AppError::InitializationError(
-                "Background job repository not yet initialized. Please wait for app initialization to complete.".to_string()
-            ));
-        }
-    };
+    // Get the background job repository from app state with bounded wait
+    let repo = wait_for_background_job_repo(app_handle).ok_or_else(|| {
+        AppError::InitializationError(
+            "Background job repository not yet initialized after waiting. Please wait for app initialization to complete.".to_string()
+        )
+    })?;
 
     // Save the job to the database
     repo.create_job(&job_to_save)
@@ -429,9 +475,21 @@ pub async fn create_and_queue_background_job(
             info!("Skipping queue dispatch for workflow job: {}", job_id);
         }
         _ => {
-            crate::jobs::dispatcher::dispatch_job(job_for_queue, app_handle.clone())
-                .await
-                .map_err(|e| AppError::JobError(format!("Failed to dispatch job: {}", e)))?;
+            match crate::jobs::dispatcher::dispatch_job(job_for_queue, app_handle.clone()).await {
+                Ok(_) => {
+                    // Job dispatched successfully
+                }
+                Err(e) if e.to_string().contains("Job queue not initialized") => {
+                    // Job queue not ready yet, but job is saved in database as Queued
+                    // It will be recovered when the job system starts
+                    // This broader check catches the error regardless of the exact error type
+                    warn!("Job queue not initialized; job {} persisted as queued and will be recovered when job system starts: {}", job_id, e);
+                }
+                Err(e) => {
+                    // Other errors should be propagated
+                    return Err(AppError::JobError(format!("Failed to dispatch job: {}", e)));
+                }
+            }
         }
     }
 
@@ -533,3 +591,37 @@ fn inject_job_id_into_payload(payload: &mut JobPayload, job_id: &str) {
 }
 
 // Task settings functions removed - all AI configuration now comes from server-side exclusively
+
+/// Updates job metadata with generated title in background
+async fn update_job_title_metadata(
+    app_handle: &AppHandle,
+    job_id: &str,
+    generated_title: &str,
+) -> Result<(), AppError> {
+    use std::sync::Arc;
+    use crate::db_utils::BackgroundJobRepository;
+    use crate::events::job_events::{emit_job_metadata_updated, JobMetadataUpdatedEvent};
+    
+    let repo = app_handle
+        .state::<Arc<BackgroundJobRepository>>()
+        .inner()
+        .clone();
+    
+    // Create patch to update generated_title (processor will set planTitle from this)
+    let patch = serde_json::json!({
+        "generated_title": generated_title
+    });
+    
+    // Update job metadata using the patch method
+    repo.update_job_metadata(job_id, &patch)
+        .await?;
+    
+    // Emit event to notify UI of metadata change
+    emit_job_metadata_updated(app_handle, JobMetadataUpdatedEvent {
+        job_id: job_id.to_string(),
+        metadata_patch: patch,
+    });
+    
+    info!("Updated job {} with generated title: {}", job_id, generated_title);
+    Ok(())
+}

@@ -1,5 +1,6 @@
 use crate::AppState;
 use crate::db_utils::BackgroundJobRepository;
+use crate::error::{AppError, AppResult};
 use crate::jobs::types::{
     FileFinderWorkflowPayload, JobPayload,
 };
@@ -102,6 +103,11 @@ pub async fn start_file_finder_workflow(
         "Starting file finder workflow for task: {}",
         task_description
     );
+
+    // Preflight touch: ensure queue is ready/lazily initialized before creating jobs
+    if let Err(e) = crate::jobs::queue::get_job_queue().await {
+        debug!("Preflight job queue readiness check: {e:?} (proceeding, accessor handles waiting/lazy init)");
+    }
 
     // Validate required fields
     if session_id.is_empty() {
@@ -219,19 +225,14 @@ pub async fn get_workflow_status(
 
 /// Cancel entire workflow using WorkflowOrchestrator
 #[command]
-pub async fn cancel_workflow(workflow_id: String, app_handle: AppHandle) -> Result<(), String> {
+pub async fn cancel_workflow(workflow_id: String, app_handle: AppHandle) -> AppResult<()> {
     info!("Cancelling workflow: {}", workflow_id);
 
     // Get the workflow orchestrator
-    let orchestrator = get_workflow_orchestrator()
-        .await
-        .map_err(|e| format!("Failed to get workflow orchestrator: {}", e))?;
+    let orchestrator = get_workflow_orchestrator().await?;
 
     // Cancel the workflow via the orchestrator
-    orchestrator
-        .cancel_workflow(&workflow_id)
-        .await
-        .map_err(|e| format!("Failed to cancel workflow: {}", e))?;
+    orchestrator.cancel_workflow(&workflow_id).await?;
 
     info!("Successfully cancelled workflow: {}", workflow_id);
     Ok(())
@@ -239,19 +240,14 @@ pub async fn cancel_workflow(workflow_id: String, app_handle: AppHandle) -> Resu
 
 /// Pause a workflow - prevents new stages from starting
 #[command]
-pub async fn pause_workflow(workflow_id: String, app_handle: AppHandle) -> Result<(), String> {
+pub async fn pause_workflow(workflow_id: String, app_handle: AppHandle) -> AppResult<()> {
     info!("Pausing workflow: {}", workflow_id);
 
     // Get the workflow orchestrator
-    let orchestrator = get_workflow_orchestrator()
-        .await
-        .map_err(|e| format!("Failed to get workflow orchestrator: {}", e))?;
+    let orchestrator = get_workflow_orchestrator().await?;
 
     // Pause the workflow via the orchestrator
-    orchestrator
-        .pause_workflow(&workflow_id)
-        .await
-        .map_err(|e| format!("Failed to pause workflow: {}", e))?;
+    orchestrator.pause_workflow(&workflow_id).await?;
 
     info!("Successfully paused workflow: {}", workflow_id);
     Ok(())
@@ -259,19 +255,14 @@ pub async fn pause_workflow(workflow_id: String, app_handle: AppHandle) -> Resul
 
 /// Resume a paused workflow - allows new stages to start
 #[command]
-pub async fn resume_workflow(workflow_id: String, app_handle: AppHandle) -> Result<(), String> {
+pub async fn resume_workflow(workflow_id: String, app_handle: AppHandle) -> AppResult<()> {
     info!("Resuming workflow: {}", workflow_id);
 
     // Get the workflow orchestrator
-    let orchestrator = get_workflow_orchestrator()
-        .await
-        .map_err(|e| format!("Failed to get workflow orchestrator: {}", e))?;
+    let orchestrator = get_workflow_orchestrator().await?;
 
     // Resume the workflow via the orchestrator
-    orchestrator
-        .resume_workflow(&workflow_id)
-        .await
-        .map_err(|e| format!("Failed to resume workflow: {}", e))?;
+    orchestrator.resume_workflow(&workflow_id).await?;
 
     info!("Successfully resumed workflow: {}", workflow_id);
     Ok(())

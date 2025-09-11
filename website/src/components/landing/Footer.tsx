@@ -1,23 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { track } from '@/lib/track';
 
 export function Footer() {
-  const handleDownloadClick = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    // Track download click on client-side to preserve user context
-    await track({ 
-      event: 'download_click', 
-      props: { 
-        location: 'footer',
-        platform: 'mac',
-        version: 'latest'
-      } 
-    });
-    // Redirect to download endpoint
-    window.location.href = '/api/download/mac?source=footer';
-  };
 
   return (
     <footer className="relative mt-24">
@@ -88,12 +73,9 @@ export function Footer() {
                     </Link>
                   </li>
                   <li>
-                    <span 
-                      className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline cursor-pointer" 
-                      onClick={handleDownloadClick}
-                    >
-                      Download for Mac
-                    </span>
+                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/download">
+                      Download
+                    </Link>
                   </li>
                 </ul>
               </div>

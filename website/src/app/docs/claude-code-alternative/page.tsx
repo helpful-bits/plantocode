@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { DocsArticle } from '@/components/docs/DocsArticle';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/button';
+import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { StructuredData } from '@/components/seo/StructuredData';
 import type { SoftwareApplication } from 'schema-dts';
 import TechnicalAccuracy from '@/components/docs/TechnicalAccuracy';
@@ -236,9 +237,10 @@ export default function ClaudeCodeAlternativePage() {
               <strong>2. Download Vibe Manager</strong>
               <p className="text-muted-foreground mb-3">Get the macOS app from vibemanager.app/download</p>
               <div className="flex flex-col sm:flex-row gap-3 mt-2">
-                <Button asChild variant="cta">
-                  <Link href="/download">Download for Mac</Link>
-                </Button>
+                <PlatformDownloadSection 
+                  location="docs_claude_code_alternative"
+                  redirectToDownloadPage={true}
+                />
                 <Button asChild variant="outline">
                   <Link href="/docs">View All Docs</Link>
                 </Button>

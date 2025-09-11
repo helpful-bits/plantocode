@@ -12,6 +12,7 @@ pub const JOB_COST_UPDATED: &str = "job:cost-updated";
 pub const JOB_RESPONSE_APPENDED: &str = "job:response-appended";
 pub const JOB_ERROR_DETAILS: &str = "job:error-details";
 pub const JOB_FINALIZED: &str = "job:finalized";
+pub const JOB_METADATA_UPDATED: &str = "job:metadata-updated";
 
 // Typed event payload structs
 #[derive(Debug, Serialize, Clone)]
@@ -91,6 +92,13 @@ pub struct JobFinalizedEvent {
     pub cache_write_tokens: Option<i32>,
 }
 
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct JobMetadataUpdatedEvent {
+    pub job_id: String,
+    pub metadata_patch: serde_json::Value,
+}
+
 // Helper emit functions
 pub fn emit_job_created(app_handle: &AppHandle, payload: JobCreatedEvent) {
     if let Err(e) = app_handle.emit(JOB_CREATED, payload) {
@@ -143,5 +151,11 @@ pub fn emit_job_error_details(app_handle: &AppHandle, payload: JobErrorDetailsEv
 pub fn emit_job_finalized(app_handle: &AppHandle, payload: JobFinalizedEvent) {
     if let Err(e) = app_handle.emit(JOB_FINALIZED, payload) {
         warn!("Failed to emit {} event: {}", JOB_FINALIZED, e);
+    }
+}
+
+pub fn emit_job_metadata_updated(app_handle: &AppHandle, payload: JobMetadataUpdatedEvent) {
+    if let Err(e) = app_handle.emit(JOB_METADATA_UPDATED, payload) {
+        warn!("Failed to emit {} event: {}", JOB_METADATA_UPDATED, e);
     }
 }

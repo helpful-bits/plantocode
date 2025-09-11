@@ -1,8 +1,7 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { DocsArticle } from '@/components/docs/DocsArticle';
 import { GlassCard } from '@/components/ui/GlassCard';
-import { Button } from '@/components/ui/button';
+import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { StructuredData } from '@/components/seo/StructuredData';
 import type { HowTo } from 'schema-dts';
 import { cdnUrl } from '@/lib/cdn';
@@ -101,9 +100,10 @@ export default function ClaudeCodeInstallPage() {
               <p className="text-base mb-4 text-muted-foreground leading-relaxed">
                 Enhance Claude Code with multi-model planning and intelligent file discovery:
               </p>
-              <Button asChild variant="cta" size="lg">
-                <Link href="/download">Download Vibe Manager for macOS</Link>
-              </Button>
+              <PlatformDownloadSection 
+                location="docs_claude_code_install"
+                redirectToDownloadPage={true}
+              />
               <p className="text-sm mt-2 text-muted-foreground">
                 Windows support coming soon
               </p>

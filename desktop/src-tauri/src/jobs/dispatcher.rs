@@ -75,7 +75,7 @@ fn standardize_file_finding_response(response: Value, task_type: &TaskType) -> V
 
 /// Dispatch a job to be processed
 pub async fn dispatch_job(job: Job, app_handle: AppHandle) -> AppResult<()> {
-    // Get the job queue
+    // Get the job queue - accessor now handles lazy init and waiting
     let queue = get_job_queue().await?;
 
     // Enqueue the job with normal priority

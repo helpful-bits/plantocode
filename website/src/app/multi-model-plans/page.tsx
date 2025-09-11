@@ -2,8 +2,7 @@ import type { Metadata } from 'next';
 import { Header } from '@/components/landing/Header';
 import { BrainCircuit } from 'lucide-react';
 import Reveal from '@/components/motion/Reveal';
-import { Button } from '@/components/ui/button';
-import Link from 'next/link';
+import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { StructuredData } from '@/components/seo/StructuredData';
 import type { BreadcrumbList } from 'schema-dts';
 
@@ -105,11 +104,7 @@ export default function MultiModelPlansPage() {
               </div>
 
               <Reveal className="mt-12" delay={0.4}>
-                <Button asChild size="xl" variant="cta">
-                  <Link href="/download">
-                    Try Multi-Model Planning
-                  </Link>
-                </Button>
+                <PlatformDownloadSection location="multi_model_plans" redirectToDownloadPage={true} />
               </Reveal>
             </div>
           </section>

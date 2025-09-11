@@ -1,42 +1,18 @@
 'use client';
 
 import React from 'react';
-import { Button } from '@/components/ui/button';
-import { useRouter } from 'next/navigation';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { motion } from 'framer-motion';
 import { CheckCircle2, Zap } from 'lucide-react';
 import Reveal from '@/components/motion/Reveal';
-import { track } from '@/lib/track';
+import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 
 interface CallToActionProps {
   title: string;
   description: string;
-  buttonText: string;
-  buttonLink: string;
 }
 
-export function CallToAction({ title, description, buttonText, buttonLink }: CallToActionProps) {
-  const router = useRouter();
-
-  const handleDownloadClick = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    if (buttonLink === '/download') {
-      // Track download click on client-side to preserve user context
-      await track({ 
-        event: 'download_click', 
-        props: { 
-          location: 'cta_section',
-          platform: 'mac',
-          version: 'latest'
-        } 
-      });
-      // Redirect to download endpoint
-      window.location.href = '/api/download/mac?source=cta_section';
-    } else {
-      router.push(buttonLink);
-    }
-  };
+export function CallToAction({ title, description }: CallToActionProps) {
 
 
   return (
@@ -123,30 +99,12 @@ export function CallToAction({ title, description, buttonText, buttonLink }: Cal
                 </Reveal>
 
                 <Reveal delay={0.25}>
-                  <div className="flex flex-col items-center">
-                    <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                    <Button
-                      className="inline-flex items-center justify-center gap-3 no-hover-effect cursor-pointer"
-                      size="xl"
-                      variant="primary"
-                      onClick={handleDownloadClick}
-                    >
-                      {buttonText}
-                      <svg
-                        className="w-5 h-5 flex-shrink-0"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path d="M13 7l5 5m0 0l-5 5m5-5H6" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
-                      </svg>
-                    </Button>
-                    </motion.div>
-                    <div className="flex flex-col items-center gap-2 mt-3">
-                      <em className="text-xs text-muted-foreground">Signed & notarized for macOS - safer installs via Gatekeeper.</em>
-                      <a href="mailto:support@vibemanager.app?subject=Windows%20Waitlist" className="text-sm text-muted-foreground hover:text-primary transition-colors">Join the Windows waitlist</a>
-                    </div>
-                  </div>
+                  <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                    <PlatformDownloadSection 
+                      location="cta_section"
+                      redirectToDownloadPage={true}
+                    />
+                  </motion.div>
                 </Reveal>
 
                 <Reveal className="mt-6 sm:mt-8 flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-8 text-xs sm:text-sm text-foreground/60" delay={0.3}>

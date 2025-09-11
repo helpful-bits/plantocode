@@ -164,7 +164,7 @@ export function TerminalSessionsProvider({ children }: { children: ReactNode }) 
       
       // Start session via Rust backend
       await invoke("start_terminal_session_command", {
-        job_id: jobId,
+        jobId: jobId,
         options: {
           workingDirectory: opts?.workingDir,
           environment: opts?.env,
@@ -199,7 +199,7 @@ export function TerminalSessionsProvider({ children }: { children: ReactNode }) 
     
     const bytes = new TextEncoder().encode(data);
     await invoke("write_terminal_input_command", { 
-      job_id: jobId, 
+      jobId: jobId, 
       data: Array.from(bytes) 
     });
   }, [sessions]);
@@ -210,7 +210,7 @@ export function TerminalSessionsProvider({ children }: { children: ReactNode }) 
       throw new Error(`No active session found for job ${jobId}`);
     }
 
-    await invoke("send_ctrl_c_to_terminal_command", { job_id: jobId });
+    await invoke("send_ctrl_c_to_terminal_command", { jobId: jobId });
   }, [sessions]);
 
   const kill = useCallback(async (jobId: string) => {
@@ -220,7 +220,7 @@ export function TerminalSessionsProvider({ children }: { children: ReactNode }) 
     }
 
     try {
-      await invoke("kill_terminal_session_command", { job_id: jobId });
+      await invoke("kill_terminal_session_command", { jobId: jobId });
       // Status update will come from terminal-exit event
     } catch (error) {
       // Silent error handling
@@ -229,7 +229,7 @@ export function TerminalSessionsProvider({ children }: { children: ReactNode }) 
 
   const clearLog = useCallback(async (jobId: string) => {
     try {
-      await invoke("clear_terminal_log_command", { job_id: jobId });
+      await invoke("clear_terminal_log_command", { jobId: jobId });
     } catch (error) {
       throw error;
     }
@@ -237,7 +237,7 @@ export function TerminalSessionsProvider({ children }: { children: ReactNode }) 
 
   const deleteLog = useCallback(async (jobId: string) => {
     try {
-      await invoke("delete_terminal_log_command", { job_id: jobId });
+      await invoke("delete_terminal_log_command", { jobId: jobId });
     } catch (error) {
       throw error;
     }

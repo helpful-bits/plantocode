@@ -1245,16 +1245,49 @@ impl BillingService {
             .await
             .map_err(|e| AppError::Auth(format!("Failed to set RLS context: {}", e)))?;
         
-        // Create API usage record
+        // Ensure user has a credit record
+        let _ = self.credit_service
+            .get_user_credit_repository()
+            .ensure_balance_record_exists_with_executor(&entry.user_id, &mut tx)
+            .await?;
+        
+        // Deduct credits from user balance using the proper priority method
+        // This method already checks for sufficient balance internally
+        let (user_credit, from_free, from_paid) = self.credit_service
+            .get_user_credit_repository()
+            .deduct_credits_with_priority(&entry.user_id, &final_cost, &mut tx)
+            .await?;
+        
+        debug!("Deducted {} total: {} from free credits, {} from paid credits", 
+               final_cost, from_free, from_paid);
+        
+        // Create API usage record after successful deduction
         let api_usage_record = self.api_usage_repository.record_usage_with_executor(entry, final_cost.clone(), &mut tx).await?;
+        
+        // Create a credit transaction record for audit trail
+        let transaction = crate::db::repositories::credit_transaction_repository::CreditTransaction {
+            id: uuid::Uuid::new_v4(),
+            user_id: api_usage_record.user_id,
+            transaction_type: "consumption".to_string(),
+            net_amount: -final_cost.clone(),
+            gross_amount: None,
+            fee_amount: None,
+            currency: "USD".to_string(),
+            description: Some(format!("API usage: {}", api_usage_record.service_name)),
+            stripe_charge_id: None,
+            related_api_usage_id: api_usage_record.id,
+            metadata: api_usage_record.metadata.clone(),
+            created_at: Some(chrono::Utc::now()),
+            balance_after: user_credit.balance.clone(),
+        };
+        
+        self.credit_service
+            .get_credit_transaction_repository()
+            .create_transaction_with_executor(&transaction, &mut tx)
+            .await?;
         
         // Commit the transaction
         tx.commit().await.map_err(AppError::from)?;
-        
-        // Deduct credits from user balance
-        let user_credit = self.credit_service
-            .adjust_credits(&api_usage_record.user_id, &(-final_cost.clone()), format!("API usage: {}", api_usage_record.service_name), None)
-            .await?;
         
         info!("Successfully billed user {} for API usage: {} (cost: {})", 
               api_usage_record.user_id, api_usage_record.service_name, final_cost);

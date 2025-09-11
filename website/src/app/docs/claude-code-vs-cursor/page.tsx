@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { DocsArticle } from '@/components/docs/DocsArticle';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/button';
+import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { StructuredData } from '@/components/seo/StructuredData';
 import type { Article } from 'schema-dts';
 import TechnicalAccuracy from '@/components/docs/TechnicalAccuracy';
@@ -261,9 +262,10 @@ export default function MaximizeClaudeCodeCursorPage() {
                 Get the macOS app (Windows support coming soon) and launch it in your project directory.
               </p>
               <div className="flex flex-col sm:flex-row gap-3">
-                <Button asChild variant="cta" size="lg">
-                  <Link href="/download">Download for Mac</Link>
-                </Button>
+                <PlatformDownloadSection 
+                  location="docs_claude_code_vs_cursor"
+                  redirectToDownloadPage={true}
+                />
                 <Button asChild variant="outline" size="lg">
                   <Link href="/docs">View All Docs</Link>
                 </Button>

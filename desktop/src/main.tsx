@@ -1,7 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { HashRouter } from "react-router-dom";
-import { attachConsole } from "@tauri-apps/plugin-log";
 import { initializeFetchInterceptor } from "./utils/network-interceptor";
 
 // Configure Monaco Editor workers before any components load
@@ -16,9 +15,6 @@ initializeFetchInterceptor();
 
 // Initialize simple performance logging
 (async () => {
-  // Attach Rust console to forward logs to DevTools
-  await attachConsole();
-  
   // Initialize React performance profiler
   if (import.meta.env.DEV) {
     const { initReactProfiler } = await import("./utils/react-performance-profiler");

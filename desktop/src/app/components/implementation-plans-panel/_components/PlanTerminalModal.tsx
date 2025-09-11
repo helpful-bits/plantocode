@@ -72,7 +72,7 @@ export const PlanTerminalModal: React.FC<PlanTerminalModalProps> = ({
     
     try {
       const logContent = await invoke("read_terminal_log_command", {
-        job_id: planJobId
+        jobId: planJobId
       }) as string;
       
       if (logContent && logContent.trim()) {
@@ -308,7 +308,7 @@ export const PlanTerminalModal: React.FC<PlanTerminalModalProps> = ({
                 
                 resizeTimerRef.current = setTimeout(() => {
                   invoke("resize_terminal_session_command", { 
-                    job_id: planJobId, 
+                    jobId: planJobId, 
                     cols, 
                     rows 
                   });

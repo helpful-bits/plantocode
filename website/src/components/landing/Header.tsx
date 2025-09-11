@@ -6,40 +6,26 @@ import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Menu, X, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { DownloadButton } from '@/components/ui/DownloadButton';
+import { WindowsStoreButton } from '@/components/ui/WindowsStoreButton';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
+import { usePlatformDetection } from '@/hooks/usePlatformDetection';
 import { cn } from '@/lib/utils';
 import { defaultEase, defaultDuration } from '@/lib/animations';
-import { track } from '@/lib/track';
 
 export function Header() {
+  const { isMac, isWindows } = usePlatformDetection();
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [isMac, setIsMac] = useState(true);
   const [mounted, setMounted] = useState(false);
 
-  const handleDownloadClick = async (e: React.MouseEvent, location: string) => {
-    e.preventDefault();
-    // Track download click on client-side to preserve user context
-    await track({ 
-      event: 'download_click', 
-      props: { 
-        location,
-        platform: 'mac',
-        version: 'latest'
-      } 
-    });
-    // Redirect to download endpoint
-    window.location.href = `/api/download/mac?source=${location}`;
+  // Determine location based on pathname
+  const getLocation = (suffix: string) => {
+    return `header_${suffix}`;
   };
 
   useEffect(() => {
     setMounted(true);
-    try {
-      const plat = (navigator as any)?.userAgentData?.platform || navigator.platform || navigator.userAgent || '';
-      setIsMac(/mac/i.test(plat));
-    } catch {
-      setIsMac(true);
-    }
   }, []);
 
   useEffect(() => {
@@ -123,7 +109,7 @@ export function Header() {
                 animate={{ opacity: 1, scale: 1 }}
                 initial={{ opacity: 0, scale: 0.8 }}
                 transition={{ delay: 0.5, duration: 0.3, type: 'spring' }}
-                className="relative isolate overflow-hidden rounded-full px-3 lg:px-6 py-2 lg:py-3 mr-2 lg:mr-4"
+                className="relative isolate overflow-hidden rounded-full px-3 lg:px-6 py-1.5 lg:py-2 mr-2 lg:mr-4"
                 whileHover={{ scale: 1.05 }}
               >
                 {/* Modern gradient background with improved performance */}
@@ -201,21 +187,16 @@ export function Header() {
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                   >
-                    <Button
-                      className="relative"
-                      size="sm"
-                      variant="cta"
-                      onClick={(e) => handleDownloadClick(e, 'header_desktop')}
-                    >
-                      <span className="no-hover-effect cursor-pointer text-sm">
-                        Download for Mac
-                      </span>
-                    </Button>
+                    {isWindows ? (
+                      <WindowsStoreButton size="small" />
+                    ) : (
+                      <DownloadButton
+                        size="sm"
+                        variant="cta"
+                        location={getLocation('desktop')}
+                      />
+                    )}
                   </motion.div>
-                  <div className="flex flex-col items-center gap-0.5 mt-0.5">
-                    <em className="text-[10px] text-foreground/70 dark:text-foreground/85 font-medium">Signed & notarized for macOS</em>
-                    <a href="mailto:support@vibemanager.app?subject=Windows%20Waitlist" className="text-[10px] text-foreground/70 dark:text-foreground/85 hover:text-primary font-medium">Join Windows waitlist</a>
-                  </div>
                 </div>
               </motion.div>
             </nav>
@@ -424,22 +405,19 @@ export function Header() {
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                 >
-                  <Button
-                    className="w-full"
-                    size="lg"
-                    variant="cta"
-                    onClick={(e) => {
-                      handleDownloadClick(e, 'header_mobile');
-                      setMobileMenuOpen(false);
-                    }}
-                  >
-                    <span className="no-hover-effect cursor-pointer">
-                      Download for Mac
-                    </span>
-                  </Button>
-                  <div className="flex flex-col items-center gap-0.5 mt-2">
-                    <em className="text-xs text-foreground/70 dark:text-foreground/85 font-medium">Signed & notarized for macOS</em>
-                    <a href="mailto:support@vibemanager.app?subject=Windows%20Waitlist" className="text-xs text-foreground/70 dark:text-foreground/85 hover:text-primary font-medium">Join Windows waitlist</a>
+                  <div onClick={() => setMobileMenuOpen(false)}>
+                    {isWindows ? (
+                      <div className="w-full flex justify-center">
+                        <WindowsStoreButton size="large" />
+                      </div>
+                    ) : (
+                      <DownloadButton
+                        className="w-full"
+                        size="lg"
+                        variant="cta"
+                        location={getLocation('mobile')}
+                      />
+                    )}
                   </div>
                 </motion.div>
               </motion.div>
