@@ -253,10 +253,11 @@ export function ScreenshotGallery() {
           <p className="text-lg text-muted-foreground mb-6">
             Ready to ship better code, faster?
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
             <motion.div
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
+              className="flex items-center"
             >
               <PlatformDownloadSection 
                 location="demo_screenshots"
@@ -266,6 +267,7 @@ export function ScreenshotGallery() {
             <motion.div
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
+              className="flex items-center"
             >
               <Button asChild size="lg" variant="gradient-outline">
                 <Link href="/demo">

@@ -356,37 +356,8 @@ export function HeroSection() {
           Tell it what you want to build. Type it out, describe it 10x faster with voice, or capture bugs instantly on screen. AI finds the right files, generates plans with multiple models, and gives you a blueprint your coding agent can actually use.
         </p>
 
-        {/* Product Hunt Badge */}
-        <div className="flex justify-center mb-8" style={{ minHeight: '54px' }}>
-          <a 
-            href="https://www.producthunt.com/products/vibe-manager?embed=true&utm_source=badge-featured&utm_medium=badge&utm_source=badge-vibe-manager" 
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-block hover:opacity-90 transition-opacity"
-            style={{ width: '250px', height: '54px' }}
-          >
-            {mounted ? (
-              <img 
-                src={
-                  resolvedTheme === 'dark' 
-                    ? "https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1009288&theme=dark&t=1757410274822"
-                    : "https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1009288&theme=light&t=1757410294950"
-                } 
-                alt="Vibe Manager - Context control for AI coding sessions | Product Hunt" 
-                width="250" 
-                height="54"
-                style={{ width: '250px', height: '54px' }}
-                loading="eager"
-              />
-            ) : (
-              // Placeholder to prevent layout shift while theme loads
-              <div style={{ width: '250px', height: '54px', backgroundColor: 'transparent' }} />
-            )}
-          </a>
-        </div>
-
-        {/* Action buttons */}
-        <div className="flex flex-col items-center gap-4">
+        {/* Action buttons - Download button moved up */}
+        <div className="flex flex-col items-center gap-6 mb-8">
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
             <motion.div
               whileHover={{ scale: 1.05 }}
@@ -406,6 +377,35 @@ export function HeroSection() {
                 </Button>
             </motion.div>
           </div>
+        </div>
+
+        {/* Product Hunt Badge - moved down and made smaller */}
+        <div className="flex justify-center" style={{ minHeight: '43px' }}>
+          <a 
+            href="https://www.producthunt.com/products/vibe-manager?embed=true&utm_source=badge-featured&utm_medium=badge&utm_source=badge-vibe-manager" 
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block hover:opacity-90 transition-opacity"
+            style={{ width: '200px', height: '43px' }}
+          >
+            {mounted ? (
+              <img 
+                src={
+                  resolvedTheme === 'dark' 
+                    ? "https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1009288&theme=dark&t=1757410274822"
+                    : "https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1009288&theme=light&t=1757410294950"
+                } 
+                alt="Vibe Manager - Context control for AI coding sessions | Product Hunt" 
+                width="200" 
+                height="43"
+                style={{ width: '200px', height: '43px' }}
+                loading="eager"
+              />
+            ) : (
+              // Placeholder to prevent layout shift while theme loads
+              <div style={{ width: '200px', height: '43px', backgroundColor: 'transparent' }} />
+            )}
+          </a>
         </div>
 
       </div>

@@ -175,13 +175,6 @@ export function Header() {
                 transition={{ delay: 0.7, duration: defaultDuration, ease: defaultEase }}
               >
                 <ThemeToggle />
-                {!isMac && (
-                  <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                    <Button asChild size="lg" variant="gradient-outline">
-                      <Link href="#how-it-works" className="no-hover-effect cursor-pointer">Try Demo</Link>
-                    </Button>
-                  </motion.div>
-                )}
                 <div className="flex flex-col items-center justify-center ml-2">
                   <motion.div
                     whileHover={{ scale: 1.05 }}
@@ -393,11 +386,6 @@ export function Header() {
                       <Link href="/docs" className="no-hover-effect cursor-pointer">Docs</Link>
                     </Button>
                   </motion.div>
-                  <motion.div className="flex-1" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                    <Button asChild className="w-full" size="lg" variant="gradient-outline" onClick={() => setMobileMenuOpen(false)}>
-                      <Link href="#how-it-works" className="no-hover-effect cursor-pointer">Try Demo</Link>
-                    </Button>
-                  </motion.div>
                 </div>
                 
                 <motion.div
@@ -408,7 +396,7 @@ export function Header() {
                   <div onClick={() => setMobileMenuOpen(false)}>
                     {isWindows ? (
                       <div className="w-full flex justify-center">
-                        <WindowsStoreButton size="large" />
+                        <WindowsStoreButton size="small" />
                       </div>
                     ) : (
                       <DownloadButton
