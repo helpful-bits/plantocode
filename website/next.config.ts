@@ -272,9 +272,6 @@ const nextConfig: NextConfig = {
         'core-js/modules/es.object.has-own': false,
         'core-js/modules/es.string.trim-end': false,
         'core-js/modules/es.string.trim-start': false,
-        // Skip floating-ui modules if not needed - saves ~7KB
-        '@floating-ui/core': false,
-        '@floating-ui/dom': false,
       };
       
       // Exclude polyfills from bundle

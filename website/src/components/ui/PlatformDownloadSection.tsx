@@ -36,7 +36,7 @@ export function PlatformDownloadSection({
   if (isWindows) {
     return (
       <div className={className}>
-        <WindowsStoreButton size="large" />
+        <WindowsStoreButton size={location === 'hero_section' || location === 'cta_section' || location === 'demo_screenshots' || location === 'pricing' ? 'medium' : 'small'} />
       </div>
     );
   }
@@ -87,7 +87,7 @@ export function PlatformDownloadSection({
         </div>
         <div className="flex flex-col items-center gap-2">
           <span className="text-sm font-medium text-muted-foreground">Windows</span>
-          <WindowsStoreButton size="small" />
+          <WindowsStoreButton size={location === 'hero_section' || location === 'cta_section' || location === 'demo_screenshots' || location === 'pricing' ? 'medium' : 'small'} />
         </div>
       </div>
     </div>

@@ -5,7 +5,6 @@ import { WindowsStoreButton } from '@/components/ui/WindowsStoreButton';
 import { CheckCircle2, Download, Apple, Monitor, Smartphone, Shield } from 'lucide-react';
 import Reveal from '@/components/motion/Reveal';
 import { Header } from '@/components/landing/Header';
-import { Footer } from '@/components/landing/Footer';
 
 export const metadata: Metadata = {
   title: 'Download Vibe Manager - Multi-Model AI Planning Tool',
@@ -159,7 +158,7 @@ export default function DownloadPage() {
                       </div>
 
                       <div className="flex justify-center">
-                        <WindowsStoreButton size="large" />
+                        <WindowsStoreButton size="medium" />
                       </div>
                     </div>
                   </GlassCard>
@@ -206,8 +205,6 @@ export default function DownloadPage() {
             </div>
           </section>
         </main>
-        
-        <Footer />
       </div>
     </>
   );

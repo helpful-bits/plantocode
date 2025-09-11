@@ -4,7 +4,7 @@ import React from 'react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { motion } from 'framer-motion';
 import Reveal from '@/components/motion/Reveal';
-import { DownloadButton } from '@/components/ui/DownloadButton';
+import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 
 export function Pricing() {
 
@@ -67,16 +67,10 @@ export function Pricing() {
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
                     >
-                      <DownloadButton
+                      <PlatformDownloadSection 
                         location="pricing"
-                        size="lg"
-                        variant="cta"
                         className="w-full sm:w-auto"
-                      >
-                        <span className="no-hover-effect cursor-pointer">
-                          Download for Mac
-                        </span>
-                      </DownloadButton>
+                      />
                     </motion.div>
                   </div>
                 </Reveal>
