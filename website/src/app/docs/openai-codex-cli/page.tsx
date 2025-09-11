@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { DocsArticle } from '@/components/docs/DocsArticle';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/button';
+import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { StructuredData } from '@/components/seo/StructuredData';
 import type { HowTo } from 'schema-dts';
 import { cdnUrl } from '@/lib/cdn';
@@ -104,9 +104,10 @@ export default function OpenAICodexCLIPage() {
               <p className="text-base mb-4 text-muted-foreground leading-relaxed">
                 Enhance Codex with multi-model planning and intelligent context curation:
               </p>
-              <Button asChild variant="cta" size="lg">
-                <Link href="/download">Download Vibe Manager for macOS</Link>
-              </Button>
+              <PlatformDownloadSection 
+                location="docs_openai_codex_cli_top"
+                redirectToDownloadPage={true}
+              />
               <p className="text-sm mt-2 text-muted-foreground">
                 Windows support coming soon
               </p>
@@ -455,9 +456,10 @@ codex "Refactor these components" src/*.tsx`}</code>
         </p>
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <Button asChild variant="cta" size="lg">
-            <Link href="/download">Download Vibe Manager</Link>
-          </Button>
+          <PlatformDownloadSection 
+            location="docs_openai_codex_cli_bottom"
+            redirectToDownloadPage={true}
+          />
           <Button asChild variant="outline" size="lg">
             <a href="https://github.com/openai/codex" target="_blank" rel="noopener noreferrer">
               View Codex CLI on GitHub

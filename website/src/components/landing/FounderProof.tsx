@@ -6,7 +6,7 @@ import Reveal from '@/components/motion/Reveal';
 
 export function FounderProof() {
   return (
-    <section className="relative py-12 sm:py-16 px-4 -mt-12 sm:-mt-16">
+    <section className="relative py-12 sm:py-16 px-4">
       <div className="container mx-auto max-w-4xl relative z-10">
         <Reveal>
           <GlassCard>

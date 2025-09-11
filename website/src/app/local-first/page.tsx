@@ -2,8 +2,7 @@ import type { Metadata } from 'next';
 import { Header } from '@/components/landing/Header';
 import { Shield } from 'lucide-react';
 import Reveal from '@/components/motion/Reveal';
-import { Button } from '@/components/ui/button';
-import Link from 'next/link';
+import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 
 export const metadata: Metadata = {
   title: 'Local-First Privacy - Your Code Stays Local | Vibe Manager',
@@ -83,11 +82,7 @@ export default function LocalFirstPage() {
               </div>
 
               <Reveal className="mt-12" delay={0.4}>
-                <Button asChild size="xl" variant="cta">
-                  <Link href="/download">
-                    Download Local-First
-                  </Link>
-                </Button>
+                <PlatformDownloadSection location="local_first" redirectToDownloadPage={true} />
               </Reveal>
 
               {/* FAQ Section */}

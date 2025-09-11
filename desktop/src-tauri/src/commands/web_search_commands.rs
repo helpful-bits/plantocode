@@ -74,6 +74,11 @@ pub async fn start_web_search_workflow(
         task_description
     );
 
+    // Preflight touch: ensure queue is ready/lazily initialized before creating jobs
+    if let Err(e) = crate::jobs::queue::get_job_queue().await {
+        log::debug!("Preflight job queue readiness check: {e:?} (proceeding, accessor handles waiting/lazy init)");
+    }
+
     // Validate required fields
     if session_id.is_empty() {
         return Err("Session ID is required".to_string());

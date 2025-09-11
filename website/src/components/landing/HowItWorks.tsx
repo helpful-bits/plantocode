@@ -65,12 +65,6 @@ const VideoCard = memo(function VideoCard({
     >
       <div 
         className="aspect-video bg-primary/10 rounded-lg mb-3 overflow-hidden relative"
-        style={{
-          backgroundImage: step.poster ? `url(${step.poster})` : undefined,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          backgroundRepeat: 'no-repeat'
-        }}
       >
         {step.video && isVisible ? (
           <video 

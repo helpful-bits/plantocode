@@ -59,5 +59,15 @@
     "typescript": "5.8.3",
     "web-vitals": "^4.2.4",
     "webpack-bundle-analyzer": "4.10.2"
-  }
+  },
+  "browserslist": [
+    "Chrome >= 95",
+    "Firefox >= 95",
+    "Safari >= 15.4",
+    "Edge >= 95",
+    "iOS >= 15.4",
+    "not dead",
+    "not ie 11",
+    "not op_mini all"
+  ]
 }

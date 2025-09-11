@@ -1,11 +1,11 @@
 {
-  "version": "1.0.19",
-  "notes": "Version 1.0.19 Release\n\n- Auto-updater now checks for updates on login screen\n- Simplified onboarding flow (removed Keychain steps)\n- Performance improvements and bug fixes\n- Enhanced stability and reliability",
-  "pub_date": "2025-09-08T21:16:00Z",
+  "version": "1.0.20",
+  "notes": "Version 1.0.20 Release\n\n- Website, server, and desktop fixes\n- Desktop app improvements\n- External folders support\n- Performance improvements and bug fixes\n- Enhanced stability and reliability",
+  "pub_date": "2025-09-10T13:47:00Z",
   "platforms": {
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUXZZN0JwS05DN3Bod28yL3AwWU9VQkFnS3k5S2JWZXB5enErU1pDZVVqTGpXZis4Um5uV2JkZURPSTY2Mi9JUVBFMGtqK0F3Nk1WVHpSWmtOeTN5WUJTSGZOQ21hL3dFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzU3MzY2MTg3CWZpbGU6VmliZSBNYW5hZ2VyLmFwcC50YXIuZ3oKZlR5QTVjT050RmlDeHo2ZE5Rc3dtV2QrbkIveUxiT3VkNFlQMlg3SkYzVnJqc3lHbkkvZXVSYmNuU3hSbkdPaUlJcU1vbFV4bjBzTk9yRkJVNWZqRHc9PQo=",
-      "url": "https://d2tyb0wucqqf48.cloudfront.net/desktop/mac/Vibe-Manager.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUXZZN0JwS05DN3ZKMTZ5TVBCdWtFUU90M1hDc01iS3FRSDhpTUFucUpXVDQ2dlhJRFJnK1hPRXBNeFg0bVo2VjFCRFgwMElldmJvNFlOU1NTTmxSZHNIZnFuenR4endNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzU3NTMyMTk2CWZpbGU6VmliZSBNYW5hZ2VyXzEuMC4yMF9hYXJjaDY0LmFwcC50YXIuZ3oKQm9ZYUk4aktvZ0crRkNGeHZsMTlsQ2VIMGM2NFFDTWM5TlEwaU9XNlVhZXoxeHFPald1RlhPREduZmhvVDUzamJwSXZEbXRUQU9wZmZyRzdvQ3RKRFE9PQo=",
+      "url": "https://d2tyb0wucqqf48.cloudfront.net/desktop/mac/Vibe%20Manager_1.0.20_aarch64.app.tar.gz"
     }
   }
 }

@@ -42,6 +42,8 @@ const nextConfig: NextConfig = {
   compiler: {
     // Remove console.log in production
     removeConsole: process.env.NODE_ENV === 'production',
+    // Emotion optimization
+    emotion: false,
   },
 
   // Bundle optimization
@@ -270,6 +272,9 @@ const nextConfig: NextConfig = {
         'core-js/modules/es.object.has-own': false,
         'core-js/modules/es.string.trim-end': false,
         'core-js/modules/es.string.trim-start': false,
+        // Skip floating-ui modules if not needed - saves ~7KB
+        '@floating-ui/core': false,
+        '@floating-ui/dom': false,
       };
       
       // Exclude polyfills from bundle
@@ -280,56 +285,62 @@ const nextConfig: NextConfig = {
       };
     }
 
-    // Optimize chunk splitting - DISABLED temporarily due to module factory conflicts
-    // if (!dev && !isServer) {
-    //   config.optimization.splitChunks = {
-    //     chunks: 'all',
-    //     cacheGroups: {
-    //       vendor: {
-    //         test: /[\\/]node_modules[\\/]/,
-    //         name: 'vendors',
-    //         priority: 10,
-    //         reuseExistingChunk: true,
-    //       },
-    //       three: {
-    //         test: /[\\/]node_modules[\\/](three|@react-three)[\\/]/,
-    //         name: 'three',
-    //         priority: 20,
-    //         reuseExistingChunk: true,
-    //       },
-    //       common: {
-    //         name: 'common',
-    //         minChunks: 2,
-    //         priority: 5,
-    //         reuseExistingChunk: true,
-    //       },
-    //     },
-    //   };
-    // }
-
-    // Tree shaking optimizations - SIMPLIFIED to avoid module conflicts
-    // if (!dev) {
-    //   config.optimization.usedExports = true;
-    //   config.optimization.sideEffects = false;
-    //   
-    //   // Additional performance optimizations
-    //   config.optimization.minimize = true;
-    //   config.optimization.concatenateModules = true;
-    //   
-    //   // Module resolution optimizations
-    //   config.resolve.alias = {
-    //     ...config.resolve.alias,
-    //     'react': 'react',
-    //     'react-dom': 'react-dom'
-    //   };
-    //   
-    //   // Performance budgets and code splitting
-    //   config.performance = {
-    //     maxAssetSize: 512000,
-    //     maxEntrypointSize: 512000,
-    //     hints: 'warning'
-    //   };
-    // }
+    // Optimize chunk splitting - Re-enabled with better configuration
+    if (!dev && !isServer) {
+      config.optimization.splitChunks = {
+        chunks: 'all',
+        cacheGroups: {
+          // Framework core
+          framework: {
+            test: /[\\/]node_modules[\\/](react|react-dom|next)[\\/]/,
+            name: 'framework',
+            priority: 40,
+            reuseExistingChunk: true,
+          },
+          // Three.js and related
+          three: {
+            test: /[\\/]node_modules[\\/](three|@react-three|postprocessing)[\\/]/,
+            name: 'three',
+            priority: 30,
+            reuseExistingChunk: true,
+          },
+          // Monaco editor (large)
+          monaco: {
+            test: /[\\/]node_modules[\\/](monaco-editor|@monaco-editor)[\\/]/,
+            name: 'monaco',
+            priority: 25,
+            reuseExistingChunk: true,
+          },
+          // UI libraries
+          ui: {
+            test: /[\\/]node_modules[\\/](@radix-ui|lucide-react|framer-motion)[\\/]/,
+            name: 'ui',
+            priority: 20,
+            reuseExistingChunk: true,
+          },
+          // Other vendors
+          vendor: {
+            test: /[\\/]node_modules[\\/]/,
+            name: 'vendors',
+            priority: 10,
+            reuseExistingChunk: true,
+          },
+          // Common chunks
+          common: {
+            name: 'common',
+            minChunks: 2,
+            priority: 5,
+            reuseExistingChunk: true,
+          },
+        },
+      };
+      
+      // Remove unused exports
+      config.optimization.usedExports = true;
+      config.optimization.sideEffects = false;
+      config.optimization.minimize = true;
+      config.optimization.concatenateModules = true;
+    }
 
 
     return config;

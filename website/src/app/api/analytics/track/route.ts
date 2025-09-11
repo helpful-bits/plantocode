@@ -9,7 +9,7 @@ interface TrackingEvent {
   referrer?: string;
 }
 
-// Unified server-side analytics tracking that bypasses ad blockers
+// Server-side Plausible analytics tracking (cookie-free, GDPR compliant)
 export async function POST(req: NextRequest) {
   try {
     // Extract headers for proper analytics attribution
@@ -48,176 +48,42 @@ export async function POST(req: NextRequest) {
         if (v == null) continue;
         const t = typeof v;
         if (t === 'string' || t === 'number' || t === 'boolean') {
-          const key = k.length > 300 ? k.slice(0, 300) : k;
-          const val = t === 'string' && (v as string).length > 2000 ? (v as string).slice(0, 2000) : v;
-          sanitizedProps[key] = val;
+          sanitizedProps[k] = v;
         }
       }
     }
 
-    // Build headers - preserve User-Agent and client IP for accurate attribution
-    const plausibleHeaders: Record<string, string> = {
-      'User-Agent': userAgent,
-      'Content-Type': 'application/json',
+    const plausibleRequest = {
+      name: event,
+      props: sanitizedProps,
+      domain: plausibleDomain,
+      url: plausibleUrl,
+      referrer: clientReferrer || '',
+      screen_width: screen_width || 0,
     };
-    if (clientIp) {
-      plausibleHeaders['X-Forwarded-For'] = clientIp;
-    }
-    if (process.env.PLAUSIBLE_DEBUG === 'true') {
-      plausibleHeaders['X-Debug-Request'] = 'true';
-    }
 
-    try {
-      const plausibleRes = await fetch('https://plausible.io/api/event', {
-        method: 'POST',
-        headers: plausibleHeaders,
-        body: JSON.stringify({
-          name: event, // Correct: Plausible API requires 'name' field
-          url: plausibleUrl,
-          domain: plausibleDomain,
-          referrer: clientReferrer || referer || undefined,
-          screen_width: screen_width || undefined,
-          props: Object.keys(sanitizedProps).length ? sanitizedProps : undefined,
-        }),
-      });
+    const plausibleFetch = fetch('https://plausible.io/api/event', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': userAgent,
+        'X-Forwarded-For': clientIp || '',
+      },
+      body: JSON.stringify(plausibleRequest),
+    });
 
-      if (![202, 200].includes(plausibleRes.status)) {
-        console.warn('Plausible tracking returned non-202/200:', plausibleRes.status, await plausibleRes.text());
-      }
-    } catch (error) {
-      console.error('Plausible tracking error:', error);
-    }
+    // Fire and forget - don't wait for response
+    plausibleFetch.catch(() => {});
 
-    // Special handling for download events - also track with X/Twitter and GA4
-    if (event === 'download_click') {
-      const location = props.location as string || 'unknown';
-      const version = props.version as string || 'latest';
-
-      // Track with X Pixel (server-side emulation of client pixel)
-      if (process.env.NEXT_PUBLIC_X_PIXEL_ID && process.env.NEXT_PUBLIC_X_DOWNLOAD_EVENT_ID) {
-        try {
-          const pixelId = process.env.NEXT_PUBLIC_X_PIXEL_ID;
-          const eventId = process.env.NEXT_PUBLIC_X_DOWNLOAD_EVENT_ID;
-          const conversionId = `download-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-          
-          // Extract Twitter Click ID if available (critical for attribution)
-          const twclid = (props.twclid as string) || '';
-          
-          // Build X Pixel parameters (emulating client-side pixel)
-          const pixelParams = new URLSearchParams({
-            // Core pixel parameters
-            bci: pixelId, // Base/Brand Conversion ID
-            eci: eventId, // Event Conversion ID  
-            event_id: conversionId, // Unique event identifier for deduplication
-            p_id: 'Twitter', // Platform identifier
-            
-            // Transaction parameters
-            tw_sale_amount: '0', // Sale amount (can be customized)
-            tw_order_quantity: '1', // Order quantity
-            
-            // User context parameters (if available)
-            ...(twclid && { twclid }), // Twitter Click ID for attribution
-            ...(clientReferrer && { tw_document_href: clientReferrer }),
-            
-            // Additional context
-            tw_iframe: '0', // Not in iframe
-            tpd: plausibleDomain, // Third party domain
-            
-            // Screen dimensions (if available)
-            ...(screen_width && { tw_fio: screen_width.toString() }),
-            
-            // Language/locale (from props if available)  
-            ...(props.language && { tw_lang: props.language as string }),
-          });
-          
-          // Send to both tracking endpoints (mobile + desktop)
-          const endpoints = [
-            'https://t.co/1/i/adsct', // Mobile tracking
-            'https://analytics.twitter.com/1/i/adsct', // Desktop tracking
-          ];
-          
-          const pixelHeaders = {
-            'User-Agent': userAgent || 'Mozilla/5.0 (compatible; ServerSidePixel/1.0)',
-            'Accept': 'image/gif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5',
-            'Accept-Language': (props.language as string) || 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'DNT': '1',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-            ...(clientIp && { 'X-Forwarded-For': clientIp }),
-            ...(clientReferrer && { 'Referer': clientReferrer }),
-          };
-          
-          // Send pixel requests to both endpoints
-          const pixelPromises = endpoints.map(async (endpoint) => {
-            try {
-              const pixelUrl = `${endpoint}?${pixelParams.toString()}`;
-              const pixelRes = await fetch(pixelUrl, {
-                method: 'GET',
-                headers: pixelHeaders,
-                // Pixel requests should be fire-and-forget
-              });
-              
-              if (!pixelRes.ok && pixelRes.status !== 204) {
-                console.warn(`X Pixel endpoint ${endpoint} returned ${pixelRes.status}`);
-              }
-            } catch (err) {
-              console.debug(`X Pixel endpoint ${endpoint} failed:`, err);
-            }
-          });
-          
-          // Execute all pixel requests in parallel
-          await Promise.allSettled(pixelPromises);
-          
-        } catch (error) {
-          console.error('X Pixel tracking error:', error);
-        }
-      }
-
-      // Track with Google Analytics 4 (server-side)
-      if (process.env.GA_MEASUREMENT_ID && process.env.GA_API_SECRET) {
-        try {
-          const measurementId = process.env.GA_MEASUREMENT_ID;
-          const apiSecret = process.env.GA_API_SECRET;
-          
-          const clientId = req.cookies.get('_ga')?.value?.replace(/^GA\d\.\d\./, '') || 
-                          `${Date.now()}.${Math.random().toString(36).substr(2, 9)}`;
-          
-          await fetch(`https://www.google-analytics.com/mp/collect?measurement_id=${measurementId}&api_secret=${apiSecret}`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              client_id: clientId,
-              events: [{
-                name: 'download',
-                params: {
-                  file_extension: 'dmg',
-                  file_name: 'VibeManager.dmg',
-                  link_url: trackingUrl,
-                  link_domain: 'vibemanager.app',
-                  source: location,
-                  version,
-                  engagement_time_msec: '100',
-                }
-              }]
-            }),
-          });
-        } catch (error) {
-          console.error('GA4 tracking error:', error);
-        }
-      }
-    }
-
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ 
+      success: true,
+      message: 'Event tracked with Plausible Analytics (cookie-free)'
+    });
   } catch (error) {
-    console.error('Analytics API error:', error);
-    return NextResponse.json({ success: false }, { status: 500 });
+    console.error('Analytics tracking error:', error);
+    return NextResponse.json({ 
+      error: 'Failed to track event',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
-}
-
-// Handle HEAD requests for pre-flight checks
-export async function HEAD() {
-  return new NextResponse(null, { status: 200 });
 }

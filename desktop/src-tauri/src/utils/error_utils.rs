@@ -1,5 +1,7 @@
 use log::error;
 use serde_json::Value;
+use std::sync::Arc;
+use tauri::Manager;
 
 use crate::error::AppError;
 
@@ -191,6 +193,135 @@ pub fn log_workflow_error(
     }
 
     error!("{}", log_parts.join(" | "));
+}
+
+/// Log an error to the database (async)
+pub async fn log_error_to_db(
+    error: &AppError,
+    context: &str,
+    metadata: Option<Value>,
+) {
+    if let Some(handle) = crate::GLOBAL_APP_HANDLE.get() {
+        if let Some(repo) = handle.try_state::<Arc<crate::db_utils::ErrorLogRepository>>() {
+            // Determine error level based on error type
+            let level = match error {
+                AppError::InternalError(_) | 
+                AppError::DatabaseError(_) |
+                AppError::SqlxError(_) |
+                AppError::LockPoisoned(_) |
+                AppError::InitializationError(_) => "CRITICAL",
+                
+                AppError::AuthError(_) |
+                AppError::SecurityError(_) |
+                AppError::AccessDenied(_) |
+                AppError::Unauthorized(_) |
+                AppError::Forbidden(_) => "SECURITY",
+                
+                AppError::PaymentFailed(_) |
+                AppError::PaymentDeclined(_) |
+                AppError::BillingError(_) |
+                AppError::StripeError(_) => "BILLING",
+                
+                _ => "ERROR",
+            };
+            
+            // Get error type string
+            let error_type = match error {
+                AppError::IoError(_) => "IO_ERROR",
+                AppError::SerdeError(_) => "SERDE_ERROR",
+                AppError::DatabaseError(_) => "DATABASE_ERROR",
+                AppError::SqlxError(_) => "SQLX_ERROR",
+                AppError::OpenRouterError(_) => "OPENROUTER_ERROR",
+                AppError::ServerProxyError(_) => "SERVER_PROXY_ERROR",
+                AppError::HttpError(_) => "HTTP_ERROR",
+                AppError::TauriError(_) => "TAURI_ERROR",
+                AppError::KeyringError(_) => "KEYRING_ERROR",
+                AppError::ConfigError(_) => "CONFIG_ERROR",
+                AppError::ConfigurationError(_) => "CONFIGURATION_ERROR",
+                AppError::InvalidTaskTypeError(_) => "INVALID_TASK_TYPE_ERROR",
+                AppError::CacheValidationError(_) => "CACHE_VALIDATION_ERROR",
+                AppError::JobError(_) => "JOB_ERROR",
+                AppError::FileSystemError(_) => "FILE_SYSTEM_ERROR",
+                AppError::GitError(_) => "GIT_ERROR",
+                AppError::ValidationError(_) => "VALIDATION_ERROR",
+                AppError::InvalidPath(_) => "INVALID_PATH_ERROR",
+                AppError::NotFoundError(_) => "NOT_FOUND_ERROR",
+                AppError::AuthError(_) => "AUTH_ERROR",
+                AppError::SecurityError(_) => "SECURITY_ERROR",
+                AppError::InternalError(_) => "INTERNAL_ERROR",
+                AppError::FileLockError(_) => "FILE_LOCK_ERROR",
+                AppError::InitializationError(_) => "INITIALIZATION_ERROR",
+                AppError::ApplicationError(_) => "APPLICATION_ERROR",
+                AppError::SerializationError(_) => "SERIALIZATION_ERROR",
+                AppError::AccessDenied(_) => "ACCESS_DENIED_ERROR",
+                AppError::BillingError(_) => "BILLING_ERROR",
+                AppError::InvalidArgument(_) => "INVALID_ARGUMENT_ERROR",
+                AppError::NetworkError(_) => "NETWORK_ERROR",
+                AppError::ExternalServiceError(_) => "EXTERNAL_SERVICE_ERROR",
+                AppError::InvalidResponse(_) => "INVALID_RESPONSE_ERROR",
+                AppError::StorageError(_) => "STORAGE_ERROR",
+                AppError::TokenLimitExceededError(_) => "TOKEN_LIMIT_EXCEEDED_ERROR",
+                AppError::PaymentFailed(_) => "PAYMENT_FAILED",
+                AppError::PaymentDeclined(_) => "PAYMENT_DECLINED",
+                AppError::PaymentAuthenticationRequired(_) => "PAYMENT_AUTHENTICATION_REQUIRED",
+                AppError::BillingExpired(_) => "CUSTOMER_BILLING_EXPIRED",
+                AppError::BillingCancelled(_) => "CUSTOMER_BILLING_CANCELLED",
+                AppError::CreditInsufficient(_) => "CREDIT_INSUFFICIENT",
+                AppError::CreditPurchaseRequired(_) => "CREDIT_PURCHASE_REQUIRED",
+                AppError::PaymentMethodRequired(_) => "PAYMENT_METHOD_REQUIRED",
+                AppError::BillingAddressRequired(_) => "BILLING_ADDRESS_REQUIRED",
+                AppError::BillingConflict(_) => "CUSTOMER_BILLING_CONFLICT",
+                AppError::SpendingLimitExceeded(_) => "SPENDING_LIMIT_EXCEEDED",
+                AppError::InvoiceError(_) => "INVOICE_ERROR",
+                AppError::StripeError(_) => "STRIPE_ERROR",
+                AppError::CheckoutError(_) => "CHECKOUT_ERROR",
+                AppError::PaymentRequired(_) => "PAYMENT_REQUIRED",
+                AppError::PaymentError(_) => "PAYMENT_ERROR",
+                AppError::Unauthorized(_) => "UNAUTHORIZED",
+                AppError::Forbidden(_) => "FORBIDDEN",
+                AppError::BadRequest(_) => "BAD_REQUEST",
+                AppError::TooManyRequests(_) => "TOO_MANY_REQUESTS",
+                AppError::NotImplemented(_) => "NOT_IMPLEMENTED",
+                AppError::LockPoisoned(_) => "LOCK_POISONED",
+                AppError::TaskInitiationFailed(_) => "TASK_INITIATION_FAILED",
+                AppError::TaskFinalizationFailed(_) => "TASK_FINALIZATION_FAILED",
+                AppError::VideoAnalysisError(_) => "VIDEO_ANALYSIS_ERROR",
+                AppError::UpdaterError(_) => "UPDATER_ERROR",
+                AppError::TerminalError(_) => "TERMINAL_ERROR",
+            };
+            
+            // Stack trace would need backtrace crate
+            let stack_str: Option<String> = None;
+            
+            // Enhance metadata with additional context
+            let mut final_metadata = serde_json::json!({
+                "source": "rust_backend",
+                "thread_id": format!("{:?}", std::thread::current().id()),
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+            });
+            
+            if let Some(meta) = metadata {
+                if let Some(obj) = final_metadata.as_object_mut() {
+                    if let Some(meta_obj) = meta.as_object() {
+                        for (k, v) in meta_obj {
+                            obj.insert(k.clone(), v.clone());
+                        }
+                    }
+                }
+            }
+            
+            let _ = repo.insert_error(
+                level,
+                Some(error_type),
+                &error.to_string(),
+                Some(context),
+                stack_str.as_deref(), // Would need backtrace crate for actual stack traces
+                Some(&final_metadata.to_string()),
+                Some(env!("CARGO_PKG_VERSION")),
+                Some(std::env::consts::OS),
+            ).await;
+        }
+    }
 }
 
 /// Convert a serialized error string back to a SerializableError

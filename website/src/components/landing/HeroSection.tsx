@@ -8,11 +8,14 @@ import { track } from '@/lib/track';
 import { cdnUrl } from '@/lib/cdn';
 import { Play, X } from 'lucide-react';
 import { useTheme } from 'next-themes';
+import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 
 export function HeroSection() {
   const videoRef = useRef<HTMLVideoElement>(null);
+  // Initialize as null to prevent layout shift - will be set after mount
   const [isMobile, setIsMobile] = useState<boolean | null>(null);
   const [isDesktop, setIsDesktop] = useState<boolean | null>(null);
+  const [isLayoutReady, setIsLayoutReady] = useState(false);
   const [showVideoModal, setShowVideoModal] = useState(false);
   const { resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
@@ -24,6 +27,8 @@ export function HeroSection() {
       const checkDesktop = () => window.innerWidth >= 1024; // lg breakpoint
       setIsMobile(checkMobile());
       setIsDesktop(checkDesktop());
+      // Delay to ensure smooth animation
+      setTimeout(() => setIsLayoutReady(true), 50);
       
       const handleResize = () => {
         setIsMobile(checkMobile());
@@ -60,18 +65,6 @@ export function HeroSection() {
     }
   };
 
-  const handleDownloadClick = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    await track({ 
-      event: 'download_click', 
-      props: { 
-        location: 'hero_section',
-        platform: 'mac',
-        version: 'latest'
-      } 
-    });
-    window.location.href = '/api/download/mac?source=hero_section';
-  };
 
   return (
     <section className="relative flex flex-col items-center bg-transparent w-full">
@@ -100,28 +93,22 @@ export function HeroSection() {
       {/* Hero Content with Panels */}
       <div className="relative w-full px-2 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto relative">
-          {/* Blurred poster background */}
-          <div 
-            className="absolute inset-0 -z-10 rounded-xl overflow-hidden"
-            style={{
-              backgroundImage: `url(${isMobile ? cdnUrl('/assets/images/hero-mobile-poster.jpg') : cdnUrl('/assets/images/hero-desktop-poster.jpg')})`,
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-              filter: 'blur(20px)',
-              opacity: 0.3,
-              transform: 'scale(1.1)',
-            }}
-          >
-            <div className="absolute inset-0 bg-gradient-to-b from-background/30 via-background/60 to-background/90" />
-          </div>
           
           {/* Panels Container - Responsive */}
-          <div className={isMobile ? "flex flex-col gap-4 pb-6 w-full" : "flex items-center justify-center gap-4 lg:gap-6 pb-6"}>
-            {/* Panel 1: Find Files */}
-            {isMobile ? (
-              <div className="vibe-panel w-full" style={{minHeight: '166px'}}>
+          <AnimatePresence mode="wait">
+            {isLayoutReady && isMobile !== null ? (
+              <motion.div
+                key="panels-container"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+                className={isMobile ? "flex flex-col gap-4 pb-6 w-full" : "flex items-center justify-center gap-4 lg:gap-6 pb-6"}
+              >
+                {/* Panel 1: Find Files */}
+                {isMobile ? (
+              <div className="vibe-panel w-full" style={{minHeight: 'fit-content'}}>
                 <h2 className="vibe-panel__title">Find Files</h2>
-                <p className="text-foreground/80 text-sm leading-relaxed">
+                <p className="text-foreground/80 text-base leading-relaxed">
                   AI uses <strong>Regex Filter</strong>, <strong>Content Relevance</strong>, and <strong>Dependencies</strong> to read actual code. From 1,000 files to the 10 that matter.
                 </p>
               </div>
@@ -129,11 +116,11 @@ export function HeroSection() {
               <div className="vibe-panel flex-shrink-0" style={{width: 'min(300px, 30vw)', height: 'min(380px, 45vh)'}}>
                 <h2 className="vibe-panel__title">Find Files</h2>
                 <div className="vibe-intent-box">
-                  <div className="vibe-intent-box__item">Regex Filter</div>
-                  <div className="vibe-intent-box__item">Content Relevance</div>
-                  <div className="vibe-intent-box__item">Dependencies</div>
+                  <div className="vibe-intent-box__item text-base">Regex Filter</div>
+                  <div className="vibe-intent-box__item text-base">Content Relevance</div>
+                  <div className="vibe-intent-box__item text-base">Dependencies</div>
                 </div>
-                <p className="vibe-panel__description">
+                <p className="vibe-panel__description text-base">
                   AI reads actual code. From 1,000 files to the 10 that matter.
                 </p>
               </div>
@@ -250,10 +237,9 @@ export function HeroSection() {
               </div>
             )}
 
-            {/* Panel 3: Ready for Agents - Show on mobile too */}
-            {(isMobile || !isMobile) && (
-              <div className={isMobile ? "vibe-panel w-full" : "vibe-panel flex-shrink-0"} style={isMobile ? {} : {width: 'min(300px, 30vw)', height: 'min(380px, 45vh)'}}>
-                <h2 className="vibe-panel__title">Ready for Agents</h2>
+            {/* Panel 3: Ready for Agents - Always render to prevent layout shift */}
+            <div className={isMobile ? "vibe-panel w-full" : "vibe-panel flex-shrink-0"} style={isMobile ? {minHeight: '166px'} : {width: 'min(300px, 30vw)', height: 'min(380px, 45vh)'}}>
+              <h2 className="vibe-panel__title">Ready for Agents</h2>
                 <div className="vibe-code-block">
                   <pre className="vibe-code-block__content">{`<plan>
   <step>
@@ -267,9 +253,15 @@ export function HeroSection() {
                 <p className="vibe-panel__description">
                   Copy to Claude Code, Cursor, or OpenAI Codex. Ready to ship.
                 </p>
+                </div>
+              </motion.div>
+            ) : (
+              // Placeholder to prevent layout shift and maintain space
+              <div className="flex items-center justify-center pb-6" style={{ minHeight: '700px' }}>
+                {/* Empty space - cards will animate in */}
               </div>
             )}
-          </div>
+          </AnimatePresence>
           
           {/* Watch Demo button - below the cards */}
           <div className="flex justify-center pb-2">
@@ -365,12 +357,13 @@ export function HeroSection() {
         </p>
 
         {/* Product Hunt Badge */}
-        <div className="flex justify-center mb-8">
+        <div className="flex justify-center mb-8" style={{ minHeight: '54px' }}>
           <a 
             href="https://www.producthunt.com/products/vibe-manager?embed=true&utm_source=badge-featured&utm_medium=badge&utm_source=badge-vibe-manager" 
             target="_blank"
             rel="noopener noreferrer"
             className="inline-block hover:opacity-90 transition-opacity"
+            style={{ width: '250px', height: '54px' }}
           >
             {mounted ? (
               <img 
@@ -383,10 +376,11 @@ export function HeroSection() {
                 width="250" 
                 height="54"
                 style={{ width: '250px', height: '54px' }}
+                loading="eager"
               />
             ) : (
               // Placeholder to prevent layout shift while theme loads
-              <div style={{ width: '250px', height: '54px' }} />
+              <div style={{ width: '250px', height: '54px', backgroundColor: 'transparent' }} />
             )}
           </a>
         </div>
@@ -398,11 +392,7 @@ export function HeroSection() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
-                <Button className="relative overflow-hidden" size="xl" variant="cta" onClick={handleDownloadClick}>
-                  <span className="no-hover-effect cursor-pointer">
-                    Download for Mac
-                  </span>
-                </Button>
+              <PlatformDownloadSection location="hero_section" />
             </motion.div>
 
             <motion.div
@@ -415,14 +405,6 @@ export function HeroSection() {
                   </Link>
                 </Button>
             </motion.div>
-          </div>
-          <div className="flex flex-col items-center gap-2 mt-2">
-            <em className="text-xs text-muted-foreground">
-              <a className="hover:text-primary" target="_blank" rel="noreferrer noopener" href="https://support.apple.com/guide/security/gatekeeper-and-runtime-protection-sec5599b66df/web">
-                Signed & notarized for macOS - safer installs via Gatekeeper.
-              </a>
-            </em>
-            <a href="mailto:support@vibemanager.app?subject=Windows%20Waitlist" className="text-sm text-muted-foreground hover:text-primary transition-colors mb-8">Join the Windows waitlist</a>
           </div>
         </div>
 

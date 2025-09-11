@@ -28,19 +28,56 @@ export function ExternalFoldersManager({
   const [isExpanded, setIsExpanded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
+  // Helper function to remove child paths when parent exists
+  const removeRedundantPaths = (paths: string[]): string[] => {
+    if (!paths || paths.length === 0) return paths;
+    
+    // Sort paths to ensure parents come before children
+    const sortedPaths = [...paths].sort();
+    const filteredPaths: string[] = [];
+    
+    for (const path of sortedPaths) {
+      // Check if any existing path in filteredPaths is a parent of this path
+      const hasParent = filteredPaths.some(parentPath => {
+        // Ensure we're checking actual parent-child relationship
+        // Add trailing slash to parent to ensure exact directory match
+        const normalizedParent = parentPath.endsWith('/') ? parentPath : parentPath + '/';
+        const normalizedPath = path.endsWith('/') ? path : path + '/';
+        return normalizedPath.startsWith(normalizedParent) && normalizedPath !== normalizedParent;
+      });
+      
+      if (!hasParent) {
+        // Also remove any existing children of this path
+        const withoutChildren = filteredPaths.filter(existingPath => {
+          const normalizedPath = path.endsWith('/') ? path : path + '/';
+          const normalizedExisting = existingPath.endsWith('/') ? existingPath : existingPath + '/';
+          return !(normalizedExisting.startsWith(normalizedPath) && normalizedExisting !== normalizedPath);
+        });
+        withoutChildren.push(path);
+        filteredPaths.length = 0;
+        filteredPaths.push(...withoutChildren);
+      }
+    }
+    
+    return filteredPaths;
+  };
+
   const fetchAvailableRoots = useCallback(async () => {
     if (!activeSessionId) return;
     
     setIsLoading(true);
     try {
       const roots = await getFileFinderRootsForSession(activeSessionId);
-      setAvailableRoots(roots);
+      
+      // Filter out redundant child paths
+      const filteredRoots = roots ? removeRedundantPaths(roots) : null;
+      setAvailableRoots(filteredRoots);
       
       // Auto-expand if roots are available
-      if (roots && roots.length > 0) {
+      if (filteredRoots && filteredRoots.length > 0) {
         setIsExpanded(true);
         // Pre-select all roots by default
-        setSelectedRoots(roots);
+        setSelectedRoots(filteredRoots);
       }
     } catch (error) {
       console.error("Failed to fetch available roots:", error);

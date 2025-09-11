@@ -82,7 +82,7 @@ impl MigrationSystem {
         info!("Version change detected: {} -> {}", stored, current);
         
         // Get applicable migrations
-        let migrations = self.get_applicable_migrations(&stored_version_str, current_version)?;
+        let migrations = self.get_applicable_migrations(&stored_version_str, current_version, app_handle)?;
         
         if migrations.is_empty() {
             info!("No migrations needed for version change");
@@ -112,9 +112,10 @@ impl MigrationSystem {
         &self,
         from_version: &str,
         to_version: &str,
+        app_handle: &AppHandle,
     ) -> AppResult<Vec<MigrationRule>> {
         // Load all available migrations
-        let all_migrations = self.load_migration_rules();
+        let all_migrations = self.load_migration_rules(app_handle);
         
         let from = match Version::parse(from_version) {
             Ok(v) => v,
@@ -233,10 +234,38 @@ impl MigrationSystem {
         }
     }
 
-    fn load_migration_rules(&self) -> Vec<MigrationRule> {
-        // Try to load from JSON file first (if it exists)
+    fn load_migration_rules(&self, app_handle: &AppHandle) -> Vec<MigrationRule> {
+        // Method 1: Try using the resource directory directly
+        if let Ok(resource_dir) = app_handle.path().resource_dir() {
+            let rules_path = resource_dir.join("migrations").join("migration_rules.json");
+            if rules_path.exists() {
+                if let Ok(json_str) = std::fs::read_to_string(&rules_path) {
+                    if let Ok(config) = serde_json::from_str::<MigrationRulesConfig>(&json_str) {
+                        info!("Loaded migration rules from resource directory");
+                        return config.migrations;
+                    }
+                }
+            }
+        }
+        
+        // Method 2: Try PathResolver with BaseDirectory::Resource
+        if let Ok(path) = app_handle
+            .path()
+            .resolve("migrations/migration_rules.json", tauri::path::BaseDirectory::Resource) {
+            if path.exists() {
+                if let Ok(json_str) = std::fs::read_to_string(&path) {
+                    if let Ok(config) = serde_json::from_str::<MigrationRulesConfig>(&json_str) {
+                        info!("Loaded migration rules from resolved resource");
+                        return config.migrations;
+                    }
+                }
+            }
+        }
+        
+        // Method 3: Try local path as fallback (development)
         if let Ok(json_str) = std::fs::read_to_string("migrations/migration_rules.json") {
             if let Ok(config) = serde_json::from_str::<MigrationRulesConfig>(&json_str) {
+                info!("Loaded migration rules from local file");
                 return config.migrations;
             }
         }
@@ -393,4 +422,45 @@ impl MigrationSystem {
             format!("Migration file not found: {}", path)
         ))
     }
+}
+
+/// Check if this is a fresh database (no tables exist yet)
+pub async fn is_fresh_database(pool: &SqlitePool) -> AppResult<bool> {
+    let table_count: i32 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+    )
+    .fetch_one(pool)
+    .await?;
+    
+    Ok(table_count == 0)
+}
+
+/// Apply the embedded consolidated schema to a fresh database
+pub async fn apply_embedded_consolidated_schema(pool: &SqlitePool) -> AppResult<()> {
+    info!("Applying embedded consolidated schema to fresh database");
+    
+    let schema_sql = crate::app_setup::embedded_schema::get_consolidated_schema_sql();
+    
+    // Execute the schema SQL
+    let mut tx = pool.begin().await?;
+    
+    // Split and execute statements
+    for statement in schema_sql.split(';') {
+        let trimmed = statement.trim();
+        if !trimmed.is_empty() && !trimmed.starts_with("--") {
+            sqlx::query(trimmed)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| {
+                    AppError::DatabaseError(
+                        format!("Failed to apply embedded schema: {}", e)
+                    )
+                })?;
+        }
+    }
+    
+    tx.commit().await?;
+    
+    info!("Database bootstrap: consolidated schema applied (fresh DB)");
+    Ok(())
 }

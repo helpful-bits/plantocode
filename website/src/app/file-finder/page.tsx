@@ -2,8 +2,7 @@ import type { Metadata } from 'next';
 import { Header } from '@/components/landing/Header';
 import { Search } from 'lucide-react';
 import Reveal from '@/components/motion/Reveal';
-import { Button } from '@/components/ui/button';
-import Link from 'next/link';
+import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { StructuredData } from '@/components/seo/StructuredData';
 import type { BreadcrumbList } from 'schema-dts';
 
@@ -96,11 +95,7 @@ export default function FileFinderPage() {
               </div>
 
               <Reveal className="mt-12" delay={0.4}>
-                <Button asChild size="xl" variant="cta">
-                  <Link href="/download">
-                    Try File Finder
-                  </Link>
-                </Button>
+                <PlatformDownloadSection location="file_finder" redirectToDownloadPage={true} />
               </Reveal>
 
               {/* FAQ Section */}

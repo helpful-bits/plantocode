@@ -465,10 +465,34 @@ pub async fn init_job_queue() -> AppResult<Arc<JobQueue>> {
     Ok(queue)
 }
 
-/// Get the job queue
+/// Get the job queue with lazy init + bounded wait to eliminate race conditions
 pub async fn get_job_queue() -> AppResult<Arc<JobQueue>> {
-    match JOB_QUEUE.get() {
-        Some(queue) => Ok(queue.clone()),
-        None => Err(AppError::JobError("Job queue not initialized".to_string())),
+    // Fast path: if already initialized, return immediately
+    if let Some(queue) = JOB_QUEUE.get() {
+        return Ok(queue.clone());
     }
+
+    // Attempt lazy initialization once - safe due to OnceCell semantics
+    tracing::debug!("Job queue accessor: attempting lazy initialization");
+    match init_job_queue().await {
+        Ok(queue) => {
+            tracing::debug!("Job queue accessor: lazy initialization succeeded");
+            return Ok(queue);
+        }
+        Err(e) => {
+            // If another task raced and won, JOB_QUEUE may now be set
+            tracing::warn!("Job queue accessor: lazy init attempt returned error: {e:?}, will fallback to wait");
+        }
+    }
+
+    // Bounded wait (5s) in case initialization is still in progress elsewhere
+    for i in 0..50 {
+        if let Some(queue) = JOB_QUEUE.get() {
+            tracing::debug!("Job queue accessor: queue became available during wait (iteration {i})");
+            return Ok(queue.clone());
+        }
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    }
+
+    Err(AppError::JobError("Job queue not initialized (timeout after 5s)".to_string()))
 }

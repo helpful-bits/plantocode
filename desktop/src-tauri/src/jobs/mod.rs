@@ -1,4 +1,5 @@
 pub mod dispatcher;
+pub mod embedded_workflows;
 pub mod job_payload_utils;
 pub mod job_processor_utils;
 pub mod processor_trait;
@@ -17,7 +18,7 @@ pub mod workflow_types;
 
 use log::{debug, error, info, warn};
 use std::sync::Arc;
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 use tokio::time::{Duration, sleep};
 
 use self::processors::{
@@ -133,13 +134,7 @@ async fn wait_for_core_services(app_handle: &AppHandle) -> AppResult<()> {
             missing_services.push("SettingsRepository");
         }
 
-        // Check for system services required by job processors
-        if app_handle
-            .try_state::<Arc<SystemPromptCacheService>>()
-            .is_none()
-        {
-            missing_services.push("SystemPromptCacheService");
-        }
+        // Note: SystemPromptCacheService is optional - may not be available on first run before authentication
         if app_handle.try_state::<Arc<FileLockManager>>().is_none() {
             missing_services.push("FileLockManager");
         }
@@ -180,12 +175,7 @@ async fn wait_for_core_services(app_handle: &AppHandle) -> AppResult<()> {
     if app_handle.try_state::<Arc<SettingsRepository>>().is_none() {
         missing_services.push("SettingsRepository");
     }
-    if app_handle
-        .try_state::<Arc<SystemPromptCacheService>>()
-        .is_none()
-    {
-        missing_services.push("SystemPromptCacheService");
-    }
+    // Note: SystemPromptCacheService is optional and not required for job system startup
     if app_handle.try_state::<Arc<FileLockManager>>().is_none() {
         missing_services.push("FileLockManager");
     }
@@ -215,6 +205,13 @@ pub async fn start_job_system(app_handle: AppHandle) -> AppResult<()> {
     debug!("Background job worker started");
 
     info!("Job system started");
+    
+    let payload = serde_json::json!({
+        "ts": chrono::Utc::now().to_rfc3339(),
+        "status": "ready"
+    });
+    let _ = app_handle.emit("orchestrator:initialized", payload);
+    
     Ok(())
 }
 

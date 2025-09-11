@@ -1,9 +1,9 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use std::fmt;
 use thiserror::Error;
 use tauri::Manager;
 
-#[derive(Error, Debug, Serialize, Clone)]
+#[derive(Error, Debug, Clone)]
 pub enum AppError {
     #[error("IO error: {0}")]
     IoError(String),
@@ -328,17 +328,25 @@ impl From<AppError> for SerializableError {
             // Try to get the error log repository from a global state
             // This will be set up during app initialization
             if let Some(handle) = crate::GLOBAL_APP_HANDLE.get() {
-                let repo = handle.state::<crate::db_utils::ErrorLogRepository>();
-                let _ = repo.insert_error(
-                    "ERROR",
-                    Some(&error_type_clone),
-                    &error_message,
-                    Some("Backend"),
-                    None, // stack trace
-                    None, // metadata
-                    Some(env!("CARGO_PKG_VERSION")),
-                    Some(std::env::consts::OS),
-                ).await;
+                if let Some(repo) = handle.try_state::<std::sync::Arc<crate::db_utils::ErrorLogRepository>>() {
+                    // Create metadata with additional context
+                    let metadata = serde_json::json!({
+                        "source": "rust_backend",
+                        "thread_id": format!("{:?}", std::thread::current().id()),
+                        "timestamp": chrono::Utc::now().to_rfc3339(),
+                    });
+                    
+                    let _ = repo.insert_error(
+                        "ERROR",
+                        Some(&error_type_clone),
+                        &error_message,
+                        Some("Backend"),
+                        None, // stack trace - would need backtrace crate
+                        Some(&metadata.to_string()),
+                        Some(env!("CARGO_PKG_VERSION")),
+                        Some(std::env::consts::OS),
+                    ).await;
+                }
             }
         });
 
@@ -355,6 +363,18 @@ impl From<AppError> for SerializableError {
 
 // Define a Result type alias using our AppError
 pub type AppResult<T> = Result<T, AppError>;
+
+// Implement custom serialization for AppError to ensure logging
+impl Serialize for AppError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // Convert to SerializableError which triggers logging
+        let serializable_error = SerializableError::from(self.clone());
+        serializable_error.serialize(serializer)
+    }
+}
 
 /// Error construction utilities for creating actionable error messages
 impl AppError {

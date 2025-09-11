@@ -401,7 +401,7 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
           </div>
         )}
         <DialogHeader className="flex flex-row items-start justify-between space-y-0 pb-2 flex-shrink-0">
-          <div className="flex-1">
+          <div className="flex-1 min-w-[40%] max-w-[40%]">
             <DialogTitle className="text-lg">
               Implementation Plan: {sessionName}
             </DialogTitle>
@@ -412,8 +412,8 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
             )}
           </div>
           
-          <div className="flex items-start gap-2">
-            {/* Status - with more space */}
+          <div className="flex items-start gap-4 flex-shrink-0 flex-1">
+            {/* Status - separate container */}
             <div className="text-sm text-muted-foreground min-w-[200px] flex justify-center">
               {isStreaming ? (
                 <span className="flex items-center">
@@ -439,57 +439,58 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
               )}
             </div>
 
-            {/* Save Button */}
-            {!isStreaming && hasUnsavedChanges && (
-              <Button
-                variant="default"
-                size="sm"
-                onClick={handleSave}
-                disabled={isSaving}
-                className="text-xs h-7"
-                title="Save changes to implementation plan"
-              >
-                {isSaving ? (
-                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                ) : (
-                  <Save className="h-3 w-3 mr-1" />
-                )}
-                {isSaving ? "Saving..." : "Save"}
-              </Button>
-            )}
+            {/* Buttons container with wrapping - separate from status */}
+            <div className="flex flex-wrap gap-2 justify-end">
+              {/* Save Button */}
+              {!isStreaming && hasUnsavedChanges && (
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handleSave}
+                  disabled={isSaving}
+                  className="text-xs h-7"
+                  title="Save changes to implementation plan"
+                >
+                  {isSaving ? (
+                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                  ) : (
+                    <Save className="h-3 w-3 mr-1" />
+                  )}
+                  {isSaving ? "Saving..." : "Save"}
+                </Button>
+              )}
 
-            {/* Send to Terminal Button */}
-            {!isStreaming && editedContent && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleSendEditedToTerminal}
-                className="text-xs h-7"
-                title="Send edited content to terminal"
-              >
-                <Terminal className="h-3 w-3 mr-1" />
-                Send to Terminal
-              </Button>
-            )}
+              {/* Send to Terminal Button */}
+              {!isStreaming && editedContent && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSendEditedToTerminal}
+                  className="text-xs h-7"
+                  title="Send edited content to terminal"
+                >
+                  <Terminal className="h-3 w-3 mr-1" />
+                  Send to Terminal
+                </Button>
+              )}
 
-            {/* Open Terminal Button */}
-            {onOpenTerminal && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onOpenTerminal(displayPlan.id)}
-                className="text-xs h-7"
-                title="Open terminal for this implementation plan"
-              >
-                <Terminal className="h-3 w-3 mr-1" />
-                Open Terminal
-              </Button>
-            )}
+              {/* Open Terminal Button */}
+              {onOpenTerminal && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onOpenTerminal(displayPlan.id)}
+                  className="text-xs h-7"
+                  title="Open terminal for this implementation plan"
+                >
+                  <Terminal className="h-3 w-3 mr-1" />
+                  Open Terminal
+                </Button>
+              )}
 
-            {/* Copy Buttons */}
-            {copyButtons.length > 0 && !isStreaming && (
-              <div className="flex flex-wrap gap-2">
-                {copyButtons.map((button) => (
+              {/* Copy Buttons */}
+              {copyButtons.length > 0 && !isStreaming && 
+                copyButtons.map((button) => (
                   <Button
                     key={button.id}
                     variant="outline"
@@ -501,9 +502,9 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
                     <Copy className="h-3 w-3 mr-1" />
                     {button.label}
                   </Button>
-                ))}
-              </div>
-            )}
+                ))
+              }
+            </div>
           </div>
         </DialogHeader>
 

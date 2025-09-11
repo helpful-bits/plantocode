@@ -1,27 +1,12 @@
 'use client';
 
 import React from 'react';
-import { Button } from '@/components/ui/button';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { motion } from 'framer-motion';
 import Reveal from '@/components/motion/Reveal';
-import { track } from '@/lib/track';
+import { DownloadButton } from '@/components/ui/DownloadButton';
 
 export function Pricing() {
-  const handleDownloadClick = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    // Track download click on client-side to preserve user context
-    await track({ 
-      event: 'download_click', 
-      props: { 
-        location: 'pricing',
-        platform: 'mac',
-        version: 'latest'
-      } 
-    });
-    // Redirect to download endpoint
-    window.location.href = '/api/download/mac?source=pricing';
-  };
 
   return (
     <section className="relative py-12 sm:py-16 md:py-20 lg:py-24 px-4 overflow-hidden perspective-1000" id="pricing">
@@ -82,21 +67,17 @@ export function Pricing() {
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
                     >
-                      <Button
-                        className="w-full sm:w-auto"
-                        size="xl"
+                      <DownloadButton
+                        location="pricing"
+                        size="lg"
                         variant="cta"
-                        onClick={handleDownloadClick}
+                        className="w-full sm:w-auto"
                       >
                         <span className="no-hover-effect cursor-pointer">
                           Download for Mac
                         </span>
-                      </Button>
+                      </DownloadButton>
                     </motion.div>
-                    <div className="flex flex-col items-center gap-2 mt-2">
-                      <em className="text-xs text-muted-foreground">Signed & notarized for macOS - safer installs via Gatekeeper.</em>
-                      <a href="mailto:support@vibemanager.app?subject=Windows%20Waitlist" className="text-sm text-muted-foreground hover:text-primary transition-colors">Join the Windows waitlist</a>
-                    </div>
                   </div>
                 </Reveal>
               </div>

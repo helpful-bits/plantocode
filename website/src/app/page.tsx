@@ -382,8 +382,8 @@ export default function Home() {
       '@type': 'ImageObject',
       name: 'Vibe Manager App Icon',
       description: 'Vibe Manager logo featuring a compass navigation symbol in a white circle with mountain silhouettes at the bottom, on a teal-blue gradient background',
-      contentUrl: 'https://www.vibemanager.app/images/icon.png',
-      thumbnailUrl: 'https://www.vibemanager.app/images/icon.png',
+      contentUrl: 'https://www.vibemanager.app/images/icon.webp',
+      thumbnailUrl: 'https://www.vibemanager.app/images/icon.webp',
       width: '512',
       height: '512',
     },
@@ -469,8 +469,6 @@ export default function Home() {
 
           <section id="cta" className="pt-8">
             <CallToAction
-              buttonLink="/download"
-              buttonText="Download for Mac"
               description="Join early access - ship your first AI-curated implementation plan in minutes."
               title="Ready to Take Control of Your AI Context?"
             />

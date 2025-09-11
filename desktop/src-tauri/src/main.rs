@@ -159,11 +159,22 @@ fn main() {
             // Keyring is used for secure storage (OS native credential vault)
             info!("Using OS keyring for secure credential storage.");
 
-            let app_handle_clone = app.handle().clone();
+            let app_handle = app.handle().clone();
 
+            // Block until critical components are ready - this prevents race conditions on first run
+            tauri::async_runtime::block_on(async {
+                if let Err(e) = app_setup::run_critical_initialization(&app_handle).await {
+                    // This is fatal: the app cannot function without these components
+                    panic!("CRITICAL: Critical initialization failed: {}", e);
+                }
+            });
+
+            // Spawn background initialization for non-critical tasks
+            let app_handle_bg = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = app_setup::run_async_initialization(&app_handle_clone).await {
-                    panic!("CRITICAL: Async initialization failed: {}", e);
+                if let Err(e) = app_setup::run_background_initialization(app_handle_bg).await {
+                    error!("Background initialization encountered errors: {}", e);
+                    // Don't panic for background init failures
                 }
             });
 

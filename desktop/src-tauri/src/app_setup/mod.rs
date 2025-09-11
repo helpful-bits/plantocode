@@ -22,21 +22,32 @@ async fn run_deferred_initialization(app_handle: &AppHandle) -> Result<(), AppEr
         return Err(e);
     }
     
-    // Initialize system prompts
-    if let Err(e) = services::initialize_system_prompts(app_handle).await {
-        error!("System prompts initialization failed: {}", e);
-        return Err(e);
+    // Initialize system prompts (with presence check) - requires API client so may fail on first run
+    if app_handle.try_state::<std::sync::Arc<crate::services::system_prompt_cache_service::SystemPromptCacheService>>().is_none() {
+        if let Err(e) = services::initialize_system_prompts(app_handle).await {
+            warn!("System prompts initialization failed (non-critical): {}", e);
+            // Don't fail deferred initialization for this - user needs to authenticate first
+        } else {
+            info!("System prompts initialized (deferred phase)");
+        }
+    } else {
+        info!("System prompts skipped (already initialized)");
     }
     
-    // Initialize file lock manager
-    if let Err(e) = file_management::initialize_file_lock_manager(app_handle).await {
-        error!("File lock manager initialization failed: {}", e);
-        return Err(e);
+    // Initialize file lock manager (with presence check)
+    if app_handle.try_state::<std::sync::Arc<crate::utils::FileLockManager>>().is_none() {
+        if let Err(e) = file_management::initialize_file_lock_manager(app_handle).await {
+            error!("File lock manager initialization failed: {}", e);
+            return Err(e);
+        }
+        info!("File lock manager initialized (deferred phase)");
+    } else {
+        info!("File lock manager skipped (already initialized)");
     }
     
-    // Initialize job system
-    if let Err(e) = job_system::initialize_job_system(app_handle).await {
-        error!("Job system initialization failed: {}", e);
+    // Start job system (idempotent call - will no-op if already started)
+    if let Err(e) = job_system::start_job_system(app_handle).await {
+        error!("Job system start failed: {}", e);
         return Err(e);
     }
     
@@ -90,59 +101,96 @@ async fn run_deferred_initialization(app_handle: &AppHandle) -> Result<(), AppEr
     Ok(())
 }
 
-/// Run asynchronous initialization steps for the application
-///
-/// This function initializes various subsystems in the following order:
-/// 1. Database (critical path)
-/// 2. Application configuration
-/// 3. API clients
-/// 4. File lock manager
-/// 5. Job system
-///
-/// Runtime AI configuration is no longer loaded during startup.
-/// It will be triggered from the renderer layer after Auth0 login completes.
-pub async fn run_async_initialization(app_handle: &AppHandle) -> Result<(), AppError> {
-    info!("Starting asynchronous application initialization...");
-
-    // Initialize database (light phase) first
+/// Run critical initialization steps that must complete before UI is interactive
+/// This includes database and job queue setup to prevent race conditions on first run
+pub async fn run_critical_initialization(app_handle: &AppHandle) -> Result<(), AppError> {
+    info!("Starting critical initialization phase...");
+    
+    // Initialize database (light phase) - must complete before any commands execute
     if let Err(e) = database::initialize_database_light(app_handle).await {
         error!("Database light initialization failed: {}", e);
         return Err(e);
     }
-
-    // Spawn deferred initialization asynchronously
-    let app_handle_clone = app_handle.clone();
-    tauri::async_runtime::spawn(async move {
-        if let Err(e) = run_deferred_initialization(&app_handle_clone).await {
-            error!("Deferred initialization failed: {}", e);
-        }
-    });
-
-    // Configuration will be loaded from server after Auth0 authentication
-
-    // Initialize TokenManager and check for selected server URL
-    if let Err(e) = services::initialize_token_manager(app_handle).await {
-        error!("TokenManager initialization failed: {}", e);
+    info!("Database light initialization completed");
+    
+    // Initialize job system light (queue and registry only) - must be ready before dispatch
+    if let Err(e) = job_system::initialize_job_system_light(app_handle).await {
+        error!("Job system light initialization failed: {}", e);
+        return Err(e);  // This is now critical - fail if it doesn't work
+    }
+    info!("Job system light initialization completed");
+    
+    // Wire core repositories early for first-run availability
+    if let Err(e) = database::wire_core_job_repositories(app_handle).await {
+        error!("Core repositories wiring failed: {}", e);
         return Err(e);
     }
-
-    // Check if there's a selected server URL from settings and reinitialize API clients if found
-    let settings_repo = app_handle.state::<std::sync::Arc<crate::db_utils::SettingsRepository>>();
-    if let Ok(Some(server_url)) = settings_repo.get_value("selected_server_url").await {
-        info!("Found selected server URL: {}, setting in AppState and reinitializing API clients", server_url);
-        
-        // Update AppState with the server URL
-        let app_state = app_handle.state::<crate::AppState>();
-        app_state.set_server_url(server_url.clone());
-        
-        if let Err(e) = services::reinitialize_api_clients(app_handle, server_url).await {
-            warn!("Failed to reinitialize API clients with selected server URL: {}", e);
-            // Don't fail startup for this, user can select server again
+    info!("Core repositories wired successfully");
+    
+    // System prompts initialization is deferred (requires API client)
+    
+    // Initialize file lock manager (moved to critical path)
+    if app_handle.try_state::<std::sync::Arc<crate::utils::FileLockManager>>().is_none() {
+        if let Err(e) = file_management::initialize_file_lock_manager(app_handle).await {
+            error!("File lock manager initialization failed: {}", e);
+            return Err(e);
         }
+        info!("File lock manager initialized (critical phase)");
     } else {
-        info!("No selected server URL found, API clients will be initialized when user selects a server region");
+        info!("File lock manager skipped (already initialized)");
     }
-
-    info!("Asynchronous application initialization completed successfully.");
+    
+    // Start job system (idempotent - moved to critical path)
+    if let Err(e) = job_system::start_job_system(app_handle).await {
+        error!("Job system start failed: {}", e);
+        return Err(e);
+    }
+    info!("Job system started (critical phase)");
+    
+    info!("Critical initialization phase completed successfully");
     Ok(())
+}
+
+/// Run background initialization steps that can happen after UI is interactive
+pub async fn run_background_initialization(app_handle: AppHandle) -> Result<(), AppError> {
+    info!("Starting background initialization phase...");
+    
+    // Run deferred initialization tasks first to ensure job system readiness
+    if let Err(e) = run_deferred_initialization(&app_handle).await {
+        error!("Deferred initialization failed: {}", e);
+        // Log but continue - these are background tasks
+    }
+    
+    // Initialize TokenManager (never block on this)
+    if let Err(e) = services::initialize_token_manager(&app_handle).await {
+        warn!("TokenManager initialization failed, continuing: {}", e);
+        // Continue instead of returning early
+    } else {
+        // Check if there's a selected server URL from settings and reinitialize API clients if found
+        let settings_repo = app_handle.state::<std::sync::Arc<crate::db_utils::SettingsRepository>>();
+        if let Ok(Some(server_url)) = settings_repo.get_value("selected_server_url").await {
+            info!("Found selected server URL: {}, setting in AppState and reinitializing API clients", server_url);
+            
+            // Update AppState with the server URL
+            let app_state = app_handle.state::<crate::AppState>();
+            app_state.set_server_url(server_url.clone());
+            
+            if let Err(e) = services::reinitialize_api_clients(&app_handle, server_url).await {
+                warn!("Failed to reinitialize API clients with selected server URL: {}", e);
+                // Don't fail startup for this, user can select server again
+            }
+        } else {
+            info!("No selected server URL found, API clients will be initialized when user selects a server region");
+        }
+    }
+    
+    info!("Background initialization completed");
+    Ok(())
+}
+
+/// Legacy function for backwards compatibility - calls the new split functions
+#[deprecated(note = "Use run_critical_initialization and run_background_initialization instead")]
+pub async fn run_async_initialization(app_handle: &AppHandle) -> Result<(), AppError> {
+    run_critical_initialization(app_handle).await?;
+    run_background_initialization(app_handle.clone()).await
 }

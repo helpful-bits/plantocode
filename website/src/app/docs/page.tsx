@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/button';
+import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { Calendar, Clock, ArrowRight, FileCode, Zap, Brain } from 'lucide-react';
 
 export const metadata: Metadata = {
@@ -192,9 +193,10 @@ export default function DocsPage() {
               Download Vibe Manager and enhance both Claude Code and Cursor with intelligent context preparation, implementation planning, and workflow optimization
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button asChild variant="cta" size="lg">
-                <Link href="/download">Download for Mac</Link>
-              </Button>
+              <PlatformDownloadSection 
+                location="docs_main"
+                redirectToDownloadPage={true}
+              />
               <Button asChild variant="outline" size="lg">
                 <Link href="/">Learn More</Link>
               </Button>

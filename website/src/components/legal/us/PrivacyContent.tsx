@@ -1,10 +1,6 @@
 'use client';
 
-import { useConsent } from '@/components/providers/ConsentProvider';
-import { Button } from '@/components/ui/button';
-
 export default function USPrivacyContent() {
-  const { openPreferences } = useConsent();
   
   return (
     <>
@@ -537,18 +533,6 @@ export default function USPrivacyContent() {
           <li><strong>Marketing:</strong> Advertising and marketing cookies (requires consent)</li>
         </ul>
 
-        <div className="mt-6 p-4 bg-muted/30 dark:bg-muted/20 rounded-lg">
-          <Button
-            onClick={openPreferences}
-            variant="outline"
-            size="default"
-          >
-            Manage Cookie Settings
-          </Button>
-          <p className="text-sm text-muted-foreground mt-2">
-            Click here to review and modify your cookie preferences at any time.
-          </p>
-        </div>
 
         <h3 className="text-xl font-medium mb-3 mt-6">Third-Party Cookies</h3>
         <p>
