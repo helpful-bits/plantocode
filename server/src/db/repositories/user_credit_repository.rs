@@ -314,9 +314,26 @@ impl UserCreditRepository {
             if current.balance >= remaining_to_deduct {
                 from_paid = remaining_to_deduct;
             } else {
+                // Check if free credits are expired to provide a more informative message
+                let free_credit_status = if current.free_credit_balance > BigDecimal::from(0) {
+                    if let Some(expires_at) = current.free_credits_expires_at {
+                        if expires_at <= Utc::now() {
+                            format!("{} (expired on {})", current.free_credit_balance, expires_at.format("%Y-%m-%d"))
+                        } else if current.free_credits_expired {
+                            format!("{} (expired)", current.free_credit_balance)
+                        } else {
+                            format!("{}", current.free_credit_balance)
+                        }
+                    } else {
+                        format!("{}", current.free_credit_balance)
+                    }
+                } else {
+                    "0".to_string()
+                };
+                
                 return Err(AppError::CreditInsufficient(
                     format!("Insufficient credits. Required: {}, Available: {} (paid) + {} (free)", 
-                            amount, current.balance, current.free_credit_balance)
+                            amount, current.balance, free_credit_status)
                 ));
             }
         }

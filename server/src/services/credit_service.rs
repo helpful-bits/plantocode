@@ -126,12 +126,43 @@ impl CreditService {
             }
         };
 
-        // Check if user has sufficient credits for the estimate (including free credits)
-        let total_available = &current_balance.balance + &current_balance.free_credit_balance;
+        // Check if user has sufficient credits for the estimate (including free credits if not expired)
+        let effective_free_credits = if current_balance.free_credit_balance > BigDecimal::from(0) && !current_balance.free_credits_expired {
+            if let Some(expires_at) = current_balance.free_credits_expires_at {
+                if expires_at > chrono::Utc::now() {
+                    current_balance.free_credit_balance.clone()
+                } else {
+                    BigDecimal::from(0)
+                }
+            } else {
+                current_balance.free_credit_balance.clone()
+            }
+        } else {
+            BigDecimal::from(0)
+        };
+        
+        let total_available = &current_balance.balance + &effective_free_credits;
         if total_available < cost {
+            // Provide informative message about free credit status
+            let free_credit_info = if current_balance.free_credit_balance > BigDecimal::from(0) {
+                if let Some(expires_at) = current_balance.free_credits_expires_at {
+                    if expires_at <= chrono::Utc::now() {
+                        format!("{} (expired on {})", current_balance.free_credit_balance, expires_at.format("%Y-%m-%d"))
+                    } else if current_balance.free_credits_expired {
+                        format!("{} (expired)", current_balance.free_credit_balance)
+                    } else {
+                        format!("{}", current_balance.free_credit_balance)
+                    }
+                } else {
+                    format!("{}", current_balance.free_credit_balance)
+                }
+            } else {
+                "0".to_string()
+            };
+            
             return Err(AppError::CreditInsufficient(
                 format!("Insufficient credits. Required: {}, Available: {} (Paid: {}, Free: {})", 
-                        cost, total_available, current_balance.balance, current_balance.free_credit_balance)
+                        cost, total_available, current_balance.balance, free_credit_info)
             ));
         }
 
