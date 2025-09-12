@@ -1,6 +1,7 @@
 'use client';
 
 import { DownloadButton } from './DownloadButton';
+import { MacDownloadButton } from './MacDownloadButton';
 import { WindowsStoreButton } from './WindowsStoreButton';
 import { usePlatformDetection } from '@/hooks/usePlatformDetection';
 
@@ -45,7 +46,7 @@ export function PlatformDownloadSection({
   if (isMac) {
     return (
       <div className={className}>
-        <DownloadButton
+        <MacDownloadButton
           location={location}
           size="lg"
           variant="cta"
@@ -64,7 +65,7 @@ export function PlatformDownloadSection({
           variant="cta"
           showPlatformText={false}
         >
-          <a href="/download" className="no-underline">Download</a>
+          <a href="/downloads" className="no-underline">Download</a>
         </DownloadButton>
       </div>
     );
@@ -73,17 +74,14 @@ export function PlatformDownloadSection({
   // Default: show both options stacked (for hero section)
   return (
     <div className={className}>
-      <div className="flex flex-col gap-4 w-full max-w-md mx-auto">
+      <div className="flex flex-col gap-6 sm:gap-4 w-full max-w-md mx-auto">
         <div className="flex flex-col items-center gap-2">
           <span className="text-sm font-medium text-muted-foreground">Mac</span>
-          <DownloadButton
+          <MacDownloadButton
             location={location}
             size="md"
             variant="cta"
-            showPlatformText={false}
-          >
-            Download for Mac
-          </DownloadButton>
+          />
         </div>
         <div className="flex flex-col items-center gap-2">
           <span className="text-sm font-medium text-muted-foreground">Windows</span>

@@ -147,7 +147,7 @@ export function DocsArticle({ title, description, date, readTime, category, chil
               </p>
               <div className="flex flex-col sm:flex-row gap-4">
                 <Button asChild variant="cta" size="lg">
-                  <Link href="/download">Download for Mac</Link>
+                  <Link href="/downloads">Download for Mac</Link>
                 </Button>
                 <Button asChild variant="gradient-outline" size="lg">
                   <Link href="/docs">View All Docs</Link>

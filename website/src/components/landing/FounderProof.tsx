@@ -1,22 +1,30 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { useTheme } from 'next-themes';
 import { GlassCard } from '@/components/ui/GlassCard';
 import Reveal from '@/components/motion/Reveal';
 
 export function FounderProof() {
+  const { resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   return (
-    <section className="relative py-12 sm:py-16 px-4">
+    <section className="relative py-8 sm:py-12 lg:py-16 px-4">
       <div className="container mx-auto max-w-4xl relative z-10">
         <Reveal>
           <GlassCard>
-            <div className="p-6 sm:p-8">
-              <p className="text-center text-base sm:text-lg lg:text-xl font-medium text-foreground/90 mb-6 leading-relaxed">
-                "I built Vibe because my models kept losing the plot in big repos - now I use it daily." - Kiri, creator of Vibe Manager
+            <div className="p-4 sm:p-6">
+              <p className="text-center text-base sm:text-lg lg:text-xl font-medium text-foreground/90 mb-4 leading-relaxed">
+                "I built Vibe Manager because my models kept losing the plot in big repos - now I use it daily." - Kiri, creator of Vibe Manager
               </p>
               
               {/* Story - Hidden by default, expandable */}
-              <details className="group mb-6">
+              <details className="group mb-4">
                 <summary className="cursor-pointer list-none focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-xl">
                   <div className="relative overflow-hidden rounded-xl bg-background/30 backdrop-blur-sm border border-border/30 hover:border-border/50 transition-all duration-300 hover:shadow-md hover:shadow-primary/5 group-hover:bg-background/40">
                     <div className="absolute inset-0 bg-gradient-to-r from-primary/[0.01] via-transparent to-primary/[0.01] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
@@ -56,9 +64,40 @@ export function FounderProof() {
                 </div>
               </details>
               
-              <div className="flex items-center justify-center gap-3">
-                <span className="text-lg flex-shrink-0">🇩🇪</span>
-                <span className="text-foreground/80 text-sm sm:text-base">Made in Germany</span>
+              <div className="flex flex-col items-center gap-4">
+                <div className="flex items-center justify-center gap-3">
+                  <span className="text-lg flex-shrink-0">🇩🇪</span>
+                  <span className="text-foreground/80 text-sm sm:text-base">Made in Germany</span>
+                </div>
+                
+                {/* Product Hunt Badge */}
+                {/* <div className="flex justify-center" style={{ minHeight: '43px' }}>
+                  <a 
+                    href="https://www.producthunt.com/products/vibe-manager?embed=true&utm_source=badge-featured&utm_medium=badge&utm_source=badge-vibe-manager" 
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-block hover:opacity-90 transition-opacity"
+                    style={{ width: '200px', height: '43px' }}
+                  >
+                    {mounted ? (
+                      <img 
+                        src={
+                          resolvedTheme === 'dark' 
+                            ? "https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1009288&theme=dark&t=1757410274822"
+                            : "https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1009288&theme=light&t=1757410294950"
+                        } 
+                        alt="Vibe Manager - Context control for AI coding sessions | Product Hunt" 
+                        width="200" 
+                        height="43"
+                        style={{ width: '200px', height: '43px' }}
+                        loading="eager"
+                      />
+                    ) : (
+                      // Placeholder to prevent layout shift while theme loads
+                      <div style={{ width: '200px', height: '43px', backgroundColor: 'transparent' }} />
+                    )}
+                  </a>
+                </div> */}
               </div>
             </div>
           </GlassCard>
