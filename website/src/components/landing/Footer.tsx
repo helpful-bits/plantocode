@@ -73,8 +73,8 @@ export function Footer() {
                     </Link>
                   </li>
                   <li>
-                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/download">
-                      Download
+                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/downloads">
+                      Downloads
                     </Link>
                   </li>
                 </ul>

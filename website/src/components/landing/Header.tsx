@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Menu, X, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DownloadButton } from '@/components/ui/DownloadButton';
+import { MacDownloadButton } from '@/components/ui/MacDownloadButton';
 import { WindowsStoreButton } from '@/components/ui/WindowsStoreButton';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { usePlatformDetection } from '@/hooks/usePlatformDetection';
@@ -103,36 +104,10 @@ export function Header() {
               </Link>
             </motion.div>
 
-            {/* Promo Badge - Tailwind CSS 4 optimized */}
-            <div className="hidden md:flex items-center">
-              <motion.div
-                animate={{ opacity: 1, scale: 1 }}
-                initial={{ opacity: 0, scale: 0.8 }}
-                transition={{ delay: 0.5, duration: 0.3, type: 'spring' }}
-                className="relative isolate overflow-hidden rounded-full px-3 lg:px-6 py-1.5 lg:py-2 mr-2 lg:mr-4"
-                whileHover={{ scale: 1.05 }}
-              >
-                {/* Modern gradient background with improved performance */}
-                <div className="absolute inset-0 -z-10 bg-gradient-to-r from-orange-500 via-pink-500 to-pink-600" />
-                
-                {/* Glossy effect overlay */}
-                <div className="absolute inset-0 -z-10 bg-gradient-to-b from-white/25 via-transparent to-transparent opacity-90" />
-                
-                {/* Content */}
-                <div className="relative flex items-center gap-1 lg:gap-2">
-                  <span className="text-base lg:text-xl drop-shadow-md" role="img" aria-label="gift">🎁</span>
-                  <span className="text-white text-xs lg:text-sm font-black tracking-wide lg:tracking-wider uppercase drop-shadow-md whitespace-nowrap">
-                    $10 FREE
-                  </span>
-                </div>
-                
-                {/* Enhanced shadow effect - only on larger screens */}
-                <div className="hidden lg:block absolute inset-0 -z-20 blur-xl bg-gradient-to-r from-orange-400/50 via-pink-400/50 to-pink-500/50 translate-y-2" />
-              </motion.div>
-            </div>
-
-            {/* Desktop Navigation */}
-            <nav className="hidden md:flex items-center gap-1 lg:gap-2">
+            {/* Desktop Navigation and Actions Container */}
+            <div className="hidden md:flex items-center gap-4 lg:gap-6">
+              {/* Navigation Links */}
+              <nav className="flex items-center gap-1 lg:gap-2">
               {navLinks.map((link, index) => (
                 <motion.div
                   key={link.href}
@@ -160,48 +135,81 @@ export function Header() {
                   </Link>
                 </motion.div>
               ))}
+              </nav>
 
+              {/* Divider */}
               <motion.div
                 animate={{ opacity: 1, scaleY: 1 }}
-                className="w-px h-6 bg-border/50 mx-2"
+                className="w-px h-6 bg-border/50"
                 initial={{ opacity: 0, scaleY: 0 }}
                 transition={{ delay: 0.6, duration: 0.3 }}
               />
 
+              {/* Actions Group */}
               <motion.div
                 animate={{ opacity: 1, x: 0 }}
-                className="hidden md:flex items-center gap-2"
+                className="flex items-center gap-3"
                 initial={{ opacity: 0, x: 20 }}
                 transition={{ delay: 0.7, duration: defaultDuration, ease: defaultEase }}
               >
+                {/* Promo Badge */}
+                <motion.div
+                  animate={{ opacity: 1, scale: 1 }}
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  transition={{ delay: 0.5, duration: 0.3, type: 'spring' }}
+                  className="relative isolate overflow-hidden rounded-full px-3 lg:px-4 py-1.5"
+                  whileHover={{ scale: 1.05 }}
+                >
+                  {/* Modern gradient background with improved performance */}
+                  <div className="absolute inset-0 -z-10 bg-gradient-to-r from-orange-500 via-pink-500 to-pink-600" />
+                  
+                  {/* Glossy effect overlay */}
+                  <div className="absolute inset-0 -z-10 bg-gradient-to-b from-white/25 via-transparent to-transparent opacity-90" />
+                  
+                  {/* Content */}
+                  <div className="relative flex items-center gap-1 lg:gap-1.5">
+                    <span className="text-sm lg:text-base drop-shadow-md" role="img" aria-label="gift">🎁</span>
+                    <span className="text-white text-xs lg:text-sm font-black tracking-wide uppercase drop-shadow-md whitespace-nowrap">
+                      $10 FREE
+                    </span>
+                  </div>
+                  
+                  {/* Enhanced shadow effect - only on larger screens */}
+                  <div className="hidden lg:block absolute inset-0 -z-20 blur-xl bg-gradient-to-r from-orange-400/50 via-pink-400/50 to-pink-500/50 translate-y-2" />
+                </motion.div>
+
                 <ThemeToggle />
-                <div className="flex flex-col items-center justify-center ml-2">
-                  <motion.div
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    {isWindows ? (
-                      <WindowsStoreButton size="small" />
-                    ) : (
-                      <DownloadButton
-                        size="sm"
-                        variant="cta"
-                        location={getLocation('desktop')}
-                      />
-                    )}
-                  </motion.div>
-                </div>
+                
+                <motion.div
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  {isWindows ? (
+                    <WindowsStoreButton size="small" />
+                  ) : isMac ? (
+                    <MacDownloadButton
+                      size="sm"
+                      location={getLocation('desktop')}
+                    />
+                  ) : (
+                    <DownloadButton
+                      size="sm"
+                      variant="cta"
+                      location={getLocation('desktop')}
+                    />
+                  )}
+                </motion.div>
               </motion.div>
-            </nav>
+            </div>
 
             {/* Mobile actions */}
-            <div className="flex md:hidden items-center gap-2">
+            <div className="flex md:hidden items-center gap-2.5">
               {/* Mobile Promo Badge - Tailwind CSS 4 optimized */}
               <motion.div
                 animate={{ opacity: 1, scale: 1 }}
                 initial={{ opacity: 0, scale: 0.8 }}
                 transition={{ delay: 0.3, duration: 0.3, type: 'spring' }}
-                className="relative isolate overflow-hidden rounded-full px-4 py-2"
+                className="relative isolate overflow-hidden rounded-full px-3 py-1.5"
               >
                 {/* Modern gradient background */}
                 <div className="absolute inset-0 -z-10 bg-gradient-to-r from-orange-500 via-pink-500 to-pink-600" />
@@ -210,9 +218,9 @@ export function Header() {
                 <div className="absolute inset-0 -z-10 bg-gradient-to-b from-white/20 to-transparent" />
                 
                 {/* Content */}
-                <div className="relative flex items-center gap-1.5">
-                  <span className="text-lg drop-shadow" role="img" aria-label="gift">🎁</span>
-                  <span className="text-white text-[11px] font-black tracking-wide uppercase">
+                <div className="relative flex items-center gap-1">
+                  <span className="text-sm drop-shadow" role="img" aria-label="gift">🎁</span>
+                  <span className="text-white text-[10px] font-black tracking-wide uppercase">
                     $10 FREE
                   </span>
                 </div>
@@ -222,7 +230,7 @@ export function Header() {
                 animate={{ opacity: 1 }}
                 aria-label="Toggle menu"
                 className={cn(
-                  'relative p-2.5 rounded-xl',
+                  'relative p-2 rounded-xl',
                   'focus:outline-none focus:ring-2 focus:ring-primary/50',
                   scrolled
                     ? 'glass text-foreground'
@@ -397,6 +405,13 @@ export function Header() {
                     {isWindows ? (
                       <div className="w-full flex justify-center">
                         <WindowsStoreButton size="small" />
+                      </div>
+                    ) : isMac ? (
+                      <div className="w-full flex justify-center">
+                        <MacDownloadButton
+                          size="lg"
+                          location={getLocation('mobile')}
+                        />
                       </div>
                     ) : (
                       <DownloadButton

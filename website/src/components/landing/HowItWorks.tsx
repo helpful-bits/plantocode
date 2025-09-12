@@ -11,10 +11,12 @@
 'use client';
 
 import React, { memo, useEffect, useRef, useState } from 'react';
-import { useReducedMotion } from 'framer-motion';
+import { useReducedMotion, motion } from 'framer-motion';
+import Link from 'next/link';
 import Reveal from '@/components/motion/Reveal';
 import { trackVideo } from '@/lib/track';
 import { ScreenshotGallery } from '@/components/demo/ScreenshotGallery';
+import { Button } from '@/components/ui/button';
 
 interface Step {
   title: string;
@@ -192,14 +194,27 @@ export const HowItWorks = memo(function HowItWorks({ steps = defaultSteps }: How
       aria-label="How Vibe Manager works - Step-by-step demonstration"
     >
       <div className="container mx-auto relative z-10">
-        <div className="text-center mb-12 sm:mb-16">
+        <div className="text-center mb-8 sm:mb-10">
           <Reveal 
             as="h2" 
-            className="text-3xl sm:text-4xl lg:text-5xl mb-4 text-primary-emphasis font-bold text-shadow-subtle"
+            className="text-3xl sm:text-4xl lg:text-5xl mb-6 text-primary-emphasis font-bold text-shadow-subtle"
             delay={prefersReducedMotion ? 0 : 0}
           >
             How It Works
           </Reveal>
+          
+          {/* Interactive Demo Button - Right under the heading */}
+          <motion.div
+            className="flex justify-center"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <Button asChild size="lg" variant="gradient-outline">
+              <Link href="/demo" className="no-hover-effect cursor-pointer">
+                Try the interactive demo
+              </Link>
+            </Button>
+          </motion.div>
         </div>
 
         {/* Screenshot Gallery Section */}

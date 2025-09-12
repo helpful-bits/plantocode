@@ -69,7 +69,7 @@ export function HeroSection() {
   return (
     <section className="relative flex flex-col items-center bg-transparent w-full">
       {/* Main heading */}
-      <div className="relative z-10 text-center px-4 sm:px-6 lg:px-8 pt-20 sm:pt-24 pb-4 sm:pb-6 w-full">
+      <div className="relative z-10 text-center px-4 sm:px-6 lg:px-8 pt-24 sm:pt-28 pb-6 sm:pb-8 w-full">
         <h1 
           className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold leading-tight bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent" 
           style={{ 
@@ -91,7 +91,7 @@ export function HeroSection() {
       </div>
 
       {/* Hero Content with Panels */}
-      <div className="relative w-full px-2 sm:px-6 lg:px-8">
+      <div className="relative w-full px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto relative">
           
           {/* Panels Container - Responsive */}
@@ -102,7 +102,7 @@ export function HeroSection() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-                className={isMobile ? "flex flex-col gap-4 pb-6 w-full" : "flex items-center justify-center gap-4 lg:gap-6 pb-6"}
+                className={isMobile ? "flex flex-col gap-6 pb-8 w-full" : "flex items-center justify-center gap-4 lg:gap-6 pb-6"}
               >
                 {/* Panel 1: Find Files */}
                 {isMobile ? (
@@ -264,7 +264,7 @@ export function HeroSection() {
           </AnimatePresence>
           
           {/* Watch Demo button - below the cards */}
-          <div className="flex justify-center pb-2">
+          <div className="flex justify-center pb-8 sm:pb-6">
             <button
               onClick={handlePlayVideo}
               className="flex items-center gap-2 px-5 py-2.5 bg-primary/15 backdrop-blur-md text-primary rounded-full text-base font-semibold border-2 border-primary/40 hover:bg-primary/25 hover:border-primary/60 hover:scale-105 transition-all group animate-pulse-glow"
@@ -350,62 +350,20 @@ export function HeroSection() {
       </AnimatePresence>
 
       {/* Previous hero content below */}
-      <div className="relative text-center px-4 sm:px-6 lg:px-8 w-full max-w-7xl mx-auto mt-2">
+      <div className="relative text-center px-4 sm:px-6 lg:px-8 w-full max-w-7xl mx-auto mt-6 sm:mt-8">
         {/* Subtitle */}
-        <p className="text-xl sm:text-2xl md:text-3xl text-foreground/90 dark:text-foreground/95 mb-8 leading-relaxed max-w-4xl mx-auto font-medium">
+        <p className="text-lg sm:text-2xl md:text-3xl text-foreground/90 dark:text-foreground/95 mb-10 sm:mb-12 leading-relaxed max-w-4xl mx-auto font-medium">
           Tell it what you want to build. Type it out, describe it 10x faster with voice, or capture bugs instantly on screen. AI finds the right files, generates plans with multiple models, and gives you a blueprint your coding agent can actually use.
         </p>
 
-        {/* Action buttons - Download button moved up */}
-        <div className="flex flex-col items-center gap-6 mb-8">
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-            <motion.div
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <PlatformDownloadSection location="hero_section" />
-            </motion.div>
-
-            <motion.div
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-                <Button asChild size="lg" variant="gradient-outline">
-                  <Link href="/demo" className="no-hover-effect cursor-pointer">
-                    Try the interactive demo
-                  </Link>
-                </Button>
-            </motion.div>
-          </div>
-        </div>
-
-        {/* Product Hunt Badge - moved down and made smaller */}
-        <div className="flex justify-center" style={{ minHeight: '43px' }}>
-          <a 
-            href="https://www.producthunt.com/products/vibe-manager?embed=true&utm_source=badge-featured&utm_medium=badge&utm_source=badge-vibe-manager" 
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-block hover:opacity-90 transition-opacity"
-            style={{ width: '200px', height: '43px' }}
+        {/* Action buttons - Download button */}
+        <div className="flex flex-col items-center gap-6">
+          <motion.div
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
           >
-            {mounted ? (
-              <img 
-                src={
-                  resolvedTheme === 'dark' 
-                    ? "https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1009288&theme=dark&t=1757410274822"
-                    : "https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1009288&theme=light&t=1757410294950"
-                } 
-                alt="Vibe Manager - Context control for AI coding sessions | Product Hunt" 
-                width="200" 
-                height="43"
-                style={{ width: '200px', height: '43px' }}
-                loading="eager"
-              />
-            ) : (
-              // Placeholder to prevent layout shift while theme loads
-              <div style={{ width: '200px', height: '43px', backgroundColor: 'transparent' }} />
-            )}
-          </a>
+            <PlatformDownloadSection location="hero_section" />
+          </motion.div>
         </div>
 
       </div>

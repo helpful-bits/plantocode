@@ -21,7 +21,7 @@ export default function NotarizationPage() {
           Apple Developer: <a className="underline hover:text-primary" target="_blank" rel="noreferrer noopener" href="https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution">Notarizing macOS software</a>
         </li>
       </ul>
-      <p className="text-foreground/80">If you see warnings, try opening via the context menu and choose "Open", or see our <a href="/download" className="underline hover:text-primary">Download</a> page for guidance.</p>
+      <p className="text-foreground/80">If you see warnings, try opening via the context menu and choose "Open", or see our <a href="/downloads" className="underline hover:text-primary">Downloads</a> page for guidance.</p>
     </main>
   );
 }
