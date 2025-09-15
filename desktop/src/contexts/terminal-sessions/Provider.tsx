@@ -4,6 +4,7 @@ import { createContext, useCallback, useEffect, useMemo, useRef, useState } from
 import type { ReactNode } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke, Channel } from "@tauri-apps/api/core";
+import { useNotification } from "@/contexts/notification-context";
 
 import type {
   TerminalSession,
@@ -16,6 +17,7 @@ const STUCK_TIMEOUT_MS = 2 * 60 * 1000;
 
 export const TerminalSessionsContext = createContext<TerminalSessionsContextShape>({
   sessions: new Map(),
+  canOpenTerminal: async () => ({ ok: false }),
   startSession: async () => {},
   write: async () => {},
   sendCtrlC: async () => {},
@@ -34,6 +36,7 @@ export function TerminalSessionsProvider({ children }: { children: ReactNode }) 
   const sessionsRef = useRef<Map<string, TerminalSession>>(new Map());
   const stuckTimeoutsRef = useRef<Map<string, number>>(new Map());
   const outputCallbacksRef = useRef<Map<string, (data: string) => void>>(new Map());
+  const { showNotification } = useNotification();
 
   // Keep ref in sync with state
   useEffect(() => {
@@ -88,6 +91,53 @@ export function TerminalSessionsProvider({ children }: { children: ReactNode }) 
     outputCallbacksRef.current.delete(jobId);
   }, []);
 
+  const canOpenTerminal = useCallback(async () => {
+    try {
+      const result = await invoke<{
+        serverSelected: boolean;
+        userAuthenticated: boolean;
+        apiClientsReady: boolean;
+        message?: string;
+      }>("get_terminal_prerequisites_status_command");
+
+      if (!result.userAuthenticated) {
+        showNotification({
+          type: "error",
+          title: "Authentication Required",
+          message: "Please log in to use the terminal",
+        });
+        return { ok: false, reason: "auth" as const, message: "Please log in to use the terminal" };
+      }
+
+      if (!result.serverSelected) {
+        showNotification({
+          type: "error",
+          title: "Server Not Selected",
+          message: "Please select a server region to use the terminal",
+        });
+        return { ok: false, reason: "region" as const, message: "Please select a server region to use the terminal" };
+      }
+
+      if (!result.apiClientsReady) {
+        showNotification({
+          type: "error",
+          title: "API Not Ready",
+          message: "API clients are not ready. Please try again in a moment",
+        });
+        return { ok: false, reason: "api" as const, message: "API clients are not ready" };
+      }
+
+      return { ok: true };
+    } catch (error) {
+      showNotification({
+        type: "error",
+        title: "Terminal Error",
+        message: "Unable to verify terminal prerequisites",
+      });
+      return { ok: false, reason: "api" as const, message: "Unable to verify terminal prerequisites" };
+    }
+  }, [showNotification]);
+
   useEffect(() => {
     let unlistenExit: (() => void) | null = null;
 
@@ -123,6 +173,12 @@ export function TerminalSessionsProvider({ children }: { children: ReactNode }) 
   }, [updateSessionStatus, scheduleStuckCheck]);
 
   const startSession = useCallback(async (jobId: string, opts?: StartSessionOptions & { onOutput?: (data: string) => void }) => {
+    // Check prerequisites first
+    const canOpen = await canOpenTerminal();
+    if (!canOpen.ok) {
+      return;
+    }
+
     try {
       // Guard against duplicate start
       const existingSession = sessions.get(jobId);
@@ -133,22 +189,22 @@ export function TerminalSessionsProvider({ children }: { children: ReactNode }) 
         }
         return;
       }
-      
+
       // Register output callback if provided
       if (opts?.onOutput) {
         setOutputCallback(jobId, opts.onOutput);
       }
-      
+
       // Create initial session state
       const newSession: TerminalSession = {
         jobId,
         status: "running",
         lastOutputAt: new Date(),
       };
-      
+
       setSessions(prev => new Map(prev).set(jobId, newSession));
       scheduleStuckCheck(jobId);
-      
+
       // Create a Channel for output before invoking start command
       const outputChannel = new Channel<Uint8Array>((chunk) => {
         // Pass bytes to registered callback
@@ -161,7 +217,7 @@ export function TerminalSessionsProvider({ children }: { children: ReactNode }) 
         updateLastOutputAt(jobId);
         scheduleStuckCheck(jobId);
       });
-      
+
       // Start session via Rust backend
       await invoke("start_terminal_session_command", {
         jobId: jobId,
@@ -173,7 +229,7 @@ export function TerminalSessionsProvider({ children }: { children: ReactNode }) 
         },
         output: outputChannel
       });
-      
+
       // Send startup message to callback
       const callback = outputCallbacksRef.current.get(jobId);
       if (callback) {
@@ -182,14 +238,20 @@ export function TerminalSessionsProvider({ children }: { children: ReactNode }) 
       }
     } catch (error) {
       updateSessionStatus(jobId, "failed");
-      
+
       const callback = outputCallbacksRef.current.get(jobId);
       if (callback) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         callback(`\x1b[31mFailed to start terminal session: ${errorMsg}\x1b[0m\r\n`);
       }
+
+      showNotification({
+        title: "Terminal Session Failed",
+        message: `Failed to start terminal session: ${error instanceof Error ? error.message : String(error)}`,
+        type: "error",
+      });
     }
-  }, [sessions, setOutputCallback, scheduleStuckCheck, updateSessionStatus]);
+  }, [sessions, setOutputCallback, scheduleStuckCheck, updateSessionStatus, canOpenTerminal, showNotification]);
 
   const write = useCallback(async (jobId: string, data: string) => {
     const session = sessions.get(jobId);
@@ -273,6 +335,7 @@ export function TerminalSessionsProvider({ children }: { children: ReactNode }) 
 
   const contextValue = useMemo(() => ({
     sessions,
+    canOpenTerminal,
     startSession,
     write,
     sendCtrlC,
@@ -286,6 +349,7 @@ export function TerminalSessionsProvider({ children }: { children: ReactNode }) 
     removeOutputCallback,
   }), [
     sessions,
+    canOpenTerminal,
     startSession,
     write,
     sendCtrlC,

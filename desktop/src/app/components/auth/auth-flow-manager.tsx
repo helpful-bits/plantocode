@@ -375,8 +375,18 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
       );
     }
 
-    // Main app is ready to render - children include ProjectProvider and other contexts
-    return <>{children}</>;
+    // Only render children when selectedUrl is a non-empty string
+    if (typeof selectedUrl === 'string' && selectedUrl.trim() !== '') {
+      return <>{children}</>;
+    }
+
+    // Default fallback - show loading if no conditions are met
+    return (
+      <>
+        <UpdaterStatus />
+        <LoadingScreen loadingType="initializing" />
+      </>
+    );
   } catch (error) {
     logError(error, "Auth Flow - Critical Initialization Error").catch(() => {
       // Swallow logging errors to prevent recursive failures
