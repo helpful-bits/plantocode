@@ -28,10 +28,10 @@ export function WindowsStoreButton({
     return <div className={className} style={{ height: `${height}px`, width: `${width}px` }} />;
   }
 
-  // Use dark or light badge based on theme
-  const badgeUrl = resolvedTheme === 'dark' 
-    ? 'https://get.microsoft.com/images/en-us%20dark.svg'
-    : 'https://get.microsoft.com/images/en-us%20light.svg';
+  // Use locally hosted badges to avoid third-party cookies
+  const badgeUrl = resolvedTheme === 'dark'
+    ? '/images/badges/microsoft-store-dark.svg'
+    : '/images/badges/microsoft-store-light.svg';
 
   return (
     <a 

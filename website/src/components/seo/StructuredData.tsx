@@ -1,22 +1,23 @@
-import type { Thing } from 'schema-dts';
-
 interface StructuredDataProps {
-  data: Thing;
+  data: any;
 }
 
 export function StructuredData({ data }: StructuredDataProps) {
-  // Ensure @context is always present in JSON-LD
-  const dataWithContext: any = data;
-  if (!dataWithContext['@context']) {
-    dataWithContext['@context'] = 'https://schema.org';
+  // Ensure @context is present
+  const structuredData = {
+    '@context': 'https://schema.org',
+    ...data
+  };
+
+  // If data contains @graph, don't duplicate @context
+  if (data['@graph']) {
+    structuredData['@context'] = data['@context'] || 'https://schema.org';
   }
 
   return (
     <script
-      dangerouslySetInnerHTML={{
-        __html: JSON.stringify(dataWithContext),
-      }}
       type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
     />
   );
 }

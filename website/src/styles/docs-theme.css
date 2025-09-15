@@ -1,0 +1,89 @@
+:root {
+  /* Code block variables (light) */
+  --doc-pre-bg-light: #0f172a;     /* slate-900 */
+  --doc-pre-text-light: #e5e7eb;   /* slate-200 */
+  --doc-pre-border-light: #334155; /* slate-700 */
+
+  /* Inline code (light) */
+  --doc-inline-code-bg-light: #f1f5f9;  /* slate-100/50-ish */
+  --doc-inline-code-text-light: #0f172a; /* slate-900 */
+}
+
+.dark {
+  /* Code block variables (dark) */
+  --doc-pre-bg-dark: #020617;      /* slate-950 */
+  --doc-pre-text-dark: #e5e7eb;    /* slate-200 */
+  --doc-pre-border-dark: #1f2937;  /* slate-800 */
+
+  /* Inline code (dark) */
+  --doc-inline-code-bg-dark: #111827;  /* gray-900 */
+  --doc-inline-code-text-dark: #e5e7eb; /* slate-200 */
+}
+
+/* Scope to docs prose content */
+.prose pre {
+  background-color: var(--doc-pre-bg-light);
+  color: var(--doc-pre-text-light) !important; /* Add !important to override any inline colors */
+  border: 1px solid var(--doc-pre-border-light);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  line-height: 1.6;
+  overflow-x: auto;
+  tab-size: 2;
+}
+
+.dark .prose pre {
+  background-color: var(--doc-pre-bg-dark);
+  color: var(--doc-pre-text-dark) !important;
+  border-color: var(--doc-pre-border-dark);
+}
+
+.prose pre code {
+  color: inherit !important;
+}
+
+/* Inline code (not inside pre) */
+.prose :not(pre) > code {
+  background-color: var(--doc-inline-code-bg-light);
+  color: var(--doc-inline-code-text-light);
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.25rem;
+  font-weight: 500;
+}
+
+.dark .prose :not(pre) > code {
+  background-color: var(--doc-inline-code-bg-dark);
+  color: var(--doc-inline-code-text-dark);
+}
+
+/* Terminal-style blocks */
+.terminal-block {
+  background-color: #0f172a; /* slate-900 */
+  color: #e5e7eb !important; /* slate-200 */
+  border: 1px solid #334155; /* slate-700 */
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+.dark .terminal-block {
+  background-color: #020617; /* slate-950 */
+  color: #e5e7eb !important; /* slate-200 */
+  border-color: #1f2937; /* slate-800 */
+}
+
+/* Ensure all text inside terminal blocks is visible */
+.terminal-block * {
+  color: inherit;
+}
+
+.terminal-block .text-green-400,
+.terminal-block .text-emerald-400,
+.terminal-block .text-cyan-400,
+.terminal-block .text-blue-400 {
+  color: currentColor !important;
+}
+
+/* Paragraph/list baseline comfort */
+.prose p, .prose li {
+  line-height: 1.7;
+}

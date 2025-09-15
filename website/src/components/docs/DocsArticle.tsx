@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { ArrowLeft, Calendar, Clock, Share2, Copy, CheckCircle } from 'lucide-react';
-import { GlassCard } from '@/components/ui/GlassCard';
+import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
 // Removed Reveal to fix initial content visibility issues
@@ -14,9 +14,18 @@ interface DocsArticleProps {
   readTime: string;
   category: string;
   children: React.ReactNode;
+  showFooter?: boolean;
 }
 
-export function DocsArticle({ title, description, date, readTime, category, children }: DocsArticleProps) {
+export function DocsArticle({ 
+  title, 
+  description, 
+  date, 
+  readTime, 
+  category, 
+  children,
+  showFooter = true,
+}: DocsArticleProps) {
   const [copied, setCopied] = useState(false);
 
   const handleShare = async () => {
@@ -48,12 +57,12 @@ export function DocsArticle({ title, description, date, readTime, category, chil
   };
 
   return (
-    <article className="relative pt-20 sm:pt-24 pb-16 sm:pb-20 lg:pb-24 animate-fade-in">
+    <article className="relative pt-4 pb-16 sm:pb-20 lg:pb-24 animate-fade-in">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-5xl">
         {/* Back to Docs */}
         <Link 
             href="/docs" 
-            className="inline-flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors mb-12 group"
+            className="inline-flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors mb-2 group"
           >
             <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
             <span>Back to Docs</span>
@@ -62,7 +71,7 @@ export function DocsArticle({ title, description, date, readTime, category, chil
         {/* Article Header */}
         <header className="mb-12">
             <div className="flex items-center gap-3 mb-4">
-              <span className="px-3 py-1 rounded-full bg-primary/10 text-primary text-sm font-medium">
+              <span className="py-1 rounded-full bg-primary/10 text-primary text-sm font-medium">
                 {category}
               </span>
             </div>
@@ -92,34 +101,27 @@ export function DocsArticle({ title, description, date, readTime, category, chil
                 <span>{readTime} read</span>
               </div>
               <span>•</span>
-              <button
-                onClick={handleShare}
-                className="flex items-center gap-1 hover:text-primary transition-colors"
-              >
-                <Share2 className="w-4 h-4" />
-                <span>Share</span>
-              </button>
-              <button
-                onClick={handleCopyLink}
-                className="flex items-center gap-1 hover:text-primary transition-colors"
-              >
+              <Button variant="ghost" size="compact" onClick={handleShare} className="gap-2">
+                <Share2 className="h-4 w-4" /> Share
+              </Button>
+              <Button variant="ghost" size="compact" onClick={handleCopyLink} className="gap-2">
                 {copied ? (
                   <>
-                    <CheckCircle className="w-4 h-4" />
+                    <CheckCircle className="h-4 w-4" />
                     <span>Copied!</span>
                   </>
                 ) : (
                   <>
-                    <Copy className="w-4 h-4" />
+                    <Copy className="h-4 w-4" />
                     <span>Copy Link</span>
                   </>
                 )}
-              </button>
+              </Button>
             </div>
           </header>
 
         {/* Article Content */}
-        <div className="prose prose-lg dark:prose-invert max-w-none 
+        <div className="prose dark:prose-invert prose-pre:text-slate-100 max-w-none 
             prose-headings:font-bold prose-headings:text-foreground
             prose-h2:text-2xl prose-h2:mt-12 prose-h2:mb-4
             prose-h3:text-xl prose-h3:mt-8 prose-h3:mb-4
@@ -137,24 +139,15 @@ export function DocsArticle({ title, description, date, readTime, category, chil
           </div>
 
         {/* Article Footer */}
-        <footer className="mt-12 pt-12 border-t border-border">
-            <GlassCard className="p-6 space-y-6">
-              <h3 className="text-xl font-bold mb-4 text-foreground">
-                Ready to Get Started?
-              </h3>
-              <p className="text-base text-muted-foreground mb-6 leading-relaxed">
-                Download Vibe Manager and enhance your Claude Code workflow with multi-model planning and intelligent context curation.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4">
-                <Button asChild variant="cta" size="lg">
-                  <Link href="/downloads">Download for Mac</Link>
-                </Button>
-                <Button asChild variant="gradient-outline" size="lg">
-                  <Link href="/docs">View All Docs</Link>
-                </Button>
-              </div>
-            </GlassCard>
+        {showFooter && (
+          <footer className="mt-12 pt-8 border-t border-border/50">
+            <div className="flex justify-center">
+              <Button asChild variant="outline" size="sm">
+                <Link href="/docs">View All Docs</Link>
+              </Button>
+            </div>
           </footer>
+        )}
       </div>
     </article>
   );

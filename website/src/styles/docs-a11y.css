@@ -1,0 +1,113 @@
+/* Accessibility styles for documentation */
+
+/* Smooth scrolling with proper padding for fixed headers */
+html {
+  scroll-padding-top: 6rem;
+}
+
+/* Target elements with proper scroll margin for anchor links */
+:target {
+  scroll-margin-top: 6rem;
+}
+
+/* Specific scroll margin for headings in doc content */
+#doc-content h2,
+#doc-content h3 {
+  scroll-margin-top: 6rem;
+}
+
+/* Skip link for keyboard navigation */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.skip-link:focus {
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  width: auto;
+  height: auto;
+  padding: 0.75rem 1rem;
+  z-index: 1000;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border-radius: 0.5rem;
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  transition: all 0.2s ease-in-out;
+  border: 2px solid hsl(var(--primary));
+}
+
+.skip-link:focus:hover {
+  background: hsl(var(--primary) / 0.9);
+  transform: translateY(-1px);
+}
+
+/* Enhanced focus-visible styles for better accessibility */
+*:focus-visible {
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+
+/* Focus styles for interactive elements */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px hsl(var(--primary) / 0.1);
+}
+
+/* Remove default focus outline for mouse interactions */
+*:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Enhanced focus for navigation elements */
+nav a:focus-visible,
+[role="navigation"] a:focus-visible {
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 2px;
+  border-radius: 0.5rem;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .skip-link:focus {
+    border: 3px solid currentColor;
+  }
+  
+  *:focus-visible {
+    outline-width: 3px;
+  }
+}
+
+/* Scroll margin for content headings */
+#doc-content h2,
+#doc-content h3 {
+  scroll-margin-top: 6rem;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .skip-link:focus {
+    transition: none;
+  }
+  
+  * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

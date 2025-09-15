@@ -23,7 +23,7 @@ export const metadata: Metadata = {
     'macos app'
   ],
   alternates: {
-    canonical: 'https://www.vibemanager.app/docs/claude-code-install',
+    canonical: '/docs/claude-code-install',
   },
   openGraph: {
     title: 'Claude Code Install Guide - Complete Setup with Vibe Manager',
@@ -48,7 +48,7 @@ const howToJsonLd: HowTo = {
     {
       '@type': 'HowToStep',
       name: 'Install Claude Code CLI',
-      text: 'Install Claude Code using npm: npm install -g @anthropic/claude-cli or pip: pip install claude-cli',
+      text: 'Install Claude Code using npm: npm install -g @anthropic-ai/claude-code',
     },
     {
       '@type': 'HowToStep',
@@ -83,7 +83,7 @@ export default function ClaudeCodeInstallPage() {
         category="Installation Guide"
       >
         {/* Quick Start Section */}
-        <GlassCard className="p-6 mb-12 border-primary/20">
+        <GlassCard className="p-6 mb-12">
           <h2 className="text-2xl font-bold mb-6 text-foreground">🚀 Quick Start: Claude Code + Vibe Manager</h2>
           <div className="grid md:grid-cols-2 gap-6">
             <div>
@@ -91,7 +91,7 @@ export default function ClaudeCodeInstallPage() {
               <p className="text-sm mb-4 text-muted-foreground">
                 Anthropic's official CLI tool:
               </p>
-              <pre className="bg-slate-900 dark:bg-slate-950 p-4 rounded-lg overflow-x-auto border border-slate-700 dark:border-slate-800">
+              <pre className="bg-slate-900 dark:bg-slate-950 border border-slate-700 dark:border-slate-800 rounded-lg p-3 overflow-x-auto text-slate-200">
                 <code className="text-emerald-400 font-mono text-sm"># Install via npm{'\n'}npm install -g @anthropic-ai/claude-code{'\n\n'}# Or via curl{'\n'}curl -fsSL https://claude.ai/install.sh | bash</code>
               </pre>
             </div>
@@ -104,15 +104,12 @@ export default function ClaudeCodeInstallPage() {
                 location="docs_claude_code_install"
                 redirectToDownloadPage={true}
               />
-              <p className="text-sm mt-2 text-muted-foreground">
-                Windows support coming soon
-              </p>
             </div>
           </div>
         </GlassCard>
 
         {/* Main Content */}
-        <p className="text-base sm:text-lg lg:text-xl mb-6 leading-relaxed">
+        <p className="text-base text-muted-foreground leading-relaxed mb-6">
           Looking to supercharge Claude Code with multi-model intelligence? This guide shows you how to 
           install Claude Code and enhance it with Vibe Manager - a desktop app that generates superior 
           implementation plans for Claude Code to execute.
@@ -123,7 +120,7 @@ export default function ClaudeCodeInstallPage() {
         <p className="mb-6">Before getting started, ensure you have:</p>
         
         <ul className="space-y-4 mb-12">
-          <li>• macOS (Windows support coming soon)</li>
+          <li>• macOS or Windows</li>
           <li>• Your preferred code editor or IDE</li>
           <li>• API keys for the AI services you want to use (optional)</li>
         </ul>
@@ -259,8 +256,8 @@ export default function ClaudeCodeInstallPage() {
             <p className="mb-4">
               To install Claude Code on macOS, use the npm package manager. This method provides the most reliable installation experience:
             </p>
-            <pre className="bg-slate-900 dark:bg-slate-950 p-4 rounded-lg overflow-x-auto border border-slate-700 dark:border-slate-800 mb-4">
-              <code className="text-emerald-400 font-mono text-sm">npm install -g @anthropic/claude-cli</code>
+            <pre className="bg-slate-900 dark:bg-slate-950 border border-slate-700 dark:border-slate-800 rounded-lg p-3 overflow-x-auto mb-4 text-slate-200">
+              <code className="text-emerald-400 font-mono text-sm">npm install -g @anthropic-ai/claude-code</code>
             </pre>
             <p className="text-sm text-muted-foreground">
               After installation, enhance Claude Code with Vibe Manager for multi-model planning capabilities.
@@ -275,13 +272,9 @@ export default function ClaudeCodeInstallPage() {
             <ol className="space-y-2">
               <li>1. Install Node.js from nodejs.org</li>
               <li>2. Open PowerShell as Administrator</li>
-              <li>3. Run: <code className="bg-primary/10 px-2 py-1 rounded text-primary">npm install -g @anthropic/claude-cli</code></li>
-              <li>4. Alternatively, use pip: <code className="bg-primary/10 px-2 py-1 rounded text-primary">pip install claude-cli</code></li>
+              <li>3. Run: <code className="bg-primary/10 px-2 py-1 rounded text-primary">npm install -g @anthropic-ai/claude-code</code></li>
               <li>5. Configure with your API key</li>
             </ol>
-            <p className="text-sm text-muted-foreground mt-4">
-              Note: Vibe Manager macOS app is available; Windows support is coming soon.
-            </p>
           </GlassCard>
         </div>
 
@@ -292,7 +285,7 @@ export default function ClaudeCodeInstallPage() {
           You can install it using either npm or the curl installation script:
         </p>
         
-        <pre className="bg-slate-900 dark:bg-slate-950 p-4 rounded-lg overflow-x-auto border border-slate-700 dark:border-slate-800 mb-6">
+        <pre className="bg-slate-900 dark:bg-slate-950 border border-slate-700 dark:border-slate-800 rounded-lg p-3 overflow-x-auto mb-6 text-slate-200">
           <code className="text-emerald-400 font-mono text-sm">{`# Install via npm
 npm install -g @anthropic-ai/claude-code
 
@@ -361,11 +354,11 @@ curl -fsSL https://claude.ai/install.sh | bash`}</code>
         <p className="mb-6">
           Enable <strong>Claude Code plan mode</strong> for better task planning:
         </p>
-        <pre className="bg-black/50 dark:bg-black/70 p-4 rounded-lg overflow-x-auto border border-border/50 mb-6">
-          <code className="text-green-400">claude config set planning_mode true{'\n'}claude config set max_planning_iterations 5</code>
+        <pre className="bg-slate-900 dark:bg-slate-950 border border-slate-700 dark:border-slate-800 rounded-lg p-3 overflow-x-auto mb-6 text-slate-200">
+          <code className="text-green-400">claude --permission-mode plan{'\n'}# Use Shift+Tab to cycle between permission modes</code>
         </pre>
         <p className="text-sm text-muted-foreground">
-          💡 Tip: Vibe Manager enhances plan mode with server-configured models across providers. Use voice dictation to quickly describe complex planning requirements, and screen recording to capture error states for better debugging context. Technical note: Workflows run as queued background jobs (SQLite-backed), with staged processors.
+          💡 Tip: Use Shift+Tab to cycle between permission modes. Start in read-only mode with <code className="text-slate-200">claude --permission-mode plan</code>. Vibe Manager enhances plan mode with server-configured models across providers. Use voice dictation to quickly describe complex planning requirements, and screen recording to capture error states for better debugging context. Technical note: Workflows run as queued background jobs (SQLite-backed), with staged processors.
         </p>
 
 

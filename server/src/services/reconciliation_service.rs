@@ -82,7 +82,7 @@ impl ReconciliationService {
             let actual_balance = user_balances
                 .iter()
                 .find(|b| b.user_id == user_id)
-                .map(|b| b.balance.clone())
+                .map(|b| &b.balance + &b.free_credit_balance)
                 .unwrap_or_else(|| BigDecimal::from(0));
 
             let (expected_balance, last_transaction_date, transaction_count) = transaction_totals
@@ -150,7 +150,7 @@ impl ReconciliationService {
         // Calculate system-level summary
         let total_actual_balance = user_balances
             .iter()
-            .fold(BigDecimal::from(0), |acc, b| acc + &b.balance);
+            .fold(BigDecimal::from(0), |acc, b| acc + &b.balance + &b.free_credit_balance);
 
         let total_expected_balance = transaction_totals
             .values()
@@ -251,7 +251,7 @@ impl ReconciliationService {
         // Get user's current balance
         let user_balance = self.user_credit_repository.get_balance(user_id).await?;
         let actual_balance = user_balance
-            .map(|b| b.balance)
+            .map(|b| b.balance + b.free_credit_balance)
             .unwrap_or_else(|| BigDecimal::from(0));
 
         // Get user's transaction total

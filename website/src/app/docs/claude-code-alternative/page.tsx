@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     'claude code companion'
   ],
   alternates: {
-    canonical: 'https://www.vibemanager.app/docs/claude-code-alternative',
+    canonical: '/docs/claude-code-alternative',
   },
   openGraph: {
     title: 'Claude Code Alternatives & Enhancements - Vibe Manager',
@@ -71,7 +71,7 @@ export default function ClaudeCodeAlternativePage() {
         readTime="6 min"
         category="Alternatives"
       >
-        <p className="text-base sm:text-lg lg:text-xl mb-6 leading-relaxed">
+        <p className="text-base text-muted-foreground leading-relaxed mb-6">
           Looking for <strong>Claude Code alternatives</strong>? What if instead of replacing Claude Code, 
           you could enhance it? Vibe Manager isn't just another alternative - it's a powerful companion 
           that makes Claude Code better by adding multi-model intelligence and superior context management.
@@ -132,7 +132,7 @@ export default function ClaudeCodeAlternativePage() {
           context layer that sits above Claude Code, making it more powerful and effective.
         </p>
 
-        <GlassCard className="p-6 mb-12 border-primary/20">
+        <GlassCard className="p-6 mb-12">
           <h3 className="text-xl font-semibold mb-6 text-primary">How Vibe Manager Enhances Claude Code</h3>
           
           <div className="space-y-6">
@@ -228,8 +228,8 @@ export default function ClaudeCodeAlternativePage() {
           <ol className="space-y-4">
             <li>
               <strong>1. Install Claude Code</strong>
-              <pre className="bg-slate-900 dark:bg-slate-950 p-3 rounded-lg overflow-x-auto my-2 border border-slate-700 dark:border-slate-800">
-                <code className="text-emerald-400 font-mono text-sm">npm install -g @anthropic/claude-cli</code>
+              <pre className="bg-slate-900 dark:bg-slate-950 p-3 rounded-lg overflow-x-auto my-2 border border-slate-700 dark:border-slate-800 text-slate-200">
+                <code className="text-emerald-400 font-mono text-sm">npm install -g @anthropic-ai/claude-code</code>
               </pre>
             </li>
             
@@ -291,7 +291,7 @@ export default function ClaudeCodeAlternativePage() {
 
         <TechnicalAccuracy />
 
-        <h2 className="text-2xl font-bold mb-6">The Future of AI Coding</h2>
+        <h2 className="text-2xl font-bold mt-12 mb-6">The Future of AI Coding</h2>
 
         <p className="mb-6">
           The future isn't about choosing one tool over another. It's about using the right combination 

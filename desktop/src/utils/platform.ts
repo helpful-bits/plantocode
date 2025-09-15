@@ -60,6 +60,30 @@ export const isTest = (): boolean => {
 };
 
 /**
+ * Checks if running on a mobile platform (iOS or Android)
+ */
+export const isMobilePlatform = async (): Promise<boolean> => {
+  if (isTauriEnvironment()) {
+    try {
+      const osModule = await import("@tauri-apps/plugin-os");
+      const osType = osModule.type();
+      return osType === "ios" || osType === "android";
+    } catch (e) {
+      console.error("Failed to get OS info from Tauri:", e);
+      return false;
+    }
+  }
+  
+  // In browser, check user agent
+  if (isBrowser()) {
+    const userAgent = navigator.userAgent.toLowerCase();
+    return /iphone|ipad|ipod|android/i.test(userAgent);
+  }
+  
+  return false;
+};
+
+/**
  * Gets the operating system information
  */
 export const getOSInfo = async (): Promise<{

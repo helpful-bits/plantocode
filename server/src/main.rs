@@ -172,6 +172,9 @@ async fn main() -> std::io::Result<()> {
     
     // Initialize logger
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
+
+    // Initialize deployment uptime tracking once
+    handlers::deployment_status::init_deployment_tracking();
     
     // Load application settings from environment (as initial defaults)
     let env_app_settings = match AppSettings::from_env() {
@@ -371,6 +374,9 @@ async fn main() -> std::io::Result<()> {
     info!("CORS configured for origins: {:?}", app_settings_for_server.server.cors_origins);
     info!("Rate limiting configured with Redis prefix separation for route isolation");
 
+    // Clone request_tracker for shutdown handler before moving into HttpServer closure
+    let request_tracker_for_shutdown = request_tracker.clone();
+
     let server = HttpServer::new(move || {
         // Clone the data for the factory closure
         let db_pools = db_pools.clone();
@@ -504,6 +510,11 @@ async fn main() -> std::io::Result<()> {
                     .route(web::get().to(handlers::health::health_check))
             )
             .service(
+                web::resource("/health/deployment")
+                    .wrap(public_ip_rate_limiter.clone())
+                    .route(web::get().to(handlers::deployment_status::deployment_status))
+            )
+            .service(
                 web::scope("/auth")
                     .wrap(public_ip_rate_limiter.clone())
                     .configure(|cfg| configure_public_auth_routes(cfg, account_creation_rate_limiter.clone()))
@@ -538,32 +549,53 @@ async fn main() -> std::io::Result<()> {
     .keep_alive(std::time::Duration::from_secs(300)) // 5 minutes keep-alive
     .client_request_timeout(std::time::Duration::from_secs(app_settings_for_server.server.client_request_timeout_secs)) // Configurable client timeout
     .client_disconnect_timeout(std::time::Duration::from_secs(5)) // 5 seconds to detect client disconnect
+    .shutdown_timeout(120) // 2 minutes for long-running streams (implementation_plan)
     .listen(listener)?
     .run();
-    
+
     let server_handle = server.handle();
-    
+
     // Spawn a task to listen for shutdown signals
     tokio::spawn(async move {
-        #[cfg(unix)]
-        tokio::select! {
-            _ = tokio::signal::ctrl_c() => {
+        let should_cancel_requests = {
+            #[cfg(unix)]
+            {
+                tokio::select! {
+                    _ = tokio::signal::ctrl_c() => {
+                        log::info!("SIGINT received, initiating graceful shutdown...");
+                        true // Cancel requests on manual shutdown
+                    },
+                    _ = async {
+                        let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                            .expect("Failed to install SIGTERM handler");
+                        sigterm.recv().await;
+                        log::info!("SIGTERM received, initiating graceful shutdown without cancelling requests (blue/green deployment)...");
+                    } => {
+                        false // Don't cancel requests on SIGTERM (blue/green deployments)
+                    },
+                }
+            }
+
+            #[cfg(not(unix))]
+            {
+                tokio::signal::ctrl_c().await.ok();
                 log::info!("SIGINT received, initiating graceful shutdown...");
-            },
-            _ = async {
-                let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-                    .expect("Failed to install SIGTERM handler");
-                sigterm.recv().await;
-                log::info!("SIGTERM received, initiating graceful shutdown...");
-            } => {},
+                true // Cancel requests on manual shutdown
+            }
+        };
+
+        // Only cancel active streaming requests on SIGINT (manual shutdown)
+        // For SIGTERM (blue/green deployments), let requests complete naturally
+        if should_cancel_requests {
+            let active_count = request_tracker_for_shutdown.get_active_count().await;
+            if active_count > 0 {
+                log::info!("SIGINT: Cancelling {} active streaming requests for quick shutdown...", active_count);
+                let cancelled = request_tracker_for_shutdown.cancel_all_requests().await;
+                log::info!("Cancelled {} streaming requests", cancelled);
+            }
         }
-        
-        #[cfg(not(unix))]
-        tokio::select! {
-            _ = tokio::signal::ctrl_c() => {
-                log::info!("SIGINT received, initiating graceful shutdown...");
-            },
-        }
+
+        // Initiate Actix graceful shutdown
         server_handle.stop(true).await;
     });
     

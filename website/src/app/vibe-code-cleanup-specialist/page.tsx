@@ -10,8 +10,8 @@ import Link from 'next/link';
 import { Sparkles, FileSearch, GitMerge, Zap, CheckCircle, Code2, Wrench, Shield } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'Vibe Code Cleanup Specialist - Multi-Model Implementation Planning',
-  description: 'Generate superior implementation plans by synthesizing strategies from multiple AI models. Vibe Manager analyzes your codebase, creates detailed step-by-step plans with file operations, and provides copy maps for external example integration.',
+  title: 'Vibe Code Cleanup Specialist – AI Context Orchestration for Large Codebases | Vibe Manager',
+  description: 'Ship cleaner code faster. Vibe Manager finds the right files, merges plans from GPT-5, Claude & Gemini, and keeps your AI agents on task. Mac app; Windows soon.',
   keywords: [
     'vibe code cleanup specialist',
     'vibe code cleanup',
@@ -122,9 +122,11 @@ export default function VibeCodeCleanupSpecialistPage() {
                   <h1 className="text-3xl sm:text-4xl lg:text-5xl mb-6 text-primary-emphasis font-bold text-shadow-subtle">
                     Vibe Code Cleanup Specialist
                   </h1>
-                  <p className="text-lg sm:text-xl max-w-3xl mx-auto leading-relaxed font-medium text-foreground/85 dark:text-foreground/90">
-                    Generate superior implementation plans through multi-model synthesis. 
-                    Create detailed file operations with external example integration and architectural decision documentation.
+                  <p className="text-lg sm:text-xl max-w-3xl mx-auto leading-relaxed font-medium text-foreground/85 dark:text-foreground/90 mb-4">
+                    Ship cleaner code faster with AI context orchestration for large codebases. Vibe Manager finds the right files, merges implementation plans from multiple AI models, and keeps your coding agents focused on the task.
+                  </p>
+                  <p className="text-base sm:text-lg max-w-3xl mx-auto leading-relaxed text-foreground/75 dark:text-foreground/80">
+                    Generate superior implementation plans through <Link href="/multi-model-plans" className="text-primary hover:text-primary/80 underline">multi-model synthesis</Link>. Create detailed file operations with external example integration and architectural decision documentation.
                   </p>
                 </Reveal>
               </div>
@@ -152,7 +154,7 @@ export default function VibeCodeCleanupSpecialistPage() {
                       </div>
                       <h3 className="text-xl font-semibold text-center mb-3 text-foreground">Plan Synthesis & Merge</h3>
                       <p className="text-center text-sm leading-relaxed text-foreground/80">
-                        Analyzes plans from multiple models, resolves conflicts, and synthesizes superior strategies with source traceability.
+                        Analyzes <Link href="/multi-model-plans" className="text-primary hover:text-primary/80 underline">plans from multiple AI models</Link>, resolves conflicts, and synthesizes superior strategies with source traceability.
                       </p>
                     </div>
                   </GlassCard>
@@ -244,7 +246,7 @@ export default function VibeCodeCleanupSpecialistPage() {
                       </div>
                       <h4 className="font-semibold mb-3 text-lg">2. Synthesize Plans</h4>
                       <p className="text-sm text-foreground/80 leading-relaxed">
-                        Multiple AI models create plans, then merge into a superior synthesized strategy
+                        <Link href="/multi-model-plans" className="text-primary hover:text-primary/80 underline">Multiple AI models create plans</Link>, then merge into a superior synthesized strategy
                       </p>
                     </GlassCard>
                   </Reveal>

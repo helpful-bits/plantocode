@@ -1,0 +1,25 @@
+# Upstream configuration for blue-green deployment
+# NOTE: Provisioning-only template. Live updates are managed by /usr/local/bin/vibe-zero-downtime during deployments.
+upstream vibe_backend {
+    # Blue server (port 8080)
+    {% if active_color == 'blue' or active_color == 'both' %}
+    server 127.0.0.1:8080{% if active_color == 'both' %} weight={% if preferred_color == 'blue' %}10{% else %}1{% endif %}{% endif %};
+    {% endif %}
+
+    # Green server (port 8081)
+    {% if active_color == 'green' or active_color == 'both' %}
+    server 127.0.0.1:8081{% if active_color == 'both' %} weight={% if preferred_color == 'green' %}10{% else %}1{% endif %}{% endif %};
+    {% endif %}
+
+    # Keepalive connections for better performance
+    keepalive 32;
+    keepalive_requests 100;
+    keepalive_timeout 60s;
+}
+
+# Health check endpoints (optional, requires nginx_upstream_check_module)
+# upstream_check {
+#     check interval=3000 rise=2 fall=3 timeout=2000;
+#     check_http_send "GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n";
+#     check_http_expect_alive http_2xx;
+# }

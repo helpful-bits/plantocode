@@ -1,13 +1,10 @@
 'use client';
 
 import React, { useRef, useState, useEffect } from 'react';
-import Link from 'next/link';
-import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
 import { track } from '@/lib/track';
 import { cdnUrl } from '@/lib/cdn';
 import { Play, X } from 'lucide-react';
-import { useTheme } from 'next-themes';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 
 export function HeroSection() {
@@ -17,11 +14,8 @@ export function HeroSection() {
   const [isDesktop, setIsDesktop] = useState<boolean | null>(null);
   const [isLayoutReady, setIsLayoutReady] = useState(false);
   const [showVideoModal, setShowVideoModal] = useState(false);
-  const { resolvedTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
   
   useEffect(() => {
-    setMounted(true);
     if (typeof window !== 'undefined') {
       const checkMobile = () => window.innerWidth < 640;
       const checkDesktop = () => window.innerWidth >= 1024; // lg breakpoint

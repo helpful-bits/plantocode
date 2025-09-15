@@ -20,8 +20,11 @@ fn main() {
         println!("cargo:rustc-env=AUTH0_API_AUDIENCE={}", audience);
     }
     
-    #[cfg(target_os = "macos")]
-    println!("cargo:rustc-link-lib=framework=ScreenCaptureKit");
+    // Only link ScreenCaptureKit on macOS desktop, not iOS
+    let target = std::env::var("TARGET").unwrap_or_default();
+    if target.contains("darwin") && !target.contains("ios") && !target.contains("android") {
+        println!("cargo:rustc-link-lib=framework=ScreenCaptureKit");
+    }
     
     tauri_build::build();
 }

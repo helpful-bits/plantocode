@@ -20,7 +20,7 @@ export const metadata: Metadata = {
     'ai context management'
   ],
   alternates: {
-    canonical: 'https://www.vibemanager.app/docs/vibe-manager-architecture',
+    canonical: '/docs/vibe-manager-architecture',
   },
   openGraph: {
     title: 'How Vibe Manager Enhances Claude Code & Cursor Workflows',
@@ -54,18 +54,23 @@ export default function VibeManagerArchitecturePage() {
         readTime="8 min"
         category="AI Workflows"
       >
-        <p className="text-base sm:text-lg lg:text-xl mb-6 leading-relaxed">
-          Claude Code and Cursor are powerful AI coding tools, but they're only as good as the context you provide. 
-          Vibe Manager is the desktop companion that transforms your AI coding workflow by intelligently preparing 
-          context, planning implementations, and researching solutions before you even open your AI coding assistant.
+        {/* Summary paragraph */}
+        <div className="text-lg text-foreground/90 leading-relaxed mb-8">
+          Vibe Manager transforms Claude Code and Cursor from context-limited tools into <strong className="text-foreground">deeply contextual coding companions</strong>.
+        </div>
+
+        <h2 className="text-2xl font-bold mb-6">The Context Challenge</h2>
+
+        <p className="mb-4">
+          Every developer using Claude Code or Cursor faces the same challenge.
         </p>
-
-        <h2 className="text-2xl font-bold mb-6">The AI Coding Context Problem</h2>
-
+        
+        <p className="mb-4">
+          <strong>AI tools need good context to generate quality code</strong>. Without proper context, you get generic solutions.
+        </p>
+        
         <p className="mb-6">
-          Every developer using Claude Code or Cursor faces the same challenge: <strong>AI tools need good context to generate quality code</strong>. 
-          Without proper context, you get generic solutions that don't fit your codebase, miss important dependencies, 
-          or ignore your project's architectural patterns.
+          These solutions don't fit your codebase, miss important dependencies, or ignore your project's architectural patterns.
         </p>
 
         <GlassCard className="p-6 mb-12">
@@ -115,10 +120,16 @@ export default function VibeManagerArchitecturePage() {
 
         <h2 className="text-2xl font-bold mb-6">The Vibe Manager Solution</h2>
 
+        <p className="mb-4">
+          Vibe Manager acts as an intelligent preparation layer between you and your AI coding tools.
+        </p>
+        
+        <p className="mb-4">
+          Instead of manually gathering context, you let Vibe Manager analyze your project and understand your requirements.
+        </p>
+        
         <p className="mb-6">
-          Vibe Manager acts as an intelligent preparation layer between you and your AI coding tools. 
-          Instead of manually gathering context, you let Vibe Manager analyze your project, understand 
-          your requirements, and prepare comprehensive context that makes Claude Code and Cursor dramatically more effective.
+          It prepares comprehensive context that makes Claude Code and Cursor dramatically more effective.
         </p>
 
         <GlassCard className="p-6 mb-12">
@@ -132,7 +143,7 @@ export default function VibeManagerArchitecturePage() {
           </ul>
         </GlassCard>
 
-        <h2 className="text-2xl font-bold mb-6">Real-World Workflow Examples</h2>
+        <h2 className="text-2xl font-bold mb-6">Implementation Workflows</h2>
 
         <p className="mb-6">
           Here's how developers are using Vibe Manager to supercharge their Claude Code and Cursor workflows:
@@ -143,7 +154,7 @@ export default function VibeManagerArchitecturePage() {
           
           <div className="space-y-8">
             <div>
-              <h4 className="text-lg font-semibold text-foreground mb-3">📋 Feature Implementation Workflow</h4>
+              <h3 className="text-xl font-semibold text-foreground mb-3">Feature Implementation</h3>
               <div className="grid gap-4 md:grid-cols-3 mb-4">
                 <div className="p-4 rounded-lg bg-muted/30">
                   <h5 className="text-base font-semibold text-primary mb-2">1. Vibe Manager</h5>
@@ -167,7 +178,7 @@ export default function VibeManagerArchitecturePage() {
             </div>
             
             <div>
-              <h4 className="text-lg font-semibold text-foreground mb-3">🔍 Bug Investigation Workflow</h4>
+              <h3 className="text-xl font-semibold text-foreground mb-3">Bug Investigation</h3>
               <div className="grid gap-4 md:grid-cols-3 mb-4">
                 <div className="p-4 rounded-lg bg-muted/30">
                   <h5 className="text-base font-semibold text-primary mb-2">1. Vibe Manager</h5>
@@ -191,7 +202,7 @@ export default function VibeManagerArchitecturePage() {
             </div>
 
             <div>
-              <h4 className="text-lg font-semibold text-foreground mb-3">🏗️ Architecture Refactoring Workflow</h4>
+              <h3 className="text-xl font-semibold text-foreground mb-3">Architecture Refactoring</h3>
               <div className="grid gap-4 md:grid-cols-3">
                 <div className="p-4 rounded-lg bg-muted/30">
                   <h5 className="text-base font-semibold text-primary mb-2">1. Vibe Manager</h5>
@@ -216,14 +227,17 @@ export default function VibeManagerArchitecturePage() {
           </div>
         </GlassCard>
 
-        <h2 className="text-2xl font-bold mb-6">Key Benefits: Better Context = Better Code</h2>
+        <h2 className="text-2xl font-bold mb-6">Key Benefits</h2>
 
+        <p className="mb-4">
+          The magic happens when AI tools understand your project deeply.
+        </p>
+        
         <p className="mb-6">
-          The magic happens when AI tools understand your project deeply. Vibe Manager bridges this gap 
-          by providing the context that makes Claude Code and Cursor dramatically more effective.
+          Vibe Manager bridges this gap by providing the context that makes Claude Code and Cursor dramatically more effective.
         </p>
 
-        <GlassCard className="p-6 mb-12 border-primary/20">
+        <GlassCard className="p-6 mb-12">
           <h3 className="text-xl font-semibold mb-4 text-primary">What You Get</h3>
           <div className="space-y-4">
             <div>
@@ -245,20 +259,20 @@ export default function VibeManagerArchitecturePage() {
             <div>
               <h4 className="text-lg font-semibold text-foreground mb-2">🔍 Better Problem Solving</h4>
               <p className="text-sm text-muted-foreground">
-                AI tools can suggest solutions based on existing patterns in your codebase 
-                and understand the full scope of changes needed. When errors flash by or complex UI interactions occur, 
-                use screen recording to capture exactly what happened - including error messages, console logs, 
-                and UI state changes - without missing critical details.
+                AI tools can suggest solutions based on existing patterns in your codebase and understand the full scope of changes needed.
+              </p>
+              <p className="text-sm text-muted-foreground mt-2">
+                When errors flash by or complex UI interactions occur, use screen recording to capture exactly what happened - including error messages, console logs, and UI state changes.
               </p>
             </div>
 
             <div>
               <h4 className="text-lg font-semibold text-foreground mb-2">📋 Implementation Planning</h4>
               <p className="text-sm text-muted-foreground">
-                Get detailed implementation plans before coding, helping you think through 
-                the approach and identify potential issues early. Capture your ideas instantly with voice dictation - 
-                speak your implementation thoughts naturally instead of typing, making context capture 10x faster 
-                when brainstorming features or explaining complex requirements.
+                Get detailed implementation plans before coding, helping you think through the approach and identify potential issues early.
+              </p>
+              <p className="text-sm text-muted-foreground mt-2">
+                Capture your ideas instantly with voice dictation - speak your implementation thoughts naturally instead of typing, making context capture 10x faster when brainstorming features.
               </p>
             </div>
           </div>
@@ -266,9 +280,12 @@ export default function VibeManagerArchitecturePage() {
 
         <h2 className="text-2xl font-bold mb-6">Smart Context Preparation</h2>
 
+        <p className="mb-4">
+          Vibe Manager doesn't just dump files into your AI tool.
+        </p>
+        
         <p className="mb-6">
-          Vibe Manager doesn't just dump files into your AI tool. It intelligently analyzes your project 
-          to understand what's relevant and prepares context that maximizes the effectiveness of Claude Code and Cursor.
+          It intelligently analyzes your project to understand what's relevant and prepares context that maximizes the effectiveness of Claude Code and Cursor.
         </p>
 
         <GlassCard className="p-6 mb-12">
@@ -310,11 +327,10 @@ export default function VibeManagerArchitecturePage() {
           </div>
         </GlassCard>
 
-        <h2 className="text-2xl font-bold mb-6">Getting Started with Enhanced AI Coding</h2>
+        <h2 className="text-2xl font-bold mb-6">Getting Started</h2>
 
         <p className="mb-6">
-          Ready to transform your Claude Code and Cursor workflows? Here's how to start using 
-          Vibe Manager to enhance your AI coding experience.
+          Ready to transform your Claude Code and Cursor workflows? Here's how to start using Vibe Manager to enhance your AI coding experience.
         </p>
 
         <GlassCard className="p-6 mb-12">
@@ -349,11 +365,10 @@ export default function VibeManagerArchitecturePage() {
           </div>
         </GlassCard>
 
-        <h2 className="text-2xl font-bold mb-6">Why Developers Love This Workflow</h2>
+        <h2 className="text-2xl font-bold mb-6">Developer Benefits</h2>
 
         <p className="mb-6">
-          Developers who've integrated Vibe Manager into their Claude Code and Cursor workflows 
-          consistently report dramatic improvements in code quality and development speed.
+          Developers who've integrated Vibe Manager into their Claude Code and Cursor workflows consistently report dramatic improvements in code quality and development speed.
         </p>
 
         <GlassCard className="p-6 mb-12">
@@ -382,11 +397,10 @@ export default function VibeManagerArchitecturePage() {
           </div>
         </GlassCard>
 
-        <h2 className="text-2xl font-bold mb-6">Ready to Transform Your AI Coding?</h2>
+        <h2 className="text-2xl font-bold mb-6">Transform Your AI Coding</h2>
 
         <p className="mb-6">
-          If you're using Claude Code or Cursor and want to unlock their full potential, 
-          Vibe Manager is the missing piece that makes AI coding truly effective.
+          If you're using Claude Code or Cursor and want to unlock their full potential, Vibe Manager is the missing piece that makes AI coding truly effective.
         </p>
 
         <GlassCard className="p-6 mb-12">
@@ -401,23 +415,26 @@ export default function VibeManagerArchitecturePage() {
           </ul>
         </GlassCard>
 
-        <h2 className="text-2xl font-bold mb-6">The Future of AI-Assisted Development</h2>
+        <h2 className="text-2xl font-bold mb-6">The Future of AI Development</h2>
 
-        <p className="mb-6">
-          Vibe Manager represents a new approach to AI-assisted development - one where the AI tools 
-          have deep, contextual understanding of your project from the start.
+        <p className="mb-4">
+          Vibe Manager represents a new approach to AI-assisted development.
+        </p>
+        
+        <p className="mb-4">
+          One where the AI tools have deep, contextual understanding of your project from the start.
+        </p>
+
+        <p className="mb-4">
+          Instead of treating AI coding assistants as isolated tools, Vibe Manager creates an integrated workflow.
+        </p>
+        
+        <p className="mb-4">
+          Preparation and context curation are just as important as the code generation itself.
         </p>
 
         <p className="mb-6">
-          Instead of treating AI coding assistants as isolated tools, Vibe Manager creates an 
-          integrated workflow where preparation and context curation are just as important as 
-          the code generation itself.
-        </p>
-
-        <p className="mb-6">
-          Whether you're building new features, debugging complex issues, or refactoring existing code, 
-          the combination of Vibe Manager's intelligent context preparation with Claude Code or Cursor's 
-          code generation creates a workflow that's more than the sum of its parts.
+          Whether you're building new features, debugging complex issues, or refactoring existing code, the combination creates a workflow that's more than the sum of its parts.
         </p>
 
       </DocsArticle>

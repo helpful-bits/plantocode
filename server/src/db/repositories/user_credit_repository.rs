@@ -4,6 +4,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use bigdecimal::BigDecimal;
 use crate::error::AppError;
+use crate::db::repositories::CreditTransactionRepository;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -228,13 +229,23 @@ impl UserCreditRepository {
         Ok(result)
     }
 
-    /// Check if user has sufficient credits for a given amount (including free credits)
+    /// Check if user has sufficient credits for a given amount (including active free credits)
     pub async fn has_sufficient_credits(&self, user_id: &Uuid, required_amount: &BigDecimal) -> Result<bool, AppError> {
         let balance = self.get_balance(user_id).await?;
-        
+
         match balance {
             Some(user_credit) => {
-                let total_available = &user_credit.balance + &user_credit.free_credit_balance;
+                // Only count free credits if they're not expired and have a valid expiry date
+                let active_free = if user_credit.free_credit_balance > BigDecimal::from(0)
+                    && !user_credit.free_credits_expired
+                    && user_credit.free_credits_expires_at.is_some()
+                    && user_credit.free_credits_expires_at.unwrap() > Utc::now() {
+                    user_credit.free_credit_balance.clone()
+                } else {
+                    BigDecimal::from(0)
+                };
+
+                let total_available = &user_credit.balance + &active_free;
                 Ok(&total_available >= required_amount)
             },
             None => Ok(false), // No credit record means no credits
@@ -248,10 +259,20 @@ impl UserCreditRepository {
         executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
     ) -> Result<bool, AppError> {
         let balance = self.get_balance_with_executor(user_id, executor).await?;
-        
+
         match balance {
             Some(user_credit) => {
-                let total_available = &user_credit.balance + &user_credit.free_credit_balance;
+                // Only count free credits if they're not expired and have a valid expiry date
+                let active_free = if user_credit.free_credit_balance > BigDecimal::from(0)
+                    && !user_credit.free_credits_expired
+                    && user_credit.free_credits_expires_at.is_some()
+                    && user_credit.free_credits_expires_at.unwrap() > Utc::now() {
+                    user_credit.free_credit_balance.clone()
+                } else {
+                    BigDecimal::from(0)
+                };
+
+                let total_available = &user_credit.balance + &active_free;
                 Ok(&total_available >= required_amount)
             },
             None => Ok(false), // No credit record means no credits
@@ -259,21 +280,74 @@ impl UserCreditRepository {
     }
 
     /// Expire free credits for all users where expiry date has passed
-    pub async fn expire_free_credits(&self) -> Result<u64, sqlx::Error> {
-        let result = sqlx::query!(
+    pub async fn expire_free_credits(&self) -> Result<u64, AppError> {
+        let mut tx = self.pool.begin().await
+            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+
+        // Select users with expired free credits that haven't been processed yet
+        let expired_users = sqlx::query_as!(
+            UserCredit,
             r#"
-            UPDATE user_credits 
-            SET free_credit_balance = 0.0000, 
-                free_credits_expired = true, 
-                updated_at = NOW()
-            WHERE free_credits_expires_at < NOW() 
-            AND free_credits_expired = false
+            SELECT user_id, balance, currency, free_credit_balance,
+                   free_credits_granted_at, free_credits_expires_at, free_credits_expired,
+                   created_at, updated_at
+            FROM user_credits
+            WHERE free_credits_expires_at < NOW()
+              AND free_credits_expired = false
+            FOR UPDATE SKIP LOCKED
             "#
         )
-        .execute(&self.pool)
-        .await?;
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to fetch expired credits: {}", e)))?;
 
-        Ok(result.rows_affected())
+        let credit_transaction_repo = CreditTransactionRepository::new(self.pool.clone());
+        let mut processed_count = 0u64;
+
+        for user in expired_users {
+            if user.free_credit_balance > BigDecimal::from(0) {
+                let expired_amount = user.free_credit_balance.clone();
+                let combined_balance_after = user.balance.clone(); // After expiry, only paid balance remains
+
+                // Create expiry transaction
+                let description = format!(
+                    "Free credits expired at {}",
+                    user.free_credits_expires_at
+                        .map(|dt| dt.to_string())
+                        .unwrap_or_else(|| "unknown time".to_string())
+                );
+
+                credit_transaction_repo.create_expiry_transaction_with_executor(
+                    &user.user_id,
+                    &expired_amount,
+                    &combined_balance_after,
+                    Some(description),
+                    &mut tx
+                ).await?;
+
+                // Update user credits to mark as expired
+                sqlx::query!(
+                    r#"
+                    UPDATE user_credits
+                    SET free_credit_balance = 0.0000,
+                        free_credits_expired = true,
+                        updated_at = NOW()
+                    WHERE user_id = $1
+                    "#,
+                    user.user_id
+                )
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| AppError::Database(format!("Failed to update user credits: {}", e)))?;
+
+                processed_count += 1;
+            }
+        }
+
+        tx.commit().await
+            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
+
+        Ok(processed_count)
     }
     
     /// Deduct credits with priority: free credits first, then paid balance

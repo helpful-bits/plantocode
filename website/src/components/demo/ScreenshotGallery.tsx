@@ -228,9 +228,10 @@ export function ScreenshotGallery() {
                             (screenshot.id === 'settings-prompts' || screenshot.id === 'implementation-plans') ? 'mobile-zoom-pan-horizontal' : 
                             (screenshot.id === 'file-finder' || screenshot.id === 'video-analysis' || screenshot.id === 'billing-transactions') ? 'mobile-zoom-pan' : ''
                           }`}
-                          sizes="(max-width: 768px) 100vw, 60vw"
-                          quality={90}
-                          priority={index < 2}
+                          sizes="(max-width: 640px) 90vw, (max-width: 1024px) 60vw, (max-width: 1280px) 50vw, 800px"
+                          quality={85}
+                          priority={index === 0}
+                          loading={index === 0 ? "eager" : "lazy"}
                         />
                         {/* Hover Overlay */}
                         <div className="absolute inset-0 bg-gradient-to-t from-background/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-center pb-6">

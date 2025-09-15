@@ -1,22 +1,24 @@
 'use client';
 
+import Link from 'next/link';
+import { Download } from 'lucide-react';
 import { DownloadButton } from './DownloadButton';
 import { MacDownloadButton } from './MacDownloadButton';
 import { WindowsStoreButton } from './WindowsStoreButton';
 import { usePlatformDetection } from '@/hooks/usePlatformDetection';
 
 interface PlatformDownloadSectionProps {
-  location: string;
+  location?: string;
   className?: string;
   redirectToDownloadPage?: boolean; // For sections where we want to redirect on unknown platform
 }
 
 export function PlatformDownloadSection({
-  location,
+  location = 'default',
   className,
   redirectToDownloadPage = false,
 }: PlatformDownloadSectionProps) {
-  const { isWindows, isMac, isLoading } = usePlatformDetection();
+  const { isWindows, isMac, isLoading, platform } = usePlatformDetection();
 
   if (isLoading) {
     return (
@@ -49,24 +51,22 @@ export function PlatformDownloadSection({
         <MacDownloadButton
           location={location}
           size="lg"
-          variant="cta"
         />
       </div>
     );
   }
 
-  // Show both options for other/unknown platforms OR redirect to download page
-  if (redirectToDownloadPage) {
+  // If platform is unknown and redirect is enabled, show download page link
+  if (platform === 'other' && redirectToDownloadPage) {
     return (
       <div className={className}>
-        <DownloadButton
-          location={location}
-          size="lg"
-          variant="cta"
-          showPlatformText={false}
+        <Link
+          href="/downloads"
+          className="inline-flex items-center justify-center px-6 py-3 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg transition-colors"
         >
-          <a href="/downloads" className="no-underline">Download</a>
-        </DownloadButton>
+          <Download className="w-4 h-4 mr-2" />
+          Download Vibe Manager
+        </Link>
       </div>
     );
   }
@@ -80,7 +80,6 @@ export function PlatformDownloadSection({
           <MacDownloadButton
             location={location}
             size="md"
-            variant="cta"
           />
         </div>
         <div className="flex flex-col items-center gap-2">

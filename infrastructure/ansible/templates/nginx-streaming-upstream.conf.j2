@@ -1,0 +1,52 @@
+# Upstream configuration for zero-downtime deployment with streaming support
+# This configuration allows old streams to complete naturally while routing new connections
+
+upstream vibe_backend {
+    # Use least_conn to distribute new connections evenly
+    # (ip_hash would stick users to servers, but we want gradual migration)
+    least_conn;
+
+    {% if deployment_phase == 'stable' %}
+    # Single stable version running
+    server 127.0.0.1:{{ active_port }} max_fails=3 fail_timeout=30s;
+
+    {% elif deployment_phase == 'migration' %}
+    # Migration phase: both versions running
+    # Old version: accepts existing connections only (backup)
+    server 127.0.0.1:{{ old_port }} max_fails=0 backup;
+
+    # New version: receives all new connections
+    server 127.0.0.1:{{ new_port }} max_fails=3 fail_timeout=30s;
+
+    {% elif deployment_phase == 'draining' %}
+    # Draining phase: old version still serving long-running streams
+    # Old version: never marked as down, but backup (existing connections only)
+    server 127.0.0.1:{{ old_port }} max_fails=0 backup;
+
+    # New version: primary server for all new connections
+    server 127.0.0.1:{{ new_port }} max_fails=3 fail_timeout=30s;
+
+    {% endif %}
+
+    # Connection pooling settings
+    keepalive 32;
+    keepalive_requests 100;
+    keepalive_timeout 60s;
+}
+
+# Separate upstream for health checks (always check both if running)
+upstream health_check {
+    server 127.0.0.1:8080 max_fails=0;
+    server 127.0.0.1:8081 max_fails=0;
+}
+
+# Map to track deployment status
+map $upstream_addr $deployment_version {
+    ~:8080$ "blue";
+    ~:8081$ "green";
+    default "unknown";
+}
+
+# Add deployment version to response headers for monitoring
+add_header X-Deployment-Version $deployment_version always;
+add_header X-Deployment-Phase "{{ deployment_phase }}" always;
