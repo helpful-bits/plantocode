@@ -33,7 +33,7 @@
  * - Code Viewer: Desktop ui/virtualized-code-viewer.tsx → Website DesktopCodeViewer (presentational)
  * 
  * STYLE TOKEN SOURCES:
- * - desktop/src/app/globals.css and desktop/public/base.css → website/src/styles/desktop-compat.css (copy only the listed classes in Step 3).
+ * - desktop/src/app/globals.css → website/src/styles/desktop-compat.css (copy only the listed classes in Step 3).
  * 
  * VISUAL QA CHECKLIST:
  * • Step 6: Dictation toggle shows Audio Device; FPS min/max labels; red pulse dot during recording; Sidebar queued→running (stopping)→completed mapping correct; no modal.

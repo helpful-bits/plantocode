@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useCallback } from "react";
 import { Terminal } from "@xterm/xterm";
 import { invoke } from "@tauri-apps/api/core";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/ui/dialog";
 import { TerminalView } from "@/ui/TerminalView";
 import { useTerminalSessions } from "@/contexts/terminal-sessions/useTerminalSessions";
 import { getBackgroundJobAction } from "@/actions/background-jobs/jobs.actions";
@@ -91,8 +91,8 @@ export const PlanTerminalModal: React.FC<PlanTerminalModalProps> = ({
     terminalRef.current = term;
     
     // Write initial welcome message
-    term.writeln("\x1b[36m=== Claude Code Terminal ===\x1b[0m");
-    term.writeln("\x1b[33mInitializing session for plan: \x1b[0m" + planJobId.slice(0, 8));
+    term.writeln("\x1b[36m=== Plan Terminal ===\x1b[0m");
+    term.writeln("\x1b[33mInitializing terminal session...\x1b[0m");
     term.writeln("");
     
     // Set up output callback for real-time display BEFORE starting session
@@ -250,6 +250,9 @@ export const PlanTerminalModal: React.FC<PlanTerminalModalProps> = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl flex flex-col h-[80vh]">
         <DialogHeader className="flex-shrink-0">
+          <DialogDescription className="sr-only">
+            An interactive terminal session to execute the implementation plan. Requires login and a selected server region.
+          </DialogDescription>
           <div className="flex items-center justify-between">
             <DialogTitle className="flex-1">Claude Terminal — {truncateTitle(title ?? planJobId)}</DialogTitle>
             {getStatusBadge()}

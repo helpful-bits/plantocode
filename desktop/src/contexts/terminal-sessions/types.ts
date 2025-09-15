@@ -19,6 +19,7 @@ export interface StartSessionOptions {
 
 export interface TerminalSessionsContextShape {
   sessions: Map<string, TerminalSession>;
+  canOpenTerminal: () => Promise<{ ok: boolean; reason?: "auth" | "region" | "api" | "mobile"; message?: string }>;
   startSession: (jobId: string, opts?: StartSessionOptions & { onOutput?: (data: string) => void }) => Promise<void>;
   write: (jobId: string, data: string) => Promise<void>;
   sendCtrlC: (jobId: string) => Promise<void>;

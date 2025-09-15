@@ -42,7 +42,9 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ onData, onReady, onR
         fitAddonRef.current.fit();
       } catch (error) {
         // Silently ignore fit errors that can occur during rapid resize or disposal
-        console.warn('Terminal fit error:', error);
+        if (import.meta.env.DEV) {
+          console.warn('Terminal fit error:', error);
+        }
       }
     }
   };

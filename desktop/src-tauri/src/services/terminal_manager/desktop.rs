@@ -10,6 +10,10 @@ use tauri::{AppHandle, Emitter, Manager, ipc::Channel};
 use tokio::task::JoinHandle;
 use log::{debug, error, info, warn};
 use crate::db_utils::terminal_sessions_repository::TerminalSessionsRepository;
+use crate::db_utils::settings_repository::SettingsRepository;
+use crate::auth::token_manager::TokenManager;
+use crate::error::AppError;
+use crate::{AppState, RuntimeConfig};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -57,7 +61,7 @@ impl TerminalManager {
         options: Option<TerminalSessionOptions>,
         output_channel: Channel<Vec<u8>>,
         window: tauri::Window,
-    ) -> Result<(), String> {
+    ) -> Result<(), AppError> {
         // Check if session already exists and return Ok(()) if running
         if let Some(session_handle) = self.sessions.get(job_id) {
             let status = session_handle.status.load(Ordering::Relaxed);
@@ -68,6 +72,28 @@ impl TerminalManager {
         }
 
         info!("Starting terminal session for job_id: {}", job_id);
+
+        // 1. Check TokenManager for auth token
+        let token_manager = self.app.state::<Arc<TokenManager>>();
+        let auth_token = token_manager.get().await;
+        if auth_token.is_none() {
+            return Err(AppError::AuthError(
+                "Authentication required to use the terminal. Please log in.".to_string(),
+            ));
+        }
+
+        // 2. Check for server region selection
+        let app_state = self.app.state::<AppState>();
+        let server_url = {
+            let server_url_guard = app_state.settings.server_url.lock()
+                .map_err(|e| AppError::TerminalError(format!("Failed to acquire server URL lock: {}", e)))?;
+            server_url_guard.clone()
+        };
+        if server_url.is_none() {
+            return Err(AppError::TerminalError(
+                "Please select a server region before using the terminal.".to_string(),
+            ));
+        }
 
         // Create native PTY system
         let pty_system = native_pty_system();
@@ -118,8 +144,51 @@ impl TerminalManager {
             .and_then(|opts| opts.working_directory.as_ref())
             .unwrap_or(&default_dir);
 
-        // Build command for "claude"
-        let mut cmd = CommandBuilder::new("claude");
+        debug!("Terminal working directory: {}", working_dir);
+
+        // 3. Augment PATH explicitly
+        let current_path = std::env::var("PATH").unwrap_or_default();
+        let augmented_path = self.augment_path(&current_path);
+        debug!("Augmented PATH: {}", augmented_path);
+        env_vars.insert("PATH".to_string(), augmented_path.clone());
+
+        // 4. For now, always start a bash shell for reliability
+        // Users can run claude/cursor manually or we can auto-run it
+        let (command, use_shell_fallback) = {
+            let shell_cmd = if cfg!(target_os = "windows") {
+                "powershell.exe".to_string()
+            } else {
+                "/bin/bash".to_string()
+            };
+
+            // Check if CLI tools are available
+            let cli_command = self.resolve_cli_command(&augmented_path).await;
+            if let Some(cli) = cli_command {
+                let msg = format!("Terminal ready. CLI '{}' is available.\r\nType '{}' to start the CLI, or use the shell directly.\r\n\r\n", cli, cli);
+                if let Err(e) = output_channel.send(msg.as_bytes().to_vec()) {
+                    warn!("Failed to send message: {}", e);
+                }
+            } else {
+                let msg = "Terminal ready. No CLI tools found.\r\nYou can install Claude CLI with: npm i -g @anthropic-ai/claude-code\r\n\r\n";
+                if let Err(e) = output_channel.send(msg.as_bytes().to_vec()) {
+                    warn!("Failed to send message: {}", e);
+                }
+            }
+
+            (shell_cmd, true)
+        };
+
+        debug!("Using command: {} (shell_fallback: {})", command, use_shell_fallback);
+        info!("Terminal: Starting command '{}' for job {}", command, job_id);
+
+        // Get additional arguments from settings
+        let settings_repo = self.app.state::<Arc<SettingsRepository>>();
+        let additional_args = settings_repo.get_value("terminal.additional_args").await
+            .unwrap_or(None)
+            .unwrap_or_default();
+
+        // Build command - simple shell for now
+        let mut cmd = CommandBuilder::new(&command);
         cmd.cwd(working_dir);
 
         // Apply environment variables
@@ -131,27 +200,33 @@ impl TerminalManager {
         let child = match pty_pair.slave.spawn_command(cmd) {
             Ok(child) => child,
             Err(e) => {
-                let error_msg = format!("Failed to spawn claude process in PTY: {}", e);
+                let error_msg = format!("Failed to spawn {} process in PTY: {}", command, e);
                 self.mark_session_failed_and_emit(job_id, &window).await;
-                return Err(error_msg);
+                return Err(AppError::TerminalError(error_msg));
             }
         };
 
         let process_id = child.process_id();
-        debug!("Spawned claude process with PID: {:?}", process_id);
+        debug!("Spawned {} process with PID: {:?}", command, process_id);
+
+        // Send immediate startup message
+        let startup_msg = format!("=== Terminal Session Started ===\r\nCommand: {}\r\nPID: {:?}\r\n\r\n", command, process_id);
+        if let Err(e) = output_channel.send(startup_msg.as_bytes().to_vec()) {
+            warn!("Failed to send startup message: {}", e);
+        }
 
         // Get writer for PTY master
         let writer = pty_pair
             .master
             .take_writer()
-            .map_err(|e| format!("Failed to get PTY writer: {}", e))?;
+            .map_err(|e| AppError::TerminalError(format!("Failed to get PTY writer: {}", e)))?;
         let writer = Arc::new(Mutex::new(writer));
 
         // Get reader for PTY master
         let reader = pty_pair
             .master
             .try_clone_reader()
-            .map_err(|e| format!("Failed to get PTY reader: {}", e))?;
+            .map_err(|e| AppError::TerminalError(format!("Failed to get PTY reader: {}", e)))?;
 
         // Get process controller handle
         let process_controller = child.clone_killer();
@@ -196,7 +271,7 @@ impl TerminalManager {
                     .map_err(|e| format!("Failed to create terminal session in DB: {}", e))?;
             }
             Err(e) => {
-                return Err(format!("Failed to check terminal session in DB: {}", e));
+                return Err(AppError::TerminalError(format!("Failed to check terminal session in DB: {}", e)));
             }
         }
 
@@ -512,5 +587,79 @@ impl TerminalManager {
         if let Err(e) = window.emit("terminal-exit", payload) {
             error!("Failed to emit terminal-exit event for failed job {}: {}", job_id, e);
         }
+    }
+
+    // Helper method to augment PATH with common CLI locations
+    fn augment_path(&self, current_path: &str) -> String {
+        let additional_paths = if cfg!(target_os = "windows") {
+            vec![
+                format!("{}\\AppData\\Roaming\\npm", std::env::var("USERPROFILE").unwrap_or_default()),
+                "C:\\Program Files\\nodejs".to_string(),
+            ]
+        } else {
+            vec![
+                "/usr/local/bin".to_string(),
+                "/opt/homebrew/bin".to_string(),
+                format!("{}/.npm-global/bin", std::env::var("HOME").unwrap_or_default()),
+                format!("{}/.yarn/bin", std::env::var("HOME").unwrap_or_default()),
+                format!("{}/.cargo/bin", std::env::var("HOME").unwrap_or_default()),
+            ]
+        };
+
+        let path_separator = if cfg!(target_os = "windows") { ";" } else { ":" };
+
+        let mut paths: Vec<String> = current_path.split(path_separator).map(|s| s.to_string()).collect();
+
+        for additional_path in additional_paths {
+            if !paths.contains(&additional_path) {
+                paths.push(additional_path);
+            }
+        }
+
+        paths.join(path_separator)
+    }
+
+    // Helper method to resolve CLI command with fallback probing
+    async fn resolve_cli_command(&self, path: &str) -> Option<String> {
+        let settings_repo = self.app.state::<Arc<SettingsRepository>>();
+
+        // Try to get preferred CLI from settings
+        if let Ok(Some(preferred_cli)) = settings_repo.get_value("terminal.preferred_cli").await {
+            if !preferred_cli.trim().is_empty() {
+                // Check if it's "custom" - if so, get the custom command
+                if preferred_cli == "custom" {
+                    if let Ok(Some(custom_cmd)) = settings_repo.get_value("terminal.custom_command").await {
+                        if !custom_cmd.trim().is_empty() {
+                            if let Ok(_) = which::which_in(&custom_cmd, Some(path), std::env::current_dir().unwrap_or_default()) {
+                                return Some(custom_cmd);
+                            }
+                        }
+                    }
+                } else {
+                    if let Ok(_) = which::which_in(&preferred_cli, Some(path), std::env::current_dir().unwrap_or_default()) {
+                        return Some(preferred_cli);
+                    }
+                }
+            }
+        }
+
+        // Try environment variable fallback
+        if let Ok(env_cli) = std::env::var("CLAUDE_CLI_COMMAND") {
+            if !env_cli.trim().is_empty() {
+                if let Ok(_) = which::which_in(&env_cli, Some(path), std::env::current_dir().unwrap_or_default()) {
+                    return Some(env_cli);
+                }
+            }
+        }
+
+        // Probe common CLIs in order
+        let common_clis = ["claude", "cursor", "codex", "gemini"];
+        for cli in &common_clis {
+            if let Ok(_) = which::which_in(cli, Some(path), std::env::current_dir().unwrap_or_default()) {
+                return Some(cli.to_string());
+            }
+        }
+
+        None
     }
 }

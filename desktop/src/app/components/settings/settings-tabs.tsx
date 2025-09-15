@@ -3,6 +3,7 @@
 import { useSessionStateContext } from "@/contexts/session";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/ui/tabs";
 import SettingsForm from "./settings-form";
+import TerminalSettings from "./terminal-settings";
 import Legal from "./legal";
 
 export default function SettingsTabs() {
@@ -12,8 +13,9 @@ export default function SettingsTabs() {
   return (
     <div className="w-full">
       <Tabs defaultValue="general" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="general">General</TabsTrigger>
+          <TabsTrigger value="terminal">Terminal</TabsTrigger>
           <TabsTrigger value="legal">Legal</TabsTrigger>
         </TabsList>
         
@@ -23,7 +25,11 @@ export default function SettingsTabs() {
           </div>
           <SettingsForm sessionId={sessionId} />
         </TabsContent>
-        
+
+        <TabsContent value="terminal">
+          <TerminalSettings />
+        </TabsContent>
+
         <TabsContent value="legal">
           <Legal />
         </TabsContent>
