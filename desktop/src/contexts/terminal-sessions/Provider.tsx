@@ -32,7 +32,7 @@ export const TerminalSessionsContext = createContext<TerminalSessionsContextShap
 export function TerminalSessionsProvider({ children }: { children: ReactNode }) {
   const [sessions, setSessions] = useState<Map<string, TerminalSession>>(new Map());
   const sessionsRef = useRef<Map<string, TerminalSession>>(new Map());
-  const stuckTimeoutsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const stuckTimeoutsRef = useRef<Map<string, number>>(new Map());
   const outputCallbacksRef = useRef<Map<string, (data: string) => void>>(new Map());
 
   // Keep ref in sync with state
