@@ -7,7 +7,8 @@ import { StructuredData } from '@/components/seo/StructuredData';
 import type { WebSite, Organization } from 'schema-dts';
 import { ClientProviders } from '@/components/providers/ClientProviders';
 // import { ConditionalBackground } from '@/components/system/ConditionalBackground';
-import { Footer } from '@/components/landing/Footer';
+import { ConditionalFooter } from '@/components/system/ConditionalFooter';
+import { CSSFix } from '@/components/system/CSSFix';
 import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
@@ -167,13 +168,17 @@ export default function RootLayout({
         <link rel="preconnect" href="https://va.vercel-scripts.com" crossOrigin="anonymous" />
         <link rel="preconnect" href="https://cdn.jsdelivr.net" crossOrigin="anonymous" />
         <link rel="dns-prefetch" href="https://cdn.jsdelivr.net" />
+        {/* Preconnect to CloudFront CDN for faster image loading */}
+        <link rel="preconnect" href="https://d2tyb0wucqqf48.cloudfront.net" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://d2tyb0wucqqf48.cloudfront.net" />
         {/* No analytics - 100% cookie-free and GDPR compliant */}
       </head>
       <body className={`${fontClasses.sans} bg-transparent overflow-x-hidden`}>
         {/* <ConditionalBackground /> */}
+        <CSSFix />
         <ClientProviders>
           {children}
-          <Footer />
+          <ConditionalFooter />
         </ClientProviders>
         <StructuredData data={websiteJsonLd} />
         <StructuredData data={organizationJsonLd} />

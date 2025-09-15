@@ -23,7 +23,17 @@ pub mod implementation_plan_commands;
 pub mod prompt_commands;
 pub mod setup_commands;
 pub mod text_commands;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub mod screen_recording_commands;
+#[cfg(any(target_os = "android", target_os = "ios"))]
+pub mod screen_recording_commands {
+    use tauri::command;
+    
+    #[command]
+    pub fn stop_screen_recording(_app_handle: tauri::AppHandle) -> Result<(), String> {
+        Err("Screen recording is not supported on mobile".to_string())
+    }
+}
 pub mod video_analysis_commands;
 pub mod web_search_commands;
 pub mod workflow_commands;

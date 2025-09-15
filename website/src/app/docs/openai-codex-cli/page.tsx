@@ -27,7 +27,7 @@ export const metadata: Metadata = {
     'macos app'
   ],
   alternates: {
-    canonical: 'https://www.vibemanager.app/docs/openai-codex-cli',
+    canonical: '/docs/openai-codex-cli',
   },
   openGraph: {
     title: 'OpenAI Codex CLI Guide - Enhanced with Vibe Manager',
@@ -87,15 +87,15 @@ export default function OpenAICodexCLIPage() {
         category="Integration Guide"
       >
         {/* Quick Start Section */}
-        <GlassCard className="p-6 mb-12 border-primary/20">
-          <h2 className="text-2xl font-bold mb-6 text-foreground">🚀 Quick Start: Codex CLI + Vibe Manager</h2>
+        <GlassCard className="p-6 mb-12">
+          <h2 className="text-2xl font-bold text-foreground mt-8 mb-4">🚀 Quick Start: Codex CLI + Vibe Manager</h2>
           <div className="grid md:grid-cols-2 gap-6">
             <div>
               <h3 className="text-xl font-semibold mb-4 text-primary">1. Install Codex CLI</h3>
               <p className="text-sm mb-4 text-muted-foreground">
                 OpenAI's lightweight terminal agent:
               </p>
-              <pre className="bg-slate-900 dark:bg-slate-950 p-4 rounded-lg overflow-x-auto border border-slate-700 dark:border-slate-800">
+              <pre className="bg-slate-900 dark:bg-slate-950 border border-slate-700 dark:border-slate-800 rounded-lg p-3 overflow-x-auto text-slate-200">
                 <code className="text-emerald-400 font-mono text-sm"># Install via npm{'\n'}npm install -g @openai/codex{'\n\n'}# Or download binary{'\n'}# Visit github.com/openai/codex/releases</code>
               </pre>
             </div>
@@ -108,21 +108,25 @@ export default function OpenAICodexCLIPage() {
                 location="docs_openai_codex_cli_top"
                 redirectToDownloadPage={true}
               />
-              <p className="text-sm mt-2 text-muted-foreground">
-                Windows support coming soon
-              </p>
             </div>
           </div>
         </GlassCard>
 
         {/* Main Content */}
-        <p className="text-base sm:text-lg lg:text-xl mb-6 leading-relaxed">
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-6 mb-6">
+          <h4 className="font-semibold mb-2 text-amber-600 dark:text-amber-400">Note</h4>
+          <p className="text-sm text-muted-foreground">
+            'Codex' referred to deprecated 2021 models; this page refers to the 2025 Codex CLI product.
+          </p>
+        </div>
+
+        <p className="text-base text-muted-foreground leading-relaxed mb-4">
           OpenAI Codex CLI brings the power of o3 and GPT-5 directly to your terminal as a lightweight 
           coding agent. This guide shows you how to supercharge Codex with Vibe Manager's multi-model 
           planning capabilities for superior AI-assisted development.
         </p>
 
-        <h2 className="text-2xl font-bold mb-6">What is OpenAI Codex CLI?</h2>
+        <h2 className="text-2xl font-bold text-foreground mt-8 mb-4">What is OpenAI Codex CLI?</h2>
         
         <p className="mb-6">
           Released in 2025, OpenAI Codex CLI is an open-source command-line tool that acts as a coding 
@@ -131,24 +135,24 @@ export default function OpenAICodexCLIPage() {
         </p>
         
         <GlassCard className="p-6 mb-12">
-          <h3 className="text-xl font-semibold mb-4">Key Capabilities</h3>
+          <h3 className="text-xl font-semibold text-foreground mt-6 mb-3">Key Capabilities</h3>
           <ul className="space-y-3">
             <li>• <strong>Multimodal inputs:</strong> Pass text, screenshots, or diagrams</li>
             <li>• <strong>Local execution:</strong> Code never leaves your environment unless you choose</li>
             <li>• <strong>Three operation modes:</strong> Suggest, auto-edit, or full-auto</li>
-            <li>• <strong>Model flexibility:</strong> Target GPT-5, o3, o4-mini, or any available model</li>
+            <li>• <strong>Model flexibility:</strong> Target GPT-5, GPT-4, or other available models with --model flag</li>
             <li>• <strong>MCP support:</strong> Enable Model Context Protocol servers</li>
           </ul>
         </GlassCard>
 
-        <h2 className="text-2xl font-bold mb-6">Installation & Setup</h2>
+        <h2 className="text-2xl font-bold text-foreground mt-8 mb-4">Installation & Setup</h2>
 
-        <h3 className="text-xl font-semibold mb-4">Installing Codex CLI</h3>
+        <h3 className="text-xl font-semibold text-foreground mt-6 mb-3">Installing Codex CLI</h3>
         
         <div className="grid md:grid-cols-2 gap-6 mb-12">
           <GlassCard className="p-6">
-            <h4 className="text-lg font-semibold mb-4">macOS & Linux</h4>
-            <pre className="bg-slate-900 dark:bg-slate-950 p-4 rounded-lg overflow-x-auto border border-slate-700 dark:border-slate-800 mb-4">
+            <h4 className="text-lg font-semibold text-foreground mt-6 mb-3">macOS & Linux</h4>
+            <pre className="bg-slate-900 dark:bg-slate-950 border border-slate-700 dark:border-slate-800 rounded-lg p-3 overflow-x-auto mb-4 text-slate-200">
               <code className="text-emerald-400 font-mono text-sm"># Via npm (recommended){'\n'}npm install -g @openai/codex{'\n\n'}# Or via Homebrew{'\n'}brew install openai/tap/codex{'\n\n'}# Upgrade existing installation{'\n'}codex --upgrade</code>
             </pre>
             <p className="text-sm text-muted-foreground">
@@ -157,7 +161,7 @@ export default function OpenAICodexCLIPage() {
           </GlassCard>
 
           <GlassCard className="p-6">
-            <h4 className="text-lg font-semibold mb-4">Windows</h4>
+            <h4 className="text-lg font-semibold text-foreground mt-6 mb-3">Windows</h4>
             <p className="mb-4">
               Windows support is experimental. Best experience with WSL:
             </p>
@@ -173,13 +177,13 @@ export default function OpenAICodexCLIPage() {
           </GlassCard>
         </div>
 
-        <h3 className="text-xl font-semibold mb-4">Configuration</h3>
+        <h3 className="text-xl font-semibold text-foreground mt-6 mb-3">Configuration</h3>
         
         <p className="mb-6">
           After installation, configure Codex CLI with your OpenAI API key:
         </p>
         
-        <pre className="bg-slate-900 dark:bg-slate-950 p-4 rounded-lg overflow-x-auto border border-slate-700 dark:border-slate-800 mb-6">
+        <pre className="bg-slate-900 dark:bg-slate-950 border border-slate-700 dark:border-slate-800 rounded-lg p-3 overflow-x-auto mb-6 text-slate-200">
           <code className="text-emerald-400 font-mono text-sm">{`# Set your API key
 export OPENAI_API_KEY="your-api-key-here"
 
@@ -190,10 +194,10 @@ echo 'api_key = "your-api-key-here"' >> ~/.codex/config.toml
 codex --version`}</code>
         </pre>
 
-        <h2 className="text-2xl font-bold mb-6">How Vibe Manager Enhances Codex CLI</h2>
+        <h2 className="text-2xl font-bold text-foreground mt-8 mb-4">How Vibe Manager Enhances Codex CLI</h2>
 
         <GlassCard className="p-6 mb-12">
-          <h3 className="text-xl font-semibold mb-4">The Perfect Workflow</h3>
+          <h3 className="text-xl font-semibold text-foreground mt-6 mb-3">The Perfect Workflow</h3>
           <ol className="space-y-4">
             <li className="flex items-start">
               <span className="mr-3 font-bold text-primary">1.</span>
@@ -220,13 +224,13 @@ codex --version`}</code>
               <span className="mr-3 font-bold text-primary">4.</span>
               <div>
                 <strong>Execute with Codex:</strong>
-                <p className="text-sm text-muted-foreground mt-1">Copy the plan to Codex CLI and let o3 implement it with precision</p>
+                <p className="text-sm text-muted-foreground mt-1">Copy the plan to Codex CLI and let your chosen model implement it with precision</p>
               </div>
             </li>
           </ol>
         </GlassCard>
 
-        <h2 className="text-2xl font-bold mb-6">Codex CLI Operation Modes</h2>
+        <h2 className="text-2xl font-bold text-foreground mt-8 mb-4">Codex CLI Operation Modes</h2>
 
         <p className="mb-6">
           Codex CLI offers three distinct operation modes, each providing different levels of automation:
@@ -234,8 +238,8 @@ codex --version`}</code>
 
         <div className="grid md:grid-cols-3 gap-6 mb-12">
           <GlassCard className="p-6">
-            <h4 className="text-lg font-semibold mb-3 text-primary">Suggest Mode</h4>
-            <pre className="bg-black/50 p-2 rounded text-sm mb-3">
+            <h4 className="text-lg font-semibold text-foreground mt-6 mb-3">Suggest Mode</h4>
+            <pre className="bg-slate-900 dark:bg-slate-950 border border-slate-700 dark:border-slate-800 rounded-lg p-3 overflow-x-auto text-sm mb-3 text-slate-200">
               <code className="text-emerald-400">codex --suggest</code>
             </pre>
             <p className="text-sm text-muted-foreground">
@@ -244,8 +248,8 @@ codex --version`}</code>
           </GlassCard>
 
           <GlassCard className="p-6">
-            <h4 className="text-lg font-semibold mb-3 text-primary">Auto-Edit Mode</h4>
-            <pre className="bg-black/50 p-2 rounded text-sm mb-3">
+            <h4 className="text-lg font-semibold text-foreground mt-6 mb-3">Auto-Edit Mode</h4>
+            <pre className="bg-slate-900 dark:bg-slate-950 border border-slate-700 dark:border-slate-800 rounded-lg p-3 overflow-x-auto text-sm mb-3 text-slate-200">
               <code className="text-emerald-400">codex --auto-edit</code>
             </pre>
             <p className="text-sm text-muted-foreground">
@@ -254,8 +258,8 @@ codex --version`}</code>
           </GlassCard>
 
           <GlassCard className="p-6">
-            <h4 className="text-lg font-semibold mb-3 text-primary">Full-Auto Mode</h4>
-            <pre className="bg-black/50 p-2 rounded text-sm mb-3">
+            <h4 className="text-lg font-semibold text-foreground mt-6 mb-3">Full-Auto Mode</h4>
+            <pre className="bg-slate-900 dark:bg-slate-950 border border-slate-700 dark:border-slate-800 rounded-lg p-3 overflow-x-auto text-sm mb-3 text-slate-200">
               <code className="text-emerald-400">codex --full-auto</code>
             </pre>
             <p className="text-sm text-muted-foreground">
@@ -264,22 +268,22 @@ codex --version`}</code>
           </GlassCard>
         </div>
 
-        <h2 className="text-2xl font-bold mb-6">Model Selection & Performance</h2>
+        <h2 className="text-2xl font-bold text-foreground mt-8 mb-4">Model Selection & Performance</h2>
 
         <GlassCard className="p-6 mb-12">
-          <h3 className="text-xl font-semibold mb-4">Available Models</h3>
+          <h3 className="text-xl font-semibold text-foreground mt-6 mb-3">Available Models</h3>
           <p className="mb-4">
             Codex CLI can target different models based on your needs:
           </p>
-          <pre className="bg-slate-900 dark:bg-slate-950 p-4 rounded-lg overflow-x-auto border border-slate-700 dark:border-slate-800 mb-4">
+          <pre className="bg-slate-900 dark:bg-slate-950 border border-slate-700 dark:border-slate-800 rounded-lg p-3 overflow-x-auto mb-4 text-slate-200">
             <code className="text-emerald-400 font-mono text-sm">{`# Default: GPT-5 for fast reasoning
 codex "Fix the authentication bug"
 
-# Use o3 for complex problems
-codex -m o3 "Refactor the entire auth system"
+# Explicitly specify GPT-5 for consistency
+codex --model gpt-5 "Refactor the entire auth system"
 
-# Use o4-mini for simple tasks
-codex -m o4-mini "Add a comment to this function"
+# Use GPT-4 for stable results
+codex --model gpt-4 "Add a comment to this function"
 
 # Use any available model
 codex -m gpt-4-turbo "Generate unit tests"`}</code>
@@ -289,24 +293,24 @@ codex -m gpt-4-turbo "Generate unit tests"`}</code>
           </p>
         </GlassCard>
 
-        <h2 className="text-2xl font-bold mb-6">Advanced Features</h2>
+        <h2 className="text-2xl font-bold text-foreground mt-8 mb-4">Advanced Features</h2>
 
-        <h3 className="text-xl font-semibold mb-4">MCP Server Support</h3>
+        <h3 className="text-xl font-semibold text-foreground mt-6 mb-3">MCP Server Support</h3>
         <p className="mb-6">
           Enable Model Context Protocol servers for enhanced capabilities:
         </p>
-        <pre className="bg-black/50 dark:bg-black/70 p-4 rounded-lg overflow-x-auto border border-border/50 mb-6">
+        <pre className="bg-slate-900 dark:bg-slate-950 border border-slate-700 dark:border-slate-800 rounded-lg p-3 overflow-x-auto mb-6 text-slate-200">
           <code className="text-green-400">{`# ~/.codex/config.toml
 [mcp_servers]
 github = { command = "npx", args = ["@modelcontextprotocol/server-github"] }
 filesystem = { command = "npx", args = ["@modelcontextprotocol/server-filesystem", "/path/to/code"] }`}</code>
         </pre>
 
-        <h3 className="text-xl font-semibold mb-4">Multimodal Inputs</h3>
+        <h3 className="text-xl font-semibold text-foreground mt-6 mb-3">Multimodal Inputs</h3>
         <p className="mb-6">
           Codex CLI accepts various input types:
         </p>
-        <pre className="bg-black/50 dark:bg-black/70 p-4 rounded-lg overflow-x-auto border border-border/50 mb-6">
+        <pre className="bg-slate-900 dark:bg-slate-950 border border-slate-700 dark:border-slate-800 rounded-lg p-3 overflow-x-auto mb-6 text-slate-200">
           <code className="text-green-400">{`# Pass a screenshot
 codex "Fix the layout issue in this screenshot" screenshot.png
 
@@ -317,13 +321,13 @@ codex "Implement this architecture" architecture.svg
 codex "Refactor these components" src/*.tsx`}</code>
         </pre>
 
-        <h2 className="text-2xl font-bold mb-6">Integration with Vibe Manager</h2>
+        <h2 className="text-2xl font-bold text-foreground mt-8 mb-4">Integration with Vibe Manager</h2>
 
         <GlassCard className="p-6 mb-12">
-          <h3 className="text-xl font-semibold mb-4">Typical Workflow</h3>
+          <h3 className="text-xl font-semibold text-foreground mt-6 mb-3">Typical Workflow</h3>
           <div className="space-y-4">
             <div>
-              <h4 className="font-semibold mb-2">Step 1: Capture Context in Vibe Manager</h4>
+              <h4 className="font-semibold text-foreground mb-2">Step 1: Capture Context in Vibe Manager</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li>• Use voice to describe complex requirements quickly</li>
                 <li>• Record screen to show UI bugs or workflows</li>
@@ -332,7 +336,7 @@ codex "Refactor these components" src/*.tsx`}</code>
             </div>
             
             <div>
-              <h4 className="font-semibold mb-2">Step 2: Generate Multi-Model Plans</h4>
+              <h4 className="font-semibold text-foreground mb-2">Step 2: Generate Multi-Model Plans</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li>• Click to generate plans from multiple models</li>
                 <li>• Review different approaches side by side</li>
@@ -341,20 +345,20 @@ codex "Refactor these components" src/*.tsx`}</code>
             </div>
             
             <div>
-              <h4 className="font-semibold mb-2">Step 3: Execute with Codex CLI</h4>
+              <h4 className="font-semibold text-foreground mb-2">Step 3: Execute with Codex CLI</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li>• Copy the structured plan from Vibe Manager</li>
                 <li>• Paste into Codex CLI with your preferred mode</li>
-                <li>• Let o3 implement with precision</li>
+                <li>• Let your chosen model implement with precision</li>
               </ul>
             </div>
           </div>
         </GlassCard>
 
-        <h2 className="text-2xl font-bold mb-6">Pricing & Access</h2>
+        <h2 className="text-2xl font-bold text-foreground mt-8 mb-4">Pricing & Access</h2>
 
         <GlassCard className="p-6 mb-12">
-          <h3 className="text-xl font-semibold mb-4">Codex CLI Availability</h3>
+          <h3 className="text-xl font-semibold text-foreground mt-6 mb-3">Codex CLI Availability</h3>
           <p className="mb-4">
             As of September 2025, Codex CLI is available through:
           </p>
@@ -369,44 +373,44 @@ codex "Refactor these components" src/*.tsx`}</code>
           </p>
         </GlassCard>
 
-        <h2 className="text-2xl font-bold mb-6">Comparison: Codex CLI vs Other Tools</h2>
+        <h2 className="text-2xl font-bold text-foreground mt-8 mb-4">Comparison: Codex CLI vs Other Tools</h2>
 
         <div className="overflow-x-auto mb-12">
           <table className="w-full border-collapse">
             <thead>
               <tr className="border-b border-border">
-                <th className="text-left p-4">Feature</th>
-                <th className="text-left p-4">Codex CLI</th>
-                <th className="text-left p-4">Claude Code</th>
-                <th className="text-left p-4">Cursor</th>
+                <th className="text-left p-4 text-foreground">Feature</th>
+                <th className="text-left p-4 text-foreground">Codex CLI</th>
+                <th className="text-left p-4 text-foreground">Claude Code</th>
+                <th className="text-left p-4 text-foreground">Cursor</th>
               </tr>
             </thead>
             <tbody>
-              <tr className="border-b border-border/50">
+              <tr className="border-b border-border/50 even:bg-muted/30">
                 <td className="p-4">Primary Model</td>
-                <td className="p-4">o3/GPT-5</td>
+                <td className="p-4">GPT-5/GPT-4</td>
                 <td className="p-4">Claude 3.5</td>
                 <td className="p-4">Multiple</td>
               </tr>
-              <tr className="border-b border-border/50">
+              <tr className="border-b border-border/50 even:bg-muted/30">
                 <td className="p-4">Interface</td>
                 <td className="p-4">Terminal</td>
                 <td className="p-4">Terminal</td>
                 <td className="p-4">IDE</td>
               </tr>
-              <tr className="border-b border-border/50">
+              <tr className="border-b border-border/50 even:bg-muted/30">
                 <td className="p-4">Multimodal</td>
                 <td className="p-4">✅ Yes</td>
                 <td className="p-4">❌ No</td>
                 <td className="p-4">✅ Yes</td>
               </tr>
-              <tr className="border-b border-border/50">
+              <tr className="border-b border-border/50 even:bg-muted/30">
                 <td className="p-4">MCP Support</td>
                 <td className="p-4">✅ Yes</td>
                 <td className="p-4">✅ Yes</td>
                 <td className="p-4">✅ Yes</td>
               </tr>
-              <tr className="border-b border-border/50">
+              <tr className="border-b border-border/50 even:bg-muted/30">
                 <td className="p-4">Open Source</td>
                 <td className="p-4">✅ Yes</td>
                 <td className="p-4">❌ No</td>
@@ -418,14 +422,14 @@ codex "Refactor these components" src/*.tsx`}</code>
 
         <TechnicalAccuracy />
 
-        <h2 className="text-2xl font-bold mb-6 mt-12">Tips & Best Practices</h2>
+        <h2 className="text-2xl font-bold text-foreground mt-8 mb-4">Tips & Best Practices</h2>
 
         <GlassCard className="p-6 mb-12">
-          <h3 className="text-xl font-semibold mb-4">Getting the Most from Codex + Vibe Manager</h3>
+          <h3 className="text-xl font-semibold text-foreground mt-6 mb-3">Getting the Most from Codex + Vibe Manager</h3>
           <ul className="space-y-3">
             <li>
-              <strong>🎯 Use the right mode:</strong>
-              <p className="text-sm text-muted-foreground mt-1">Start with --suggest mode for unfamiliar codebases, graduate to --auto-edit when comfortable</p>
+              <strong>🎯 Use the right mode and model:</strong>
+              <p className="text-sm text-muted-foreground mt-1">Start with --suggest mode for unfamiliar codebases, graduate to --auto-edit when comfortable. Use --model flag to specify your preferred model consistently.</p>
             </li>
             <li>
               <strong>🔍 Let Vibe Manager find context:</strong>
@@ -446,7 +450,7 @@ codex "Refactor these components" src/*.tsx`}</code>
           </ul>
         </GlassCard>
 
-        <h2 className="text-2xl font-bold mb-6">Next Steps</h2>
+        <h2 className="text-2xl font-bold text-foreground mt-8 mb-4">Next Steps</h2>
 
         <p className="mb-6">
           Now that you understand how OpenAI Codex CLI and Vibe Manager work together, you're ready to 
@@ -455,11 +459,7 @@ codex "Refactor these components" src/*.tsx`}</code>
           the best planning and execution capabilities available.
         </p>
 
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <PlatformDownloadSection 
-            location="docs_openai_codex_cli_bottom"
-            redirectToDownloadPage={true}
-          />
+        <div className="text-center">
           <Button asChild variant="outline" size="lg">
             <a href="https://github.com/openai/codex" target="_blank" rel="noopener noreferrer">
               View Codex CLI on GitHub

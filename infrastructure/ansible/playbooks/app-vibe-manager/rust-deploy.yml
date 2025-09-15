@@ -246,6 +246,56 @@
           with_items: "{{ (old_releases.files | sort(attribute='mtime') | reverse)[5:] }}"
           when: old_releases.files | length > 5
 
+    # ========================================
+    # BLUE/GREEN DEPLOYMENT SETUP
+    # ========================================
+    - name: Blue/Green prerequisites (services, upstream, tools)
+      tags: ["bluegreen"]
+      become: yes
+      block:
+        - name: Install jq
+          package:
+            name: jq
+            state: present
+
+        - name: Install vibe-manager blue service
+          template:
+            src: "{{ playbook_dir }}/../../templates/vibe-manager-blue.service.j2"
+            dest: /etc/systemd/system/vibe-manager-blue.service
+            mode: "0644"
+          notify: reload systemd
+
+        - name: Install vibe-manager green service
+          template:
+            src: "{{ playbook_dir }}/../../templates/vibe-manager-green.service.j2"
+            dest: /etc/systemd/system/vibe-manager-green.service
+            mode: "0644"
+          notify: reload systemd
+
+        - name: Copy zero-downtime deploy script
+          copy:
+            src: "{{ playbook_dir }}/../../scripts/zero-downtime-deploy.sh"
+            dest: /usr/local/bin/vibe-zero-downtime
+            mode: "0755"
+
+        - name: Create deployment environment file
+          template:
+            src: "{{ playbook_dir }}/../../templates/deployment.env.j2"
+            dest: /opt/vibe-manager/config/deployment.env
+            owner: "{{ app_user }}"
+            group: "{{ app_group }}"
+            mode: "0600"
+
+        - name: Seed nginx upstream (initially blue active)
+          template:
+            src: "{{ playbook_dir }}/../../templates/nginx-upstream.conf.j2"
+            dest: /etc/nginx/conf.d/vibe-upstream.conf
+            mode: "0644"
+          vars:
+            active_color: "blue"
+            preferred_color: "blue"
+          notify: reload nginx
+
   handlers:
     - name: reload systemd
       systemd:
@@ -254,3 +304,7 @@
       systemd:
         name: "{{ app_name }}"
         state: restarted
+    - name: reload nginx
+      listen: reload nginx
+      become: yes
+      shell: nginx -t && nginx -s reload

@@ -69,6 +69,7 @@ export function MacDownloadButton({
       }}
     >
       <svg
+        aria-hidden="true"
         width={iconSize}
         height={iconSize}
         viewBox="0 0 24 24"

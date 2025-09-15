@@ -1,17 +1,10 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useTheme } from 'next-themes';
+import React from 'react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import Reveal from '@/components/motion/Reveal';
 
 export function FounderProof() {
-  const { resolvedTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   return (
     <section className="relative py-8 sm:py-12 lg:py-16 px-4">

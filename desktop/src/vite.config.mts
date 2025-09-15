@@ -50,7 +50,7 @@ export default defineConfig({
   server: {
     port: 1420,
     strictPort: true,
-    host: import.meta?.env?.VITE_TAURI_DEV_HOST || 'localhost',
+    host: import.meta?.env?.VITE_TAURI_DEV_HOST || '0.0.0.0',
     hmr: {
       port: 1421,
     },

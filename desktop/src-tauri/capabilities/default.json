@@ -2,7 +2,8 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Default capability for main window",
-  "windows": ["main", "overlay"],
+  "windows": ["main"],
+  "platforms": ["linux", "macOS", "windows", "iOS", "android"],
   "permissions": [
     "core:default",
     "http:default",
@@ -13,8 +14,6 @@
     "fs:default",
     "shell:allow-open",
     "store:default",
-    "updater:default",
-    "process:default",
-    "process:allow-restart"
+    "os:default"
   ]
 }

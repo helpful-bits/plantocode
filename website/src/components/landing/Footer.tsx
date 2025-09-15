@@ -45,7 +45,7 @@ export function Footer() {
             </div>
 
             {/* Links Grid */}
-            <div className="md:col-span-7 lg:col-span-6 grid grid-cols-2 sm:grid-cols-4 gap-8">
+            <div className="md:col-span-7 lg:col-span-6 grid grid-cols-2 sm:grid-cols-5 gap-8">
               {/* Product */}
               <div>
                 <h4 className="font-semibold text-foreground mb-4 text-sm uppercase tracking-wide">
@@ -166,6 +166,40 @@ export function Footer() {
                   </li>
                 </ul>
               </div>
+
+              {/* Plan Mode Guides */}
+              <div>
+                <h4 className="font-semibold text-foreground mb-4 text-sm uppercase tracking-wide">
+                  Plan Mode Guides
+                </h4>
+                <ul className="space-y-3">
+                  <li>
+                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/docs/plan-mode">
+                      Plan Mode Comparison
+                    </Link>
+                  </li>
+                  <li>
+                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/docs/claude-code-plan-mode">
+                      Claude Code Plan Mode
+                    </Link>
+                  </li>
+                  <li>
+                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/docs/cursor-plan-mode">
+                      Cursor Plan Mode
+                    </Link>
+                  </li>
+                  <li>
+                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/docs/cline-plan-mode">
+                      Cline Plan Mode
+                    </Link>
+                  </li>
+                  <li>
+                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/docs/codex-cli-plan-mode">
+                      Codex CLI Planning
+                    </Link>
+                  </li>
+                </ul>
+              </div>
             </div>
           </div>
 
@@ -176,6 +210,9 @@ export function Footer() {
                 <span>🇩🇪</span>
                 <span>Made in Germany by a German Company</span>
               </div>
+              <p className="text-muted-foreground text-xs text-center mb-2">
+                Not affiliated with Anthropic, Cursor, OpenAI, or Cline.
+              </p>
               <p className="text-muted-foreground text-xs">
                 © 2025 helpful bits GmbH
               </p>

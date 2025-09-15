@@ -94,9 +94,7 @@ const nextConfig: NextConfig = {
     dirs: ['src', 'app'],
   },
 
-  // Rewrites are now handled by middleware for proper header forwarding
-  // The middleware.ts file handles all analytics proxying with correct client headers
-  // Note: withPlausibleProxy wrapper may still add its own rewrites
+  // Rewrites are handled by withPlausibleProxy wrapper
   // async rewrites() {
   //   return [];
   // },

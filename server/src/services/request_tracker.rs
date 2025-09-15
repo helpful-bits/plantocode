@@ -99,6 +99,32 @@ impl RequestTracker {
         let requests = self.requests.read().await;
         requests.len()
     }
+
+    pub async fn get_active_count(&self) -> usize {
+        self.get_active_request_count().await
+    }
+
+    pub async fn get_active_stream_count(&self) -> Option<usize> {
+        let requests = self.requests.read().await;
+        let count = requests.iter()
+            .filter(|(_, tracked)| tracked.is_streaming)
+            .count();
+        Some(count)
+    }
+
+    pub async fn cancel_all_requests(&self) -> usize {
+        let requests = self.requests.read().await;
+        let mut cancelled_count = 0;
+
+        for (_, tracked) in requests.iter() {
+            if let Some(cancellation_token) = &tracked.cancellation_token {
+                cancellation_token.cancel();
+                cancelled_count += 1;
+            }
+        }
+
+        cancelled_count
+    }
 }
 
 impl Default for RequestTracker {
