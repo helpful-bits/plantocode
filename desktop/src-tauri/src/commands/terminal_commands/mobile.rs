@@ -85,8 +85,22 @@ pub async fn get_terminal_session_status_command(
     _app_handle: AppHandle,
     _job_id: String,
 ) -> AppResult<serde_json::Value> {
-    Ok(serde_json::json!({ 
-        "status": "unavailable", 
-        "reason": "Terminal is not supported on mobile." 
+    Ok(serde_json::json!({
+        "status": "unavailable",
+        "reason": "Terminal is not supported on mobile."
     }))
+}
+
+#[command]
+pub async fn get_terminal_prerequisites_status_command(
+    _app_handle: AppHandle,
+) -> AppResult<serde_json::Value> {
+    Err(crate::error::AppError::TerminalError("Terminal is not supported on mobile.".into()))
+}
+
+#[command]
+pub async fn check_terminal_dependencies_command(
+    _app_handle: AppHandle,
+) -> AppResult<serde_json::Value> {
+    Err(crate::error::AppError::TerminalError("Terminal is not supported on mobile.".into()))
 }

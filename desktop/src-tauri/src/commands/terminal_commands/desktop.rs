@@ -1,10 +1,13 @@
 use crate::error::{AppError, AppResult};
 use crate::db_utils::terminal_sessions_repository::{TerminalSessionsRepository, TerminalSession};
 use crate::services::terminal_manager::{TerminalManager, TerminalSessionOptions};
+use crate::auth::TokenManager;
+use crate::AppState;
 use log::{info, warn, error};
 use std::sync::Arc;
 use tauri::{command, AppHandle, Manager};
 use chrono;
+use serde_json::json;
 
 #[command]
 pub async fn append_terminal_log_command(
@@ -183,4 +186,59 @@ pub async fn get_terminal_session_status_command(
     
     let status = terminal_manager.get_status(&job_id).await;
     Ok(status)
+}
+
+#[command]
+pub async fn get_terminal_prerequisites_status_command(
+    app_handle: AppHandle,
+) -> AppResult<serde_json::Value> {
+    let app_state = app_handle.state::<AppState>();
+    let token_manager = app_handle.state::<Arc<TokenManager>>();
+
+    let server_selected = app_state.get_server_url().is_some();
+
+    let user_authenticated = token_manager.get().await.is_some();
+
+    let api_clients_ready = app_state.is_api_clients_ready();
+
+    let mut message = None;
+    if !server_selected {
+        message = Some("Server not selected".to_string());
+    } else if !user_authenticated {
+        message = Some("User not authenticated".to_string());
+    } else if !api_clients_ready {
+        message = Some("API clients not ready".to_string());
+    }
+
+    Ok(json!({
+        "serverSelected": server_selected,
+        "userAuthenticated": user_authenticated,
+        "apiClientsReady": api_clients_ready,
+        "message": message
+    }))
+}
+
+#[command]
+pub async fn check_terminal_dependencies_command(
+    _app_handle: AppHandle,
+) -> AppResult<serde_json::Value> {
+    let mut available_clis = Vec::new();
+
+    let cli_names = ["claude", "cursor", "codex", "gemini"];
+    for cli_name in &cli_names {
+        if which::which(cli_name).is_ok() {
+            available_clis.push(cli_name.to_string());
+        }
+    }
+
+    let default_shell = if cfg!(unix) {
+        std::env::var("SHELL").unwrap_or_else(|_| "bash".to_string())
+    } else {
+        "powershell.exe".to_string()
+    };
+
+    Ok(json!({
+        "availableCliTools": available_clis,
+        "defaultShell": default_shell
+    }))
 }

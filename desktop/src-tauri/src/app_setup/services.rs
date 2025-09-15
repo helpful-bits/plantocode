@@ -6,6 +6,7 @@ use crate::auth::TokenManager;
 use crate::constants::SERVER_API_URL;
 use crate::error::{AppError, AppResult};
 use crate::services::{BackupConfig, BackupService, initialize_cache_service};
+use crate::AppState;
 use log::{debug, error, info, warn};
 use sqlx::SqlitePool;
 use std::sync::Arc;
@@ -74,6 +75,9 @@ pub async fn initialize_token_manager(app_handle: &AppHandle) -> AppResult<()> {
 /// Reinitialize API clients with a specific server URL
 pub async fn reinitialize_api_clients(app_handle: &AppHandle, server_url: String) -> AppResult<()> {
     info!("Reinitializing API clients with server URL: {}", server_url);
+
+    let app_state = app_handle.state::<AppState>();
+    app_state.set_api_clients_ready(false);
 
     // Get TokenManager from app state
     let token_manager = app_handle.state::<Arc<TokenManager>>()
@@ -163,6 +167,7 @@ pub async fn reinitialize_api_clients(app_handle: &AppHandle, server_url: String
     // availability when needed for final cost polling.
     info!("ServerProxyClient available in app state for BackgroundJobRepository to use");
 
+    app_state.set_api_clients_ready(true);
     info!("API clients reinitialized and registered in app state.");
     Ok(())
 }

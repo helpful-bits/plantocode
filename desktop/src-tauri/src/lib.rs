@@ -31,7 +31,7 @@ use dotenvy::dotenv;
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::{atomic::AtomicBool, Arc, Mutex};
+use std::sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex};
 use std::time::Duration;
 use tauri::Manager;
 use tokio::sync::{OnceCell, RwLock};
@@ -56,6 +56,7 @@ pub struct AppState {
     pub client: reqwest::Client,
     pub settings: RuntimeConfig,
     pub auth0_state_store: Auth0StateStore,
+    pub api_clients_ready: Arc<AtomicBool>,
 }
 
 impl AppState {
@@ -78,6 +79,14 @@ impl AppState {
     pub fn get_onboarding_completed(&self) -> Option<bool> {
         self.settings.onboarding_completed.lock().ok()?.clone()
     }
+
+    pub fn is_api_clients_ready(&self) -> bool {
+        self.api_clients_ready.load(Ordering::Relaxed)
+    }
+
+    pub fn set_api_clients_ready(&self, ready: bool) {
+        self.api_clients_ready.store(ready, Ordering::Relaxed)
+    }
 }
 
 impl Default for AppState {
@@ -91,6 +100,7 @@ impl Default for AppState {
                 .expect("Failed to build reqwest client"),
             settings: RuntimeConfig::default(),
             auth0_state_store: Auth0StateStore::default(),
+            api_clients_ready: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -357,6 +367,8 @@ pub fn run() {
             commands::terminal_commands::resize_terminal_session_command,
             commands::terminal_commands::kill_terminal_session_command,
             commands::terminal_commands::get_terminal_session_status_command,
+            commands::terminal_commands::get_terminal_prerequisites_status_command,
+            commands::terminal_commands::check_terminal_dependencies_command,
         ])
         .run(tauri_context)
         .expect("Error while running tauri application");

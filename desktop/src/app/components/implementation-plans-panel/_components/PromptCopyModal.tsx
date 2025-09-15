@@ -3,7 +3,7 @@
 import { Loader2 } from "lucide-react";
 import React from "react";
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
 import { VirtualizedCodeViewer } from "@/ui/virtualized-code-viewer";
 
@@ -34,6 +34,9 @@ const PromptCopyModal: React.FC<PromptCopyModalProps> = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col text-foreground !bg-card rounded-xl shadow-lg !backdrop-blur-none">
         <DialogHeader>
+          <DialogDescription className="sr-only">
+            Review the full prompts used to generate this plan.
+          </DialogDescription>
           <DialogTitle className="text-lg text-foreground">
             View Implementation Plan Prompt: {sessionName}
           </DialogTitle>

@@ -5,13 +5,15 @@ import React, { useEffect, useMemo, useContext } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useNotification } from "@/contexts/notification-context";
 import { BackgroundJobsContext, type BackgroundJobsContextType } from "@/contexts/background-jobs/Provider";
+import { useAuth } from "@/contexts/auth-context";
 
 import { type BackgroundJob, JOB_STATUSES } from "@/types/session-types";
 import { type CopyButtonConfig } from "@/types/config-types";
 import { Button } from "@/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/ui/dialog";
 import { Progress } from "@/ui/progress";
 import { VirtualizedCodeViewer } from "@/ui/virtualized-code-viewer";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/ui/tooltip";
 
 import { getJobDisplaySessionName } from "../../background-jobs-sidebar/_utils/job-display-utils";
 import { getStreamingStatus } from "../../background-jobs-sidebar/utils";
@@ -71,7 +73,8 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
   // Terminal props
   onOpenTerminal,
 }) => {
-  const { getSession, startSession, write } = useTerminalSessions();
+  const { getSession, startSession, write, canOpenTerminal } = useTerminalSessions();
+  const { user } = useAuth();
   const [isSaving, setIsSaving] = React.useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = React.useState(false);
   const [editedContent, setEditedContent] = React.useState<string>("");
@@ -262,6 +265,11 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
 
   // Handler for sending edited content to terminal
   const handleSendEditedToTerminal = React.useCallback(async () => {
+    const canOpen = await canOpenTerminal();
+    if (!canOpen.ok) {
+      return;
+    }
+
     try {
       if (!displayPlan?.id) return;
       const data = (editedContent ?? "").trim();
@@ -272,7 +280,7 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
     } catch (e) {
       console.error("Send to terminal failed", e);
     }
-  }, [displayPlan?.id, editedContent, startSession, write]);
+  }, [displayPlan?.id, editedContent, startSession, write, canOpenTerminal]);
 
   // Save changes to the database
   const handleSave = React.useCallback(async () => {
@@ -401,6 +409,9 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
           </div>
         )}
         <DialogHeader className="flex flex-row items-start justify-between space-y-0 pb-2 flex-shrink-0">
+          <DialogDescription className="sr-only">
+            View, edit, and interact with the implementation plan content.
+          </DialogDescription>
           <div className="flex-1 min-w-[40%] max-w-[40%]">
             <DialogTitle className="text-lg">
               Implementation Plan: {sessionName}
@@ -462,30 +473,59 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
 
               {/* Send to Terminal Button */}
               {!isStreaming && editedContent && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleSendEditedToTerminal}
-                  className="text-xs h-7"
-                  title="Send edited content to terminal"
-                >
-                  <Terminal className="h-3 w-3 mr-1" />
-                  Send to Terminal
-                </Button>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleSendEditedToTerminal}
+                        disabled={!user}
+                        className="text-xs h-7"
+                        title={user ? "Send edited content to terminal" : "Please log in to use the terminal"}
+                      >
+                        <Terminal className="h-3 w-3 mr-1" />
+                        Send to Terminal
+                      </Button>
+                    </TooltipTrigger>
+                    {!user && (
+                      <TooltipContent>
+                        <p>Please log in to use the terminal</p>
+                      </TooltipContent>
+                    )}
+                  </Tooltip>
+                </TooltipProvider>
               )}
 
               {/* Open Terminal Button */}
               {onOpenTerminal && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onOpenTerminal(displayPlan.id)}
-                  className="text-xs h-7"
-                  title="Open terminal for this implementation plan"
-                >
-                  <Terminal className="h-3 w-3 mr-1" />
-                  Open Terminal
-                </Button>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          const canOpen = await canOpenTerminal();
+                          if (canOpen.ok) {
+                            onOpenTerminal(displayPlan.id);
+                          }
+                        }}
+                        disabled={!user}
+                        className="text-xs h-7"
+                        title={user ? "Open terminal for this implementation plan" : "Please log in to use the terminal"}
+                      >
+                        <Terminal className="h-3 w-3 mr-1" />
+                        Open Terminal
+                      </Button>
+                    </TooltipTrigger>
+                    {!user && (
+                      <TooltipContent>
+                        <p>Please log in to use the terminal</p>
+                      </TooltipContent>
+                    )}
+                  </Tooltip>
+                </TooltipProvider>
               )}
 
               {/* Copy Buttons */}

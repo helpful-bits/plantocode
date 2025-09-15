@@ -92,7 +92,7 @@ export function ImplementationPlansPanel({
 
   // State for terminal modal
   const [terminalPlanId, setTerminalPlanId] = useState<string | null>(null);
-  const { getActiveCount } = useTerminalSessions();
+  const { getActiveCount, canOpenTerminal } = useTerminalSessions();
   
   // State for selected root directories from file finder workflow
   const [selectedRootDirectories, setSelectedRootDirectories] = useState<string[] | null>(null);
@@ -133,9 +133,13 @@ export function ImplementationPlansPanel({
   }, []);
 
   // Handle opening the terminal modal
-  const handleViewTerminal = useCallback((planId: string) => {
+  const handleViewTerminal = useCallback(async (planId: string) => {
+    const canOpen = await canOpenTerminal();
+    if (!canOpen.ok) {
+      return;
+    }
     setTerminalPlanId(planId);
-  }, []);
+  }, [canOpenTerminal]);
 
   const { currentSession } = useSessionStateContext();
   const { showNotification } = useNotification();
@@ -173,16 +177,19 @@ export function ImplementationPlansPanel({
 
   // Listen for terminal open events
   useEffect(() => {
-    const handler = (e: Event) => {
+    const handler = async (e: Event) => {
       const ce = e as CustomEvent<{ jobId?: string }>;
       const jobId = ce.detail?.jobId;
       if (typeof jobId === 'string' && jobId.length > 0) {
-        setTerminalPlanId(jobId); 
+        const canOpen = await canOpenTerminal();
+        if (canOpen.ok) {
+          setTerminalPlanId(jobId);
+        }
       }
     };
     window.addEventListener('open-plan-terminal', handler as EventListener);
     return () => window.removeEventListener('open-plan-terminal', handler as EventListener);
-  }, []);
+  }, [canOpenTerminal]);
 
   // Validation for create functionality
   const canCreatePlan = Boolean(
