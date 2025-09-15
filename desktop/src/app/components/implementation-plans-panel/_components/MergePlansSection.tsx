@@ -26,7 +26,7 @@ export const MergePlansSection = React.memo(function MergePlansSection({
 }: MergePlansSectionProps) {
   const [isOpen, setIsOpen] = useState(true);
   const [localInstructions, setLocalInstructions] = useState(mergeInstructions);
-  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const debounceTimerRef = useRef<number | null>(null);
 
   // Sync local state with prop when it changes externally (e.g., on clear)
   useEffect(() => {

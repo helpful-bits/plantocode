@@ -1,7 +1,7 @@
 {
   "name": "vibe-manager-desktop",
   "private": true,
-  "version": "1.0.21",
+  "version": "1.0.22",
   "type": "module",
   "scripts": {
     "dev": "vite --config src/vite.config.mts",
@@ -17,6 +17,9 @@
     "tauri:build:win:msi": "tauri build --bundles msi --target x86_64-pc-windows-msvc",
     "tauri:build:win:nsis:store": "tauri build --bundles nsis --target x86_64-pc-windows-msvc --config src-tauri/tauri.microsoftstore.conf.json",
     "tauri:build:win:msi:store": "tauri build --bundles msi --target x86_64-pc-windows-msvc --config src-tauri/tauri.microsoftstore.conf.json",
+    "msix:build": "powershell -ExecutionPolicy Bypass -File scripts/msix/build-msix.ps1 -Version 1.0.21.0",
+    "msix:verify": "powershell -ExecutionPolicy Bypass -File scripts/msix/verify-msix.ps1",
+    "msix:build:store": "pnpm build && cd src-tauri && cargo build --release --target x86_64-pc-windows-msvc && cd .. && pnpm msix:build",
     "tauri:ios:init": "tauri ios init --config src-tauri/tauri.mobile.conf.json",
     "tauri:ios:dev": "tauri ios dev --config src-tauri/tauri.mobile.conf.json",
     "tauri:ios:build": "tauri ios build --config src-tauri/tauri.mobile.conf.json --export-method app-store-connect",

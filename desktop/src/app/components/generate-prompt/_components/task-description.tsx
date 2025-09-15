@@ -72,7 +72,7 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
       // Keep ref parameter
       // Local state for responsive input handling
       const [internalValue, setInternalValue] = useState(value);
-      const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+      const debounceTimeoutRef = useRef<number | null>(null);
       
       // Create an internal ref for the textarea element
       const internalTextareaRef = useRef<HTMLTextAreaElement>(null);
