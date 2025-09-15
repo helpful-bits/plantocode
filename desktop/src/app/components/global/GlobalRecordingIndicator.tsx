@@ -4,10 +4,17 @@ import { useEffect, useState } from 'react';
 import { useScreenRecording } from '@/contexts/screen-recording';
 import { Button } from '@/ui/button';
 import { Square } from 'lucide-react';
+import { isMobilePlatform } from '@/utils/platform';
 
 export function GlobalRecordingIndicator() {
   const { isRecording, startTime, stopRecording } = useScreenRecording();
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    // Check if on mobile platform
+    isMobilePlatform().then(setIsMobile);
+  }, []);
 
   useEffect(() => {
     if (!isRecording || !startTime) {
@@ -22,7 +29,8 @@ export function GlobalRecordingIndicator() {
     return () => clearInterval(interval);
   }, [isRecording, startTime]);
 
-  if (!isRecording) {
+  // Don't show recording indicator on mobile platforms
+  if (!isRecording || isMobile) {
     return null;
   }
 

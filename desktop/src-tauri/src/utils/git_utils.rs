@@ -1,3 +1,4 @@
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 use git2::{Repository, Status, StatusOptions};
 use log::{debug, error, info};
 use std::path::{Path, PathBuf};
@@ -6,12 +7,25 @@ use crate::error::{AppError, AppResult};
 
 /// Check if a directory is a git repository
 pub fn is_git_repository(path: impl AsRef<Path>) -> bool {
-    Repository::open(path.as_ref()).is_ok()
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        Repository::open(path.as_ref()).is_ok()
+    }
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        false
+    }
 }
 
 /// Get the git repository for a path
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn get_repository(path: impl AsRef<Path>) -> AppResult<Repository> {
     Repository::open(path.as_ref()).map_err(|e| AppError::GitError(e.to_string()))
+}
+
+#[cfg(any(target_os = "android", target_os = "ios"))]
+pub fn get_repository(_path: impl AsRef<Path>) -> AppResult<()> {
+    Err(AppError::GitError("Git operations not supported on mobile".to_string()))
 }
 
 /// Get all non-ignored files in a git repository using git command (fast approach)
@@ -19,68 +33,80 @@ pub fn get_repository(path: impl AsRef<Path>) -> AppResult<Repository> {
 ///
 /// This uses the same efficient approach as the frontend: `git ls-files --cached --others --exclude-standard`
 pub fn get_all_non_ignored_files(path: impl AsRef<Path>) -> AppResult<(Vec<PathBuf>, bool)> {
-    let path = path.as_ref();
-
-    // First check if this is a git repository
-    if !is_git_repository(path) {
-        debug!("Path {} is not a git repository", path.display());
-        return Ok((Vec::new(), false));
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        // Return empty list for mobile platforms
+        Ok((Vec::new(), false))
     }
+    
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        let path = path.as_ref();
 
-    // Use git command to get tracked and untracked files (excluding ignored ones)
-    // This matches the frontend approach: git ls-files --cached --others --exclude-standard
-    #[cfg(target_os = "windows")]
-    let output = {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        // First check if this is a git repository
+        if !is_git_repository(path) {
+            debug!("Path {} is not a git repository", path.display());
+            return Ok((Vec::new(), false));
+        }
+
+        // Use git command to get tracked and untracked files (excluding ignored ones)
+        // This matches the frontend approach: git ls-files --cached --others --exclude-standard
+        #[cfg(target_os = "windows")]
+        let output = {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            
+            std::process::Command::new("git")
+                .args(&["ls-files", "--cached", "--others", "--exclude-standard"])
+                .current_dir(path)
+                .creation_flags(CREATE_NO_WINDOW)
+                .output()
+        };
         
-        std::process::Command::new("git")
+        #[cfg(not(target_os = "windows"))]
+        let output = std::process::Command::new("git")
             .args(&["ls-files", "--cached", "--others", "--exclude-standard"])
             .current_dir(path)
-            .creation_flags(CREATE_NO_WINDOW)
-            .output()
-    };
-    
-    #[cfg(not(target_os = "windows"))]
-    let output = std::process::Command::new("git")
-        .args(&["ls-files", "--cached", "--others", "--exclude-standard"])
-        .current_dir(path)
-        .output();
+            .output();
 
-    match output {
-        Ok(output) => {
-            if output.status.success() {
+        match output {
+            Ok(output) => {
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    error!("Git command failed: {}", stderr);
+                    return Err(AppError::GitError(format!("Git command failed: {}", stderr)));
+                }
+
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 let files: Vec<PathBuf> = stdout
                     .lines()
-                    .filter(|line| !line.trim().is_empty())
-                    .map(|line| PathBuf::from(line.trim()))
+                    .filter(|line| !line.is_empty())
+                    .map(PathBuf::from)
                     .collect();
 
-                debug!(
-                    "Found {} non-ignored files in git repository at {} using git ls-files",
+                info!(
+                    "Git ls-files found {} files in {}",
                     files.len(),
                     path.display()
                 );
                 Ok((files, true))
-            } else {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                error!("Git ls-files command failed: {}", stderr);
-                // Fall back to git2 library approach
-                get_all_non_ignored_files_fallback(path)
             }
-        }
-        Err(e) => {
-            error!("Failed to execute git command: {}", e);
-            // Fall back to git2 library approach
-            get_all_non_ignored_files_fallback(path)
+            Err(e) => {
+                error!("Failed to execute git command: {}", e);
+                
+                // Fall back to using git2 library
+                info!("Falling back to git2 library approach");
+                get_all_non_ignored_files_with_git2(path)
+            }
         }
     }
 }
 
-/// Fallback method using git2 library (slower but more reliable)
-fn get_all_non_ignored_files_fallback(path: &Path) -> AppResult<(Vec<PathBuf>, bool)> {
-    let repo = match get_repository(path) {
+/// Fallback implementation using git2 library (slower but more reliable)
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn get_all_non_ignored_files_with_git2(path: impl AsRef<Path>) -> AppResult<(Vec<PathBuf>, bool)> {
+    let path = path.as_ref();
+    let repo = match Repository::open(path) {
         Ok(r) => r,
         Err(e) => {
             debug!("Failed to open git repository at {}: {}", path.display(), e);
@@ -90,127 +116,162 @@ fn get_all_non_ignored_files_fallback(path: &Path) -> AppResult<(Vec<PathBuf>, b
 
     let mut files = Vec::new();
 
-    // Get all tracked files from the index
-    let index = match repo.index() {
-        Ok(i) => i,
-        Err(e) => {
-            debug!("Failed to get git index at {}: {}", path.display(), e);
-            return Ok((Vec::new(), true)); // Still a git repo, but couldn't get index
+    // Get repository root for relative path calculation
+    let repo_root = match repo.workdir() {
+        Some(root) => root,
+        None => {
+            return Err(AppError::GitError(
+                "Repository has no working directory".to_string(),
+            ));
         }
     };
 
-    // Add all tracked files from the index
-    for entry in index.iter() {
-        let path_str = std::str::from_utf8(&entry.path).unwrap_or("");
-        if !path_str.is_empty() {
-            let relative_path = PathBuf::from(path_str);
-            files.push(relative_path);
-        }
-    }
-
-    // Also get untracked files that are not ignored
+    // Configure status options to include untracked files
     let mut status_opts = StatusOptions::new();
     status_opts
-        .include_ignored(false)
         .include_untracked(true)
-        .recurse_untracked_dirs(true);
+        .recurse_untracked_dirs(true)
+        .include_ignored(false);
 
-    if let Ok(statuses) = repo.statuses(Some(&mut status_opts)) {
-        for entry in statuses.iter() {
-            // Only include untracked files (not already in index)
-            if entry.status().contains(Status::WT_NEW) {
-                if let Some(path_str) = entry.path() {
-                    let relative_path = PathBuf::from(path_str);
-                    files.push(relative_path);
-                }
+    // Get the status of all files
+    let statuses = repo
+        .statuses(Some(&mut status_opts))
+        .map_err(|e| AppError::GitError(e.to_string()))?;
+
+    // Process each status entry
+    for entry in statuses.iter() {
+        let status = entry.status();
+
+        // Skip ignored files
+        if status.contains(Status::IGNORED) {
+            continue;
+        }
+
+        // Include the file if it's:
+        // - Tracked (in index or HEAD)
+        // - Modified
+        // - New (untracked but not ignored)
+        if status.intersects(
+            Status::INDEX_NEW
+                | Status::INDEX_MODIFIED
+                | Status::INDEX_DELETED
+                | Status::INDEX_RENAMED
+                | Status::INDEX_TYPECHANGE
+                | Status::WT_NEW
+                | Status::WT_MODIFIED
+                | Status::WT_DELETED
+                | Status::WT_TYPECHANGE
+                | Status::WT_RENAMED
+                | Status::CURRENT,
+        ) || (!status.contains(Status::IGNORED) && !status.is_empty())
+        {
+            if let Some(file_path) = entry.path() {
+                files.push(PathBuf::from(file_path));
             }
         }
     }
 
-    debug!(
-        "Found {} non-ignored files in git repository at {} using git2 fallback",
+    info!(
+        "Git status found {} non-ignored files in {}",
         files.len(),
         path.display()
     );
     Ok((files, true))
 }
 
-/// Get all tracked files in a git repository
-pub fn get_all_tracked_files(path: impl AsRef<Path>) -> AppResult<Vec<PathBuf>> {
-    let path = path.as_ref();
-    let repo = get_repository(path)?;
+/// Get the current git branch name
+pub fn get_current_branch(path: impl AsRef<Path>) -> AppResult<String> {
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        Err(AppError::GitError("Git operations not supported on mobile".to_string()))
+    }
+    
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        let repo = Repository::open(path.as_ref()).map_err(|e| AppError::GitError(e.to_string()))?;
 
-    // Get the repository workdir
-    let workdir = repo.workdir().ok_or_else(|| {
-        AppError::GitError(git2::Error::from_str("Repository has no working directory").to_string())
-    })?;
+        let head = repo.head().map_err(|e| AppError::GitError(e.to_string()))?;
 
-    // Create status options
-    let mut status_opts = StatusOptions::new();
-    status_opts.include_ignored(false).include_untracked(false);
-
-    // Get the status
-    let statuses = repo
-        .statuses(Some(&mut status_opts))
-        .map_err(|e| AppError::GitError(e.to_string()))?;
-
-    // Collect the file paths
-    let mut files = Vec::new();
-    for entry in statuses.iter() {
-        // Skip untracked files
-        if entry.status().contains(Status::WT_NEW) {
-            continue;
-        }
-
-        if let Some(path_str) = entry.path() {
-            let file_path = workdir.join(path_str);
-            files.push(file_path);
+        if let Some(name) = head.shorthand() {
+            Ok(name.to_string())
+        } else {
+            Err(AppError::GitError("Failed to get branch name".to_string()))
         }
     }
-
-    Ok(files)
 }
 
-/// Check if a file is ignored by git
-pub fn is_ignored(repo: &Repository, path: impl AsRef<Path>) -> AppResult<bool> {
-    let path = path.as_ref();
+/// Helper function to get repository root for a given path
+pub fn get_repository_root(path: impl AsRef<Path>) -> AppResult<PathBuf> {
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        Err(AppError::GitError("Git operations not supported on mobile".to_string()))
+    }
+    
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        let repo = Repository::open(path.as_ref()).map_err(|e| AppError::GitError(e.to_string()))?;
 
-    // Get the repository workdir
-    let workdir = repo.workdir().ok_or_else(|| {
-        AppError::GitError(git2::Error::from_str("Repository has no working directory").to_string())
-    })?;
+        repo.workdir()
+            .map(|p| p.to_path_buf())
+            .ok_or_else(|| {
+                AppError::GitError(
+                    "Repository has no working directory".to_string(),
+                )
+            })
+    }
+}
 
-    // Make the path relative to the repository
-    let relative_path = if path.starts_with(workdir) {
-        if let Ok(rel) = path.strip_prefix(workdir) {
-            rel.to_path_buf()
-        } else {
-            return Err(AppError::GitError(
-                git2::Error::from_str("Failed to get relative path").to_string(),
-            ));
+/// Helper to get relative path from repository root
+pub fn get_relative_path_from_repo(
+    repo_path: impl AsRef<Path>,
+    file_path: impl AsRef<Path>,
+) -> AppResult<PathBuf> {
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        Err(AppError::GitError("Git operations not supported on mobile".to_string()))
+    }
+    
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        let repo = Repository::open(repo_path.as_ref()).map_err(|e| AppError::GitError(e.to_string()))?;
+
+        let repo_root = repo.workdir().ok_or_else(|| {
+            AppError::GitError(
+                "Repository has no working directory".to_string(),
+            )
+        })?;
+
+        file_path
+            .as_ref()
+            .strip_prefix(repo_root)
+            .map(|p| p.to_path_buf())
+            .map_err(|_| {
+                AppError::GitError(
+                    "Failed to get relative path".to_string(),
+                )
+            })
+    }
+}
+
+/// Check if a path is ignored by git
+pub fn is_ignored(repo_path: impl AsRef<Path>, file_path: impl AsRef<Path>) -> bool {
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        false
+    }
+    
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        match Repository::open(repo_path.as_ref()) {
+            Ok(repo) => {
+                let relative_path = match get_relative_path_from_repo(repo_path, &file_path) {
+                    Ok(p) => p,
+                    Err(_) => return false,
+                };
+
+                repo.is_path_ignored(&relative_path).unwrap_or(false)
+            }
+            Err(_) => false,
         }
-    } else {
-        return Err(AppError::GitError(
-            git2::Error::from_str("Path is not in repository").to_string(),
-        ));
-    };
-
-    // Check if the file is ignored
-    repo.is_path_ignored(&relative_path)
-        .map_err(|e| AppError::GitError(e.to_string()))
-}
-
-/// Get the git branch name
-pub fn get_branch_name(path: impl AsRef<Path>) -> AppResult<String> {
-    let repo = get_repository(path)?;
-
-    // Get the HEAD reference
-    let head = repo.head().map_err(|e| AppError::GitError(e.to_string()))?;
-
-    // Get the branch name
-    let branch_name = head.shorthand().ok_or_else(|| {
-        AppError::GitError(git2::Error::from_str("Failed to get branch name").to_string())
-    })?;
-
-    Ok(branch_name.to_string())
+    }
 }

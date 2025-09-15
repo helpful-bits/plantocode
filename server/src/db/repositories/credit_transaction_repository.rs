@@ -332,6 +332,37 @@ impl CreditTransactionRepository {
     }
 
 
+    /// Create an expiry transaction when free credits expire
+    pub async fn create_expiry_transaction_with_executor(
+        &self,
+        user_id: &Uuid,
+        expired_amount: &BigDecimal,
+        combined_balance_after: &BigDecimal,
+        description: Option<String>,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>
+    ) -> Result<CreditTransaction, AppError> {
+        let transaction = CreditTransaction {
+            id: Uuid::new_v4(),
+            user_id: *user_id,
+            transaction_type: "expiry".to_string(),
+            net_amount: -expired_amount.clone(),
+            gross_amount: None,
+            fee_amount: None,
+            currency: "USD".to_string(),
+            description: Some(description.unwrap_or_else(|| "Free credits expired".to_string())),
+            stripe_charge_id: None,
+            related_api_usage_id: None,
+            metadata: Some(serde_json::json!({
+                "expired_amount": expired_amount,
+                "reason": "expiry"
+            })),
+            created_at: Some(Utc::now()),
+            balance_after: combined_balance_after.clone(),
+        };
+
+        self.create_transaction_with_executor(&transaction, tx).await
+    }
+
     /// Create a consumption transaction (helper method for API usage)
     pub async fn create_consumption_transaction_with_executor(
         &self,

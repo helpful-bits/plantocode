@@ -12,3 +12,4 @@ pub mod featurebase_handlers;
 pub mod cancellation_handlers;
 pub mod region_handlers;
 pub mod consent_handlers;
+pub mod deployment_status;

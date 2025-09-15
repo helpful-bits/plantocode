@@ -18,9 +18,9 @@
       "csp": "default-src 'self' blob:; object-src 'none'; base-uri 'none'; connect-src 'self' https: https://plausible.io; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://do.featurebase.app; script-src 'self' 'unsafe-inline' https://*.googleapis.com https://*.gstatic.com https://do.featurebase.app https://plausible.io; frame-src 'self' https:; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' asset: http://asset.localhost; media-src 'self' asset: http://asset.localhost; worker-src 'self' blob:; child-src 'self' blob:;",
       "assetProtocol": {
         "enable": true,
-        "scope": ["$APPDATA/**"]
+        "scope": ["$APPDATA/**", "$DOCUMENT/**", "$CACHE/**", "$DATA/**"]
       },
-      "capabilities": ["default", "featurebase", "vibe-api"]
+      "capabilities": ["default", "desktop-default", "featurebase", "vibe-api"]
     },
     "windows": [
       {
@@ -55,6 +55,10 @@
       "src/jobs/workflow_definitions/*.json"
     ],
     "externalBin": [],
+    "iOS": {
+      "developmentTeam": "P2C2NH989N",
+      "bundleVersion": "100"
+    },
     "macOS": {
       "minimumSystemVersion": "10.15",
       "exceptionDomain": "localhost",

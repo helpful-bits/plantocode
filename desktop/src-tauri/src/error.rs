@@ -210,6 +210,7 @@ impl From<reqwest::Error> for AppError {
     }
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 impl From<git2::Error> for AppError {
     fn from(err: git2::Error) -> Self {
         AppError::GitError(err.to_string())

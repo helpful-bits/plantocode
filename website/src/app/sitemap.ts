@@ -5,12 +5,14 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();
 
   return [
+    // Homepage
     {
       url: baseUrl,
       lastModified: now,
       changeFrequency: 'weekly',
       priority: 1,
     },
+    // Main pages
     {
       url: `${baseUrl}/vibe-code-cleanup-specialist`,
       lastModified: now,
@@ -18,16 +20,55 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.95,
     },
     {
+      url: `${baseUrl}/download`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.9,
+    },
+    // Documentation pages - all verified to exist
+    {
       url: `${baseUrl}/docs`,
       lastModified: now,
       changeFrequency: 'weekly',
       priority: 0.95,
     },
+    // Planning section
     {
-      url: `${baseUrl}/docs/vibe-manager-architecture`,
+      url: `${baseUrl}/docs/plan-mode`,
       lastModified: now,
       changeFrequency: 'weekly',
       priority: 0.94,
+    },
+    {
+      url: `${baseUrl}/docs/claude-code-plan-mode`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.93,
+    },
+    {
+      url: `${baseUrl}/docs/cursor-plan-mode`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.92,
+    },
+    {
+      url: `${baseUrl}/docs/cline-plan-mode`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.91,
+    },
+    {
+      url: `${baseUrl}/docs/codex-cli-plan-mode`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.91,
+    },
+    // Integration section
+    {
+      url: `${baseUrl}/docs/openai-codex-cli`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.9,
     },
     {
       url: `${baseUrl}/docs/claude-code-install`,
@@ -35,6 +76,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'weekly',
       priority: 0.93,
     },
+    // Comparisons & Enhancements
     {
       url: `${baseUrl}/docs/claude-code-vs-cursor`,
       lastModified: now,
@@ -47,18 +89,20 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'weekly',
       priority: 0.91,
     },
+    // Concepts & Architecture
     {
-      url: `${baseUrl}/docs/openai-codex-cli`,
+      url: `${baseUrl}/docs/vibe-manager-architecture`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.94,
+    },
+    {
+      url: `${baseUrl}/docs/what-is-vibe-code-cleanup-specialist`,
       lastModified: now,
       changeFrequency: 'weekly',
       priority: 0.9,
     },
-    {
-      url: `${baseUrl}/download`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.9,
-    },
+    // Feature pages
     {
       url: `${baseUrl}/demo`,
       lastModified: now,
@@ -89,6 +133,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'weekly',
       priority: 0.8,
     },
+    // Hash fragment pages (for completeness, though less important for SEO)
     {
       url: `${baseUrl}/#features`,
       lastModified: now,
@@ -107,6 +152,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'weekly',
       priority: 0.8,
     },
+    // Legal pages
     {
       url: `${baseUrl}/legal`,
       lastModified: now,
@@ -155,6 +201,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'monthly',
       priority: 0.5,
     },
+    // Other pages
     {
       url: `${baseUrl}/about`,
       lastModified: now,

@@ -1,9 +1,8 @@
 import type { Metadata } from 'next';
 import { GlassCard } from '@/components/ui/GlassCard';
-import { DownloadButton } from '@/components/ui/DownloadButton';
 import { MacDownloadButton } from '@/components/ui/MacDownloadButton';
 import { WindowsStoreButton } from '@/components/ui/WindowsStoreButton';
-import { CheckCircle2, Download, Smartphone, Shield } from 'lucide-react';
+import { CheckCircle2, Smartphone, Shield } from 'lucide-react';
 import Reveal from '@/components/motion/Reveal';
 import { Header } from '@/components/landing/Header';
 
