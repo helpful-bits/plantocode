@@ -42,7 +42,7 @@ export function useAuth0AuthHandler() {
   // Initialize auth when component mounts
   useEffect(() => {
     const abortController = new AbortController();
-    let timeoutId: NodeJS.Timeout | null = null;
+    let timeoutId: number | null = null;
     
     const initializeAuth = async () => {
       if (!isMountedRef.current || abortController.signal.aborted) return;
@@ -224,7 +224,7 @@ export function useAuth0AuthHandler() {
         const pollingInterval = 2000; // 2 seconds
         const startTime = Date.now();
         const maxPollingDuration = 150000; // 2.5 minutes in milliseconds (buffer beyond attempts)
-        let pollingTimeoutId: NodeJS.Timeout | null = null;
+        let pollingTimeoutId: number | null = null;
         
         const pollForToken = async (): Promise<void> => {
           try {

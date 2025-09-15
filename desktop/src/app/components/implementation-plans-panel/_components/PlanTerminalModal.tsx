@@ -53,7 +53,7 @@ export const PlanTerminalModal: React.FC<PlanTerminalModalProps> = ({
   const terminalRef = useRef<Terminal | null>(null);
   const sentFlagRef = useRef<boolean>(false);
   const sessionStartedRef = useRef<boolean>(false);
-  const resizeTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const resizeTimerRef = useRef<number | null>(null);
   const [isMinimized, setIsMinimized] = useState(false);
   const [showConfirmClose, setShowConfirmClose] = useState(false);
   const { 

@@ -1,7 +1,7 @@
 // Define TimerHandler type if not already imported
 type TimerHandler = string | ((...args: unknown[]) => void);
 
-// Define timer functions to return number instead of NodeJS.Timeout
+// Define timer functions to return number instead of number
 declare function setTimeout(handler: TimerHandler, timeout?: number, ...arguments: unknown[]): number;
 declare function setInterval(handler: TimerHandler, timeout?: number, ...arguments: unknown[]): number;
 declare function clearTimeout(timeoutId?: number): void;

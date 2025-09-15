@@ -65,8 +65,10 @@ bytes = "1.10.1"
 semver = "1.0"
 lazy_static = "1.5"
 
-[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+[target.'cfg(target_os = "macos")'.dependencies]
 tauri-plugin-updater = "2.9.0"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-process = "2.3.0"
 portable-pty = "0.9"
 fix-path-env = { git = "https://github.com/tauri-apps/fix-path-env-rs" }

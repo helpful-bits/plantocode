@@ -1,0 +1,30 @@
+{
+  "identity": {
+    "name": "helpfulbitsGmbH.VibeManager",
+    "publisher": "CN=CB633740-D90E-4813-8294-FB8FB5AC3481",
+    "publisherDisplayName": "helpful bits GmbH"
+  },
+  "application": {
+    "id": "VibeManager",
+    "displayName": "Vibe Manager",
+    "description": "AI-powered productivity and content management application",
+    "backgroundColor": "transparent"
+  },
+  "dependencies": {
+    "targetDeviceFamily": "Windows.Desktop",
+    "minVersion": "10.0.17763.0",
+    "maxVersionTested": "10.0.22621.0"
+  },
+  "capabilities": [
+    "internetClient",
+    "microphone",
+    "runFullTrust"
+  ],
+  "languages": ["en-US"],
+  "notes": {
+    "publisher": "This CN (CB633740-D90E-4813-8294-FB8FB5AC3481) is the Microsoft Partner Center Publisher ID. Do not change unless you have a new Partner Center account.",
+    "signing": "The package is unsigned by default. Microsoft Partner Center will sign it automatically when uploaded.",
+    "localSigning": "For local testing, you can sign with a self-signed certificate using signtool.exe",
+    "version": "Version is automatically read from package.json and converted to Windows format (x.x.x.0)"
+  }
+}

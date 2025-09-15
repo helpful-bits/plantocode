@@ -64,11 +64,11 @@ export function useVoiceTranscription({
 
   // Refs for cleanup and tracking
   const streamRef = useRef<MediaStream | null>(null);
-  const autoStopTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const autoStopTimeoutRef = useRef<number | null>(null);
   const isStoppingRef = useRef(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const durationIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const durationIntervalRef = useRef<number | null>(null);
   const recordingStartTimeRef = useRef<number>(0);
   const resolveRecordingRef = useRef<((blob: Blob) => void) | null>(null);
 
