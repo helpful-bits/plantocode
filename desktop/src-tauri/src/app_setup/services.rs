@@ -14,9 +14,9 @@ use tauri::{AppHandle, Manager};
 
 /// Initialize TokenManager only (deferred client initialization)
 pub async fn initialize_token_manager(app_handle: &AppHandle) -> AppResult<()> {
-    // Initialize TokenManager with persistent storage support
-    let token_manager = Arc::new(TokenManager::new());
-    info!("TokenManager instance created.");
+    // Get the existing TokenManager from app state (managed early in lib.rs)
+    let token_manager = app_handle.state::<Arc<TokenManager>>().inner().clone();
+    info!("TokenManager instance retrieved from app state.");
 
     // Initialize the TokenManager (load token from persistence)
     // This MUST happen before clients that use it are created.
@@ -42,9 +42,6 @@ pub async fn initialize_token_manager(app_handle: &AppHandle) -> AppResult<()> {
             );
         }
     }
-
-    // Manage TokenManager early so other parts can access it if needed
-    app_handle.manage(token_manager.clone());
 
     // Initialize auto-sync cache service now that TokenManager is available
     let app_handle_auto_sync = app_handle.clone();

@@ -401,8 +401,8 @@ export default function ClinePlanModePage() {
               and identify potential blind spots in your implementation strategy.
             </p>
             <ul className="text-sm text-muted-foreground space-y-1">
-              <li>• Claude 3.5 Sonnet for detailed analysis</li>
-              <li>• GPT-4 for alternative approaches</li>
+              <li>• Claude Sonnet 4 for detailed analysis</li>
+              <li>• GPT-5 for alternative approaches</li>
               <li>• Compare and synthesize insights</li>
             </ul>
           </GlassCard>

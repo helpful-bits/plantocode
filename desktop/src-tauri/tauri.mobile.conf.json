@@ -20,7 +20,7 @@
         "enable": true,
         "scope": ["$APPDATA/**", "$DOCUMENT/**", "$CACHE/**", "$DATA/**"]
       },
-      "capabilities": ["default", "featurebase", "vibe-api"]
+      "capabilities": ["mobile", "featurebase", "vibe-api"]
     },
     "windows": [
       {

@@ -9,8 +9,8 @@ import type { Article } from 'schema-dts';
 import TechnicalAccuracy from '@/components/docs/TechnicalAccuracy';
 
 export const metadata: Metadata = {
-  title: 'Maximizing Claude Code & Cursor with Vibe Manager - Enhanced AI Coding 2025',
-  description: 'Discover how Vibe Manager enhances both Claude Code and Cursor with intelligent context preparation, multi-model planning, and smart file discovery for better AI coding results.',
+  title: 'Claude Code vs Cursor - Detailed Comparison & When to Use Each (2025)',
+  description: 'Claude Code vs Cursor comparison. Features, pricing, performance benchmarks. How Vibe Manager enhances both with multi-model planning from GPT-5, Claude 4, Gemini 2.5.',
   keywords: [
     'claude code enhancement',
     'cursor ai companion',

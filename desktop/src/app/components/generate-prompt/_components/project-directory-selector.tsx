@@ -51,7 +51,7 @@ function ProjectDirectorySelector({
   const inputRef = useRef<HTMLInputElement>(null);
   const isInitialMountRef = useRef(true);
   const userEditedRef = useRef(false);
-  const autoDismissTimeoutRef = useRef<number | null>(null);
+  const autoDismissTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Update input field from project context on initial mount or when project directory changes
   useEffect(() => {

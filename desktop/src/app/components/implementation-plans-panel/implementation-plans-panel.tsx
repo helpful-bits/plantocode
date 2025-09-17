@@ -324,7 +324,16 @@ export function ImplementationPlansPanel({
 
   // Token estimation effect
   useEffect(() => {
-    if (!canCreatePlan || !selectedModelId) {
+    // Check if we have the required data for token estimation (not including isCreatingPlan check)
+    const hasRequiredData = Boolean(
+      projectDirectory &&
+      (taskDescription || currentSession?.taskDescription)?.trim() &&
+      includedPaths?.length &&
+      sessionId &&
+      selectedModelId
+    );
+
+    if (!hasRequiredData) {
       setEstimatedTokens(null);
       return;
     }
@@ -342,7 +351,7 @@ export function ImplementationPlansPanel({
           relevantFiles: finalIncludedPaths,
           selectedRootDirectories: selectedRootDirectories || undefined,
           taskType: "implementation_plan",
-          model: selectedModelId
+          model: selectedModelId!
         });
 
         if (result.isSuccess && result.data) {
@@ -363,7 +372,7 @@ export function ImplementationPlansPanel({
     // Debounce token estimation
     const timeoutId = setTimeout(estimateTokens, 500);
     return () => clearTimeout(timeoutId);
-  }, [canCreatePlan, sessionId, taskDescription, currentSession?.taskDescription, projectDirectory, includedPaths, selectedRootDirectories, selectedModelId]);
+  }, [sessionId, taskDescription, currentSession?.taskDescription, projectDirectory, includedPaths, selectedRootDirectories, selectedModelId]);
 
 
   // Handle view prompt (renamed from copy prompt)
@@ -772,6 +781,7 @@ export function ImplementationPlansPanel({
           onOpenChange={(open) => !open && setTerminalPlanId(null)}
           planJobId={terminalPlanId}
           title={implementationPlans.find(p => p.id === terminalPlanId)?.prompt}
+          projectDirectory={projectDirectory}
         />
       )}
 

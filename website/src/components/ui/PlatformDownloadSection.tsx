@@ -76,15 +76,19 @@ export function PlatformDownloadSection({
     <div className={className}>
       <div className="flex flex-col gap-6 sm:gap-4 w-full max-w-md mx-auto">
         <div className="flex flex-col items-center gap-2">
-          <span className="text-sm font-medium text-muted-foreground">Mac</span>
+          <span className="text-sm font-medium text-muted-foreground">Mac • Signed & Notarized</span>
           <MacDownloadButton
             location={location}
             size="md"
           />
         </div>
         <div className="flex flex-col items-center gap-2">
-          <span className="text-sm font-medium text-muted-foreground">Windows</span>
+          <span className="text-sm font-medium text-muted-foreground">Windows • Microsoft Store Verified</span>
           <WindowsStoreButton size={location === 'hero_section' || location === 'cta_section' || location === 'demo_screenshots' || location === 'pricing' ? 'medium' : 'small'} />
+        </div>
+        <div className="flex flex-col items-center gap-1 mt-2">
+          <span className="text-xs text-muted-foreground">$10 Free Credits • Pay-as-you-go</span>
+          <span className="text-xs text-muted-foreground">Local Session History • No Subscriptions</span>
         </div>
       </div>
     </div>

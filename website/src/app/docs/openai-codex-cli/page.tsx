@@ -9,8 +9,8 @@ import { cdnUrl } from '@/lib/cdn';
 import TechnicalAccuracy from '@/components/docs/TechnicalAccuracy';
 
 export const metadata: Metadata = {
-  title: 'OpenAI Codex CLI + Vibe Manager | Agentic Coding Guide 2025',
-  description: 'Learn how to use OpenAI Codex CLI with Vibe Manager for enhanced AI-powered coding. Multi-model planning meets o3-powered execution.',
+  title: 'OpenAI Codex CLI - Installation, Examples & Best Practices (2025)',
+  description: 'Complete OpenAI Codex CLI guide. Installation steps, real examples, o3/o4 models. Enhanced with Vibe Manager for GPT-5, Claude 4, Gemini 2.5 planning.',
   keywords: [
     'openai codex cli',
     'codex cli install',
@@ -113,25 +113,25 @@ export default function OpenAICodexCLIPage() {
         </GlassCard>
 
         {/* Main Content */}
-        <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-6 mb-6">
-          <h4 className="font-semibold mb-2 text-amber-600 dark:text-amber-400">Note</h4>
+        <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-6 mb-6">
+          <h4 className="font-semibold mb-2 text-blue-600 dark:text-blue-400">Latest Update</h4>
           <p className="text-sm text-muted-foreground">
-            'Codex' referred to deprecated 2021 models; this page refers to the 2025 Codex CLI product.
+            OpenAI Codex CLI launched in 2025 as a lightweight open-source terminal agent. Powered by GPT-5-Codex and o3/o4-mini models.
           </p>
         </div>
 
         <p className="text-base text-muted-foreground leading-relaxed mb-4">
-          OpenAI Codex CLI brings the power of o3 and GPT-5 directly to your terminal as a lightweight 
-          coding agent. This guide shows you how to supercharge Codex with Vibe Manager's multi-model 
+          OpenAI Codex CLI brings the power of GPT-5-Codex (74.9% SWE-bench) and o3/o4-mini models directly to your terminal as a lightweight
+          coding agent. This guide shows you how to supercharge Codex with Vibe Manager's multi-model
           planning capabilities for superior AI-assisted development.
         </p>
 
         <h2 className="text-2xl font-bold text-foreground mt-8 mb-4">What is OpenAI Codex CLI?</h2>
         
         <p className="mb-6">
-          Released in 2025, OpenAI Codex CLI is an open-source command-line tool that acts as a coding 
-          agent in your terminal. It's powered by codex-1, a version of OpenAI's o3 model optimized 
-          specifically for software engineering tasks.
+          Released in 2025, OpenAI Codex CLI is an open-source command-line tool (github.com/openai/codex) that acts as a coding
+          agent in your terminal. It's powered by GPT-5-Codex, OpenAI's latest model optimized
+          specifically for agentic software engineering, achieving 74.9% on SWE-bench Verified.
         </p>
         
         <GlassCard className="p-6 mb-12">
@@ -140,7 +140,7 @@ export default function OpenAICodexCLIPage() {
             <li>• <strong>Multimodal inputs:</strong> Pass text, screenshots, or diagrams</li>
             <li>• <strong>Local execution:</strong> Code never leaves your environment unless you choose</li>
             <li>• <strong>Three operation modes:</strong> Suggest, auto-edit, or full-auto</li>
-            <li>• <strong>Model flexibility:</strong> Target GPT-5, GPT-4, or other available models with --model flag</li>
+            <li>• <strong>Model flexibility:</strong> Target GPT-5, o3, o4-mini, GPT-4.1, or other models with --model flag</li>
             <li>• <strong>MCP support:</strong> Enable Model Context Protocol servers</li>
           </ul>
         </GlassCard>
@@ -279,14 +279,14 @@ codex --version`}</code>
             <code className="text-emerald-400 font-mono text-sm">{`# Default: GPT-5 for fast reasoning
 codex "Fix the authentication bug"
 
-# Explicitly specify GPT-5 for consistency
-codex --model gpt-5 "Refactor the entire auth system"
+# Use GPT-5-Codex for complex engineering tasks (74.9% SWE-bench)
+codex --model gpt-5-codex "Refactor the entire auth system"
 
-# Use GPT-4 for stable results
-codex --model gpt-4 "Add a comment to this function"
+# Use o3 for deep reasoning tasks
+codex --model o3 "Design a new microservices architecture"
 
-# Use any available model
-codex -m gpt-4-turbo "Generate unit tests"`}</code>
+# Use o4-mini for fast, cost-efficient reasoning
+codex -m o4-mini "Generate unit tests"`}</code>
           </pre>
           <p className="text-sm text-muted-foreground">
             💡 Tip: Vibe Manager helps you choose the right model combination for your task complexity
@@ -363,10 +363,10 @@ codex "Refactor these components" src/*.tsx`}</code>
             As of September 2025, Codex CLI is available through:
           </p>
           <ul className="space-y-3">
-            <li>• <strong>ChatGPT Plus:</strong> $20/month includes Codex access</li>
-            <li>• <strong>ChatGPT Pro:</strong> Enhanced limits and priority access</li>
-            <li>• <strong>ChatGPT Business/Enterprise:</strong> Team collaboration features</li>
-            <li>• <strong>API Access:</strong> Pay-per-use with OpenAI API key</li>
+            <li>• <strong>API Access:</strong> Pay-per-use with OpenAI API key (GPT-5, o3, o4-mini)</li>
+            <li>• <strong>ChatGPT Plus:</strong> $20/month includes GPT-5 access</li>
+            <li>• <strong>ChatGPT Pro:</strong> Enhanced limits with o3 and o4-mini access</li>
+            <li>• <strong>$1M Grant Initiative:</strong> OpenAI offers $25K increments in API credits for Codex CLI projects</li>
           </ul>
           <p className="text-sm text-muted-foreground mt-4">
             Vibe Manager uses its own server-side API keys for planning, separate from your Codex subscription
@@ -388,8 +388,8 @@ codex "Refactor these components" src/*.tsx`}</code>
             <tbody>
               <tr className="border-b border-border/50 even:bg-muted/30">
                 <td className="p-4">Primary Model</td>
-                <td className="p-4">GPT-5/GPT-4</td>
-                <td className="p-4">Claude 3.5</td>
+                <td className="p-4">GPT-5/o3/o4-mini</td>
+                <td className="p-4">Claude Opus 4.1</td>
                 <td className="p-4">Multiple</td>
               </tr>
               <tr className="border-b border-border/50 even:bg-muted/30">

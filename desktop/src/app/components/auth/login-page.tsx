@@ -6,7 +6,7 @@ import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../../../contexts/auth-context";
 import { createLogger } from "@/utils/logger";
 import { open } from "@/utils/shell-utils";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
 import { Alert, AlertDescription } from "@/ui/alert";
 import { AlertCircle, Info } from "lucide-react";
 import { usePlausible } from "@/hooks/use-plausible";
@@ -19,7 +19,7 @@ export default function LoginPage() {
   const appName = "Vibe Manager";
   const [authInProgress, setAuthInProgress] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
-  const pollingTimeoutRef = useRef<number | null>(null);
+  const pollingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Effect to update the local error state when the auth error changes
   useEffect(() => {

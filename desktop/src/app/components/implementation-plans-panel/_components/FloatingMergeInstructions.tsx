@@ -28,7 +28,7 @@ const FloatingMergeInstructionsComponent: React.FC<FloatingMergeInstructionsProp
   
   // Local state for responsive typing (same pattern as MergePlansSection)
   const [localInstructions, setLocalInstructions] = useState(mergeInstructions);
-  const debounceTimerRef = useRef<number | null>(null);
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Sync local state with prop when it changes externally (e.g., on clear)
   useEffect(() => {

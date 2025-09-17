@@ -6,56 +6,84 @@ import { track } from '@/lib/track';
 import { cdnUrl } from '@/lib/cdn';
 import { Play, X } from 'lucide-react';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
+import Link from 'next/link';
 
 export function HeroSection() {
   const videoRef = useRef<HTMLVideoElement>(null);
-  // Initialize as null to prevent layout shift - will be set after mount
+  const desktopVideoRef = useRef<HTMLVideoElement>(null);
+
+  // Start with null to match server/client
   const [isMobile, setIsMobile] = useState<boolean | null>(null);
   const [isDesktop, setIsDesktop] = useState<boolean | null>(null);
-  const [isLayoutReady, setIsLayoutReady] = useState(false);
   const [showVideoModal, setShowVideoModal] = useState(false);
-  
+
+  // Set initial values and handle resize
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const checkMobile = () => window.innerWidth < 640;
-      const checkDesktop = () => window.innerWidth >= 1024; // lg breakpoint
+    const checkMobile = () => window.innerWidth < 640;
+    const checkDesktop = () => window.innerWidth >= 1024;
+
+    // Set initial values
+    setIsMobile(checkMobile());
+    setIsDesktop(checkDesktop());
+
+    const handleResize = () => {
       setIsMobile(checkMobile());
       setIsDesktop(checkDesktop());
-      // Delay to ensure smooth animation
-      setTimeout(() => setIsLayoutReady(true), 50);
-      
-      const handleResize = () => {
-        setIsMobile(checkMobile());
-        setIsDesktop(checkDesktop());
-      };
-      
-      window.addEventListener('resize', handleResize);
-      return () => window.removeEventListener('resize', handleResize);
-    }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
   
   const handlePlayVideo = () => {
-    setShowVideoModal(true);
-    setTimeout(() => {
+    if (isMobile) {
+      // On mobile, immediately play fullscreen
       if (videoRef.current) {
-        videoRef.current.play();
+        // Reset video state for replay
+        videoRef.current.currentTime = 0;
+
+        // Set source if not already set
+        if (!videoRef.current.src) {
+          videoRef.current.src = cdnUrl('/assets/videos/hero-section.mp4');
+        }
+
+        videoRef.current.play().then(() => {
+          if (videoRef.current?.requestFullscreen) {
+            videoRef.current.requestFullscreen();
+          } else if ((videoRef.current as any)?.webkitEnterFullscreen) {
+            (videoRef.current as any).webkitEnterFullscreen();
+          }
+        }).catch(err => {
+          // Fallback to modal if fullscreen fails
+          console.log('Fullscreen failed, using modal', err);
+          setShowVideoModal(true);
+        });
       }
-    }, 100);
-    track({ 
-      event: 'hero_video_play', 
-      props: { 
+    } else {
+      // Desktop keeps the modal
+      setShowVideoModal(true);
+      setTimeout(() => {
+        if (desktopVideoRef.current) {
+          desktopVideoRef.current.play();
+        }
+      }, 100);
+    }
+    track({
+      event: 'hero_video_play',
+      props: {
         location: 'hero_section',
-        trigger: 'user_click'
-      } 
+        trigger: 'user_click',
+        device: isMobile ? 'mobile' : 'desktop'
+      }
     });
   };
 
   const handleCloseVideo = () => {
     setShowVideoModal(false);
-    if (videoRef.current) {
-      videoRef.current.pause();
-      videoRef.current.currentTime = 0;
-      videoRef.current.controls = false;
+    if (desktopVideoRef.current) {
+      desktopVideoRef.current.pause();
+      desktopVideoRef.current.currentTime = 0;
+      desktopVideoRef.current.controls = false;
     }
   };
 
@@ -89,21 +117,18 @@ export function HeroSection() {
         <div className="max-w-6xl mx-auto relative">
           
           {/* Panels Container - Responsive */}
-          <AnimatePresence mode="wait">
-            {isLayoutReady && isMobile !== null ? (
-              <motion.div
-                key="panels-container"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-                className={isMobile ? "flex flex-col gap-6 pb-8 w-full" : "flex items-center justify-center gap-4 lg:gap-6 pb-6"}
-              >
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+            className={isMobile === true ? "flex flex-col gap-6 pb-8 w-full" : "flex items-center justify-center gap-4 lg:gap-6 pb-6"}
+          >
                 {/* Panel 1: Find Files */}
                 {isMobile ? (
               <div className="vibe-panel w-full" style={{minHeight: 'fit-content'}}>
                 <h2 className="vibe-panel__title">Find Files</h2>
                 <p className="text-foreground/80 text-base leading-relaxed">
-                  AI uses <strong>Regex Filter</strong>, <strong>Content Relevance</strong>, and <strong>Dependencies</strong> to read actual code. From 1,000 files to the 10 that matter.
+                  AI uses <strong>Regex Filter</strong>, <strong>Content Relevance</strong>, and <strong>Dependencies</strong> to read actual code. From 1,000 files to the 10 that matter. <Link href="/file-finder" className="text-primary hover:underline">Learn more →</Link>
                 </p>
               </div>
             ) : (
@@ -115,7 +140,7 @@ export function HeroSection() {
                   <div className="vibe-intent-box__item text-base">Dependencies</div>
                 </div>
                 <p className="vibe-panel__description text-base">
-                  AI reads actual code. From 1,000 files to the 10 that matter.
+                  AI reads actual code. From 1,000 files to the 10 that matter. <Link href="/file-finder" className="text-primary hover:underline">Learn more →</Link>
                 </p>
               </div>
             )}
@@ -181,7 +206,7 @@ export function HeroSection() {
                 </div>
                 <div className="vibe-model-card">
                   <div className="vibe-model-card__header">
-                    <span className="vibe-model-card__name">Claude 4</span>
+                    <span className="vibe-model-card__name">Claude Sonnet 4</span>
                     <span className="vibe-model-card__progress">85%</span>
                   </div>
                   <div className="vibe-progress-bar">
@@ -191,7 +216,7 @@ export function HeroSection() {
                 </div>
               </div>
               <p className="vibe-panel__description">
-                Click multiple times for more plans. Merge the best ideas.
+                Click multiple times for more plans. <Link href="/multi-model-plans" className="text-primary hover:underline">Merge the best ideas →</Link>
               </p>
             </div>
 
@@ -245,17 +270,10 @@ export function HeroSection() {
 </plan>`}</pre>
                 </div>
                 <p className="vibe-panel__description">
-                  Copy to Claude Code, Cursor, or OpenAI Codex. Ready to ship.
+                  Copy to <Link href="/docs/claude-code-plan-mode" className="text-primary hover:underline">Claude Code</Link>, <Link href="/docs/cursor-plan-mode" className="text-primary hover:underline">Cursor</Link>, or <Link href="/docs/openai-codex-cli" className="text-primary hover:underline">OpenAI Codex</Link>. Ready to ship.
                 </p>
                 </div>
-              </motion.div>
-            ) : (
-              // Placeholder to prevent layout shift and maintain space
-              <div className="flex items-center justify-center pb-6" style={{ minHeight: '700px' }}>
-                {/* Empty space - cards will animate in */}
-              </div>
-            )}
-          </AnimatePresence>
+          </motion.div>
           
           {/* Watch Demo button - below the cards */}
           <div className="flex justify-center pb-8 sm:pb-6">
@@ -275,9 +293,32 @@ export function HeroSection() {
         </div>
       </div>
 
-      {/* Video Modal */}
+      {/* Hidden video for mobile fullscreen */}
+      <video
+        ref={videoRef}
+        className="hidden"
+        playsInline
+        controls
+        poster={cdnUrl('/assets/images/hero-mobile-poster.jpg')}
+        onEnded={() => {
+          if (videoRef.current) {
+            videoRef.current.currentTime = 0;
+            if (document.fullscreenElement) {
+              document.exitFullscreen?.();
+            }
+          }
+        }}
+        onPause={() => {
+          // Reset video when paused (user exited fullscreen)
+          if (videoRef.current && !document.fullscreenElement) {
+            videoRef.current.currentTime = 0;
+          }
+        }}
+      />
+
+      {/* Video Modal - Desktop only */}
       <AnimatePresence>
-        {showVideoModal && (
+        {showVideoModal && !isMobile && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -296,21 +337,21 @@ export function HeroSection() {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 ${isMobile ? 'w-[100vw]' : 'w-[90vw] max-w-[1600px]'}`}
+              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] max-w-[1600px]"
               style={{
-                aspectRatio: isMobile ? '9/16' : '16/9',
-                maxHeight: isMobile ? '100vh' : '90vh'
+                aspectRatio: '16/9',
+                maxHeight: '90vh'
               }}
               onClick={(e) => e.stopPropagation()}
             >
               <video
-                ref={videoRef}
+                ref={desktopVideoRef}
                 className="w-full h-full object-contain"
                 style={{
                   filter: 'brightness(1.2) contrast(1.1)',
                   WebkitFilter: 'brightness(1.2) contrast(1.1)'
                 }}
-                poster={isMobile ? cdnUrl('/assets/images/hero-mobile-poster.jpg') : cdnUrl('/assets/images/hero-desktop-poster.jpg')}
+                poster={cdnUrl('/assets/images/hero-desktop-poster.jpg')}
                 playsInline
                 onClick={(e) => {
                   const video = e.currentTarget;
@@ -319,23 +360,8 @@ export function HeroSection() {
                   }
                 }}
               >
-                {isMobile === true ? (
-                  <>
-                    <source src={cdnUrl('/assets/videos/hero-section_vp9.webm')} type="video/webm; codecs=vp9" />
-                    <source src={cdnUrl('/assets/videos/hero-section.mp4')} type="video/mp4" />
-                  </>
-                ) : isMobile === false ? (
-                  <>
-                    <source src={cdnUrl('/assets/videos/hero-section-16by9_vp9.webm')} type="video/webm; codecs=vp9" />
-                    <source src={cdnUrl('/assets/videos/hero-section-16by9.mp4')} type="video/mp4" />
-                  </>
-                ) : (
-                  <>
-                    {/* Default to vertical video during initial load */}
-                    <source src={cdnUrl('/assets/videos/hero-section_vp9.webm')} type="video/webm; codecs=vp9" />
-                    <source src={cdnUrl('/assets/videos/hero-section.mp4')} type="video/mp4" />
-                  </>
-                )}
+                <source src={cdnUrl('/assets/videos/hero-section-16by9_vp9.webm')} type="video/webm; codecs=vp9" />
+                <source src={cdnUrl('/assets/videos/hero-section-16by9.mp4')} type="video/mp4" />
                 Your browser does not support the video tag.
               </video>
             </motion.div>

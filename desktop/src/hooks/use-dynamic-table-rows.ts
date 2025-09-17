@@ -43,7 +43,7 @@ export function useDynamicTableRows(
   }, [containerRef, rowHeight, headerHeight, paginationHeight, extraPadding, minRows, maxRows]);
 
   useEffect(() => {
-    let resizeTimeout: number;
+    let resizeTimeout: NodeJS.Timeout;
     let isInitialLoad = true;
     
     const updateRows = () => {

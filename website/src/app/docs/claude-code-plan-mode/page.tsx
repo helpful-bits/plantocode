@@ -12,8 +12,8 @@ import type { HowTo, FAQPage } from 'schema-dts';
 import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
-  title: 'Claude Code Plan Mode — Safe, Read-Only Planning (Keyboard: Shift+Tab)',
-  description: 'Learn Claude Code\'s Plan Mode: analyze your repo safely, draft an implementation plan, and switch to execution with confidence. Keyboard shortcut included.',
+  title: 'Claude Code Plan Mode - How to Use, Examples & Best Practices (2025)',
+  description: 'Complete guide to Claude Code plan mode. Safe read-only planning, Shift+Tab shortcut, real examples. Enhanced with Vibe Manager multi-model planning.',
   keywords: [
     'claude code plan mode',
     'claude plan mode',
@@ -143,9 +143,9 @@ export default function ClaudeCodePlanModePage() {
         </GlassCard>
 
         <p className="text-base text-muted-foreground leading-relaxed mb-4">
-          Claude Code's Plan Mode revolutionizes AI-assisted development by separating planning from execution. 
-          Think of it as a safety mechanism that lets Claude analyze your entire repository, understand complex 
-          requirements, and draft detailed implementation strategies—all without touching a single file until you're ready.
+          Claude Code's Plan Mode revolutionizes AI-assisted development by separating planning from execution.
+          Powered by Claude Opus 4.1 (74.5% on SWE-bench Verified), it analyzes your entire repository, understands complex
+          requirements, and drafts detailed implementation strategies—all without touching a single file until you're ready.
         </p>
 
         {/* What Plan Mode Does */}
@@ -176,11 +176,11 @@ export default function ClaudeCodePlanModePage() {
             </div>
             
             <div>
-              <h3 className="text-xl font-semibold text-foreground mt-6 mb-3">OpusPlan Pairing</h3>
+              <h3 className="text-xl font-semibold text-foreground mt-6 mb-3">Claude Opus 4.1 Integration</h3>
               <ul className="space-y-3">
                 <li className="flex items-start">
                   <span className="mr-2 text-blue-500">⚡</span>
-                  <span>Optimized for deep analysis and planning</span>
+                  <span>Powered by Claude Opus 4.1 for deep analysis and planning</span>
                 </li>
                 <li className="flex items-start">
                   <span className="mr-2 text-blue-500">⚡</span>
@@ -386,8 +386,8 @@ following the existing patterns in the user service"`}</code>
           <GlassCard className="p-6">
             <h3 className="text-lg font-semibold text-foreground mt-6 mb-3">Can I have different models for planning vs implementation?</h3>
             <p className="text-muted-foreground">
-              Yes, Plan Mode is optimized for the planning phase and you can switch to your preferred execution model for implementation. This gives you 
-              the best of both worlds—strategic planning and efficient execution.
+              Yes, Claude Code supports multiple models. While Opus 4.1 excels at planning (74.5% SWE-bench), you can also use Claude Sonnet 4 for faster responses
+              or Claude Haiku 3.5 for cost-efficiency. Enterprise users can connect their Amazon Bedrock or Google Vertex AI instances.
             </p>
           </GlassCard>
 
@@ -419,7 +419,8 @@ following the existing patterns in the user service"`}</code>
           <GlassCard className="p-6">
             <h3 className="text-lg font-semibold text-foreground mt-6 mb-3">Does Plan Mode work with all programming languages?</h3>
             <p className="text-muted-foreground">
-              Yes, Claude Code's Plan Mode supports all major programming languages and frameworks. Plan Mode is particularly effective at understanding complex polyglot codebases and cross-language dependencies.
+              Yes, Claude Code's Plan Mode supports all major programming languages and frameworks. With Claude Opus 4.1's enhanced reasoning,
+              it's particularly effective at understanding complex polyglot codebases and cross-language dependencies.
             </p>
           </GlassCard>
         </div>

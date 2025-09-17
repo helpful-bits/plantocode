@@ -194,11 +194,13 @@ pub use consent_commands::{
 
 // Re-exports from terminal commands module
 pub use terminal_commands::{
-    append_terminal_log_command, read_terminal_log_command, clear_terminal_log_command,
+    read_terminal_log_command, clear_terminal_log_command,
     delete_terminal_log_command, start_terminal_session_command, write_terminal_input_command,
     send_ctrl_c_to_terminal_command, kill_terminal_session_command, resize_terminal_session_command,
     get_terminal_session_status_command, get_terminal_prerequisites_status_command,
-    check_terminal_dependencies_command,
+    check_terminal_dependencies_command, attach_terminal_output_command,
+    pause_terminal_output_command,
+    resume_terminal_output_command,
 };
 
 // All command functions will return AppResult<T> directly

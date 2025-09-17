@@ -1,9 +1,9 @@
 {
-  "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "default",
-  "description": "Default capability for main window",
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "mobile",
+  "description": "Mobile capability for iOS and Android",
   "windows": ["main"],
-  "platforms": ["linux", "macOS", "windows"],
+  "platforms": ["iOS", "android"],
   "permissions": [
     "core:default",
     "core:event:default",
@@ -13,7 +13,6 @@
     "http:allow-fetch-send",
     "dialog:default",
     "fs:default",
-    "shell:allow-open",
     "store:default",
     "os:default"
   ]
