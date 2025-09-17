@@ -7,8 +7,8 @@ import { StructuredData } from '@/components/seo/StructuredData';
 import type { BreadcrumbList } from 'schema-dts';
 
 export const metadata: Metadata = {
-  title: 'Multi-Model AI Planning - Merge GPT-5, Claude 4 & Gemini Plans',
-  description: 'Revolutionary multi-model planning: Generate implementation plans from GPT-5, Claude 4, Gemini 2.5, then merge into one superior strategy. Works with Claude Code, Cursor. See how it works →',
+  title: 'Multi-Model AI Planning - Merge GPT-5, Claude Sonnet 4 & Gemini Plans',
+  description: 'Revolutionary multi-model planning: Generate implementation plans from GPT-5, Claude Sonnet 4, Gemini 2.5 Pro, then merge into one superior strategy. Works with Claude Code, Cursor. See how it works →',
   keywords: [
     'vibe code cleanup specialist',
     'multi-model planning',
@@ -19,8 +19,8 @@ export const metadata: Metadata = {
     'implementation plans',
     'AI coding assistant',
     'gpt-5 planning',
-    'claude 4 planning',
-    'gemini 2.5 planning',
+    'claude sonnet 4 planning',
+    'gemini 2.5 pro planning',
   ],
 };
 

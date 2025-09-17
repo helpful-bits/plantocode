@@ -30,7 +30,7 @@ export function useUpdater() {
     const currentPlatform = platform()
     // Currently only macOS is supported for auto-updates
     // Windows updates are handled through Microsoft Store
-    const isSupported = currentPlatform === 'darwin'
+    const isSupported = currentPlatform === 'macos'
     setStatus(prev => ({ ...prev, isSupported }))
   }, [])
 
@@ -38,7 +38,7 @@ export function useUpdater() {
     const currentPlatform = platform()
     
     // Don't check for updates on unsupported platforms
-    if (currentPlatform !== 'darwin') {
+    if (currentPlatform !== 'macos') {
       console.log('[Updater] Updates not supported on this platform:', currentPlatform)
       return null
     }
@@ -89,7 +89,7 @@ export function useUpdater() {
     const currentPlatform = platform()
     
     // Don't attempt to download/install on unsupported platforms
-    if (currentPlatform !== 'darwin') {
+    if (currentPlatform !== 'macos') {
       console.log('[Updater] Download/install not supported on this platform:', currentPlatform)
       throw new Error('Updates not supported on this platform')
     }

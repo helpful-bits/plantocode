@@ -9,40 +9,6 @@ use tauri::{command, AppHandle, Manager};
 use chrono;
 use serde_json::json;
 
-#[command]
-pub async fn append_terminal_log_command(
-    app_handle: AppHandle,
-    job_id: String, 
-    chunk: String
-) -> AppResult<()> {
-    let repo = app_handle
-        .state::<Arc<TerminalSessionsRepository>>()
-        .inner()
-        .clone();
-    
-    // First ensure the session exists, if not create it
-    if repo.get_session_by_job_id(&job_id).await?.is_none() {
-        // Create a minimal session if it doesn't exist
-        let session = crate::db_utils::terminal_sessions_repository::TerminalSession {
-            id: format!("session_{}", uuid::Uuid::new_v4()),
-            job_id: job_id.clone(),
-            status: "running".to_string(),
-            process_pid: None,
-            created_at: chrono::Utc::now().timestamp(),
-            updated_at: chrono::Utc::now().timestamp(),
-            last_output_at: Some(chrono::Utc::now().timestamp()),
-            exit_code: None,
-            working_directory: None,
-            environment_vars: None,
-            title: None,
-            output_log: Some(String::new()),
-        };
-        repo.create_session(&session).await?;
-    }
-    
-    repo.append_output_log(&job_id, &chunk).await
-        .map_err(|e| AppError::DatabaseError(format!("Failed to append terminal log for job {}: {}", job_id, e)))
-}
 
 #[command]
 pub async fn read_terminal_log_command(
@@ -110,9 +76,24 @@ pub async fn start_terminal_session_command(
         .state::<Arc<TerminalManager>>()
         .inner()
         .clone();
-    
+
     terminal_manager.start_session(&job_id, options, output, window).await
         .map_err(|e| AppError::TerminalError(format!("Failed to start terminal session for job {}: {}", job_id, e)))
+}
+
+#[tauri::command]
+pub async fn attach_terminal_output_command(
+    app_handle: tauri::AppHandle,
+    window: tauri::Window,
+    job_id: String,
+    output: tauri::ipc::Channel<Vec<u8>>,
+) -> Result<(), crate::error::AppError> {
+    let terminal_manager = app_handle
+        .state::<Arc<TerminalManager>>()
+        .inner()
+        .clone();
+
+    terminal_manager.attach_output(&job_id, output, window).await
 }
 
 #[tauri::command]
@@ -241,4 +222,24 @@ pub async fn check_terminal_dependencies_command(
         "availableCliTools": available_clis,
         "defaultShell": default_shell
     }))
+}
+
+#[tauri::command]
+pub async fn pause_terminal_output_command(
+    app_handle: tauri::AppHandle,
+    job_id: String,
+) -> crate::error::AppResult<()> {
+    let mgr = app_handle.state::<std::sync::Arc<crate::services::terminal_manager::TerminalManager>>().inner().clone();
+    mgr.pause_output(&job_id).await
+        .map_err(|e| crate::error::AppError::TerminalError(format!("Failed to pause output for {}: {}", job_id, e)))
+}
+
+#[tauri::command]
+pub async fn resume_terminal_output_command(
+    app_handle: tauri::AppHandle,
+    job_id: String,
+) -> crate::error::AppResult<()> {
+    let mgr = app_handle.state::<std::sync::Arc<crate::services::terminal_manager::TerminalManager>>().inner().clone();
+    mgr.resume_output(&job_id).await
+        .map_err(|e| crate::error::AppError::TerminalError(format!("Failed to resume output for {}: {}", job_id, e)))
 }

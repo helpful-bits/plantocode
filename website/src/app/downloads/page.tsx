@@ -8,18 +8,18 @@ import { Header } from '@/components/landing/Header';
 
 export const metadata: Metadata = {
   title: 'Download Vibe Manager - Multi-Model AI Planning Tool',
-  description: 'Download Vibe Manager for macOS. Windows version coming soon. Multi-model planning for Claude Code, Cursor, and OpenAI Codex CLI.',
+  description: 'Download Vibe Manager for Windows and macOS. Multi-model planning for Claude Code, Cursor, and OpenAI Codex CLI. Available on Microsoft Store.',
   keywords: [
     'vibe manager download',
     'claude code companion',
     'ai coding assistant download',
     'mac app download',
-    'windows app coming soon',
+    'windows app microsoft store',
     'multi-model planning tool',
   ],
   openGraph: {
     title: 'Download Vibe Manager - AI Coding Planning Tool',
-    description: 'Download Vibe Manager for macOS. Windows version coming soon. Multi-model planning for Claude Code, Cursor, and OpenAI Codex CLI.',
+    description: 'Download Vibe Manager for Windows and macOS. Multi-model planning for Claude Code, Cursor, and OpenAI Codex CLI. Available on Microsoft Store.',
     url: 'https://www.vibemanager.app/download',
     siteName: 'Vibe Manager',
     type: 'website',

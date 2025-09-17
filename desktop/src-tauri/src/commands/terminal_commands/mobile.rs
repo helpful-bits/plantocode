@@ -1,14 +1,6 @@
 use crate::error::AppResult;
 use tauri::{command, AppHandle};
 
-#[command]
-pub async fn append_terminal_log_command(
-    _app_handle: AppHandle,
-    _job_id: String, 
-    _chunk: String
-) -> AppResult<()> {
-    Err(crate::error::AppError::TerminalError("Terminal is not supported on mobile.".into()))
-}
 
 #[command]
 pub async fn read_terminal_log_command(
@@ -102,5 +94,15 @@ pub async fn get_terminal_prerequisites_status_command(
 pub async fn check_terminal_dependencies_command(
     _app_handle: AppHandle,
 ) -> AppResult<serde_json::Value> {
+    Err(crate::error::AppError::TerminalError("Terminal is not supported on mobile.".into()))
+}
+
+#[tauri::command]
+pub async fn attach_terminal_output_command(
+    _app_handle: tauri::AppHandle,
+    _window: tauri::Window,
+    _job_id: String,
+    _output: tauri::ipc::Channel<Vec<u8>>,
+) -> Result<(), crate::error::AppError> {
     Err(crate::error::AppError::TerminalError("Terminal is not supported on mobile.".into()))
 }

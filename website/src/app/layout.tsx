@@ -15,9 +15,9 @@ export const metadata: Metadata = {
   metadataBase: new URL('https://www.vibemanager.app'),
   title: {
     template: '%s | Vibe Manager',
-    default: 'Vibe Manager - Multi-Model AI Planning Tool for Coding',
+    default: 'Vibe Manager - Multi-Model AI Planning for Claude Code, Cursor & Codex',
   },
-  description: 'Vibe Manager enhances AI coding with multi-model planning. Works with Claude Code, Cursor, OpenAI Codex. Generate better implementation plans from GPT-5, Claude 4, Gemini 2.5. Free Mac app.',
+  description: 'Find the right files fast. Generate & merge plans from GPT-5, Claude Sonnet 4, Gemini 2.5 Pro. Export to Claude Code, Cursor, Cline. Windows & Mac. $10 free credits.',
   keywords: ['vibe manager', 'vibe code cleanup specialist', 'claude code install', 'install claude code', 'claudecode', 'claude code planning', 'claude code agents', 'claude code mcp', 'claude code cli', 'claude code vs cursor', 'claude code github', 'claude code vscode', 'claude code windows', 'claude code router', 'claude code subagents', 'claude code sdk', 'claude code hooks', 'claude code docs', 'AI coding assistant', 'multi-model planning', 'implementation plan', 'file discovery'],
   authors: [{ name: 'Vibe Manager Team' }],
   creator: 'Vibe Manager',
@@ -33,8 +33,8 @@ export const metadata: Metadata = {
     canonical: 'https://www.vibemanager.app/',
   },
   openGraph: {
-    title: 'Vibe Manager - Multi-Model AI Planning Tool for Coding',
-    description: 'Vibe Manager enhances AI coding with multi-model planning. Works with Claude Code, Cursor, OpenAI Codex. Generate better implementation plans from GPT-5, Claude 4, Gemini 2.5.',
+    title: 'Vibe Manager - Multi-Model AI Planning Tool | Claude Code & Cursor',
+    description: 'Find the right files, merge plans from GPT-5, Claude Sonnet 4, Gemini 2.5 Pro, DeepSeek R1. Export to Claude Code, Cursor, Cline. Windows & Mac. $10 free credits.',
     url: 'https://www.vibemanager.app/',
     siteName: 'Vibe Manager',
     images: [{
@@ -50,7 +50,7 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: 'Vibe Manager - Multi-Model AI Planning Tool',
-    description: 'Multi-model planning for Claude Code, Cursor & OpenAI Codex. Generate better plans from GPT-5, Claude 4, Gemini 2.5. Free Mac app.',
+    description: 'Multi-model planning for Claude Code, Cursor & OpenAI Codex. Generate better plans from GPT-5, Claude Sonnet 4, Gemini 2.5 Pro. Free app.',
     images: [{
       url: cdnUrl('/images/og-image.png'),
       alt: 'Vibe Manager - Multi-Model Planning for Claude Code',

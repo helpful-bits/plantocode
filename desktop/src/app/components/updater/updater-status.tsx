@@ -17,13 +17,7 @@ export function UpdaterStatus() {
     // Skip update check if platform doesn't support auto-updates
     if (!hasCheckedOnStartup && isTauriAvailable() && status.isSupported !== false) {
       setHasCheckedOnStartup(true)
-      
-      // If explicitly not supported, don't check
-      if (status.isSupported === false) {
-        console.log('[UpdaterStatus] Auto-updates not supported on this platform')
-        return
-      }
-      
+
       checkForUpdates()
         .then(update => {
           if (update) {
