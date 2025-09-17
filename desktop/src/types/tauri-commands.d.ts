@@ -760,7 +760,6 @@ export type TauriInvoke = {
   "accept_consent_command": (args: { docType: 'terms' | 'privacy'; region: 'eu' | 'us'; metadata?: Record<string, unknown> }) => Promise<void>;
   
   // Terminal commands
-  "append_terminal_log_command": (args: AppendTerminalLogCommandArgs) => Promise<void>;
   "read_terminal_log_command": (args: ReadTerminalLogCommandArgs) => Promise<string>;
   "clear_terminal_log_command": (args: ClearTerminalLogCommandArgs) => Promise<void>;
   "delete_terminal_log_command": (args: DeleteTerminalLogCommandArgs) => Promise<void>;
@@ -1122,10 +1121,6 @@ export interface ListInvoicesResponse {
 }
 
 // Commands from terminal_commands
-export interface AppendTerminalLogCommandArgs {
-  jobId: string;
-  chunk: string;
-}
 
 export interface ReadTerminalLogCommandArgs {
   jobId: string;

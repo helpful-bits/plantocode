@@ -118,6 +118,7 @@ pub fn run() {
 
     let mut builder = tauri::Builder::default()
         .manage(AppState::default())
+        .manage(Arc::new(TokenManager::new()))
         .manage(ConfigCache::new(Mutex::new(HashMap::new())))
         .manage(Arc::new(RwLock::new(Option::<Arc<crate::api_clients::server_proxy_client::ServerProxyClient>>::None)))
         .manage(Arc::new(RwLock::new(Option::<Arc<crate::api_clients::billing_client::BillingClient>>::None)))
@@ -357,7 +358,6 @@ pub fn run() {
             commands::backup_commands::delete_backup_command,
             commands::logging_commands::log_client_error,
             commands::logging_commands::append_to_log_file,
-            commands::terminal_commands::append_terminal_log_command,
             commands::terminal_commands::read_terminal_log_command,
             commands::terminal_commands::clear_terminal_log_command,
             commands::terminal_commands::delete_terminal_log_command,
@@ -369,6 +369,9 @@ pub fn run() {
             commands::terminal_commands::get_terminal_session_status_command,
             commands::terminal_commands::get_terminal_prerequisites_status_command,
             commands::terminal_commands::check_terminal_dependencies_command,
+            commands::terminal_commands::attach_terminal_output_command,
+            commands::terminal_commands::pause_terminal_output_command,
+            commands::terminal_commands::resume_terminal_output_command,
         ])
         .run(tauri_context)
         .expect("Error while running tauri application");

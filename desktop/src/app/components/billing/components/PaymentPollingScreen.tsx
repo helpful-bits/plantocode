@@ -34,8 +34,8 @@ export function PaymentPollingScreen({
   const [message, setMessage] = useState<string>("Waiting for payment confirmation...");
   const [error, setError] = useState<string | null>(null);
   const [pollCount, setPollCount] = useState<number>(0);
-  const intervalRef = useRef<number | null>(null);
-  const timeoutRef = useRef<number | null>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const currentPollingIntervalRef = useRef<number>(INITIAL_POLLING_INTERVAL);
   const isPollingPausedRef = useRef<boolean>(false);
 

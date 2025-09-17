@@ -142,10 +142,13 @@ impl TerminalSessionsRepository {
     }
 
     pub async fn append_output_log(&self, job_id: &str, chunk: &str) -> AppResult<()> {
+        // Ring buffer: Keep only last 5MB of output to prevent unbounded growth
+        const MAX_LOG_SIZE: i32 = 5242880; // 5 MiB
+
         sqlx::query(
             r#"
-            UPDATE terminal_sessions 
-            SET output_log = COALESCE(output_log, '') || ?2,
+            UPDATE terminal_sessions
+            SET output_log = SUBSTR(COALESCE(output_log, '') || ?2, -?3),
                 last_output_at = strftime('%s', 'now'),
                 updated_at = strftime('%s', 'now')
             WHERE job_id = ?1
@@ -153,6 +156,7 @@ impl TerminalSessionsRepository {
         )
         .bind(job_id)
         .bind(chunk)
+        .bind(MAX_LOG_SIZE)
         .execute(&*self.pool)
         .await?;
         Ok(())

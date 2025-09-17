@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { ArrowLeft, Calendar, Clock, Share2, Copy, CheckCircle } from 'lucide-react';
-import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
 // Removed Reveal to fix initial content visibility issues

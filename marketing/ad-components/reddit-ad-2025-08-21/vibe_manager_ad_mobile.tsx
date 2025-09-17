@@ -18,7 +18,7 @@ export default function VibeManagerAdMobile() {
 
   const Chevron = () => (
     <div className="chevron-mobile">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
         <path
           d="M8 5l7 7-7 7"
           stroke="currentColor"
@@ -53,21 +53,21 @@ export default function VibeManagerAdMobile() {
           
           <div className="intent-box-mobile">
             <div className="intent-box-mobile__item">
-              <svg className="intent-box-mobile__check" width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <svg className="intent-box-mobile__check" width="36" height="36" viewBox="0 0 24 24" fill="none">
                 <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
                 <path d="M8 12l3 3 5-6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
               Regex Filter
             </div>
             <div className="intent-box-mobile__item">
-              <svg className="intent-box-mobile__check" width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <svg className="intent-box-mobile__check" width="36" height="36" viewBox="0 0 24 24" fill="none">
                 <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
                 <path d="M8 12l3 3 5-6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
               File Content Relevance
             </div>
             <div className="intent-box-mobile__item">
-              <svg className="intent-box-mobile__check" width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <svg className="intent-box-mobile__check" width="36" height="36" viewBox="0 0 24 24" fill="none">
                 <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
                 <path d="M8 12l3 3 5-6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
@@ -111,29 +111,23 @@ export default function VibeManagerAdMobile() {
         <Chevron />
 
         <Panel>
-          <h2 className="panel-mobile__title">Plan for Claude Code</h2>
-          
+          <h2 className="panel-mobile__title">Built-in Terminal</h2>
+
           <div className="code-block-mobile">
             <pre className="code-block-mobile__content">
-{`<plan>
-  <step>
-    <file_operation>
-      <path>src/components/</path>
-      <changes>...</changes>
-      <validation>tests</validation>
-    </file_operation>
-  </step>
-  <step>
-    <file_operation>
-      <path>docs/README.md</path>
-    </file_operation>
-  </step>
-</plan>`}
+{`$ npm run dev
+⚡ Server at localhost:3000
+
+$ npm test --coverage
+✓ 47 passed | Coverage: 92%
+
+$ git push origin main
+✓ Deployed to production`}
             </pre>
           </div>
 
           <p className="panel-mobile__description">
-            Copy straight to Claude Code or Cursor. Ready to ship.
+            Run any command. See output instantly. No tab switching.
           </p>
         </Panel>
       </main>

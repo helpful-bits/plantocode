@@ -13,3 +13,4 @@ export type {
 } from "./types";
 
 export { useTerminalSessions } from "./useTerminalSessions";
+export { useXtermOutputAdapter } from "./useXtermOutputAdapter";

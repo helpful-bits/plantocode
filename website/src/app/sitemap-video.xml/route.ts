@@ -19,7 +19,7 @@ const videos: Video[] = [
     loc: SITE_URL,
     contentLoc: `${CDN_BASE}/assets/videos/hero-section.mp4`,
     title: 'Vibe Manager - AI-Powered Context Curation Demo',
-    description: 'Watch how Vibe Manager enhances Claude Code, Cursor, and OpenAI Codex with multi-model planning. Generate implementation plans from GPT-5, Claude 4, and Gemini 2.5.',
+    description: 'Watch how Vibe Manager enhances Claude Code, Cursor, and OpenAI Codex with multi-model planning. Generate implementation plans from GPT-5, Claude Sonnet 4, and Gemini 2.5 Pro.',
     thumbnailLoc: `${CDN_BASE}/assets/images/hero-thumbnail.jpg`,
     duration: 60,
     publicationDate: '2025-08-01T00:00:00Z'
@@ -74,7 +74,7 @@ const videos: Video[] = [
     loc: SITE_URL,
     contentLoc: `${CDN_BASE}/assets/videos/step-4-merge.mp4`,
     title: 'Plan Creation & Merge from Multiple AI Models',
-    description: 'Generate implementation plans from GPT-5, Claude 4, Gemini 2.5 and merge the best approaches into a unified solution.',
+    description: 'Generate implementation plans from GPT-5, Claude Sonnet 4, Gemini 2.5 Pro and merge the best approaches into a unified solution.',
     thumbnailLoc: `${CDN_BASE}/assets/images/step-4-poster.jpg`,
     duration: 60,
     publicationDate: '2025-08-01T00:00:00Z'

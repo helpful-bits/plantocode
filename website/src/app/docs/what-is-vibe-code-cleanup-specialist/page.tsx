@@ -95,8 +95,8 @@ const articleJsonLd: Article = {
       url: 'https://www.vibemanager.app/logo.png',
     },
   },
-  datePublished: '2024-09-12',
-  dateModified: '2024-09-12',
+  datePublished: '2025-09-12',
+  dateModified: '2025-09-16',
   url: 'https://www.vibemanager.app/what-is-vibe-code-cleanup-specialist',
 };
 

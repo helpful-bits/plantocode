@@ -53,7 +53,7 @@ const HowItWorks = dynamic(() => import('@/components/landing/HowItWorks').then(
 
 export const metadata: Metadata = {
   title: 'Vibe Manager - Multi-Model AI Planning for Claude Code & Cursor',
-  description: 'Vibe Manager enhances Claude Code, Cursor, and OpenAI Codex with multi-model planning. Generate implementation plans from GPT-5, Claude 4, Gemini 2.5. Smart file discovery and context curation. Free Mac app.',
+  description: 'Vibe Manager enhances Claude Code, Cursor, and OpenAI Codex with multi-model planning. Generate implementation plans from GPT-5, Claude Sonnet 4, Gemini 2.5 Pro. Smart file discovery and context curation.',
   keywords: [
     'vibe manager',
     'vibe code cleanup specialist',
@@ -96,7 +96,7 @@ export const metadata: Metadata = {
   ],
   openGraph: {
     title: 'Vibe Manager - AI Coding Planning Tool | Free Download',
-    description: 'Vibe Manager enhances Claude Code, Cursor, and OpenAI Codex with multi-model planning. Generate better implementation plans from GPT-5, Claude 4, Gemini 2.5. Download free for Mac.',
+    description: 'Vibe Manager enhances Claude Code, Cursor, and OpenAI Codex with multi-model planning. Generate better implementation plans from GPT-5, Claude Sonnet 4, Gemini 2.5 Pro. Download free.',
     url: 'https://www.vibemanager.app',
     siteName: 'Vibe Manager',
     locale: 'en_US',
@@ -106,7 +106,7 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: 'Vibe Manager - AI Coding Planning Tool',
-    description: 'Multi-model planning for Claude Code, Cursor & OpenAI Codex. Generate plans from GPT-5, Claude 4, Gemini 2.5. Free download.',
+    description: 'Multi-model planning for Claude Code, Cursor & OpenAI Codex. Generate plans from GPT-5, Claude Sonnet 4, Gemini 2.5 Pro. Free download.',
   },
   alternates: {
     canonical: 'https://www.vibemanager.app',
@@ -118,13 +118,16 @@ export default function Home() {
     '@type': 'SoftwareApplication',
     name: 'Vibe Manager',
     applicationCategory: 'DeveloperApplication',
-    operatingSystem: 'macOS',
+    operatingSystem: ['Windows 10+', 'macOS 11.0+'],
     url: 'https://www.vibemanager.app',
-    description: 'Multi-model planning tool for Claude Code, Cursor, OpenAI Codex CLI and AI coding agents. Generates implementation plans from GPT-5, Claude 4, and Gemini 2.5. Smart file discovery and context curation for better AI coding.',
+    description: 'Multi-model AI planning tool. Generate & merge plans from GPT-5, Claude Sonnet 4, Gemini 2.5 Pro, DeepSeek R1, o3/o4-mini, Grok 4. Export to Claude Code, Cursor, Cline, Codex CLI. Windows & Mac.',
     offers: {
       '@type': 'Offer',
       price: 0, // Numeric 0 for free apps, no priceCurrency needed per Google guidance
+      description: 'Free app with pay-as-you-go API usage. $10 free credits on signup.',
     },
+    downloadUrl: 'https://www.vibemanager.app/downloads',
+    softwareVersion: '1.0.23',
     // @ts-ignore - isRelatedTo is a valid schema.org property but not in the TypeScript types
     isRelatedTo: [
       {
@@ -157,7 +160,7 @@ export default function Home() {
   const faqItems = [
     {
       question: 'What is Vibe Manager for AI coding agents?',
-      answer: 'A planning assistant that enhances any agentic tool with multi-model intelligence. It curates context and merges plans from GPT-5, Claude 4, and Gemini 2.5 before your preferred coding agent executes - whether that\'s Claude Code, Cursor, OpenAI Codex CLI, or other agentic tools.',
+      answer: 'A planning assistant that enhances any agentic tool with multi-model intelligence. It curates context and merges plans from GPT-5, Claude Sonnet 4, and Gemini 2.5 Pro before your preferred coding agent executes - whether that\'s Claude Code, Cursor, OpenAI Codex CLI, or other agentic tools.',
     },
     {
       question: 'How do I use Vibe Manager with my coding assistant?',
@@ -177,7 +180,7 @@ export default function Home() {
     },
     {
       question: 'Which AI models does it use for planning?',
-      answer: 'Gemini 2.5, GPT-5, Claude 4, o3/o4, Grok 4, DeepSeek R1, Kimi K2 - all working together to create superior plans for any agentic tool to execute.',
+      answer: 'Gemini 2.5 Pro, GPT-5, Claude Sonnet 4, o3/o4-mini, Grok 4, DeepSeek R1, Kimi K2 - all working together to create superior plans for any agentic tool to execute.',
     },
     {
       question: 'Does it support tool-specific features and integrations?',
@@ -185,7 +188,7 @@ export default function Home() {
     },
     {
       question: 'Platform support for different coding tools?',
-      answer: 'macOS now with Windows coming soon. Currently enhances any agentic tool on Mac. Windows users of all agentic tools await our Windows release.',
+      answer: 'Windows and macOS. Available on Microsoft Store for Windows and direct download for Mac. Enhances any agentic tool on both platforms.',
     },
   ];
 
@@ -279,7 +282,7 @@ export default function Home() {
     },
     {
       title: 'The Council of LLMs',
-      description: 'Generate plans from Gemini 2.5, GPT-5, Claude 4, o3/o4, Grok 4, DeepSeek R1, and Kimi K2 - even multiple runs of the same model. The list evolves quickly as more capable models appear. The merge AI synthesizes their unique insights into one superior strategy.',
+      description: 'Generate plans from Gemini 2.5 Pro, GPT-5, Claude Sonnet 4, o3/o4-mini, Grok 4, DeepSeek R1, and Kimi K2 - even multiple runs of the same model. The list evolves quickly as more capable models appear. The merge AI synthesizes their unique insights into one superior strategy.',
       icon: <BrainCircuit className="w-8 h-8" />,
     },
     {
@@ -323,7 +326,7 @@ export default function Home() {
     {
       '@type': 'VideoObject',
       name: 'Plan Creation & Merge from Multiple AI Models',
-      description: 'Generate implementation plans from GPT-5, Claude 4, Gemini 2.5 and merge the best approaches into a unified solution.',
+      description: 'Generate implementation plans from GPT-5, Claude Sonnet 4, Gemini 2.5 Pro and merge the best approaches into a unified solution.',
       thumbnailUrl: cdnUrl('/assets/images/step-4-poster.jpg'),
       contentUrl: cdnUrl('/assets/videos/step-4-merge.mp4'),
       uploadDate: '2025-08-01T00:00:00Z',
@@ -397,7 +400,7 @@ export default function Home() {
     {
       '@type': 'ImageObject',
       name: 'Multi-Model Implementation Plans',
-      description: 'Interface showing merged implementation plans from GPT-5, Claude 4, and Gemini 2.5 for superior coding strategies',
+      description: 'Interface showing merged implementation plans from GPT-5, Claude Sonnet 4, and Gemini 2.5 Pro for superior coding strategies',
       contentUrl: cdnUrl('/assets/images/demo-implementation-plans.jpg'),
       thumbnailUrl: cdnUrl('/assets/images/demo-implementation-plans.jpg'),
     },
@@ -438,7 +441,7 @@ export default function Home() {
           {/* SR-only content for better Google snippets */}
           <div className="sr-only">
             <h1>Vibe Manager - Multi-Model AI Planning Tool</h1>
-            <p>Vibe Manager is a multi-model planning tool that enhances AI coding assistants like Claude Code, Cursor, and OpenAI Codex CLI. Generate implementation plans from GPT-5, Claude 4, Gemini 2.5, then merge them into superior strategies. Includes intelligent file discovery and context curation for better AI-assisted development.</p>
+            <p>Vibe Manager is a multi-model planning tool that enhances AI coding assistants like Claude Code, Cursor, and OpenAI Codex CLI. Generate implementation plans from GPT-5, Claude Sonnet 4, Gemini 2.5 Pro, then merge them into superior strategies. Includes intelligent file discovery and context curation for better AI-assisted development.</p>
           </div>
           <section className="mb-0">
             <HeroSection />
