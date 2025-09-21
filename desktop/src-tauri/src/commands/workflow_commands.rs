@@ -1,21 +1,20 @@
 use crate::AppState;
 use crate::db_utils::BackgroundJobRepository;
 use crate::error::{AppError, AppResult};
-use crate::jobs::types::{
-    FileFinderWorkflowPayload, JobPayload,
-};
+use crate::jobs::types::{FileFinderWorkflowPayload, JobPayload};
 use crate::jobs::workflow_orchestrator::get_workflow_orchestrator;
 use crate::jobs::workflow_types::{WorkflowStage, WorkflowStatus};
 use crate::models::{JobCommandResponse, TaskType};
 use crate::utils::job_creation_utils;
 use chrono::{DateTime, Utc};
 use log::{debug, info};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager, State, command};
+
 
 // New response types for workflow commands
 #[derive(Debug, Serialize)]
@@ -106,7 +105,9 @@ pub async fn start_file_finder_workflow(
 
     // Preflight touch: ensure queue is ready/lazily initialized before creating jobs
     if let Err(e) = crate::jobs::queue::get_job_queue().await {
-        debug!("Preflight job queue readiness check: {e:?} (proceeding, accessor handles waiting/lazy init)");
+        debug!(
+            "Preflight job queue readiness check: {e:?} (proceeding, accessor handles waiting/lazy init)"
+        );
     }
 
     // Validate required fields
@@ -783,13 +784,13 @@ pub async fn get_file_finder_roots_for_session(
     app_handle: AppHandle,
 ) -> Result<Option<Vec<String>>, String> {
     info!("Getting file finder roots for session: {}", session_id);
-    
+
     // Get the background job repository to query the database
     let background_job_repo = app_handle
         .state::<Arc<BackgroundJobRepository>>()
         .inner()
         .clone();
-    
+
     // Query for root_folder_selection jobs in this session
     let query = r#"
         SELECT response, created_at 
@@ -801,13 +802,13 @@ pub async fn get_file_finder_roots_for_session(
         ORDER BY created_at DESC 
         LIMIT 1
     "#;
-    
+
     let pool = background_job_repo.get_pool();
     let result: Result<Option<(String, i64)>, _> = sqlx::query_as(query)
         .bind(&session_id)
         .fetch_optional(pool.as_ref())
         .await;
-    
+
     match result {
         Ok(Some((response_json, _created_at))) => {
             // Parse the response JSON to extract root directories
@@ -819,9 +820,13 @@ pub async fn get_file_finder_roots_for_session(
                                 .iter()
                                 .filter_map(|v| v.as_str().map(String::from))
                                 .collect();
-                            
+
                             if !roots.is_empty() {
-                                info!("Found {} root directories for session {}", roots.len(), session_id);
+                                info!(
+                                    "Found {} root directories for session {}",
+                                    roots.len(),
+                                    session_id
+                                );
                                 return Ok(Some(roots));
                             }
                         }
@@ -833,14 +838,17 @@ pub async fn get_file_finder_roots_for_session(
             }
         }
         Ok(None) => {
-            info!("No completed root_folder_selection jobs found for session {}", session_id);
+            info!(
+                "No completed root_folder_selection jobs found for session {}",
+                session_id
+            );
         }
         Err(e) => {
             log::error!("Failed to query root_folder_selection jobs: {}", e);
             return Err(format!("Failed to query root directories: {}", e));
         }
     }
-    
+
     Ok(None)
 }
 

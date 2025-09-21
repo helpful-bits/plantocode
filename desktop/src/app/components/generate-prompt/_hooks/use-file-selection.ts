@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useSessionStateContext, useSessionActionsContext } from "@/contexts/session";
 import { listProjectFilesAction } from "@/actions/file-system/list-project-files.action";
+import { getFilesMetadata } from "@/utils/tauri-fs";
 import { getFileSelectionHistoryAction, syncFileSelectionHistoryAction, type FileSelectionHistoryEntry } from "@/actions/session/history.actions";
 import { areArraysEqual } from "@/utils/array-utils";
 
@@ -54,17 +55,41 @@ export function useFileSelection(projectDirectory?: string) {
     updateCurrentSessionFields({ filterMode: newMode });
   }, [updateCurrentSessionFields]);
   
+  // State for external files metadata
+  const [externalFilesMetadata, setExternalFilesMetadata] = useState<Map<string, FileInfo>>(new Map());
+
   // Computed files that combines filesystem data with session selection state
   const files = useMemo((): ExtendedFileInfo[] => {
     const includedSet = new Set(sessionIncluded);
     const excludedSet = new Set(sessionExcluded);
-    
-    return allProjectFiles.map(file => ({
+
+    // First, map all project files
+    const projectFiles = allProjectFiles.map(file => ({
       ...file,
       included: includedSet.has(file.path),
       excluded: excludedSet.has(file.path),
     }));
-  }, [allProjectFiles, sessionIncluded, sessionExcluded]);
+
+    // Then, add external files from metadata if they exist
+    const projectFilePaths = new Set(allProjectFiles.map(f => f.path));
+    const externalFiles: ExtendedFileInfo[] = [];
+
+    for (const path of sessionIncluded) {
+      if (!projectFilePaths.has(path)) {
+        // This is an external file, get its metadata
+        const metadata = externalFilesMetadata.get(path);
+        if (metadata) {
+          externalFiles.push({
+            ...metadata,
+            included: true,
+            excluded: excludedSet.has(path),
+          });
+        }
+      }
+    }
+
+    return [...projectFiles, ...externalFiles];
+  }, [allProjectFiles, sessionIncluded, sessionExcluded, externalFilesMetadata]);
 
   // Load files from file system 
   const loadFiles = useCallback(async () => {
@@ -98,6 +123,49 @@ export function useFileSelection(projectDirectory?: string) {
   useEffect(() => {
     loadFiles();
   }, [loadFiles]);
+
+  // Load metadata for external files when sessionIncluded changes
+  useEffect(() => {
+    if (!projectDirectory || sessionIncluded.length === 0) {
+      setExternalFilesMetadata(new Map());
+      return;
+    }
+
+    // Find paths that look like external files (absolute paths not in project)
+    const externalPaths = sessionIncluded.filter(path => {
+      // Check if it's an absolute path
+      return path.startsWith('/') || (path.match(/^[A-Z]:\\/)); // Unix or Windows absolute path
+    });
+
+    if (externalPaths.length === 0) {
+      setExternalFilesMetadata(new Map());
+      return;
+    }
+
+    // Fetch metadata for external files
+    getFilesMetadata(externalPaths, projectDirectory)
+      .then(metadataList => {
+        const metadataMap = new Map<string, FileInfo>();
+        for (const fileInfo of metadataList) {
+          // Store with the original absolute path as key
+          const originalPath = externalPaths.find(p => p.endsWith(fileInfo.path) || fileInfo.path === p);
+          if (originalPath) {
+            metadataMap.set(originalPath, {
+              path: originalPath, // Use the original absolute path
+              name: fileInfo.name,
+              size: fileInfo.size,
+              modifiedAt: fileInfo.modifiedAt,
+              isBinary: fileInfo.isBinary,
+            });
+          }
+        }
+        setExternalFilesMetadata(metadataMap);
+      })
+      .catch(err => {
+        console.error('Failed to fetch external files metadata:', err);
+        setExternalFilesMetadata(new Map());
+      });
+  }, [sessionIncluded, projectDirectory]);
 
   // Use a ref to access current allProjectFiles without causing effect re-runs
   const allProjectFilesRef = useRef(allProjectFiles);
@@ -333,23 +401,35 @@ export function useFileSelection(projectDirectory?: string) {
   // Filter and sort files
   const filteredAndSortedFiles = useMemo(() => {
     let filesToProcess = files;
-    
-    // In "selected" mode, if we have sessionIncluded files that aren't in allProjectFiles,
-    // create temporary file entries for them so they can be displayed
+
+    // In "selected" mode, if we have sessionIncluded files that aren't in our files array yet
+    // (because external metadata hasn't loaded), create temporary entries
     if (filterMode === "selected" && sessionIncluded.length > 0) {
       const existingPaths = new Set(files.map(f => f.path));
       const missingSelectedFiles = sessionIncluded
         .filter(path => !existingPaths.has(path))
-        .map(path => ({
-          path,
-          name: path.split('/').pop() || path,
-          size: undefined,
-          modifiedAt: undefined,
-          isBinary: false,
-          included: true,
-          excluded: sessionExcluded.includes(path)
-        }));
-      
+        .map(path => {
+          // Check if we have metadata for this external file
+          const metadata = externalFilesMetadata.get(path);
+          if (metadata) {
+            return {
+              ...metadata,
+              included: true,
+              excluded: sessionExcluded.includes(path)
+            };
+          }
+          // Create temporary entry if metadata not loaded yet
+          return {
+            path,
+            name: path.split('/').pop() || path,
+            size: undefined,
+            modifiedAt: undefined,
+            isBinary: false,
+            included: true,
+            excluded: sessionExcluded.includes(path)
+          };
+        });
+
       if (missingSelectedFiles.length > 0) {
         filesToProcess = [...files, ...missingSelectedFiles];
       }
@@ -368,7 +448,7 @@ export function useFileSelection(projectDirectory?: string) {
     
     // Then sort
     return sortFiles(filtered);
-  }, [files, searchTerm, filterMode, sortFiles, sessionIncluded, sessionExcluded]);
+  }, [files, searchTerm, filterMode, sortFiles, sessionIncluded, sessionExcluded, externalFilesMetadata]);
 
   // Count from all files, not just filtered
   // Also count files in sessionIncluded that might not be in allProjectFiles yet

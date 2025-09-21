@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'Cline Plan & Act — Plan First, Implement After Approval',
+  title: 'Cline Plan & Act - Plan First, Implement After Approval',
   description: 'Cline\'s Plan mode analyzes your repo with no file changes. Switch to Act to implement safely. Full workflow guide & tips.',
   keywords: [
     'cline plan mode',
@@ -36,7 +36,7 @@ export const metadata: Metadata = {
     canonical: 'https://www.vibemanager.app/docs/cline-plan-mode'
   },
   openGraph: {
-    title: 'Cline Plan & Act — Plan First, Implement After Approval',
+    title: 'Cline Plan & Act - Plan First, Implement After Approval',
     description: 'Cline\'s Plan mode analyzes your repo with no file changes. Switch to Act to implement safely. Full workflow guide & tips.',
     url: 'https://www.vibemanager.app/docs/cline-plan-mode',
     type: 'article'

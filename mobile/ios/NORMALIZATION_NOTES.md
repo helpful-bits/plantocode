@@ -1,0 +1,7 @@
+- Native SwiftUI app with SPM modules (Core, UI, Features) stored beside iOS assets under `mobile/`
+- App target files stored in `mobile/ios/App`
+- Launch screen defined via Info.plist `UILaunchScreen` + color asset (no storyboard)
+- Auth0 Swift SDK + KeychainAccess in Core
+- Auth callback scheme uses bundle id: com.vibemanager.mobile
+- Minimal entitlements for first draft
+- Prebuilt `mobile/ios/VibeManager.xcodeproj` links local packages

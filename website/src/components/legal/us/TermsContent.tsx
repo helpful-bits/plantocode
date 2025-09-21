@@ -85,7 +85,7 @@ export default function USTermsContent() {
 
         <h3 className="text-xl font-medium mb-3 mt-6">High-Risk and Regulated Uses</h3>
         <p>
-          Without a signed written agreement and appropriate certifications, you may not use our Service for:
+          Without a signed written agreement and appropriate safeguards, you may not use our Service for:
         </p>
         <ul className="list-disc list-inside space-y-2 mt-4">
           <li><strong>Medical Applications:</strong> Medical diagnosis, treatment recommendations, or healthcare decision-making</li>
@@ -96,7 +96,7 @@ export default function USTermsContent() {
           <li><strong>High-Stakes Decisions:</strong> Employment screening, credit decisions, housing applications, insurance underwriting, or legal proceedings</li>
         </ul>
         <p className="mt-4">
-          If you require the Service for any of these high-risk applications, please contact legal@vibemanager.app to discuss a specialized agreement with appropriate safeguards, liability provisions, and compliance certifications.
+          If you require the Service for any of these high-risk applications, please contact legal@vibemanager.app to discuss a specialized agreement with appropriate safeguards, liability provisions, and compliance requirements.
         </p>
       </section>
 

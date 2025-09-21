@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize, Serializer};
 use std::fmt;
-use thiserror::Error;
 use tauri::Manager;
+use thiserror::Error;
 
 #[derive(Error, Debug, Clone)]
 pub enum AppError {
@@ -79,7 +79,7 @@ pub enum AppError {
 
     #[error("Serialization error: {0}")]
     SerializationError(String),
-    
+
     #[error("Updater error: {0}")]
     UpdaterError(String),
 
@@ -190,6 +190,25 @@ pub enum AppError {
 
     #[error("Terminal error: {0}")]
     TerminalError(String),
+
+    // Terminal-specific recovery errors
+    #[error("Terminal recovery error: {0}")]
+    TerminalRecoveryError(String),
+
+    #[error("Terminal state error: {0}")]
+    TerminalStateError(String),
+
+    #[error("Terminal persistence error: {0}")]
+    TerminalPersistenceError(String),
+
+    #[error("Terminal session not found: {0}")]
+    TerminalSessionNotFound(String),
+
+    #[error("Terminal attachment failed: {0}")]
+    TerminalAttachmentFailed(String),
+
+    #[error("Terminal no output: {0}")]
+    TerminalNoOutput(String),
 }
 
 impl From<std::io::Error> for AppError {
@@ -317,36 +336,46 @@ impl From<AppError> for SerializableError {
             AppError::VideoAnalysisError(_) => "VIDEO_ANALYSIS_ERROR",
             AppError::UpdaterError(_) => "UPDATER_ERROR",
             AppError::TerminalError(_) => "TERMINAL_ERROR",
+            AppError::TerminalRecoveryError(_) => "TERMINAL_RECOVERY_ERROR",
+            AppError::TerminalStateError(_) => "TERMINAL_STATE_ERROR",
+            AppError::TerminalPersistenceError(_) => "TERMINAL_PERSISTENCE_ERROR",
+            AppError::TerminalSessionNotFound(_) => "TERMINAL_SESSION_NOT_FOUND",
+            AppError::TerminalAttachmentFailed(_) => "TERMINAL_ATTACHMENT_FAILED",
+            AppError::TerminalNoOutput(_) => "TERMINAL_NO_OUTPUT",
         }
         .to_string();
 
         // Centralized error logging - log ALL backend errors automatically
         let error_message = error.to_string();
         let error_type_clone = error_type.clone();
-        
+
         // Spawn async task to log error (non-blocking)
         tauri::async_runtime::spawn(async move {
             // Try to get the error log repository from a global state
             // This will be set up during app initialization
             if let Some(handle) = crate::GLOBAL_APP_HANDLE.get() {
-                if let Some(repo) = handle.try_state::<std::sync::Arc<crate::db_utils::ErrorLogRepository>>() {
+                if let Some(repo) =
+                    handle.try_state::<std::sync::Arc<crate::db_utils::ErrorLogRepository>>()
+                {
                     // Create metadata with additional context
                     let metadata = serde_json::json!({
                         "source": "rust_backend",
                         "thread_id": format!("{:?}", std::thread::current().id()),
                         "timestamp": chrono::Utc::now().to_rfc3339(),
                     });
-                    
-                    let _ = repo.insert_error(
-                        "ERROR",
-                        Some(&error_type_clone),
-                        &error_message,
-                        Some("Backend"),
-                        None, // stack trace - would need backtrace crate
-                        Some(&metadata.to_string()),
-                        Some(env!("CARGO_PKG_VERSION")),
-                        Some(std::env::consts::OS),
-                    ).await;
+
+                    let _ = repo
+                        .insert_error(
+                            "ERROR",
+                            Some(&error_type_clone),
+                            &error_message,
+                            Some("Backend"),
+                            None, // stack trace - would need backtrace crate
+                            Some(&metadata.to_string()),
+                            Some(env!("CARGO_PKG_VERSION")),
+                            Some(std::env::consts::OS),
+                        )
+                        .await;
                 }
             }
         });

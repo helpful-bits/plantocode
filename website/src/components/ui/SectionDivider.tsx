@@ -41,61 +41,6 @@ export function SectionDivider() {
   );
 }
 
-// Alternative style with orbs - Static version
-export function SectionDividerOrbs() {
-  return (
-    <div className="relative w-full h-8 sm:h-12 md:h-16 overflow-visible pointer-events-none">
-      {/* Glass morphism base layer */}
-      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/[0.02] to-transparent backdrop-blur-[2px]" />
-      
-      {/* Static gradient flow */}
-      <div className="absolute inset-0">
-        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/[0.05] to-transparent" />
-        
-        {/* Central orb - static */}
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div
-            className="absolute w-16 h-16 rounded-full opacity-50"
-            style={{
-              background: `radial-gradient(circle at center, 
-                oklch(0.68 0.085 195 / 0.15) 0%, 
-                oklch(0.68 0.085 195 / 0.08) 40%, 
-                transparent 70%)`,
-              filter: 'blur(12px)',
-            }}
-          />
-          
-          {/* Liquid side elements - static */}
-          <div className="absolute w-full h-8 opacity-40">
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/[0.08] to-transparent rounded-full blur-md" />
-          </div>
-          
-          {/* Static particles */}
-          {[...Array(3)].map((_, i) => (
-            <div
-              key={i}
-              className="absolute w-1 h-1 rounded-full bg-primary/30 opacity-40"
-              style={{
-                left: `${35 + i * 15}%`,
-              }}
-            />
-          ))}
-        </div>
-        
-        {/* Ultra-thin connecting line - static */}
-        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2">
-          <div className="h-[0.5px] bg-gradient-to-r from-transparent via-primary/20 to-transparent opacity-45" />
-          {/* Glow effect */}
-          <div className="absolute inset-x-0 -inset-y-2 bg-gradient-to-r from-transparent via-primary/[0.05] to-transparent blur-sm" />
-        </div>
-        
-        {/* Edge fade for smooth section transitions */}
-        <div className="absolute inset-0 bg-gradient-to-b from-background/15 via-transparent to-background/15 sm:from-background/20 sm:to-background/20" />
-      </div>
-    </div>
-  );
-}
-
 // Mesh gradient style - Static version
 export function SectionDividerMesh() {
   return (

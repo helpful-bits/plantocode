@@ -49,7 +49,7 @@ const docArticles = [
   },
   {
     slug: 'claude-code-plan-mode',
-    title: 'Claude Code Plan Mode — Safe, Read-Only Planning (Shift+Tab)',
+    title: 'Claude Code Plan Mode - Safe, Read-Only Planning (Shift+Tab)',
     shortTitle: 'Claude Code Plan Mode',
     description: 'Master Claude Code\'s Plan Mode for safe, read-only analysis',
     category: 'Plan Mode Guide',
@@ -97,7 +97,7 @@ const docArticles = [
   },
   {
     slug: 'cursor-plan-mode',
-    title: 'Cursor Plan Mode — Generate plan.md and Manage Todos',
+    title: 'Cursor Plan Mode - Generate plan.md and Manage Todos',
     shortTitle: 'Cursor Plan Mode',
     description: 'Use Cursor\'s Plan setup to create plan.md files and manage todos',
     category: 'Plan Mode Guide',
@@ -105,7 +105,7 @@ const docArticles = [
   },
   {
     slug: 'cline-plan-mode',
-    title: 'Cline Plan & Act — Plan First, Implement After Approval',
+    title: 'Cline Plan & Act - Plan First, Implement After Approval',
     shortTitle: 'Cline Plan Mode',
     description: 'Master Cline\'s dual-mode design for safe planning',
     category: 'Plan Mode Guide',
@@ -113,7 +113,7 @@ const docArticles = [
   },
   {
     slug: 'codex-cli-plan-mode',
-    title: 'Codex CLI Read-Only Mode — Plan Safely Before Edits',
+    title: 'Codex CLI Read-Only Mode - Plan Safely Before Edits',
     shortTitle: 'Codex CLI Plan Mode',
     description: 'Switch Codex CLI to Read-Only with /approvals command',
     category: 'Plan Mode Guide',

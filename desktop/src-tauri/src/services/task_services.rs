@@ -138,7 +138,7 @@ pub async fn create_path_finder_job_service(
     // Create regex file filter payload (the format expected by the processor)
     let payload = RegexFileFilterPayload {
         task_description: args.task_description.clone(),
-        root_directories: vec![],  // Will be populated by workflow orchestrator
+        root_directories: vec![], // Will be populated by workflow orchestrator
     };
 
     // Wrap in JobPayload enum

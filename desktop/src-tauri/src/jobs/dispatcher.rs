@@ -180,11 +180,7 @@ pub async fn process_next_job(app_handle: AppHandle) -> AppResult<Option<JobProc
 
     // Update status to show processor was found before marking as running
     background_job_repo
-        .update_job_status(
-            &job_id,
-            &JobStatus::Preparing,
-            Some("Processor found"),
-        )
+        .update_job_status(&job_id, &JobStatus::Preparing, Some("Processor found"))
         .await?;
 
     // Mark job as running now that we have a processor

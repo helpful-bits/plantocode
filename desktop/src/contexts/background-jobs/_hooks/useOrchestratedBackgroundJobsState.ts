@@ -4,6 +4,8 @@ import { invoke } from "@tauri-apps/api/core";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 
+import { useNotification } from "@/contexts/notification-context";
+
 import {
   type BackgroundJob,
   JOB_STATUSES,
@@ -33,6 +35,7 @@ export function useOrchestratedBackgroundJobsState({
   initialJobs = [],
   projectDirectory,
 }: UseOrchestratedBackgroundJobsStateParams = {}) {
+  const { showNotification } = useNotification();
   // Authoritative job store using Map for O(1) operations
   const jobsMapRef = useRef(new Map<string, BackgroundJob>());
   
@@ -48,6 +51,7 @@ export function useOrchestratedBackgroundJobsState({
   // Refs for tracking state without triggering rerenders
   const isFetchingRef = useRef(false);
   const consecutiveErrorsRef = useRef(0);
+  const notifiedJobsRef = useRef(new Map<string, number>());
   
   // Initialize Map with initial jobs
   useEffect(() => {
@@ -277,6 +281,28 @@ export function useOrchestratedBackgroundJobsState({
               };
               jobsMapRef.current.set(update.jobId, updatedJob);
               updateJobsFromMap();
+
+              // Check if user input is required
+              const payload = event.payload as any;
+              const needsInput =
+                (payload.subStatusMessage && /user\s*input|await(ing)?\s*input|requires\s*your\s*input/i.test(payload.subStatusMessage)) ||
+                (payload.metadata?.taskData?.userInputRequired === true);
+
+              if (needsInput) {
+                const lastNotified = notifiedJobsRef.current.get(update.jobId) || 0;
+                const now = Date.now();
+
+                // Only notify if not notified in last 30 seconds
+                if (now - lastNotified > 30000) {
+                  const inputHint = payload.metadata?.taskData?.userInputHint;
+                  showNotification({
+                    title: "Action needed",
+                    message: inputHint || "This job requires your input.",
+                    type: "warning"
+                  });
+                  notifiedJobsRef.current.set(update.jobId, now);
+                }
+              }
             }
           } catch (err) {
             console.error("[BackgroundJobs] Error processing job:status-changed:", err);

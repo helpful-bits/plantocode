@@ -25,7 +25,9 @@ pub fn get_repository(path: impl AsRef<Path>) -> AppResult<Repository> {
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
 pub fn get_repository(_path: impl AsRef<Path>) -> AppResult<()> {
-    Err(AppError::GitError("Git operations not supported on mobile".to_string()))
+    Err(AppError::GitError(
+        "Git operations not supported on mobile".to_string(),
+    ))
 }
 
 /// Get all non-ignored files in a git repository using git command (fast approach)
@@ -38,7 +40,7 @@ pub fn get_all_non_ignored_files(path: impl AsRef<Path>) -> AppResult<(Vec<PathB
         // Return empty list for mobile platforms
         Ok((Vec::new(), false))
     }
-    
+
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         let path = path.as_ref();
@@ -55,14 +57,14 @@ pub fn get_all_non_ignored_files(path: impl AsRef<Path>) -> AppResult<(Vec<PathB
         let output = {
             use std::os::windows::process::CommandExt;
             const CREATE_NO_WINDOW: u32 = 0x08000000;
-            
+
             std::process::Command::new("git")
                 .args(&["ls-files", "--cached", "--others", "--exclude-standard"])
                 .current_dir(path)
                 .creation_flags(CREATE_NO_WINDOW)
                 .output()
         };
-        
+
         #[cfg(not(target_os = "windows"))]
         let output = std::process::Command::new("git")
             .args(&["ls-files", "--cached", "--others", "--exclude-standard"])
@@ -74,7 +76,10 @@ pub fn get_all_non_ignored_files(path: impl AsRef<Path>) -> AppResult<(Vec<PathB
                 if !output.status.success() {
                     let stderr = String::from_utf8_lossy(&output.stderr);
                     error!("Git command failed: {}", stderr);
-                    return Err(AppError::GitError(format!("Git command failed: {}", stderr)));
+                    return Err(AppError::GitError(format!(
+                        "Git command failed: {}",
+                        stderr
+                    )));
                 }
 
                 let stdout = String::from_utf8_lossy(&output.stdout);
@@ -93,7 +98,7 @@ pub fn get_all_non_ignored_files(path: impl AsRef<Path>) -> AppResult<(Vec<PathB
             }
             Err(e) => {
                 error!("Failed to execute git command: {}", e);
-                
+
                 // Fall back to using git2 library
                 info!("Falling back to git2 library approach");
                 get_all_non_ignored_files_with_git2(path)
@@ -183,12 +188,15 @@ fn get_all_non_ignored_files_with_git2(path: impl AsRef<Path>) -> AppResult<(Vec
 pub fn get_current_branch(path: impl AsRef<Path>) -> AppResult<String> {
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
-        Err(AppError::GitError("Git operations not supported on mobile".to_string()))
+        Err(AppError::GitError(
+            "Git operations not supported on mobile".to_string(),
+        ))
     }
-    
+
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
-        let repo = Repository::open(path.as_ref()).map_err(|e| AppError::GitError(e.to_string()))?;
+        let repo =
+            Repository::open(path.as_ref()).map_err(|e| AppError::GitError(e.to_string()))?;
 
         let head = repo.head().map_err(|e| AppError::GitError(e.to_string()))?;
 
@@ -204,20 +212,19 @@ pub fn get_current_branch(path: impl AsRef<Path>) -> AppResult<String> {
 pub fn get_repository_root(path: impl AsRef<Path>) -> AppResult<PathBuf> {
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
-        Err(AppError::GitError("Git operations not supported on mobile".to_string()))
+        Err(AppError::GitError(
+            "Git operations not supported on mobile".to_string(),
+        ))
     }
-    
+
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
-        let repo = Repository::open(path.as_ref()).map_err(|e| AppError::GitError(e.to_string()))?;
+        let repo =
+            Repository::open(path.as_ref()).map_err(|e| AppError::GitError(e.to_string()))?;
 
         repo.workdir()
             .map(|p| p.to_path_buf())
-            .ok_or_else(|| {
-                AppError::GitError(
-                    "Repository has no working directory".to_string(),
-                )
-            })
+            .ok_or_else(|| AppError::GitError("Repository has no working directory".to_string()))
     }
 }
 
@@ -228,28 +235,25 @@ pub fn get_relative_path_from_repo(
 ) -> AppResult<PathBuf> {
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
-        Err(AppError::GitError("Git operations not supported on mobile".to_string()))
+        Err(AppError::GitError(
+            "Git operations not supported on mobile".to_string(),
+        ))
     }
-    
+
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
-        let repo = Repository::open(repo_path.as_ref()).map_err(|e| AppError::GitError(e.to_string()))?;
+        let repo =
+            Repository::open(repo_path.as_ref()).map_err(|e| AppError::GitError(e.to_string()))?;
 
-        let repo_root = repo.workdir().ok_or_else(|| {
-            AppError::GitError(
-                "Repository has no working directory".to_string(),
-            )
-        })?;
+        let repo_root = repo
+            .workdir()
+            .ok_or_else(|| AppError::GitError("Repository has no working directory".to_string()))?;
 
         file_path
             .as_ref()
             .strip_prefix(repo_root)
             .map(|p| p.to_path_buf())
-            .map_err(|_| {
-                AppError::GitError(
-                    "Failed to get relative path".to_string(),
-                )
-            })
+            .map_err(|_| AppError::GitError("Failed to get relative path".to_string()))
     }
 }
 
@@ -259,7 +263,7 @@ pub fn is_ignored(repo_path: impl AsRef<Path>, file_path: impl AsRef<Path>) -> b
     {
         false
     }
-    
+
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         match Repository::open(repo_path.as_ref()) {

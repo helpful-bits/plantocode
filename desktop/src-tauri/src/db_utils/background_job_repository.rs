@@ -1,7 +1,7 @@
 use crate::error::{AppError, AppResult};
+use crate::events::job_events::*;
 use crate::models::{BackgroundJob, JobStatus, OpenRouterUsage, TaskType};
 use crate::utils::get_timestamp;
-use crate::events::job_events::*;
 use log::{debug, info, warn};
 use serde_json::{Value, json};
 use sqlx::{Row, Sqlite, SqlitePool, sqlite::SqliteRow};
@@ -241,7 +241,7 @@ impl BackgroundJobRepository {
             // Emit response appended event if response grew
             let previous_response_len = job.response.as_ref().map(|r| r.len()).unwrap_or(0);
             let current_response_len = accumulated_response.len();
-            
+
             if current_response_len > previous_response_len {
                 let start_index = previous_response_len;
                 // Ensure we don't create invalid UTF-8 by splitting at char boundaries
@@ -250,14 +250,17 @@ impl BackgroundJobRepository {
                 } else {
                     ""
                 };
-                
-                emit_job_response_appended(app_handle, JobResponseAppendedEvent {
-                    job_id: job_id.to_string(),
-                    chunk: chunk.to_string(),
-                    accumulated_length: current_response_len,
-                });
+
+                emit_job_response_appended(
+                    app_handle,
+                    JobResponseAppendedEvent {
+                        job_id: job_id.to_string(),
+                        chunk: chunk.to_string(),
+                        accumulated_length: current_response_len,
+                    },
+                );
             }
-            
+
             // Emit stream progress event if progress changed
             if let Some(progress) = stream_progress {
                 let previous_progress = if let Some(metadata_str) = &job.metadata {
@@ -273,50 +276,59 @@ impl BackgroundJobRepository {
                 } else {
                     None
                 };
-                
+
                 if previous_progress != Some(progress) {
-                    emit_job_stream_progress(app_handle, JobStreamProgressEvent {
-                        job_id: job_id.to_string(),
-                        progress: Some(progress),
-                        response_length: Some(current_response_len),
-                        last_stream_update_time: Some(now),
-                    });
+                    emit_job_stream_progress(
+                        app_handle,
+                        JobStreamProgressEvent {
+                            job_id: job_id.to_string(),
+                            progress: Some(progress),
+                            response_length: Some(current_response_len),
+                            last_stream_update_time: Some(now),
+                        },
+                    );
                 }
             }
-            
+
             // Emit tokens updated event if tokens changed
             if let Some(usage_data) = usage {
-                let tokens_changed = job.tokens_sent != Some(usage_data.prompt_tokens as i32) ||
-                                   job.tokens_received != Some(usage_data.completion_tokens as i32) ||
-                                   job.cache_read_tokens != Some(usage_data.cache_read_tokens as i64) ||
-                                   job.cache_write_tokens != Some(usage_data.cache_write_tokens as i64);
-                
+                let tokens_changed = job.tokens_sent != Some(usage_data.prompt_tokens as i32)
+                    || job.tokens_received != Some(usage_data.completion_tokens as i32)
+                    || job.cache_read_tokens != Some(usage_data.cache_read_tokens as i64)
+                    || job.cache_write_tokens != Some(usage_data.cache_write_tokens as i64);
+
                 if tokens_changed {
-                    emit_job_tokens_updated(app_handle, JobTokensUpdatedEvent {
-                        job_id: job_id.to_string(),
-                        tokens_sent: Some(usage_data.prompt_tokens as i32),
-                        tokens_received: Some(usage_data.completion_tokens as i32),
-                        cache_read_tokens: if usage_data.cache_read_tokens > 0 {
-                            Some(usage_data.cache_read_tokens as i32)
-                        } else {
-                            None
+                    emit_job_tokens_updated(
+                        app_handle,
+                        JobTokensUpdatedEvent {
+                            job_id: job_id.to_string(),
+                            tokens_sent: Some(usage_data.prompt_tokens as i32),
+                            tokens_received: Some(usage_data.completion_tokens as i32),
+                            cache_read_tokens: if usage_data.cache_read_tokens > 0 {
+                                Some(usage_data.cache_read_tokens as i32)
+                            } else {
+                                None
+                            },
+                            cache_write_tokens: if usage_data.cache_write_tokens > 0 {
+                                Some(usage_data.cache_write_tokens as i32)
+                            } else {
+                                None
+                            },
                         },
-                        cache_write_tokens: if usage_data.cache_write_tokens > 0 {
-                            Some(usage_data.cache_write_tokens as i32)
-                        } else {
-                            None
-                        },
-                    });
+                    );
                 }
-                
+
                 // Emit cost updated event if cost changed
                 if let Some(cost) = usage_data.cost {
                     if job.actual_cost != Some(cost) {
-                        emit_job_cost_updated(app_handle, JobCostUpdatedEvent {
-                            job_id: job_id.to_string(),
-                            actual_cost: cost,
-                            is_finalized: Some(false),
-                        });
+                        emit_job_cost_updated(
+                            app_handle,
+                            JobCostUpdatedEvent {
+                                job_id: job_id.to_string(),
+                                actual_cost: cost,
+                                is_finalized: Some(false),
+                            },
+                        );
                     }
                 }
             }
@@ -374,20 +386,26 @@ impl BackgroundJobRepository {
         // Emit granular events
         if let Some(ref app_handle) = self.app_handle {
             // Emit tokens updated event
-            emit_job_tokens_updated(app_handle, JobTokensUpdatedEvent {
-                job_id: job_id.to_string(),
-                tokens_sent: Some(usage.tokens_input as i32),
-                tokens_received: Some(usage.tokens_output as i32),
-                cache_read_tokens: usage.cache_read_tokens.map(|v| v as i32),
-                cache_write_tokens: usage.cache_write_tokens.map(|v| v as i32),
-            });
-            
+            emit_job_tokens_updated(
+                app_handle,
+                JobTokensUpdatedEvent {
+                    job_id: job_id.to_string(),
+                    tokens_sent: Some(usage.tokens_input as i32),
+                    tokens_received: Some(usage.tokens_output as i32),
+                    cache_read_tokens: usage.cache_read_tokens.map(|v| v as i32),
+                    cache_write_tokens: usage.cache_write_tokens.map(|v| v as i32),
+                },
+            );
+
             // Emit cost updated event
-            emit_job_cost_updated(app_handle, JobCostUpdatedEvent {
-                job_id: job_id.to_string(),
-                actual_cost: usage.estimated_cost,
-                is_finalized: Some(false),
-            });
+            emit_job_cost_updated(
+                app_handle,
+                JobCostUpdatedEvent {
+                    job_id: job_id.to_string(),
+                    actual_cost: usage.estimated_cost,
+                    is_finalized: Some(false),
+                },
+            );
         }
 
         debug!(
@@ -479,12 +497,15 @@ impl BackgroundJobRepository {
 
         // Emit stream progress event
         if let Some(ref app_handle) = self.app_handle {
-            emit_job_stream_progress(app_handle, JobStreamProgressEvent {
-                job_id: job_id.to_string(),
-                progress: stream_progress,
-                response_length: Some(usage_update.tokens_output as usize),
-                last_stream_update_time: Some(now),
-            });
+            emit_job_stream_progress(
+                app_handle,
+                JobStreamProgressEvent {
+                    job_id: job_id.to_string(),
+                    progress: stream_progress,
+                    response_length: Some(usage_update.tokens_output as usize),
+                    last_stream_update_time: Some(now),
+                },
+            );
         }
 
         debug!(
@@ -640,10 +661,10 @@ impl BackgroundJobRepository {
     /// Get all jobs, sorted by status priority and updated time
     /// Prioritizes recent jobs and deprioritizes old stuck jobs
     pub async fn get_all_visible_jobs(&self) -> AppResult<Vec<BackgroundJob>> {
-        // Get current timestamp for recency calculation 
+        // Get current timestamp for recency calculation
         let thirty_minutes_ago = get_timestamp() - (30 * 60 * 1000); // 30 minutes in milliseconds
         let seven_days_ago = get_timestamp() - (7 * 24 * 60 * 60 * 1000); // For completed jobs history
-        
+
         let rows = sqlx::query(
             r#"
             SELECT * FROM background_jobs 
@@ -672,17 +693,17 @@ impl BackgroundJobRepository {
             LIMIT 100
             "#,
         )
-        .bind(JobStatus::Running.to_string())        // $1
-        .bind(thirty_minutes_ago)                    // $2
-        .bind(JobStatus::Preparing.to_string())      // $3
-        .bind(JobStatus::Queued.to_string())         // $4
+        .bind(JobStatus::Running.to_string()) // $1
+        .bind(thirty_minutes_ago) // $2
+        .bind(JobStatus::Preparing.to_string()) // $3
+        .bind(JobStatus::Queued.to_string()) // $4
         .bind(JobStatus::AcknowledgedByWorker.to_string()) // $5
-        .bind(JobStatus::Created.to_string())        // $6
-        .bind(JobStatus::Idle.to_string())           // $7
-        .bind(JobStatus::Completed.to_string())      // $8
-        .bind(seven_days_ago)                        // $9
-        .bind(JobStatus::Failed.to_string())         // $10
-        .bind(JobStatus::Canceled.to_string())       // $11
+        .bind(JobStatus::Created.to_string()) // $6
+        .bind(JobStatus::Idle.to_string()) // $7
+        .bind(JobStatus::Completed.to_string()) // $8
+        .bind(seven_days_ago) // $9
+        .bind(JobStatus::Failed.to_string()) // $10
+        .bind(JobStatus::Canceled.to_string()) // $11
         .fetch_all(&*self.pool)
         .await
         .map_err(|e| AppError::DatabaseError(format!("Failed to fetch jobs: {}", e)))?;
@@ -698,11 +719,14 @@ impl BackgroundJobRepository {
     }
 
     /// Get all visible jobs for a specific project, sorted by status priority and updated time
-    pub async fn get_all_visible_jobs_for_project(&self, project_hash: &str) -> AppResult<Vec<BackgroundJob>> {
-        // Get current timestamp for recency calculation 
+    pub async fn get_all_visible_jobs_for_project(
+        &self,
+        project_hash: &str,
+    ) -> AppResult<Vec<BackgroundJob>> {
+        // Get current timestamp for recency calculation
         let thirty_minutes_ago = get_timestamp() - (30 * 60 * 1000); // 30 minutes in milliseconds
         let seven_days_ago = get_timestamp() - (7 * 24 * 60 * 60 * 1000); // For completed jobs history
-        
+
         let rows = sqlx::query(
             r#"
             SELECT bj.* FROM background_jobs bj
@@ -855,13 +879,16 @@ impl BackgroundJobRepository {
 
         // Emit job:status-changed event if status has changed
         if let Some(app_handle) = &self.app_handle {
-            emit_job_status_changed(app_handle, JobStatusChangedEvent {
-                job_id: job.id.clone(),
-                status: job.status.clone(),
-                start_time: job.start_time,
-                end_time: job.end_time,
-                sub_status_message: job.error_message.clone(),
-            });
+            emit_job_status_changed(
+                app_handle,
+                JobStatusChangedEvent {
+                    job_id: job.id.clone(),
+                    status: job.status.clone(),
+                    start_time: job.start_time,
+                    end_time: job.end_time,
+                    sub_status_message: job.error_message.clone(),
+                },
+            );
         }
 
         Ok(())
@@ -898,13 +925,16 @@ impl BackgroundJobRepository {
 
         // Emit job:status-changed event
         if let Some(app_handle) = &self.app_handle {
-            emit_job_status_changed(app_handle, JobStatusChangedEvent {
-                job_id: job_id.to_string(),
-                status: status.to_string(),
-                start_time: None,
-                end_time: None,
-                sub_status_message: message.map(|m| m.to_string()),
-            });
+            emit_job_status_changed(
+                app_handle,
+                JobStatusChangedEvent {
+                    job_id: job_id.to_string(),
+                    status: status.to_string(),
+                    start_time: None,
+                    end_time: None,
+                    sub_status_message: message.map(|m| m.to_string()),
+                },
+            );
         }
 
         Ok(())
@@ -937,13 +967,16 @@ impl BackgroundJobRepository {
 
         // Emit job:status-changed event
         if let Some(app_handle) = &self.app_handle {
-            emit_job_status_changed(app_handle, JobStatusChangedEvent {
-                job_id: job_id.to_string(),
-                status: status.to_string(),
-                start_time: None,
-                end_time: None,
-                sub_status_message: message.map(|m| m.to_string()),
-            });
+            emit_job_status_changed(
+                app_handle,
+                JobStatusChangedEvent {
+                    job_id: job_id.to_string(),
+                    status: status.to_string(),
+                    start_time: None,
+                    end_time: None,
+                    sub_status_message: message.map(|m| m.to_string()),
+                },
+            );
         }
 
         Ok(())
@@ -966,13 +999,16 @@ impl BackgroundJobRepository {
 
         // Emit job:status-changed event
         if let Some(app_handle) = &self.app_handle {
-            emit_job_status_changed(app_handle, JobStatusChangedEvent {
-                job_id: job_id.to_string(),
-                status: JobStatus::Running.to_string(),
-                start_time: Some(now),
-                end_time: None,
-                sub_status_message: None,
-            });
+            emit_job_status_changed(
+                app_handle,
+                JobStatusChangedEvent {
+                    job_id: job_id.to_string(),
+                    status: JobStatus::Running.to_string(),
+                    start_time: Some(now),
+                    end_time: None,
+                    sub_status_message: None,
+                },
+            );
         }
 
         Ok(())
@@ -1138,26 +1174,32 @@ impl BackgroundJobRepository {
             // Emit granular events
             if let Some(app_handle) = &self.app_handle {
                 // Emit status changed event
-                emit_job_status_changed(app_handle, JobStatusChangedEvent {
-                    job_id: job_id.to_string(),
-                    status: JobStatus::Completed.to_string(),
-                    start_time: None,
-                    end_time: Some(now),
-                    sub_status_message: None,
-                });
-                
-                // Emit finalized event if cost is provided
-                if let Some(cost) = actual_cost {
-                    emit_job_finalized(app_handle, JobFinalizedEvent {
+                emit_job_status_changed(
+                    app_handle,
+                    JobStatusChangedEvent {
                         job_id: job_id.to_string(),
                         status: JobStatus::Completed.to_string(),
-                        response: Some(response.to_string()),
-                        actual_cost: cost,
-                        tokens_sent: tokens_sent,
-                        tokens_received: tokens_received,
-                        cache_read_tokens: cache_read_tokens.map(|v| v as i32),
-                        cache_write_tokens: cache_write_tokens.map(|v| v as i32),
-                    });
+                        start_time: None,
+                        end_time: Some(now),
+                        sub_status_message: None,
+                    },
+                );
+
+                // Emit finalized event if cost is provided
+                if let Some(cost) = actual_cost {
+                    emit_job_finalized(
+                        app_handle,
+                        JobFinalizedEvent {
+                            job_id: job_id.to_string(),
+                            status: JobStatus::Completed.to_string(),
+                            response: Some(response.to_string()),
+                            actual_cost: cost,
+                            tokens_sent: tokens_sent,
+                            tokens_received: tokens_received,
+                            cache_read_tokens: cache_read_tokens.map(|v| v as i32),
+                            cache_write_tokens: cache_write_tokens.map(|v| v as i32),
+                        },
+                    );
                 }
             }
         } else {
@@ -1342,26 +1384,32 @@ impl BackgroundJobRepository {
             // Emit granular events
             if let Some(app_handle) = &self.app_handle {
                 // Emit status changed event
-                emit_job_status_changed(app_handle, JobStatusChangedEvent {
-                    job_id: job_id.to_string(),
-                    status: JobStatus::Failed.to_string(),
-                    start_time: None,
-                    end_time: Some(now),
-                    sub_status_message: Some(error_message.to_string()),
-                });
-                
-                // Emit finalized event if cost is provided (for failed jobs with partial costs)
-                if let Some(cost) = actual_cost {
-                    emit_job_finalized(app_handle, JobFinalizedEvent {
+                emit_job_status_changed(
+                    app_handle,
+                    JobStatusChangedEvent {
                         job_id: job_id.to_string(),
                         status: JobStatus::Failed.to_string(),
-                        response: None, // Failed jobs typically don't have a complete response
-                        actual_cost: cost,
-                        tokens_sent: tokens_sent,
-                        tokens_received: tokens_received,
-                        cache_read_tokens: None,
-                        cache_write_tokens: None,
-                    });
+                        start_time: None,
+                        end_time: Some(now),
+                        sub_status_message: Some(error_message.to_string()),
+                    },
+                );
+
+                // Emit finalized event if cost is provided (for failed jobs with partial costs)
+                if let Some(cost) = actual_cost {
+                    emit_job_finalized(
+                        app_handle,
+                        JobFinalizedEvent {
+                            job_id: job_id.to_string(),
+                            status: JobStatus::Failed.to_string(),
+                            response: None, // Failed jobs typically don't have a complete response
+                            actual_cost: cost,
+                            tokens_sent: tokens_sent,
+                            tokens_received: tokens_received,
+                            cache_read_tokens: None,
+                            cache_write_tokens: None,
+                        },
+                    );
                 }
             }
         } else {
@@ -1420,10 +1468,13 @@ impl BackgroundJobRepository {
 
             // Emit error details event
             if let Some(app_handle) = &self.app_handle {
-                emit_job_error_details(app_handle, JobErrorDetailsEvent {
-                    job_id: job_id.to_string(),
-                    error_details: error_details.clone(),
-                });
+                emit_job_error_details(
+                    app_handle,
+                    JobErrorDetailsEvent {
+                        job_id: job_id.to_string(),
+                        error_details: error_details.clone(),
+                    },
+                );
             }
         } else {
             warn!(
@@ -1510,26 +1561,32 @@ impl BackgroundJobRepository {
             // Emit granular events
             if let Some(ref app_handle) = self.app_handle {
                 // Emit status changed event
-                emit_job_status_changed(app_handle, JobStatusChangedEvent {
-                    job_id: job_id.to_string(),
-                    status: JobStatus::Canceled.to_string(),
-                    start_time: None,
-                    end_time: Some(now),
-                    sub_status_message: Some(reason.to_string()),
-                });
-                
-                // Emit finalized event if cost is provided
-                if let Some(cost_value) = cost {
-                    emit_job_finalized(app_handle, JobFinalizedEvent {
+                emit_job_status_changed(
+                    app_handle,
+                    JobStatusChangedEvent {
                         job_id: job_id.to_string(),
                         status: JobStatus::Canceled.to_string(),
-                        response: None,
-                        actual_cost: cost_value,
-                        tokens_sent: None,
-                        tokens_received: None,
-                        cache_read_tokens: None,
-                        cache_write_tokens: None,
-                    });
+                        start_time: None,
+                        end_time: Some(now),
+                        sub_status_message: Some(reason.to_string()),
+                    },
+                );
+
+                // Emit finalized event if cost is provided
+                if let Some(cost_value) = cost {
+                    emit_job_finalized(
+                        app_handle,
+                        JobFinalizedEvent {
+                            job_id: job_id.to_string(),
+                            status: JobStatus::Canceled.to_string(),
+                            response: None,
+                            actual_cost: cost_value,
+                            tokens_sent: None,
+                            tokens_received: None,
+                            cache_read_tokens: None,
+                            cache_write_tokens: None,
+                        },
+                    );
                 }
             }
         } else {
@@ -1660,9 +1717,12 @@ impl BackgroundJobRepository {
 
         // Emit job:deleted event
         if let Some(ref app_handle) = self.app_handle {
-            emit_job_deleted(app_handle, JobDeletedEvent {
-                job_id: id.to_string(),
-            });
+            emit_job_deleted(
+                app_handle,
+                JobDeletedEvent {
+                    job_id: id.to_string(),
+                },
+            );
         }
 
         Ok(())
@@ -2324,11 +2384,14 @@ impl BackgroundJobRepository {
 
         // Emit cost updated event with finalized flag
         if let Some(ref app_handle) = self.app_handle {
-            emit_job_cost_updated(app_handle, JobCostUpdatedEvent {
-                job_id: job_id.to_string(),
-                actual_cost: final_cost,
-                is_finalized: Some(true),
-            });
+            emit_job_cost_updated(
+                app_handle,
+                JobCostUpdatedEvent {
+                    job_id: job_id.to_string(),
+                    actual_cost: final_cost,
+                    is_finalized: Some(true),
+                },
+            );
         }
 
         Ok(updated_job)

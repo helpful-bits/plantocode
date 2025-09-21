@@ -565,7 +565,7 @@ async fn get_stage_model_config_for_definition(
         Some(repo) => repo.inner().clone(),
         None => {
             return Err(AppError::InitializationError(
-                "Settings repository not available in app state".to_string()
+                "Settings repository not available in app state".to_string(),
             ));
         }
     };

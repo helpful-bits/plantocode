@@ -13,10 +13,10 @@ export function Pricing() {
       <div className="container mx-auto relative z-10">
         <div className="text-center mb-12 sm:mb-16">
           <Reveal as="h2" className="text-4xl sm:text-5xl lg:text-6xl mb-6 text-primary-emphasis font-bold text-shadow-subtle">
-            No-Nonsense Pricing
+            Built for Professional Development
           </Reveal>
           <Reveal as="p" className="text-lg sm:text-xl max-w-3xl mx-auto leading-relaxed font-medium text-description-muted" delay={0.1}>
-            Let's be frank: LLM API tokens add up. But you'll know exactly what you're spending. Every operation reports its exact token cost in real-time, so you're always in control.
+            Transparent token costs. No seat licenses. Pay only for AI inference. Watch your ROI in real-time - one saved production incident pays for months of usage.
           </Reveal>
         </div>
 
@@ -30,10 +30,10 @@ export function Pricing() {
               <div className="content-spacing-lg sm:responsive-spacing-x text-center relative z-10 text-safe-padding">
                 <Reveal delay={0.2}>
                   <h3 className="text-3xl font-semibold mb-6 text-primary-emphasis">
-                    Pay For What You Use
+                    Transparent Pricing
                   </h3>
                   <p className="text-lg mb-8 text-muted-foreground">
-                    Start with free credits on us. After that, it's pure pay-as-you-go. No subscriptions. No hidden fees.
+                    $10 free credits to validate this actually works. Then pay-as-you-go. No subscriptions. No per-seat licensing. Just raw API costs with full transparency.
                   </p>
                 </Reveal>
 
@@ -51,13 +51,13 @@ export function Pricing() {
                   </motion.div>
 
                   <h4 className="text-4xl font-bold mb-3 text-primary text-shadow-subtle">
-                    Free Welcome Credits
+                    $10 Free Credits
                   </h4>
                   <p className="text-lg font-medium text-accent-highlight">
-                    To Try All Features & Models
+                    Test Plan Editor, Merge Instructions, Terminal Integration
                   </p>
                   <p className="text-sm text-muted-foreground mt-2">
-                    New users get free credits (3-day expiration). Auto top-off is available.
+                    Enough to generate 50+ implementation plans. Auto top-off when you're convinced.
                   </p>
                 </Reveal>
 

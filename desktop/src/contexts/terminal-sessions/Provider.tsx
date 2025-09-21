@@ -5,7 +5,6 @@ import type { ReactNode } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { Channel } from "@tauri-apps/api/core";
 import { invoke } from "@/utils/tauri-invoke-wrapper";
-import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { useNotification } from "@/contexts/notification-context";
 
 import type {
@@ -13,10 +12,17 @@ import type {
   TerminalStatus,
   StartSessionOptions,
   TerminalSessionsContextShape,
+  AttentionState,
+  AttentionLevel,
 } from "./types";
+import { useBackgroundJobs } from "../background-jobs";
 
 const STUCK_TIMEOUT_MS = 2 * 60 * 1000;
-
+const ATTENTION_THROTTLE_MS = 30 * 1000;
+const INACTIVITY_TIMEOUT_MS = 30 * 1000;
+const RETRY_DELAY_BASE = 100; // Base retry delay in ms
+const MAX_RETRY_ATTEMPTS = 3;
+const RETRY_DELAYS = [100, 500, 2000]; // Exponential backoff delays
 function normalizeToUint8Array(chunk: any): Uint8Array {
   // Fast path for most common case
   if (chunk instanceof Uint8Array) return chunk;
@@ -52,7 +58,7 @@ export const TerminalSessionsContext = createContext<TerminalSessionsContextShap
   sessions: new Map(),
   canOpenTerminal: async () => ({ ok: false }),
   startSession: async () => {},
-  write: () => {},
+  write: async () => {},
   sendCtrlC: async () => {},
   kill: async () => {},
   clearLog: async () => {},
@@ -65,6 +71,13 @@ export const TerminalSessionsContext = createContext<TerminalSessionsContextShap
   setOutputBytesCallback: () => {},
   removeOutputBytesCallback: () => {},
   resize: async () => {},
+  handleImagePaste: async () => {},
+  getAttention: () => undefined,
+  getAttentionCount: () => 0,
+  subscribeAttention: () => () => {},
+  getSessionHealth: async () => ({ healthy: false }),
+  recoverSession: async () => ({ success: false }),
+  getConnectionState: () => 'disconnected',
 });
 
 export function TerminalSessionsProvider({ children }: { children: ReactNode }) {
@@ -74,28 +87,216 @@ export function TerminalSessionsProvider({ children }: { children: ReactNode }) 
   const outputBytesCallbacksRef = useRef<Map<string, (data: Uint8Array, onComplete: () => void) => void>>(new Map());
   const channelsRef = useRef<Map<string, Channel<any>>>(new Map());
   const readyFlagsRef = useRef<Map<string, boolean>>(new Map());
-  const rafIdsRef = useRef<Map<string, number>>(new Map());
-  const bytesBatchesRef = useRef<Map<string, Uint8Array[]>>(new Map());
-
-  // Flow control state tracking
-  const pendingWritesRef = useRef<Map<string, number>>(new Map());
-  const isPausedRef = useRef<Map<string, boolean>>(new Map());
-  const MAX_PENDING_WRITES = 8; // pause at/above
-  const RESUME_THRESHOLD = 4;   // resume at/below
-
-  // Input write coalescing
-  const inputQueuesRef = useRef<Map<string, string[]>>(new Map());
-  const inputTimersRef = useRef<Map<string, number>>(new Map());
+  const attentionMap = useRef<Map<string, AttentionState>>(new Map());
+  const attentionSubscribers = useRef<Set<(map: Map<string, AttentionState>) => void>>(new Set());
+  const inactivityTimeouts = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const attentionThrottles = useRef<Map<string, number>>(new Map());
+  const processingQueue = useRef<Map<string, string>>(new Map());
+  const processingTimeouts = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const retryAttempts = useRef<Map<string, number>>(new Map());
+  const connectionStates = useRef<Map<string, 'connected' | 'connecting' | 'disconnected' | 'error'>>(new Map());
+  const retryTimeouts = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const healthCheckIntervals = useRef<Map<string, NodeJS.Timer>>(new Map());
+  const hasReceivedOutputRef = useRef<Map<string, boolean>>(new Map());
 
   // Text encoder for ultra-low latency input processing
   const encoder = new TextEncoder();
+  const decoder = new TextDecoder('utf-8', { fatal: false });
 
-  const { showNotification } = useNotification();
+  const { showNotification, showPersistentNotification, dismissNotification } = useNotification();
+  const { jobs } = useBackgroundJobs();
+  const notificationIdsRef = useRef<Map<string, string>>(new Map());
 
   // Keep ref in sync with state
   useEffect(() => {
     sessionsRef.current = sessions;
   }, [sessions]);
+
+  const notifyAttentionSubscribers = useCallback(() => {
+    attentionSubscribers.current.forEach(callback => {
+      callback(attentionMap.current);
+    });
+  }, []);
+
+  const setAttention = useCallback((jobId: string, level: AttentionLevel, message: string) => {
+    const now = Date.now();
+    const existing = attentionMap.current.get(jobId);
+
+    if (existing && existing.level === level && existing.message === message) {
+      return;
+    }
+
+    attentionMap.current.set(jobId, {
+      level,
+      message,
+      lastDetectedAt: now,
+    });
+
+    // Show persistent notification for high attention
+    if (level === 'high' && !notificationIdsRef.current.has(jobId)) {
+      const notificationId = showPersistentNotification({
+        title: "User input required",
+        message: "Agent paused, waiting for your input.",
+        tag: "terminal-input",
+        data: { jobId },
+        onClick: () => window.dispatchEvent(new CustomEvent('open-plan-terminal', { detail: { jobId } }))
+      });
+      notificationIdsRef.current.set(jobId, notificationId);
+    }
+
+    notifyAttentionSubscribers();
+  }, [notifyAttentionSubscribers, showPersistentNotification]);
+
+  const clearAttention = useCallback((jobId: string) => {
+    if (attentionMap.current.has(jobId)) {
+      attentionMap.current.delete(jobId);
+      notifyAttentionSubscribers();
+    }
+
+    // Clear notification when attention is cleared
+    const notificationId = notificationIdsRef.current.get(jobId);
+    if (notificationId) {
+      dismissNotification(notificationId);
+      notificationIdsRef.current.delete(jobId);
+    }
+  }, [notifyAttentionSubscribers, dismissNotification]);
+
+  // Pre-compile regex patterns once to avoid re-compilation on every call
+  const attentionPatterns = useMemo(() => [
+    /(awaiting|waiting).*(input|your response)/i,
+    /press enter to continue/i,
+    /select an option|\[y\/n\]/i,
+  ], []);
+
+  const detectAttentionFromOutput = useCallback((jobId: string, text: string) => {
+    const now = Date.now();
+    const lastThrottle = attentionThrottles.current.get(jobId) || 0;
+
+    if (now - lastThrottle < ATTENTION_THROTTLE_MS) {
+      return;
+    }
+
+    // Early exit if text is too short to match any patterns
+    if (text.length < 5) return;
+
+    // Use a single combined regex for better performance
+    const combinedPattern = /(?:awaiting|waiting).*(?:input|your response)|press enter to continue|select an option|\[y\/n\]/i;
+
+    if (combinedPattern.test(text)) {
+      setAttention(jobId, 'high', 'User input required');
+      attentionThrottles.current.set(jobId, now);
+    }
+  }, [setAttention]);
+
+  const scheduleInactivityCheck = useCallback((jobId: string) => {
+    const existingTimeout = inactivityTimeouts.current.get(jobId);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+    }
+
+    const timeoutId = setTimeout(() => {
+      const session = sessionsRef.current.get(jobId);
+      if (session && session.status === 'running') {
+        setAttention(jobId, 'medium', 'Terminal inactive - may require input');
+      }
+      inactivityTimeouts.current.delete(jobId);
+    }, INACTIVITY_TIMEOUT_MS);
+
+    inactivityTimeouts.current.set(jobId, timeoutId);
+  }, [setAttention]);
+
+  const clearInactivityCheck = useCallback((jobId: string) => {
+    const existingTimeout = inactivityTimeouts.current.get(jobId);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+      inactivityTimeouts.current.delete(jobId);
+    }
+  }, []);
+
+  // Helper function to show error messages directly in terminal
+  const showTerminalError = useCallback((jobId: string, message: string, severity: 'warning' | 'error' = 'error') => {
+    const callback = outputBytesCallbacksRef.current.get(jobId);
+    if (callback) {
+      const color = severity === 'error' ? '31' : '33'; // red for error, yellow for warning
+      const errorMsg = `\x1b[${color}m${message}\x1b[0m\r\n`;
+      callback(new TextEncoder().encode(errorMsg), () => {});
+    }
+  }, []);
+
+  // Helper function to update connection state
+  const updateConnectionState = useCallback((jobId: string, state: 'connected' | 'connecting' | 'disconnected' | 'error') => {
+    connectionStates.current.set(jobId, state);
+    setSessions(prev => {
+      const newMap = new Map(prev);
+      const session = newMap.get(jobId);
+      if (session) {
+        newMap.set(jobId, { ...session, connectionState: state });
+      }
+      return newMap;
+    });
+  }, []);
+
+  // Helper function to handle retries with exponential backoff
+  const scheduleRetry = useCallback(async (jobId: string, retryFn: () => Promise<void>, errorMessage: string) => {
+    const currentAttempts = retryAttempts.current.get(jobId) || 0;
+
+    if (currentAttempts >= MAX_RETRY_ATTEMPTS) {
+      showTerminalError(jobId, `Failed after ${MAX_RETRY_ATTEMPTS} attempts: ${errorMessage}`, 'error');
+      updateConnectionState(jobId, 'error');
+      return;
+    }
+
+    const delay = RETRY_DELAYS[currentAttempts] || RETRY_DELAYS[RETRY_DELAYS.length - 1];
+    retryAttempts.current.set(jobId, currentAttempts + 1);
+
+    showTerminalError(jobId, `[Reconnection attempt ${currentAttempts + 1}/${MAX_RETRY_ATTEMPTS} in ${delay}ms...]`, 'warning');
+
+    const timeoutId = setTimeout(async () => {
+      retryTimeouts.current.delete(jobId);
+      try {
+        await retryFn();
+        // Success - reset retry counter
+        retryAttempts.current.delete(jobId);
+        showTerminalError(jobId, '[Reconnection successful]', 'warning');
+        updateConnectionState(jobId, 'connected');
+      } catch (error) {
+        console.error(`Retry attempt ${currentAttempts + 1} failed for ${jobId}:`, error);
+        // Schedule next retry
+        scheduleRetry(jobId, retryFn, errorMessage);
+      }
+    }, delay);
+
+    retryTimeouts.current.set(jobId, timeoutId);
+  }, [showTerminalError, updateConnectionState]);
+
+  // Pre-compile ANSI escape regex for better performance
+  const ansiEscapeRegex = useMemo(() => /\x1b\[[0-9;]*m/g, []);
+
+  const stripAnsiEscapes = useCallback((text: string): string => {
+    return text.replace(ansiEscapeRegex, '');
+  }, [ansiEscapeRegex]);
+
+  const updateLastOutput = useCallback((jobId: string, text: string) => {
+    // Use RAF to batch DOM updates
+    requestAnimationFrame(() => {
+      const cleanText = stripAnsiEscapes(text);
+      const lines = cleanText.split('\n').filter(line => line.trim().length > 0);
+
+      if (lines.length > 0) {
+        const lastLine = lines[lines.length - 1].slice(0, 200);
+
+        setSessions(prev => {
+          const newMap = new Map(prev);
+          const session = newMap.get(jobId);
+          if (session && session.lastOutput !== lastLine) {
+            newMap.set(jobId, { ...session, lastOutput: lastLine });
+            return newMap;
+          }
+          return prev; // No change, avoid re-render
+        });
+      }
+    });
+  }, [stripAnsiEscapes]);
 
   const updateSessionStatus = useCallback((jobId: string, status: TerminalStatus, exitCode?: number) => {
     setSessions(prev => {
@@ -106,19 +307,12 @@ export function TerminalSessionsProvider({ children }: { children: ReactNode }) 
       }
       return newMap;
     });
-  }, []);
 
-  const updateLastOutputAt = useCallback((jobId: string) => {
-    setSessions(prev => {
-      const newMap = new Map(prev);
-      const session = newMap.get(jobId);
-      if (session) {
-        newMap.set(jobId, { ...session, lastOutputAt: new Date() });
-      }
-      return newMap;
-    });
-  }, []);
-
+    // Clear attention and dismiss notification when terminal exits
+    if (status === 'completed' || status === 'failed') {
+      clearAttention(jobId);
+    }
+  }, [clearAttention]);
 
   const scheduleStuckCheck = useCallback((jobId: string) => {
     const existingTimeout = stuckTimeoutsRef.current.get(jobId);
@@ -231,15 +425,85 @@ export function TerminalSessionsProvider({ children }: { children: ReactNode }) 
     }
   }, [showNotification]);
 
+  // Helper to get session health
+  const getSessionHealth = useCallback(async (jobId: string) => {
+    try {
+      const result = await invoke<{
+        healthy: boolean;
+        reason?: string;
+        recovery_hint?: string;
+        pty_alive?: boolean;
+        has_clients?: boolean;
+      }>('get_session_health_command', { jobId });
+
+      return {
+        healthy: result.healthy,
+        reason: result.reason,
+        recovery_hint: result.recovery_hint,
+      };
+    } catch (error) {
+      console.error(`Failed to get session health for ${jobId}:`, error);
+      return {
+        healthy: false,
+        reason: 'health_check_failed',
+        recovery_hint: 'Try restarting the session'
+      };
+    }
+  }, []);
+
+  // Helper to recover session
+  const recoverSession = useCallback(async (jobId: string, recoveryType: 'restart_pty' | 'clear_session' | 'force_reconnect') => {
+    try {
+      updateConnectionState(jobId, 'connecting');
+      showTerminalError(jobId, `[Attempting recovery: ${recoveryType}...]`, 'warning');
+
+      const result = await invoke<{
+        success: boolean;
+        message?: string;
+        action?: string;
+      }>('recover_terminal_session_command', { jobId, recoveryType });
+
+      if (result.success) {
+        showTerminalError(jobId, `[Recovery successful: ${result.message}]`, 'warning');
+        updateConnectionState(jobId, 'connected');
+        return { success: true, message: result.message };
+      } else {
+        showTerminalError(jobId, `[Recovery failed: ${result.message}]`, 'error');
+        updateConnectionState(jobId, 'error');
+        return { success: false, message: result.message };
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      showTerminalError(jobId, `[Recovery failed: ${errorMsg}]`, 'error');
+      updateConnectionState(jobId, 'error');
+      return { success: false, message: errorMsg };
+    }
+  }, [updateConnectionState, showTerminalError]);
+
+  // Helper to get connection state
+  const getConnectionState = useCallback((jobId: string) => {
+    return connectionStates.current.get(jobId) || 'disconnected';
+  }, []);
+
   useEffect(() => {
     let unlistenExit: (() => void) | null = null;
     let unlistenReady: (() => void) | null = null;
+    let unlistenStatusChanged: (() => void) | null = null;
+    let unlistenDeleted: (() => void) | null = null;
 
     const setupListeners = async () => {
       unlistenExit = await listen("terminal-exit", (event: any) => {
         const { jobId, code } = event.payload;
 
-        updateSessionStatus(jobId, code === 0 ? "completed" : "failed", code);
+        // Check if session was already marked as completed (e.g., by manual kill)
+        const currentSession = sessionsRef.current.get(jobId);
+        if (currentSession?.status === "completed") {
+          // Don't override completed status, just update exit code
+          updateSessionStatus(jobId, "completed", code);
+        } else {
+          // Normal exit handling
+          updateSessionStatus(jobId, code === 0 ? "completed" : "failed", code);
+        }
 
         const stuckTimeout = stuckTimeoutsRef.current.get(jobId);
         if (stuckTimeout) {
@@ -252,30 +516,24 @@ export function TerminalSessionsProvider({ children }: { children: ReactNode }) 
 
         channelsRef.current.delete(jobId);
         readyFlagsRef.current.delete(jobId);
-        pendingWritesRef.current.delete(jobId);
-        isPausedRef.current.delete(jobId);
 
         // Clean up refs
         outputBytesCallbacksRef.current.delete(jobId);
-        bytesBatchesRef.current.delete(jobId);
+        clearInactivityCheck(jobId);
+        clearAttention(jobId);
+        attentionThrottles.current.delete(jobId);
 
-        // Clean up input coalescing
-        const inputTimer = inputTimersRef.current.get(jobId);
-        if (inputTimer) {
-          clearTimeout(inputTimer);
-          inputTimersRef.current.delete(jobId);
+        // Clean up processing queue
+        processingQueue.current.delete(jobId);
+        const timeout = processingTimeouts.current.get(jobId);
+        if (timeout) {
+          clearTimeout(timeout);
+          processingTimeouts.current.delete(jobId);
         }
-        inputQueuesRef.current.delete(jobId);
 
         // Clean up the global reference to prevent memory leak
         delete (window as any)[`__terminal_channel_${jobId}`];
 
-        // Clean up RAF and batch
-        const rafId = rafIdsRef.current.get(jobId);
-        if (rafId) {
-          cancelAnimationFrame(rafId);
-          rafIdsRef.current.delete(jobId);
-        }
       });
 
       unlistenReady = await listen('terminal-ready', (event: any) => {
@@ -287,15 +545,69 @@ export function TerminalSessionsProvider({ children }: { children: ReactNode }) 
         }
         readyFlagsRef.current.set(rJob, true);
 
-
         setSessions(prev => {
           const next = new Map(prev);
           const s = next.get(rJob);
-          if (s) {
+          if (s && s.status === 'starting') {
             next.set(rJob, { ...s, status: "running", ready: true });
           }
           return next;
         });
+      });
+
+      unlistenStatusChanged = await listen('terminal:status-changed', (event: any) => {
+        const { jobId, status, updatedAt } = event.payload;
+        if (!jobId || !status) {
+          console.warn('terminal:status-changed event missing required fields:', event.payload);
+          return;
+        }
+
+        setSessions(prev => {
+          const next = new Map(prev);
+          const session = next.get(jobId);
+          if (session) {
+            next.set(jobId, {
+              ...session,
+              status: status,
+              lastOutputAt: updatedAt ? new Date(parseInt(updatedAt) * 1000) : session.lastOutputAt,
+            });
+          }
+          return next;
+        });
+      });
+
+      unlistenDeleted = await listen('terminal:deleted', (event: any) => {
+        const { jobId } = event.payload;
+        if (!jobId) {
+          console.warn('terminal:deleted event missing jobId:', event.payload);
+          return;
+        }
+
+        setSessions(prev => {
+          const next = new Map(prev);
+          next.delete(jobId);
+          return next;
+        });
+
+        // Clean up refs
+        channelsRef.current.delete(jobId);
+        readyFlagsRef.current.delete(jobId);
+        outputBytesCallbacksRef.current.delete(jobId);
+        const stuckTimeout = stuckTimeoutsRef.current.get(jobId);
+        if (stuckTimeout) {
+          clearTimeout(stuckTimeout);
+          stuckTimeoutsRef.current.delete(jobId);
+        }
+        clearInactivityCheck(jobId);
+        clearAttention(jobId);
+        attentionThrottles.current.delete(jobId);
+        processingQueue.current.delete(jobId);
+        const timeout = processingTimeouts.current.get(jobId);
+        if (timeout) {
+          clearTimeout(timeout);
+          processingTimeouts.current.delete(jobId);
+        }
+        delete (window as any)[`__terminal_channel_${jobId}`];
       });
     };
 
@@ -304,10 +616,32 @@ export function TerminalSessionsProvider({ children }: { children: ReactNode }) 
     return () => {
       if (unlistenExit) unlistenExit();
       if (unlistenReady) unlistenReady();
+      if (unlistenStatusChanged) unlistenStatusChanged();
+      if (unlistenDeleted) unlistenDeleted();
     };
-  }, [updateSessionStatus, scheduleStuckCheck]);
+  }, [updateSessionStatus, scheduleStuckCheck, clearInactivityCheck, clearAttention]);
 
-  const startSession = useCallback(async (jobId: string, opts?: StartSessionOptions & { onOutput?: (data: string) => void }) => {
+  const startSession = useCallback(async (jobId: string, opts?: StartSessionOptions & { onOutput?: (data: string) => void, onConnecting?: () => void, onRestoring?: () => void, onReady?: () => void }) => {
+    // Check if we're already starting/running this session
+    const existingSession = sessionsRef.current.get(jobId);
+    if (existingSession?.status === "starting" || existingSession?.status === "running") {
+      return; // Skip duplicate start
+    }
+
+    // If session is completed/failed, remove it so we can start fresh
+    if (existingSession?.status === "completed" || existingSession?.status === "failed") {
+      setSessions(prev => {
+        const next = new Map(prev);
+        next.delete(jobId);
+        return next;
+      });
+      // Also clean up any references
+      channelsRef.current.delete(jobId);
+      outputBytesCallbacksRef.current.delete(jobId);
+      readyFlagsRef.current.delete(jobId);
+      delete (window as any)[`__terminal_channel_${jobId}`];
+    }
+
     const canOpen = await canOpenTerminal(jobId, opts?.onOutput);
     if (!canOpen.ok) {
       return;
@@ -332,43 +666,86 @@ export function TerminalSessionsProvider({ children }: { children: ReactNode }) 
       outputChannel.onmessage = (payload: unknown) => {
         try {
           const bytes = normalizeToUint8Array(payload);
-          if (bytes.length === 0) return;
+          if (bytes.length === 0) {
+            console.log(`Terminal ${jobId}: Received empty bytes`);
+            return;
+          }
           const bytesCallback = outputBytesCallbacksRef.current.get(jobId);
-          if (!bytesCallback) return;
-
-          const pending = (pendingWritesRef.current.get(jobId) || 0) + 1;
-          pendingWritesRef.current.set(jobId, pending);
-
-          if (pending >= MAX_PENDING_WRITES && !isPausedRef.current.get(jobId)) {
-            isPausedRef.current.set(jobId, true);
-            invoke("pause_terminal_output_command", { jobId }).catch(() => {});
+          if (!bytesCallback) {
+            console.warn(`Terminal ${jobId}: No bytes callback registered for output`);
+            return;
           }
 
-          bytesCallback(bytes, () => {
-            const current = (pendingWritesRef.current.get(jobId) || 1) - 1;
-            pendingWritesRef.current.set(jobId, current);
+          // Track first output received and emit custom event
+          const hasReceived = hasReceivedOutputRef.current.get(jobId);
+          if (!hasReceived) {
+            hasReceivedOutputRef.current.set(jobId, true);
+            window.dispatchEvent(new CustomEvent('terminal-first-output', { detail: { jobId } }));
+            console.log(`Terminal ${jobId}: First output received`);
+          }
 
-            if (current <= RESUME_THRESHOLD && isPausedRef.current.get(jobId)) {
-              isPausedRef.current.set(jobId, false);
-              invoke("resume_terminal_output_command", { jobId }).catch(() => {});
+          // CRITICAL PATH: Send bytes to terminal with proper backpressure handling
+          let processingScheduled = false;
+          bytesCallback(bytes, () => {
+            // onComplete callback - xterm is ready for more data
+            // Schedule processing only once per batch
+            if (!processingScheduled) {
+              processingScheduled = true;
+
+              // NON-BLOCKING: Defer all heavy processing
+              queueMicrotask(() => {
+                // Decode text for processing
+                const text = decoder.decode(bytes, { stream: true });
+
+                // Accumulate text for batch processing
+                const existing = processingQueue.current.get(jobId) || '';
+                processingQueue.current.set(jobId, existing + text);
+
+                // Clear any existing processing timeout
+                const existingTimeout = processingTimeouts.current.get(jobId);
+                if (existingTimeout) {
+                  clearTimeout(existingTimeout);
+                }
+
+                // Batch process after a short delay to accumulate multiple chunks
+                const timeoutId = setTimeout(() => {
+                  const accumulatedText = processingQueue.current.get(jobId);
+                  if (!accumulatedText) return;
+
+                  processingQueue.current.delete(jobId);
+                  processingTimeouts.current.delete(jobId);
+
+                  // Use requestIdleCallback for non-critical processing
+                  const processNonCritical = () => {
+                    // Process accumulated text in one batch
+                    updateLastOutput(jobId, accumulatedText);
+
+                    // Store current attention level before detection
+                    const currentAttention = attentionMap.current.get(jobId);
+                    detectAttentionFromOutput(jobId, accumulatedText);
+
+                    // Clear attention on new output (unless new high attention was just detected)
+                    const newAttention = attentionMap.current.get(jobId);
+                    if (currentAttention && (!newAttention || newAttention.level !== 'high')) {
+                      clearAttention(jobId);
+                    }
+
+                    clearInactivityCheck(jobId);
+                    scheduleInactivityCheck(jobId);
+                    scheduleStuckCheck(jobId);
+                  };
+
+                  if ('requestIdleCallback' in window) {
+                    (window as any).requestIdleCallback(processNonCritical, { timeout: 100 });
+                  } else {
+                    setTimeout(processNonCritical, 0);
+                  }
+                }, 16); // Batch for ~1 frame
+
+                processingTimeouts.current.set(jobId, timeoutId);
+              });
             }
           });
-
-          updateLastOutputAt(jobId);
-          scheduleStuckCheck(jobId);
-
-          const s = sessionsRef.current.get(jobId);
-          if (s && s.status === "starting") {
-            setSessions(prev => {
-              const next = new Map(prev);
-              const cur = next.get(jobId);
-              if (cur && cur.status === "starting") {
-                next.set(jobId, { ...cur, status: "running", ready: true });
-              }
-              return next;
-            });
-            readyFlagsRef.current.set(jobId, true);
-          }
         } catch (e) {
           console.warn('terminal message handler error', jobId, e);
         }
@@ -381,7 +758,11 @@ export function TerminalSessionsProvider({ children }: { children: ReactNode }) 
       // Check if session exists and is running
       const existingSession = sessions.get(jobId);
       if (existingSession?.status === "running") {
-        // Attach to existing session
+        // Running sessions: never replay persisted history on attach to avoid duplicate outputs
+        // Try to attach to existing running session
+        opts?.onRestoring?.();
+        showTerminalError(jobId, "[Restoring session...]", 'warning');
+
         try {
           await invoke("attach_terminal_output_command", {
             jobId,
@@ -390,21 +771,28 @@ export function TerminalSessionsProvider({ children }: { children: ReactNode }) 
 
           // Set ready immediately for existing sessions
           readyFlagsRef.current.set(jobId, true);
+          updateConnectionState(jobId, 'connected');
+          opts?.onReady?.();
 
-          // Successfully attached to existing session
-
+          // Successfully attached to running session
           return;
         } catch (attachError) {
-          console.error('Failed to attach to terminal session:', attachError);
-          // Fall through to start a new session
+          console.warn(`Failed to attach to existing session ${jobId}:`, attachError);
+          showTerminalError(jobId, "[Failed to restore session, starting fresh...]", 'warning');
+          // Fall through to start a new session only if not successfully attached
         }
       }
+      // Note: completed/failed sessions were already removed above, so they'll get a fresh session
 
       // Start new session
+      opts?.onConnecting?.();
+      updateConnectionState(jobId, 'connecting');
+
       const newSession: TerminalSession = {
         jobId,
         status: "starting",
         lastOutputAt: new Date(),
+        connectionState: 'connecting',
       };
 
       setSessions(prev => new Map(prev).set(jobId, newSession));
@@ -423,22 +811,9 @@ export function TerminalSessionsProvider({ children }: { children: ReactNode }) 
           output: outputChannel
         });
 
-        // For new sessions, replay any existing log
-        if (opts?.onOutput) {
-          try {
-            const logContent = await tauriInvoke<string>("read_terminal_log_command", { jobId });
-            if (logContent && logContent.trim()) {
-              // Use bytes path for consistency
-              const encoder = new TextEncoder();
-              const bytes = encoder.encode(logContent);
-              outputBytesCallbacksRef.current.get(jobId)?.(bytes, () => {});
-            }
-          } catch (_) {
-            // Ignore replay errors for new sessions
-          }
-        }
-
+        updateConnectionState(jobId, 'connected');
         // Session started successfully, terminal-ready event will handle notification
+        // The onReady callback will be called when terminal-ready event is received
 
       } catch (invokeError) {
         console.error('Failed to start terminal session:', invokeError);
@@ -467,42 +842,66 @@ export function TerminalSessionsProvider({ children }: { children: ReactNode }) 
     }
   }, [sessions, setOutputCallback, scheduleStuckCheck, updateSessionStatus, canOpenTerminal, showNotification]);
 
-  const write = useCallback((jobId: string, data: string) => {
+  const write = useCallback(async (jobId: string, data: string) => {
     const bytes = encoder.encode(data);
+    try {
+      // CRITICAL PATH: Send input immediately
+      await invoke('write_terminal_input_command', { jobId, data: Array.from(bytes) });
 
-    // DEV-only byte diagnostics for critical keys
-    if (import.meta.env.DEV && data && data.length <= 4) {
-      const b = bytes[0];
-      if (b !== undefined) {
-        // 0x7f = DEL (Backspace), 0x1b = ESC, 0x03 = ETX (Ctrl+C), 0x0d = CR, 0x0a = LF
-        console.debug(`[terminal-dev] write ${jobId}: byte=0x${b.toString(16)} (${b})`);
+      // NON-BLOCKING: Schedule state updates
+      setTimeout(() => {
+        clearAttention(jobId);
+        clearInactivityCheck(jobId);
+        scheduleInactivityCheck(jobId);
+        scheduleStuckCheck(jobId);
+      }, 0);
+    } catch (error) {
+      console.warn(`Failed to write to terminal ${jobId}:`, error);
+    }
+  }, [encoder, scheduleStuckCheck, clearInactivityCheck, scheduleInactivityCheck, clearAttention]);
+
+  const handleImagePaste = useCallback(async (jobId: string, file: File) => {
+    try {
+      const session = sessionsRef.current.get(jobId);
+      if (!session || session.status !== 'running') {
+        throw new Error('Terminal session is not running');
       }
-    }
 
-    // For small inputs (≤8 bytes): send IMMEDIATELY with no delay using tauriInvoke directly
-    if (bytes.length <= 8) {
-      tauriInvoke('write_terminal_input_command', { jobId, data: Array.from(bytes) }).catch(() => {});
-      return;
-    }
+      const buffer = new Uint8Array(await file.arrayBuffer());
+      const payload = {
+        jobId,
+        fileName: file.name || null,
+        mimeType: file.type || null,
+        data: Array.from(buffer),
+      };
 
-    // For larger inputs (>8 bytes): micro-batch with only 6ms delay
-    const q = inputQueuesRef.current.get(jobId) ?? [];
-    q.push(data);
-    inputQueuesRef.current.set(jobId, q);
+      const savedPath = await invoke<string>('save_pasted_image_command', payload);
 
-    if (!inputTimersRef.current.get(jobId)) {
-      const t = window.setTimeout(() => {
-        inputTimersRef.current.delete(jobId);
-        const queue = inputQueuesRef.current.get(jobId) ?? [];
-        inputQueuesRef.current.delete(jobId);
-        const payload = queue.join('');
-        const batchBytes = encoder.encode(payload);
-        // Non-blocking invoke with error suppression
-        tauriInvoke('write_terminal_input_command', { jobId, data: Array.from(batchBytes) }).catch(() => {});
-      }, 6); // Micro-batch with only 6ms delay for larger inputs
-      inputTimersRef.current.set(jobId, t as unknown as number);
+      const trimmedPath = savedPath.trim();
+      if (!trimmedPath) {
+        throw new Error('Pasted image path was empty');
+      }
+
+      const sanitizedPath = trimmedPath.replace(/"/g, '\\"');
+      const needsQuoting = /\s/.test(trimmedPath);
+      const safePath = needsQuoting ? `"${sanitizedPath}"` : sanitizedPath;
+      await write(jobId, `image:${safePath}\r`);
+
+      showNotification({
+        title: 'Image pasted',
+        message: `Saved to ${trimmedPath}`,
+        type: 'success',
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      showNotification({
+        title: 'Image paste failed',
+        message,
+        type: 'error',
+      });
+      throw error;
     }
-  }, []);
+  }, [showNotification, write]);
 
   const sendCtrlC = useCallback(async (jobId: string) => {
     const session = sessionsRef.current.get(jobId);
@@ -520,11 +919,13 @@ export function TerminalSessionsProvider({ children }: { children: ReactNode }) 
 
     try {
       await invoke("kill_terminal_session_command", { jobId: jobId });
-      // Status update will come from terminal-exit event
+      // Immediately update status to completed to prevent terminal-exit event from setting it to failed
+      // (killed processes typically have non-zero exit codes which would incorrectly show as "failed")
+      updateSessionStatus(jobId, "completed", 0);
     } catch (error) {
       // Silent error handling
     }
-  }, [sessions]);
+  }, [sessions, updateSessionStatus]);
 
   const clearLog = useCallback(async (jobId: string) => {
     try {
@@ -561,32 +962,95 @@ export function TerminalSessionsProvider({ children }: { children: ReactNode }) 
     return sessions.get(jobId);
   }, [sessions]);
 
+  const getAttention = useCallback((jobId: string): AttentionState | undefined => {
+    return attentionMap.current.get(jobId);
+  }, []);
+
+  const getAttentionCount = useCallback((): number => {
+    return Array.from(attentionMap.current.values()).filter(a => a.level !== 'none').length;
+  }, []);
+
+  const subscribeAttention = useCallback((cb: (map: Map<string, AttentionState>) => void): (() => void) => {
+    attentionSubscribers.current.add(cb);
+    return () => {
+      attentionSubscribers.current.delete(cb);
+    };
+  }, []);
+
   useEffect(() => {
     return () => {
-      // Clear timeouts and RAF
+      // Clear timeouts
       for (const timeoutId of stuckTimeoutsRef.current.values()) {
         clearTimeout(timeoutId);
       }
-      for (const rafId of rafIdsRef.current.values()) {
-        cancelAnimationFrame(rafId);
-      }
-      for (const timerId of inputTimersRef.current.values()) {
-        clearTimeout(timerId);
+      for (const timeoutId of inactivityTimeouts.current.values()) {
+        clearTimeout(timeoutId);
       }
 
       // Clear all refs
       stuckTimeoutsRef.current.clear();
+      inactivityTimeouts.current.clear();
+      attentionThrottles.current.clear();
       channelsRef.current.clear();
       readyFlagsRef.current.clear();
-      rafIdsRef.current.clear();
       outputBytesCallbacksRef.current.clear();
-      bytesBatchesRef.current.clear();
-      inputQueuesRef.current.clear();
-      inputTimersRef.current.clear();
-      pendingWritesRef.current.clear();
-      isPausedRef.current.clear();
+      attentionMap.current.clear();
+      attentionSubscribers.current.clear();
+
+      // Clear processing queue and timeouts
+      for (const timeoutId of processingTimeouts.current.values()) {
+        clearTimeout(timeoutId);
+      }
+      processingQueue.current.clear();
+      processingTimeouts.current.clear();
     };
   }, []);
+
+  // Session recovery on mount - fetch active sessions from backend
+  useEffect(() => {
+    const recoverActiveSessions = async () => {
+      try {
+        const activeSessions = await invoke("list_active_terminal_sessions_command") as Array<{ jobId: string; status: string; processId?: number; createdAt: number; lastOutputAt?: number; workingDirectory?: string; title?: string }>;
+        console.log("Found active sessions:", activeSessions);
+
+        // Update local sessions state with recovered sessions
+        setSessions(prev => {
+          const next = new Map(prev);
+          for (const session of activeSessions) {
+            const existingSession = next.get(session.jobId);
+            if (!existingSession) {
+              // Add recovered session with disconnected state initially
+              next.set(session.jobId, {
+                jobId: session.jobId,
+                status: "running" as TerminalStatus,
+                lastOutputAt: session.lastOutputAt ? new Date(session.lastOutputAt * 1000) : new Date(),
+                connectionState: "disconnected",
+                ready: false
+              });
+            }
+          }
+          return next;
+        });
+      } catch (error) {
+        console.warn("Failed to recover active sessions:", error);
+      }
+    };
+
+    // Run recovery after a short delay to allow context initialization
+    const timeoutId = setTimeout(recoverActiveSessions, 100);
+    return () => clearTimeout(timeoutId);
+  }, []);
+
+  useEffect(() => {
+    for (const job of jobs) {
+      if (job.subStatusMessage) {
+        const message = job.subStatusMessage.toLowerCase();
+        if (message.includes('user input') || message.includes('awaiting input')) {
+          setAttention(job.id, 'high', 'User input required');
+        }
+      }
+    }
+  }, [jobs, setAttention]);
 
   const contextValue = useMemo(() => ({
     sessions,
@@ -605,6 +1069,13 @@ export function TerminalSessionsProvider({ children }: { children: ReactNode }) 
     setOutputBytesCallback,
     removeOutputBytesCallback,
     resize,
+    handleImagePaste,
+    getAttention,
+    getAttentionCount,
+    subscribeAttention,
+    getSessionHealth,
+    recoverSession,
+    getConnectionState,
   }), [
     sessions,
     canOpenTerminal,
@@ -622,6 +1093,13 @@ export function TerminalSessionsProvider({ children }: { children: ReactNode }) 
     setOutputBytesCallback,
     removeOutputBytesCallback,
     resize,
+    handleImagePaste,
+    getAttention,
+    getAttentionCount,
+    subscribeAttention,
+    getSessionHealth,
+    recoverSession,
+    getConnectionState,
   ]);
 
   return (

@@ -1,5 +1,6 @@
 use crate::AppState;
 use crate::auth::TokenManager;
+use crate::auth::device_id_manager;
 use crate::error::{AppError, AppResult};
 use crate::models::{AuthDataResponse, FrontendUser};
 use log::{debug, error, info, warn};
@@ -54,14 +55,21 @@ pub async fn start_auth0_login_flow(
         .ok_or_else(|| AppError::ConfigError("AUTH0_NATIVE_CLIENT_ID not configured. Please rebuild with AUTH0_NATIVE_CLIENT_ID environment variable set.".to_string()))?;
     let auth0_api_audience = crate::constants::AUTH0_API_AUDIENCE
         .ok_or_else(|| AppError::ConfigError("AUTH0_API_AUDIENCE not configured. Please rebuild with AUTH0_API_AUDIENCE environment variable set.".to_string()))?;
-    
+
     // Get server URL from app state
-    let server_url = app_state.get_server_url()
-        .ok_or_else(|| AppError::ConfigError("No server URL configured. Please select a server region first.".to_string()))?;
-    
+    let server_url = app_state.get_server_url().ok_or_else(|| {
+        AppError::ConfigError(
+            "No server URL configured. Please select a server region first.".to_string(),
+        )
+    })?;
+
     // Construct Auth0 URLs dynamically
-    let server_auth0_callback_url = format!("{}/auth/auth0/callback", server_url.trim_end_matches('/'));
-    let server_auth0_initiate_login_url = format!("{}/auth/auth0/initiate-login", server_url.trim_end_matches('/'));
+    let server_auth0_callback_url =
+        format!("{}/auth/auth0/callback", server_url.trim_end_matches('/'));
+    let server_auth0_initiate_login_url = format!(
+        "{}/auth/auth0/initiate-login",
+        server_url.trim_end_matches('/')
+    );
 
     // Construct URL to server's initiate-login endpoint
     let mut initiate_url = Url::parse(&server_auth0_initiate_login_url)
@@ -106,9 +114,13 @@ pub async fn check_auth_status_and_exchange_token(
         .ok_or_else(|| AppError::ValidationError("Polling ID not found or expired".to_string()))?;
 
     // Poll the server for status
-    let server_url = app_state.get_server_url()
-        .ok_or_else(|| AppError::ConfigError("No server URL configured. Please select a server region first.".to_string()))?;
-    let server_auth0_poll_status_url = format!("{}/auth0/poll-status", server_url.trim_end_matches('/'));
+    let server_url = app_state.get_server_url().ok_or_else(|| {
+        AppError::ConfigError(
+            "No server URL configured. Please select a server region first.".to_string(),
+        )
+    })?;
+    let server_auth0_poll_status_url =
+        format!("{}/auth0/poll-status", server_url.trim_end_matches('/'));
 
     let poll_url = format!("{}?pid={}", server_auth0_poll_status_url, polling_id);
     let client = &app_state.client;
@@ -194,9 +206,13 @@ pub async fn check_auth_status_and_exchange_token(
     let auth0_native_client_id = crate::constants::AUTH0_NATIVE_CLIENT_ID
         .ok_or_else(|| AppError::ConfigError("AUTH0_NATIVE_CLIENT_ID not configured. Please rebuild with AUTH0_NATIVE_CLIENT_ID environment variable set.".to_string()))?;
     // Get server URL from app state
-    let server_url = app_state.get_server_url()
-        .ok_or_else(|| AppError::ConfigError("No server URL configured. Please select a server region first.".to_string()))?;
-    let server_auth0_callback_url = format!("{}/auth/auth0/callback", server_url.trim_end_matches('/'));
+    let server_url = app_state.get_server_url().ok_or_else(|| {
+        AppError::ConfigError(
+            "No server URL configured. Please select a server region first.".to_string(),
+        )
+    })?;
+    let server_auth0_callback_url =
+        format!("{}/auth/auth0/callback", server_url.trim_end_matches('/'));
 
     let auth_url = AuthUrl::new(format!("https://{}/authorize", auth0_domain))
         .map_err(|e| AppError::ConfigError(format!("Invalid auth URL: {}", e)))?;
@@ -227,14 +243,20 @@ pub async fn check_auth_status_and_exchange_token(
         .refresh_token()
         .map(|rt| rt.secret().to_string());
 
+    // Get or create device ID
+    let device_id = device_id_manager::get_or_create(&app_handle)
+        .map_err(|e| AppError::ConfigError(format!("device_id error: {}", e)))?;
+
     // Send tokens to server for finalization
-    let server_auth0_finalize_login_url = format!("{}/auth0/finalize-login", server_url.trim_end_matches('/'));
+    let server_auth0_finalize_login_url =
+        format!("{}/auth0/finalize-login", server_url.trim_end_matches('/'));
 
     let finalize_response = client
         .post(&server_auth0_finalize_login_url)
         .json(&json!({
             "auth0_id_token": access_token,
-            "auth0_refresh_token": refresh_token
+            "auth0_refresh_token": refresh_token,
+            "device_id": device_id
         }))
         .send()
         .await
@@ -294,16 +316,26 @@ pub async fn refresh_app_jwt_auth0(
         .await
         .ok_or_else(|| AppError::ValidationError("No app JWT found".to_string()))?;
 
+
     // Get server URL from app state
-    let server_url = app_state.get_server_url()
-        .ok_or_else(|| AppError::ConfigError("No server URL configured. Please select a server region first.".to_string()))?;
-    let server_auth0_refresh_app_token_url = format!("{}/api/auth0/refresh-app-token", server_url.trim_end_matches('/'));
+    let server_url = app_state.get_server_url().ok_or_else(|| {
+        AppError::ConfigError(
+            "No server URL configured. Please select a server region first.".to_string(),
+        )
+    })?;
+    let server_auth0_refresh_app_token_url = format!(
+        "{}/api/auth0/refresh-app-token",
+        server_url.trim_end_matches('/')
+    );
 
     let client = &app_state.client;
+
+    let device_id = device_id_manager::get_or_create(&app_handle)?;
 
     let response = client
         .post(&server_auth0_refresh_app_token_url)
         .header("Authorization", format!("Bearer {}", current_token))
+        .header("x-device-id", device_id)
         .send()
         .await
         .map_err(|e| AppError::NetworkError(format!("Failed to refresh token: {}", e)))?;
@@ -351,14 +383,20 @@ pub async fn logout_auth0(
 
     // Call server logout endpoint if we have a token
     if let Some(token) = &current_token {
-        let server_url = app_state.get_server_url()
-            .ok_or_else(|| AppError::ConfigError("No server URL configured. Please select a server region first.".to_string()))?;
+    
+        let server_url = app_state.get_server_url().ok_or_else(|| {
+            AppError::ConfigError(
+                "No server URL configured. Please select a server region first.".to_string(),
+            )
+        })?;
         let server_logout_url = format!("{}/api/auth/logout", server_url.trim_end_matches('/'));
 
         let client = &app_state.client;
+        let device_id = device_id_manager::get_or_create(&app_handle)?;
         let logout_response = client
             .post(&server_logout_url)
             .header("Authorization", format!("Bearer {}", token))
+            .header("x-device-id", device_id)
             .send()
             .await;
 
@@ -388,9 +426,13 @@ pub async fn logout_auth0(
     let auth0_native_client_id = crate::constants::AUTH0_NATIVE_CLIENT_ID
         .ok_or_else(|| AppError::ConfigError("AUTH0_NATIVE_CLIENT_ID not configured. Please rebuild with AUTH0_NATIVE_CLIENT_ID environment variable set.".to_string()))?;
     // Get server URL from app state
-    let server_url = app_state.get_server_url()
-        .ok_or_else(|| AppError::ConfigError("No server URL configured. Please select a server region first.".to_string()))?;
-    let server_auth0_logged_out_url = format!("{}/auth/auth0/logged-out", server_url.trim_end_matches('/'));
+    let server_url = app_state.get_server_url().ok_or_else(|| {
+        AppError::ConfigError(
+            "No server URL configured. Please select a server region first.".to_string(),
+        )
+    })?;
+    let server_auth0_logged_out_url =
+        format!("{}/auth/auth0/logged-out", server_url.trim_end_matches('/'));
 
     // Construct a logout URL that redirects to the configured logged out page
     let logout_url = format!(

@@ -10,7 +10,7 @@ import TechnicalAccuracy from '@/components/docs/TechnicalAccuracy';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
-  title: 'Codex CLI Read-Only Mode — Plan Safely Before Edits',
+  title: 'Codex CLI Read-Only Mode - Plan Safely Before Edits',
   description: 'Switch Codex CLI to Read-Only with /approvals to plan before making changes. Learn the workflow and combine with Vibe Manager plans.',
   keywords: [
     'codex cli plan mode',
@@ -30,7 +30,7 @@ export const metadata: Metadata = {
     canonical: 'https://www.vibemanager.app/docs/codex-cli-plan-mode',
   },
   openGraph: {
-    title: 'Codex CLI Read-Only Mode — Plan Safely Before Edits',
+    title: 'Codex CLI Read-Only Mode - Plan Safely Before Edits',
     description: 'Switch Codex CLI to Read-Only with /approvals to plan before making changes. Learn the workflow and combine with Vibe Manager plans.',
     url: 'https://www.vibemanager.app/docs/codex-cli-plan-mode',
     type: 'article',

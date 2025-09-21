@@ -313,11 +313,15 @@ pub async fn reset_database_command(app_handle: AppHandle) -> AppResult<serde_js
             // Spawn deferred DB tasks
             let app_handle_clone = app_handle.clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = app_setup::database::run_deferred_db_tasks(&app_handle_clone).await {
-                    log::error!("[DatabaseMaintenance] Deferred DB tasks failed after reset: {}", e);
+                if let Err(e) = app_setup::database::run_deferred_db_tasks(&app_handle_clone).await
+                {
+                    log::error!(
+                        "[DatabaseMaintenance] Deferred DB tasks failed after reset: {}",
+                        e
+                    );
                 }
             });
-            
+
             log::info!("[DatabaseMaintenance] Database reset and re-initialization successful");
             Ok(serde_json::json!({
                 "success": true,

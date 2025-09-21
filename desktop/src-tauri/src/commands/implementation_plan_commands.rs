@@ -234,13 +234,19 @@ pub async fn estimate_prompt_tokens_command(
     // Generate directory tree - use scoped tree if root directories are provided
     let directory_tree = if let Some(ref root_dirs) = selected_root_directories {
         if !root_dirs.is_empty() {
-            log::debug!("Using scoped directory tree for {} root directories", root_dirs.len());
+            log::debug!(
+                "Using scoped directory tree for {} root directories",
+                root_dirs.len()
+            );
             match crate::utils::directory_tree::get_combined_directory_tree_for_roots(root_dirs)
                 .await
             {
                 Ok(tree) => Some(tree),
                 Err(e) => {
-                    log::warn!("Failed to generate scoped directory tree: {}, falling back to full tree", e);
+                    log::warn!(
+                        "Failed to generate scoped directory tree: {}, falling back to full tree",
+                        e
+                    );
                     // Fallback to full directory tree
                     match crate::utils::directory_tree::get_directory_tree_with_defaults(
                         actual_project_directory,
@@ -264,7 +270,10 @@ pub async fn estimate_prompt_tokens_command(
             {
                 Ok(tree) => Some(tree),
                 Err(e) => {
-                    log::warn!("Failed to generate directory tree for prompt context: {}", e);
+                    log::warn!(
+                        "Failed to generate directory tree for prompt context: {}",
+                        e
+                    );
                     None
                 }
             }
@@ -278,7 +287,10 @@ pub async fn estimate_prompt_tokens_command(
         {
             Ok(tree) => Some(tree),
             Err(e) => {
-                log::warn!("Failed to generate directory tree for prompt context: {}", e);
+                log::warn!(
+                    "Failed to generate directory tree for prompt context: {}",
+                    e
+                );
                 None
             }
         }
@@ -402,13 +414,19 @@ pub async fn get_prompt_command(
     // Generate directory tree - use scoped tree if root directories are provided
     let directory_tree = if let Some(ref root_dirs) = selected_root_directories {
         if !root_dirs.is_empty() {
-            log::debug!("Using scoped directory tree for {} root directories", root_dirs.len());
+            log::debug!(
+                "Using scoped directory tree for {} root directories",
+                root_dirs.len()
+            );
             match crate::utils::directory_tree::get_combined_directory_tree_for_roots(root_dirs)
                 .await
             {
                 Ok(tree) => Some(tree),
                 Err(e) => {
-                    log::warn!("Failed to generate scoped directory tree: {}, falling back to full tree", e);
+                    log::warn!(
+                        "Failed to generate scoped directory tree: {}, falling back to full tree",
+                        e
+                    );
                     // Fallback to full directory tree
                     match crate::utils::directory_tree::get_directory_tree_with_defaults(
                         actual_project_directory,
@@ -432,7 +450,10 @@ pub async fn get_prompt_command(
             {
                 Ok(tree) => Some(tree),
                 Err(e) => {
-                    log::warn!("Failed to generate directory tree for prompt context: {}", e);
+                    log::warn!(
+                        "Failed to generate directory tree for prompt context: {}",
+                        e
+                    );
                     None
                 }
             }
@@ -446,7 +467,10 @@ pub async fn get_prompt_command(
         {
             Ok(tree) => Some(tree),
             Err(e) => {
-                log::warn!("Failed to generate directory tree for prompt context: {}", e);
+                log::warn!(
+                    "Failed to generate directory tree for prompt context: {}",
+                    e
+                );
                 None
             }
         }
@@ -546,9 +570,7 @@ pub async fn read_implementation_plan_command(
     // Try to parse the title from metadata
     let title = if let Some(metadata) = job.metadata.as_ref() {
         if let Ok(metadata_json) = serde_json::from_str::<serde_json::Value>(metadata) {
-            metadata_json["planTitle"]
-                .as_str()
-                .map(|s| s.to_string())
+            metadata_json["planTitle"].as_str().map(|s| s.to_string())
         } else {
             None
         }

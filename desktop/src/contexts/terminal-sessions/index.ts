@@ -10,7 +10,8 @@ export type {
   TerminalSession,
   StartSessionOptions,
   TerminalSessionsContextShape,
+  AttentionLevel,
+  AttentionState,
 } from "./types";
 
 export { useTerminalSessions } from "./useTerminalSessions";
-export { useXtermOutputAdapter } from "./useXtermOutputAdapter";

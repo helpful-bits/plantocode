@@ -19,6 +19,8 @@ interface SidebarHeaderProps {
   onRefresh: () => void;
   onClearHistory: (daysToKeep?: number) => void;
   onToggleMonitoringView?: () => void;
+  alertCount?: number;
+  onAlertClick?: () => void;
   CollapsibleTrigger: ComponentType<any>;
 }
 
@@ -37,6 +39,8 @@ export const SidebarHeader: FC<SidebarHeaderProps> = ({
   onRefresh,
   onClearHistory,
   onToggleMonitoringView,
+  alertCount,
+  onAlertClick,
   CollapsibleTrigger,
 }) => {
   return (
@@ -94,14 +98,28 @@ export const SidebarHeader: FC<SidebarHeaderProps> = ({
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {onToggleMonitoringView && (
+            {(onToggleMonitoringView || onAlertClick) && (
               <Button
                 size="icon"
                 variant="ghost"
-                className="h-8 w-8"
-                onClick={onToggleMonitoringView}
+                className="h-8 w-8 relative"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onAlertClick) {
+                    onAlertClick();
+                  } else if (onToggleMonitoringView) {
+                    onToggleMonitoringView();
+                  }
+                }}
               >
                 <Bell className="h-4 w-4 text-foreground" />
+                {alertCount > 0 && (
+                  <div className="absolute -top-1 -right-1 h-4 w-4 bg-red-500 rounded-full flex items-center justify-center">
+                    <span className="text-white text-xs font-medium">
+                      {alertCount > 9 ? '9+' : alertCount}
+                    </span>
+                  </div>
+                )}
               </Button>
             )}
           </>

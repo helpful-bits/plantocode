@@ -10,7 +10,7 @@ import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
   title: 'Plan Mode: Claude Code vs Cursor vs Cline vs Codex CLI - Complete Comparison 2025',
-  description: 'Side-by-side comparison of plan modes and safe planning flows across leading AI coding tools—with setup steps and best practices.',
+  description: 'Side-by-side comparison of plan modes and safe planning flows across leading AI coding tools - with setup steps and best practices.',
   keywords: [
     'plan mode comparison',
     'claude code plan mode',
@@ -54,7 +54,7 @@ const structuredData = {
       },
       datePublished: '2025-09-12T00:00:00Z',
       dateModified: '2025-09-12T00:00:00Z',
-      description: 'Comprehensive comparison of plan modes and safe planning flows across leading AI coding tools—with setup steps and best practices.'
+      description: 'Comprehensive comparison of plan modes and safe planning flows across leading AI coding tools - with setup steps and best practices.'
     },
     {
       '@type': 'Table',
@@ -72,7 +72,7 @@ export default function PlanModeComparisonPage() {
       
       <DocsArticle
         title="Plan Modes Compared: Claude Code • Cursor • Cline • Codex CLI"
-        description="Complete comparison of plan modes and safe planning flows across all major AI coding tools—with setup steps and best practices."
+        description="Complete comparison of plan modes and safe planning flows across all major AI coding tools - with setup steps and best practices."
         date="2025-09-12"
         readTime="8 min"
         category="Comparison Guide"

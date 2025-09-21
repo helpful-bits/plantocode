@@ -160,6 +160,16 @@ export async function listProjectFiles(
   });
 }
 
+export async function getFilesMetadata(
+  filePaths: string[],
+  projectDirectory?: string
+): Promise<ProjectFileInfo[]> {
+  return tauriInvoke("get_files_metadata_command", {
+    filePaths,
+    projectDirectory: projectDirectory ?? null,
+  });
+}
+
 export async function appendToLogFile(relPath: string, content: string): Promise<void> {
   // Writes one line (command adds newline); do not buffer or read existing content
   return tauriInvoke("append_to_log_file", { app: undefined, relPath, content });

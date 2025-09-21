@@ -21,4 +21,16 @@ pub struct Claims {
     pub tbh: Option<String>,
     /// JWT ID (unique identifier for the token)
     pub jti: String,
+    /// Audience claim (intended recipient)
+    pub aud: Option<String>,
+    /// Client ID
+    pub client_id: Option<String>,
+    /// Device ID for device binding
+    pub device_id: Option<String>,
+    /// Scopes granted to the token
+    pub scope: Option<String>,
+    /// Session ID for session binding
+    pub session_id: Option<String>,
+    /// IP address binding
+    pub ip_binding: Option<String>,
 }

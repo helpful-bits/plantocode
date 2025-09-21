@@ -86,6 +86,13 @@ pub fn generate_token(user_id: Uuid, email: &str, token_duration_days: i64) -> R
         auth0_sub: None, // No auth0_sub by default
         tbh: None, // No token binding by default
         jti: Uuid::new_v4().to_string(),
+        aud: None,
+        client_id: None,
+        // device_id is used for device binding (compared to request header x-device-id in middleware). tbh is kept for potential future token-binding enforcement.
+        device_id: None,
+        scope: None,
+        session_id: None,
+        ip_binding: None,
     };
 
     // Get the JWT signing key
@@ -143,7 +150,7 @@ pub fn create_token(
     user_id: Uuid,
     role: &str,
     email: &str,
-    token_binding_value: Option<&str>,
+    device_id: Option<&str>,
     auth0_sub: Option<&str>,
     token_duration_days: i64,
 ) -> Result<String, AppError> {
@@ -165,9 +172,16 @@ pub fn create_token(
         role: role.to_string(),
         iss: Some(JWT_ISSUER.to_string()),
         auth0_sub: auth0_sub.map(|s| s.to_string()),
-        // Add token binding hash if value is provided
-        tbh: token_binding_value.map(hash_token_binding_value),
+        // Add token binding hash if device_id is provided
+        tbh: device_id.map(hash_token_binding_value),
         jti: Uuid::new_v4().to_string(),
+        aud: None,
+        client_id: None,
+        // device_id is used for device binding (compared to request header x-device-id in middleware). tbh is kept for potential future token-binding enforcement.
+        device_id: device_id.map(|v| v.to_string()),
+        scope: None,
+        session_id: None,
+        ip_binding: None,
     };
 
     // Get the JWT signing key

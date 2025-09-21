@@ -97,6 +97,10 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
             .route("/cancel", web::post().to(handlers::cancellation_handlers::cancel_request_handler))
             .route("/status/{request_id}", web::get().to(handlers::cancellation_handlers::get_request_status_handler))
             .route("/video/analyze", web::post().to(handlers::proxy_handlers::video_analysis_handler))
+            .service(
+                web::scope("/text")
+                    .route("/enhance", web::post().to(handlers::proxy_handlers::text_enhancement_handler))
+            )
     );
 
     // Audio transcription routes (/api/audio/*) - mimics OpenAI API structure
@@ -126,6 +130,26 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
             .route("/verify", web::get().to(handlers::consent_handlers::verify_consent))
             .route("/accept", web::post().to(handlers::consent_handlers::accept_consent))
             .route("/admin/report", web::get().to(handlers::consent_handlers::get_consent_report))
+    );
+
+    // Device management routes (/api/devices/*)
+    cfg.service(
+        web::scope("/devices")
+            .route("/register", web::post().to(handlers::device_handlers::register_device_handler))
+            .route("", web::get().to(handlers::device_handlers::get_devices_handler))
+            .route("/{device_id}", web::delete().to(handlers::device_handlers::unregister_device_handler))
+            .route("/{device_id}/heartbeat", web::post().to(handlers::device_handlers::heartbeat_handler))
+            .route("/{device_id}/connection-descriptor", web::get().to(handlers::device_handlers::get_connection_descriptor_handler))
+            .route("/{device_id}/push-token", web::post().to(handlers::device_handlers::save_push_token_handler))
+    );
+
+    // Notification routes (/api/notifications/*)
+    cfg.service(
+        web::scope("/notifications")
+            .route("/job-completed", web::post().to(handlers::notification_handlers::job_completed_handler))
+            .route("/job-failed", web::post().to(handlers::notification_handlers::job_failed_handler))
+            .route("/job-progress", web::post().to(handlers::notification_handlers::job_progress_handler))
+            .route("/test", web::post().to(handlers::notification_handlers::test_notification_handler))
     );
 }
 

@@ -33,7 +33,14 @@ export async function transcribeAudioChunk(
     }
 
     const serverUrl = await invoke<string>('get_server_url');
-    const jwt = await invoke<string>('get_app_jwt');
+    const jwt = await invoke<string | null>('get_app_jwt');
+    const deviceId = await invoke<string>('get_device_id');
+
+    if (!jwt) {
+      const errorMsg = "Authentication required. Please log in to use voice transcription.";
+      await logError(new AppError(errorMsg, ErrorType.PERMISSION_ERROR), "Voice Transcription - Not Authenticated");
+      throw new AppError(errorMsg, ErrorType.PERMISSION_ERROR);
+    }
 
     const formData = new FormData();
     
@@ -50,7 +57,8 @@ export async function transcribeAudioChunk(
     const response = await fetch(`${serverUrl}/api/audio/transcriptions`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${jwt}`
+        'Authorization': `Bearer ${jwt}`,
+        'x-device-id': deviceId
       },
       body: formData
     });

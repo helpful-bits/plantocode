@@ -7,7 +7,7 @@ fn main() {
     if let Ok(_) = dotenvy::dotenv() {
         println!("cargo:warning=Loaded .env file for build");
     }
-    
+
     // Set environment variables as compile-time constants
     // These will be embedded in the binary
     if let Ok(domain) = std::env::var("AUTH0_DOMAIN") {
@@ -19,12 +19,12 @@ fn main() {
     if let Ok(audience) = std::env::var("AUTH0_API_AUDIENCE") {
         println!("cargo:rustc-env=AUTH0_API_AUDIENCE={}", audience);
     }
-    
+
     // Only link ScreenCaptureKit on macOS desktop, not iOS
     let target = std::env::var("TARGET").unwrap_or_default();
     if target.contains("darwin") && !target.contains("ios") && !target.contains("android") {
         println!("cargo:rustc-link-lib=framework=ScreenCaptureKit");
     }
-    
+
     tauri_build::build();
 }

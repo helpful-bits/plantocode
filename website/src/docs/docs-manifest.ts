@@ -24,7 +24,7 @@ export const docsManifest: DocGroup[] = [
         slug: '/docs/plan-mode',
         title: 'Plan Mode: Claude Code vs Cursor vs Cline vs Codex CLI',
         shortTitle: 'Plan Mode Comparison',
-        description: 'Complete comparison of plan modes and safe planning flows across all major AI coding tools—with setup steps and best practices.',
+        description: 'Complete comparison of plan modes and safe planning flows across all major AI coding tools - with setup steps and best practices.',
         tags: ['plan-mode', 'comparison', 'claude-code', 'cursor', 'cline', 'codex-cli'],
         doc_type: 'explanation',
         last_reviewed: '2025-09-12',
@@ -93,32 +93,6 @@ export const docsManifest: DocGroup[] = [
         description: 'Step-by-step installation guide for Claude Code CLI with MCP server configuration.',
         tags: ['claude-code', 'installation', 'setup', 'mcp'],
         doc_type: 'howto',
-        last_reviewed: '2025-09-12',
-        review_frequency: '90d'
-      }
-    ]
-  },
-  {
-    id: 'comparisons',
-    title: 'Comparisons & Enhancements',
-    items: [
-      {
-        slug: '/docs/claude-code-vs-cursor',
-        title: 'Claude Code vs Cursor',
-        shortTitle: 'Claude Code vs Cursor',
-        description: 'Detailed comparison between Claude Code and Cursor for AI-assisted development workflows.',
-        tags: ['comparison', 'claude-code', 'cursor', 'ai-tools'],
-        doc_type: 'explanation',
-        last_reviewed: '2025-09-12',
-        review_frequency: '90d'
-      },
-      {
-        slug: '/docs/claude-code-alternative',
-        title: 'Claude Code alternates & enhancements',
-        shortTitle: 'Claude Code Alternatives',
-        description: 'Explore alternatives and enhancements to Claude Code including Vibe Manager integration.',
-        tags: ['claude-code', 'alternatives', 'enhancements', 'vibe-manager'],
-        doc_type: 'explanation',
         last_reviewed: '2025-09-12',
         review_frequency: '90d'
       }

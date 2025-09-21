@@ -29,6 +29,7 @@ const FloatingMergeInstructionsComponent: React.FC<FloatingMergeInstructionsProp
   // Local state for responsive typing (same pattern as MergePlansSection)
   const [localInstructions, setLocalInstructions] = useState(mergeInstructions);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Sync local state with prop when it changes externally (e.g., on clear)
   useEffect(() => {
@@ -43,6 +44,29 @@ const FloatingMergeInstructionsComponent: React.FC<FloatingMergeInstructionsProp
       }
     };
   }, []);
+
+  // Add enhancement event listeners
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const handleEnhancementEvent = () => {
+      // Clear debounce and immediately save current text
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+      onMergeInstructionsChange(localInstructions);
+    };
+
+    textarea.addEventListener('flush-pending-changes', handleEnhancementEvent);
+    textarea.addEventListener('enhancement-applied', handleEnhancementEvent);
+
+    return () => {
+      textarea.removeEventListener('flush-pending-changes', handleEnhancementEvent);
+      textarea.removeEventListener('enhancement-applied', handleEnhancementEvent);
+    };
+  }, [localInstructions, onMergeInstructionsChange]);
 
   // Get current window dimensions dynamically
   const getWindowDimensions = useCallback(() => {
@@ -69,17 +93,26 @@ const FloatingMergeInstructionsComponent: React.FC<FloatingMergeInstructionsProp
   const handleInstructionsChange = useCallback((value: string) => {
     // Update local state immediately for responsive UI
     setLocalInstructions(value);
-    
+
     // Clear previous timer
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
     }
-    
+
     // Debounce the parent state update
     debounceTimerRef.current = setTimeout(() => {
       onMergeInstructionsChange(value);
     }, 300);
   }, [onMergeInstructionsChange]);
+
+  const handleBlur = useCallback(() => {
+    // Clear debounce and immediately save on blur as fallback
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    onMergeInstructionsChange(localInstructions);
+  }, [localInstructions, onMergeInstructionsChange]);
 
   // Drag event handlers with proper offset calculation
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -196,8 +229,10 @@ const FloatingMergeInstructionsComponent: React.FC<FloatingMergeInstructionsProp
       </div>
       <div className="relative">
         <textarea
+          ref={textareaRef}
           value={localInstructions}
           onChange={(e) => handleInstructionsChange(e.target.value)}
+          onBlur={handleBlur}
           placeholder="Add notes about what you like or don't like in this plan..."
           className="w-full resize-none border border-border rounded-md px-3 py-2 text-sm bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
           style={{ height: `${height}px` }}

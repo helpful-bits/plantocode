@@ -1,11 +1,10 @@
 "use client";
 
-import { Loader2, Copy, Save, ChevronLeft, ChevronRight, Plus, Check, Terminal, Circle, AlertTriangle } from "lucide-react";
+import { Loader2, Copy, Save, ChevronLeft, ChevronRight, Plus, Check } from "lucide-react";
 import React, { useEffect, useMemo, useContext } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useNotification } from "@/contexts/notification-context";
 import { BackgroundJobsContext, type BackgroundJobsContextType } from "@/contexts/background-jobs/Provider";
-import { useAuth } from "@/contexts/auth-context";
 
 import { type BackgroundJob, JOB_STATUSES } from "@/types/session-types";
 import { type CopyButtonConfig } from "@/types/config-types";
@@ -13,7 +12,6 @@ import { Button } from "@/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/ui/dialog";
 import { Progress } from "@/ui/progress";
 import { VirtualizedCodeViewer } from "@/ui/virtualized-code-viewer";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/ui/tooltip";
 
 import { getJobDisplaySessionName } from "../../background-jobs-sidebar/_utils/job-display-utils";
 import { getStreamingStatus } from "../../background-jobs-sidebar/utils";
@@ -22,7 +20,6 @@ import { replacePlaceholders } from "@/utils/placeholder-utils";
 import { normalizeJobResponse } from '@/utils/response-utils';
 import { FloatingMergeInstructions } from './FloatingMergeInstructions';
 import { useLiveProgress } from "@/hooks/use-live-progress";
-import { useTerminalSessions } from "@/contexts/terminal-sessions/useTerminalSessions";
 
 interface PlanContentModalProps {
   plan?: BackgroundJob;
@@ -45,8 +42,6 @@ interface PlanContentModalProps {
   mergeInstructions?: string;
   onMergeInstructionsChange?: (value: string) => void;
   selectedCount?: number;
-  // Terminal props
-  onOpenTerminal?: (planId: string) => void;
 }
 
 
@@ -70,11 +65,7 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
   mergeInstructions = "",
   onMergeInstructionsChange,
   selectedCount = 0,
-  // Terminal props
-  onOpenTerminal,
 }) => {
-  const { getSession, startSession, write, canOpenTerminal } = useTerminalSessions();
-  const { user } = useAuth();
   const [isSaving, setIsSaving] = React.useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = React.useState(false);
   const [editedContent, setEditedContent] = React.useState<string>("");
@@ -177,8 +168,6 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
 
   if (!displayPlan) return null;
 
-  // Get terminal session for the plan
-  const terminalSession = getSession(displayPlan.id);
 
   // Use unified streaming detection with ACTIVE fallback
   const isStreaming = getStreamingStatus(displayPlan?.metadata) || 
@@ -254,33 +243,7 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
     }
   }, [displayPlan?.response]);
 
-  // Chunked send function for terminal
-  const CHUNK = 4096;
-  async function chunkedSend(jobId: string, data: string) {
-    for (let i = 0; i < data.length; i += CHUNK) {
-      await write(jobId, data.slice(i, i + CHUNK));
-    }
-    await write(jobId, "\r\n");
-  }
 
-  // Handler for sending edited content to terminal
-  const handleSendEditedToTerminal = React.useCallback(async () => {
-    const canOpen = await canOpenTerminal();
-    if (!canOpen.ok) {
-      return;
-    }
-
-    try {
-      if (!displayPlan?.id) return;
-      const data = (editedContent ?? "").trim();
-      if (!data) return;
-      await startSession(displayPlan.id);
-      await write(displayPlan.id, "\r\n# Sending edited plan content...\r\n");
-      await chunkedSend(displayPlan.id, data);
-    } catch (e) {
-      console.error("Send to terminal failed", e);
-    }
-  }, [displayPlan?.id, editedContent, startSession, write, canOpenTerminal]);
 
   // Save changes to the database
   const handleSave = React.useCallback(async () => {
@@ -353,49 +316,6 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
     });
   };
 
-  // Get terminal status pill
-  const getTerminalStatusPill = () => {
-    if (!terminalSession || terminalSession.status === "idle") return null;
-    
-    const statusConfig = {
-      running: { 
-        icon: Circle, 
-        className: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200", 
-        text: "Running",
-        iconClassName: "h-2 w-2 fill-current animate-pulse"
-      },
-      completed: { 
-        icon: Check, 
-        className: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200", 
-        text: "Completed",
-        iconClassName: "h-3 w-3"
-      },
-      failed: { 
-        icon: AlertTriangle, 
-        className: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200", 
-        text: "Failed",
-        iconClassName: "h-3 w-3"
-      },
-      stuck: { 
-        icon: AlertTriangle, 
-        className: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200", 
-        text: "Stuck",
-        iconClassName: "h-3 w-3"
-      },
-    } as const;
-
-    const config = statusConfig[terminalSession.status as keyof typeof statusConfig];
-    if (!config) return null;
-
-    const IconComponent = config.icon;
-    
-    return (
-      <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${config.className}`}>
-        <IconComponent className={config.iconClassName} />
-        Terminal: {config.text}
-      </div>
-    );
-  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -416,11 +336,6 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
             <DialogTitle className="text-lg">
               Implementation Plan: {sessionName}
             </DialogTitle>
-            {getTerminalStatusPill() && (
-              <div className="mt-2">
-                {getTerminalStatusPill()}
-              </div>
-            )}
           </div>
           
           <div className="flex items-start gap-4 flex-shrink-0 flex-1">
@@ -471,62 +386,7 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
                 </Button>
               )}
 
-              {/* Send to Terminal Button */}
-              {!isStreaming && editedContent && (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleSendEditedToTerminal}
-                        disabled={!user}
-                        className="text-xs h-7"
-                        title={user ? "Send edited content to terminal" : "Please log in to use the terminal"}
-                      >
-                        <Terminal className="h-3 w-3 mr-1" />
-                        Send to Terminal
-                      </Button>
-                    </TooltipTrigger>
-                    {!user && (
-                      <TooltipContent>
-                        <p>Please log in to use the terminal</p>
-                      </TooltipContent>
-                    )}
-                  </Tooltip>
-                </TooltipProvider>
-              )}
 
-              {/* Open Terminal Button */}
-              {onOpenTerminal && (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={async () => {
-                          const canOpen = await canOpenTerminal();
-                          if (canOpen.ok) {
-                            onOpenTerminal(displayPlan.id);
-                          }
-                        }}
-                        disabled={!user}
-                        className="text-xs h-7"
-                        title={user ? "Open terminal for this implementation plan" : "Please log in to use the terminal"}
-                      >
-                        <Terminal className="h-3 w-3 mr-1" />
-                        Open Terminal
-                      </Button>
-                    </TooltipTrigger>
-                    {!user && (
-                      <TooltipContent>
-                        <p>Please log in to use the terminal</p>
-                      </TooltipContent>
-                    )}
-                  </Tooltip>
-                </TooltipProvider>
-              )}
 
               {/* Copy Buttons */}
               {copyButtons.length > 0 && !isStreaming && 

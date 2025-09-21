@@ -13,9 +13,9 @@ pub mod extended_path_finder_processor;
 pub mod file_relevance_assessment_processor;
 pub mod implementation_plan_merge_processor;
 pub mod root_folder_selection_processor;
+pub mod video_analysis_processor;
 pub mod web_search_executor_processor;
 pub mod web_search_prompts_generator_processor;
-pub mod video_analysis_processor;
 
 pub use abstract_llm_processor::{
     LlmPromptContext, LlmTaskConfig, LlmTaskConfigBuilder, LlmTaskResult, LlmTaskRunner,
@@ -32,6 +32,6 @@ pub use extended_path_finder_processor::ExtendedPathFinderProcessor;
 pub use file_relevance_assessment_processor::FileRelevanceAssessmentProcessor;
 pub use implementation_plan_merge_processor::ImplementationPlanMergeProcessor;
 pub use root_folder_selection_processor::RootFolderSelectionProcessor;
+pub use video_analysis_processor::VideoAnalysisProcessor;
 pub use web_search_executor_processor::WebSearchExecutorProcessor;
 pub use web_search_prompts_generator_processor::WebSearchPromptsGeneratorProcessor;
-pub use video_analysis_processor::VideoAnalysisProcessor;

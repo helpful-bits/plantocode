@@ -26,17 +26,19 @@ pub async fn get_database_info_command(app_handle: AppHandle) -> AppResult<Datab
     let db: sqlx::SqlitePool = app_handle.state::<sqlx::SqlitePool>().inner().clone();
     let db_arc = Arc::new(db);
 
-    db_utils::get_database_info(db_arc).await
+    db_utils::get_database_info(db_arc)
+        .await
         .map_err(|e| AppError::DatabaseError(format!("Failed to get database info: {}", e)))
 }
 
 #[command]
 pub fn get_database_path_command(app_handle: AppHandle) -> AppResult<String> {
     info!("Getting database file path");
-    let app_data_dir = app_handle.path().app_local_data_dir().map_err(|e| {
-        AppError::InternalError(format!("Failed to get app local data dir: {}", e))
-    })?;
-    
+    let app_data_dir = app_handle
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| AppError::InternalError(format!("Failed to get app local data dir: {}", e)))?;
+
     let db_path = app_data_dir.join(DB_FILENAME);
     Ok(db_path.to_string_lossy().to_string())
 }

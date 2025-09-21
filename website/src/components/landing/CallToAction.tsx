@@ -87,7 +87,7 @@ export function CallToAction({ title, description }: CallToActionProps) {
 
                 <Reveal className="inline-flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-primary/10 dark:bg-primary/15 text-primary mb-4 sm:mb-6 text-xs sm:text-sm font-medium" delay={0.1}>
                   <Zap className="w-3 h-3 sm:w-4 sm:h-4" />
-                  <span>Transform Your Development Today</span>
+                  <span>For Heavy Coding-Agent Users</span>
                 </Reveal>
 
                 <Reveal as="h2" className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl mb-4 sm:mb-6 text-primary-emphasis relative z-10 font-bold" delay={0.15}>

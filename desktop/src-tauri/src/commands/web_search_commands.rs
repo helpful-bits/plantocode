@@ -1,6 +1,9 @@
 use crate::AppState;
 use crate::db_utils::BackgroundJobRepository;
-use crate::jobs::types::{JobPayload, WebSearchExecutionPayload, WebSearchPromptsGenerationPayload, WebSearchWorkflowPayload};
+use crate::jobs::types::{
+    JobPayload, WebSearchExecutionPayload, WebSearchPromptsGenerationPayload,
+    WebSearchWorkflowPayload,
+};
 use crate::jobs::workflow_orchestrator::get_workflow_orchestrator;
 use crate::models::{JobCommandResponse, TaskType};
 use crate::utils::{config_resolver, job_creation_utils};
@@ -32,11 +35,9 @@ pub async fn start_web_search_prompts_generation_job(
     .await
     .map_err(|e| format!("Failed to resolve model settings: {}", e))?;
 
-    let payload = JobPayload::WebSearchPromptsGeneration(
-        WebSearchPromptsGenerationPayload {
-            task_description: task_description.clone(),
-        },
-    );
+    let payload = JobPayload::WebSearchPromptsGeneration(WebSearchPromptsGenerationPayload {
+        task_description: task_description.clone(),
+    });
 
     let job_id = job_creation_utils::create_and_queue_background_job(
         &session_id,
@@ -76,7 +77,9 @@ pub async fn start_web_search_workflow(
 
     // Preflight touch: ensure queue is ready/lazily initialized before creating jobs
     if let Err(e) = crate::jobs::queue::get_job_queue().await {
-        log::debug!("Preflight job queue readiness check: {e:?} (proceeding, accessor handles waiting/lazy init)");
+        log::debug!(
+            "Preflight job queue readiness check: {e:?} (proceeding, accessor handles waiting/lazy init)"
+        );
     }
 
     // Validate required fields

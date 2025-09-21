@@ -54,7 +54,6 @@ pub fn get_database_instance(
     Ok(db)
 }
 
-
 /// Get database diagnostic information
 pub async fn get_database_info(db: Arc<SqlitePool>) -> AppResult<DatabaseInfo> {
     // Get database file path

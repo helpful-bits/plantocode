@@ -22,7 +22,11 @@ pub(super) async fn create_abstract_stage_payload(
             use crate::jobs::types::RootFolderSelectionPayload;
             use crate::utils;
 
-            let candidate_paths = utils::workspace_roots::list_root_level_folders(&app_handle, &workflow_state.project_directory).await?;
+            let candidate_paths = utils::workspace_roots::list_root_level_folders(
+                &app_handle,
+                &workflow_state.project_directory,
+            )
+            .await?;
             let candidate_roots: Vec<String> = candidate_paths
                 .into_iter()
                 .map(|path| path.to_string_lossy().to_string())
@@ -38,9 +42,16 @@ pub(super) async fn create_abstract_stage_payload(
             use crate::jobs::types::RegexFileFilterPayload;
 
             // Get root directories from the workflow state (stored by RootFolderSelection)
-            let root_directories = if !workflow_state.intermediate_data.selected_root_directories.is_empty() {
+            let root_directories = if !workflow_state
+                .intermediate_data
+                .selected_root_directories
+                .is_empty()
+            {
                 // Use the directories selected by the RootFolderSelection stage
-                workflow_state.intermediate_data.selected_root_directories.clone()
+                workflow_state
+                    .intermediate_data
+                    .selected_root_directories
+                    .clone()
             } else {
                 // Fallback to default workspace roots if no selection was made
                 let roots = utils::workspace_roots::resolve_workspace_roots(
@@ -48,7 +59,7 @@ pub(super) async fn create_abstract_stage_payload(
                     &workflow_state.project_directory,
                 )
                 .await?;
-                
+
                 roots
                     .iter()
                     .map(|p| p.to_string_lossy().to_string())
@@ -101,7 +112,10 @@ pub(super) async fn create_abstract_stage_payload(
             }
 
             // Pass the selected root directories for scoped directory tree generation
-            let selected_root_directories = workflow_state.intermediate_data.selected_root_directories.clone();
+            let selected_root_directories = workflow_state
+                .intermediate_data
+                .selected_root_directories
+                .clone();
 
             let payload = ExtendedPathFinderPayload {
                 task_description: workflow_state.task_description.clone(),

@@ -2,10 +2,11 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::db::repositories::{
-    ApiUsageRepository, ModelRepository, CustomerBillingRepository, 
+    ApiUsageRepository, ModelRepository, CustomerBillingRepository,
     UserRepository, SettingsRepository
 };
 use crate::config::AppSettings;
+// use crate::devices::DeviceService; // TODO: Enable when DeviceService is implemented
 use crate::handlers::config_handlers::DesktopRuntimeAIConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,4 +40,5 @@ pub struct AppState {
     pub user_repository: Arc<UserRepository>,
     pub settings_repository: Arc<SettingsRepository>,
     pub runtime_ai_config: Arc<DesktopRuntimeAIConfig>,
+    // pub device_service: Option<Arc<DeviceService>>, // TODO: Enable when DeviceService is implemented
 }

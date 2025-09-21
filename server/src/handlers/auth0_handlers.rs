@@ -48,6 +48,7 @@ pub struct PollStatusResponse {
 pub struct FinalizeLoginRequest {
     pub auth0_id_token: String,
     pub auth0_refresh_token: Option<String>,
+    pub device_id: Option<String>,
 }
 
 pub async fn initiate_auth0_login(
@@ -147,20 +148,16 @@ pub async fn finalize_auth0_login(
     token_request: web::Json<FinalizeLoginRequest>,
     req: HttpRequest,
 ) -> Result<HttpResponse, AppError> {
-    let client_id_from_header = req.headers()
-        .get("X-Client-ID")
-        .and_then(|v| v.to_str().ok());
-    
     // Validate the access token first
     let _access_token_claims = auth_service.validate_auth0_access_token(&token_request.auth0_id_token).await?;
-    
+
     // Get user info from Auth0 userinfo endpoint using the access token
     let user_info = auth_service.get_user_info_from_access_token(&token_request.auth0_id_token).await?;
-    
+
     let auth_response = auth_service.process_auth0_login(
         user_info,
         token_request.auth0_refresh_token.clone(),
-        client_id_from_header,
+        token_request.device_id.clone(),
     ).await?;
     
     info!("Auth0 login finalized for user: {}", auth_response.user.email);
@@ -195,6 +192,7 @@ pub async fn refresh_app_token_auth0(
     auth_service: web::Data<Auth0OAuthService>,
     user_repo: web::Data<std::sync::Arc<crate::db::repositories::user_repository::UserRepository>>,
     app_state: web::Data<AppState>,
+    req: HttpRequest,
 ) -> Result<HttpResponse, AppError> {
     let app_user_id = user.user_id;
     
@@ -218,11 +216,14 @@ pub async fn refresh_app_token_auth0(
     // For refresh token flow, we can use the access token to get user info
     let _access_token_claims = auth_service.validate_auth0_access_token(&new_tokens.access_token).await?;
     let user_info = auth_service.get_user_info_from_access_token(&new_tokens.access_token).await?;
-    
+
+    // Extract device_id from header
+    let device_id_from_header = req.headers().get("x-device-id").and_then(|v| v.to_str().ok()).map(|s| s.to_string());
+
     let auth_response = auth_service.process_auth0_login(
         user_info,
         new_tokens.refresh_token,
-        None,
+        device_id_from_header,
     ).await?;
     
     Ok(HttpResponse::Ok().json(auth_response))

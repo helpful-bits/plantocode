@@ -1,7 +1,6 @@
-use futures::{StreamExt, stream};
-use log::{debug, error, warn, info};
 use fancy_regex::Regex;
-use tokio::time::timeout;
+use futures::{StreamExt, stream};
+use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashSet;
@@ -10,6 +9,7 @@ use std::path::Path;
 use tauri::AppHandle;
 use tokio::fs as tokio_fs;
 use tokio::task;
+use tokio::time::timeout;
 use tokio::time::{Duration, sleep};
 
 use crate::error::{AppError, AppResult};
@@ -39,7 +39,10 @@ impl RegexFileFilterProcessor {
     fn compile_regex(&self, pattern: &str) -> AppResult<Regex> {
         match Regex::new(pattern) {
             Ok(regex) => {
-                debug!("Successfully compiled regex pattern (with fancy features): {}", pattern);
+                debug!(
+                    "Successfully compiled regex pattern (with fancy features): {}",
+                    pattern
+                );
                 Ok(regex)
             }
             Err(e) => {
@@ -99,7 +102,10 @@ impl RegexFileFilterProcessor {
                 // Check for binary files by looking for null bytes in first 8192 bytes
                 let check_size = std::cmp::min(bytes.len(), 8192);
                 if bytes[..check_size].contains(&0) {
-                    debug!("Skipping binary file for pattern matching: {}", absolute_file_path);
+                    debug!(
+                        "Skipping binary file for pattern matching: {}",
+                        absolute_file_path
+                    );
                     return false;
                 }
 
@@ -112,7 +118,10 @@ impl RegexFileFilterProcessor {
                         match content_regex.is_match(&content) {
                             Ok(matches) => matches,
                             Err(e) => {
-                                debug!("Regex matching error for file {}: {}", absolute_file_path, e);
+                                debug!(
+                                    "Regex matching error for file {}: {}",
+                                    absolute_file_path, e
+                                );
                                 false
                             }
                         }
@@ -176,11 +185,8 @@ impl RegexFileFilterProcessor {
 
                 // Check content pattern (if specified) - file_path is already absolute
                 if let Some(ref content_regex) = content_regex {
-                    content_matches = Self::file_content_matches_pattern_static(
-                        &file_path,
-                        content_regex,
-                    )
-                    .await;
+                    content_matches =
+                        Self::file_content_matches_pattern_static(&file_path, content_regex).await;
                 }
 
                 // Both conditions must be true (AND logic within group)
@@ -234,7 +240,9 @@ impl JobProcessor for RegexFileFilterProcessor {
     async fn process(&self, job: Job, app_handle: AppHandle) -> AppResult<JobProcessResult> {
         // Extract task description and root directories from workflow payload
         let (task_description_for_prompt, roots) = match &job.payload {
-            JobPayload::RegexFileFilter(p) => (p.task_description.clone(), p.root_directories.clone()),
+            JobPayload::RegexFileFilter(p) => {
+                (p.task_description.clone(), p.root_directories.clone())
+            }
             _ => {
                 return Err(AppError::JobError(
                     "Invalid payload type for RegexFileFilterProcessor".to_string(),
@@ -280,7 +288,7 @@ impl JobProcessor for RegexFileFilterProcessor {
         // Process each root directory in parallel
         let mut parallel_tasks = Vec::new();
         let total_roots = roots.len();
-        
+
         for (index, root_dir) in roots.iter().enumerate() {
             let root_dir_clone = root_dir.clone();
             let task_description_clone = task_description_for_prompt.clone();
@@ -288,27 +296,41 @@ impl JobProcessor for RegexFileFilterProcessor {
             let app_handle_clone = app_handle.clone();
             let job_clone = job.clone();
             let settings_repo_clone = settings_repo.clone();
-            
+
             // Spawn parallel task for this root
             let task = tokio::spawn(async move {
-                info!("Processing root {} of {}: {}", index + 1, total_roots, root_dir_clone);
-                
+                info!(
+                    "Processing root {} of {}: {}",
+                    index + 1,
+                    total_roots,
+                    root_dir_clone
+                );
+
                 // Generate directory tree for this specific root
-                let directory_tree = match crate::utils::directory_tree::get_directory_tree_with_defaults(&root_dir_clone).await {
-                    Ok(tree) => tree,
-                    Err(e) => {
-                        error!("Failed to generate directory tree for root {}: {}", root_dir_clone, e);
-                        return Err(AppError::JobError(format!(
-                            "Failed to generate directory tree for {}: {}",
-                            root_dir_clone, e
-                        )));
-                    }
-                };
+                let directory_tree =
+                    match crate::utils::directory_tree::get_directory_tree_with_defaults(
+                        &root_dir_clone,
+                    )
+                    .await
+                    {
+                        Ok(tree) => tree,
+                        Err(e) => {
+                            error!(
+                                "Failed to generate directory tree for root {}: {}",
+                                root_dir_clone, e
+                            );
+                            return Err(AppError::JobError(format!(
+                                "Failed to generate directory tree for {}: {}",
+                                root_dir_clone, e
+                            )));
+                        }
+                    };
 
                 // Setup LLM task configuration for this root
-                let llm_config = LlmTaskConfigBuilder::new(model_used_clone, temperature, max_output_tokens)
-                    .stream(false)
-                    .build();
+                let llm_config =
+                    LlmTaskConfigBuilder::new(model_used_clone, temperature, max_output_tokens)
+                        .stream(false)
+                        .build();
 
                 // Create LLM task runner for this root
                 let task_runner = LlmTaskRunner::new(app_handle_clone, job_clone, llm_config);
@@ -332,8 +354,14 @@ impl JobProcessor for RegexFileFilterProcessor {
                 // Parse the response
                 let parsed_json: serde_json::Value = serde_json::from_str(&llm_result.response)
                     .map_err(|e| {
-                        error!("Failed to parse LLM response for root {}: {}", root_dir_clone, e);
-                        AppError::JobError(format!("Failed to parse response for {}: {}", root_dir_clone, e))
+                        error!(
+                            "Failed to parse LLM response for root {}: {}",
+                            root_dir_clone, e
+                        );
+                        AppError::JobError(format!(
+                            "Failed to parse response for {}: {}",
+                            root_dir_clone, e
+                        ))
                     })?;
 
                 // Extract pattern groups
@@ -352,24 +380,28 @@ impl JobProcessor for RegexFileFilterProcessor {
 
                 Ok((root_dir_clone, pattern_groups, llm_result.usage))
             });
-            
+
             parallel_tasks.push(task);
         }
 
         // Wait for all parallel tasks to complete
         let results = futures::future::join_all(parallel_tasks).await;
-        
+
         // Process results and combine files from all roots
         let mut all_filtered_files = HashSet::new();
         let mut total_prompt_tokens = 0u32;
         let mut total_completion_tokens = 0u32;
         let mut total_cost = 0.0f64;
-        
+
         for (index, result) in results.iter().enumerate() {
             match result {
                 Ok(Ok((root_dir, pattern_groups, usage))) => {
-                    info!("Root {} returned {} pattern groups", root_dir, pattern_groups.len());
-                    
+                    info!(
+                        "Root {} returned {} pattern groups",
+                        root_dir,
+                        pattern_groups.len()
+                    );
+
                     // Update token usage
                     if let Some(usage) = usage {
                         total_prompt_tokens += usage.prompt_tokens as u32;
@@ -378,12 +410,12 @@ impl JobProcessor for RegexFileFilterProcessor {
                             total_cost += cost;
                         }
                     }
-                    
+
                     if pattern_groups.is_empty() {
                         warn!("No pattern groups generated for root: {}", root_dir);
                         continue;
                     }
-                    
+
                     // Compile pattern groups for this root
                     let compiled_groups: Vec<CompiledPatternGroup> = pattern_groups
                         .iter()
@@ -396,7 +428,7 @@ impl JobProcessor for RegexFileFilterProcessor {
                         warn!("Root directory does not exist: {}", root_dir);
                         continue;
                     }
-                    
+
                     // Find the git repository root for this directory
                     let git_root = {
                         let mut current = root_path;
@@ -412,7 +444,7 @@ impl JobProcessor for RegexFileFilterProcessor {
                             }
                         }
                     };
-                    
+
                     // Get all non-ignored files from the git repository
                     let all_git_files = match git_utils::get_all_non_ignored_files(git_root) {
                         Ok((files, _)) => files,
@@ -421,20 +453,20 @@ impl JobProcessor for RegexFileFilterProcessor {
                             vec![]
                         }
                     };
-                    
+
                     // Filter to only files under this specific root directory
                     let mut root_files: Vec<String> = Vec::new();
                     for rel_path in &all_git_files {
                         let abs_path = git_root.join(rel_path);
-                        
+
                         // Check if this file is under the current root directory
                         if abs_path.starts_with(root_path) && abs_path.is_file() {
                             root_files.push(abs_path.to_string_lossy().to_string());
                         }
                     }
-                    
+
                     debug!("Found {} files in root {}", root_files.len(), root_dir);
-                    
+
                     // Apply patterns to files from this root
                     for compiled_group in &compiled_groups {
                         let matches = match timeout(
@@ -445,11 +477,14 @@ impl JobProcessor for RegexFileFilterProcessor {
                         {
                             Ok(group_matches) => group_matches,
                             Err(_) => {
-                                warn!("Pattern group '{}' timed out for root {}", compiled_group.title, root_dir);
+                                warn!(
+                                    "Pattern group '{}' timed out for root {}",
+                                    compiled_group.title, root_dir
+                                );
                                 vec![]
                             }
                         };
-                        
+
                         // Add matches to the overall set
                         for file in matches {
                             all_filtered_files.insert(file);
@@ -464,22 +499,21 @@ impl JobProcessor for RegexFileFilterProcessor {
                 }
             }
         }
-        
+
         let filtered_files: Vec<String> = all_filtered_files.into_iter().collect();
-        
+
         info!(
             "Parallel processing complete. Found {} total files across {} roots",
             filtered_files.len(),
             total_roots
         );
 
-
         // Check if no files were found - this is a valid result, not an error
         if filtered_files.is_empty() {
             let message = "No files found matching the task description. The task description may be too vague or doesn't match any files in the codebase. Please provide more specific information about what you're looking for, such as:\n\n• Specific file names, directories, or patterns\n• Technology stack or programming languages involved\n• Functionality or features you want to modify\n• Error messages or specific code snippets you're working with";
-            
+
             info!("No files found matching task description - returning empty result");
-            
+
             // Return success with empty files array and informative message
             // This allows the workflow to handle it appropriately without treating it as a hard failure
             let result = JobProcessResult::success(
@@ -492,12 +526,9 @@ impl JobProcessor for RegexFileFilterProcessor {
                     "isEmptyResult": true
                 })),
             )
-            .with_tokens(
-                Some(total_prompt_tokens),
-                Some(total_completion_tokens),
-            )
+            .with_tokens(Some(total_prompt_tokens), Some(total_completion_tokens))
             .with_actual_cost(total_cost);
-            
+
             return Ok(result);
         }
 
@@ -512,10 +543,7 @@ impl JobProcessor for RegexFileFilterProcessor {
                 "summary": summary
             })),
         )
-        .with_tokens(
-            Some(total_prompt_tokens),
-            Some(total_completion_tokens),
-        )
+        .with_tokens(Some(total_prompt_tokens), Some(total_completion_tokens))
         .with_actual_cost(total_cost);
 
         Ok(result)

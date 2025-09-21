@@ -124,15 +124,15 @@ pub async fn get_consent_status_command(
         .clone();
     drop(consent_client_guard);
 
-    let response = consent_client
-        .get_status(&region)
-        .await
-        .map_err(|e| {
-            warn!("Failed to get consent status: {}", e);
-            e
-        })?;
+    let response = consent_client.get_status(&region).await.map_err(|e| {
+        warn!("Failed to get consent status: {}", e);
+        e
+    })?;
 
-    info!("Successfully retrieved consent status for region {}", region);
+    info!(
+        "Successfully retrieved consent status for region {}",
+        region
+    );
     Ok(response)
 }
 
@@ -165,13 +165,10 @@ pub async fn verify_consent_command(
         .clone();
     drop(consent_client_guard);
 
-    let response = consent_client
-        .verify(&region)
-        .await
-        .map_err(|e| {
-            warn!("Failed to verify consent: {}", e);
-            e
-        })?;
+    let response = consent_client.verify(&region).await.map_err(|e| {
+        warn!("Failed to verify consent: {}", e);
+        e
+    })?;
 
     info!("Successfully verified consent for region {}", region);
     Ok(response)

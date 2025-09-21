@@ -5,7 +5,7 @@ import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
 import { BackgroundJobsContext } from "@/contexts/background-jobs";
 import { useTerminalSessions } from "@/contexts/terminal-sessions/useTerminalSessions";
-import { ArrowLeft, Terminal, Circle, CheckCircle, XCircle, AlertTriangle, Clock, Search } from "lucide-react";
+import { ArrowLeft, Terminal, Circle, CheckCircle, XCircle, AlertTriangle, Clock, Search, Info } from "lucide-react";
 
 interface MonitoringPanelProps {
   onBack: () => void;
@@ -14,7 +14,7 @@ interface MonitoringPanelProps {
 
 export const MonitoringPanel = ({ onBack, onOpenTerminal }: MonitoringPanelProps) => {
   const { jobs } = useContext(BackgroundJobsContext);
-  const { getSession, getActiveCount } = useTerminalSessions();
+  const { getSession, getActiveCount, getAttention } = useTerminalSessions();
   const [searchQuery, setSearchQuery] = useState("");
 
   // Filter only implementation plan jobs
@@ -24,58 +24,101 @@ export const MonitoringPanel = ({ onBack, onOpenTerminal }: MonitoringPanelProps
       job.taskType === "implementation_plan_merge"
     ), [jobs]);
 
-  // Filter jobs based on search query
+  // Filter and sort jobs based on search query
   const implementationPlanJobs = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return allImplementationPlanJobs;
+    let filteredJobs = allImplementationPlanJobs;
+
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filteredJobs = allImplementationPlanJobs.filter(job => {
+        // Search in job metadata for title/description
+        try {
+          const metadata = typeof job.metadata === 'string'
+            ? JSON.parse(job.metadata)
+            : job.metadata || {};
+          // Check for title in multiple places: planTitle, generated_title, displayName
+          const title = metadata.planTitle || metadata.generated_title || metadata.displayName || "";
+          const description = metadata.description || "";
+          const jobType = job.taskType === "implementation_plan_merge" ? "merge plan" : "implementation plan";
+
+          return (
+            title.toLowerCase().includes(query) ||
+            description.toLowerCase().includes(query) ||
+            jobType.includes(query) ||
+            job.id.toLowerCase().includes(query) ||
+            job.status.toLowerCase().includes(query)
+          );
+        } catch {
+          // Fallback to basic search if metadata parsing fails
+          const jobType = job.taskType === "implementation_plan_merge" ? "merge plan" : "implementation plan";
+          return (
+            jobType.includes(query) ||
+            job.id.toLowerCase().includes(query) ||
+            job.status.toLowerCase().includes(query)
+          );
+        }
+      });
     }
-    
-    const query = searchQuery.toLowerCase();
-    return allImplementationPlanJobs.filter(job => {
-      // Search in job metadata for title/description
-      try {
-        const metadata = typeof job.metadata === 'string' 
-          ? JSON.parse(job.metadata) 
-          : job.metadata || {};
-        // Check for title in multiple places: planTitle, generated_title, displayName
-        const title = metadata.planTitle || metadata.generated_title || metadata.displayName || "";
-        const description = metadata.description || "";
-        const jobType = job.taskType === "implementation_plan_merge" ? "merge plan" : "implementation plan";
-        
-        return (
-          title.toLowerCase().includes(query) ||
-          description.toLowerCase().includes(query) ||
-          jobType.includes(query) ||
-          job.id.toLowerCase().includes(query) ||
-          job.status.toLowerCase().includes(query)
-        );
-      } catch {
-        // Fallback to basic search if metadata parsing fails
-        const jobType = job.taskType === "implementation_plan_merge" ? "merge plan" : "implementation plan";
-        return (
-          jobType.includes(query) ||
-          job.id.toLowerCase().includes(query) ||
-          job.status.toLowerCase().includes(query)
-        );
-      }
+
+    // Sort with active statuses first, then by updatedAt/createdAt descending
+    return filteredJobs.sort((a, b) => {
+      const activeStatuses = ['running', 'queued', 'processing', 'generating'];
+      const aIsActive = activeStatuses.includes(a.status);
+      const bIsActive = activeStatuses.includes(b.status);
+
+      if (aIsActive && !bIsActive) return -1;
+      if (!aIsActive && bIsActive) return 1;
+
+      // Secondary sort by timestamp descending
+      const aTime = new Date(a.updatedAt || a.createdAt).getTime();
+      const bTime = new Date(b.updatedAt || b.createdAt).getTime();
+      return bTime - aTime;
     });
   }, [allImplementationPlanJobs, searchQuery]);
 
-  const getTerminalStatusIcon = (jobId: string) => {
-    const session = getSession(jobId);
-    if (!session) return null;
-    
-    switch (session.status) {
-      case "running":
-        return <Circle className="w-3 h-3 text-success animate-pulse" />;
-      case "completed":
-        return <CheckCircle className="w-3 h-3 text-primary" />;
-      case "failed":
-        return <AlertTriangle className="w-3 h-3 text-destructive" />;
-      case "stuck":
-        return <Clock className="w-3 h-3 text-warning" />;
-      default:
-        return null;
+  const getJobStatusWithAttention = (job: any) => {
+    const session = getSession(job.id);
+    const attention = getAttention(job.id);
+
+    // Attention takes precedence
+    if (attention && attention.level !== 'none') {
+      const attentionColors = {
+        high: 'text-red-500',
+        medium: 'text-yellow-500',
+        low: 'text-blue-500'
+      };
+      return {
+        icon: <AlertTriangle className={`w-3.5 h-3.5 ${attentionColors[attention.level]}`} />,
+        badge: {
+          text: 'Needs input',
+          variant: attention.level === 'high' ? 'destructive' : attention.level === 'medium' ? 'warning' : 'info'
+        }
+      };
+    }
+
+    // Terminal status
+    if (session) {
+      switch (session.status) {
+        case "running":
+          return { icon: <Circle className="w-3.5 h-3.5 text-success animate-pulse" />, badge: null };
+        case "completed":
+          return { icon: <CheckCircle className="w-3.5 h-3.5 text-success" />, badge: null };
+        case "failed":
+          return { icon: <AlertTriangle className="w-3.5 h-3.5 text-destructive" />, badge: null };
+        case "stuck":
+          return { icon: <Clock className="w-3.5 h-3.5 text-warning" />, badge: null };
+        default:
+          return { icon: <Circle className="w-3.5 h-3.5 text-muted-foreground" />, badge: null };
+      }
+    }
+
+    // Job status fallback
+    if (job.status === "completed") {
+      return { icon: <CheckCircle className="w-3.5 h-3.5 text-success" />, badge: null };
+    } else if (job.status === "failed") {
+      return { icon: <AlertTriangle className="w-3.5 h-3.5 text-destructive" />, badge: null };
+    } else {
+      return { icon: <Circle className="w-3.5 h-3.5 text-muted-foreground" />, badge: null };
     }
   };
 
@@ -155,8 +198,8 @@ export const MonitoringPanel = ({ onBack, onOpenTerminal }: MonitoringPanelProps
                 let planTitle = "";
                 let planDescription = "";
                 try {
-                  const metadata = typeof job.metadata === 'string' 
-                    ? JSON.parse(job.metadata) 
+                  const metadata = typeof job.metadata === 'string'
+                    ? JSON.parse(job.metadata)
                     : job.metadata || {};
                   // Check for title in multiple places: planTitle, generated_title, displayName
                   planTitle = metadata.planTitle || metadata.generated_title || metadata.displayName || "";
@@ -164,51 +207,76 @@ export const MonitoringPanel = ({ onBack, onOpenTerminal }: MonitoringPanelProps
                 } catch {
                   // Ignore parsing errors
                 }
-                
+
                 // Use a meaningful display title
-                const displayTitle = planTitle || planDescription || 
+                const displayTitle = planTitle || planDescription ||
                   (job.taskType === "implementation_plan_merge" ? "Merge Plan" : "Implementation Plan");
-                
+
                 // Determine if this is a merge plan for badge
                 const isMergePlan = job.taskType === "implementation_plan_merge";
-                
+
+                // Get status and attention info
+                const statusInfo = getJobStatusWithAttention(job);
+
+                // Get session for last output
+                const session = getSession(job.id);
+                const lastOutput = session?.lastOutput?.trim();
+                const outputSnippet = lastOutput ?
+                  (lastOutput.length > 50 ? lastOutput.slice(0, 50) + '...' : lastOutput) : null;
+
                 return (
-                  <div 
-                    key={job.id} 
-                    className="group flex items-center gap-2 border border-border/60 rounded-md p-2 bg-card hover:bg-accent/5 transition-colors cursor-pointer"
+                  <div
+                    key={job.id}
+                    className="group flex items-start gap-3 border border-border/60 rounded-md p-3 bg-card hover:bg-accent/5 transition-colors cursor-pointer"
                     onClick={() => onOpenTerminal(job.id)}
                   >
                     {/* Status icon */}
-                    <div className="flex-shrink-0">
-                      {getTerminalStatusIcon(job.id) || (
-                        job.status === "completed" ? 
-                          <CheckCircle className="w-3.5 h-3.5 text-success" /> :
-                          job.status === "failed" ?
-                          <XCircle className="w-3.5 h-3.5 text-destructive" /> :
-                          <Circle className="w-3.5 h-3.5 text-muted-foreground" />
-                      )}
+                    <div className="flex-shrink-0 mt-0.5">
+                      {statusInfo.icon}
                     </div>
-                    
-                    {/* Main content - title is the focus */}
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-foreground truncate">
-                        {displayTitle}
+
+                    {/* Main content */}
+                    <div className="flex-1 min-w-0 space-y-1">
+                      {/* Title and badges row */}
+                      <div className="flex items-center gap-2">
+                        <div className="text-sm font-medium text-foreground truncate">
+                          {displayTitle}
+                        </div>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          {statusInfo.badge && (
+                            <span className={`text-xs px-1.5 py-0.5 rounded ${
+                              statusInfo.badge.variant === 'destructive' ? 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-300' :
+                              statusInfo.badge.variant === 'warning' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-300' :
+                              'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300'
+                            }`}>
+                              {statusInfo.badge.text}
+                            </span>
+                          )}
+                          {isMergePlan && (
+                            <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary">
+                              Merge
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      {/* Only show extra info on hover or if no title */}
+
+                      {/* Last output snippet */}
+                      {outputSnippet && (
+                        <div className="text-xs text-muted-foreground font-mono bg-muted/30 px-2 py-1 rounded">
+                          {outputSnippet}
+                        </div>
+                      )}
+
+                      {/* Job ID if no title */}
                       {!planTitle && (
                         <div className="text-xs text-muted-foreground/60">
                           {job.id.slice(0, 8)}
                         </div>
                       )}
                     </div>
-                    
-                    {/* Small badges for type and terminal indicator */}
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      {isMergePlan && (
-                        <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary">
-                          Merge
-                        </span>
-                      )}
+
+                    {/* Terminal indicator */}
+                    <div className="flex-shrink-0 mt-0.5">
                       <Terminal className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                     </div>
                   </div>

@@ -30,7 +30,7 @@ export const metadata: Metadata = {
     canonical: 'https://www.vibemanager.app/docs/claude-code-plan-mode',
   },
   openGraph: {
-    title: 'Claude Code Plan Mode — Safe, Read-Only Planning (Shift+Tab)',
+    title: 'Claude Code Plan Mode - Safe, Read-Only Planning (Shift+Tab)',
     description: 'Master Claude Code\'s Plan Mode for safe, read-only analysis and implementation planning. Use Shift+Tab to toggle permissions.',
     url: 'https://www.vibemanager.app/docs/claude-code-plan-mode',
     type: 'article',
@@ -96,7 +96,7 @@ const faqJsonLd: FAQPage = {
       name: 'Will Claude edit files in Plan Mode?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: 'No—Plan Mode is read-only until you approve the plan and switch to execution mode.'
+        text: 'No - Plan Mode is read-only until you approve the plan and switch to execution mode.'
       }
     }
   ]
@@ -145,7 +145,7 @@ export default function ClaudeCodePlanModePage() {
         <p className="text-base text-muted-foreground leading-relaxed mb-4">
           Claude Code's Plan Mode revolutionizes AI-assisted development by separating planning from execution.
           Powered by Claude Opus 4.1 (74.5% on SWE-bench Verified), it analyzes your entire repository, understands complex
-          requirements, and drafts detailed implementation strategies—all without touching a single file until you're ready.
+          requirements, and drafts detailed implementation strategies - all without touching a single file until you're ready.
         </p>
 
         {/* What Plan Mode Does */}
@@ -387,14 +387,14 @@ following the existing patterns in the user service"`}</code>
             <h3 className="text-lg font-semibold text-foreground mt-6 mb-3">Can I have different models for planning vs implementation?</h3>
             <p className="text-muted-foreground">
               Yes, Claude Code supports multiple models. While Opus 4.1 excels at planning (74.5% SWE-bench), you can also use Claude Sonnet 4 for faster responses
-              or Claude Haiku 3.5 for cost-efficiency. Enterprise users can connect their Amazon Bedrock or Google Vertex AI instances.
+              or Claude Haiku 3.5 for cost-efficiency. Professional users can connect their Amazon Bedrock or Google Vertex AI instances.
             </p>
           </GlassCard>
 
           <GlassCard className="p-6">
             <h3 className="text-lg font-semibold text-foreground mt-6 mb-3">Will Claude edit files in Plan Mode?</h3>
             <p className="text-muted-foreground">
-              No—Plan Mode is read-only until you approve the plan and switch to execution mode. This ensures 
+              No - Plan Mode is read-only until you approve the plan and switch to execution mode. This ensures 
               complete safety while Claude analyzes your repository and drafts implementation strategies.
             </p>
           </GlassCard>

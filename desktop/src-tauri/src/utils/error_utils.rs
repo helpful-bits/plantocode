@@ -153,6 +153,12 @@ pub fn format_user_error(error: &AppError) -> String {
         AppError::VideoAnalysisError(msg) => format!("Video analysis error: {}", msg),
         AppError::UpdaterError(msg) => format!("Update error: {}", msg),
         AppError::TerminalError(msg) => format!("Terminal error: {}", msg),
+        AppError::TerminalRecoveryError(msg) => format!("Terminal recovery error: {}", msg),
+        AppError::TerminalStateError(msg) => format!("Terminal state error: {}", msg),
+        AppError::TerminalPersistenceError(msg) => format!("Terminal persistence error: {}", msg),
+        AppError::TerminalSessionNotFound(msg) => format!("Terminal session not found: {}", msg),
+        AppError::TerminalAttachmentFailed(msg) => format!("Terminal attachment failed: {}", msg),
+        AppError::TerminalNoOutput(msg) => format!("Terminal output error: {}", msg),
     }
 }
 
@@ -196,35 +202,31 @@ pub fn log_workflow_error(
 }
 
 /// Log an error to the database (async)
-pub async fn log_error_to_db(
-    error: &AppError,
-    context: &str,
-    metadata: Option<Value>,
-) {
+pub async fn log_error_to_db(error: &AppError, context: &str, metadata: Option<Value>) {
     if let Some(handle) = crate::GLOBAL_APP_HANDLE.get() {
         if let Some(repo) = handle.try_state::<Arc<crate::db_utils::ErrorLogRepository>>() {
             // Determine error level based on error type
             let level = match error {
-                AppError::InternalError(_) | 
-                AppError::DatabaseError(_) |
-                AppError::SqlxError(_) |
-                AppError::LockPoisoned(_) |
-                AppError::InitializationError(_) => "CRITICAL",
-                
-                AppError::AuthError(_) |
-                AppError::SecurityError(_) |
-                AppError::AccessDenied(_) |
-                AppError::Unauthorized(_) |
-                AppError::Forbidden(_) => "SECURITY",
-                
-                AppError::PaymentFailed(_) |
-                AppError::PaymentDeclined(_) |
-                AppError::BillingError(_) |
-                AppError::StripeError(_) => "BILLING",
-                
+                AppError::InternalError(_)
+                | AppError::DatabaseError(_)
+                | AppError::SqlxError(_)
+                | AppError::LockPoisoned(_)
+                | AppError::InitializationError(_) => "CRITICAL",
+
+                AppError::AuthError(_)
+                | AppError::SecurityError(_)
+                | AppError::AccessDenied(_)
+                | AppError::Unauthorized(_)
+                | AppError::Forbidden(_) => "SECURITY",
+
+                AppError::PaymentFailed(_)
+                | AppError::PaymentDeclined(_)
+                | AppError::BillingError(_)
+                | AppError::StripeError(_) => "BILLING",
+
                 _ => "ERROR",
             };
-            
+
             // Get error type string
             let error_type = match error {
                 AppError::IoError(_) => "IO_ERROR",
@@ -288,18 +290,24 @@ pub async fn log_error_to_db(
                 AppError::VideoAnalysisError(_) => "VIDEO_ANALYSIS_ERROR",
                 AppError::UpdaterError(_) => "UPDATER_ERROR",
                 AppError::TerminalError(_) => "TERMINAL_ERROR",
+                AppError::TerminalRecoveryError(_) => "TERMINAL_RECOVERY_ERROR",
+                AppError::TerminalStateError(_) => "TERMINAL_STATE_ERROR",
+                AppError::TerminalPersistenceError(_) => "TERMINAL_PERSISTENCE_ERROR",
+                AppError::TerminalSessionNotFound(_) => "TERMINAL_SESSION_NOT_FOUND",
+                AppError::TerminalAttachmentFailed(_) => "TERMINAL_ATTACHMENT_FAILED",
+                AppError::TerminalNoOutput(_) => "TERMINAL_NO_OUTPUT",
             };
-            
+
             // Stack trace would need backtrace crate
             let stack_str: Option<String> = None;
-            
+
             // Enhance metadata with additional context
             let mut final_metadata = serde_json::json!({
                 "source": "rust_backend",
                 "thread_id": format!("{:?}", std::thread::current().id()),
                 "timestamp": chrono::Utc::now().to_rfc3339(),
             });
-            
+
             if let Some(meta) = metadata {
                 if let Some(obj) = final_metadata.as_object_mut() {
                     if let Some(meta_obj) = meta.as_object() {
@@ -309,17 +317,19 @@ pub async fn log_error_to_db(
                     }
                 }
             }
-            
-            let _ = repo.insert_error(
-                level,
-                Some(error_type),
-                &error.to_string(),
-                Some(context),
-                stack_str.as_deref(), // Would need backtrace crate for actual stack traces
-                Some(&final_metadata.to_string()),
-                Some(env!("CARGO_PKG_VERSION")),
-                Some(std::env::consts::OS),
-            ).await;
+
+            let _ = repo
+                .insert_error(
+                    level,
+                    Some(error_type),
+                    &error.to_string(),
+                    Some(context),
+                    stack_str.as_deref(), // Would need backtrace crate for actual stack traces
+                    Some(&final_metadata.to_string()),
+                    Some(env!("CARGO_PKG_VERSION")),
+                    Some(std::env::consts::OS),
+                )
+                .await;
         }
     }
 }

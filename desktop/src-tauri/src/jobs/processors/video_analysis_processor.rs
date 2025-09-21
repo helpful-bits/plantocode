@@ -1,14 +1,14 @@
 use crate::error::{AppError, AppResult};
-use crate::jobs::processor_trait::JobProcessor;
-use crate::jobs::types::{Job, JobPayload, JobProcessResult, VideoAnalysisPayload, JobResultData};
 use crate::jobs::job_processor_utils;
+use crate::jobs::processor_trait::JobProcessor;
+use crate::jobs::types::{Job, JobPayload, JobProcessResult, JobResultData, VideoAnalysisPayload};
 use crate::models::{BackgroundJob, TaskType};
 use async_trait::async_trait;
+use log::{debug, error, info};
+use serde_json;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
-use log::{debug, error, info};
 use tokio::fs;
-use serde_json;
 
 pub struct VideoAnalysisProcessor;
 
@@ -22,11 +22,7 @@ impl JobProcessor for VideoAnalysisProcessor {
         job.task_type == TaskType::VideoAnalysis
     }
 
-    async fn process(
-        &self,
-        job: Job,
-        app_handle: AppHandle,
-    ) -> AppResult<JobProcessResult> {
+    async fn process(&self, job: Job, app_handle: AppHandle) -> AppResult<JobProcessResult> {
         info!("Processing video analysis job: {}", job.id);
 
         // Setup repositories and mark job as running
@@ -36,20 +32,27 @@ impl JobProcessor for VideoAnalysisProcessor {
         // Extract VideoAnalysisPayload from job.payload
         let payload = match &job.payload {
             JobPayload::VideoAnalysis(payload) => payload,
-            _ => return Err(AppError::InternalError("Invalid payload type for video analysis job".to_string())),
+            _ => {
+                return Err(AppError::InternalError(
+                    "Invalid payload type for video analysis job".to_string(),
+                ));
+            }
         };
 
         debug!("Video analysis payload: {:?}", payload);
 
         // Get ServerProxyClient from app state using the proper getter that handles initialization
-        let server_proxy_client = crate::api_clients::client_factory::get_server_proxy_client(&app_handle).await
-            .map_err(|e| format!("Failed to get server proxy client: {}", e))?;
+        let server_proxy_client =
+            crate::api_clients::client_factory::get_server_proxy_client(&app_handle)
+                .await
+                .map_err(|e| format!("Failed to get server proxy client: {}", e))?;
 
         // Read video file as bytes
         let video_data = match fs::read(&payload.video_path).await {
             Ok(data) => data,
             Err(e) => {
-                let error_msg = format!("Failed to read video file '{}': {}", payload.video_path, e);
+                let error_msg =
+                    format!("Failed to read video file '{}': {}", payload.video_path, e);
                 error!("{}", error_msg);
                 return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }
@@ -59,7 +62,10 @@ impl JobProcessor for VideoAnalysisProcessor {
 
         // Check if job was canceled before making the API call
         if job_processor_utils::check_job_canceled(&repo, &job.id).await? {
-            return Ok(JobProcessResult::failure(job.id.clone(), "Job was cancelled".to_string()));
+            return Ok(JobProcessResult::failure(
+                job.id.clone(),
+                "Job was cancelled".to_string(),
+            ));
         }
 
         // Extract filename from path
@@ -109,7 +115,7 @@ impl JobProcessor for VideoAnalysisProcessor {
                 &payload.model,
                 analysis_response.usage.prompt_tokens as i64,
                 analysis_response.usage.completion_tokens as i64,
-                None, // cache_write_tokens
+                None,                                                    // cache_write_tokens
                 analysis_response.usage.cached_tokens.map(|t| t as i64), // cache_read_tokens
                 Some(payload.duration_ms),
             )
@@ -131,14 +137,13 @@ impl JobProcessor for VideoAnalysisProcessor {
             .unwrap_or(0.0);
 
         // Return success with JSON response, token usage, and cost
-        Ok(JobProcessResult::success(
-            job.id.clone(),
-            JobResultData::Json(json_response),
+        Ok(
+            JobProcessResult::success(job.id.clone(), JobResultData::Json(json_response))
+                .with_tokens(
+                    Some(analysis_response.usage.prompt_tokens as u32),
+                    Some(analysis_response.usage.completion_tokens as u32),
+                )
+                .with_actual_cost(actual_cost),
         )
-        .with_tokens(
-            Some(analysis_response.usage.prompt_tokens as u32),
-            Some(analysis_response.usage.completion_tokens as u32),
-        )
-        .with_actual_cost(actual_cost))
     }
 }

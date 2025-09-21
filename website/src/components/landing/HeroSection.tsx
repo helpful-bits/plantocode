@@ -5,7 +5,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { track } from '@/lib/track';
 import { cdnUrl } from '@/lib/cdn';
 import { Play, X } from 'lucide-react';
-import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import Link from 'next/link';
 
 export function HeroSection() {
@@ -92,9 +91,9 @@ export function HeroSection() {
     <section className="relative flex flex-col items-center bg-transparent w-full">
       {/* Main heading */}
       <div className="relative z-10 text-center px-4 sm:px-6 lg:px-8 pt-24 sm:pt-28 pb-6 sm:pb-8 w-full">
-        <h1 
-          className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold leading-tight bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent" 
-          style={{ 
+        <h1
+          className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold leading-tight bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent"
+          style={{
             contentVisibility: 'auto',
             backgroundImage: 'linear-gradient(135deg, var(--color-adaptive-primary), var(--color-adaptive-accent), var(--teal-bright))',
             WebkitBackgroundClip: 'text',
@@ -102,14 +101,11 @@ export function HeroSection() {
             backgroundClip: 'text',
           }}
         >
-          From idea to <span className="solid-highlight">solid</span> plan. <span className="fast-velocity">
-            <span className="fast-letter" style={{ animationDelay: '0ms' }}>F</span>
-            <span className="fast-letter" style={{ animationDelay: '50ms' }}>a</span>
-            <span className="fast-letter" style={{ animationDelay: '100ms' }}>s</span>
-            <span className="fast-letter" style={{ animationDelay: '150ms' }}>t</span>
-            <span className="fast-dot">.</span>
-          </span>
+          Serious AI Architect Studio for Large & Legacy Codebases
         </h1>
+        <p className="mt-6 text-lg sm:text-xl text-foreground/80 max-w-4xl mx-auto">
+          Multi-model planning with real code context - then execute via integrated terminal. Ship features and fixes safely, without regressions.
+        </p>
       </div>
 
       {/* Hero Content with Panels */}
@@ -121,37 +117,37 @@ export function HeroSection() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-            className={isMobile === true ? "flex flex-col gap-6 pb-8 w-full" : "flex items-center justify-center gap-4 lg:gap-6 pb-6"}
+            className={isMobile === true ? "flex flex-col gap-6 pb-8 w-full" : "flex items-center justify-center gap-3 lg:gap-4 pb-6"}
           >
                 {/* Panel 1: Find Files */}
                 {isMobile ? (
               <div className="vibe-panel w-full" style={{minHeight: 'fit-content'}}>
-                <h2 className="vibe-panel__title">Find Files</h2>
+                <h2 className="vibe-panel__title">Code-Aware Discovery</h2>
                 <p className="text-foreground/80 text-base leading-relaxed">
-                  AI uses <strong>Regex Filter</strong>, <strong>Content Relevance</strong>, and <strong>Dependencies</strong> to read actual code. From 1,000 files to the 10 that matter. <Link href="/file-finder" className="text-primary hover:underline">Learn more →</Link>
+                  From 1,000 files to the <strong>true impact surface</strong>. AI finds deps, patterns, and non-obvious links. Built for heavy coding-agent users. <Link href="/file-finder" className="text-primary hover:underline">Learn more →</Link>
                 </p>
               </div>
             ) : (
-              <div className="vibe-panel flex-shrink-0" style={{width: 'min(300px, 30vw)', height: 'min(380px, 45vh)'}}>
-                <h2 className="vibe-panel__title">Find Files</h2>
+              <div className="vibe-panel flex-shrink-0" style={{width: 'min(320px, 28vw)', height: 'min(380px, 45vh)'}}>
+                <h2 className="vibe-panel__title">Code-Aware Discovery</h2>
                 <div className="vibe-intent-box">
-                  <div className="vibe-intent-box__item text-base">Regex Filter</div>
-                  <div className="vibe-intent-box__item text-base">Content Relevance</div>
+                  <div className="vibe-intent-box__item text-base">Impact Surface</div>
                   <div className="vibe-intent-box__item text-base">Dependencies</div>
+                  <div className="vibe-intent-box__item text-base">Legacy Patterns</div>
                 </div>
                 <p className="vibe-panel__description text-base">
-                  AI reads actual code. From 1,000 files to the 10 that matter. <Link href="/file-finder" className="text-primary hover:underline">Learn more →</Link>
+                  True context for heavy coding-agent users. <Link href="/file-finder" className="text-primary hover:underline">Learn more →</Link>
                 </p>
               </div>
             )}
 
-            {/* Arrow between Panel 1 and 2 - Desktop only */}
+            {/* Arrow between Panel 1 and 2 - Desktop only with spacer */}
             {isDesktop && (
-              <div className="flex items-center justify-center px-2 relative">
+              <div className="flex items-center justify-center px-2 relative" style={{ minWidth: '56px', minHeight: '40px' }}>
                 <div className="relative">
-                  <svg 
-                    className="w-10 h-10 animate-pulse" 
-                    fill="none" 
+                  <svg
+                    className="w-10 h-10 animate-pulse"
+                    fill="none"
                     viewBox="0 0 24 24"
                     aria-hidden="true"
                     style={{
@@ -165,10 +161,10 @@ export function HeroSection() {
                         <stop offset="100%" stopColor="var(--color-primary)" stopOpacity="0.3" />
                       </linearGradient>
                     </defs>
-                    <path 
-                      strokeLinecap="round" 
-                      strokeLinejoin="round" 
-                      d="M13 7l5 5m0 0l-5 5m5-5H6" 
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M13 7l5 5m0 0l-5 5m5-5H6"
                       stroke="url(#arrow-gradient-1)"
                       strokeWidth="2.5"
                     />
@@ -180,9 +176,9 @@ export function HeroSection() {
               </div>
             )}
 
-            {/* Panel 2: Parallel Planning */}
+            {/* Panel 2: Multi-Model Planning */}
             <div className={isMobile ? "vibe-panel vibe-panel--accent vibe-panel--glow w-full" : "vibe-panel vibe-panel--accent vibe-panel--glow flex-shrink-0"} style={isMobile ? {minHeight: '166px'} : {width: 'min(300px, 30vw)', height: 'min(380px, 45vh)'}}>
-              <h2 className="vibe-panel__title vibe-panel__title--accent">Parallel Planning</h2>
+              <h2 className="vibe-panel__title vibe-panel__title--accent">Council of LLMs</h2>
               <div className="vibe-models-container">
                 <div className="vibe-model-card">
                   <div className="vibe-model-card__header">
@@ -216,17 +212,17 @@ export function HeroSection() {
                 </div>
               </div>
               <p className="vibe-panel__description">
-                Click multiple times for more plans. <Link href="/multi-model-plans" className="text-primary hover:underline">Merge the best ideas →</Link>
+                Generate multiple plans. <Link href="/docs" className="text-primary hover:underline">Merge with your instructions →</Link>
               </p>
             </div>
 
-            {/* Arrow between Panel 2 and 3 - Desktop only */}
+            {/* Arrow between Panel 2 and 3 - Desktop only with spacer */}
             {isDesktop && (
-              <div className="flex items-center justify-center px-2 relative">
+              <div className="flex items-center justify-center px-2 relative" style={{ minWidth: '56px', minHeight: '40px' }}>
                 <div className="relative">
-                  <svg 
-                    className="w-10 h-10 animate-pulse" 
-                    fill="none" 
+                  <svg
+                    className="w-10 h-10 animate-pulse"
+                    fill="none"
                     viewBox="0 0 24 24"
                     aria-hidden="true"
                     style={{
@@ -241,10 +237,10 @@ export function HeroSection() {
                         <stop offset="100%" stopColor="var(--color-primary)" stopOpacity="0.3" />
                       </linearGradient>
                     </defs>
-                    <path 
-                      strokeLinecap="round" 
-                      strokeLinejoin="round" 
-                      d="M13 7l5 5m0 0l-5 5m5-5H6" 
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M13 7l5 5m0 0l-5 5m5-5H6"
                       stroke="url(#arrow-gradient-2)"
                       strokeWidth="2.5"
                     />
@@ -256,39 +252,43 @@ export function HeroSection() {
               </div>
             )}
 
-            {/* Panel 3: Ready for Agents - Always render to prevent layout shift */}
-            <div className={isMobile ? "vibe-panel w-full" : "vibe-panel flex-shrink-0"} style={isMobile ? {minHeight: '166px'} : {width: 'min(300px, 30vw)', height: 'min(380px, 45vh)'}}>
-              <h2 className="vibe-panel__title">Ready for Agents</h2>
+            {/* Panel 3: Integrated Terminal - Always render to prevent layout shift */}
+            <div className={isMobile ? "vibe-panel w-full" : "vibe-panel flex-shrink-0"} style={isMobile ? {minHeight: '166px'} : {width: 'min(320px, 28vw)', height: 'min(380px, 45vh)'}}>
+              <h2 className="vibe-panel__title">Integrated Terminal</h2>
                 <div className="vibe-code-block">
-                  <pre className="vibe-code-block__content">{`<plan>
-  <step>
-    <file_operation>
-      <path>src/components/</path>
-      <changes>...</changes>
-    </file_operation>
-  </step>
-</plan>`}</pre>
+                  <pre className="vibe-code-block__content">{`$ codex | claude | cursor | aider
+> Voice dictation for prompts
+> Edit plans in Monaco editor
+> Execute with approvals
+> Full session transcripts`}</pre>
                 </div>
                 <p className="vibe-panel__description">
-                  Copy to <Link href="/docs/claude-code-plan-mode" className="text-primary hover:underline">Claude Code</Link>, <Link href="/docs/cursor-plan-mode" className="text-primary hover:underline">Cursor</Link>, or <Link href="/docs/openai-codex-cli" className="text-primary hover:underline">OpenAI Codex</Link>. Ready to ship.
+                  Run <Link href="/docs/integrated-terminal-cli-orchestration" className="text-primary hover:underline">codex</Link>, <Link href="/docs/integrated-terminal-cli-orchestration" className="text-primary hover:underline">claude</Link>, <Link href="/docs/integrated-terminal-cli-orchestration" className="text-primary hover:underline">cursor</Link>, <Link href="/docs/integrated-terminal-cli-orchestration" className="text-primary hover:underline">aider</Link> directly. No context switch.
                 </p>
                 </div>
           </motion.div>
           
-          {/* Watch Demo button - below the cards */}
-          <div className="flex justify-center pb-8 sm:pb-6">
-            <button
-              onClick={handlePlayVideo}
-              className="flex items-center gap-2 px-5 py-2.5 bg-primary/15 backdrop-blur-md text-primary rounded-full text-base font-semibold border-2 border-primary/40 hover:bg-primary/25 hover:border-primary/60 hover:scale-105 transition-all group animate-pulse-glow"
-              style={{
-                boxShadow: '0 0 30px color-mix(in oklch, var(--color-primary) 25%, transparent), 0 0 50px color-mix(in oklch, var(--color-primary) 15%, transparent), 0 8px 16px -8px rgba(0, 0, 0, 0.2)',
-                animation: 'pulse-glow 4s ease-in-out infinite alternate'
-              }}
-              aria-label="Watch demo video"
-            >
-              <Play className="w-5 h-5 group-hover:text-primary-foreground transition-colors" fill="currentColor" />
-              <span>Watch Short Demo</span>
-            </button>
+          {/* Simple CTAs */}
+          <div className="flex flex-col items-center gap-4 pb-8">
+            <div className="flex flex-col sm:flex-row items-center gap-3">
+              <Link
+                href="/downloads"
+                className="px-6 py-3 bg-primary text-primary-foreground rounded-lg font-semibold hover:bg-primary/90 transition-all"
+              >
+                Download Free
+              </Link>
+              <button
+                onClick={handlePlayVideo}
+                className="flex items-center gap-2 px-4 py-2 text-foreground/70 hover:text-foreground transition-all"
+                aria-label="Watch demo video"
+              >
+                <Play className="w-4 h-4" fill="currentColor" />
+                <span>Watch demo</span>
+              </button>
+            </div>
+            <div className="text-sm text-foreground/50">
+              macOS & Windows • $10 free credits
+            </div>
           </div>
         </div>
       </div>
@@ -369,24 +369,6 @@ export function HeroSection() {
         )}
       </AnimatePresence>
 
-      {/* Previous hero content below */}
-      <div className="relative text-center px-4 sm:px-6 lg:px-8 w-full max-w-7xl mx-auto mt-6 sm:mt-8">
-        {/* Subtitle */}
-        <p className="text-lg sm:text-2xl md:text-3xl text-foreground/90 dark:text-foreground/95 mb-10 sm:mb-12 leading-relaxed max-w-4xl mx-auto font-medium">
-          Tell it what you want to build. Type it out, describe it 10x faster with voice, or capture bugs instantly on screen. AI finds the right files, generates plans with multiple models, and gives you a blueprint your coding agent can actually use.
-        </p>
-
-        {/* Action buttons - Download button */}
-        <div className="flex flex-col items-center gap-6">
-          <motion.div
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            <PlatformDownloadSection location="hero_section" />
-          </motion.div>
-        </div>
-
-      </div>
 
     </section>
   );

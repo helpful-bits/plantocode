@@ -72,10 +72,10 @@ export default function LocalFirstPage() {
                 </Reveal>
 
                 <Reveal className="space-y-4" delay={0.3}>
-                  <h3 className="text-2xl font-semibold text-foreground">Enterprise-Grade Privacy</h3>
+                  <h3 className="text-2xl font-semibold text-foreground">Professional-Grade Privacy</h3>
                   <p className="text-muted-foreground">
-                    Perfect for proprietary codebases and trade secrets. File discovery, 
-                    session management, and workflow orchestration work completely offline. 
+                    Perfect for proprietary codebases and trade secrets. File discovery,
+                    session management, and workflow orchestration work completely offline.
                     Only specific approved context touches external APIs.
                   </p>
                 </Reveal>

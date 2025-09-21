@@ -1,6 +1,6 @@
 use crate::error::AppError;
 use crate::jobs;
-use log::{info, debug};
+use log::{debug, info};
 use tauri::AppHandle;
 use tokio::sync::OnceCell;
 

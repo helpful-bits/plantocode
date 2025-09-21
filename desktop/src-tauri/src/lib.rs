@@ -3,7 +3,7 @@
 #[cfg(debug_assertions)]
 use std::env;
 
-use tauri::Emitter;
+use tauri::{Emitter, Listener};
 
 pub mod api_clients;
 pub mod app_setup;
@@ -16,7 +16,9 @@ pub mod error_recovery;
 mod events;
 pub mod jobs;
 pub mod models;
+pub mod remote_api;
 pub mod services;
+pub mod tls;
 pub mod utils;
 pub mod validation;
 
@@ -31,7 +33,10 @@ use dotenvy::dotenv;
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 use std::time::Duration;
 use tauri::Manager;
 use tokio::sync::{OnceCell, RwLock};
@@ -65,7 +70,7 @@ impl AppState {
             *server_url = Some(url);
         }
     }
-    
+
     pub fn get_server_url(&self) -> Option<String> {
         self.settings.server_url.lock().ok()?.clone()
     }
@@ -120,17 +125,27 @@ pub fn run() {
         .manage(AppState::default())
         .manage(Arc::new(TokenManager::new()))
         .manage(ConfigCache::new(Mutex::new(HashMap::new())))
-        .manage(Arc::new(RwLock::new(Option::<Arc<crate::api_clients::server_proxy_client::ServerProxyClient>>::None)))
-        .manage(Arc::new(RwLock::new(Option::<Arc<crate::api_clients::billing_client::BillingClient>>::None)))
-        .manage(Arc::new(RwLock::new(Option::<Arc<crate::api_clients::consent_client::ConsentClient>>::None)))
-        .manage(Arc::new(RwLock::new(Option::<Arc<dyn crate::api_clients::client_trait::ApiClient>>::None)))
-        .manage(Arc::new(RwLock::new(Option::<Arc<dyn crate::api_clients::client_trait::TranscriptionClient>>::None)))
+        .manage(Arc::new(RwLock::new(
+            Option::<Arc<crate::api_clients::server_proxy_client::ServerProxyClient>>::None,
+        )))
+        .manage(Arc::new(RwLock::new(
+            Option::<Arc<crate::api_clients::billing_client::BillingClient>>::None,
+        )))
+        .manage(Arc::new(RwLock::new(
+            Option::<Arc<crate::api_clients::consent_client::ConsentClient>>::None,
+        )))
+        .manage(Arc::new(RwLock::new(
+            Option::<Arc<dyn crate::api_clients::client_trait::ApiClient>>::None,
+        )))
+        .manage(Arc::new(RwLock::new(
+            Option::<Arc<dyn crate::api_clients::client_trait::TranscriptionClient>>::None,
+        )))
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_os::init());
-    
+
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         builder = builder
@@ -140,17 +155,17 @@ pub fn run() {
             .plugin(tauri_plugin_updater::Builder::new().build())
             .plugin(tauri_plugin_process::init());
     }
-    
+
     builder
         .setup(|app| {
             info!("Starting Vibe Manager Desktop application");
             info!("App identifier: {}", app.config().identifier);
-            
+
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Regular);
 
             let _ = GLOBAL_APP_HANDLE.set(app.handle().clone());
-            
+
             info!("Using OS keyring for secure credential storage.");
 
             let app_handle = app.handle().clone();
@@ -170,6 +185,58 @@ pub fn run() {
 
             let terminal_manager = Arc::new(TerminalManager::new(app.handle().clone()));
             app.manage(terminal_manager);
+
+            // Start DeviceLinkClient after auth is ready
+            let app_handle_for_device_link = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                // Wait for auth to be ready
+                loop {
+                    let token_manager = app_handle_for_device_link.state::<Arc<TokenManager>>();
+                    if token_manager.get().await.is_some() {
+                        let app_state = app_handle_for_device_link.state::<AppState>();
+                        if let Some(server_url) = app_state.get_server_url() {
+                            info!("Starting DeviceLinkClient for server: {}", server_url);
+                            if let Err(e) = crate::services::device_link_client::start_device_link_client(
+                                app_handle_for_device_link.clone(),
+                                server_url
+                            ).await {
+                                error!("DeviceLinkClient error: {}", e);
+                            }
+                        }
+                        break;
+                    }
+                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                }
+            });
+
+            // Register global event listeners for job and terminal events
+            let app_handle_for_job_events = app.handle().clone();
+            app.listen("job-status-changed", move |event| {
+                // Forward job events via DeviceLinkClient
+                let payload = event.payload().to_string();
+                let app_handle = app_handle_for_job_events.clone();
+                tauri::async_runtime::spawn(async move {
+                    // This would be sent via DeviceLinkClient if it was available as a global service
+                    // For now, we'll emit a generic event that DeviceLinkClient can listen to
+                    let _ = app_handle.emit("device-link-event", serde_json::json!({
+                        "type": "job-status-changed",
+                        "payload": payload
+                    }));
+                });
+            });
+
+            let app_handle_for_terminal_events = app.handle().clone();
+            app.listen("terminal:output", move |event| {
+                // Forward terminal events via DeviceLinkClient
+                let payload = event.payload().to_string();
+                let app_handle = app_handle_for_terminal_events.clone();
+                tauri::async_runtime::spawn(async move {
+                    let _ = app_handle.emit("device-link-event", serde_json::json!({
+                        "type": "terminal:output",
+                        "payload": payload
+                    }));
+                });
+            });
 
             let auth0_store = app.state::<AppState>().auth0_state_store.clone();
             tauri::async_runtime::spawn(async move {
@@ -206,6 +273,7 @@ pub fn run() {
             commands::auth0_commands::get_app_jwt,
             commands::auth0_commands::set_app_jwt,
             commands::auth0_commands::clear_stored_app_jwt,
+            commands::device_commands::get_device_id,
             commands::featurebase_commands::get_featurebase_sso_token,
             commands::billing_commands::get_billing_dashboard_data_command,
             commands::billing_commands::get_customer_billing_info_command,
@@ -248,6 +316,7 @@ pub fn run() {
             commands::screen_recording_commands::stop_screen_recording,
             commands::file_system_commands::get_home_directory_command,
             commands::file_system_commands::list_project_files_command,
+            commands::file_system_commands::get_files_metadata_command,
             commands::file_system_commands::create_directory_command,
             commands::file_system_commands::read_file_content_command,
             commands::file_system_commands::write_file_content_command,
@@ -370,8 +439,16 @@ pub fn run() {
             commands::terminal_commands::get_terminal_prerequisites_status_command,
             commands::terminal_commands::check_terminal_dependencies_command,
             commands::terminal_commands::attach_terminal_output_command,
-            commands::terminal_commands::pause_terminal_output_command,
-            commands::terminal_commands::resume_terminal_output_command,
+            commands::terminal_commands::get_session_health_command,
+            commands::terminal_commands::recover_terminal_session_command,
+            commands::terminal_commands::save_pasted_image_command,
+            commands::terminal_commands::list_active_terminal_sessions_command,
+            commands::terminal_commands::start_terminal_session_remote_command,
+            commands::terminal_commands::register_terminal_health_session,
+            commands::terminal_commands::unregister_terminal_health_session,
+            commands::terminal_commands::get_terminal_health_status,
+            commands::terminal_commands::get_terminal_health_history,
+            commands::terminal_commands::trigger_terminal_recovery,
         ])
         .run(tauri_context)
         .expect("Error while running tauri application");
