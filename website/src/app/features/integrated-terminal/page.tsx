@@ -1,0 +1,542 @@
+import { Metadata } from 'next';
+import { GlassCard } from '@/components/ui/GlassCard';
+import { Header } from '@/components/landing/Header';
+import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
+import { Terminal, Mic, Save, History, Zap, Heart, AlertCircle, Shield, Database, Activity, Cpu } from 'lucide-react';
+import Link from 'next/link';
+
+export const metadata: Metadata = {
+  title: 'Job-Centric Terminal - Smart PTY Sessions with Health Monitoring | Vibe Manager',
+  description: 'Professional terminal with automatic health monitoring, session recovery, attention detection, and voice transcription. PTY-based sessions persist across restarts with 5MB ring buffer. Built for AI development workflows.',
+  keywords: [
+    'pty terminal',
+    'persistent terminal sessions',
+    'terminal health monitoring',
+    'voice transcription terminal',
+    'attention detection',
+    'session recovery',
+    'xterm.js integration',
+    'job-centric terminal',
+    'ring buffer logging',
+    'cli auto-launch',
+  ],
+  openGraph: {
+    title: 'Job-Centric Terminal with Automatic Health Monitoring',
+    description: 'PTY-based terminal with health monitoring, auto-recovery, attention detection, and voice transcription. Sessions persist with 5MB ring buffer. Built for AI workflows.',
+    url: 'https://www.vibemanager.app/features/integrated-terminal',
+    siteName: 'Vibe Manager',
+    type: 'website',
+  },
+  alternates: {
+    canonical: 'https://www.vibemanager.app/features/integrated-terminal',
+  },
+};
+
+export default function IntegratedTerminalPage() {
+  return (
+    <>
+      <div className="fixed inset-0 -z-20" style={{ background: 'var(--background-gradient)' }} />
+
+      <div className="relative z-0 bg-transparent min-h-screen flex flex-col">
+        <Header />
+
+        <main className="flex-grow">
+          <section className="py-16 sm:py-20 md:py-24 lg:py-32 px-4">
+            <div className="container mx-auto max-w-6xl">
+              {/* Hero */}
+              <div className="text-center mb-16">
+                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary mb-6 text-sm font-medium">
+                  <Activity className="w-4 h-4" />
+                  <span>PTY Terminal with Health Monitoring & Auto-Recovery</span>
+                </div>
+                <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-6 bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent">
+                  Job-Centric Terminal That Never Loses Context
+                </h1>
+                <p className="text-lg sm:text-xl md:text-2xl text-foreground/80 max-w-3xl mx-auto leading-relaxed">
+                  Every terminal is tied to a job. PTY sessions with health monitoring detect stuck processes,
+                  missing input, and connection issues. Auto-recovery keeps you productive. 5MB persistent ring buffer.
+                </p>
+              </div>
+
+              {/* Core Architecture */}
+              <div className="mb-16">
+                <div className="grid md:grid-cols-3 gap-6">
+                  <GlassCard className="p-6" highlighted>
+                    <div className="text-primary mb-3">
+                      <Terminal className="w-8 h-8" />
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2">Native PTY Sessions</h3>
+                    <p className="text-foreground/80 text-sm">
+                      Cross-platform PTY via portable_pty. Real shells (zsh, bash, PowerShell). 64KB buffer streaming.
+                    </p>
+                  </GlassCard>
+
+                  <GlassCard className="p-6" highlighted>
+                    <div className="text-primary mb-3">
+                      <Heart className="w-8 h-8" />
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2">Health Monitoring</h3>
+                    <p className="text-foreground/80 text-sm">
+                      5-second health checks. Detects stuck/dead processes. Auto-recovery with intelligent actions.
+                    </p>
+                  </GlassCard>
+
+                  <GlassCard className="p-6" highlighted>
+                    <div className="text-primary mb-3">
+                      <Database className="w-8 h-8" />
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2">5MB Ring Buffer</h3>
+                    <p className="text-foreground/80 text-sm">
+                      SQLite persistence with automatic truncation. Sessions survive app restarts. Full audit trail.
+                    </p>
+                  </GlassCard>
+                </div>
+              </div>
+
+              {/* Health Monitoring System */}
+              <div className="mb-16">
+                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">Automatic Health Monitoring System</h2>
+
+                <div className="grid md:grid-cols-2 gap-8">
+                  <GlassCard className="p-8">
+                    <div className="flex items-start gap-4">
+                      <div className="p-3 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 flex-shrink-0">
+                        <Activity className="w-6 h-6 text-primary" />
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-bold mb-3">Health State Detection</h3>
+                        <p className="text-foreground/80 mb-4">
+                          Continuous monitoring every 5 seconds with intelligent state detection and recovery actions.
+                        </p>
+                        <ul className="space-y-2 text-foreground/70">
+                          <li className="flex items-start gap-2">
+                            <span className="text-green-400">•</span>
+                            <span><strong>Healthy:</strong> Normal operation</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="text-yellow-400">•</span>
+                            <span><strong>NoOutput:</strong> Silent for &gt;30s</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="text-orange-400">•</span>
+                            <span><strong>Stuck:</strong> No response to probes</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="text-red-400">•</span>
+                            <span><strong>ProcessDead:</strong> Shell terminated</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="text-purple-400">•</span>
+                            <span><strong>PersistenceLag:</strong> DB sync pending</span>
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  </GlassCard>
+
+                  <GlassCard className="p-8">
+                    <div className="flex items-start gap-4">
+                      <div className="p-3 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 flex-shrink-0">
+                        <Shield className="w-6 h-6 text-primary" />
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-bold mb-3">Auto-Recovery Actions</h3>
+                        <p className="text-foreground/80 mb-4">
+                          Intelligent recovery based on health state. No manual intervention required.
+                        </p>
+                        <ul className="space-y-2 text-foreground/70">
+                          <li className="flex items-start gap-2">
+                            <Zap className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
+                            <span><strong>SendPrompt:</strong> Echo 'alive' probe</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <Zap className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
+                            <span><strong>Interrupt:</strong> Ctrl+C with restart</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <Zap className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
+                            <span><strong>Restart:</strong> Kill and recreate PTY</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <Zap className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
+                            <span><strong>Reattach:</strong> Recreate channels</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <Zap className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
+                            <span><strong>FlushPersistence:</strong> Force DB sync</span>
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  </GlassCard>
+                </div>
+              </div>
+
+              {/* Attention Detection System */}
+              <div className="mb-16">
+                <GlassCard className="p-8 sm:p-12 bg-black/50">
+                  <h2 className="text-2xl sm:text-3xl font-bold mb-6 text-center">Smart Attention Detection</h2>
+
+                  <div className="grid md:grid-cols-2 gap-6 mb-6">
+                    <div className="bg-black/30 rounded-lg p-6">
+                      <h3 className="text-lg font-semibold mb-3 text-primary">Pattern Recognition</h3>
+                      <p className="text-foreground/80 text-sm mb-3">
+                        Regex detection for user input prompts with 30-second throttling.
+                      </p>
+                      <div className="bg-black rounded p-3 font-mono text-xs">
+                        <div className="text-green-400">Detected patterns:</div>
+                        <div className="text-yellow-400">• "awaiting input"</div>
+                        <div className="text-yellow-400">• "waiting for response"</div>
+                        <div className="text-yellow-400">• "[y/n]", "(yes/no)"</div>
+                        <div className="text-yellow-400">• "Press Enter to continue"</div>
+                      </div>
+                    </div>
+
+                    <div className="bg-black/30 rounded-lg p-6">
+                      <h3 className="text-lg font-semibold mb-3 text-primary">User Notifications</h3>
+                      <p className="text-foreground/80 text-sm mb-3">
+                        Multi-level alerting when terminal needs attention.
+                      </p>
+                      <div className="bg-black rounded p-3 font-mono text-xs">
+                        <div className="text-cyan-400">Alert mechanisms:</div>
+                        <div className="text-white">• Status badge indicators</div>
+                        <div className="text-white">• Desktop notifications</div>
+                        <div className="text-white">• Visual terminal borders</div>
+                        <div className="text-white">• Auto-clear on interaction</div>
+                      </div>
+                    </div>
+                  </div>
+                </GlassCard>
+              </div>
+
+              {/* Core Features */}
+              <div className="mb-16">
+                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">Professional Terminal Features</h2>
+
+                <div className="grid md:grid-cols-2 gap-8">
+                  <GlassCard className="p-8">
+                    <div className="flex items-start gap-4">
+                      <div className="p-3 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 flex-shrink-0">
+                        <Mic className="w-6 h-6 text-primary" />
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-bold mb-3">Voice Transcription</h3>
+                        <p className="text-foreground/80 mb-4">
+                          OpenAI Whisper integration for voice commands. Direct PTY input with staging area.
+                        </p>
+                        <ul className="space-y-2 text-foreground/70">
+                          <li className="flex items-start gap-2">
+                            <AlertCircle className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
+                            <span>Real-time audio processing</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <AlertCircle className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
+                            <span>Editable staging before execution</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <AlertCircle className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
+                            <span>Microphone device selection</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <AlertCircle className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
+                            <span>JWT authenticated API calls</span>
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  </GlassCard>
+
+                  <GlassCard className="p-8">
+                    <div className="flex items-start gap-4">
+                      <div className="p-3 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 flex-shrink-0">
+                        <Database className="w-6 h-6 text-primary" />
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-bold mb-3">Session Persistence</h3>
+                        <p className="text-foreground/80 mb-4">
+                          SQLite-backed sessions with 5MB ring buffer. Survives app restarts and crashes.
+                        </p>
+                        <ul className="space-y-2 text-foreground/70">
+                          <li className="flex items-start gap-2">
+                            <Save className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
+                            <span>Async persistence worker</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <Save className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
+                            <span>Prompt marker detection ($, #, &gt;)</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <Save className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
+                            <span>Auto-truncation at 5MB</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <Save className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
+                            <span>Session recovery on startup</span>
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  </GlassCard>
+
+                  <GlassCard className="p-8">
+                    <div className="flex items-start gap-4">
+                      <div className="p-3 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 flex-shrink-0">
+                        <Zap className="w-6 h-6 text-primary" />
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-bold mb-3">CLI Auto-Launch</h3>
+                        <p className="text-foreground/80 mb-4">
+                          Detects implementation plans and auto-launches configured CLI tools after shell init.
+                        </p>
+                        <ul className="space-y-2 text-foreground/70">
+                          <li className="flex items-start gap-2">
+                            <Terminal className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
+                            <span>2-second shell initialization delay</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <Terminal className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
+                            <span>PATH augmentation for tools</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <Terminal className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
+                            <span>Custom command templates</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <Terminal className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
+                            <span>Project-specific configurations</span>
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  </GlassCard>
+
+                  <GlassCard className="p-8">
+                    <div className="flex items-start gap-4">
+                      <div className="p-3 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 flex-shrink-0">
+                        <Cpu className="w-6 h-6 text-primary" />
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-bold mb-3">xterm.js Frontend</h3>
+                        <p className="text-foreground/80 mb-4">
+                          VS Code's terminal renderer with WebGL acceleration and full Unicode support.
+                        </p>
+                        <ul className="space-y-2 text-foreground/70">
+                          <li className="flex items-start gap-2">
+                            <History className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
+                            <span>10K line scrollback buffer</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <History className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
+                            <span>Unicode 11 & CJK support</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <History className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
+                            <span>GPU rendering option</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <History className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
+                            <span>Image paste to project folder</span>
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  </GlassCard>
+                </div>
+              </div>
+
+              {/* Technical Architecture */}
+              <div className="mb-16">
+                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">Technical Architecture</h2>
+
+                <GlassCard className="p-8 bg-black/50">
+                  <div className="font-mono text-sm">
+                    <div className="text-gray-500 mb-4"># Terminal Session Lifecycle</div>
+
+                    <div className="mb-6">
+                      <div className="text-green-400 mb-2">## 1. Session Creation</div>
+                      <div className="text-white ml-4">
+                        → JWT authentication check<br />
+                        → PTY pair creation (portable_pty)<br />
+                        → Shell detection (zsh/bash/PowerShell)<br />
+                        → Environment setup + PATH augmentation<br />
+                        → Process spawn with login flags (-l -i)
+                      </div>
+                    </div>
+
+                    <div className="mb-6">
+                      <div className="text-green-400 mb-2">## 2. I/O Streaming</div>
+                      <div className="text-white ml-4">
+                        → 64KB read buffers<br />
+                        → Broadcast channels for output<br />
+                        → Sync MPSC for persistence queue<br />
+                        → 16ms batch processing in frontend<br />
+                        → Direct Uint8Array handling
+                      </div>
+                    </div>
+
+                    <div className="mb-6">
+                      <div className="text-green-400 mb-2">## 3. Health Monitoring</div>
+                      <div className="text-white ml-4">
+                        → 5-second interval checks<br />
+                        → Process alive verification<br />
+                        → Output timestamp tracking<br />
+                        → Stuck detection with probes<br />
+                        → Automatic recovery triggers
+                      </div>
+                    </div>
+
+                    <div className="mb-6">
+                      <div className="text-green-400 mb-2">## 4. Persistence</div>
+                      <div className="text-white ml-4">
+                        → SQLite terminal_sessions table<br />
+                        → 5MB ring buffer (SUBSTR truncation)<br />
+                        → Prompt marker priority flush<br />
+                        → Session recovery on restart<br />
+                        → Full audit trail capability
+                      </div>
+                    </div>
+
+                    <div className="text-cyan-400 mt-4">
+                      [Job-centric design: Each terminal tied to a background job]
+                    </div>
+                  </div>
+                </GlassCard>
+              </div>
+
+              {/* Advanced Features Grid */}
+              <div className="mb-16">
+                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">Platform & Performance</h2>
+
+                <div className="grid md:grid-cols-3 gap-6">
+                  <GlassCard className="p-6">
+                    <h3 className="text-lg font-semibold mb-3">Cross-Platform Shells</h3>
+                    <p className="text-foreground/80 text-sm">
+                      Auto-detects system shell. Login shell with proper rc files. Environment variable inheritance.
+                    </p>
+                  </GlassCard>
+
+                  <GlassCard className="p-6">
+                    <h3 className="text-lg font-semibold mb-3">Connection Recovery</h3>
+                    <p className="text-foreground/80 text-sm">
+                      Exponential backoff retry. Auto-reattach on disconnect. Historical output preservation.
+                    </p>
+                  </GlassCard>
+
+                  <GlassCard className="p-6">
+                    <h3 className="text-lg font-semibold mb-3">Plan Integration</h3>
+                    <p className="text-foreground/80 text-sm">
+                      Copy implementation plans directly. 4KB chunk sending. Template placeholder support.
+                    </p>
+                  </GlassCard>
+
+                  <GlassCard className="p-6">
+                    <h3 className="text-lg font-semibold mb-3">Performance</h3>
+                    <p className="text-foreground/80 text-sm">
+                      RequestIdleCallback batching. WebGL GPU acceleration. Lazy text decoding.
+                    </p>
+                  </GlassCard>
+
+                  <GlassCard className="p-6">
+                    <h3 className="text-lg font-semibold mb-3">Multi-Session</h3>
+                    <p className="text-foreground/80 text-sm">
+                      DashMap concurrent access. Isolated output channels. Per-session health tracking.
+                    </p>
+                  </GlassCard>
+
+                  <GlassCard className="p-6">
+                    <h3 className="text-lg font-semibold mb-3">Error Recovery</h3>
+                    <p className="text-foreground/80 text-sm">
+                      Network retry logic. Process restart capability. Graceful degradation.
+                    </p>
+                  </GlassCard>
+                </div>
+              </div>
+
+              {/* Unique Value */}
+              <div className="mb-16">
+                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">What Makes This Different</h2>
+
+                <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+                  <div>
+                    <h3 className="text-lg font-semibold mb-4 text-red-500">Standard Terminals</h3>
+                    <ul className="space-y-3 text-foreground/80">
+                      <li className="flex items-start gap-2">
+                        <span className="text-red-500 mt-1">✗</span>
+                        <span>No health monitoring</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-red-500 mt-1">✗</span>
+                        <span>Manual stuck detection</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-red-500 mt-1">✗</span>
+                        <span>Lost on app restart</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-red-500 mt-1">✗</span>
+                        <span>No attention alerts</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-red-500 mt-1">✗</span>
+                        <span>Separate from workflow</span>
+                      </li>
+                    </ul>
+                  </div>
+
+                  <div>
+                    <h3 className="text-lg font-semibold mb-4 text-green-500">Vibe Manager Terminal</h3>
+                    <ul className="space-y-3 text-foreground/80">
+                      <li className="flex items-start gap-2">
+                        <span className="text-green-500 mt-1">✓</span>
+                        <span>5-second health checks</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-green-500 mt-1">✓</span>
+                        <span>Auto-recovery actions</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-green-500 mt-1">✓</span>
+                        <span>5MB persistent buffer</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-green-500 mt-1">✓</span>
+                        <span>Smart input detection</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-green-500 mt-1">✓</span>
+                        <span>Job-centric integration</span>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              {/* CTA */}
+              <div className="text-center">
+                <GlassCard className="p-8 sm:p-12 max-w-3xl mx-auto" highlighted>
+                  <h2 className="text-2xl sm:text-3xl font-bold mb-4">Terminal That Monitors Itself</h2>
+                  <p className="text-lg text-foreground/80 mb-8 max-w-2xl mx-auto">
+                    Stop manually checking if terminals are stuck. Health monitoring detects issues and recovers automatically.
+                    Attention detection notifies you when input is needed. Sessions persist with 5MB buffers.
+                  </p>
+
+                  <PlatformDownloadSection location="features_integrated_terminal" />
+
+                  <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4 text-sm text-foreground/60">
+                    <Link href="/features/plan-editor" className="text-primary hover:underline">
+                      See implementation plans →
+                    </Link>
+                    <span className="hidden sm:inline">•</span>
+                    <Link href="/docs" className="text-primary hover:underline">
+                      Terminal documentation →
+                    </Link>
+                  </div>
+                </GlassCard>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </>
+  );
+}

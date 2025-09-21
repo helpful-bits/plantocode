@@ -81,20 +81,28 @@ impl JobProcessor for ImplementationPlanProcessor {
             }
         }
         let file_contents = Some(file_contents_map);
-        
+
         // Generate directory tree - use scoped tree if root directories are provided
         let directory_tree = if let Some(ref root_dirs) = payload.selected_root_directories {
             if !root_dirs.is_empty() {
-                debug!("Using scoped directory tree for {} root directories", root_dirs.len());
+                debug!(
+                    "Using scoped directory tree for {} root directories",
+                    root_dirs.len()
+                );
                 match crate::utils::directory_tree::get_combined_directory_tree_for_roots(root_dirs)
                     .await
                 {
                     Ok(tree) => Some(tree),
                     Err(e) => {
-                        warn!("Failed to generate scoped directory tree: {}, falling back to full tree", e);
+                        warn!(
+                            "Failed to generate scoped directory tree: {}, falling back to full tree",
+                            e
+                        );
                         // Fallback to full directory tree
-                        match crate::utils::directory_tree::get_directory_tree_with_defaults(project_directory)
-                            .await
+                        match crate::utils::directory_tree::get_directory_tree_with_defaults(
+                            project_directory,
+                        )
+                        .await
                         {
                             Ok(tree) => Some(tree),
                             Err(e) => {
@@ -106,8 +114,10 @@ impl JobProcessor for ImplementationPlanProcessor {
                 }
             } else {
                 // Empty root directories - use full tree
-                match crate::utils::directory_tree::get_directory_tree_with_defaults(project_directory)
-                    .await
+                match crate::utils::directory_tree::get_directory_tree_with_defaults(
+                    project_directory,
+                )
+                .await
                 {
                     Ok(tree) => Some(tree),
                     Err(e) => {
@@ -248,7 +258,7 @@ impl JobProcessor for ImplementationPlanProcessor {
         }
 
         // Use the raw LLM response directly
-        
+
         // Create a simple structured plan for UI compatibility
         let structured_plan = StructuredImplementationPlan {
             agent_instructions: None,

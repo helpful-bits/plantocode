@@ -10,7 +10,8 @@ use tauri::{AppHandle, Manager};
 use uuid;
 
 use super::client_trait::{ApiClient, ApiClientOptions, TranscriptionClient};
-use super::error_handling::{map_server_proxy_error, handle_api_error};
+use super::error_handling::{handle_api_error, map_server_proxy_error};
+use crate::auth::device_id_manager;
 use crate::auth::TokenManager;
 use crate::constants::{APP_HTTP_REFERER, APP_X_TITLE, SERVER_API_URL};
 use crate::error::{AppError, AppResult};
@@ -67,6 +68,23 @@ impl ServerProxyClient {
         &self.server_url
     }
 
+    /// Helper method to add auth headers with device ID to request builders
+    async fn with_auth_headers(
+        &self,
+        builder: reqwest::RequestBuilder,
+        auth_token: &str,
+    ) -> reqwest::RequestBuilder {
+        let builder = builder.header("Authorization", format!("Bearer {}", auth_token));
+        // Attach device id and token binding header if available
+        if let Ok(device_id) = device_id_manager::get_or_create(&self.app_handle) {
+            builder
+                .header("x-device-id", device_id.clone())
+                .header("X-Token-Binding", device_id)
+        } else {
+            builder
+        }
+    }
+
     /// Get runtime AI configuration from the server
     pub async fn get_runtime_ai_config(&self) -> AppResult<Value> {
         info!("Fetching runtime AI configuration from server");
@@ -77,10 +95,8 @@ impl ServerProxyClient {
         // Create the config endpoint URL - now using authenticated endpoint
         let config_url = format!("{}/api/config/desktop-runtime-config", self.server_url);
 
-        let response = self
-            .http_client
-            .get(&config_url)
-            .header("Authorization", format!("Bearer {}", auth_token))
+        let req = self.with_auth_headers(self.http_client.get(&config_url), &auth_token).await;
+        let response = req
             .header("HTTP-Referer", APP_HTTP_REFERER)
             .header("X-Title", APP_X_TITLE)
             .send()
@@ -140,10 +156,8 @@ impl ServerProxyClient {
         // Create the prompts endpoint URL - now using authenticated endpoint
         let prompts_url = format!("{}/api/system-prompts/defaults", self.server_url);
 
-        let response = self
-            .http_client
-            .get(&prompts_url)
-            .header("Authorization", format!("Bearer {}", auth_token))
+        let req = self.with_auth_headers(self.http_client.get(&prompts_url), &auth_token).await;
+        let response = req
             .header("HTTP-Referer", APP_HTTP_REFERER)
             .header("X-Title", APP_X_TITLE)
             .send()
@@ -200,12 +214,13 @@ impl ServerProxyClient {
         let auth_token = self.get_auth_token().await?;
 
         // Create the specific prompt endpoint URL - now using authenticated endpoint
-        let prompt_url = format!("{}/api/system-prompts/defaults/{}", self.server_url, task_type);
+        let prompt_url = format!(
+            "{}/api/system-prompts/defaults/{}",
+            self.server_url, task_type
+        );
 
-        let response = self
-            .http_client
-            .get(&prompt_url)
-            .header("Authorization", format!("Bearer {}", auth_token))
+        let req = self.with_auth_headers(self.http_client.get(&prompt_url), &auth_token).await;
+        let response = req
             .header("HTTP-Referer", APP_HTTP_REFERER)
             .header("X-Title", APP_X_TITLE)
             .send()
@@ -285,11 +300,11 @@ impl ServerProxyClient {
 
         let proxy_url = format!("{}/api/ai-proxy/{}", self.server_url, endpoint);
 
-        let mut request_builder = self
-            .http_client
-            .post(&proxy_url)
-            .header(header::CONTENT_TYPE, "application/json")
-            .header("Authorization", format!("Bearer {}", auth_token))
+        let mut request_builder = self.with_auth_headers(
+            self.http_client
+                .post(&proxy_url)
+                .header(header::CONTENT_TYPE, "application/json"),
+            &auth_token).await
             .header("HTTP-Referer", APP_HTTP_REFERER)
             .header("X-Title", APP_X_TITLE);
 
@@ -425,11 +440,12 @@ impl ServerProxyClient {
         let start_time = std::time::Instant::now();
 
         // Make the HTTP request with estimated duration
-        let response = self
-            .http_client
-            .post(&proxy_url)
-            .header(header::CONTENT_TYPE, "application/json")
-            .header("Authorization", format!("Bearer {}", auth_token))
+        let req = self.with_auth_headers(
+            self.http_client
+                .post(&proxy_url)
+                .header(header::CONTENT_TYPE, "application/json"),
+            &auth_token).await;
+        let response = req
             .header("HTTP-Referer", APP_HTTP_REFERER)
             .header("X-Title", APP_X_TITLE)
             .json(&request)
@@ -469,11 +485,12 @@ impl ServerProxyClient {
                 // Retry with actual measured duration
                 request.duration_ms = Some(actual_duration_ms);
 
-                let retry_response = self
-                    .http_client
-                    .post(&proxy_url)
-                    .header(header::CONTENT_TYPE, "application/json")
-                    .header("Authorization", format!("Bearer {}", auth_token))
+                let retry_req = self.with_auth_headers(
+                    self.http_client
+                        .post(&proxy_url)
+                        .header(header::CONTENT_TYPE, "application/json"),
+                    &auth_token).await;
+                let retry_response = retry_req
                     .header("HTTP-Referer", APP_HTTP_REFERER)
                     .header("X-Title", APP_X_TITLE)
                     .json(&request)
@@ -598,11 +615,11 @@ impl ServerProxyClient {
         );
 
         // Build the request but don't send it yet - EventSource will handle that
-        let request_builder = self
-            .http_client
-            .post(&proxy_url)
-            .header(header::CONTENT_TYPE, "application/json")
-            .header("Authorization", format!("Bearer {}", auth_token))
+        let request_builder = self.with_auth_headers(
+            self.http_client
+                .post(&proxy_url)
+                .header(header::CONTENT_TYPE, "application/json"),
+            &auth_token).await
             .header("HTTP-Referer", APP_HTTP_REFERER)
             .header("X-Title", APP_X_TITLE)
             .json(&request);
@@ -980,11 +997,12 @@ impl ServerProxyClient {
             "durationMs": duration_ms
         });
 
-        let response = self
-            .http_client
-            .post(&estimation_url)
-            .header("Authorization", format!("Bearer {}", auth_token))
-            .header("Content-Type", "application/json")
+        let req = self.with_auth_headers(
+            self.http_client
+                .post(&estimation_url)
+                .header("Content-Type", "application/json"),
+            &auth_token).await;
+        let response = req
             .header("HTTP-Referer", APP_HTTP_REFERER)
             .header("X-Title", APP_X_TITLE)
             .json(&request_body)
@@ -1032,11 +1050,12 @@ impl ServerProxyClient {
             "requests": requests
         });
 
-        let response = self
-            .http_client
-            .post(&estimation_url)
-            .header("Authorization", format!("Bearer {}", auth_token))
-            .header("Content-Type", "application/json")
+        let req = self.with_auth_headers(
+            self.http_client
+                .post(&estimation_url)
+                .header("Content-Type", "application/json"),
+            &auth_token).await;
+        let response = req
             .header("HTTP-Referer", APP_HTTP_REFERER)
             .header("X-Title", APP_X_TITLE)
             .json(&request_body)
@@ -1075,10 +1094,8 @@ impl ServerProxyClient {
         let auth_token = self.get_auth_token().await?;
         let url = format!("{}/api/featurebase/sso-token", self.server_url);
 
-        let response = self
-            .http_client
-            .get(&url)
-            .header("Authorization", format!("Bearer {}", auth_token))
+        let req = self.with_auth_headers(self.http_client.get(&url), &auth_token).await;
+        let response = req
             .header("HTTP-Referer", APP_HTTP_REFERER)
             .header("X-Title", APP_X_TITLE)
             .send()
@@ -1114,10 +1131,8 @@ impl ServerProxyClient {
         let auth_token = self.get_auth_token().await?;
         let url = format!("{}/api/auth/userinfo", self.server_url);
 
-        let response = self
-            .http_client
-            .get(&url)
-            .header("Authorization", format!("Bearer {}", auth_token))
+        let req = self.with_auth_headers(self.http_client.get(&url), &auth_token).await;
+        let response = req
             .header("HTTP-Referer", APP_HTTP_REFERER)
             .header("X-Title", APP_X_TITLE)
             .send()
@@ -1152,11 +1167,12 @@ impl ServerProxyClient {
             "request_id": request_id
         });
 
-        let response = self
-            .http_client
-            .post(&url)
-            .header(header::CONTENT_TYPE, "application/json")
-            .header("Authorization", format!("Bearer {}", auth_token))
+        let req = self.with_auth_headers(
+            self.http_client
+                .post(&url)
+                .header(header::CONTENT_TYPE, "application/json"),
+            &auth_token).await;
+        let response = req
             .header("HTTP-Referer", APP_HTTP_REFERER)
             .header("X-Title", APP_X_TITLE)
             .json(&cancel_payload)
@@ -1253,10 +1269,8 @@ impl ServerProxyClient {
                 .map_err(|e| AppError::InternalError(format!("Invalid mime type: {}", e)))?,
         );
 
-        let response = self
-            .http_client
-            .post(&analysis_url)
-            .header("Authorization", format!("Bearer {}", auth_token))
+        let req = self.with_auth_headers(self.http_client.post(&analysis_url), &auth_token).await;
+        let response = req
             .header("HTTP-Referer", APP_HTTP_REFERER)
             .header("X-Title", APP_X_TITLE)
             .multipart(form)
@@ -1327,10 +1341,8 @@ impl TranscriptionClient for ServerProxyClient {
             form = form.text("language", lang.to_string());
         }
 
-        let response = self
-            .http_client
-            .post(&transcription_url)
-            .header("Authorization", format!("Bearer {}", auth_token))
+        let req = self.with_auth_headers(self.http_client.post(&transcription_url), &auth_token).await;
+        let response = req
             .header("HTTP-Referer", APP_HTTP_REFERER)
             .header("X-Title", APP_X_TITLE)
             .multipart(form)
@@ -1410,6 +1422,132 @@ impl ApiClient for ServerProxyClient {
             .await
     }
 
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+impl ServerProxyClient {
+    /// Send job completion notification to server
+    pub async fn send_job_completed_notification(&self, payload: serde_json::Value) -> AppResult<()> {
+        info!("Sending job completion notification to server");
+
+        let auth_token = self.get_auth_token().await?;
+        let notification_url = format!("{}/api/notifications/job-completed", self.server_url);
+
+        let req = self.with_auth_headers(
+            self.http_client.post(&notification_url),
+            &auth_token
+        ).await;
+
+        let response = req
+            .header("Content-Type", "application/json")
+            .header("HTTP-Referer", APP_HTTP_REFERER)
+            .header("X-Title", APP_X_TITLE)
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| {
+                AppError::HttpError(format!("Failed to send job completion notification: {}", e))
+            })?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Failed to get error text".to_string());
+            error!(
+                "Job completion notification API error: {} - {}",
+                status, error_text
+            );
+            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
+        }
+
+        info!("Job completion notification sent successfully");
+        Ok(())
+    }
+
+    /// Send job failure notification to server
+    pub async fn send_job_failed_notification(&self, payload: serde_json::Value) -> AppResult<()> {
+        info!("Sending job failure notification to server");
+
+        let auth_token = self.get_auth_token().await?;
+        let notification_url = format!("{}/api/notifications/job-failed", self.server_url);
+
+        let req = self.with_auth_headers(
+            self.http_client.post(&notification_url),
+            &auth_token
+        ).await;
+
+        let response = req
+            .header("Content-Type", "application/json")
+            .header("HTTP-Referer", APP_HTTP_REFERER)
+            .header("X-Title", APP_X_TITLE)
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| {
+                AppError::HttpError(format!("Failed to send job failure notification: {}", e))
+            })?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Failed to get error text".to_string());
+            error!(
+                "Job failure notification API error: {} - {}",
+                status, error_text
+            );
+            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
+        }
+
+        info!("Job failure notification sent successfully");
+        Ok(())
+    }
+
+    /// Send job progress notification to server (silent notification)
+    pub async fn send_job_progress_notification(&self, payload: serde_json::Value) -> AppResult<()> {
+        debug!("Sending job progress notification to server");
+
+        let auth_token = self.get_auth_token().await?;
+        let notification_url = format!("{}/api/notifications/job-progress", self.server_url);
+
+        let req = self.with_auth_headers(
+            self.http_client.post(&notification_url),
+            &auth_token
+        ).await;
+
+        let response = req
+            .header("Content-Type", "application/json")
+            .header("HTTP-Referer", APP_HTTP_REFERER)
+            .header("X-Title", APP_X_TITLE)
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| {
+                AppError::HttpError(format!("Failed to send job progress notification: {}", e))
+            })?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Failed to get error text".to_string());
+            debug!(
+                "Job progress notification API error: {} - {}",
+                status, error_text
+            );
+            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
+        }
+
+        debug!("Job progress notification sent successfully");
+        Ok(())
+    }
+
     /// Extract cost from response - uses server-authoritative cost from usage.cost field
     fn extract_cost_from_response(&self, response: &OpenRouterResponse) -> f64 {
         response
@@ -1417,10 +1555,5 @@ impl ApiClient for ServerProxyClient {
             .as_ref()
             .and_then(|usage| usage.cost)
             .unwrap_or(0.0)
-    }
-
-    /// Allow downcasting to concrete types for access to specific methods
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
     }
 }

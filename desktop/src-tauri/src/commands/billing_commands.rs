@@ -14,14 +14,12 @@ where
 {
     let value = serde_json::Value::deserialize(deserializer)?;
     match value {
-        serde_json::Value::Number(n) => {
-            n.as_f64()
-                .ok_or_else(|| serde::de::Error::custom("Invalid number"))
-        }
-        serde_json::Value::String(s) => {
-            s.parse::<f64>()
-                .map_err(|_| serde::de::Error::custom("Invalid number string"))
-        }
+        serde_json::Value::Number(n) => n
+            .as_f64()
+            .ok_or_else(|| serde::de::Error::custom("Invalid number")),
+        serde_json::Value::String(s) => s
+            .parse::<f64>()
+            .map_err(|_| serde::de::Error::custom("Invalid number string")),
         _ => Err(serde::de::Error::custom("Expected number or string")),
     }
 }
@@ -33,12 +31,14 @@ where
     let value = Option::<serde_json::Value>::deserialize(deserializer)?;
     match value {
         Some(serde_json::Value::Number(n)) => {
-            Ok(Some(n.as_f64()
-                .ok_or_else(|| serde::de::Error::custom("Invalid number"))?))
+            Ok(Some(n.as_f64().ok_or_else(|| {
+                serde::de::Error::custom("Invalid number")
+            })?))
         }
         Some(serde_json::Value::String(s)) => {
-            Ok(Some(s.parse::<f64>()
-                .map_err(|_| serde::de::Error::custom("Invalid number string"))?))
+            Ok(Some(s.parse::<f64>().map_err(|_| {
+                serde::de::Error::custom("Invalid number string")
+            })?))
         }
         Some(serde_json::Value::Null) | None => Ok(None),
         _ => Err(serde::de::Error::custom("Expected number, string, or null")),
@@ -583,9 +583,11 @@ pub async fn get_credit_history_command(
         Some(s) if !s.trim().is_empty() => Some(s),
         _ => None,
     };
-    
-    debug!("Getting unified credit history via Tauri command with limit={}, offset={}, search={:?}", 
-           limit, offset, search_opt);
+
+    debug!(
+        "Getting unified credit history via Tauri command with limit={}, offset={}, search={:?}",
+        limit, offset, search_opt
+    );
 
     let unified_credit_history = billing_client
         .get_unified_credit_history(Some(limit), Some(offset), search_opt)
@@ -818,7 +820,7 @@ pub async fn reveal_file_in_explorer_command(file_path: String) -> Result<(), Ap
     {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
-        
+
         std::process::Command::new("explorer")
             .args(&["/select,", &format!("\"{}\"", file_path)])
             .creation_flags(CREATE_NO_WINDOW)
@@ -1027,7 +1029,8 @@ pub async fn update_auto_top_off_settings_command(
         }
 
         if let Some(threshold_str) = &request.threshold {
-            let threshold_val = threshold_str.parse::<f64>()
+            let threshold_val = threshold_str
+                .parse::<f64>()
                 .map_err(|_| AppError::ValidationError("Invalid threshold format".to_string()))?;
             if threshold_val <= 0.0 || threshold_val > 1000.0 {
                 return Err(AppError::ValidationError(
@@ -1037,7 +1040,8 @@ pub async fn update_auto_top_off_settings_command(
         }
 
         if let Some(amount_str) = &request.amount {
-            let amount_val = amount_str.parse::<f64>()
+            let amount_val = amount_str
+                .parse::<f64>()
                 .map_err(|_| AppError::ValidationError("Invalid amount format".to_string()))?;
             if amount_val <= 0.0 || amount_val > 1000.0 {
                 return Err(AppError::ValidationError(

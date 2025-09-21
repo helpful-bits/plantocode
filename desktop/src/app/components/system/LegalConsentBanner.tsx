@@ -136,10 +136,18 @@ export function LegalConsentBanner() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && verification?.requiresReconsent) {
-        event.preventDefault();
-        event.stopPropagation();
+      if (event.key !== 'Escape' || !verification?.requiresReconsent) {
+        return;
       }
+
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('.xterm')) {
+        // Let terminal sessions receive Escape so apps like vim can exit modes.
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
     };
 
     if (verification?.requiresReconsent) {

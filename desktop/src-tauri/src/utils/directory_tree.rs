@@ -9,19 +9,19 @@ use crate::utils::git_utils;
 
 pub async fn get_combined_directory_tree_for_roots(roots: &[String]) -> AppResult<String> {
     use std::collections::HashSet;
-    
+
     // Find the common git repository root for all roots
     let git_root = {
         let mut common_git_root: Option<PathBuf> = None;
-        
+
         for root_str in roots {
             let mut current = Path::new(root_str);
-            
+
             // Walk up to find git root
             loop {
                 if git_utils::is_git_repository(current) {
                     let git_path = current.to_path_buf();
-                    
+
                     // Check if this matches our previously found git root
                     if let Some(ref existing_root) = common_git_root {
                         if existing_root != &git_path {
@@ -33,7 +33,7 @@ pub async fn get_combined_directory_tree_for_roots(roots: &[String]) -> AppResul
                     }
                     break;
                 }
-                
+
                 if let Some(parent) = current.parent() {
                     current = parent;
                 } else {
@@ -42,27 +42,26 @@ pub async fn get_combined_directory_tree_for_roots(roots: &[String]) -> AppResul
                 }
             }
         }
-        
-        common_git_root.ok_or_else(|| {
-            AppError::JobError("No git repository found for roots".to_string())
-        })?
+
+        common_git_root
+            .ok_or_else(|| AppError::JobError("No git repository found for roots".to_string()))?
     };
-    
+
     // Get ALL non-ignored files from the git repository
     let (all_git_files, _) = git_utils::get_all_non_ignored_files(&git_root)?;
-    
+
     // Convert to absolute paths and filter by roots
     let mut sections = Vec::new();
-    
+
     for root_str in roots {
         let root_path = Path::new(root_str);
         let header = format!("===== ROOT: {} =====\n", root_str);
-        
+
         // Filter files that belong to this root
         let mut root_files = Vec::new();
         for rel_path in &all_git_files {
             let abs_path = git_root.join(rel_path);
-            
+
             // Check if this file is under the current root
             if abs_path.starts_with(&root_path) {
                 // Make path relative to this root (not git root)
@@ -71,13 +70,13 @@ pub async fn get_combined_directory_tree_for_roots(roots: &[String]) -> AppResul
                 }
             }
         }
-        
+
         // Also collect directories (from file paths)
         let mut all_paths = HashSet::new();
         for file_path in &root_files {
             // Add the file itself
             all_paths.insert(file_path.clone());
-            
+
             // Add all parent directories
             let mut parent = file_path.parent();
             while let Some(p) = parent {
@@ -87,29 +86,29 @@ pub async fn get_combined_directory_tree_for_roots(roots: &[String]) -> AppResul
                 parent = p.parent();
             }
         }
-        
+
         // Convert to sorted vector
         let mut sorted_paths: Vec<PathBuf> = all_paths.into_iter().collect();
         sorted_paths.sort();
-        
+
         // Format as tree
         let tree = format_directory_tree(&sorted_paths);
         sections.push(format!("{}{}", header, tree));
     }
-    
+
     Ok(sections.join("\n\n"))
 }
 
 // Fallback for when roots have different git repositories or no git
 async fn get_combined_directory_tree_for_roots_fallback(roots: &[String]) -> AppResult<String> {
     let mut sections = Vec::new();
-    
+
     for r in roots {
         let header = format!("===== ROOT: {} =====\n", r);
         let body = get_directory_tree_with_defaults(r).await?;
         sections.push(format!("{}{}", header, body));
     }
-    
+
     Ok(sections.join("\n\n"))
 }
 
@@ -192,25 +191,28 @@ pub async fn generate_directory_tree(
         // Convert relative paths from git to absolute paths
         for relative_path in files.0 {
             let absolute_path = project_dir_path.join(&relative_path);
-            
+
             // Check if file actually exists on filesystem
             if !absolute_path.exists() {
                 // Skip files that don't exist (deleted but still in git index)
                 continue;
             }
-            
+
             all_paths.push(absolute_path);
         }
     } else {
         // Handle non-git directories with filesystem traversal
-        debug!("Directory is not a git repository, using filesystem traversal for: {}", project_dir_str);
-        
+        debug!(
+            "Directory is not a git repository, using filesystem traversal for: {}",
+            project_dir_str
+        );
+
         // Perform filesystem traversal
         let project_dir_path_for_traversal = project_dir_path.to_path_buf();
         let exclude_patterns = options.exclude_patterns.clone();
         let include_hidden = options.include_hidden;
         let max_depth = options.max_depth;
-        
+
         all_paths = tokio::task::spawn_blocking(move || {
             traverse_directory_non_git(
                 &project_dir_path_for_traversal,
@@ -293,7 +295,7 @@ fn traverse_directory_non_git(
 ) -> AppResult<Vec<PathBuf>> {
     let mut all_paths = Vec::new();
     let mut visited_dirs = HashSet::new();
-    
+
     // Default exclude patterns for common directories we should skip
     let default_excludes = vec![
         ".git",
@@ -320,7 +322,7 @@ fn traverse_directory_non_git(
         ".DS_Store",
         "Thumbs.db",
     ];
-    
+
     // Combine default and custom exclude patterns
     let mut exclude_set = HashSet::new();
     for pattern in &default_excludes {
@@ -331,7 +333,7 @@ fn traverse_directory_non_git(
             exclude_set.insert(pattern.clone());
         }
     }
-    
+
     // Recursive directory traversal
     traverse_directory_recursive(
         base_path,
@@ -343,7 +345,7 @@ fn traverse_directory_non_git(
         &mut visited_dirs,
         &mut all_paths,
     )?;
-    
+
     Ok(all_paths)
 }
 
@@ -364,17 +366,17 @@ fn traverse_directory_recursive(
             return Ok(());
         }
     }
-    
+
     // Avoid infinite loops with symlinks
     let canonical_path = match current_path.canonicalize() {
         Ok(p) => p,
         Err(_) => return Ok(()), // Skip if we can't canonicalize
     };
-    
+
     if !visited_dirs.insert(canonical_path.clone()) {
         return Ok(()); // Already visited this directory
     }
-    
+
     // Read directory entries
     let entries = match std::fs::read_dir(current_path) {
         Ok(entries) => entries,
@@ -383,24 +385,24 @@ fn traverse_directory_recursive(
             return Ok(()); // Skip directories we can't read
         }
     };
-    
+
     for entry in entries {
         let entry = match entry {
             Ok(e) => e,
             Err(_) => continue, // Skip problematic entries
         };
-        
+
         let path = entry.path();
         let file_name = match path.file_name() {
             Some(name) => name.to_string_lossy().to_string(),
             None => continue,
         };
-        
+
         // Check if we should skip hidden files/directories
         if !include_hidden && file_name.starts_with('.') {
             continue;
         }
-        
+
         // Check exclude patterns
         let should_exclude = exclude_patterns.iter().any(|pattern| {
             // Simple pattern matching (could be enhanced with glob patterns)
@@ -416,16 +418,16 @@ fn traverse_directory_recursive(
             // Exact match
             file_name == *pattern
         });
-        
+
         if should_exclude {
             continue;
         }
-        
+
         let file_type = match entry.file_type() {
             Ok(ft) => ft,
             Err(_) => continue,
         };
-        
+
         if file_type.is_file() {
             // Add file to results
             results.push(path.clone());
@@ -444,7 +446,7 @@ fn traverse_directory_recursive(
         }
         // Skip symlinks and other special files
     }
-    
+
     Ok(())
 }
 

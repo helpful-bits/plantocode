@@ -182,7 +182,6 @@ impl WorkflowCleanupHandler {
         Ok(())
     }
 
-
     /// Clean up memory caches for a workflow
     pub async fn cleanup_memory_caches(&self, workflow_id: &str) -> AppResult<()> {
         log::debug!("Cleaning up memory caches for workflow: {}", workflow_id);
@@ -224,7 +223,6 @@ impl WorkflowCleanupHandler {
     ) -> AppResult<()> {
         log::debug!("Cleaning up resources for job: {}", job.id);
 
-
         // Clear any job-specific memory caches
         self.cleanup_job_memory_caches(&job.id).await?;
 
@@ -246,7 +244,6 @@ impl WorkflowCleanupHandler {
             "Cleaning up workflow-specific resources for: {}",
             workflow_id
         );
-
 
         // Clean up workflow memory caches
         self.cleanup_memory_caches(workflow_id).await?;
@@ -350,7 +347,6 @@ impl WorkflowCleanupHandler {
     async fn cleanup_global_resources(&self, app_handle: &AppHandle) -> AppResult<()> {
         log::debug!("Cleaning up global resources");
 
-
         // Emit global cleanup event
         let event_payload = serde_json::json!({
             "type": "global_cleanup",
@@ -361,7 +357,6 @@ impl WorkflowCleanupHandler {
 
         Ok(())
     }
-
 
     async fn cleanup_job_memory_caches(&self, job_id: &str) -> AppResult<()> {
         log::debug!("Cleaning up memory caches for job: {}", job_id);
@@ -386,7 +381,6 @@ impl WorkflowCleanupHandler {
         // - Error tracking data
         Ok(())
     }
-
 
     async fn emit_cleanup_event(
         &self,
@@ -474,7 +468,6 @@ impl CleanupScheduler {
         // In a real implementation, this would start a timer
         // For now, we'll just perform one cleanup cycle
         self.perform_cleanup_cycle(app_handle).await?;
-        
 
         Ok(())
     }
@@ -502,7 +495,7 @@ impl CleanupScheduler {
                 summary.orphaned_jobs_cleaned = orphaned_jobs.len();
             }
         }
-        
+
         // Temp file cleanup removed - no actual temp files are created
 
         log::info!("Cleanup cycle completed: {:?}", summary);

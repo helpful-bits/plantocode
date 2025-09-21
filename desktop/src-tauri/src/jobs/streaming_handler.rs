@@ -17,10 +17,10 @@ use crate::utils::get_timestamp;
 fn is_transport_error(error: &AppError) -> bool {
     match error {
         AppError::HttpError(msg) => {
-            msg.contains("Transport error") || 
-            msg.contains("error decoding response body") ||
-            msg.contains("connection") ||
-            msg.contains("network")
+            msg.contains("Transport error")
+                || msg.contains("error decoding response body")
+                || msg.contains("connection")
+                || msg.contains("network")
         }
         _ => false,
     }
@@ -42,7 +42,7 @@ pub struct StreamResult {
     pub accumulated_response: String,
     pub final_usage: Option<OpenRouterUsage>,
     pub request_id: Option<String>, // Server-generated request ID from stream_started event
-    pub is_partial: bool, // Whether the response was incomplete due to connection issues
+    pub is_partial: bool,           // Whether the response was incomplete due to connection issues
 }
 
 /// Handler for processing streamed LLM responses
@@ -87,17 +87,20 @@ impl StreamedResponseHandler {
 
         // Throttling setup
         let mut last_update = Instant::now();
-        
+
         // Make stream update interval configurable via environment variable
         let interval_ms = std::env::var("STREAM_UPDATE_INTERVAL_MS")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(200); // Default to 200ms if not set or invalid
-        
+
         let update_interval = Duration::from_millis(interval_ms);
-        
+
         // Log the effective interval once for diagnostics
-        debug!("Stream update interval set to {}ms for job {}", interval_ms, self.job_id);
+        debug!(
+            "Stream update interval set to {}ms for job {}",
+            interval_ms, self.job_id
+        );
 
         // Process stream events
         while let Some(event_result) = stream.next().await {
@@ -346,9 +349,11 @@ impl StreamedResponseHandler {
                     if !accumulated_response.is_empty() && is_transport_error(&e) {
                         warn!(
                             "Transport error occurred but preserving {} characters of response for job {}: {}",
-                            accumulated_response.len(), self.job_id, e
+                            accumulated_response.len(),
+                            self.job_id,
+                            e
                         );
-                        
+
                         // Save partial content to database
                         if let Err(db_err) = self
                             .repo
@@ -362,13 +367,14 @@ impl StreamedResponseHandler {
                         {
                             error!("Failed to save partial response: {}", db_err);
                         }
-                        
+
                         // Return partial result with warning
                         info!(
                             "Returning partial response for job {} due to transport error - {} characters preserved",
-                            self.job_id, accumulated_response.len()
+                            self.job_id,
+                            accumulated_response.len()
                         );
-                        
+
                         return Ok(StreamResult {
                             accumulated_response,
                             final_usage: current_usage,
@@ -439,7 +445,7 @@ impl StreamedResponseHandler {
             accumulated_response,
             final_usage: usage_result,
             request_id: server_req_id, // Return captured request_id from StreamStarted event
-            is_partial: false, // Complete successful stream
+            is_partial: false,         // Complete successful stream
         })
     }
 

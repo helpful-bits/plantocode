@@ -1,0 +1,294 @@
+/* Vibe Manager Ad Styles */
+:root {
+  /* Dark theme colors from desktop app globals.css */
+  --bg-primary: oklch(0.18 0.02 206);
+  --bg-secondary: oklch(0.15 0.02 206);
+  --panel-bg: oklch(0.22 0.02 206);
+  --panel-border: oklch(0.35 0.03 206);
+  --text-primary: oklch(0.95 0 0);
+  --text-secondary: oklch(0.80 0 0);
+  
+  /* Teal gradient colors from desktop app */
+  --teal-light: oklch(0.65 0.08 195);
+  --teal-medium: oklch(0.60 0.10 195);
+  --teal-bright: oklch(0.55 0.12 195);
+  --accent-green: oklch(0.65 0.08 195);
+  --card-bg: oklch(0.20 0.02 206);
+  
+  /* Spacing system */
+  --spacing-xs: 8px;
+  --spacing-sm: 16px;
+  --spacing-md: 24px;
+  --spacing-lg: 32px;
+  --spacing-xl: 48px;
+  --spacing-2xl: 64px;
+}
+
+/* Container and Layout */
+.ad-container {
+  width: 1280px;
+  height: 720px;
+  position: relative;
+  background: linear-gradient(135deg, oklch(0.15 0.02 206) 0%, oklch(0.18 0.02 206) 40%, oklch(0.20 0.03 195) 100%);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  color: var(--text-primary);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: var(--spacing-md) var(--spacing-md) 0 var(--spacing-md);
+  box-sizing: border-box;
+}
+
+/* Header */
+.header {
+  text-align: center;
+  margin-bottom: var(--spacing-xl);
+}
+
+.title {
+  font-size: 64px;
+  font-weight: 700;
+  letter-spacing: -1.5px;
+  margin: 0 0 var(--spacing-sm) 0;
+  background: linear-gradient(135deg, oklch(0.75 0.12 195), oklch(0.70 0.14 200), oklch(0.65 0.16 210));
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.subtitle {
+  font-size: 32px;
+  font-weight: 500;
+  color: oklch(0.85 0 0);
+  margin: 0;
+}
+
+/* Main Content */
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 0;
+}
+
+.panels-flow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-md);
+}
+
+/* Panels */
+.panel {
+  width: 360px;
+  height: 480px;
+  background: var(--panel-bg);
+  backdrop-filter: blur(10px);
+  border-radius: 16px;
+  border: 1px solid var(--panel-border);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  padding: var(--spacing-md);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.panel--accent {
+  border-color: var(--accent-green);
+}
+
+.panel--glow {
+  box-shadow: 0 0 40px oklch(0.65 0.08 195 / 0.3), 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.panel__title {
+  font-size: 32px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.panel__title--accent {
+  color: var(--accent-green);
+}
+
+.panel__description {
+  font-size: 22px;
+  line-height: 1.4;
+  color: oklch(0.85 0 0);
+  margin: 0;
+  margin-top: auto;
+}
+
+/* Intent Box */
+.intent-box {
+  flex: 1;
+  border-radius: 12px;
+  border: 1px solid var(--panel-border);
+  background: oklch(0.18 0.02 206 / 0.5);
+  padding: var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+}
+
+.intent-box__item {
+  font-size: 24px;
+  font-weight: 500;
+  color: oklch(0.88 0 0);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.intent-box__check {
+  color: var(--teal-light);
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+}
+
+/* Models Container */
+.models-container {
+  flex: 1;
+  border-radius: 12px;
+  border: 1px solid oklch(0.65 0.08 195 / 0.4);
+  background: oklch(0.65 0.08 195 / 0.08);
+  padding: var(--spacing-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.model-card {
+  background: oklch(0.18 0.02 206 / 0.8);
+  border-radius: 6px;
+  border: 1px solid oklch(0.30 0.02 206 / 0.5);
+  padding: 10px 14px;
+}
+
+.model-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.model-card__name {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--accent-green);
+}
+
+.model-card__progress {
+  font-size: 16px;
+  color: oklch(0.75 0 0);
+}
+
+.progress-bar {
+  width: 100%;
+  height: 4px;
+  background: rgba(49, 63, 91, 0.6);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.progress-bar__fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--teal-light), var(--teal-medium));
+  border-radius: 2px;
+}
+
+.model-card__status {
+  font-size: 14px;
+  color: oklch(0.70 0 0);
+}
+
+/* Code Block */
+.code-block {
+  flex: 1;
+  border-radius: 12px;
+  border: 1px solid var(--panel-border);
+  background: oklch(0.18 0.02 206 / 0.5);
+  padding: var(--spacing-sm);
+  overflow: auto;
+  min-height: 0;
+}
+
+.code-block__content {
+  color: oklch(0.75 0 0);
+  font-size: 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* Chevrons */
+.chevron {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, oklch(0.65 0.08 195 / 0.2), oklch(0.60 0.10 195 / 0.1));
+  border: 1px solid oklch(0.65 0.08 195 / 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--teal-light);
+  flex-shrink: 0;
+}
+
+/* Footer */
+.footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: oklch(0.80 0 0);
+  font-size: 20px;
+  font-weight: 500;
+  margin: 0;
+  flex-wrap: nowrap;
+}
+
+.footer span {
+  font-size: 20px;
+}
+
+/* Stamp - inline with footer */
+.stamp {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 28px;
+  background: var(--accent-green);
+  color: #000;
+  font-size: 24px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  border-radius: 8px;
+  border: 3px solid #000;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.stamp__checkbox {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: var(--accent-green);
+  font-weight: 900;
+}

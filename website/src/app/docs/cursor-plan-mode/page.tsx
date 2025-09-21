@@ -4,18 +4,18 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { StructuredData } from '@/components/seo/StructuredData';
 
 export const metadata: Metadata = {
-  title: 'Cursor Plan Mode — Generate plan.md and Manage Todos',
+  title: 'Cursor Plan Mode - Generate plan.md and Manage Todos',
   description: 'Use Cursor\'s Plan setup to create a plan.md, manage todos, and queue instructions. Step-by-step setup with tips and templates.',
   keywords: ['Cursor Plan Mode', 'plan.md', 'todo management', 'AI planning', 'Cursor IDE', 'development workflow', 'Vibe Manager'],
   openGraph: {
-    title: 'Cursor Plan Mode — Generate plan.md and Manage Todos',
+    title: 'Cursor Plan Mode - Generate plan.md and Manage Todos',
     description: 'Use Cursor\'s Plan setup to create a plan.md, manage todos, and queue instructions. Step-by-step setup with tips and templates.',
     url: 'https://www.vibemanager.app/docs/cursor-plan-mode',
     type: 'article',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Cursor Plan Mode — Generate plan.md and Manage Todos',
+    title: 'Cursor Plan Mode - Generate plan.md and Manage Todos',
     description: 'Use Cursor\'s Plan setup to create a plan.md, manage todos, and queue instructions. Step-by-step setup with tips and templates.',
   },
   alternates: {

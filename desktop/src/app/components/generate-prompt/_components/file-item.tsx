@@ -86,7 +86,7 @@ export const FileItem = React.memo(function SimpleFileItem({
       {/* Size column */}
       <div className="w-20 text-right">
         <span className="text-muted-foreground text-xs font-mono">
-          {humanFileSize(file.size ?? 0)}
+          {humanFileSize(file.size)}
         </span>
       </div>
 

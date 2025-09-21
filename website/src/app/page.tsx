@@ -19,7 +19,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import type { SoftwareApplication, FAQPage, VideoObject, ImageObject } from 'schema-dts';
-import { SectionDividerOrbs, SectionDividerMesh } from '@/components/ui/SectionDivider';
+import { SectionDividerMesh } from '@/components/ui/SectionDivider';
 
 const FounderProof = dynamic(() => import('@/components/landing/FounderProof').then(mod => ({ default: mod.FounderProof })), {
   loading: () => <div className="h-[20vh]" />,
@@ -46,57 +46,54 @@ const CallToAction = dynamic(() => import('@/components/landing/CallToAction').t
   loading: () => <div className="h-[30vh]" />,
 });
 
-const HowItWorks = dynamic(() => import('@/components/landing/HowItWorks').then(mod => ({ default: mod.HowItWorks })), {
+const Value = dynamic(() => import('@/components/landing/Value').then(mod => ({ default: mod.Value })), {
   loading: () => <div className="h-[40vh]" />,
 });
 
 
 export const metadata: Metadata = {
-  title: 'Vibe Manager - Multi-Model AI Planning for Claude Code & Cursor',
-  description: 'Vibe Manager enhances Claude Code, Cursor, and OpenAI Codex with multi-model planning. Generate implementation plans from GPT-5, Claude Sonnet 4, Gemini 2.5 Pro. Smart file discovery and context curation.',
+  title: 'Vibe Manager - AI Architect Studio with Full Plan Editor & Merge Control',
+  description: 'Edit AI plans in Monaco editor. Merge multiple plans with your instructions. Integrated terminal runs codex, claude, cursor, aider. Built for senior engineers who need control, not chat interfaces.',
   keywords: [
-    'vibe manager',
-    'vibe code cleanup specialist',
-    'vibe code cleanup',
-    'claude code install',
-    'install claude code',
-    'claudecode',
-    'claude code planning',
-    'claude code companion',
-    'claude code agents',
-    'claude code mcp',
-    'claude code cli',
-    'claude code router',
-    'claude code subagents',
-    'claude code vs cursor',
-    'cursor vs claude code',
-    'cursor ide',
-    'cursor ai',
-    'openai codex cli',
-    'openai codex',
-    'agentic coding',
-    'ai coding agents',
-    'claude code github',
-    'claude code vscode',
-    'claude code hooks',
-    'claude code sdk',
-    'claude code plan mode',
-    'claude code windows',
-    'claude code docs',
-    'how to use claude code',
-    'claude code update',
-    'AI coding assistant',
-    'multi-model planning',
-    'gpt-5',
+    'ai plan editor',
+    'monaco editor plans',
+    'merge ai plans',
+    'implementation plan editor',
+    'merge instructions ai',
+    'edit ai generated code',
+    'integrated terminal claude code',
+    'run claude code in app',
+    'codex cli terminal',
+    'aider integrated',
+    'heavy coding agent users',
+    'staff engineer tools',
+    'gpt-5 planning',
+    'claude sonnet 4',
     'gemini 2.5 pro',
-    'deepseek',
-    'codebase context',
-    'file discovery',
-    'macOS dev tools',
+    'o3 mini',
+    'o4 mini',
+    'grok 4',
+    'deepseek r1',
+    'kimi k2',
+    'terminal orchestration',
+    'voice dictation terminal',
+    'session transcripts',
+    'command approvals',
+    'code aware discovery',
+    'impact surface analysis',
+    'legacy patterns',
+    'professional ai planning',
+    'single tenant',
+    'on prem ai',
+    'claude code terminal',
+    'cursor alternative',
+    'agentic power users',
+    'serious codebases',
+    'implementation blueprints',
   ],
   openGraph: {
-    title: 'Vibe Manager - AI Coding Planning Tool | Free Download',
-    description: 'Vibe Manager enhances Claude Code, Cursor, and OpenAI Codex with multi-model planning. Generate better implementation plans from GPT-5, Claude Sonnet 4, Gemini 2.5 Pro. Download free.',
+    title: 'Vibe Manager - Serious AI Architect Studio',
+    description: 'Planning layer for heavy coding-agent users. Integrated terminal runs codex, claude, cursor, aider. Multi-model strategies from GPT-5, Claude Sonnet 4, Gemini 2.5 Pro. Voice dictation. Session transcripts.',
     url: 'https://www.vibemanager.app',
     siteName: 'Vibe Manager',
     locale: 'en_US',
@@ -105,8 +102,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Vibe Manager - AI Coding Planning Tool',
-    description: 'Multi-model planning for Claude Code, Cursor & OpenAI Codex. Generate plans from GPT-5, Claude Sonnet 4, Gemini 2.5 Pro. Free download.',
+    title: 'Vibe Manager - AI Architect Studio',
+    description: 'Built for agentic power users. Plan with multiple models. Execute in integrated terminal. Ship safely in large codebases.',
   },
   alternates: {
     canonical: 'https://www.vibemanager.app',
@@ -120,7 +117,7 @@ export default function Home() {
     applicationCategory: 'DeveloperApplication',
     operatingSystem: ['Windows 10+', 'macOS 11.0+'],
     url: 'https://www.vibemanager.app',
-    description: 'Multi-model AI planning tool. Generate & merge plans from GPT-5, Claude Sonnet 4, Gemini 2.5 Pro, DeepSeek R1, o3/o4-mini, Grok 4. Export to Claude Code, Cursor, Cline, Codex CLI. Windows & Mac.',
+    description: 'AI Architect Studio with full Monaco editor for plans. Generate multiple approaches, merge with custom instructions, edit before execution. Integrated terminal runs codex, claude, cursor, aider. Not a chat - a real IDE for AI planning. Windows & Mac.',
     offers: {
       '@type': 'Offer',
       price: 0, // Numeric 0 for free apps, no priceCurrency needed per Google guidance
@@ -159,36 +156,44 @@ export default function Home() {
 
   const faqItems = [
     {
-      question: 'What is Vibe Manager for AI coding agents?',
-      answer: 'A planning assistant that enhances any agentic tool with multi-model intelligence. It curates context and merges plans from GPT-5, Claude Sonnet 4, and Gemini 2.5 Pro before your preferred coding agent executes - whether that\'s Claude Code, Cursor, OpenAI Codex CLI, or other agentic tools.',
+      question: 'How is this different from Cursor/Claude Code/Windsurf?',
+      answer: 'Those are chat interfaces. This is a planning IDE. Generate multiple AI strategies, edit them in Monaco editor, merge with your instructions, then execute in integrated terminal. Chat tools give you one answer. We give you control over the planning process. Plus integrated terminal runs codex, claude, cursor, aider without switching apps.',
     },
     {
-      question: 'How do I use Vibe Manager with my coding assistant?',
-      answer: 'Install your preferred agentic tool, then download Vibe Manager to add multi-model planning capabilities. The generated plans can be copied directly into any agentic tool that accepts structured instructions.',
+      question: 'Do I need to know how to code?',
+      answer: 'Yes. This is built for staff/principal engineers managing complex codebases. If you\'re looking for "no-code AI," this isn\'t it. We assume you understand terminals, dependencies, architecture decisions. This tool amplifies expert knowledge, doesn\'t replace it.',
     },
     {
-      question: 'Does Vibe Manager replace my existing AI coding tools?',
-      answer: 'No - Vibe Manager enhances whatever you\'re already using. It adds planning and context curation layers that make any agentic tool more effective. Works alongside all agentic tools.',
+      question: 'What AI models are supported?',
+      answer: 'All the best ones: GPT-5, Claude Sonnet 4, Gemini 2.5 Pro, o3/o4-mini, Grok 4, DeepSeek R1, Kimi K2. Generate plans from multiple models simultaneously, compare approaches, merge the best parts. One model is never enough for production-grade decisions.',
     },
     {
-      question: 'How does it work with AI agents and their execution?',
-      answer: 'Vibe Manager plans tasks using multiple AI models, then your chosen agentic tool executes them. It ensures agents have the right context and files, improving success rates dramatically regardless of which tool you prefer.',
+      question: 'Is my code secure?',
+      answer: 'Your code stays local. We only send the specific context you approve. See exactly what gets transmitted before confirming. Professional customers get enhanced security options and on-prem deployment. Built by engineers who understand why security matters for large codebases.',
     },
     {
-      question: 'Which coding tools does it support?',
-      answer: 'Works with any agentic tool that accepts structured plans - Claude Code, Cursor, OpenAI Codex CLI, and countless others. It adds multi-model planning that most tools don\'t offer natively, making all of them more powerful.',
+      question: 'Does it work with my existing CLI tools?',
+      answer: 'Absolutely. Integrated terminal runs codex, claude, cursor, aider, or any tool you use. Voice dictation for complex commands. Session transcripts for audits. Command approvals for sensitive operations. Your workflow, amplified.',
     },
     {
-      question: 'Which AI models does it use for planning?',
-      answer: 'Gemini 2.5 Pro, GPT-5, Claude Sonnet 4, o3/o4-mini, Grok 4, DeepSeek R1, Kimi K2 - all working together to create superior plans for any agentic tool to execute.',
+      question: 'What about large codebases (100k+ files)?',
+      answer: 'Built for this. Code-aware discovery finds true impact surfaces across massive repos. Understands legacy patterns and complex dependencies. Intelligent file filtering. Database-backed session persistence. Because production systems require careful analysis.',
     },
     {
-      question: 'Does it support tool-specific features and integrations?',
-      answer: 'Yes! Works seamlessly with the unique features of any agentic tool - GitHub integrations, IDE features, CLI commands, and more. Adds its own customization layer for even greater control regardless of your chosen agentic environment.',
+      question: 'Can I edit AI-generated plans before execution?',
+      answer: 'This is the core feature. Full Monaco editor (VS Code editor) with syntax highlighting, auto-save, change tracking. Edit any AI plan before execution. Create templates, persist edits to database. Not a chat interface - a real IDE for implementation plans.',
     },
     {
-      question: 'Platform support for different coding tools?',
-      answer: 'Windows and macOS. Available on Microsoft Store for Windows and direct download for Mac. Enhances any agentic tool on both platforms.',
+      question: 'How does the merge instructions feature work?',
+      answer: 'Generate multiple plans from different models, then specify exactly how to merge them. "Use Plan 2\'s error handling with Plan 3\'s architecture." Floating instruction panel stays visible while reviewing. AI merges following your specifications, not generic rules. This is our secret weapon.',
+    },
+    {
+      question: 'Why do senior engineers choose this over chat tools?',
+      answer: 'Control. Generate multiple approaches, merge with your rules, edit before execution. See token costs, edit prompts, persist sessions across restarts. Built by engineers who got tired of losing context in chat interfaces and starting over.',
+    },
+    {
+      question: 'What\'s the complete workflow for complex features?',
+      answer: 'Describe task (voice/text/screen recording) → Generate 3-5 plans from different models → Review in Monaco editor → Add merge instructions → Get intelligently merged plan → Edit details → Execute in integrated terminal → Iterate based on results. Complete control from idea to deployment.',
     },
   ];
 
@@ -204,111 +209,101 @@ export default function Home() {
     })),
   };
 
-  const videoSteps = [
+  const valuePropositions = [
     {
-      title: "File Discovery & Search",
-      description: "Watch how AI finds relevant files in your codebase using intelligent search patterns",
-      video: cdnUrl('/assets/videos/step-2-find.mp4'),
-      poster: cdnUrl('/assets/images/step-2-poster.jpg')
+      title: "Avoid 3-Week Cleanup Sprints",
+      metric: "Zero cleanup",
+      description: "AI can generate 10,000 lines in minutes. Wrong architecture means weeks of refactoring. Plan first, execute once, ship clean.",
+      icon: <Shield className="w-8 h-8" />,
+      testimonial: "Last rushed AI feature took 3 weeks to untangle. Now I edit plans before execution. No more technical debt bombs.",
+      features: ["Multi-model consensus validation", "AI file relevance assessment"]
     },
     {
-      title: "Plan Creation & Merge",
-      description: "Generate multiple implementation plans from different AI models and merge the best approaches into a unified solution",
-      video: cdnUrl('/assets/videos/step-4-merge.mp4'), 
-      poster: cdnUrl('/assets/images/step-4-poster.jpg')
+      title: "Ship Right the First Time",
+      metric: "First-try success",
+      description: "Multi-model validation before execution. Compare 5 approaches, merge the best parts, edit details. One careful implementation beats ten hasty fixes.",
+      icon: <BrainCircuit className="w-8 h-8" />,
+      testimonial: "GPT said one thing, Claude another. Merged both approaches with my rules. Caught a critical edge case before production.",
+      features: ["Architectural synthesis with source traceability", "Monaco editor with real-time validation"]
     },
     {
-      title: "Deep Research & Context Analysis", 
-      description: "Watch AI perform comprehensive research across your codebase to gather context and understand dependencies",
-      video: cdnUrl('/assets/videos/step-3-generate.mp4'),
-      poster: cdnUrl('/assets/images/step-3-poster.jpg')
+      title: "Control AI Code Sprawl",
+      metric: "Clean architecture",
+      description: "Stop AI from reinventing your patterns. Merge instructions enforce your standards. Edit plans to match existing conventions. Consistent codebase at scale.",
+      icon: <Save className="w-8 h-8" />,
+      testimonial: "AI kept creating new patterns for solved problems. Now I specify 'use our existing auth flow' in merge instructions.",
+      features: ["Floating merge instructions with SOLID principles", "Unified prompt system with template enforcement"]
     },
     {
-      title: "Task Description Input",
-      description: "Describe your task naturally with text input and get AI assistance with enhancement. Skip typing entirely with voice dictation or capture visual context with screen recording",
-      subSteps: [
-        {
-          title: "AI Text Enhancement",
-          video: cdnUrl('/assets/videos/step-1-text.mp4'),
-          poster: cdnUrl('/assets/images/step-1-text-poster.jpg')
-        },
-        {
-          title: "Voice Dictation - 10x Faster Input",
-          video: cdnUrl('/assets/videos/step-1-voice.mp4'), 
-          poster: cdnUrl('/assets/images/step-1-voice-poster.jpg')
-        },
-        {
-          title: "Screen Recording - Instant Error Capture",
-          video: cdnUrl('/assets/videos/step-1-video.mp4'),
-          poster: cdnUrl('/assets/images/step-1-video-poster.jpg')
-        }
-      ]
-    },
-    {
-      title: "Settings & Prompt Customization",
-      description: "Configure AI models, edit system prompts, and customize settings to match your workflow",
-      video: cdnUrl('/assets/videos/step-5-customize.mp4'),
-      poster: cdnUrl('/assets/images/step-5-poster.jpg')
+      title: "Maintain Context Across Restarts",
+      metric: "Persistent sessions",
+      description: "Complex debugging spans days. Terminal sessions persist. Plans stay editable. Implementation context never lost. Pick up exactly where you left off.",
+      icon: <History className="w-8 h-8" />,
+      testimonial: "Debugging session from last Tuesday still there with full context. Saved me from re-explaining the entire problem.",
+      features: ["Terminal session persistence with 5MB ring buffer", "Project session state with file selection history"]
     }
   ];
 
   const features = [
     {
-      title: 'Enhanced Task Description Creation',
-      description: 'Transform your raw ideas into structured, actionable plans. Describe your task 10x faster with voice dictation for natural input, selective text editing for precision, and get AI assistance to enhance your task descriptions with goals, constraints, and affected areas.',
-      icon: <Video className="w-8 h-8" />,
-    },
-    {
-      title: 'Visual Context Capture',
-      description: 'Capture errors and UI issues instantly with screen recording. Record your screen to capture complex workflows and visual context. Gemini 2.5 Pro analyzes your recordings to extract technical details, UI states, and implementation requirements, seamlessly integrating with your IDE and CLI workflows.',
-      icon: <Search className="w-8 h-8" />,
-    },
-    {
-      title: 'Intelligent Web Research',
-      description: 'Automatically formulate research questions based on your tasks and pull in real-time documentation, API references, and best practices. Get up-to-date answers that connect directly to your specific implementation needs.',
-      icon: <Globe className="w-8 h-8" />,
-    },
-    {
-      title: 'File Finder',
-      description: "Decomposes your task into logical areas, creates targeted search patterns, then AI assesses actual file content for relevance. Can expand to find critical dependencies when needed. Real-time intelligence finding what matters.",
-      icon: <BrainCircuit className="w-8 h-8" />,
-      link: '/file-finder',
-    },
-    {
-      title: 'Code Cleanup Planning',
-      description: 'Transform messy codebases with intelligent multi-model planning. Generate comprehensive cleanup strategies for refactoring, removing duplicated code, improving naming conventions, and modernizing legacy patterns.',
+      title: 'Full Monaco Editor for Plans',
+      description: 'Edit AI-generated plans with VS Code\'s Monaco editor. Syntax highlighting, auto-save, change tracking. Not a chat interface - a real IDE for implementation plans. Persist edits, create templates, full control before execution.',
       icon: <Sparkles className="w-8 h-8" />,
-      link: '/vibe-code-cleanup-specialist',
     },
     {
-      title: 'The Council of LLMs',
-      description: 'Generate plans from Gemini 2.5 Pro, GPT-5, Claude Sonnet 4, o3/o4-mini, Grok 4, DeepSeek R1, and Kimi K2 - even multiple runs of the same model. The list evolves quickly as more capable models appear. The merge AI synthesizes their unique insights into one superior strategy.',
+      title: 'Intelligent Merge with Instructions',
+      description: 'Generate multiple plans, then merge with your instructions. "Use Plan 2\'s error handling, Plan 3\'s architecture." Floating instruction panel while reviewing. AI merges exactly how you specify. No more settling for one approach.',
       icon: <BrainCircuit className="w-8 h-8" />,
     },
     {
-      title: 'Never Start from Scratch',
-      description: 'Persistent sessions with complete history. Your task descriptions, file selections, search terms - everything is preserved. Close the app, come back next week, pick up exactly where you left off.',
-      icon: <History className="w-8 h-8" />,
-    },
-    {
-      title: 'Deep Research Workflow',
-      description: "Your codebase doesn't exist in a vacuum. The Deep Research workflow searches for current documentation to fill knowledge gaps, getting up-to-date answers for your specific implementation problems.",
-      icon: <Globe className="w-8 h-8" />,
-    },
-    {
-      title: 'You Control Your Data',
-      description: 'Sessions and history stored locally in SQLite. When you use AI features, your code is sent to AI providers (OpenAI, Google, Anthropic) for processing. We handle auth and billing. You see exactly what gets sent before confirming.',
-      icon: <Shield className="w-8 h-8" />,
-    },
-    {
-      title: 'Truly Parallel Workflows',
-      description: "Why wait? While one implementation plan generates, switch sessions and kick off a file discovery workflow for another task. Each session maintains its own complete state.",
+      title: 'Integrated Terminal & CLI Orchestration',
+      description: 'Run codex, claude, cursor, aider directly inside Vibe Manager. Stage prompts with voice dictation, approve, then execute. Keep traceable transcripts. No context switching. Built for power users who live in terminals.',
       icon: <Zap className="w-8 h-8" />,
     },
     {
-      title: 'You Are The CEO',
-      description: "Override any system prompt. Customize the 'Copy Button' instructions. Your customizations are saved per project. Full control over every aspect of the tool.",
-      icon: <Save className="w-8 h-8" />,
+      title: 'Code-Aware Discovery',
+      description: 'From 1,000 files to the true impact surface. AI finds dependencies, patterns, non-obvious links. Understands legacy code structures and complex architectural patterns. Essential for dealing with technical debt at scale.',
+      icon: <BrainCircuit className="w-8 h-8" />,
+    },
+    {
+      title: 'Multi-Model Plan Generation',
+      description: 'Council of LLMs: GPT-5, Claude Sonnet 4, Gemini 2.5 Pro, o3/o4-mini, Grok 4, DeepSeek R1. Generate multiple approaches, compare side-by-side, merge the best parts. One model is never enough for production.',
+      icon: <Shield className="w-8 h-8" />,
+    },
+    {
+      title: 'Voice → Terminal Flow',
+      description: 'Dictate complex commands instead of typing. Faster input for implementation plans. Stage in rich text area, review, approve, execute. Full transcript retention for audits. Accessibility for RSI sufferers.',
+      icon: <Video className="w-8 h-8" />,
+    },
+    {
+      title: 'Transparency & Control',
+      description: 'Live token counts and costs. Editable prompts. Local session storage. You see exactly what gets sent before confirming. No black boxes. Built by engineers who hate surprises in production.',
+      icon: <Shield className="w-8 h-8" />,
+    },
+    {
+      title: 'Session Persistence',
+      description: 'Complete history including terminal transcripts. Close the app mid-debug, come back next week, continue where you left off. SQLite local storage. Your debugging context never disappears.',
+      icon: <History className="w-8 h-8" />,
+    },
+    {
+      title: 'Library Upgrade Planning',
+      description: 'API diff analysis, breaking change detection, migration checklists. Generate upgrade plans that actually work. Essential for teams maintaining large dependency graphs.',
+      icon: <Globe className="w-8 h-8" />,
+    },
+    {
+      title: 'Professional Security',
+      description: 'Single-tenant isolated servers or on-prem deployment. Command approvals, transcript retention, redaction support. Built for teams that can\'t use cloud-only tools.',
+      icon: <Shield className="w-8 h-8" />,
+    },
+    {
+      title: 'Parallel Processing',
+      description: 'Run multiple terminal sessions. Generate plans while debugging. Each session isolated with its own state. Because production issues don\'t wait for your current task to finish.',
+      icon: <Zap className="w-8 h-8" />,
+    },
+    {
+      title: 'Hard Bug Cracking',
+      description: 'Capture repro with screen recording. Plan precise fixes across models. Execute with full terminal control. Keep debugging transcripts. Built for the bugs that take days to solve.',
+      icon: <Search className="w-8 h-8" />,
     },
   ];
 
@@ -352,8 +347,8 @@ export default function Home() {
     },
     {
       '@type': 'VideoObject',
-      name: 'Voice Dictation - 10x Faster Input',
-      description: 'Discover how voice dictation makes task input 10x faster for natural coding workflow with Claude Code and Cursor.',
+      name: 'Voice Dictation - Faster Input',
+      description: 'Discover how voice dictation makes task input faster for natural coding workflow with Claude Code and Cursor.',
       thumbnailUrl: cdnUrl('/assets/images/step-1-voice-poster.jpg'),
       contentUrl: cdnUrl('/assets/videos/step-1-voice.mp4'),
       uploadDate: '2025-08-01T00:00:00Z',
@@ -440,8 +435,8 @@ export default function Home() {
         <main className="flex-grow">
           {/* SR-only content for better Google snippets */}
           <div className="sr-only">
-            <h1>Vibe Manager - Multi-Model AI Planning Tool</h1>
-            <p>Vibe Manager is a multi-model planning tool that enhances AI coding assistants like Claude Code, Cursor, and OpenAI Codex CLI. Generate implementation plans from GPT-5, Claude Sonnet 4, Gemini 2.5 Pro, then merge them into superior strategies. Includes intelligent file discovery and context curation for better AI-assisted development.</p>
+            <h1>Vibe Manager - Serious AI Architect Studio</h1>
+            <p>AI Architect Studio built for heavy coding-agent users and staff/principal engineers. Multi-model planning with integrated terminal execution. Run codex, claude, cursor, aider directly in-app with voice dictation and session transcripts. Generate plans from GPT-5, Claude Sonnet 4, Gemini 2.5 Pro, o3/o4-mini, Grok 4, DeepSeek R1, Kimi K2. Built for large and legacy codebases.</p>
           </div>
           <section className="mb-0">
             <HeroSection />
@@ -449,13 +444,13 @@ export default function Home() {
           <FounderProof />
           <SectionDividerMesh />
 
-          <HowItWorks steps={videoSteps} />
-          <SectionDividerOrbs />
+          <Value propositions={valuePropositions} />
+          <SectionDividerMesh />
 
           <Features features={features} />
           <SectionDividerMesh />
 
-          <section id="pricing" className="pb-8">
+          <section id="pricing">
             <Pricing />
           </section>
           <SectionDividerMesh />
@@ -463,7 +458,7 @@ export default function Home() {
           <section id="faq" className="pt-8">
             <FAQ items={faqItems} />
           </section>
-          <SectionDividerOrbs />
+          <SectionDividerMesh />
 
           <section id="community" className="pb-8">
             <Community />
@@ -472,8 +467,8 @@ export default function Home() {
 
           <section id="cta" className="pt-8">
             <CallToAction
-              description="Join early access - ship your first AI-curated implementation plan in minutes."
-              title="Ready to Take Control of Your AI Context?"
+              description="Planning layer trusted by heavy users of coding agents. Ship features and fixes safely in large & legacy codebases."
+              title="Ready to Level Up Your Agent Workflow?"
             />
           </section>
         </main>

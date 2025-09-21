@@ -481,18 +481,24 @@ pub async fn get_job_queue() -> AppResult<Arc<JobQueue>> {
         }
         Err(e) => {
             // If another task raced and won, JOB_QUEUE may now be set
-            tracing::warn!("Job queue accessor: lazy init attempt returned error: {e:?}, will fallback to wait");
+            tracing::warn!(
+                "Job queue accessor: lazy init attempt returned error: {e:?}, will fallback to wait"
+            );
         }
     }
 
     // Bounded wait (5s) in case initialization is still in progress elsewhere
     for i in 0..50 {
         if let Some(queue) = JOB_QUEUE.get() {
-            tracing::debug!("Job queue accessor: queue became available during wait (iteration {i})");
+            tracing::debug!(
+                "Job queue accessor: queue became available during wait (iteration {i})"
+            );
             return Ok(queue.clone());
         }
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     }
 
-    Err(AppError::JobError("Job queue not initialized (timeout after 5s)".to_string()))
+    Err(AppError::JobError(
+        "Job queue not initialized (timeout after 5s)".to_string(),
+    ))
 }

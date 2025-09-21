@@ -153,7 +153,7 @@ export default function TerminalSettings() {
         <CardHeader>
           <CardTitle>Terminal Settings</CardTitle>
           <CardDescription>
-            Configure the CLI tool to use when starting terminal sessions
+            The selected CLI tool will auto-launch on terminal start.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">

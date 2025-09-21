@@ -894,4 +894,3 @@ pub struct FileSelectionHistoryEntryWithTimestamp {
     pub force_excluded_files: Vec<String>,
     pub created_at: i64,
 }
-

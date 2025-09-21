@@ -11,11 +11,12 @@ interface TerminalViewProps {
   onResize?: (cols: number, rows: number) => void;
   onFocus?: () => void;
   onBlur?: () => void;
+  onImagePaste?: (file: File) => void;
   height?: number | string;
 }
 
 // Use React.memo to prevent unnecessary re-renders
-export const TerminalView = React.memo<TerminalViewProps>(({ onData, onReady, onResize, onFocus, onBlur, height = "100%" }) => {
+export const TerminalView = React.memo<TerminalViewProps>(({ onData, onReady, onResize, onFocus, onBlur, onImagePaste, height = "100%" }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -36,14 +37,6 @@ export const TerminalView = React.memo<TerminalViewProps>(({ onData, onReady, on
   onResizeRef.current = onResize;
 
 
-  // Note: enqueueWrite is currently unused but kept for potential future use
-  // const enqueueWrite = (data: string) => {
-  //   if (disposedRef.current || !termRef.current) return;
-  //   outputQueueRef.current.push(data);
-  //   if (!rafIdRef.current) {
-  //     rafIdRef.current = requestAnimationFrame(flushOutputQueue);
-  //   }
-  // };
 
   const scheduleFit = (cb: () => void) => {
     const anyWindow: any = window;
@@ -51,7 +44,6 @@ export const TerminalView = React.memo<TerminalViewProps>(({ onData, onReady, on
       anyWindow.requestIdleCallback(cb, { timeout: 250 });
     } else {
       requestAnimationFrame(() => cb());
-      if (import.meta.env.DEV) console.warn('[terminal] requestIdleCallback unavailable; using RAF');
     }
   };
 
@@ -60,6 +52,8 @@ export const TerminalView = React.memo<TerminalViewProps>(({ onData, onReady, on
 
     const container = containerRef.current;
     const rect = container.getBoundingClientRect();
+
+    if (!rect || rect.width === 0 || rect.height === 0) return;
 
     if (rect.width > 0 && rect.height > 0) {
       scheduleFit(() => {
@@ -74,9 +68,7 @@ export const TerminalView = React.memo<TerminalViewProps>(({ onData, onReady, on
             }
           }
         } catch (error) {
-          if (import.meta.env.DEV) {
-            console.warn('Terminal fit error:', error);
-          }
+          // Silently handle fit errors
         }
       });
     }
@@ -119,13 +111,14 @@ export const TerminalView = React.memo<TerminalViewProps>(({ onData, onReady, on
     term.open(containerRef.current);
 
     // Stop propagation in capture phase for critical keys so modal doesn't intercept
+    // Guard critical keys from bubbling into modals while still letting xterm handle them first.
     const stopCriticalKeys = (ev: KeyboardEvent) => {
       const isCtrlC = ev.ctrlKey && (ev.key === "c" || ev.key === "C");
       if (ev.key === "Escape" || ev.key === "Backspace" || ev.key === "Tab" || isCtrlC) {
         ev.stopPropagation();
       }
     };
-    containerRef.current?.addEventListener("keydown", stopCriticalKeys, { capture: true });
+    containerRef.current?.addEventListener("keydown", stopCriticalKeys);
 
     // Ensure terminal focuses on pointer interactions
     containerRef.current?.addEventListener("mousedown", () => term.focus(), { passive: true });
@@ -155,9 +148,7 @@ export const TerminalView = React.memo<TerminalViewProps>(({ onData, onReady, on
         const webglAddon = new WebglAddon();
         term.loadAddon(webglAddon);
       } catch (error) {
-        if (import.meta.env.DEV) {
-          console.info('WebGL renderer not available, using canvas renderer');
-        }
+        // WebGL renderer not available, falling back to canvas
       }
     }
 
@@ -169,16 +160,41 @@ export const TerminalView = React.memo<TerminalViewProps>(({ onData, onReady, on
     });
 
     // Add focus and blur event handlers
-    term.textarea?.addEventListener('focus', () => {
+    const handleFocusEvent = () => {
       onFocus?.();
-    });
+    };
 
-    term.textarea?.addEventListener('blur', () => {
+    const handleBlurEvent = () => {
       onBlur?.();
-    });
+    };
+
+    term.textarea?.addEventListener('focus', handleFocusEvent);
+    term.textarea?.addEventListener('blur', handleBlurEvent);
+
+    const handlePasteEvent = (e: ClipboardEvent) => {
+      if (!onImagePaste || !e.clipboardData) {
+        return;
+      }
+
+      const items = Array.from(e.clipboardData.items || []);
+      const imageItem = items.find((item) => item.type.startsWith('image/'));
+      if (!imageItem) {
+        return;
+      }
+
+      const file = imageItem.getAsFile();
+      if (!file) {
+        return;
+      }
+
+      e.preventDefault();
+      onImagePaste(file);
+    };
+
+    term.textarea?.addEventListener('paste', handlePasteEvent);
 
     // Right-click paste support (respects bracketed paste mode)
-    containerRef.current.addEventListener('contextmenu', async (e) => {
+    const handleContextMenu = async (e: MouseEvent) => {
       e.preventDefault();
       try {
         const text = await navigator.clipboard.readText();
@@ -187,12 +203,11 @@ export const TerminalView = React.memo<TerminalViewProps>(({ onData, onReady, on
           termRef.current.paste(text);
         }
       } catch (error) {
-        // Clipboard access may be denied
-        if (import.meta.env.DEV) {
-          console.warn('Clipboard paste failed:', error);
-        }
+        // Clipboard access may be denied, silently ignore
       }
-    });
+    };
+
+    containerRef.current.addEventListener('contextmenu', handleContextMenu);
 
     // Initial fit with proper timing and guards
     requestAnimationFrame(() => {
@@ -214,6 +229,19 @@ export const TerminalView = React.memo<TerminalViewProps>(({ onData, onReady, on
       }
     });
 
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        safeFit();
+      }
+    };
+
+    const handleFocus = () => {
+      safeFit();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+
     // Setup resize observer with throttled safe fit
     const resizeObserver = new ResizeObserver(() => {
       if (!disposedRef.current) {
@@ -233,7 +261,15 @@ export const TerminalView = React.memo<TerminalViewProps>(({ onData, onReady, on
     return () => {
       disposedRef.current = true;
 
-      containerRef.current?.removeEventListener("keydown", stopCriticalKeys, { capture: true });
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+
+      containerRef.current?.removeEventListener("keydown", stopCriticalKeys);
+      containerRef.current?.removeEventListener('contextmenu', handleContextMenu);
+
+      term.textarea?.removeEventListener('paste', handlePasteEvent);
+      term.textarea?.removeEventListener('focus', handleFocusEvent);
+      term.textarea?.removeEventListener('blur', handleBlurEvent);
 
       if (resizeTimeoutRef.current) {
         clearTimeout(resizeTimeoutRef.current);

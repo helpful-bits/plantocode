@@ -1,6 +1,6 @@
-use serde::Serialize;
-use tauri::{Emitter, AppHandle};
 use log::warn;
+use serde::Serialize;
+use tauri::{AppHandle, Emitter};
 
 // Event name constants
 pub const JOB_CREATED: &str = "job:created";

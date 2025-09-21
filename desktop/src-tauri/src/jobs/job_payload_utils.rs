@@ -42,8 +42,8 @@ pub fn deserialize_value_to_job_payload(
         ExtendedPathFinderPayload, FileFinderWorkflowPayload, FileRelevanceAssessmentPayload,
         GenericLlmStreamPayload, ImplementationPlanMergePayload, ImplementationPlanPayload,
         JobPayload, OpenRouterLlmPayload, PathCorrectionPayload, RegexFileFilterPayload,
-        RootFolderSelectionPayload, TaskRefinementPayload, TextImprovementPayload, 
-        VideoAnalysisPayload, WebSearchExecutionPayload, WebSearchPromptsGenerationPayload, 
+        RootFolderSelectionPayload, TaskRefinementPayload, TextImprovementPayload,
+        VideoAnalysisPayload, WebSearchExecutionPayload, WebSearchPromptsGenerationPayload,
         WebSearchWorkflowPayload,
     };
     use crate::models::TaskType;
@@ -189,16 +189,13 @@ pub fn deserialize_value_to_job_payload(
         TaskType::VideoAnalysis => {
             let payload: VideoAnalysisPayload = serde_json::from_value(json_value.clone())
                 .map_err(|e| {
-                    AppError::JobError(format!(
-                        "Failed to deserialize VideoAnalysisPayload: {}",
-                        e
-                    ))
+                    AppError::JobError(format!("Failed to deserialize VideoAnalysisPayload: {}", e))
                 })?;
             Ok(JobPayload::VideoAnalysis(payload))
         }
         TaskType::RootFolderSelection => {
-            let payload: RootFolderSelectionPayload = 
-                serde_json::from_value(json_value.clone()).map_err(|e| {
+            let payload: RootFolderSelectionPayload = serde_json::from_value(json_value.clone())
+                .map_err(|e| {
                     AppError::JobError(format!(
                         "Failed to deserialize RootFolderSelectionPayload: {}",
                         e

@@ -20,7 +20,6 @@ import {
   AlertDialogTitle,
 } from "@/ui/alert-dialog";
 import { Button } from "@/ui/button";
-import { Badge } from "@/ui/badge";
 import { ModelSelectorToggle } from "./_components/ModelSelectorToggle";
 import { setProjectTaskSetting } from "@/actions/project-settings.actions";
 import { type ModelInfo } from "@/types/config-types";
@@ -35,6 +34,7 @@ import { AnimatedNumber } from "@/ui";
 import { estimatePromptTokensAction } from "@/actions/ai/prompt.actions";
 import ImplementationPlanCard from "./_components/ImplementationPlanCard";
 import PlanContentModal from "./_components/PlanContentModal";
+import { PlanTerminalModal } from "./_components/PlanTerminalModal";
 import PromptCopyModal from "./_components/PromptCopyModal";
 import { MergePlansSection } from "./_components/MergePlansSection";
 import { useImplementationPlansLogic } from "./_hooks/useImplementationPlansLogic";
@@ -43,8 +43,6 @@ import { replacePlaceholders } from "@/utils/placeholder-utils";
 import { getContentForStep } from "./_utils/plan-content-parser";
 import { normalizeJobResponse } from '@/utils/response-utils';
 import { usePlausible } from "@/hooks/use-plausible";
-import { useTerminalSessions } from "@/contexts/terminal-sessions/useTerminalSessions";
-import { PlanTerminalModal } from "./_components/PlanTerminalModal";
 
 interface ImplementationPlansPanelProps {
   sessionId: string | null;
@@ -90,9 +88,10 @@ export function ImplementationPlansPanel({
   // State for plan content modal - now only stores the jobId
   const [openedPlanJobId, setOpenedPlanJobId] = useState<string | null>(null);
 
-  // State for terminal modal
+  // State for terminal modal - we track both the plan ID and visibility separately
   const [terminalPlanId, setTerminalPlanId] = useState<string | null>(null);
-  const { getActiveCount, canOpenTerminal } = useTerminalSessions();
+  const [isTerminalVisible, setIsTerminalVisible] = useState(false);
+
   
   // State for selected root directories from file finder workflow
   const [selectedRootDirectories, setSelectedRootDirectories] = useState<string[] | null>(null);
@@ -132,14 +131,49 @@ export function ImplementationPlansPanel({
     setOpenedPlanJobId(null);
   }, []);
 
-  // Handle opening the terminal modal
-  const handleViewTerminal = useCallback(async (planId: string) => {
-    const canOpen = await canOpenTerminal();
-    if (!canOpen.ok) {
-      return;
+  // Handle terminal modal
+  const handleViewTerminal = useCallback((planId: string) => {
+    // If it's the same plan, just show the modal again (restore if minimized)
+    if (terminalPlanId === planId) {
+      setIsTerminalVisible(true);
+    } else {
+      // New plan, set both ID and visibility
+      setTerminalPlanId(planId);
+      setIsTerminalVisible(true);
     }
-    setTerminalPlanId(planId);
-  }, [canOpenTerminal]);
+  }, [terminalPlanId]);
+
+  const handleCloseTerminal = useCallback((shouldFullyClose = false) => {
+    if (shouldFullyClose) {
+      // Fully close and unmount the terminal (e.g., after killing the session)
+      setTerminalPlanId(null);
+      setIsTerminalVisible(false);
+    } else {
+      // Only hide the modal, keep it mounted
+      setIsTerminalVisible(false);
+    }
+  }, []);
+
+  // Listen for open-plan-terminal events from notifications
+  useEffect(() => {
+    const handleOpenPlanTerminal = (event: CustomEvent) => {
+      const { jobId } = event.detail;
+      if (jobId) {
+        if (terminalPlanId === jobId) {
+          setIsTerminalVisible(true);
+        } else {
+          setTerminalPlanId(jobId);
+          setIsTerminalVisible(true);
+        }
+      }
+    };
+
+    window.addEventListener('open-plan-terminal', handleOpenPlanTerminal as EventListener);
+    return () => {
+      window.removeEventListener('open-plan-terminal', handleOpenPlanTerminal as EventListener);
+    };
+  }, [terminalPlanId]);
+
 
   const { currentSession } = useSessionStateContext();
   const { showNotification } = useNotification();
@@ -175,21 +209,6 @@ export function ImplementationPlansPanel({
     setPreloadedPlanContent({});
   }, [taskDescription, currentSession?.taskDescription, includedPaths, sessionId, projectDirectory]);
 
-  // Listen for terminal open events
-  useEffect(() => {
-    const handler = async (e: Event) => {
-      const ce = e as CustomEvent<{ jobId?: string }>;
-      const jobId = ce.detail?.jobId;
-      if (typeof jobId === 'string' && jobId.length > 0) {
-        const canOpen = await canOpenTerminal();
-        if (canOpen.ok) {
-          setTerminalPlanId(jobId);
-        }
-      }
-    };
-    window.addEventListener('open-plan-terminal', handler as EventListener);
-    return () => window.removeEventListener('open-plan-terminal', handler as EventListener);
-  }, [canOpenTerminal]);
 
   // Validation for create functionality
   const canCreatePlan = Boolean(
@@ -579,11 +598,6 @@ export function ImplementationPlansPanel({
       <header className="flex justify-between items-center mb-4">
         <div className="flex items-center gap-2">
           <h2 className="text-lg font-semibold text-foreground">Implementation Plans</h2>
-          {getActiveCount() > 0 && (
-            <Badge variant="secondary" className="text-xs">
-              {getActiveCount()} active terminal{getActiveCount() > 1 ? 's' : ''}
-            </Badge>
-          )}
         </div>
         <div className="flex items-center gap-2">
           {onCreatePlan && allowedModelsForPlan.length > 1 && (
@@ -757,8 +771,6 @@ export function ImplementationPlansPanel({
           mergeInstructions={mergeInstructions}
           onMergeInstructionsChange={handleMergeInstructionsChange}
           selectedCount={selectedPlanIds.length}
-          // Terminal props
-          onOpenTerminal={handleViewTerminal}
         />
       )}
 
@@ -774,16 +786,37 @@ export function ImplementationPlansPanel({
         sessionName={currentSession?.name || ""}
       />
 
-      {/* Terminal Modal */}
-      {terminalPlanId && (
-        <PlanTerminalModal
-          open={true}
-          onOpenChange={(open) => !open && setTerminalPlanId(null)}
-          planJobId={terminalPlanId}
-          title={implementationPlans.find(p => p.id === terminalPlanId)?.prompt}
-          projectDirectory={projectDirectory}
-        />
-      )}
+
+      {/* Terminal Modal - Keep mounted but control visibility separately */}
+      {terminalPlanId && (() => {
+        const terminalPlan = implementationPlans.find(p => p.id === terminalPlanId);
+        if (!terminalPlan) return null;
+
+        const parsedMeta = terminalPlan.metadata ?
+          (typeof terminalPlan.metadata === 'string' ?
+            (() => { try { return JSON.parse(terminalPlan.metadata); } catch { return {}; } })() :
+            terminalPlan.metadata) :
+          {};
+        const planTitle = parsedMeta?.planTitle || terminalPlan.prompt || "Implementation Plan";
+
+        return (
+          <PlanTerminalModal
+            open={isTerminalVisible}
+            onOpenChange={(open: boolean) => {
+              if (open) {
+                setIsTerminalVisible(true);
+              } else {
+                handleCloseTerminal();
+              }
+            }}
+            planJobId={terminalPlanId}
+            title={planTitle}
+            projectDirectory={projectDirectory}
+            copyButtons={implementationPlanSettings || []}
+            onSessionKilled={() => handleCloseTerminal(true)}
+          />
+        );
+      })()}
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog

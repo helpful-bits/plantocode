@@ -1,9 +1,9 @@
 use crate::error::{AppError, AppResult};
 use crate::events::job_events::*;
 use crate::models::{BackgroundJob, TaskType};
-use log::{info, warn, error};
+use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, command};
 
@@ -61,9 +61,12 @@ pub async fn delete_background_job_command(job_id: String, app_handle: AppHandle
     // which has a foreign key constraint to background_jobs with ON DELETE CASCADE
     // So they're automatically cleaned up when the job is deleted
 
-    emit_job_deleted(&app_handle, JobDeletedEvent {
-        job_id: job_id.clone(),
-    });
+    emit_job_deleted(
+        &app_handle,
+        JobDeletedEvent {
+            job_id: job_id.clone(),
+        },
+    );
 
     Ok(())
 }
@@ -124,7 +127,10 @@ pub async fn get_all_visible_jobs_command(
     project_directory: Option<String>,
     app_handle: AppHandle,
 ) -> AppResult<Vec<crate::models::BackgroundJob>> {
-    info!("Fetching all visible jobs for project: {:?}", project_directory);
+    info!(
+        "Fetching all visible jobs for project: {:?}",
+        project_directory
+    );
 
     let repo = app_handle
         .state::<Arc<crate::db_utils::BackgroundJobRepository>>()
@@ -134,15 +140,17 @@ pub async fn get_all_visible_jobs_command(
     let mut jobs = if let Some(dir) = project_directory {
         // Generate project hash from directory
         let project_hash = crate::utils::hash_utils::generate_project_hash(&dir);
-        
+
         repo.get_all_visible_jobs_for_project(&project_hash)
             .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to get all visible jobs: {}", e)))?
+            .map_err(|e| {
+                AppError::DatabaseError(format!("Failed to get all visible jobs: {}", e))
+            })?
     } else {
         // If no project directory specified, get all jobs (backwards compatibility)
-        repo.get_all_visible_jobs()
-            .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to get all visible jobs: {}", e)))?
+        repo.get_all_visible_jobs().await.map_err(|e| {
+            AppError::DatabaseError(format!("Failed to get all visible jobs: {}", e))
+        })?
     };
 
     // Strip large content from implementation plans to reduce payload size
@@ -159,4 +167,3 @@ fn strip_implementation_plan_content(jobs: &mut Vec<BackgroundJob>) {
         }
     }
 }
-

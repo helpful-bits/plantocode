@@ -3,6 +3,7 @@ use crate::utils::path_utils;
 use crate::utils::{fs_utils, git_utils};
 use log::info;
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 use tauri::{AppHandle, command};
 
 #[command]
@@ -100,6 +101,122 @@ pub async fn list_project_files_command(
     }
 
     info!("Found {} git-based project files", files.len());
+    Ok(files)
+}
+
+/// Get metadata for a list of file paths (can be absolute or relative paths)
+/// This is useful for getting metadata of files outside the project directory
+#[command]
+pub async fn get_files_metadata_command(
+    file_paths: Vec<String>,
+    project_directory: Option<String>,
+    app_handle: AppHandle,
+) -> Result<Vec<crate::models::ProjectFileInfo>, String> {
+    info!("Getting metadata for {} files", file_paths.len());
+
+    let project_path = if let Some(ref dir) = project_directory {
+        Some(
+            Path::new(dir)
+                .canonicalize()
+                .map_err(|e| format!("Failed to resolve project directory: {}", e))?,
+        )
+    } else {
+        None
+    };
+
+    let mut files = Vec::new();
+
+    for file_path_str in file_paths {
+        let file_path = Path::new(&file_path_str);
+
+        // Determine if this is an absolute path or relative to project
+        let (full_path, relative_path) = if file_path.is_absolute() {
+            // For absolute paths, use them directly
+            let full = PathBuf::from(file_path);
+            let relative = if let Some(ref proj_path) = project_path {
+                // Try to make it relative to project if possible
+                full.strip_prefix(proj_path)
+                    .map(|p| p.to_path_buf())
+                    .unwrap_or_else(|_| full.clone())
+            } else {
+                full.clone()
+            };
+            (full, relative)
+        } else {
+            // For relative paths, resolve against project directory
+            if let Some(ref proj_path) = project_path {
+                let full = proj_path.join(file_path);
+                let relative = PathBuf::from(file_path);
+                (full, relative)
+            } else {
+                // No project directory, treat as absolute
+                let full = PathBuf::from(file_path);
+                (full.clone(), full)
+            }
+        };
+
+        // Check if file exists
+        if !full_path.exists() {
+            // Still include the file with None values for metadata
+            let name = relative_path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+
+            files.push(crate::models::ProjectFileInfo {
+                path: relative_path.to_string_lossy().to_string(),
+                name,
+                size: None,
+                modified_at: None,
+                is_binary: false,
+            });
+            continue;
+        }
+
+        // Get file name
+        let name = relative_path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+
+        // Get file metadata
+        let (size, modified_at) = match tokio::fs::metadata(&full_path).await {
+            Ok(metadata) => {
+                let size = if metadata.is_file() {
+                    Some(metadata.len())
+                } else {
+                    None
+                };
+                let modified_at = metadata
+                    .modified()
+                    .ok()
+                    .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|duration| duration.as_millis() as i64);
+                (size, modified_at)
+            }
+            Err(e) => {
+                info!("Failed to get metadata for {}: {}", full_path.display(), e);
+                (None, None)
+            }
+        };
+
+        // Check if file is binary
+        let is_binary = fs_utils::is_binary_file_fast(&full_path);
+
+        let project_file_info = crate::models::ProjectFileInfo {
+            path: relative_path.to_string_lossy().to_string(),
+            name,
+            size,
+            modified_at,
+            is_binary,
+        };
+
+        files.push(project_file_info);
+    }
+
+    info!("Retrieved metadata for {} files", files.len());
     Ok(files)
 }
 
@@ -217,7 +334,7 @@ pub async fn write_binary_file_command(
     app_handle: AppHandle,
 ) -> AppResult<()> {
     info!("Writing binary file: {} ({} bytes)", path, content.len());
-    
+
     // If project_directory is provided, ensure the file path is within it
     if let Some(proj_dir) = project_directory {
         let target_path = std::path::Path::new(&path);
@@ -500,12 +617,12 @@ pub async fn get_file_info_command(
     app_handle: AppHandle,
 ) -> AppResult<FileInfoResponse> {
     info!("Getting file info for: {}", path);
-    
+
     let file_path = std::path::Path::new(&path);
-    
+
     // Check if the path exists
     let exists = file_path.exists();
-    
+
     if !exists {
         return Ok(FileInfoResponse {
             exists: false,
@@ -515,23 +632,24 @@ pub async fn get_file_info_command(
             modified_at: None,
         });
     }
-    
+
     // Get metadata
-    let metadata = tokio::fs::metadata(&file_path).await
+    let metadata = tokio::fs::metadata(&file_path)
+        .await
         .map_err(|e| AppError::FileSystemError(format!("Failed to get file metadata: {}", e)))?;
-    
+
     let size = if metadata.is_file() {
         Some(metadata.len())
     } else {
         None
     };
-    
+
     let modified_at = metadata
         .modified()
         .ok()
         .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
         .map(|duration| duration.as_millis() as i64);
-    
+
     Ok(FileInfoResponse {
         exists,
         size,
@@ -539,4 +657,215 @@ pub async fn get_file_info_command(
         is_directory: metadata.is_dir(),
         modified_at,
     })
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchFileResult {
+    pub path: String,
+    pub name: String,
+    pub size: Option<u64>,
+    pub modified_at: Option<i64>,
+    pub content_snippet: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchFilesResponse {
+    pub files: Vec<SearchFileResult>,
+    pub total_count: usize,
+}
+
+#[command]
+pub async fn search_files_command(
+    app_handle: AppHandle,
+    project_directory: String,
+    query: String,
+    include_content: Option<bool>,
+    max_results: Option<u32>,
+) -> AppResult<serde_json::Value> {
+    info!(
+        "Searching files in directory: {} with query: {}",
+        project_directory, query
+    );
+
+    let include_content = include_content.unwrap_or(false);
+    let max_results = max_results.unwrap_or(100) as usize;
+
+    // Use canonicalize to properly handle all path formats
+    let project_path = match std::path::Path::new(&project_directory).canonicalize() {
+        Ok(path) => path,
+        Err(e) => {
+            return Err(AppError::FileSystemError(format!(
+                "Failed to resolve project directory path '{}': {}",
+                project_directory, e
+            )));
+        }
+    };
+
+    info!("Canonical path: {}", project_path.display());
+
+    // Get all files using directory tree utility
+    let all_paths = if git_utils::is_git_repository(&project_path) {
+        // Use git to get non-ignored files
+        let (relative_paths, _) = git_utils::get_all_non_ignored_files(&project_path)
+            .map_err(|e| AppError::FileSystemError(e.to_string()))?;
+
+        // Convert to absolute paths and filter existing files
+        let mut paths = Vec::new();
+        for relative_path in relative_paths {
+            let full_path = project_path.join(&relative_path);
+            if full_path.exists() && full_path.is_file() {
+                paths.push(full_path);
+            }
+        }
+        paths
+    } else {
+        // Use directory tree generation for non-git directories
+        use crate::utils::directory_tree::{DirectoryTreeOptions, generate_directory_tree};
+
+        let options = DirectoryTreeOptions::default();
+
+        // Get directory tree and extract file paths from it
+        let _tree_output = generate_directory_tree(&project_path, options).await
+            .map_err(|e| AppError::FileSystemError(e.to_string()))?;
+
+        // For now, let's use a simpler approach - walk the directory manually
+        let mut paths: Vec<std::path::PathBuf> = Vec::new();
+
+        fn walk_dir_recursive(dir: &std::path::Path, paths: &mut Vec<std::path::PathBuf>) -> Result<(), std::io::Error> {
+            for entry in std::fs::read_dir(dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_file() {
+                    paths.push(path);
+                } else if path.is_dir() {
+                    // Skip common ignored directories
+                    if let Some(dir_name) = path.file_name() {
+                        let dir_name = dir_name.to_string_lossy();
+                        if !dir_name.starts_with('.')
+                            && dir_name != "node_modules"
+                            && dir_name != "target"
+                            && dir_name != "dist"
+                            && dir_name != "build" {
+                            walk_dir_recursive(&path, paths)?;
+                        }
+                    }
+                }
+            }
+            Ok(())
+        }
+
+        tokio::task::spawn_blocking({
+            let project_path = project_path.clone();
+            move || {
+                let mut paths = Vec::new();
+                walk_dir_recursive(&project_path, &mut paths)
+                    .map_err(|e| AppError::FileSystemError(format!("Directory traversal failed: {}", e)))?;
+                Ok::<Vec<std::path::PathBuf>, AppError>(paths)
+            }
+        })
+        .await
+        .map_err(|e| AppError::JobError(format!("Failed to spawn blocking task: {}", e)))??
+    };
+
+    let mut matching_files = Vec::new();
+    let query_lower = query.to_lowercase();
+
+    // Search through files
+    for file_path in all_paths {
+        let relative_path = match file_path.strip_prefix(&project_path) {
+            Ok(rel) => rel,
+            Err(_) => continue,
+        };
+
+        let file_name = file_path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+
+        // Check if filename matches query
+        let filename_matches = file_name.to_lowercase().contains(&query_lower) ||
+            relative_path.to_string_lossy().to_lowercase().contains(&query_lower);
+
+        let mut content_matches = false;
+        let mut content_snippet = None;
+
+        // Check content if requested and file is not binary
+        if include_content && !fs_utils::is_binary_file_fast(&file_path) {
+            match fs_utils::read_file_to_string(&file_path).await {
+                Ok(content) => {
+                    if content.to_lowercase().contains(&query_lower) {
+                        content_matches = true;
+
+                        // Create snippet around first match
+                        if let Some(match_pos) = content.to_lowercase().find(&query_lower) {
+                            let start = match_pos.saturating_sub(50);
+                            let end = std::cmp::min(match_pos + query.len() + 50, content.len());
+                            content_snippet = Some(content[start..end].to_string());
+                        }
+                    }
+                }
+                Err(_) => {
+                    // Skip files we can't read
+                    continue;
+                }
+            }
+        }
+
+        // Include file if it matches filename or content
+        if filename_matches || content_matches {
+            // Get file metadata
+            let (size, modified_at) = match tokio::fs::metadata(&file_path).await {
+                Ok(metadata) => {
+                    let size = if metadata.is_file() {
+                        Some(metadata.len())
+                    } else {
+                        None
+                    };
+                    let modified_at = metadata
+                        .modified()
+                        .ok()
+                        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|duration| duration.as_millis() as i64);
+                    (size, modified_at)
+                }
+                Err(_) => (None, None),
+            };
+
+            matching_files.push(SearchFileResult {
+                path: relative_path.to_string_lossy().to_string(),
+                name: file_name,
+                size,
+                modified_at,
+                content_snippet,
+            });
+
+            // Limit results
+            if matching_files.len() >= max_results {
+                break;
+            }
+        }
+    }
+
+    // Sort by relevance (filename matches first, then by path)
+    matching_files.sort_by(|a, b| {
+        let a_filename_match = a.name.to_lowercase().contains(&query_lower);
+        let b_filename_match = b.name.to_lowercase().contains(&query_lower);
+
+        match (a_filename_match, b_filename_match) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.path.cmp(&b.path),
+        }
+    });
+
+    let response = SearchFilesResponse {
+        total_count: matching_files.len(),
+        files: matching_files,
+    };
+
+    Ok(serde_json::to_value(response)
+        .map_err(|e| AppError::SerializationError(format!("Failed to serialize response: {}", e)))?)
 }

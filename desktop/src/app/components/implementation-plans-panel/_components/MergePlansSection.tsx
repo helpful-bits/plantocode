@@ -27,6 +27,7 @@ export const MergePlansSection = React.memo(function MergePlansSection({
   const [isOpen, setIsOpen] = useState(true);
   const [localInstructions, setLocalInstructions] = useState(mergeInstructions);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Sync local state with prop when it changes externally (e.g., on clear)
   useEffect(() => {
@@ -42,19 +43,51 @@ export const MergePlansSection = React.memo(function MergePlansSection({
     };
   }, []);
 
+  // Add enhancement event listeners
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const handleEnhancementEvent = () => {
+      // Clear debounce and immediately save current text
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+      onMergeInstructionsChange(localInstructions);
+    };
+
+    textarea.addEventListener('flush-pending-changes', handleEnhancementEvent);
+    textarea.addEventListener('enhancement-applied', handleEnhancementEvent);
+
+    return () => {
+      textarea.removeEventListener('flush-pending-changes', handleEnhancementEvent);
+      textarea.removeEventListener('enhancement-applied', handleEnhancementEvent);
+    };
+  }, [localInstructions, onMergeInstructionsChange]);
+
   const handleInstructionsChange = (value: string) => {
     // Update local state immediately for responsive UI
     setLocalInstructions(value);
-    
+
     // Clear previous timer
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
     }
-    
+
     // Debounce the parent state update
     debounceTimerRef.current = setTimeout(() => {
       onMergeInstructionsChange(value);
     }, 300);
+  };
+
+  const handleBlur = () => {
+    // Clear debounce and immediately save on blur as fallback
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    onMergeInstructionsChange(localInstructions);
   };
 
   return (
@@ -85,10 +118,12 @@ export const MergePlansSection = React.memo(function MergePlansSection({
                   Merge Instructions (optional)
                 </label>
                 <Textarea
+                  ref={textareaRef}
                   id="merge-instructions"
                   placeholder="Provide specific instructions for how to merge these plans..."
                   value={localInstructions}
                   onChange={(e) => handleInstructionsChange(e.target.value)}
+                  onBlur={handleBlur}
                   className="min-h-[80px] resize-y"
                 />
               </div>

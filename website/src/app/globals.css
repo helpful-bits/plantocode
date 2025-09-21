@@ -1223,7 +1223,6 @@ a:not(.no-hover-effect):focus-visible {
 /* Enhanced clickable text with underline animation */
 .clickable-text-underline {
   position: relative;
-  display: inline-block;
   transition: color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 

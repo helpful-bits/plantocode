@@ -1,28 +1,34 @@
+use crate::auth::device_id_manager;
 use crate::auth::token_manager::TokenManager;
 use crate::error::AppError;
 use log::{debug, error, info};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tauri;
 
 // Import types from commands to ensure consistency
-use crate::commands::consent_commands::{LegalDocument, ConsentStatusResponse, ConsentVerificationResponse};
+use crate::commands::consent_commands::{
+    ConsentStatusResponse, ConsentVerificationResponse, LegalDocument,
+};
 
 /// Dedicated client for handling consent-related API calls
 pub struct ConsentClient {
     http: Client,
     base_url: String,
     token_manager: Arc<TokenManager>,
+    app_handle: tauri::AppHandle,
 }
 
 impl ConsentClient {
     /// Create a new ConsentClient instance
-    pub fn new(base_url: String, token_manager: Arc<TokenManager>) -> Self {
+    pub fn new(base_url: String, token_manager: Arc<TokenManager>, app_handle: tauri::AppHandle) -> Self {
         let http = crate::api_clients::client_factory::create_http_client();
         Self {
             http,
             base_url,
             token_manager,
+            app_handle,
         }
     }
 
@@ -33,11 +39,10 @@ impl ConsentClient {
         endpoint: &str,
         body: Option<serde_json::Value>,
     ) -> Result<T, AppError> {
-        let token = self
-            .token_manager
-            .get()
-            .await
-            .ok_or_else(|| AppError::AuthError("No authentication token available".to_string()))?;
+        let token =
+            self.token_manager.get().await.ok_or_else(|| {
+                AppError::AuthError("No authentication token available".to_string())
+            })?;
 
         let mut request_builder = match method.to_uppercase().as_str() {
             "GET" => self.http.get(&format!("{}{}", self.base_url, endpoint)),
@@ -51,7 +56,10 @@ impl ConsentClient {
             }
         };
 
-        request_builder = request_builder.header("Authorization", format!("Bearer {}", token));
+        let device_id = device_id_manager::get_or_create(&self.app_handle)?;
+        request_builder = request_builder
+            .header("Authorization", format!("Bearer {}", token))
+            .header("x-device-id", device_id);
 
         if let Some(body_data) = body {
             request_builder = request_builder
@@ -86,8 +94,10 @@ impl ConsentClient {
         endpoint: &str,
         body: Option<serde_json::Value>,
     ) -> Result<(), AppError> {
-        let token = self.token_manager.get().await
-            .ok_or_else(|| AppError::AuthError("No authentication token available".to_string()))?;
+        let token =
+            self.token_manager.get().await.ok_or_else(|| {
+                AppError::AuthError("No authentication token available".to_string())
+            })?;
 
         let mut request_builder = match method.to_uppercase().as_str() {
             "GET" => self.http.get(&format!("{}{}", self.base_url, endpoint)),
@@ -101,7 +111,10 @@ impl ConsentClient {
             }
         };
 
-        request_builder = request_builder.header("Authorization", format!("Bearer {}", token));
+        let device_id = device_id_manager::get_or_create(&self.app_handle)?;
+        request_builder = request_builder
+            .header("Authorization", format!("Bearer {}", token))
+            .header("x-device-id", device_id);
 
         if let Some(body_data) = body {
             request_builder = request_builder
@@ -126,7 +139,10 @@ impl ConsentClient {
     }
 
     /// Get current legal documents for a region
-    pub async fn get_current_documents(&self, region: &str) -> Result<Vec<LegalDocument>, AppError> {
+    pub async fn get_current_documents(
+        &self,
+        region: &str,
+    ) -> Result<Vec<LegalDocument>, AppError> {
         debug!("Getting current legal documents for region: {}", region);
 
         let endpoint = format!("/api/consent/documents/current?region={}", region);
@@ -150,7 +166,10 @@ impl ConsentClient {
             .make_authenticated_request("GET", &endpoint, None)
             .await?;
 
-        info!("Successfully retrieved consent status for region: {}", region);
+        info!(
+            "Successfully retrieved consent status for region: {}",
+            region
+        );
         Ok(status)
     }
 
@@ -189,8 +208,12 @@ impl ConsentClient {
         }
 
         // The server returns 204 No Content, so we need a special handling
-        self.make_authenticated_request_no_response("POST", "/api/consent/accept", Some(request_body))
-            .await?;
+        self.make_authenticated_request_no_response(
+            "POST",
+            "/api/consent/accept",
+            Some(request_body),
+        )
+        .await?;
 
         info!(
             "Successfully accepted consent document type: {} for region: {}",

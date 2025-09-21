@@ -27,7 +27,7 @@ use crate::auth_stores::{PollingStore, Auth0StateStore};
 use crate::auth_stores::store_utils;
 use crate::config::AppSettings;
 use crate::db::connection::{create_dual_pools, verify_connection, DatabasePools};
-use crate::db::{ApiUsageRepository, CustomerBillingRepository, UserRepository, SettingsRepository, ModelRepository, SystemPromptsRepository};
+use crate::db::{ApiUsageRepository, CustomerBillingRepository, UserRepository, SettingsRepository, ModelRepository, SystemPromptsRepository, DeviceRepository};
 use crate::middleware::{
     auth_middleware,
     create_rate_limit_storage,
@@ -46,6 +46,7 @@ use crate::services::audit_service::AuditService;
 use crate::db::repositories::consent_repository::ConsentRepository;
 use crate::services::reconciliation_service::ReconciliationService;
 use crate::services::request_tracker::RequestTracker;
+use crate::services::device_connection_manager::DeviceConnectionManager;
 use crate::routes::{configure_routes, configure_public_auth_routes, configure_webhook_routes};
 use crate::handlers::{config_handlers, auth0_handlers, region_handlers};
 
@@ -291,16 +292,14 @@ async fn main() -> std::io::Result<()> {
     log::info!("Rate limiting storage initialized successfully");
     
     // Start rate limit memory store cleanup task if using memory storage
-    if let crate::middleware::rate_limiting::RateLimitStorage::Memory { ip_storage, user_storage } = &rate_limit_storage {
-        let ip_storage_clone = ip_storage.clone();
-        let user_storage_clone = user_storage.clone();
+    if let crate::middleware::rate_limiting::RateLimitStorage::Memory { .. } = &rate_limit_storage {
+        let storage_clone = rate_limit_storage.clone();
         let window_duration = std::time::Duration::from_millis(app_settings.rate_limit.window_ms);
         let cleanup_interval = app_settings.rate_limit.cleanup_interval_secs.unwrap_or(300);
 
         tokio::spawn(async move {
             start_memory_store_cleanup_task(
-                ip_storage_clone,
-                user_storage_clone,
+                storage_clone,
                 window_duration,
                 cleanup_interval,
             ).await;
@@ -437,8 +436,12 @@ async fn main() -> std::io::Result<()> {
         let settings_repository = std::sync::Arc::new(SettingsRepository::new(db_pools.system_pool.clone()));
         let system_prompts_repository = std::sync::Arc::new(SystemPromptsRepository::new(db_pools.system_pool.clone()));
         
-        // User-specific operations - use user pool  
+        // User-specific operations - use user pool
         let customer_billing_repository = std::sync::Arc::new(CustomerBillingRepository::new(db_pools.user_pool.clone()));
+
+        // Device management - use system pool for device registry
+        let device_repository = std::sync::Arc::new(DeviceRepository::new(std::sync::Arc::new(db_pools.system_pool.clone())));
+        let device_connection_manager = std::sync::Arc::new(DeviceConnectionManager::new());
         
         // Create application state
         let app_state = web::Data::new(AppState {
@@ -502,6 +505,8 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(app_settings.clone()))
             .app_data(web::Data::new(db_pools.clone()))
             .app_data(web::Data::new(ApiUsageRepository::new(db_pools.user_pool.clone())))
+            .app_data(web::Data::new(device_repository.clone()))
+            .app_data(web::Data::new(device_connection_manager.clone()))
             
             // Register health check endpoint with IP-based rate limiting
             .service(
@@ -544,6 +549,12 @@ async fn main() -> std::io::Result<()> {
                 web::scope("/webhooks")
                     .wrap(public_ip_rate_limiter.clone())
                     .configure(configure_webhook_routes)
+            )
+            // WebSocket routes for device communication (authentication handled in WebSocket handler)
+            .service(
+                web::scope("/ws")
+                    .wrap(public_ip_rate_limiter.clone())
+                    .route("/device-link", web::get().to(handlers::device_handlers::device_link_ws_handler))
             )
     })
     .keep_alive(std::time::Duration::from_secs(300)) // 5 minutes keep-alive

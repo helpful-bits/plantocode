@@ -109,9 +109,11 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
               valueSetter.set.call(targetElement, newValue);
             }
             
-            // Dispatch single input event to notify React of the change
-            const inputEvent = new Event('input', { bubbles: true });
-            targetElement.dispatchEvent(inputEvent);
+            // Dispatch multiple events to ensure any debounced saves are triggered immediately
+            targetElement.dispatchEvent(new Event('input', { bubbles: true }));
+            targetElement.dispatchEvent(new Event('change', { bubbles: true }));
+            targetElement.dispatchEvent(new CustomEvent('enhancement-applied', { bubbles: true }));
+            targetElement.dispatchEvent(new CustomEvent('flush-pending-changes', { bubbles: true }));
             
             if (isTaskDescriptionField) {
               // Update session state immediately to prevent reversion
@@ -196,6 +198,12 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
         activeElement &&
         (activeElement instanceof HTMLInputElement || activeElement instanceof HTMLTextAreaElement)
       ) {
+        // Skip if element has data-no-text-improvement attribute
+        if (activeElement.hasAttribute('data-no-text-improvement')) {
+          setIsVisible(false);
+          return;
+        }
+
         const targetInput = activeElement;
         
         const { selectionStart, selectionEnd, value } = targetInput;
@@ -289,13 +297,11 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
   // Trigger text improvement
   const triggerImprovement = useCallback(async () => {
     if (!selectedText) {
-      console.error("No text selected for improvement");
       setIsVisible(false);
       return;
     }
 
     if (!sessionBasicFields.id) {
-      console.error("No active session for text improvement");
       setIsVisible(false);
       return;
     }
@@ -311,7 +317,6 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
       if (result.isSuccess && result.data?.jobId) {
         setJobId(result.data.jobId);
       } else {
-        console.error("Failed to start text improvement job:", result.message);
         setIsVisible(false);
       }
     } catch (error) {

@@ -13,6 +13,7 @@ import { useNotification } from '@/contexts/notification-context';
 import { getSystemPromptForTaskAction } from "@/actions/ai/prompt.actions";
 import { extractFilesFromResponse } from "@/utils/response-utils";
 import { toProjectRelativePath } from "@/utils/path-utils";
+import { useTerminalSessions } from "@/contexts/terminal-sessions/useTerminalSessions";
 
 import { JobContent } from "./_components/job-content";
 import { MonitoringPanel } from "./_components/MonitoringPanel";
@@ -32,6 +33,7 @@ export const BackgroundJobsSidebar = () => {
   const { activeSessionId, currentSession } = useSessionStateContext();
   const { updateCurrentSessionFields, applyFileSelectionUpdate } = useSessionActionsContext();
   const { showNotification } = useNotification();
+  const { getAttentionCount } = useTerminalSessions();
   
   // View state management
   const [view, setView] = useState<'jobs' | 'monitoring'>('jobs');
@@ -136,9 +138,31 @@ export const BackgroundJobsSidebar = () => {
     setView(prev => prev === 'jobs' ? 'monitoring' : 'jobs');
   }, []);
 
+  const handleAlertClick = useCallback(() => {
+    setView('monitoring');
+  }, []);
+
+  // Get attention count for alert badge
+  const alertCount = getAttentionCount();
+
   const handleOpenTerminal = useCallback((jobId: string) => {
     window.dispatchEvent(new CustomEvent('open-plan-terminal', { detail: { jobId } }));
   }, []);
+
+  // Listen for open-plan-terminal events from notifications
+  useEffect(() => {
+    const handleOpenPlanTerminalEvent = (event: CustomEvent) => {
+      const { jobId } = event.detail;
+      if (jobId) {
+        handleOpenTerminal(jobId);
+      }
+    };
+
+    window.addEventListener('open-plan-terminal', handleOpenPlanTerminalEvent as EventListener);
+    return () => {
+      window.removeEventListener('open-plan-terminal', handleOpenPlanTerminalEvent as EventListener);
+    };
+  }, [handleOpenTerminal]);
 
   // Function to continue workflow from a completed web search prompts generation job
   const handleContinueWorkflow = useCallback(async (job: BackgroundJob) => {
@@ -282,6 +306,8 @@ export const BackgroundJobsSidebar = () => {
             onRefresh={handleRefresh}
             onClearHistory={handleClearHistory}
             onToggleMonitoringView={handleToggleMonitoringView}
+            alertCount={alertCount}
+            onAlertClick={handleAlertClick}
             CollapsibleTrigger={CollapsibleTrigger}
           />
 

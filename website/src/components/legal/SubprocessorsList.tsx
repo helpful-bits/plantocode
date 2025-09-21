@@ -21,7 +21,7 @@ const processors: Processor[] = [
       terms: 'https://stripe.com/terms',
       dpa: 'https://stripe.com/legal/dpa'
     },
-    euTransferSafeguards: 'EU operations processed in-region; for transfers to the US, Data Privacy Framework certification and Standard Contractual Clauses with supplementary measures'
+    euTransferSafeguards: 'EU operations processed in-region; for transfers to the US, Data Privacy Framework participation and Standard Contractual Clauses with supplementary measures'
   },
   {
     name: 'OpenAI',
@@ -89,7 +89,7 @@ const processors: Processor[] = [
       terms: 'https://aws.amazon.com/service-terms/',
       dpa: 'https://aws.amazon.com/compliance/gdpr-center/'
     },
-    euTransferSafeguards: 'Standard Contractual Clauses, EU data residency available, ISO 27001/27017/27018 certified'
+    euTransferSafeguards: 'Standard Contractual Clauses, EU data residency available, enterprise security standards'
   },
   {
     name: 'Auth0',

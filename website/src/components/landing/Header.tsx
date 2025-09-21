@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X, Sparkles } from 'lucide-react';
+import { Menu, X, Sparkles, ChevronDown, Terminal, GitMerge, Code2, Bug, Package, Wrench } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DownloadButton } from '@/components/ui/DownloadButton';
 import { MacDownloadButton } from '@/components/ui/MacDownloadButton';
@@ -19,6 +19,8 @@ export function Header() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+  const dropdownTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Determine location based on pathname
   const getLocation = (suffix: string) => {
@@ -47,12 +49,46 @@ export function Header() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  const handleMouseEnter = (dropdown: string) => {
+    if (dropdownTimeoutRef.current) {
+      clearTimeout(dropdownTimeoutRef.current);
+    }
+    setActiveDropdown(dropdown);
+  };
+
+  const handleMouseLeave = () => {
+    if (dropdownTimeoutRef.current) {
+      clearTimeout(dropdownTimeoutRef.current);
+    }
+    dropdownTimeoutRef.current = setTimeout(() => {
+      setActiveDropdown(null);
+    }, 150);
+  };
+
   const navLinks = [
-    { href: '/docs', label: 'Docs' },
-    { href: '#how-it-works', label: 'How It Works' },
-    { href: '#features', label: 'Features' },
-    { href: '#pricing', label: 'Pricing' },
-    { href: '#faq', label: 'FAQ' },
+    {
+      label: 'Features',
+      dropdown: true,
+      href: undefined,
+      items: [
+        { href: '/features/plan-editor', label: 'Plan Editor', icon: Code2, description: 'Full Monaco editor for AI plans' },
+        { href: '/features/merge-instructions', label: 'Merge Instructions', icon: GitMerge, description: 'Control how plans merge' },
+        { href: '/features/integrated-terminal', label: 'Integrated Terminal', icon: Terminal, description: 'Persistent sessions with CLI auto-launch' },
+      ]
+    },
+    {
+      label: 'Solutions',
+      dropdown: true,
+      href: undefined,
+      items: [
+        { href: '/solutions/large-features', label: 'Large Features', icon: Code2, description: 'Multi-file feature planning' },
+        { href: '/solutions/hard-bugs', label: 'Hard Bugs', icon: Bug, description: 'Visual debugging with screen recording' },
+        { href: '/solutions/maintenance-enhancements', label: 'Maintenance', icon: Wrench, description: 'Technical debt cleanup' },
+        { href: '/solutions/library-upgrades', label: 'Library Upgrades', icon: Package, description: 'Dependency management' },
+      ]
+    },
+    { href: '/downloads', label: 'Downloads', dropdown: false },
+    { href: '/docs', label: 'Docs', dropdown: false },
   ];
 
   return (
@@ -110,29 +146,83 @@ export function Header() {
               <nav className="flex items-center gap-1 lg:gap-2">
               {navLinks.map((link, index) => (
                 <motion.div
-                  key={link.href}
+                  key={link.label}
                   animate={{ opacity: 1, y: 0 }}
                   initial={{ opacity: 0, y: -20 }}
                   transition={{ delay: index * 0.1 + 0.3, duration: defaultDuration, ease: defaultEase }}
+                  className="relative"
+                  onMouseEnter={() => link.dropdown && handleMouseEnter(link.label)}
+                  onMouseLeave={handleMouseLeave}
                 >
-                  <Link
-                    className={cn(
-                      'relative px-3 lg:px-4 py-2 rounded-xl font-medium text-sm lg:text-base',
-                      'group nav-link-hover cursor-pointer clickable-text-underline',
-                      scrolled
-                        ? 'text-foreground/75 dark:text-foreground/85 hover:text-foreground font-medium'
-                        : 'text-foreground/90 hover:text-foreground drop-shadow-md',
-                    )}
-                    href={link.href}
-                  >
-                    <motion.span
-                      className="relative z-10"
-                      transition={{ type: 'spring', stiffness: 400, damping: 10 }}
-                      whileHover={{ scale: 1.05 }}
+                  {link.dropdown ? (
+                    <>
+                      <button
+                        className={cn(
+                          'relative px-3 lg:px-4 py-2 rounded-xl font-medium text-sm lg:text-base',
+                          'group nav-link-hover cursor-pointer flex items-center gap-1',
+                          scrolled
+                            ? 'text-foreground/75 dark:text-foreground/85 hover:text-foreground font-medium'
+                            : 'text-foreground/90 hover:text-foreground drop-shadow-md',
+                        )}
+                      >
+                        <span>{link.label}</span>
+                        <ChevronDown className={cn(
+                          'w-4 h-4 transition-transform',
+                          activeDropdown === link.label && 'rotate-180'
+                        )} />
+                      </button>
+                      <AnimatePresence>
+                        {activeDropdown === link.label && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            transition={{ duration: 0.2 }}
+                            className="absolute top-full mt-2 w-72 glass rounded-xl p-2 shadow-xl border border-border/50"
+                          >
+                            {link.items?.map((item) => {
+                              const Icon = item.icon;
+                              return (
+                                <Link
+                                  key={item.href}
+                                  href={item.href}
+                                  className="flex items-start gap-3 px-3 py-2 rounded-lg hover:bg-primary/10 transition-colors group"
+                                >
+                                  <div className="p-1.5 rounded-lg bg-primary/10 group-hover:bg-primary/20 transition-colors mt-0.5">
+                                    <Icon className="w-4 h-4 text-primary" />
+                                  </div>
+                                  <div className="flex-1">
+                                    <div className="font-medium text-sm text-foreground">{item.label}</div>
+                                    <div className="text-xs text-foreground/60 mt-0.5">{item.description}</div>
+                                  </div>
+                                </Link>
+                              );
+                            })}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </>
+                  ) : (
+                    <Link
+                      className={cn(
+                        'relative px-3 lg:px-4 py-2 rounded-xl font-medium text-sm lg:text-base',
+                        'group nav-link-hover cursor-pointer clickable-text-underline',
+                        'flex items-center',
+                        scrolled
+                          ? 'text-foreground/75 dark:text-foreground/85 hover:text-foreground font-medium'
+                          : 'text-foreground/90 hover:text-foreground drop-shadow-md',
+                      )}
+                      href={link.href!}
                     >
-                      {link.label}
-                    </motion.span>
-                  </Link>
+                      <motion.span
+                        className="relative z-10"
+                        transition={{ type: 'spring', stiffness: 400, damping: 10 }}
+                        whileHover={{ scale: 1.05 }}
+                      >
+                        {link.label}
+                      </motion.span>
+                    </Link>
+                  )}
                 </motion.div>
               ))}
               </nav>
@@ -335,7 +425,7 @@ export function Header() {
               <div className="space-y-1">
                 {navLinks.map((link, index) => (
                   <motion.div
-                    key={link.href}
+                    key={link.label}
                     animate={{ opacity: 1, x: 0 }}
                     initial={{ opacity: 0, x: -30 }}
                     transition={{
@@ -345,31 +435,68 @@ export function Header() {
                       stiffness: 100,
                     }}
                   >
-                    <motion.div
-                      whileHover={{ scale: 1.02, x: 5 }}
-                      whileTap={{ scale: 0.98 }}
-                    >
-                      <Link
-                        className={cn(
-                          'block px-4 py-3.5 rounded-xl font-semibold text-lg cursor-pointer',
-                          // Consistent teal/primary color
-                          'text-primary hover:text-primary/80',
-                          'hover:bg-primary/10 active:bg-primary/20',
-                          'relative overflow-hidden',
-                          'transition-all duration-200',
-                        )}
-                        href={link.href}
-                        onClick={() => setMobileMenuOpen(false)}
+                    {link.dropdown ? (
+                      <>
+                        <div className="px-4 py-2 font-semibold text-sm text-foreground/60 uppercase tracking-wider">
+                          {link.label}
+                        </div>
+                        <div className="pl-4 space-y-1">
+                          {link.items?.map((item) => {
+                            const Icon = item.icon;
+                            return (
+                              <motion.div
+                                key={item.href}
+                                whileHover={{ scale: 1.02, x: 5 }}
+                                whileTap={{ scale: 0.98 }}
+                              >
+                                <Link
+                                  className={cn(
+                                    'flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer',
+                                    'text-foreground hover:text-primary',
+                                    'hover:bg-primary/10 active:bg-primary/20',
+                                    'relative overflow-hidden',
+                                    'transition-all duration-200',
+                                  )}
+                                  href={item.href}
+                                  onClick={() => setMobileMenuOpen(false)}
+                                >
+                                  <Icon className="w-4 h-4 text-primary flex-shrink-0" />
+                                  <div className="flex-1">
+                                    <div className="font-medium text-sm">{item.label}</div>
+                                    <div className="text-xs text-foreground/60 mt-0.5">{item.description}</div>
+                                  </div>
+                                </Link>
+                              </motion.div>
+                            );
+                          })}
+                        </div>
+                      </>
+                    ) : (
+                      <motion.div
+                        whileHover={{ scale: 1.02, x: 5 }}
+                        whileTap={{ scale: 0.98 }}
                       >
-                        <span className="relative z-10">{link.label}</span>
-                        <motion.div
-                          className="absolute inset-0 bg-gradient-to-r from-primary/8 via-accent/8 to-primary/8"
-                          initial={{ x: '-100%' }}
-                          transition={{ duration: 0.5, ease: 'easeOut' }}
-                          whileHover={{ x: '0%' }}
-                        />
-                      </Link>
-                    </motion.div>
+                        <Link
+                          className={cn(
+                            'block px-4 py-3.5 rounded-xl font-semibold text-lg cursor-pointer',
+                            'text-primary hover:text-primary/80',
+                            'hover:bg-primary/10 active:bg-primary/20',
+                            'relative overflow-hidden',
+                            'transition-all duration-200',
+                          )}
+                          href={link.href!}
+                          onClick={() => setMobileMenuOpen(false)}
+                        >
+                          <span className="relative z-10">{link.label}</span>
+                          <motion.div
+                            className="absolute inset-0 bg-gradient-to-r from-primary/8 via-accent/8 to-primary/8"
+                            initial={{ x: '-100%' }}
+                            transition={{ duration: 0.5, ease: 'easeOut' }}
+                            whileHover={{ x: '0%' }}
+                          />
+                        </Link>
+                      </motion.div>
+                    )}
                   </motion.div>
                 ))}
               </div>

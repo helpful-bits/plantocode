@@ -264,7 +264,7 @@ export default function EUPrivacyContent() {
           <li><strong>Regular Audits:</strong> Quarterly security assessments and annual penetration testing</li>
           <li><strong>Employee Training:</strong> Annual security awareness training for all staff</li>
           <li><strong>Incident Response:</strong> Documented incident response plan with 72-hour breach notification</li>
-          <li><strong>Physical Security:</strong> Data centers with SOC 2 Type II certification</li>
+          <li><strong>Physical Security:</strong> Secure data centers with enterprise-grade protection</li>
         </ul>
         <p className="mt-4">
           While we implement robust security measures, no method of electronic transmission or storage is 100% secure. We cannot guarantee absolute security but commit to promptly notifying you of any breach that may impact your rights and freedoms.

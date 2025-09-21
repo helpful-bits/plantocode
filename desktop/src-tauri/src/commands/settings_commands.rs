@@ -1,20 +1,20 @@
 use crate::api_clients::ServerProxyClient;
+use crate::auth::TokenManager;
 use crate::db_utils::SettingsRepository;
 use crate::error::{AppError, AppResult};
 use crate::models::RuntimeAIConfig;
 use crate::models::{DefaultSystemPrompt, ProjectSystemPrompt, TaskType};
 use crate::services::config_cache_service::ConfigCache;
 use crate::utils::hash_utils::hash_string;
-use std::fs;
-use std::path::Path;
 use heck::{ToLowerCamelCase, ToSnakeCase};
 use log;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, json};
 use std::collections::HashMap;
+use std::fs;
+use std::path::Path;
 use std::str::FromStr;
 use std::sync::Arc;
-use crate::auth::TokenManager;
 use tauri::{AppHandle, Manager, State};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -138,12 +138,14 @@ pub async fn set_onboarding_completed_command(
 ) -> AppResult<()> {
     // Set in AppState first
     app_state.set_onboarding_completed(true);
-    
+
     // Save to settings if repository is available
-    if let Some(repo) = app_handle.try_state::<std::sync::Arc<crate::db_utils::SettingsRepository>>() {
+    if let Some(repo) =
+        app_handle.try_state::<std::sync::Arc<crate::db_utils::SettingsRepository>>()
+    {
         repo.set_value("onboarding_completed", "true").await?;
     }
-    
+
     Ok(())
 }
 
@@ -152,7 +154,9 @@ pub async fn is_onboarding_completed_command(
     app_handle: AppHandle,
     app_state: State<'_, crate::AppState>,
 ) -> AppResult<bool> {
-    if let Some(repo) = app_handle.try_state::<std::sync::Arc<crate::db_utils::SettingsRepository>>() {
+    if let Some(repo) =
+        app_handle.try_state::<std::sync::Arc<crate::db_utils::SettingsRepository>>()
+    {
         let value = repo.get_value("onboarding_completed").await?;
         return Ok(value.as_deref() == Some("true"));
     }
@@ -282,7 +286,8 @@ pub async fn get_server_default_task_model_settings_command(
 pub async fn fetch_default_system_prompts_from_server(
     app_handle: AppHandle,
 ) -> AppResult<Vec<DefaultSystemPrompt>> {
-    let server_client = crate::api_clients::client_factory::get_server_proxy_client(&app_handle).await?;
+    let server_client =
+        crate::api_clients::client_factory::get_server_proxy_client(&app_handle).await?;
     server_client.get_default_system_prompts().await
 }
 
@@ -291,14 +296,16 @@ pub async fn fetch_default_system_prompt_from_server(
     app_handle: AppHandle,
     task_type: String,
 ) -> AppResult<Option<serde_json::Value>> {
-    let server_client = crate::api_clients::client_factory::get_server_proxy_client(&app_handle).await?;
+    let server_client =
+        crate::api_clients::client_factory::get_server_proxy_client(&app_handle).await?;
     let result = server_client.get_default_system_prompt(&task_type).await?;
     Ok(result.map(|prompt| serde_json::to_value(prompt).unwrap_or_default()))
 }
 
 #[tauri::command]
 pub async fn initialize_system_prompts_from_server(app_handle: AppHandle) -> AppResult<()> {
-    let server_client = crate::api_clients::client_factory::get_server_proxy_client(&app_handle).await?;
+    let server_client =
+        crate::api_clients::client_factory::get_server_proxy_client(&app_handle).await?;
     let settings_repo = app_handle
         .state::<Arc<SettingsRepository>>()
         .inner()
@@ -431,7 +438,10 @@ pub async fn get_project_task_model_settings_command(
 }
 
 #[tauri::command]
-pub async fn get_external_folders_command(app_handle: tauri::AppHandle, project_directory: String) -> crate::error::AppResult<Vec<String>> {
+pub async fn get_external_folders_command(
+    app_handle: tauri::AppHandle,
+    project_directory: String,
+) -> crate::error::AppResult<Vec<String>> {
     let project_hash = hash_string(&project_directory);
     let key = format!("external_folders:{}", project_hash);
     let repo = app_handle
@@ -447,7 +457,11 @@ pub async fn get_external_folders_command(app_handle: tauri::AppHandle, project_
 }
 
 #[tauri::command]
-pub async fn set_external_folders_command(app_handle: tauri::AppHandle, project_directory: String, folders: Vec<String>) -> crate::error::AppResult<()> {
+pub async fn set_external_folders_command(
+    app_handle: tauri::AppHandle,
+    project_directory: String,
+    folders: Vec<String>,
+) -> crate::error::AppResult<()> {
     let project_hash = hash_string(&project_directory);
     let key = format!("external_folders:{}", project_hash);
     let repo = app_handle
@@ -482,18 +496,24 @@ pub async fn get_available_regions_command(
     // Attempt to fetch from current server URL first if available
     if let Some(current_server_url) = app_state.get_server_url() {
         if !current_server_url.is_empty() {
-            let regions_url = format!("{}/config/regions", current_server_url.trim_end_matches('/'));
+            let regions_url = format!(
+                "{}/config/regions",
+                current_server_url.trim_end_matches('/')
+            );
             if let Ok(response) = client.get(&regions_url).send().await {
                 if response.status().is_success() {
                     if let Ok(regions) = response.json::<Vec<ServerRegionInfo>>().await {
-                        log::info!("Fetched server regions from current server: {}", current_server_url);
+                        log::info!(
+                            "Fetched server regions from current server: {}",
+                            current_server_url
+                        );
                         return Ok(regions);
                     }
                 }
             }
         }
     }
-    
+
     // Try US region first
     let us_url = "https://api.us.vibemanager.app/config/regions";
     if let Ok(response) = client.get(us_url).send().await {
@@ -503,7 +523,7 @@ pub async fn get_available_regions_command(
             }
         }
     }
-    
+
     // Fallback to EU region
     let eu_url = "https://api.eu.vibemanager.app/config/regions";
     if let Ok(response) = client.get(eu_url).send().await {
@@ -513,7 +533,7 @@ pub async fn get_available_regions_command(
             }
         }
     }
-    
+
     // Return default regions if both fail
     Ok(vec![
         ServerRegionInfo {
@@ -532,8 +552,10 @@ pub async fn get_selected_server_url_command(
     app_handle: AppHandle,
     app_state: State<'_, crate::AppState>,
 ) -> AppResult<Option<String>> {
-    if let Some(repo) = app_handle.try_state::<std::sync::Arc<crate::db_utils::SettingsRepository>>() {
-        return Ok(repo.get_value("selected_server_url").await?)
+    if let Some(repo) =
+        app_handle.try_state::<std::sync::Arc<crate::db_utils::SettingsRepository>>()
+    {
+        return Ok(repo.get_value("selected_server_url").await?);
     }
     Ok(app_state.get_server_url())
 }
@@ -546,15 +568,17 @@ pub async fn set_selected_server_url_command(
 ) -> AppResult<()> {
     // Update AppState with the new URL
     app_state.set_server_url(url.clone());
-    
+
     // Save the URL to settings if repository is available
-    if let Some(repo) = app_handle.try_state::<std::sync::Arc<crate::db_utils::SettingsRepository>>() {
+    if let Some(repo) =
+        app_handle.try_state::<std::sync::Arc<crate::db_utils::SettingsRepository>>()
+    {
         repo.set_value("selected_server_url", &url).await?;
     }
-    
+
     // Reinitialize API clients with new URL
     reinitialize_api_clients(&app_handle, &url).await?;
-    
+
     Ok(())
 }
 
@@ -568,22 +592,24 @@ pub async fn change_server_url_and_reset_command(
 ) -> AppResult<()> {
     // Clear tokens
     token_manager.set(None).await?;
-    
+
     // Clear cache
     if let Ok(mut cache_guard) = config_cache.lock() {
         cache_guard.clear();
     }
-    
+
     // Update AppState with the new URL
     app_state.set_server_url(new_url.clone());
-    
+
     // Save the new URL if repository is available
-    if let Some(repo) = app_handle.try_state::<std::sync::Arc<crate::db_utils::SettingsRepository>>() {
+    if let Some(repo) =
+        app_handle.try_state::<std::sync::Arc<crate::db_utils::SettingsRepository>>()
+    {
         repo.set_value("selected_server_url", &new_url).await?;
     }
-    
+
     reinitialize_api_clients(&app_handle, &new_url).await?;
-    
+
     Ok(())
 }
 
@@ -707,7 +733,8 @@ pub async fn get_server_default_system_prompts_command(app_handle: AppHandle) ->
     // This connects to the server PostgreSQL database to fetch default_system_prompts
     // organized by task_type for easy lookup
 
-    let server_client = crate::api_clients::client_factory::get_server_proxy_client(&app_handle).await?;
+    let server_client =
+        crate::api_clients::client_factory::get_server_proxy_client(&app_handle).await?;
 
     // Make HTTP request to server to get default system prompts
     match server_client.get_default_system_prompts().await {

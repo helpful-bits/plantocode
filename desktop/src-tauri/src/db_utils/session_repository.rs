@@ -55,7 +55,8 @@ impl SessionRepository {
             .unwrap_or_else(Vec::new);
 
         // Read video_analysis_prompt - handle missing column gracefully
-        let video_analysis_prompt: Option<String> = row.try_get("video_analysis_prompt").ok().flatten();
+        let video_analysis_prompt: Option<String> =
+            row.try_get("video_analysis_prompt").ok().flatten();
 
         Ok(Session {
             id,
