@@ -1,12 +1,13 @@
+use crate::AppState;
 use crate::api_clients::{
-    ApiClient, TranscriptionClient, billing_client::BillingClient,
-    consent_client::ConsentClient, server_proxy_client::ServerProxyClient,
+    ApiClient, TranscriptionClient, billing_client::BillingClient, consent_client::ConsentClient,
+    server_proxy_client::ServerProxyClient,
 };
 use crate::auth::TokenManager;
 use crate::constants::SERVER_API_URL;
 use crate::error::{AppError, AppResult};
-use crate::services::{BackupConfig, BackupService, initialize_cache_service};
-use crate::AppState;
+use crate::services::{BackupConfig, BackupService, initialize_cache_service, ConnectionManager, ConnectionManagerConfig};
+use crate::tls::cert_manager::CertificateManager;
 use log::{debug, error, info, warn};
 use sqlx::SqlitePool;
 use std::sync::Arc;
@@ -77,9 +78,7 @@ pub async fn reinitialize_api_clients(app_handle: &AppHandle, server_url: String
     app_state.set_api_clients_ready(false);
 
     // Get TokenManager from app state
-    let token_manager = app_handle.state::<Arc<TokenManager>>()
-        .inner()
-        .clone();
+    let token_manager = app_handle.state::<Arc<TokenManager>>().inner().clone();
 
     // Create the API client - it will create its own HTTP client internally
     let server_proxy_client = ServerProxyClient::new(
@@ -98,52 +97,57 @@ pub async fn reinitialize_api_clients(app_handle: &AppHandle, server_url: String
     let transcription_client_arc: Arc<dyn TranscriptionClient> = server_proxy_client_arc.clone();
 
     // Initialize BillingClient
-    let billing_client = BillingClient::new(server_url.clone(), token_manager.clone());
+    let billing_client = BillingClient::new(server_url.clone(), token_manager.clone(), app_handle.clone());
     let billing_client_arc = Arc::new(billing_client);
 
     info!("BillingClient initialized");
 
     // Initialize ConsentClient
-    let consent_client = ConsentClient::new(server_url.clone(), token_manager.clone());
+    let consent_client = ConsentClient::new(server_url.clone(), token_manager.clone(), app_handle.clone());
     let consent_client_arc = Arc::new(consent_client);
 
     info!("ConsentClient initialized");
 
     // Acquire write locks and populate RwLock containers
     {
-        let server_proxy_lock = app_handle.state::<Arc<tokio::sync::RwLock<Option<Arc<ServerProxyClient>>>>>()
+        let server_proxy_lock = app_handle
+            .state::<Arc<tokio::sync::RwLock<Option<Arc<ServerProxyClient>>>>>()
             .inner()
             .clone();
         let mut server_proxy_guard = server_proxy_lock.write().await;
         *server_proxy_guard = Some(server_proxy_client_arc.clone());
     }
-    
+
     {
-        let billing_lock = app_handle.state::<Arc<tokio::sync::RwLock<Option<Arc<BillingClient>>>>>()
+        let billing_lock = app_handle
+            .state::<Arc<tokio::sync::RwLock<Option<Arc<BillingClient>>>>>()
             .inner()
             .clone();
         let mut billing_guard = billing_lock.write().await;
         *billing_guard = Some(billing_client_arc.clone());
     }
-    
+
     {
-        let consent_lock = app_handle.state::<Arc<tokio::sync::RwLock<Option<Arc<ConsentClient>>>>>()
+        let consent_lock = app_handle
+            .state::<Arc<tokio::sync::RwLock<Option<Arc<ConsentClient>>>>>()
             .inner()
             .clone();
         let mut consent_guard = consent_lock.write().await;
         *consent_guard = Some(consent_client_arc.clone());
     }
-    
+
     {
-        let api_client_lock = app_handle.state::<Arc<tokio::sync::RwLock<Option<Arc<dyn ApiClient>>>>>()
+        let api_client_lock = app_handle
+            .state::<Arc<tokio::sync::RwLock<Option<Arc<dyn ApiClient>>>>>()
             .inner()
             .clone();
         let mut api_client_guard = api_client_lock.write().await;
         *api_client_guard = Some(api_client_arc.clone());
     }
-    
+
     {
-        let transcription_lock = app_handle.state::<Arc<tokio::sync::RwLock<Option<Arc<dyn TranscriptionClient>>>>>()
+        let transcription_lock = app_handle
+            .state::<Arc<tokio::sync::RwLock<Option<Arc<dyn TranscriptionClient>>>>>()
             .inner()
             .clone();
         let mut transcription_guard = transcription_lock.write().await;
@@ -226,5 +230,71 @@ pub async fn initialize_backup_service(app_handle: &AppHandle) -> AppResult<()> 
     }
 
     info!("Backup service initialized and scheduler started");
+    Ok(())
+}
+
+/// Initialize the connection manager with TLS support for mobile connectivity
+pub async fn initialize_connection_manager(app_handle: &AppHandle) -> AppResult<()> {
+    info!("Initializing connection manager with TLS...");
+
+    // Get app data directory for storing certificates
+    let app_data_dir = app_handle.path().app_local_data_dir().map_err(|e| {
+        AppError::InitializationError(format!("Failed to get app local data dir: {}", e))
+    })?;
+
+    let cert_dir = app_data_dir.join("certs");
+
+    // Initialize certificate manager
+    let cert_manager = CertificateManager::new(cert_dir);
+    cert_manager.initialize().await.map_err(|e| {
+        AppError::InitializationError(format!("Failed to initialize certificate manager: {}", e))
+    })?;
+
+    // Generate or reuse self-signed certificate
+    cert_manager.generate_self_signed_cert().await.map_err(|e| {
+        AppError::InitializationError(format!("Failed to get/generate certificate: {}", e))
+    })?;
+
+    info!("Certificate manager initialized and certificates ready");
+
+    // Only start connection manager in release builds for security
+    #[cfg(not(debug_assertions))]
+    {
+        // Create connection manager configuration
+        let connection_config = ConnectionManagerConfig {
+            bind_address: "127.0.0.1".to_string(),
+            port: 4431, // Use non-standard port
+            require_auth: true,
+            enable_tls: true,
+            heartbeat_interval: std::time::Duration::from_secs(30),
+            connection_timeout: std::time::Duration::from_secs(300),
+            max_connections: 10,
+            message_buffer_size: 100,
+        };
+
+        // Create and start connection manager
+        let connection_manager = ConnectionManager::new(connection_config).map_err(|e| {
+            AppError::InitializationError(format!("Failed to create connection manager: {}", e))
+        })?;
+
+        // Store in app state for access by other components
+        app_handle.manage(Arc::new(connection_manager.clone()));
+
+        // Start the connection manager in the background
+        let manager_handle = connection_manager.clone();
+        tokio::spawn(async move {
+            if let Err(e) = manager_handle.start().await {
+                error!("Connection manager failed: {}", e);
+            }
+        });
+
+        info!("Connection manager started with TLS support on port 4431");
+    }
+
+    #[cfg(debug_assertions)]
+    {
+        info!("Connection manager disabled in debug builds for security");
+    }
+
     Ok(())
 }

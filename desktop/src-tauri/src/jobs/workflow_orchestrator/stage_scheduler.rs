@@ -137,7 +137,10 @@ pub(super) fn abstract_stage_dependencies_met_internal(
                 return false; // Dependency not completed
             }
         } else {
-            debug!("Dependency stage {} not found in workflow definition", dep_stage_name);
+            debug!(
+                "Dependency stage {} not found in workflow definition",
+                dep_stage_name
+            );
             return false; // Dependency stage not found
         }
     }

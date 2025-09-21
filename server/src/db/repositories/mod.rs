@@ -3,6 +3,7 @@ pub mod audit_log_repository;
 pub mod consent_repository;
 pub mod credit_transaction_repository;
 pub mod customer_billing_repository;
+pub mod device_repository;
 pub mod estimation_coefficient_repository;
 pub mod system_prompts_repository;
 pub mod user_credit_repository;
@@ -19,6 +20,7 @@ pub use audit_log_repository::{AuditLogRepository, AuditLog, CreateAuditLogReque
 pub use consent_repository::{ConsentRepository, ConsentReportRow};
 pub use credit_transaction_repository::{CreditTransactionRepository, CreditTransaction, CreditTransactionStats};
 pub use customer_billing_repository::{CustomerBillingRepository, CustomerBilling};
+pub use device_repository::{DeviceRepository, Device, RegisterDeviceRequest, HeartbeatRequest};
 pub use estimation_coefficient_repository::{EstimationCoefficientRepository, EstimationCoefficient};
 pub use user_credit_repository::{UserCreditRepository, UserCredit};
 pub use user_repository::UserRepository;

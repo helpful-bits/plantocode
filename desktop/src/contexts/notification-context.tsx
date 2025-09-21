@@ -13,11 +13,14 @@ export interface NotificationType {
   message?: string;
   type?: "info" | "success" | "warning" | "error";
   duration?: number;
-  actionButton?: { 
-    label: string; 
-    onClick: (event: React.MouseEvent<HTMLButtonElement>) => void; 
-    variant?: ButtonProps['variant']; 
-    className?: string 
+  tag?: string;
+  data?: any;
+  onClick?: () => void;
+  actionButton?: {
+    label: string;
+    onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
+    variant?: ButtonProps['variant'];
+    className?: string
   };
 }
 
@@ -29,6 +32,7 @@ export interface NotificationContextValue {
   showNotification: (notification: NotificationType) => void;
   showPersistentNotification: (notification: NotificationType) => string;
   dismissNotification: (id: string) => void;
+  getPersistentNotifications: (tag?: string) => ActiveNotification[];
   showError: (error: unknown, context?: string, userContext?: string) => void;
   showSuccess: (message: string, title?: string) => void;
   showWarning: (message: string, title?: string) => void;
@@ -38,6 +42,7 @@ const NotificationContext = createContext<NotificationContextValue>({
   showNotification: () => {},
   showPersistentNotification: () => '',
   dismissNotification: () => {},
+  getPersistentNotifications: () => [],
   showError: () => {},
   showSuccess: () => {},
   showWarning: () => {},
@@ -104,12 +109,23 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       message: notification.message,
       type: notification.type || "info",
       duration: 0, // Force duration to 0 for persistent
+      tag: notification.tag,
+      data: notification.data,
+      onClick: notification.onClick,
       actionButton: notification.actionButton,
     };
 
     setNotifications(prev => [...prev, persistentNotification]);
     return id;
   }, []);
+
+  const getPersistentNotifications = useCallback((tag?: string): ActiveNotification[] => {
+    return notifications.filter(n => {
+      if (n.duration !== 0) return false; // Only persistent notifications
+      if (tag && n.tag !== tag) return false;
+      return true;
+    });
+  }, [notifications]);
 
   // Cleanup all timeouts on unmount
   useEffect(() => {
@@ -477,7 +493,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   }, [showNotification]);
 
   return (
-    <NotificationContext.Provider value={{ showNotification, showPersistentNotification, dismissNotification, showError, showSuccess, showWarning }}>
+    <NotificationContext.Provider value={{ showNotification, showPersistentNotification, dismissNotification, getPersistentNotifications, showError, showSuccess, showWarning }}>
       {children}
       
       {/* Render active notifications */}

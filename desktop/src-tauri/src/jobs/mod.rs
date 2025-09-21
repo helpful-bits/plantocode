@@ -205,13 +205,13 @@ pub async fn start_job_system(app_handle: AppHandle) -> AppResult<()> {
     debug!("Background job worker started");
 
     info!("Job system started");
-    
+
     let payload = serde_json::json!({
         "ts": chrono::Utc::now().to_rfc3339(),
         "status": "ready"
     });
     let _ = app_handle.emit("orchestrator:initialized", payload);
-    
+
     Ok(())
 }
 

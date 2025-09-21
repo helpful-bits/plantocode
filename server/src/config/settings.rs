@@ -163,9 +163,14 @@ impl AppSettings {
         let auth0_server_client_id = env::var("AUTH0_SERVER_CLIENT_ID").ok();
         let auth0_server_client_secret = env::var("AUTH0_SERVER_CLIENT_SECRET").ok();
         
-        // Auth config
+        // Auth config - Critical security: No defaults allowed for sensitive values
         let jwt_secret = env::var("JWT_SECRET")
-            .map_err(|_| AppError::Configuration("JWT_SECRET must be set".to_string()))?;
+            .map_err(|_| AppError::Configuration("JWT_SECRET must be set for security - no defaults allowed".to_string()))?;
+
+        // Additional validation: ensure JWT_SECRET is strong enough
+        if jwt_secret.len() < 32 {
+            return Err(AppError::Configuration("JWT_SECRET must be at least 32 characters long for security".to_string()));
+        }
         
         let token_duration_days = env::var("JWT_ACCESS_TOKEN_DURATION_DAYS")
             .unwrap_or_else(|_| "1".to_string())
@@ -173,10 +178,20 @@ impl AppSettings {
             .map_err(|_| AppError::Configuration("JWT_ACCESS_TOKEN_DURATION_DAYS must be a valid number".to_string()))?;
         
         let featurebase_sso_secret = env::var("FEATUREBASE_SSO_SECRET")
-            .map_err(|_| AppError::Configuration("FEATUREBASE_SSO_SECRET must be set".to_string()))?;
-        
+            .map_err(|_| AppError::Configuration("FEATUREBASE_SSO_SECRET must be set for security - no defaults allowed".to_string()))?;
+
+        // Additional validation for featurebase SSO secret
+        if featurebase_sso_secret.len() < 16 {
+            return Err(AppError::Configuration("FEATUREBASE_SSO_SECRET must be at least 16 characters long for security".to_string()));
+        }
+
         let refresh_token_encryption_key = env::var("REFRESH_TOKEN_ENCRYPTION_KEY")
-            .map_err(|_| AppError::Configuration("REFRESH_TOKEN_ENCRYPTION_KEY must be set".to_string()))?;
+            .map_err(|_| AppError::Configuration("REFRESH_TOKEN_ENCRYPTION_KEY must be set for security - no defaults allowed".to_string()))?;
+
+        // Additional validation for refresh token encryption key
+        if refresh_token_encryption_key.len() < 32 {
+            return Err(AppError::Configuration("REFRESH_TOKEN_ENCRYPTION_KEY must be at least 32 characters long for security".to_string()));
+        }
         
         // Rate limiting
         let rate_limit_window_ms = env::var("RATE_LIMIT_WINDOW_MS")

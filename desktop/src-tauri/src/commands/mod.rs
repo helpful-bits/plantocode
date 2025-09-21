@@ -17,39 +17,41 @@ pub mod backup_commands;
 pub mod config_cache_commands;
 pub mod consent_commands;
 pub mod database_maintenance_commands;
+pub mod device_commands;
 pub mod error_recovery_commands;
 pub mod generic_task_commands;
 pub mod implementation_plan_commands;
 pub mod prompt_commands;
-pub mod setup_commands;
-pub mod text_commands;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub mod screen_recording_commands;
+pub mod setup_commands;
+pub mod text_commands;
 #[cfg(any(target_os = "android", target_os = "ios"))]
 pub mod screen_recording_commands {
     use tauri::command;
-    
+
     #[command]
     pub fn stop_screen_recording(_app_handle: tauri::AppHandle) -> Result<(), String> {
         Err("Screen recording is not supported on mobile".to_string())
     }
 }
+pub mod logging_commands;
+pub mod terminal_commands;
 pub mod video_analysis_commands;
 pub mod web_search_commands;
 pub mod workflow_commands;
-pub mod logging_commands;
-pub mod terminal_commands;
 
 // Re-export all command functions for easier imports
 pub use app_commands::{get_app_info, get_config_load_error, get_database_info_command};
-pub use geo_commands::detect_user_region_command;
 pub use file_system_commands::{
     create_directory_command, create_unique_filepath_command, delete_file_command,
     get_app_data_directory_command, get_home_directory_command, get_temp_dir_command,
     list_project_files_command, move_file_command, normalize_path_command, path_basename_command,
     path_dirname_command, path_extname_command, path_is_absolute_command, path_join_command,
-    read_file_content_command, sanitize_filename_command, write_file_content_command,
+    read_file_content_command, sanitize_filename_command, search_files_command,
+    write_file_content_command,
 };
+pub use geo_commands::detect_user_region_command;
 pub use regex_commands::{generate_regex_command, generate_regex_patterns_command};
 
 // Re-exports from text commands module
@@ -65,10 +67,10 @@ pub use implementation_plan_commands::{
 // Re-exports from workflow commands module
 pub use workflow_commands::{
     cancel_workflow, cancel_workflow_stage_command, get_all_workflows_command,
-    get_workflow_details_command, get_workflow_results, get_workflow_results_legacy,
-    get_workflow_state, get_workflow_status, pause_workflow, resume_workflow,
-    retry_workflow_command, retry_workflow_stage_command, start_file_finder_workflow,
-    get_file_finder_roots_for_session,
+    get_file_finder_roots_for_session, get_workflow_details_command, get_workflow_results,
+    get_workflow_results_legacy, get_workflow_state, get_workflow_status, pause_workflow,
+    resume_workflow, retry_workflow_command, retry_workflow_stage_command,
+    start_file_finder_workflow,
 };
 
 // Re-exports from web search commands module
@@ -184,7 +186,7 @@ pub use error_recovery_commands::{
 pub use video_analysis_commands::start_video_analysis_job;
 
 // Re-exports from logging commands module
-pub use logging_commands::{log_client_error, append_to_log_file};
+pub use logging_commands::{append_to_log_file, log_client_error};
 
 // Re-exports from consent commands module
 pub use consent_commands::{
@@ -194,13 +196,15 @@ pub use consent_commands::{
 
 // Re-exports from terminal commands module
 pub use terminal_commands::{
-    read_terminal_log_command, clear_terminal_log_command,
-    delete_terminal_log_command, start_terminal_session_command, write_terminal_input_command,
-    send_ctrl_c_to_terminal_command, kill_terminal_session_command, resize_terminal_session_command,
-    get_terminal_session_status_command, get_terminal_prerequisites_status_command,
-    check_terminal_dependencies_command, attach_terminal_output_command,
-    pause_terminal_output_command,
-    resume_terminal_output_command,
+    attach_terminal_output_command, check_terminal_dependencies_command,
+    clear_terminal_log_command, delete_terminal_log_command,
+    get_session_health_command, get_terminal_health_history, get_terminal_health_status,
+    get_terminal_prerequisites_status_command, get_terminal_session_status_command,
+    kill_terminal_session_command, list_active_terminal_sessions_command, read_terminal_log_command,
+    recover_terminal_session_command, register_terminal_health_session, resize_terminal_session_command,
+    save_pasted_image_command, send_ctrl_c_to_terminal_command, start_terminal_session_command,
+    trigger_terminal_recovery, unregister_terminal_health_session,
+    write_terminal_input_command,
 };
 
 // All command functions will return AppResult<T> directly

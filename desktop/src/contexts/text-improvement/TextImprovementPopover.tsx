@@ -20,14 +20,18 @@ export function TextImprovementPopover() {
         top: `${position.top}px`,
         left: `${position.left}px`,
       }}
+      onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+      onMouseDownCapture={(e) => { e.preventDefault(); e.stopPropagation(); }}
+      onMouseUpCapture={(e) => { e.preventDefault(); e.stopPropagation(); }}
       onMouseDown={(e) => e.preventDefault()}
-      onMouseUp={(e) => e.stopPropagation()}
-      onClick={(e) => e.stopPropagation()}
     >
       <Button
         size="sm"
         variant="ghost"
-        onClick={triggerImprovement}
+        onClick={(e) => {
+          e.stopPropagation();
+          triggerImprovement();
+        }}
         isLoading={isImproving}
         disabled={isImproving}
         className="h-7 w-7 p-0 bg-card/90 hover:bg-card border border-border/50 backdrop-blur-sm cursor-pointer"

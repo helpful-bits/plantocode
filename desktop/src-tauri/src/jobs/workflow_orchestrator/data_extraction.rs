@@ -55,13 +55,15 @@ pub(super) async fn extract_and_store_stage_data_internal(
                 };
 
                 // Check if this is an empty result (no files found)
-                let filtered_files = if let Some(is_empty) = response_json.get("isEmptyResult").and_then(|v| v.as_bool()) {
+                let filtered_files = if let Some(is_empty) =
+                    response_json.get("isEmptyResult").and_then(|v| v.as_bool())
+                {
                     if is_empty {
                         info!(
                             "Regex file filter job {} returned empty result - no files matched",
                             job_id
                         );
-                        
+
                         // Return empty array for stage data (will be stored below)
                         // The message is already in the job's response for UI display
                         vec![]
@@ -435,7 +437,7 @@ pub(super) async fn extract_and_store_stage_data_internal(
                     root_directories.len(),
                     job_id
                 );
-                
+
                 serde_json::json!({
                     "root_directories": root_directories,
                     "directoryCount": root_directories.len()

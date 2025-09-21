@@ -11,6 +11,7 @@ import { ThemeToggle, Badge } from "@/ui";
 import { Button } from "@/ui/button";
 import { CostUsageIndicator } from "@/ui/cost-usage-indicator";
 import { BillingHistoryModal } from "@/app/components/billing/billing-components";
+import { NotificationBell } from "@/app/components/global/NotificationBell";
 
 export function Navigation() {
   const [isBillingHistoryModalOpen, setIsBillingHistoryModalOpen] = useState(false);
@@ -70,11 +71,12 @@ export function Navigation() {
             )}
 
             {/* Cost usage indicator to the left of theme toggle */}
-            <CostUsageIndicator 
-              compact={true} 
-              showRefreshButton={false} 
+            <CostUsageIndicator
+              compact={true}
+              showRefreshButton={false}
               onClick={() => setIsBillingHistoryModalOpen(true)}
             />
+            <NotificationBell />
             <ThemeToggle />
             <Button 
               variant="ghost" 

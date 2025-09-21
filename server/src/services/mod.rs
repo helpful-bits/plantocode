@@ -11,5 +11,8 @@ pub mod model_mapping_service;
 pub mod request_tracker;
 pub mod usage_processing_service;
 pub mod pending_charge_manager;
+pub mod device_connection_manager;
+pub mod device_link_ws;
+pub mod apns_service;
 
 // Re-export commonly used types

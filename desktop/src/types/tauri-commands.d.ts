@@ -129,6 +129,11 @@ export interface ProjectFileInfo {
   isBinary: boolean;
 }
 
+export interface GetFilesMetadataCommandArgs {
+  filePaths: string[];
+  projectDirectory?: string | null;
+}
+
 export interface CreateDirectoryCommandArgs {
   path: string;
   projectDirectory?: string | null;
@@ -342,13 +347,7 @@ export interface GenerateRegexCommandArgs {
 }
 
 
-// Commands from text_commands  
-export interface ImproveTextCommandArgs {
-  projectHash: string;
-  textToImprove: string;
-  originalTranscriptionJobId?: string | null;
-  projectDirectory?: string | null;
-}
+// Commands from text_commands
 
 export interface GenerateSimpleTextCommandArgs {
   prompt: string;
@@ -765,9 +764,20 @@ export type TauriInvoke = {
   "delete_terminal_log_command": (args: DeleteTerminalLogCommandArgs) => Promise<void>;
   "start_terminal_session_command": (args: StartTerminalSessionCommandArgs) => Promise<void>;
   "write_terminal_input_command": (args: WriteTerminalInputCommandArgs) => Promise<void>;
+  "save_pasted_image_command": (args: SavePastedImageCommandArgs) => Promise<string>;
   "resize_terminal_session_command": (args: ResizeTerminalSessionCommandArgs) => Promise<void>;
   "send_ctrl_c_to_terminal_command": (args: SendCtrlCToTerminalCommandArgs) => Promise<void>;
   "kill_terminal_session_command": (args: KillTerminalSessionCommandArgs) => Promise<void>;
+  "attach_terminal_output_command": (args: { jobId: string; output: import("@tauri-apps/api/core").Channel<Uint8Array> }) => Promise<void>;
+  "get_terminal_prerequisites_status_command": () => Promise<{ serverSelected: boolean; userAuthenticated: boolean; apiClientsReady: boolean; message?: string }>;
+  "check_terminal_dependencies_command": () => Promise<{ availableCliTools: string[]; defaultShell: string }>;
+  "get_terminal_session_status_command": (args: { jobId: string }) => Promise<any>;
+  "list_active_terminal_sessions_command": () => Promise<Array<{ jobId: string; status: string; processId?: number; createdAt: number; lastOutputAt?: number; workingDirectory?: string; title?: string }>>;
+  "register_terminal_health_session": (args: { jobId: string }) => Promise<void>;
+  "unregister_terminal_health_session": (args: { jobId: string }) => Promise<void>;
+  "get_terminal_health_status": (args: { jobId: string }) => Promise<HealthCheckResult>;
+  "get_terminal_health_history": (args: { jobId: string }) => Promise<HealthHistoryEntry[]>;
+  "trigger_terminal_recovery": (args: { jobId: string; action: RecoveryAction }) => Promise<void>;
   "get_performance_summary": () => Promise<any>;
 };
 
@@ -1150,6 +1160,13 @@ export interface WriteTerminalInputCommandArgs {
   data: number[];
 }
 
+export interface SavePastedImageCommandArgs {
+  jobId: string;
+  fileName?: string | null;
+  mimeType?: string | null;
+  data: number[];
+}
+
 export interface ResizeTerminalSessionCommandArgs {
   jobId: string;
   cols: number;
@@ -1162,6 +1179,37 @@ export interface SendCtrlCToTerminalCommandArgs {
 
 export interface KillTerminalSessionCommandArgs {
   jobId: string;
+}
+
+// Health monitoring types
+export type HealthStatus =
+  | { type: 'healthy' }
+  | { type: 'noOutput'; durationSecs: number }
+  | { type: 'processDead'; exitCode?: number }
+  | { type: 'stuck'; lastOutputSecs: number }
+  | { type: 'disconnected' }
+  | { type: 'persistenceLag'; pendingBytes: number };
+
+export type HealthSeverity = 'good' | 'warning' | 'critical';
+
+export type RecoveryAction = 'sendPrompt' | 'interrupt' | 'restart' | 'reattach' | 'flushPersistence' | 'none';
+
+export interface HealthCheckResult {
+  jobId: string;
+  status: HealthStatus;
+  lastCheck: number;
+  recoveryAttempts: number;
+  lastRecoveryAttempt?: number;
+  processAlive: boolean;
+  lastOutputAt?: number;
+  outputChannelActive: boolean;
+  persistenceQueueSize: number;
+}
+
+export interface HealthHistoryEntry {
+  timestamp: number;
+  status: HealthStatus;
+  recoveryAction?: RecoveryAction;
 }
 
 // Strongly typed invoke function

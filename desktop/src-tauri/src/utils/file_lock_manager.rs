@@ -30,8 +30,9 @@ async fn normalize_path_for_lock(path: &Path) -> AppResult<PathBuf> {
         Ok(path.to_path_buf())
     } else {
         // Get current directory and join with the path
-        let current_dir = std::env::current_dir()
-            .map_err(|e| AppError::FileSystemError(format!("Failed to get current directory: {}", e)))?;
+        let current_dir = std::env::current_dir().map_err(|e| {
+            AppError::FileSystemError(format!("Failed to get current directory: {}", e))
+        })?;
         Ok(current_dir.join(path))
     }
 }

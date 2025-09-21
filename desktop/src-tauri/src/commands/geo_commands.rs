@@ -10,21 +10,21 @@ pub struct GeoDetectionResponse {
 pub async fn detect_user_region_command() -> Result<GeoDetectionResponse, String> {
     // Try to detect via website's geo API
     let client = reqwest::Client::new();
-    
+
     let response = client
         .head("https://vibemanager.app/api/geo")
         .header("User-Agent", "VibeManager-Desktop/1.0")
         .send()
         .await
         .map_err(|e| format!("Failed to call geo API: {}", e))?;
-    
+
     let country = response
         .headers()
         .get("X-User-Country")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("XX")
         .to_string();
-    
+
     // Map country to region
     let region = match country.as_str() {
         "US" => "us",
@@ -34,7 +34,7 @@ pub async fn detect_user_region_command() -> Result<GeoDetectionResponse, String
         | "SI" | "ES" | "SE" | "IS" | "LI" | "NO" | "GB" => "eu",
         _ => "eu", // Default to EU for unknown (more restrictive)
     };
-    
+
     Ok(GeoDetectionResponse {
         country,
         region: region.to_string(),

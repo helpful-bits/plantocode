@@ -16,7 +16,10 @@ pub(super) fn update_intermediate_data_internal(
     match stage {
         WorkflowStage::RootFolderSelection => {
             // Extract root directories from the RootFolderSelection stage
-            if let Some(root_dirs) = stage_data.get("root_directories").and_then(|v| v.as_array()) {
+            if let Some(root_dirs) = stage_data
+                .get("root_directories")
+                .and_then(|v| v.as_array())
+            {
                 let roots: Vec<String> = root_dirs
                     .iter()
                     .filter_map(|v| v.as_str().map(String::from))

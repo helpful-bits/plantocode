@@ -262,7 +262,8 @@ impl LlmTaskRunner {
         if stream_result.is_partial {
             warn!(
                 "LLM response for job {} is partial due to connection error - {} characters received",
-                self.job.id, stream_result.accumulated_response.len()
+                self.job.id,
+                stream_result.accumulated_response.len()
             );
         }
 

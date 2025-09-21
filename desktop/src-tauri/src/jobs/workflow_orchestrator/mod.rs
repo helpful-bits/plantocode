@@ -974,6 +974,11 @@ impl WorkflowOrchestrator {
         )
         .await;
 
+        // Send completion notification to server for mobile push notifications
+        if let Err(e) = self.send_job_completion_notification(workflow_id, &workflow_state).await {
+            warn!("Failed to send job completion notification: {}", e);
+        }
+
         // Add delay before cleanup to allow frontend to fetch final status
         tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
 
@@ -1045,6 +1050,11 @@ impl WorkflowOrchestrator {
             &format!("Workflow failed: {}", error_message),
         )
         .await;
+
+        // Send failure notification to server for mobile push notifications
+        if let Err(e) = self.send_job_failure_notification(workflow_id, &workflow_state, error_message).await {
+            warn!("Failed to send job failure notification: {}", e);
+        }
 
         // Add delay before cleanup to allow frontend to fetch final status
         tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
@@ -1282,6 +1292,117 @@ impl WorkflowOrchestrator {
         )
         .await
     }
+
+    /// Send job completion notification to server for mobile push notifications
+    async fn send_job_completion_notification(
+        &self,
+        workflow_id: &str,
+        workflow_state: &WorkflowState,
+    ) -> AppResult<()> {
+        use crate::api_clients::client_factory;
+
+        let server_proxy_client = match client_factory::get_server_proxy_client(&self.app_handle).await {
+            Ok(client) => client,
+            Err(e) => {
+                warn!("Server proxy client not available for notification: {}", e);
+                return Ok(()); // Don't fail the workflow completion if notifications fail
+            }
+        };
+
+        let payload = serde_json::json!({
+            "job_id": workflow_id,
+            "title": "Task Completed",
+            "body": self.generate_completion_message(workflow_state),
+            "custom_data": {
+                "workflow_definition_name": workflow_state.workflow_definition_name,
+                "total_cost": workflow_state.total_actual_cost,
+                "completion_time": workflow_state.completed_at,
+                "root_path": workflow_state.project_directory.clone()
+            }
+        });
+
+        server_proxy_client.send_job_completed_notification(payload.clone()).await?;
+        info!("Job completion notification sent for workflow: {}", workflow_id);
+
+        // Forward event to device link for real-time sync
+        let event_payload = serde_json::json!({
+            "type": "job-completed",
+            "payload": payload
+        });
+
+        if let Err(e) = self.app_handle.emit("device-link-event", event_payload) {
+            warn!("Failed to emit device-link-event for job completion: {}", e);
+        }
+
+        Ok(())
+    }
+
+    /// Send job failure notification to server for mobile push notifications
+    async fn send_job_failure_notification(
+        &self,
+        workflow_id: &str,
+        workflow_state: &WorkflowState,
+        error_message: &str,
+    ) -> AppResult<()> {
+        use crate::api_clients::client_factory;
+
+        let server_proxy_client = match client_factory::get_server_proxy_client(&self.app_handle).await {
+            Ok(client) => client,
+            Err(e) => {
+                warn!("Server proxy client not available for notification: {}", e);
+                return Ok(()); // Don't fail the workflow if notifications fail
+            }
+        };
+
+        let payload = serde_json::json!({
+            "job_id": workflow_id,
+            "title": "Task Failed",
+            "body": format!("Your task failed: {}", error_message),
+            "custom_data": {
+                "workflow_definition_name": workflow_state.workflow_definition_name,
+                "error_message": error_message,
+                "failure_time": workflow_state.completed_at,
+                "root_path": workflow_state.project_directory.clone()
+            }
+        });
+
+        server_proxy_client.send_job_failed_notification(payload.clone()).await?;
+        info!("Job failure notification sent for workflow: {}", workflow_id);
+
+        // Forward event to device link for real-time sync
+        let event_payload = serde_json::json!({
+            "type": "job-failed",
+            "payload": payload
+        });
+
+        if let Err(e) = self.app_handle.emit("device-link-event", event_payload) {
+            warn!("Failed to emit device-link-event for job failure: {}", e);
+        }
+
+        Ok(())
+    }
+
+    /// Generate a user-friendly completion message based on workflow state
+    fn generate_completion_message(&self, workflow_state: &WorkflowState) -> String {
+        match workflow_state.workflow_definition_name.as_str() {
+            "implementation_plan_creation" => {
+                "Your implementation plan has been generated and is ready for review."
+            },
+            "implementation_plan_execution" => {
+                "Your implementation plan has been executed successfully."
+            },
+            "video_analysis" => {
+                "Your video analysis is complete."
+            },
+            _ => {
+                if let Some(message) = &workflow_state.intermediate_data.workflow_completion_message {
+                    message
+                } else {
+                    "Your task has completed successfully."
+                }
+            }
+        }.to_string()
+    }
 }
 
 // Global static instance
@@ -1344,12 +1465,17 @@ pub async fn get_workflow_orchestrator() -> AppResult<Arc<WorkflowOrchestrator>>
     }
 
     let Some(app_handle) = crate::GLOBAL_APP_HANDLE.get().cloned() else {
-        return Err(AppError::JobError("Workflow orchestrator not initialized (no AppHandle)".into()));
+        return Err(AppError::JobError(
+            "Workflow orchestrator not initialized (no AppHandle)".into(),
+        ));
     };
 
     let mut attempts = 0usize;
     while attempts < 50 && WORKFLOW_ORCHESTRATOR.get().is_none() {
-        if app_handle.try_state::<Arc<crate::db_utils::background_job_repository::BackgroundJobRepository>>().is_some() {
+        if app_handle
+            .try_state::<Arc<crate::db_utils::background_job_repository::BackgroundJobRepository>>()
+            .is_some()
+        {
             let init_future = init_workflow_orchestrator(app_handle.clone());
             if let Ok(orchestrator) = Box::pin(init_future).await {
                 use tauri::Emitter;
@@ -1365,7 +1491,8 @@ pub async fn get_workflow_orchestrator() -> AppResult<Arc<WorkflowOrchestrator>>
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     }
 
-    WORKFLOW_ORCHESTRATOR.get()
+    WORKFLOW_ORCHESTRATOR
+        .get()
         .cloned()
         .ok_or_else(|| AppError::JobError("Workflow orchestrator not initialized (timeout)".into()))
 }

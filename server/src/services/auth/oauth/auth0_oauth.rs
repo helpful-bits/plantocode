@@ -265,7 +265,7 @@ impl Auth0OAuthService {
         &self,
         user_info: Auth0UserInfo,
         auth0_refresh_token: Option<String>,
-        client_id_from_header: Option<&str>,
+        device_id: Option<String>,
     ) -> Result<AuthDataResponse, AppError> {
         // Skip email verification for GitHub users (GitHub is a trusted provider)
         let is_github_user = user_info.sub.starts_with("github|");
@@ -298,11 +298,12 @@ impl Auth0OAuthService {
 
         info!("Authenticated user {} (ID: {}) via Auth0", email, user.id);
 
-        let token = if let Some(client_id) = client_id_from_header {
-            debug!("Creating token with client binding for client_id: {}", client_id);
-            jwt::create_token(user.id, &user.role, &email, Some(client_id), Some(user_info.sub.as_str()), self.jwt_token_duration_days)?
+        // Use device_id for token binding if available
+        let token = if let Some(device_id_value) = device_id.as_deref() {
+            debug!("Creating token with device binding and token binding hash for device_id: {}", device_id_value);
+            jwt::create_token(user.id, &user.role, &email, Some(device_id_value), Some(user_info.sub.as_str()), self.jwt_token_duration_days)?
         } else {
-            debug!("Creating token without client binding");
+            debug!("Creating token without device binding");
             jwt::create_token(user.id, &user.role, &email, None, Some(user_info.sub.as_str()), self.jwt_token_duration_days)?
         };
 

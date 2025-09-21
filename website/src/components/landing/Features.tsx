@@ -22,10 +22,10 @@ export function Features({ features = defaultFeatures }: FeaturesProps) {
       <div className="container mx-auto relative z-10">
         <div className="text-center mb-12 sm:mb-16">
           <Reveal as="h2" className="text-3xl sm:text-4xl lg:text-5xl mb-4 text-primary-emphasis font-bold text-shadow-subtle" delay={0}>
-            Key Features
+            Mechanisms
           </Reveal>
           <Reveal as="p" className="text-lg sm:text-xl max-w-2xl mx-auto leading-relaxed font-medium text-foreground/85 dark:text-foreground/90" delay={0.05}>
-            Powerful tools designed for large codebase development and AI-assisted workflow optimization
+            Built for developers tackling large & legacy codebases. If you use Claude Code, Cursor, or Aider - this is your planning layer.
           </Reveal>
         </div>
 

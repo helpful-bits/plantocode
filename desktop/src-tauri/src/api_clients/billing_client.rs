@@ -1,4 +1,5 @@
 use crate::api_clients::error_handling::handle_api_error;
+use crate::auth::device_id_manager;
 use crate::auth::token_manager::TokenManager;
 use crate::commands::billing_commands::{
     BillingDashboardData, BillingPortalResponse, CreditBalanceResponse, CreditHistoryResponse,
@@ -71,22 +72,25 @@ pub struct ServerCreditHistoryResponse {
 use crate::commands::billing_commands::{AutoTopOffSettings, UpdateAutoTopOffRequest};
 use log::{debug, error, info};
 use std::sync::Arc;
+use tauri;
 
 /// Dedicated client for handling billing-related API calls
 pub struct BillingClient {
     http_client: Client,
     server_url: String,
     token_manager: Arc<TokenManager>,
+    app_handle: tauri::AppHandle,
 }
 
 impl BillingClient {
     /// Create a new BillingClient instance
-    pub fn new(server_url: String, token_manager: Arc<TokenManager>) -> Self {
+    pub fn new(server_url: String, token_manager: Arc<TokenManager>, app_handle: tauri::AppHandle) -> Self {
         let http_client = crate::api_clients::client_factory::create_http_client();
         Self {
             http_client,
             server_url,
             token_manager,
+            app_handle,
         }
     }
 
@@ -125,7 +129,10 @@ impl BillingClient {
             }
         };
 
-        request_builder = request_builder.header("Authorization", format!("Bearer {}", token));
+        let device_id = device_id_manager::get_or_create(&self.app_handle)?;
+        request_builder = request_builder
+            .header("Authorization", format!("Bearer {}", token))
+            .header("x-device-id", device_id);
 
         if let Some(body_data) = body {
             request_builder = request_builder
@@ -560,14 +567,14 @@ impl BillingClient {
 
         // Validate pagination parameters
         let limit = limit.map(|l| l.clamp(1, 100)).unwrap_or(50);
-        
+
         let mut query_params = Vec::new();
         query_params.push(format!("limit={}", limit));
-        
+
         if let Some(cursor) = starting_after {
             query_params.push(format!("starting_after={}", cursor));
         }
-        
+
         let query_string = if query_params.is_empty() {
             String::new()
         } else {
@@ -684,7 +691,7 @@ impl BillingClient {
         let mut query_params = Vec::new();
         query_params.push(format!("limit={}", limit_q));
         query_params.push(format!("offset={}", offset_q));
-        
+
         // Only include search if non-empty after trimming
         if let Some(search) = search {
             let trimmed = search.trim();

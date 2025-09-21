@@ -163,7 +163,10 @@ pub fn get_latest_root_directories(jobs: &Vec<crate::jobs::types::Job>) -> Optio
             if let Some(res) = &j.result_json {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(res) {
                     if let Some(arr) = v.get("root_directories").and_then(|a| a.as_array()) {
-                        let out = arr.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect::<Vec<_>>();
+                        let out = arr
+                            .iter()
+                            .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                            .collect::<Vec<_>>();
                         return Some(out);
                     }
                 }

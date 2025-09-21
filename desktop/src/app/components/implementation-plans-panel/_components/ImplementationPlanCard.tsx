@@ -54,8 +54,9 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
   onToggleSelection,
   onViewTerminal,
 }) => {
-  const { getSession } = useTerminalSessions();
+  const { getSession, getAttention } = useTerminalSessions();
   const terminalSession = getSession(plan.id);
+  const attention = getAttention(plan.id);
   const parsedMeta = getParsedMetadata(plan.metadata);
   
   // Extract the plan title from metadata
@@ -110,10 +111,36 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
   // For running jobs with content, we can view the delivered content
   const hasContent = JOB_STATUSES.COMPLETED.includes(plan.status) || isStreaming || hasResponseContent;
 
-  // Get terminal status icon
+  // Check if the plan is ready for terminal access
+  const isPlanReadyForTerminal = JOB_STATUSES.COMPLETED.includes(plan.status);
+
+  // Get attention icon with priority over status icon
+  const getAttentionIcon = () => {
+    // Check for attention first (priority)
+    if (attention && attention.level !== 'none') {
+      const attentionColors = {
+        high: 'text-red-500',
+        medium: 'text-yellow-500',
+        low: 'text-blue-500'
+      };
+      return <AlertTriangle className={`h-3 w-3 ${attentionColors[attention.level]}`} data-testid="attention-icon" />;
+    }
+
+    // Check subStatusMessage for attention keywords
+    if (parsedMeta?.subStatusMessage) {
+      const message = parsedMeta.subStatusMessage.toLowerCase();
+      if (message.includes('input') || message.includes('waiting') || message.includes('prompt') || message.includes('confirm')) {
+        return <AlertTriangle className="h-3 w-3 text-yellow-500" data-testid="attention-icon-message" />;
+      }
+    }
+
+    return null;
+  };
+
+  // Get terminal status icon (used when no attention)
   const getTerminalStatusIcon = () => {
     if (!terminalSession) return null;
-    
+
     switch (terminalSession.status) {
       case 'running':
         return <Circle className="h-3 w-3 fill-green-500 text-green-500 animate-pulse" data-testid="terminal-status-running" />;
@@ -127,6 +154,7 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
         return null;
     }
   };
+
 
   return (
     <Card 
@@ -162,7 +190,7 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
                 <CardTitle className="text-base">
                   {truncateTitle(planTitle || plan.prompt || sessionName || "Implementation Plan")}
                 </CardTitle>
-                {getTerminalStatusIcon()}
+                {getAttentionIcon() || getTerminalStatusIcon()}
               </div>
               <CardDescription className="flex flex-wrap gap-x-2 text-xs mt-1">
                 {plan.taskType === "implementation_plan_merge" && (
@@ -251,7 +279,7 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
           </div>
 
           <div className="space-x-1">
-            {onViewTerminal && (
+            {isPlanReadyForTerminal && onViewTerminal && (
               <Button
                 key="terminal"
                 variant="outline"

@@ -62,7 +62,7 @@ const faqItems = [
   },
   {
     question: 'What types of projects benefit most?',
-    answer: 'Large codebases with complex architectures, enterprise applications requiring careful planning, legacy systems needing modernization, microservices architectures, projects integrating multiple external libraries, and any codebase where architectural decisions have long-term consequences benefit most from implementation planning.',
+    answer: 'Large codebases with complex architectures, business applications requiring careful planning, legacy systems needing modernization, microservices architectures, projects integrating multiple external libraries, and any codebase where architectural decisions have long-term consequences benefit most from implementation planning.',
   },
   {
     question: 'How does it handle architectural conflicts?',
@@ -321,7 +321,7 @@ export default function WhatIsVibeCodeCleanupSpecialistPage() {
                         <div className="flex items-start space-x-3">
                           <Shield className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
                           <div>
-                            <p className="text-sm font-medium">Enterprise Applications</p>
+                            <p className="text-sm font-medium">Business Applications</p>
                             <p className="text-xs text-foreground/70">Requiring careful architectural decisions</p>
                           </div>
                         </div>

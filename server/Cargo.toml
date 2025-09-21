@@ -95,6 +95,10 @@ aes-gcm = "0.10.3"
 actix-web-lab = "0.24.2"
 eventsource-stream = "0.2.3"
 pin-project-lite = "0.2.16"
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+native-tls = "0.2"
+actix = "0.13.5"
+actix-web-actors = "4.3.1"
 
 [features]
 default = []

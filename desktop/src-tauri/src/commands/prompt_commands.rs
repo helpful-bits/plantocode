@@ -20,10 +20,7 @@ pub async fn get_system_prompt_for_task(
     app_handle: AppHandle,
 ) -> Result<SystemPromptResponse, String> {
     // Get session repository
-    let session_repo = app_handle
-        .state::<Arc<SessionRepository>>()
-        .inner()
-        .clone();
+    let session_repo = app_handle.state::<Arc<SessionRepository>>().inner().clone();
 
     // Get session to get project directory
     let session = session_repo

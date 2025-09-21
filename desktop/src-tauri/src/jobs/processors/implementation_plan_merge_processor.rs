@@ -245,7 +245,7 @@ impl JobProcessor for ImplementationPlanMergeProcessor {
         }
 
         // Use the raw LLM response directly
-        
+
         // Create a simple structured plan for UI compatibility
         let structured_plan = StructuredImplementationPlan {
             agent_instructions: None,
