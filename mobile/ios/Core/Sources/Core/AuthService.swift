@@ -317,6 +317,7 @@ public final class AuthService: NSObject, ObservableObject {
       if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
         // 401/403 error - clear token
         try? keychain.remove("app_jwt")
+        print("AuthService: Cleared invalid token after 401/403; user is unauthenticated.")
         throw APIError.invalidResponse(statusCode: httpResponse.statusCode, data: data)
       }
 
@@ -331,6 +332,7 @@ public final class AuthService: NSObject, ObservableObject {
       if case APIError.invalidResponse(let code, _) = error, code == 401 || code == 403 {
         // 401/403 error - clear token
         try? keychain.remove("app_jwt")
+        print("AuthService: Cleared invalid token after 401/403; user is unauthenticated.")
       }
       print("Error fetching user info: \(error)")
       return nil

@@ -1,13 +1,16 @@
 import Foundation
 import Network
 import Combine
-// Import CommonTypes for shared type definitions
+import OSLog
 
 /// Main connection manager that implements the hybrid connectivity strategy
 /// Coordinates direct connections, relay connections, and failover logic
 public class ConnectionManager: ConnectionStrategyCoordinator {
 
     // MARK: - Properties
+    
+    /// Logger for debugging and monitoring
+    private let logger = Logger(subsystem: "VibeManager", category: "ConnectionManager")
 
     /// Current connection state
     public private(set) var connectionState = ConnectionState.disconnected
@@ -64,17 +67,19 @@ public class ConnectionManager: ConnectionStrategyCoordinator {
         networkMonitor: NetworkMonitor? = nil
     ) {
         // Get server URL from Config.serverURL
-        guard let serverURL = getServerURL() else {
+        guard let urlString = Config.serverURL.isEmpty ? nil : Config.serverURL,
+              let serverURL = URL(string: urlString) else {
             fatalError("Server URL not configured")
         }
 
         let deviceId = DeviceManager.shared.getOrCreateDeviceID()
+
+        // Initialize all stored properties first
+        self.webSocketClient = WebSocketClient(serverURL: serverURL)
         self.relayClient = relayClient ?? ServerRelayClient(serverURL: serverURL, deviceId: deviceId)
         self.networkMonitor = networkMonitor ?? DefaultNetworkMonitor()
 
-        // Remove webSocketClient initialization
-        self.webSocketClient = WebSocketClient(serverURL: serverURL)
-
+        // Now call instance methods after all properties are initialized
         setupEventHandlers()
         startNetworkMonitoring()
     }
@@ -117,7 +122,23 @@ public class ConnectionManager: ConnectionStrategyCoordinator {
                 throw ConnectionStrategyError.authenticationFailed("JWT token required")
             }
 
-            try await relayClient.connect(jwtToken: jwtToken).asyncValue()
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                relayClient.connect(jwtToken: jwtToken)
+                    .sink(
+                        receiveCompletion: { completion in
+                            switch completion {
+                            case .finished:
+                                continuation.resume()
+                            case .failure(let error):
+                                continuation.resume(throwing: error)
+                            }
+                        },
+                        receiveValue: { _ in
+                            // Connection successful - completion will be called with .finished
+                        }
+                    )
+                    .store(in: &cancellables)
+            }
 
             let duration = Date().timeIntervalSince(startTime)
             emitEvent(.connectionAttemptSucceeded(method: "relay", target: "server", duration: duration))
@@ -205,8 +226,8 @@ public class ConnectionManager: ConnectionStrategyCoordinator {
             while !Task.isCancelled && connectionState.isConnected {
                 try? await Task.sleep(nanoseconds: 5_000_000_000) // 5 seconds
 
-                // Update quality metrics
-                let newMetrics = webSocketClient.currentQualityMetrics
+                // Update quality metrics from relay client
+                let newMetrics = ConnectionQualityMetrics() // Default metrics for relay connection
                 if newMetrics.lastMeasurement != qualityMetrics.lastMeasurement {
                     qualityMetrics = newMetrics
                     qualityContinuation?.yield(qualityMetrics)
@@ -340,8 +361,7 @@ public class ConnectionManager: ConnectionStrategyCoordinator {
 
         envelope["id"] = UUID().uuidString
 
-        let data = try JSONSerialization.data(withJSONObject: envelope)
-        try await webSocketClient.send(data: data)
+        try await relayClient.sendMessage(envelope)
     }
 
 }

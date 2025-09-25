@@ -279,9 +279,9 @@ export function useSidebarStateManager(): SidebarManager {
         await deleteJob(jobId);
         
         if (isImplementationPlan) {
-          // Clean up terminal session if running or stuck
+          // Clean up terminal session if running or requires attention
           const session = getSession(jobId);
-          if (session && (session.status === "running" || session.status === "stuck")) {
+          if (session && (session.status === "running" || session.status === "agent_requires_attention")) {
             try {
               await kill(jobId);
             } catch (error) {

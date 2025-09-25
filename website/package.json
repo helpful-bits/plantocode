@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "postbuild": "echo \"Run 'npm run search:build' or CI-integrated indexer after build as documented in website/docs/SEARCH_INTEGRATION.md\"",
+    "postbuild": "echo \"Run 'npm run search:build' or CI-integrated indexer after build\"",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",

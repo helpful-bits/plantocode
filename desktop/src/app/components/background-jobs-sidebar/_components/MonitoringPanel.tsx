@@ -5,7 +5,7 @@ import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
 import { BackgroundJobsContext } from "@/contexts/background-jobs";
 import { useTerminalSessions } from "@/contexts/terminal-sessions/useTerminalSessions";
-import { ArrowLeft, Terminal, Circle, CheckCircle, XCircle, AlertTriangle, Clock, Search, Info } from "lucide-react";
+import { ArrowLeft, Terminal, Circle, CheckCircle, XCircle, AlertTriangle, Clock, Search } from "lucide-react";
 
 interface MonitoringPanelProps {
   onBack: () => void;
@@ -88,9 +88,13 @@ export const MonitoringPanel = ({ onBack, onOpenTerminal }: MonitoringPanelProps
         low: 'text-blue-500'
       };
       return {
-        icon: <AlertTriangle className={`w-3.5 h-3.5 ${attentionColors[attention.level]}`} />,
+        icon: (
+          <AlertTriangle
+            className={`w-3.5 h-3.5 ${attentionColors[attention.level]}`}
+          />
+        ),
         badge: {
-          text: 'Needs input',
+          text: attention.level === 'high' ? 'Agent requires attention' : attention.level === 'medium' ? 'Agent idle' : 'Needs input',
           variant: attention.level === 'high' ? 'destructive' : attention.level === 'medium' ? 'warning' : 'info'
         }
       };
@@ -105,7 +109,7 @@ export const MonitoringPanel = ({ onBack, onOpenTerminal }: MonitoringPanelProps
           return { icon: <CheckCircle className="w-3.5 h-3.5 text-success" />, badge: null };
         case "failed":
           return { icon: <AlertTriangle className="w-3.5 h-3.5 text-destructive" />, badge: null };
-        case "stuck":
+        case "agent_requires_attention":
           return { icon: <Clock className="w-3.5 h-3.5 text-warning" />, badge: null };
         default:
           return { icon: <Circle className="w-3.5 h-3.5 text-muted-foreground" />, badge: null };

@@ -45,6 +45,61 @@ pub async fn read_terminal_log_command(app_handle: AppHandle, job_id: String) ->
     }
 }
 
+#[tauri::command]
+pub async fn read_terminal_log_tail_command(
+    app_handle: AppHandle,
+    job_id: String,
+    max_bytes: Option<i32>
+) -> AppResult<String> {
+    let repo = app_handle
+        .state::<Arc<TerminalSessionsRepository>>()
+        .inner()
+        .clone();
+
+    let n = max_bytes.unwrap_or(65536);
+    repo.get_output_log_tail(&job_id, n).await.map_err(|e| {
+        AppError::DatabaseError(format!("Failed to read tail for {}: {}", job_id, e))
+    })
+}
+
+#[tauri::command]
+pub async fn read_terminal_log_len_command(
+    app_handle: AppHandle,
+    job_id: String
+) -> AppResult<i64> {
+    let repo = app_handle
+        .state::<Arc<TerminalSessionsRepository>>()
+        .inner()
+        .clone();
+
+    repo.get_output_log_len(&job_id).await.map_err(|e| {
+        AppError::DatabaseError(format!("Failed to get log length for {}: {}", job_id, e))
+    })
+}
+
+#[tauri::command]
+pub async fn read_terminal_log_since_command(
+    app_handle: AppHandle,
+    job_id: String,
+    from_offset: i64,
+    max_bytes: Option<i32>
+) -> AppResult<serde_json::Value> {
+    let repo = app_handle
+        .state::<Arc<TerminalSessionsRepository>>()
+        .inner()
+        .clone();
+
+    let max = max_bytes.unwrap_or(1_048_576); // Default 1MB
+    let (chunk, total_len) = repo.get_output_log_since(&job_id, from_offset, max).await.map_err(|e| {
+        AppError::DatabaseError(format!("Failed to read log since offset for {}: {}", job_id, e))
+    })?;
+
+    Ok(json!({
+        "chunk": chunk,
+        "totalLen": total_len
+    }))
+}
+
 #[command]
 pub async fn clear_terminal_log_command(app_handle: AppHandle, job_id: String) -> AppResult<()> {
     let repo = app_handle
@@ -246,17 +301,17 @@ pub async fn write_terminal_input_command(
     job_id: String,
     data: Vec<u8>,
 ) -> AppResult<()> {
+    if data.len() > 1_048_576 {
+        return Err(AppError::TerminalError(
+            "Input too large for single request (max 1MiB). Please paste in smaller chunks.".to_string()
+        ));
+    }
+
     let terminal_manager = app_handle.state::<Arc<TerminalManager>>().inner().clone();
 
     terminal_manager
         .write_input(&job_id, data)
         .await
-        .map_err(|e| {
-            AppError::TerminalError(format!(
-                "Failed to write input to terminal session for job {}: {}",
-                job_id, e
-            ))
-        })
 }
 
 #[tauri::command]
@@ -266,24 +321,28 @@ pub async fn send_ctrl_c_to_terminal_command(
 ) -> AppResult<()> {
     let terminal_manager = app_handle.state::<Arc<TerminalManager>>().inner().clone();
 
-    terminal_manager.send_ctrl_c(&job_id).await.map_err(|e| {
-        AppError::TerminalError(format!(
-            "Failed to send Ctrl+C to terminal session for job {}: {}",
-            job_id, e
-        ))
-    })
+    terminal_manager.send_ctrl_c(&job_id).await
 }
 
 #[tauri::command]
 pub async fn kill_terminal_session_command(app_handle: AppHandle, job_id: String) -> AppResult<()> {
     let terminal_manager = app_handle.state::<Arc<TerminalManager>>().inner().clone();
 
-    terminal_manager.kill_session(&job_id).await.map_err(|e| {
-        AppError::TerminalError(format!(
-            "Failed to kill terminal session for job {}: {}",
-            job_id, e
-        ))
-    })
+    match terminal_manager.kill_session(&job_id).await {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            // Check if this is an expected "process already dead" scenario
+            let error_message = e.to_string();
+            if error_message.contains("already terminated") || error_message.contains("not found") {
+                // Log but don't error - this is a normal case
+                info!("Terminal session {} was already terminated or not found", job_id);
+                // Return success since the end goal (terminated session) is achieved
+                Ok(())
+            } else {
+                Err(e)
+            }
+        }
+    }
 }
 
 #[tauri::command]
@@ -298,12 +357,6 @@ pub async fn resize_terminal_session_command(
     terminal_manager
         .resize_session(&job_id, cols, rows)
         .await
-        .map_err(|e| {
-            AppError::TerminalError(format!(
-                "Failed to resize terminal session for job {}: {}",
-                job_id, e
-            ))
-        })
 }
 
 #[tauri::command]
@@ -413,63 +466,6 @@ pub async fn detach_terminal_remote_client_command(
         })
 }
 
-#[tauri::command]
-pub async fn get_session_health_command(
-    app_handle: AppHandle,
-    job_id: String,
-) -> AppResult<serde_json::Value> {
-    let terminal_manager = app_handle.state::<Arc<TerminalManager>>().inner().clone();
-    let repo = app_handle
-        .state::<Arc<TerminalSessionsRepository>>()
-        .inner()
-        .clone();
-
-    // Check database session state
-    let db_session = match repo.get_session_by_job_id(&job_id).await {
-        Ok(Some(session)) => session,
-        Ok(None) => {
-            return Ok(json!({
-                "healthy": false,
-                "reason": "session_not_found",
-                "message": "Session not found in database",
-                "recovery_hint": "Create a new session"
-            }));
-        }
-        Err(e) => {
-            return Ok(json!({
-                "healthy": false,
-                "reason": "database_error",
-                "message": format!("Database error: {}", e),
-                "recovery_hint": "Try again or restart application"
-            }));
-        }
-    };
-
-    // Check terminal manager status
-    let status = terminal_manager.get_status(&job_id).await;
-    let is_pty_alive = status.get("running").and_then(|v| v.as_bool()).unwrap_or(false);
-    let has_clients = status.get("client_count").and_then(|v| v.as_u64()).unwrap_or(0) > 0;
-
-    let healthy = is_pty_alive && (has_clients || db_session.status == "starting");
-
-    Ok(json!({
-        "healthy": healthy,
-        "pty_alive": is_pty_alive,
-        "has_clients": has_clients,
-        "db_status": db_session.status,
-        "working_directory": db_session.working_directory,
-        "reason": if !healthy {
-            if !is_pty_alive { "pty_dead" }
-            else if !has_clients { "no_clients" }
-            else { "unknown" }
-        } else { "healthy" },
-        "recovery_hint": if !healthy {
-            if !is_pty_alive { "Restart the terminal session" }
-            else if !has_clients { "Reconnect to the session" }
-            else { "Unknown issue - try restarting" }
-        } else { "No action needed" }
-    }))
-}
 
 #[tauri::command]
 pub async fn recover_terminal_session_command(
@@ -537,7 +533,7 @@ pub async fn recover_terminal_session_command(
         }
         "force_reconnect" => {
             // Force refresh session status in database
-            match repo.update_session_status(&job_id, "starting", None).await {
+            match repo.update_session_status_by_job_id(&job_id, "starting", None).await {
                 Ok(_) => {
                     info!("Forced session status refresh for: {}", job_id);
                     Ok(json!({
@@ -680,22 +676,15 @@ pub async fn trigger_terminal_recovery(
             // Still attempt recovery with the specified action
             match action {
                 RecoveryAction::SendPrompt => {
-                    match terminal_manager.write_input(&job_id, b"\r".to_vec()).await {
-                        Ok(()) => {
-                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                            terminal_manager.write_input(&job_id, b"echo 'health-check-alive'\r".to_vec()).await
-                                .map_err(|e| AppError::TerminalError(format!("Send prompt recovery failed: {}", e)))
-                        }
-                        Err(e) => Err(AppError::TerminalError(format!("Send prompt recovery failed: {}", e)))
-                    }
+                    terminal_manager.write_input(&job_id, b"\r".to_vec()).await?;
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    terminal_manager.write_input(&job_id, b"echo 'health-check-alive'\r".to_vec()).await
                 }
                 RecoveryAction::Interrupt => {
                     terminal_manager.send_ctrl_c(&job_id).await
-                        .map_err(|e| AppError::TerminalError(format!("Interrupt recovery failed: {}", e)))
                 }
                 RecoveryAction::Restart => {
                     terminal_manager.kill_session(&job_id).await
-                        .map_err(|e| AppError::TerminalError(format!("Restart recovery failed: {}", e)))
                 }
                 _ => {
                     warn!("Recovery action {:?} not implemented for manual trigger", action);
@@ -704,4 +693,36 @@ pub async fn trigger_terminal_recovery(
             }
         }
     }
+}
+
+#[tauri::command]
+pub async fn touch_session_by_job_id(
+    app_handle: AppHandle,
+    job_id: String,
+) -> AppResult<()> {
+    let repo = app_handle
+        .state::<Arc<TerminalSessionsRepository>>()
+        .inner()
+        .clone();
+
+    repo.touch_session_by_job_id(&job_id).await.map_err(|e| {
+        AppError::DatabaseError(format!(
+            "Failed to touch session for job {}: {}",
+            job_id, e
+        ))
+    })
+}
+
+#[tauri::command]
+pub async fn get_terminal_snapshot_command(
+    app_handle: tauri::AppHandle,
+    job_id: String,
+) -> Result<Vec<u8>, crate::error::AppError> {
+    let mgr = app_handle
+        .state::<std::sync::Arc<crate::services::terminal_manager::TerminalManager>>()
+        .inner()
+        .clone();
+    mgr.get_snapshot(&job_id).ok_or_else(|| {
+        crate::error::AppError::NotFoundError(format!("No terminal session for job {}", job_id))
+    })
 }

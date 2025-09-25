@@ -45,7 +45,7 @@ export default async function SubprocessorsPage({ params }: SubprocessorsPagePro
   return (
     <LegalContent
       title="Sub-processors"
-      subtitle="Last updated: January 2025"
+      subtitle="Last updated: September 22, 2025"
     >
       <section>
         <h2 className="text-2xl font-semibold mb-4">Introduction</h2>

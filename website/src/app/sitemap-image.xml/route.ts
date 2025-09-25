@@ -48,47 +48,53 @@ const imageEntries: ImageEntry[] = [
   },
   // Documentation pages
   {
-    pageUrl: `${SITE_URL}/docs/claude-code-install`,
+    pageUrl: `${SITE_URL}/docs/implementation-plans`,
     images: [
-      { loc: `${CDN_BASE}/images/og-claude-install.png` },
+      { loc: `${CDN_BASE}/assets/images/demo-implementation-plans.jpg` },
     ],
   },
   {
-    pageUrl: `${SITE_URL}/docs/openai-codex-cli`,
+    pageUrl: `${SITE_URL}/docs/file-discovery`,
     images: [
-      { loc: `${CDN_BASE}/images/og-codex-cli.png` },
+      { loc: `${CDN_BASE}/assets/images/demo-file-finder-workflow.jpg` },
+    ],
+  },
+  {
+    pageUrl: `${SITE_URL}/docs/model-configuration`,
+    images: [
+      { loc: `${CDN_BASE}/assets/images/demo-settings-prompts.jpg` },
+    ],
+  },
+  {
+    pageUrl: `${SITE_URL}/docs/terminal-sessions`,
+    images: [
+      { loc: `${CDN_BASE}/assets/images/demo-background-tasks.jpg` },
+    ],
+  },
+  {
+    pageUrl: `${SITE_URL}/docs/voice-transcription`,
+    images: [
+      { loc: `${CDN_BASE}/assets/images/step-1-voice-poster.jpg` },
     ],
   },
   // Feature pages with hero images
   {
-    pageUrl: `${SITE_URL}/file-finder`,
+    pageUrl: `${SITE_URL}/features/file-discovery`,
     images: [
       { loc: `${CDN_BASE}/assets/images/demo-file-finder.jpg` },
       { loc: `${CDN_BASE}/assets/images/demo-file-finder-workflow.jpg` },
     ],
   },
   {
-    pageUrl: `${SITE_URL}/vibe-code-cleanup-specialist`,
-    images: [
-      { loc: `${CDN_BASE}/images/og-image.png` },
-    ],
-  },
-  {
-    pageUrl: `${SITE_URL}/deep-research`,
+    pageUrl: `${SITE_URL}/features/deep-research`,
     images: [
       { loc: `${CDN_BASE}/assets/images/step-3-poster.jpg` },
     ],
   },
   {
-    pageUrl: `${SITE_URL}/multi-model-plans`,
+    pageUrl: `${SITE_URL}/features/merge-instructions`,
     images: [
       { loc: `${CDN_BASE}/assets/images/demo-implementation-plans.jpg` },
-    ],
-  },
-  {
-    pageUrl: `${SITE_URL}/local-first`,
-    images: [
-      { loc: `${CDN_BASE}/assets/images/demo-settings-prompts.jpg` },
     ],
   },
 ];

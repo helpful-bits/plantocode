@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -9,16 +9,17 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
-import { 
-  Search, 
-  FileText, 
-  Zap, 
-  Settings, 
+import {
+  Search,
+  FileText,
+  Zap,
+  Settings,
   CreditCard,
   Copy,
   X,
   Maximize2,
-  Video
+  Video,
+  Play
 } from 'lucide-react';
 
 interface ScreenshotCard {
@@ -117,17 +118,31 @@ const screenshots: ScreenshotCard[] = [
     ]
   },
   {
-    id: 'copy-buttons',
+    id: 'terminal-voice-recording',
     title: 'Workflows. One Click.',
-    description: 'That Claude prompt that always works? That agent setup you perfected? Button it. Ship it. Stop copy-pasting.',
-    image: cdnUrl('/assets/images/demo-copy-buttons.jpg'),
+    description: 'That Claude prompt that always works? That agent setup you perfected? Button it. Ship it. Stop copy-pasting. Server-configured buttons with smart templates and drag-drop reordering.',
+    image: cdnUrl('/assets/images/demo-terminal-voice-recording.jpg'),
     icon: <Copy className="w-5 h-5" />,
-    aspectRatio: '1160/2020',
+    aspectRatio: '1478/820',
     features: [
       'Any prompt becomes a button',
       'Smart templates with placeholders',
       'Complex workflows, instant launch',
       'Your best tricks, always ready'
+    ]
+  },
+  {
+    id: 'merge-instructions-workflow',
+    title: 'Architect. Don\'t Concatenate.',
+    description: 'Genuine analysis. Not concatenation - deep architectural analysis using SOLID principles. Source traceability with [src:P1 step 2] attribution. Emergent solutions beyond simple combination.',
+    image: cdnUrl('/assets/images/demo-merge-instructions-panel.jpg'),
+    icon: <FileText className="w-5 h-5" />,
+    aspectRatio: '1420/790',
+    features: [
+      'SOLID principle-based conflict resolution',
+      'Source traceability for every decision',
+      'Intelligent instructions: "Focus on Plan 2\'s security"',
+      'Notes panel for architectural iteration'
     ]
   },
   {
@@ -148,16 +163,107 @@ const screenshots: ScreenshotCard[] = [
 
 export function ScreenshotGallery() {
   const [selectedImage, setSelectedImage] = useState<ScreenshotCard | null>(null);
+  const [showVideo, setShowVideo] = useState(false);
   const [mounted, setMounted] = useState(false);
-  
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
+  const handleVideoClick = () => {
+    setShowVideo(true);
+    setTimeout(() => {
+      if (videoRef.current) {
+        videoRef.current.requestFullscreen?.() ||
+        (videoRef.current as any).webkitRequestFullscreen?.() ||
+        (videoRef.current as any).mozRequestFullScreen?.() ||
+        (videoRef.current as any).msRequestFullscreen?.();
+        videoRef.current.play();
+      }
+    }, 100);
+  };
+
   return (
     <>
       <div className="py-8 max-w-7xl mx-auto">
+        {/* Hero Video Section */}
+        <motion.div
+          initial={{ opacity: 0, y: 40 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{
+            duration: 0.7,
+            ease: [0.21, 0.47, 0.32, 0.98]
+          }}
+          className="mb-20"
+        >
+          <GlassCard className="!p-0 !rounded-3xl hover:shadow-2xl hover:shadow-primary/20" highlighted>
+            <div className="lg:flex">
+              {/* Content Section */}
+              <div className="lg:w-2/5 p-8 lg:p-12 flex flex-col justify-center">
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="p-3 rounded-2xl bg-primary/15 dark:bg-primary/20 text-primary [&>svg]:w-8 [&>svg]:h-8">
+                    <Play />
+                  </div>
+                  <h3 className="text-3xl lg:text-4xl font-bold text-foreground">
+                    See It In Action
+                  </h3>
+                </div>
+
+                <p className="text-lg text-muted-foreground leading-relaxed mb-8">
+                  Watch how Vibe Manager transforms your workflow. From idea to implementation in under 2 minutes.
+                </p>
+
+                <ul className="space-y-3 mb-8">
+                  <li className="flex items-center gap-3">
+                    <span className="text-primary flex-shrink-0">✓</span>
+                    <span className="text-base text-muted-foreground">AI-powered file discovery</span>
+                  </li>
+                  <li className="flex items-center gap-3">
+                    <span className="text-primary flex-shrink-0">✓</span>
+                    <span className="text-base text-muted-foreground">Multi-model plan generation</span>
+                  </li>
+                  <li className="flex items-center gap-3">
+                    <span className="text-primary flex-shrink-0">✓</span>
+                    <span className="text-base text-muted-foreground">Intelligent plan merging</span>
+                  </li>
+                  <li className="flex items-center gap-3">
+                    <span className="text-primary flex-shrink-0">✓</span>
+                    <span className="text-base text-muted-foreground">Direct export to Claude, Cursor & Codex</span>
+                  </li>
+                </ul>
+              </div>
+
+              {/* Video Preview Section */}
+              <div
+                className="lg:w-3/5 bg-gradient-to-br from-background/50 to-background/20 p-6 lg:p-8 cursor-pointer"
+                onClick={handleVideoClick}
+              >
+                <div className="relative rounded-2xl overflow-hidden shadow-xl hover:shadow-2xl transition-all duration-300 border border-primary/20 dark:border-primary/25 bg-background/50">
+                  <div className="relative" style={{ aspectRatio: '16/9' }}>
+                    {/* Video Thumbnail */}
+                    <video
+                      className="w-full h-full object-cover"
+                      muted
+                      playsInline
+                      poster={cdnUrl('/assets/images/demo-implementation-plans.jpg')}
+                    >
+                      <source src={cdnUrl('/assets/videos/hero-section-16by9_vp9.webm')} type="video/webm; codecs=vp9" />
+                      <source src={cdnUrl('/assets/videos/hero-section-16by9.mp4')} type="video/mp4" />
+                    </video>
+                    {/* Play Overlay */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-background/20 to-transparent dark:from-black/40 dark:via-transparent flex items-center justify-center">
+                      <div className="bg-white/95 dark:bg-primary/90 backdrop-blur-xl rounded-full p-6 shadow-2xl border-2 border-primary/70 dark:border-primary/50 group hover:scale-110 transition-transform">
+                        <Play className="w-10 h-10 text-primary dark:text-primary-foreground fill-primary dark:fill-primary-foreground" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </GlassCard>
+        </motion.div>
+
         {/* Structured Single-Column Layout */}
         <div className="space-y-20">
           {screenshots.map((screenshot, index) => (
@@ -235,9 +341,9 @@ export function ScreenshotGallery() {
                         />
                         {/* Hover Overlay */}
                         <div className="absolute inset-0 bg-gradient-to-t from-background/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-center pb-6">
-                          <div className="bg-background/95 backdrop-blur-md rounded-full px-4 py-2 shadow-lg border border-primary/30 dark:border-primary/40 flex items-center gap-2">
-                            <Maximize2 className="w-4 h-4" />
-                            <span className="text-sm font-medium">View full size</span>
+                          <div className="bg-white/90 dark:bg-background/95 backdrop-blur-xl rounded-full px-4 py-2 shadow-xl border border-primary/50 dark:border-primary/60 flex items-center gap-2">
+                            <Maximize2 className="w-4 h-4 text-primary" />
+                            <span className="text-sm font-semibold text-primary dark:text-foreground">View full size</span>
                           </div>
                         </div>
                       </div>
@@ -250,35 +356,80 @@ export function ScreenshotGallery() {
         </div>
 
         {/* Call to Action */}
-        <div className="mt-20 text-center">
-          <p className="text-lg text-muted-foreground mb-6">
-            Ready to ship better code, faster?
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-            <motion.div
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className="flex items-center"
-            >
-              <PlatformDownloadSection 
-                location="demo_screenshots"
-                redirectToDownloadPage={true}
-              />
-            </motion.div>
-            <motion.div
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className="flex items-center"
-            >
-              <Button asChild size="lg" variant="gradient-outline">
-                <Link href="/demo">
-                  Try Interactive Demo
-                </Link>
-              </Button>
-            </motion.div>
-          </div>
+        <div className="mt-20 px-4">
+          <GlassCard className="max-w-3xl mx-auto p-8 sm:p-12 text-center" highlighted>
+            <h2 className="text-2xl sm:text-3xl font-bold mb-4">
+              Ready to ship better code, faster?
+            </h2>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+              <motion.div
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className="flex items-center"
+              >
+                <PlatformDownloadSection
+                  location="demo_screenshots"
+                  redirectToDownloadPage={true}
+                />
+              </motion.div>
+              <motion.div
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className="flex items-center"
+              >
+                <Button asChild size="lg" variant="cta">
+                  <Link href="/demo">
+                    Try Interactive Demo
+                  </Link>
+                </Button>
+              </motion.div>
+            </div>
+          </GlassCard>
         </div>
       </div>
+
+      {/* Video Modal - Fullscreen */}
+      {mounted && showVideo && createPortal(
+        <AnimatePresence>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black"
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              width: '100vw',
+              height: '100vh'
+            }}
+          >
+            {/* Close Button */}
+            <button
+              onClick={() => setShowVideo(false)}
+              className="absolute top-4 right-4 p-3 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-xl transition-all z-[101]"
+              style={{ position: 'absolute', top: '1rem', right: '1rem' }}
+            >
+              <X className="w-6 h-6 text-white" />
+            </button>
+
+            {/* Video Player */}
+            <video
+              ref={videoRef}
+              className="w-full h-full object-contain"
+              controls
+              autoPlay
+              playsInline
+            >
+              <source src={cdnUrl('/assets/videos/hero-section-16by9_vp9.webm')} type="video/webm; codecs=vp9" />
+              <source src={cdnUrl('/assets/videos/hero-section-16by9.mp4')} type="video/mp4" />
+            </video>
+          </motion.div>
+        </AnimatePresence>,
+        document.body
+      )}
 
       {/* Lightbox Modal - Rendered in Portal */}
       {mounted && selectedImage && createPortal(

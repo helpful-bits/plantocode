@@ -2,15 +2,14 @@
 
 import type { HTMLAttributes } from 'react';
 import { forwardRef } from 'react';
-import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
 export interface GlassCardProps extends HTMLAttributes<HTMLDivElement> {
   highlighted?: boolean;
 }
 
-const GlassCardComponent = forwardRef<HTMLDivElement, GlassCardProps & { whileHover?: any; transition?: any }>(
-  ({ className, highlighted = false, children, whileHover, transition, ...props }, ref) => {
+export const GlassCard = forwardRef<HTMLDivElement, GlassCardProps>(
+  ({ className, highlighted = false, children, ...props }, ref) => {
     const glassClass = highlighted ? 'glass-highlighted' : 'glass';
     const hasCustomPadding = className?.match(/p[xy]?-|p[trbl]-/);
 
@@ -33,8 +32,6 @@ const GlassCardComponent = forwardRef<HTMLDivElement, GlassCardProps & { whileHo
   },
 );
 
-GlassCardComponent.displayName = 'GlassCard';
-
-export const GlassCard = motion.create(GlassCardComponent);
+GlassCard.displayName = 'GlassCard';
 
 export default GlassCard;

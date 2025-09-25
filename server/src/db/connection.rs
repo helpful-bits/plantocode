@@ -37,7 +37,7 @@ async fn create_system_pool() -> Result<PgPool, AppError> {
     
     log::info!("Creating system database connection pool");
     
-    create_pool_with_role(&database_url, "vibe_manager_app", 5, "system").await
+    create_pool_with_role(&database_url, "vibe_manager_app", 20, "system").await
 }
 
 /// Creates a user-level connection pool with authenticated role.
@@ -48,7 +48,7 @@ async fn create_user_pool() -> Result<PgPool, AppError> {
     
     log::info!("Creating user database connection pool");
     
-    create_pool_with_role(&database_url, "authenticated", 15, "user").await
+    create_pool_with_role(&database_url, "authenticated", 50, "user").await
 }
 
 /// Generic function to create a connection pool with a specific role

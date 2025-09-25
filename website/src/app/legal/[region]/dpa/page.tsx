@@ -40,7 +40,7 @@ export default async function DPAPage({ params }: DPAPageProps) {
   return (
     <LegalContent
       title="Data Processing Addendum"
-      subtitle="Effective Date: August 12, 2025"
+      subtitle="Effective Date: September 22, 2025"
     >
       <section>
         <h2 className="text-2xl font-semibold mb-4">1. Definitions and Interpretation</h2>

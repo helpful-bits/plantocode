@@ -66,250 +66,7 @@ impl DeviceLinkWs {
         });
     }
 
-    /// Handle device registration
-    async fn handle_register_message(&mut self, payload: JsonValue, ctx: &mut ws::WebsocketContext<Self>) {
-        let device_id = match payload.get("device_id").and_then(|v| v.as_str()) {
-            Some(id) => id.to_string(),
-            None => {
-                self.send_error("Missing device_id in registration", ctx);
-                return;
-            }
-        };
 
-        let device_name = payload.get("device_name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Unknown Device")
-            .to_string();
-
-        let user_id = match self.user_id {
-            Some(id) => id,
-            None => {
-                self.send_error("Authentication required", ctx);
-                return;
-            }
-        };
-
-        // Register with connection manager
-        if let Some(connection_manager) = &self.connection_manager {
-            connection_manager.register_connection(
-                user_id,
-                device_id.clone(),
-                device_name.clone(),
-                ctx.address(),
-            );
-        }
-
-        self.device_id = Some(device_id.clone());
-        self.device_name = Some(device_name.clone());
-
-        info!(
-            connection_id = %self.connection_id,
-            user_id = %user_id,
-            device_id = %device_id,
-            device_name = %device_name,
-            "Device registered via WebSocket"
-        );
-
-        // Send registration confirmation
-        let response = serde_json::json!({
-            "type": "registered"
-        });
-
-        ctx.text(response.to_string());
-    }
-
-    /// Handle device heartbeat
-    async fn handle_heartbeat_message(&mut self, payload: JsonValue) {
-        if let (Some(device_id), Some(device_repo)) = (&self.device_id, &self.device_repository) {
-            let heartbeat = HeartbeatRequest {
-                cpu_usage: payload.get("cpu_usage")
-                    .and_then(|v| v.as_f64())
-                    .and_then(|v| BigDecimal::from_str(&v.to_string()).ok()),
-                memory_usage: payload.get("memory_usage")
-                    .and_then(|v| v.as_f64())
-                    .and_then(|v| BigDecimal::from_str(&v.to_string()).ok()),
-                disk_space_gb: payload.get("disk_space_gb").and_then(|v| v.as_i64()),
-                active_jobs: payload.get("active_jobs").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
-                status: payload.get("status").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            };
-
-            if let Ok(device_uuid) = device_id.parse::<Uuid>() {
-                if let Err(e) = device_repo.update_heartbeat(&device_uuid, heartbeat).await {
-                    warn!(
-                        device_id = %device_id,
-                        error = %e,
-                        "Failed to update device heartbeat in database"
-                    );
-                }
-            }
-
-            // Update last seen in connection manager
-            if let (Some(user_id), Some(connection_manager)) = (self.user_id, &self.connection_manager) {
-                connection_manager.update_last_seen(&user_id, device_id);
-            }
-        }
-    }
-
-    /// Handle message relay to another device
-    async fn handle_relay_message(&mut self, payload: JsonValue, ctx: &mut ws::WebsocketContext<Self>) {
-        let target_device_id = match payload.get("target_device_id").and_then(|v| v.as_str()) {
-            Some(id) => id,
-            None => {
-                self.send_error("Missing target_device_id in relay message", ctx);
-                return;
-            }
-        };
-
-        let message_type = payload.get("message_type")
-            .and_then(|v| v.as_str())
-            .unwrap_or("relay")
-            .to_string();
-
-        let message_payload = payload.get("payload").cloned().unwrap_or(JsonValue::Null);
-
-        let user_id = match self.user_id {
-            Some(id) => id,
-            None => {
-                self.send_error("Authentication required", ctx);
-                return;
-            }
-        };
-
-        if let Some(connection_manager) = &self.connection_manager {
-            let relay_message = DeviceMessage {
-                message_type,
-                payload: message_payload,
-                target_device_id: Some(target_device_id.to_string()),
-                timestamp: chrono::Utc::now(),
-            };
-
-            match connection_manager.send_to_device(&user_id, target_device_id, relay_message).await {
-                Ok(()) => {
-                    debug!(
-                        source_device = ?self.device_id,
-                        target_device = %target_device_id,
-                        user_id = %user_id,
-                        "Message relayed successfully"
-                    );
-                }
-                Err(e) => {
-                    warn!(
-                        source_device = ?self.device_id,
-                        target_device = %target_device_id,
-                        user_id = %user_id,
-                        error = %e,
-                        "Failed to relay message"
-                    );
-                    self.send_error(&format!("Failed to relay message: {}", e), ctx);
-                }
-            }
-        }
-    }
-
-    /// Handle broadcast event to all user devices
-    async fn handle_event_message(&mut self, payload: JsonValue) {
-        let event_type = payload.get("event_type")
-            .and_then(|v| v.as_str())
-            .unwrap_or("event")
-            .to_string();
-
-        let event_payload = payload.get("payload").cloned().unwrap_or(JsonValue::Null);
-
-        let user_id = match self.user_id {
-            Some(id) => id,
-            None => {
-                warn!("Cannot broadcast event: user not authenticated");
-                return;
-            }
-        };
-
-        if let Some(connection_manager) = &self.connection_manager {
-            let event_message = DeviceMessage {
-                message_type: event_type.clone(),
-                payload: event_payload,
-                target_device_id: None,
-                timestamp: chrono::Utc::now(),
-            };
-
-            match connection_manager.broadcast_to_user(&user_id, event_message).await {
-                Ok(count) => {
-                    info!(
-                        source_device = ?self.device_id,
-                        user_id = %user_id,
-                        event_type = %event_type,
-                        devices_reached = count,
-                        "Event broadcasted to user devices"
-                    );
-                }
-                Err(e) => {
-                    warn!(
-                        source_device = ?self.device_id,
-                        user_id = %user_id,
-                        event_type = %event_type,
-                        error = %e,
-                        "Failed to broadcast event"
-                    );
-                }
-            }
-        }
-    }
-
-    /// Handle relay response message from desktop to mobile
-    async fn handle_relay_response_message(&mut self, payload: JsonValue, ctx: &mut ws::WebsocketContext<Self>) {
-        // Validate authentication
-        let user_id = match self.user_id {
-            Some(id) => id,
-            None => {
-                self.send_error("Authentication required", ctx);
-                return;
-            }
-        };
-
-        if self.device_id.is_none() {
-            self.send_error("Authentication required", ctx);
-            return;
-        }
-
-        let client_id = match payload.get("client_id").and_then(|v| v.as_str()) {
-            Some(id) => id,
-            None => {
-                self.send_error("Missing client_id in relay_response message", ctx);
-                return;
-            }
-        };
-
-        let response_payload = payload.get("response").cloned().unwrap_or(JsonValue::Null);
-
-        if let Some(connection_manager) = &self.connection_manager {
-            // Forward to the target mobile device
-            let relay_response = serde_json::json!({
-                "type": "relay_response",
-                "client_id": client_id,
-                "response": response_payload
-            });
-
-            match connection_manager.send_raw_to_device(&user_id, client_id, &relay_response.to_string()) {
-                Ok(()) => {
-                    debug!(
-                        source_device = ?self.device_id,
-                        target_device = %client_id,
-                        user_id = %user_id,
-                        "Relay response forwarded successfully"
-                    );
-                }
-                Err(e) => {
-                    warn!(
-                        source_device = ?self.device_id,
-                        target_device = %client_id,
-                        user_id = %user_id,
-                        error = %e,
-                        "Failed to forward relay response"
-                    );
-                    self.send_error(&format!("Failed to forward relay response: {}", e), ctx);
-                }
-            }
-        }
-    }
 
     /// Send error message to client
     fn send_error(&self, message: &str, ctx: &mut ws::WebsocketContext<Self>) {
@@ -323,7 +80,7 @@ impl DeviceLinkWs {
     }
 
     /// Parse and handle incoming message
-    async fn handle_message(&mut self, msg: &str, ctx: &mut ws::WebsocketContext<Self>) {
+    fn handle_message(&mut self, msg: &str, ctx: &mut ws::WebsocketContext<Self>) {
         let parsed: JsonValue = match serde_json::from_str(msg) {
             Ok(json) => json,
             Err(e) => {
@@ -350,21 +107,38 @@ impl DeviceLinkWs {
             "Received WebSocket message"
         );
 
+        let addr = ctx.address();
+
         match message_type {
             "register" => {
-                self.handle_register_message(parsed, ctx).await;
+                let msg = HandleRegisterMessage { payload: parsed };
+                ctx.spawn(async move {
+                    addr.send(msg).await.ok();
+                }.into_actor(self));
             }
             "heartbeat" => {
-                self.handle_heartbeat_message(parsed).await;
+                let msg = HandleHeartbeatMessage { payload: parsed };
+                ctx.spawn(async move {
+                    addr.send(msg).await.ok();
+                }.into_actor(self));
             }
             "relay" => {
-                self.handle_relay_message(parsed, ctx).await;
+                let msg = HandleRelayMessageInternal { payload: parsed };
+                ctx.spawn(async move {
+                    addr.send(msg).await.ok();
+                }.into_actor(self));
             }
             "relay_response" => {
-                self.handle_relay_response_message(parsed, ctx).await;
+                let msg = HandleRelayResponseMessage { payload: parsed };
+                ctx.spawn(async move {
+                    addr.send(msg).await.ok();
+                }.into_actor(self));
             }
             "event" => {
-                self.handle_event_message(parsed).await;
+                let msg = HandleEventMessage { payload: parsed };
+                ctx.spawn(async move {
+                    addr.send(msg).await.ok();
+                }.into_actor(self));
             }
             _ => {
                 warn!(
@@ -390,7 +164,8 @@ impl Actor for DeviceLinkWs {
     fn started(&mut self, ctx: &mut Self::Context) {
         info!(
             connection_id = %self.connection_id,
-            "WebSocket connection started"
+            user_id = ?self.user_id,
+            "WebSocket connection started for user"
         );
         self.start_heartbeat(ctx);
     }
@@ -400,7 +175,7 @@ impl Actor for DeviceLinkWs {
             connection_id = %self.connection_id,
             user_id = ?self.user_id,
             device_id = ?self.device_id,
-            "WebSocket connection stopped"
+            "WebSocket connection stopped for user"
         );
 
         // Clean up connection from manager
@@ -483,13 +258,329 @@ struct HandleTextMessage {
     text: String,
 }
 
+/// Internal messages for handling different message types asynchronously
+#[derive(Message)]
+#[rtype(result = "()")]
+struct HandleRegisterMessage {
+    payload: JsonValue,
+}
+
+#[derive(Message)]
+#[rtype(result = "()")]
+struct HandleHeartbeatMessage {
+    payload: JsonValue,
+}
+
+#[derive(Message)]
+#[rtype(result = "()")]
+struct HandleRelayMessageInternal {
+    payload: JsonValue,
+}
+
+#[derive(Message)]
+#[rtype(result = "()")]
+struct HandleRelayResponseMessage {
+    payload: JsonValue,
+}
+
+#[derive(Message)]
+#[rtype(result = "()")]
+struct HandleEventMessage {
+    payload: JsonValue,
+}
+
 impl Handler<HandleTextMessage> for DeviceLinkWs {
-    type Result = ResponseActFuture<Self, ()>;
+    type Result = ();
 
     fn handle(&mut self, msg: HandleTextMessage, ctx: &mut Self::Context) -> Self::Result {
-        let fut = self.handle_message(&msg.text, ctx);
+        // Handle the message synchronously
+        self.handle_message(&msg.text, ctx);
+    }
+}
 
-        Box::pin(fut.into_actor(self).map(|_, _, _| ()))
+impl Handler<HandleRegisterMessage> for DeviceLinkWs {
+    type Result = ();
+
+    fn handle(&mut self, msg: HandleRegisterMessage, ctx: &mut Self::Context) -> Self::Result {
+        // Extract what we need from the payload
+        let device_id = match msg.payload.get("device_id").and_then(|v| v.as_str()) {
+            Some(id) => id.to_string(),
+            None => {
+                self.send_error("Missing device_id in registration", ctx);
+                return;
+            }
+        };
+
+        let device_name = msg.payload.get("device_name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown Device")
+            .to_string();
+
+        let user_id = match self.user_id {
+            Some(id) => id,
+            None => {
+                self.send_error("Authentication required", ctx);
+                return;
+            }
+        };
+
+        // Register with connection manager
+        if let Some(connection_manager) = &self.connection_manager {
+            connection_manager.register_connection(
+                user_id,
+                device_id.clone(),
+                device_name.clone(),
+                ctx.address(),
+            );
+        }
+
+        self.device_id = Some(device_id.clone());
+        self.device_name = Some(device_name.clone());
+
+        info!(
+            connection_id = %self.connection_id,
+            user_id = %user_id,
+            device_id = %device_id,
+            device_name = %device_name,
+            "Device registered via WebSocket"
+        );
+
+        // Send registration confirmation
+        let response = serde_json::json!({
+            "type": "registered"
+        });
+
+        ctx.text(response.to_string());
+    }
+}
+
+impl Handler<HandleHeartbeatMessage> for DeviceLinkWs {
+    type Result = ();
+
+    fn handle(&mut self, msg: HandleHeartbeatMessage, ctx: &mut Self::Context) -> Self::Result {
+        if let (Some(device_id), Some(device_repo)) = (&self.device_id, &self.device_repository) {
+            let heartbeat = HeartbeatRequest {
+                cpu_usage: msg.payload.get("cpu_usage")
+                    .and_then(|v| v.as_f64())
+                    .and_then(|v| BigDecimal::from_str(&v.to_string()).ok()),
+                memory_usage: msg.payload.get("memory_usage")
+                    .and_then(|v| v.as_f64())
+                    .and_then(|v| BigDecimal::from_str(&v.to_string()).ok()),
+                disk_space_gb: msg.payload.get("disk_space_gb").and_then(|v| v.as_i64()),
+                active_jobs: msg.payload.get("active_jobs").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
+                status: msg.payload.get("status").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            };
+
+            if let Ok(device_uuid) = device_id.parse::<Uuid>() {
+                let device_repo = device_repo.clone();
+                let device_id_str = device_id.clone();
+                // Spawn the async database update
+                ctx.spawn(async move {
+                    if let Err(e) = device_repo.update_heartbeat(&device_uuid, heartbeat).await {
+                        warn!(
+                            device_id = %device_id_str,
+                            error = %e,
+                            "Failed to update device heartbeat in database"
+                        );
+                    }
+                }.into_actor(self));
+            }
+
+            // Update last seen in connection manager (this is synchronous)
+            if let (Some(user_id), Some(connection_manager)) = (self.user_id, &self.connection_manager) {
+                connection_manager.update_last_seen(&user_id, device_id);
+            }
+        }
+    }
+}
+
+impl Handler<HandleRelayMessageInternal> for DeviceLinkWs {
+    type Result = ();
+
+    fn handle(&mut self, msg: HandleRelayMessageInternal, ctx: &mut Self::Context) -> Self::Result {
+        let target_device_id = match msg.payload.get("target_device_id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => {
+                self.send_error("Missing target_device_id in relay message", ctx);
+                return;
+            }
+        };
+
+        let message_type = msg.payload.get("message_type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("relay")
+            .to_string();
+
+        let message_payload = msg.payload.get("payload").cloned().unwrap_or(JsonValue::Null);
+
+        let user_id = match self.user_id {
+            Some(id) => id,
+            None => {
+                self.send_error("Authentication required", ctx);
+                return;
+            }
+        };
+
+        if let Some(connection_manager) = &self.connection_manager {
+            let relay_message = DeviceMessage {
+                message_type,
+                payload: message_payload,
+                target_device_id: Some(target_device_id.to_string()),
+                timestamp: chrono::Utc::now(),
+            };
+
+            let connection_manager = connection_manager.clone();
+            let target_device_id = target_device_id.to_string();
+            let source_device_id = self.device_id.clone();
+            let addr = ctx.address();
+
+            ctx.spawn(async move {
+                match connection_manager.send_to_device(&user_id, &target_device_id, relay_message).await {
+                    Ok(()) => {
+                        debug!(
+                            source_device = ?source_device_id,
+                            target_device = %target_device_id,
+                            user_id = %user_id,
+                            "Message relayed successfully"
+                        );
+                    }
+                    Err(e) => {
+                        warn!(
+                            source_device = ?source_device_id,
+                            target_device = %target_device_id,
+                            user_id = %user_id,
+                            error = %e,
+                            "Failed to relay message"
+                        );
+                        // Send error back to the actor
+                        let error_msg = format!("Failed to relay message: {}", e);
+                        addr.do_send(RelayMessage { message: serde_json::json!({
+                            "type": "error",
+                            "message": error_msg,
+                            "timestamp": chrono::Utc::now()
+                        }).to_string() });
+                    }
+                }
+            }.into_actor(self));
+        }
+    }
+}
+
+impl Handler<HandleRelayResponseMessage> for DeviceLinkWs {
+    type Result = ();
+
+    fn handle(&mut self, msg: HandleRelayResponseMessage, ctx: &mut Self::Context) -> Self::Result {
+        // Validate authentication
+        let user_id = match self.user_id {
+            Some(id) => id,
+            None => {
+                self.send_error("Authentication required", ctx);
+                return;
+            }
+        };
+
+        if self.device_id.is_none() {
+            self.send_error("Authentication required", ctx);
+            return;
+        }
+
+        let client_id = match msg.payload.get("client_id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => {
+                self.send_error("Missing client_id in relay_response message", ctx);
+                return;
+            }
+        };
+
+        let response_payload = msg.payload.get("response").cloned().unwrap_or(JsonValue::Null);
+
+        if let Some(connection_manager) = &self.connection_manager {
+            // Forward to the target mobile device
+            let relay_response = serde_json::json!({
+                "type": "relay_response",
+                "client_id": client_id,
+                "response": response_payload
+            });
+
+            let client_id_str = client_id.to_string();
+            let source_device_id = self.device_id.clone();
+            match connection_manager.send_raw_to_device(&user_id, &client_id_str, &relay_response.to_string()) {
+                Ok(()) => {
+                    debug!(
+                        source_device = ?source_device_id,
+                        target_device = %client_id_str,
+                        user_id = %user_id,
+                        "Relay response forwarded successfully"
+                    );
+                }
+                Err(e) => {
+                    warn!(
+                        source_device = ?source_device_id,
+                        target_device = %client_id_str,
+                        user_id = %user_id,
+                        error = %e,
+                        "Failed to forward relay response"
+                    );
+                    self.send_error(&format!("Failed to forward relay response: {}", e), ctx);
+                }
+            }
+        }
+    }
+}
+
+impl Handler<HandleEventMessage> for DeviceLinkWs {
+    type Result = ();
+
+    fn handle(&mut self, msg: HandleEventMessage, ctx: &mut Self::Context) -> Self::Result {
+        let event_type = msg.payload.get("event_type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("event")
+            .to_string();
+
+        let event_payload = msg.payload.get("payload").cloned().unwrap_or(JsonValue::Null);
+
+        let user_id = match self.user_id {
+            Some(id) => id,
+            None => {
+                warn!("Cannot broadcast event: user not authenticated");
+                return;
+            }
+        };
+
+        if let Some(connection_manager) = &self.connection_manager {
+            let event_message = DeviceMessage {
+                message_type: event_type.clone(),
+                payload: event_payload,
+                target_device_id: None,
+                timestamp: chrono::Utc::now(),
+            };
+
+            let connection_manager = connection_manager.clone();
+            let source_device_id = self.device_id.clone();
+
+            ctx.spawn(async move {
+                match connection_manager.broadcast_to_user(&user_id, event_message).await {
+                    Ok(count) => {
+                        info!(
+                            source_device = ?source_device_id,
+                            user_id = %user_id,
+                            event_type = %event_type,
+                            devices_reached = count,
+                            "Event broadcasted to user devices"
+                        );
+                    }
+                    Err(e) => {
+                        warn!(
+                            source_device = ?source_device_id,
+                            user_id = %user_id,
+                            event_type = %event_type,
+                            error = %e,
+                            "Failed to broadcast event"
+                        );
+                    }
+                }
+            }.into_actor(self));
+        }
     }
 }
 

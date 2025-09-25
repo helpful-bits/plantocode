@@ -6,16 +6,33 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/button';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { SearchDialog } from '@/components/docs/SearchDialog';
-import { docsManifest } from '@/docs/docs-manifest';
+import { docsManifest, type DocItem, type DocGroup } from '@/docs/docs-manifest';
 import { ArrowRight, FileCode, Zap, Brain, Search } from 'lucide-react';
 
 // Metadata needs to be moved to a separate file or layout when using 'use client'
 
 const getIconForSection = (slug: string) => {
-  if (slug.includes('plan-mode') || slug.includes('plan')) return <Brain className="w-5 h-5" />;
-  if (slug.includes('install') || slug === 'installation') return <FileCode className="w-5 h-5" />;
-  if (slug.includes('workflow') || slug.includes('vs')) return <Zap className="w-5 h-5" />;
+  if (slug.includes('implementation')) return <Brain className="w-5 h-5" />;
+  if (slug.includes('file') || slug.includes('terminal')) return <Zap className="w-5 h-5" />;
+  if (slug.includes('model')) return <Brain className="w-5 h-5" />;
+  if (slug.includes('voice')) return <Search className="w-5 h-5" />;
+  if (slug.includes('deep-research') || slug.includes('research')) return <Search className="w-5 h-5" />;
+  if (slug.includes('architecture')) return <FileCode className="w-5 h-5" />;
   return <FileCode className="w-5 h-5" />;
+};
+
+const collectDocItems = (items: (DocItem | DocGroup)[]): DocItem[] => {
+  const result: DocItem[] = [];
+
+  for (const item of items) {
+    if ('slug' in item) {
+      result.push(item);
+    } else if ('items' in item && item.items) {
+      result.push(...collectDocItems(item.items));
+    }
+  }
+
+  return result;
 };
 
 export default function DocsPage() {
@@ -27,10 +44,10 @@ export default function DocsPage() {
         {/* Hero Section */}
         <div className="text-center mb-12 sm:mb-16">
           <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-6 sm:mb-8 leading-tight bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent">
-            Enhance Claude Code & Cursor
+            Vibe Manager Documentation
           </h1>
           <p className="text-lg text-muted-foreground max-w-3xl mx-auto leading-relaxed mb-8">
-            Learn how Vibe Manager transforms your Claude Code and Cursor workflows with intelligent context preparation, implementation planning, and productivity enhancements
+            Explore the desktop app&rsquo;s verified capabilities, including text improvement, implementation plans, the file discovery workflow, terminal sessions, model configuration, and voice transcription.
           </p>
           
           {/* Search docs */}
@@ -73,7 +90,7 @@ export default function DocsPage() {
                 {/* Child links */}
                 {'items' in section && section.items && (
                   <div className="space-y-3 border-t border-border/50 pt-6">
-                    {section.items.slice(0, 3).map((item: any) => (
+                    {collectDocItems(section.items).map((item) => (
                       <Link
                         key={item.slug}
                         href={item.slug}
@@ -103,10 +120,10 @@ export default function DocsPage() {
         <div className="mt-16 sm:mt-20 lg:mt-24 text-center">
           <GlassCard className="p-8 sm:p-12" highlighted>
             <h2 className="text-2xl font-bold mb-6 text-foreground">
-              Ready to Transform Your AI Workflow?
+              Ready to try these workflows?
             </h2>
             <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto leading-relaxed">
-              Download Vibe Manager and enhance both Claude Code and Cursor with intelligent context preparation, implementation planning, and workflow optimization
+              Download Vibe Manager to access the implementation planner, model guardrails, terminal sessions, and transcription features described in this documentation.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <PlatformDownloadSection 

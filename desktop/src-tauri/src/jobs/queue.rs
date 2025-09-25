@@ -256,17 +256,17 @@ impl JobQueueProcessor {
 
     /// Run the queue processor
     async fn run(mut self) {
-        let mut last_stuck_job_check = std::time::SystemTime::now();
-        let stuck_job_check_interval = std::time::Duration::from_secs(300); // Check every 5 minutes
+        let mut last_attention_job_check = std::time::SystemTime::now();
+        let attention_job_check_interval = std::time::Duration::from_secs(300); // Check every 5 minutes
 
         while let Some(msg) = self.rx.recv().await {
-            // Periodically check for stuck jobs
+            // Periodically check for jobs requiring attention
             let now = std::time::SystemTime::now();
-            if now.duration_since(last_stuck_job_check).unwrap_or_default()
-                >= stuck_job_check_interval
+            if now.duration_since(last_attention_job_check).unwrap_or_default()
+                >= attention_job_check_interval
             {
-                self.check_for_stuck_jobs();
-                last_stuck_job_check = now;
+                self.check_for_jobs_requiring_attention();
+                last_attention_job_check = now;
             }
             match msg {
                 QueueMessage::Enqueue {
@@ -414,13 +414,13 @@ impl JobQueueProcessor {
     }
 
     /// Check for jobs that have been in the queue for an excessively long time
-    fn check_for_stuck_jobs(&self) {
+    fn check_for_jobs_requiring_attention(&self) {
         let current_timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as i64;
 
-        let stuck_threshold_ms = 30 * 60 * 1000; // 30 minutes
+        let attention_threshold_ms = 30 * 60 * 1000; // 30 minutes
 
         for (priority_level, queue) in self.queues.iter().enumerate() {
             for job in queue.iter() {
@@ -428,7 +428,7 @@ impl JobQueueProcessor {
                 let created_at_ms = job.created_at;
                 let age_ms = current_timestamp - created_at_ms;
 
-                if age_ms > stuck_threshold_ms {
+                if age_ms > attention_threshold_ms {
                     let priority_name = match priority_level {
                         0 => "Low",
                         1 => "Normal",
@@ -437,7 +437,7 @@ impl JobQueueProcessor {
                     };
 
                     warn!(
-                        "Job {} has been stuck in {} priority queue for {} minutes. Consider investigating.",
+                        "Job {} requires attention in {} priority queue for {} minutes. Consider investigating.",
                         job.id(),
                         priority_name,
                         age_ms / (60 * 1000)

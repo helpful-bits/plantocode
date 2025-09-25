@@ -34,12 +34,13 @@ export function WindowsStoreButton({
     : '/images/badges/microsoft-store-light.svg';
 
   return (
-    <a 
+    <a
       href="https://apps.microsoft.com/detail/9PCFLDMDJJBX?referrer=appbadge&mode=direct"
       target="_blank"
       rel="noopener noreferrer"
-      className={className}
-      style={{ display: 'inline-block', lineHeight: 0 }}
+      className={`${className} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded`}
+      style={{ display: 'inline-block', lineHeight: 0, minHeight: '44px' }}
+      aria-label="Download Vibe Manager from Microsoft Store"
     >
       <img 
         src={badgeUrl}

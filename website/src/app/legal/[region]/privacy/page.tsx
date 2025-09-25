@@ -41,7 +41,7 @@ export default async function PrivacyPage({ params }: PrivacyPageProps) {
     return (
       <LegalContent
         title="Privacy Policy"
-        subtitle="Effective Date: August 12, 2025"
+        subtitle="Effective Date: September 22, 2025"
       >
         <EUPrivacyContent />
       </LegalContent>
@@ -50,7 +50,7 @@ export default async function PrivacyPage({ params }: PrivacyPageProps) {
     return (
       <LegalContent
         title="Privacy Policy"
-        subtitle="Effective Date: August 12, 2025"
+        subtitle="Effective Date: September 22, 2025"
       >
         <USPrivacyContent />
       </LegalContent>

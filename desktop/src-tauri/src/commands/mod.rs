@@ -198,12 +198,14 @@ pub use consent_commands::{
 pub use terminal_commands::{
     attach_terminal_output_command, check_terminal_dependencies_command,
     clear_terminal_log_command, delete_terminal_log_command,
-    get_session_health_command, get_terminal_health_history, get_terminal_health_status,
+    get_terminal_health_history, get_terminal_health_status,
     get_terminal_prerequisites_status_command, get_terminal_session_status_command,
-    kill_terminal_session_command, list_active_terminal_sessions_command, read_terminal_log_command,
+    get_terminal_snapshot_command, kill_terminal_session_command, list_active_terminal_sessions_command, read_terminal_log_command,
+    read_terminal_log_len_command, read_terminal_log_since_command, read_terminal_log_tail_command,
     recover_terminal_session_command, register_terminal_health_session, resize_terminal_session_command,
     save_pasted_image_command, send_ctrl_c_to_terminal_command, start_terminal_session_command,
-    trigger_terminal_recovery, unregister_terminal_health_session,
+    start_terminal_session_remote_command, detach_terminal_remote_client_command,
+    touch_session_by_job_id, trigger_terminal_recovery, unregister_terminal_health_session,
     write_terminal_input_command,
 };
 

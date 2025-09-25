@@ -10,4 +10,21 @@ class VibeManagerAppDelegate: NSObject, UIApplicationDelegate {
     // URL handling not needed with polling-based auth
     return false
   }
+
+  func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+    PushNotificationManager.shared.didRegisterForRemoteNotifications(withDeviceToken: deviceToken)
+  }
+
+  func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+    PushNotificationManager.shared.didFailToRegisterForRemoteNotifications(withError: error)
+  }
+
+  func application(_ application: UIApplication,
+                   didReceiveRemoteNotification userInfo: [AnyHashable : Any],
+                   fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+    Task { @MainActor in
+      await PushNotificationManager.shared.didReceiveRemoteNotification(userInfo)
+      completionHandler(.newData)
+    }
+  }
 }

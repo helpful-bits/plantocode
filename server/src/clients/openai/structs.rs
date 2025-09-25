@@ -261,6 +261,22 @@ pub enum ContentItem {
     Parts(Vec<OpenAIContentPart>),
 }
 
+// OpenAI Responses API SSE Event Structs (2025 format)
+#[derive(Debug, Deserialize, Serialize)]
+pub struct OpenAIResponsesSSEEvent {
+    #[serde(rename = "type")]
+    pub event_type: String,
+    pub sequence_number: Option<i64>,
+    pub item_id: Option<String>,
+    pub output_index: Option<i32>,
+    pub content_index: Option<i32>,
+    pub delta: Option<String>,
+    pub output_text: Option<String>,
+    pub response: Option<serde_json::Value>,
+    pub logprobs: Option<Vec<serde_json::Value>>,
+    pub obfuscation: Option<String>,
+}
+
 // State for the streaming process
 #[derive(Debug)]
 pub enum StreamState {

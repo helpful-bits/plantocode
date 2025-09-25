@@ -3,10 +3,13 @@
   "dbRef": "/docs/database-overview.json",
   "appBehaviorRef": "/docs/app-behavior.json",
   "checkedPages": [
-    "claude-code-install",
-    "claude-code-vs-cursor",
-    "claude-code-alternative",
-    "blog index"
+    "docs/text-improvement",
+    "docs/implementation-plans",
+    "docs/file-discovery",
+    "docs/model-configuration",
+    "docs/terminal-sessions",
+    "docs/voice-transcription",
+    "docs/vibe-manager-architecture"
   ],
   "status": "complete"
 }
