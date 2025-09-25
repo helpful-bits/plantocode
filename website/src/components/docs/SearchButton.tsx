@@ -35,7 +35,7 @@ export default function SearchButton({ type = 'desktop', className }: SearchButt
         type="button"
         onClick={() => setIsOpen(true)}
         variant={isDesktop ? 'outline' : 'outline'}
-        size={isDesktop ? 'sm' : 'compact'}
+        size={isDesktop ? 'sm' : 'sm'}
         className={[
           isDesktop ? 'w-full justify-start px-4 mb-4' : 'px-2',
           'gap-2',

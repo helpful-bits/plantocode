@@ -41,7 +41,7 @@ export default async function TermsPage({ params }: TermsPageProps) {
     return (
       <LegalContent
         title="Terms of Service"
-        subtitle="Effective Date: August 12, 2025"
+        subtitle="Effective Date: September 22, 2025"
       >
         <EUTermsContent />
       </LegalContent>
@@ -50,7 +50,7 @@ export default async function TermsPage({ params }: TermsPageProps) {
     return (
       <LegalContent
         title="Terms of Service"
-        subtitle="Effective Date: August 12, 2025"
+        subtitle="Effective Date: September 22, 2025"
       >
         <USTermsContent />
       </LegalContent>

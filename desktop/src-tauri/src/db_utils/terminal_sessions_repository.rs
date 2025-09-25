@@ -3,8 +3,7 @@ use crate::events::terminal_events::{emit_terminal_status_changed, emit_terminal
 use serde::{Deserialize, Serialize};
 use sqlx::{Row, SqlitePool, sqlite::SqliteRow};
 use std::sync::Arc;
-use tauri::AppHandle;
-use uuid::Uuid;
+use tauri::{AppHandle, Emitter};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TerminalSession {
@@ -19,7 +18,7 @@ pub struct TerminalSession {
     pub working_directory: Option<String>,
     pub environment_vars: Option<String>, // JSON string
     pub title: Option<String>,
-    pub output_log: Option<String>, // Terminal output log
+    pub output_log: String, // Terminal output log
 }
 
 impl TerminalSession {
@@ -36,7 +35,7 @@ impl TerminalSession {
             working_directory: row.try_get("working_directory")?,
             environment_vars: row.try_get("environment_vars")?,
             title: row.try_get("title")?,
-            output_log: row.try_get("output_log").ok(),
+            output_log: row.try_get("output_log").unwrap_or_default(),
         })
     }
 }
@@ -149,13 +148,6 @@ impl TerminalSessionsRepository {
     pub async fn get_or_create_session(&self, job_id: &str) -> AppResult<TerminalSession> {
         // First try to get existing session
         if let Some(existing) = self.get_session_by_job_id(job_id).await? {
-            // Ensure output_log is never null
-            if existing.output_log.is_none() {
-                let mut updated = existing.clone();
-                updated.output_log = Some(String::new());
-                self.update_session(&updated).await?;
-                return Ok(updated);
-            }
             return Ok(existing);
         }
 
@@ -172,7 +164,7 @@ impl TerminalSessionsRepository {
             working_directory: None,
             environment_vars: None,
             title: None,
-            output_log: Some(String::new()), // Ensure it's never null
+            output_log: String::new(),
         };
 
         self.create_session(&new_session).await?;
@@ -194,15 +186,11 @@ impl TerminalSessionsRepository {
         Ok(sessions)
     }
 
-    pub async fn append_output_log(&self, job_id: &str, chunk: &str) -> AppResult<()> {
-        // Ring buffer: Keep only last 5MB of output to prevent unbounded growth
-        const MAX_LOG_SIZE: i32 = 5242880; // 5 MiB
-
-        // Handle the case where output_log is NULL in DB - use COALESCE to ensure it's never null
+    pub async fn append_output_log_with_limit(&self, job_id: &str, chunk: &str, max_bytes: i32) -> AppResult<()> {
         let rows_affected = sqlx::query(
             r#"
             UPDATE terminal_sessions
-            SET output_log = SUBSTR(COALESCE(output_log, '') || ?2, -?3),
+            SET output_log = SUBSTR(output_log || ?2, -?3),
                 last_output_at = strftime('%s', 'now'),
                 updated_at = strftime('%s', 'now')
             WHERE job_id = ?1
@@ -210,7 +198,7 @@ impl TerminalSessionsRepository {
         )
         .bind(job_id)
         .bind(chunk)
-        .bind(MAX_LOG_SIZE)
+        .bind(max_bytes)
         .execute(&*self.pool)
         .await?
         .rows_affected();
@@ -223,7 +211,7 @@ impl TerminalSessionsRepository {
             sqlx::query(
                 r#"
                 UPDATE terminal_sessions
-                SET output_log = SUBSTR(COALESCE(output_log, '') || ?2, -?3),
+                SET output_log = SUBSTR(output_log || ?2, -?3),
                     last_output_at = strftime('%s', 'now'),
                     updated_at = strftime('%s', 'now')
                 WHERE job_id = ?1
@@ -231,7 +219,7 @@ impl TerminalSessionsRepository {
             )
             .bind(job_id)
             .bind(chunk)
-            .bind(MAX_LOG_SIZE)
+            .bind(max_bytes)
             .execute(&*self.pool)
             .await?;
         }
@@ -239,9 +227,13 @@ impl TerminalSessionsRepository {
         Ok(())
     }
 
+    pub async fn append_output_log(&self, job_id: &str, chunk: &str) -> AppResult<()> {
+        self.append_output_log_with_limit(job_id, chunk, 5242880).await
+    }
+
     pub async fn has_output(&self, job_id: &str) -> AppResult<bool> {
         let row: Option<(i32,)> = sqlx::query_as(
-            "SELECT CASE WHEN COALESCE(output_log, '') = '' THEN 0 ELSE 1 END FROM terminal_sessions WHERE job_id = ?1",
+            "SELECT CASE WHEN output_log = '' THEN 0 ELSE 1 END FROM terminal_sessions WHERE job_id = ?1",
         )
         .bind(job_id)
         .fetch_optional(&*self.pool)
@@ -252,7 +244,7 @@ impl TerminalSessionsRepository {
 
     pub async fn get_output_log(&self, job_id: &str) -> AppResult<String> {
         let row: Option<(String,)> = sqlx::query_as(
-            "SELECT COALESCE(output_log, '') FROM terminal_sessions WHERE job_id = ?1",
+            "SELECT output_log FROM terminal_sessions WHERE job_id = ?1",
         )
         .bind(job_id)
         .fetch_optional(&*self.pool)
@@ -370,5 +362,78 @@ impl TerminalSessionsRepository {
         .execute(&*self.pool)
         .await?;
         Ok(())
+    }
+
+    pub async fn get_output_log_tail(&self, job_id: &str, max_bytes: i32) -> AppResult<String> {
+        let row = sqlx::query(
+            "SELECT SUBSTR(output_log, -?1) as tail FROM terminal_sessions WHERE job_id = ?2"
+        )
+        .bind(max_bytes)
+        .bind(job_id)
+        .fetch_optional(&*self.pool)
+        .await?;
+
+        Ok(row
+            .and_then(|r| r.try_get::<Option<String>, _>("tail").ok().flatten())
+            .unwrap_or_default())
+    }
+
+    pub async fn update_session_status_by_job_id(&self, job_id: &str, status: &str, exit_code: Option<i64>) -> AppResult<()> {
+        let mut session = self.get_session_by_job_id(job_id).await?.ok_or(crate::error::AppError::NotFoundError("Session not found".to_string()))?;
+        session.status = status.to_string();
+        session.exit_code = exit_code;
+        session.updated_at = chrono::Utc::now().timestamp();
+        self.update_session(&session).await?;
+        if let Some(ref app_handle) = self.app_handle {
+            emit_terminal_status_changed(app_handle, TerminalStatusChangedPayload {
+                job_id: job_id.to_string(),
+                status: status.to_string(),
+                updated_at: chrono::Utc::now().timestamp().to_string(),
+            });
+        }
+        Ok(())
+    }
+
+    pub async fn touch_session_by_job_id(&self, job_id: &str) -> AppResult<()> {
+        sqlx::query("UPDATE terminal_sessions SET updated_at = strftime('%s','now') WHERE job_id = ?")
+            .bind(job_id)
+            .execute(&*self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn get_output_log_len(&self, job_id: &str) -> AppResult<i64> {
+        let row = sqlx::query("SELECT LENGTH(output_log) as len FROM terminal_sessions WHERE job_id = ?1")
+            .bind(job_id)
+            .fetch_optional(&*self.pool)
+            .await?;
+
+        match row {
+            Some(r) => Ok(r.try_get::<Option<i64>, _>("len")?.unwrap_or(0)),
+            None => Ok(0),
+        }
+    }
+
+    pub async fn get_output_log_since(&self, job_id: &str, from_offset: i64, max_bytes: i32) -> AppResult<(String, i64)> {
+        // Clamp max_bytes to reasonable range [131072, 33554432]
+        let clamped_max = max_bytes.clamp(131072, 33554432);
+
+        let row = sqlx::query(
+            "SELECT SUBSTR(output_log, ?1 + 1, ?2) as slice, LENGTH(output_log) as total_len FROM terminal_sessions WHERE job_id = ?3"
+        )
+            .bind(from_offset)
+            .bind(clamped_max)
+            .bind(job_id)
+            .fetch_optional(&*self.pool)
+            .await?;
+
+        match row {
+            Some(r) => {
+                let slice: Option<String> = r.try_get("slice")?;
+                let total_len: Option<i64> = r.try_get("total_len")?;
+                Ok((slice.unwrap_or_default(), total_len.unwrap_or(0)))
+            }
+            None => Ok((String::new(), 0)),
+        }
     }
 }

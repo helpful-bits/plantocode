@@ -123,14 +123,24 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
         medium: 'text-yellow-500',
         low: 'text-blue-500'
       };
-      return <AlertTriangle className={`h-3 w-3 ${attentionColors[attention.level]}`} data-testid="attention-icon" />;
+      return (
+        <AlertTriangle
+          className={`h-3 w-3 ${attentionColors[attention.level]}`}
+          data-testid="attention-icon"
+        />
+      );
     }
 
     // Check subStatusMessage for attention keywords
     if (parsedMeta?.subStatusMessage) {
-      const message = parsedMeta.subStatusMessage.toLowerCase();
+      const message = String(parsedMeta.subStatusMessage).toLowerCase();
       if (message.includes('input') || message.includes('waiting') || message.includes('prompt') || message.includes('confirm')) {
-        return <AlertTriangle className="h-3 w-3 text-yellow-500" data-testid="attention-icon-message" />;
+        return (
+          <AlertTriangle
+            className="h-3 w-3 text-yellow-500"
+            data-testid="attention-icon-message"
+          />
+        );
       }
     }
 
@@ -148,8 +158,8 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
         return <Check className="h-3 w-3 text-green-500" data-testid="terminal-status-completed" />;
       case 'failed':
         return <AlertTriangle className="h-3 w-3 text-red-500" data-testid="terminal-status-failed" />;
-      case 'stuck':
-        return <AlertTriangle className="h-3 w-3 text-amber-500" data-testid="terminal-status-stuck" />;
+      case 'agent_requires_attention':
+        return <AlertTriangle className="h-3 w-3 text-amber-500" data-testid="terminal-status-agent-requires-attention" />;
       default:
         return null;
     }

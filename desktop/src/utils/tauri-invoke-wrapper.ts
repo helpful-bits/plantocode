@@ -12,10 +12,16 @@ import { triggerGlobalAuthErrorHandler } from '@/utils/auth-error-handler';
  * Wrapped invoke function that automatically logs all errors and handles auth failures
  * This is the CENTRAL point for all Tauri command error logging and auth error handling
  */
+interface InvokeOptions {
+  suppressErrorLog?: boolean;
+}
+
 export async function invoke<T>(
   command: string,
-  args?: InvokeArgs
+  args?: InvokeArgs,
+  options?: InvokeOptions
 ): Promise<T> {
+  const { suppressErrorLog = false } = options ?? {};
   const startTime = performance.now();
   
   try {
@@ -44,16 +50,18 @@ export async function invoke<T>(
     }
     
     // Centralized error logging for ALL Tauri command failures
-    await logError(error, `Tauri Command Failed: ${command}`, {
-      command,
-      args,
-      duration: `${duration.toFixed(0)}ms`,
-      timestamp: new Date().toISOString(),
-      isAuthError,
-    }).catch(() => {
-      // Prevent recursive failure if logging itself fails
-      console.error(`Failed to log error for command: ${command}`, error);
-    });
+    if (!suppressErrorLog) {
+      await logError(error, `Tauri Command Failed: ${command}`, {
+        command,
+        args,
+        duration: `${duration.toFixed(0)}ms`,
+        timestamp: new Date().toISOString(),
+        isAuthError,
+      }).catch(() => {
+        // Prevent recursive failure if logging itself fails
+        console.error(`Failed to log error for command: ${command}`, error);
+      });
+    }
     
     // Re-throw to maintain existing error handling behavior
     throw error;

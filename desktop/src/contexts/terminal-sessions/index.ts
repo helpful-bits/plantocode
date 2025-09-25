@@ -15,3 +15,4 @@ export type {
 } from "./types";
 
 export { useTerminalSessions } from "./useTerminalSessions";
+export * from "./useTerminalHealth";

@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { Download } from 'lucide-react';
+import { Button } from './button';
 import { DownloadButton } from './DownloadButton';
 import { MacDownloadButton } from './MacDownloadButton';
 import { WindowsStoreButton } from './WindowsStoreButton';
@@ -22,7 +23,7 @@ export function PlatformDownloadSection({
 
   if (isLoading) {
     return (
-      <div className={className}>
+      <div className={`flex justify-center ${className || ''}`}>
         <DownloadButton
           location={location}
           size="lg"
@@ -38,7 +39,7 @@ export function PlatformDownloadSection({
   // Show Windows Store button for Windows users
   if (isWindows) {
     return (
-      <div className={className}>
+      <div className={`flex justify-center ${className || ''}`}>
         <WindowsStoreButton size={location === 'hero_section' || location === 'cta_section' || location === 'demo_screenshots' || location === 'pricing' ? 'medium' : 'small'} />
       </div>
     );
@@ -47,7 +48,7 @@ export function PlatformDownloadSection({
   // Show Mac download button for Mac users
   if (isMac) {
     return (
-      <div className={className}>
+      <div className={`flex justify-center ${className || ''}`}>
         <MacDownloadButton
           location={location}
           size="lg"
@@ -59,22 +60,21 @@ export function PlatformDownloadSection({
   // If platform is unknown and redirect is enabled, show download page link
   if (platform === 'other' && redirectToDownloadPage) {
     return (
-      <div className={className}>
-        <Link
-          href="/downloads"
-          className="inline-flex items-center justify-center px-6 py-3 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg transition-colors"
-        >
-          <Download className="w-4 h-4 mr-2" />
-          Download Vibe Manager
-        </Link>
+      <div className={`flex justify-center ${className || ''}`}>
+        <Button variant="cta" size="lg" asChild>
+          <Link href="/downloads" className="flex items-center gap-2">
+            <Download className="w-4 h-4" />
+            Download Vibe Manager
+          </Link>
+        </Button>
       </div>
     );
   }
 
   // Default: show both options stacked (for hero section)
   return (
-    <div className={className}>
-      <div className="flex flex-col gap-6 sm:gap-4 w-full max-w-md mx-auto">
+    <div className={`flex justify-center ${className || ''}`}>
+      <div className="flex flex-col gap-6 sm:gap-4 w-full max-w-md">
         <div className="flex flex-col items-center gap-2">
           <span className="text-sm font-medium text-muted-foreground">Mac • Signed & Notarized</span>
           <MacDownloadButton
@@ -87,7 +87,7 @@ export function PlatformDownloadSection({
           <WindowsStoreButton size={location === 'hero_section' || location === 'cta_section' || location === 'demo_screenshots' || location === 'pricing' ? 'medium' : 'small'} />
         </div>
         <div className="flex flex-col items-center gap-1 mt-2">
-          <span className="text-xs text-muted-foreground">$10 Free Credits • Pay-as-you-go</span>
+          <span className="text-xs text-muted-foreground">$5 Free Credits • Pay-as-you-go</span>
           <span className="text-xs text-muted-foreground">Local Session History • No Subscriptions</span>
         </div>
       </div>

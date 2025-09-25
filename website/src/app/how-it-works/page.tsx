@@ -2,6 +2,7 @@ import { Metadata } from 'next';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
+import Link from 'next/link';
 import {
   FileSearch,
   GitMerge,
@@ -14,16 +15,16 @@ import {
   Sparkles,
   Zap,
   Target,
-  ArrowRight,
   Video,
   Mic,
   FileText
 } from 'lucide-react';
-import Link from 'next/link';
+import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
+import { Button } from '@/components/ui/button';
 
 export const metadata: Metadata = {
-  title: 'How It Works - AI Architect Studio Workflow | Vibe Manager',
-  description: 'Step-by-step workflow: Generate implementation plans from multiple AI models, edit in Monaco editor, merge with custom instructions, execute in integrated terminal. Built for professional developers.',
+  title: 'How It Works - AI planning workflow | Vibe Manager',
+  description: 'Step-by-step workflow: surface the right files, generate implementation plans from configured models, edit in the Monaco workspace, and execute through the integrated terminal.',
   keywords: [
     'ai workflow',
     'implementation plan workflow',
@@ -32,7 +33,6 @@ export const metadata: Metadata = {
     'ai terminal execution',
     'claude code workflow',
     'codex cli workflow',
-    'aider workflow',
     'ai plan editing',
     'multi model ai planning',
     'professional ai tools',
@@ -60,22 +60,22 @@ export default function HowItWorksPage() {
       title: "Describe Your Task",
       subtitle: "Multiple input methods for maximum efficiency",
       icon: <FileText className="w-6 h-6" />,
-      description: "Start with natural language description of what you want to build or fix.",
+      description: "Start with natural language description of what you want to build or fix, then highlight the draft to refine it before moving on.",
       methods: [
         {
           icon: <Edit3 className="w-5 h-5" />,
           title: "AI-Enhanced Text",
-          description: "Type your task description and get AI assistance to enhance it with goals, constraints, and affected areas."
+          description: "Highlight any draft and press the Sparkles popover. The text-improvement job uses Claude Sonnet 4 or Gemini 2.5 Flash to rewrite the selection without touching formatting."
         },
         {
           icon: <Mic className="w-5 h-5" />,
           title: "Voice Dictation",
-          description: "Speak your requirements naturally. 10x faster than typing for complex feature descriptions."
+          description: "Speak your requirements naturally. Transcripts land in the editor with project defaults so you can run the same improvement popover immediately."
         },
         {
           icon: <Video className="w-5 h-5" />,
           title: "Screen Recording",
-          description: "Record bugs, workflows, or visual context. Gemini 2.5 Pro analyzes recordings to extract technical details."
+          description: "Record bugs, workflows, or visual context. Gemini 2.5 Pro analyzes recordings, and the resulting notes can be refined with the text improvement flow before planning."
         }
       ]
     },
@@ -86,11 +86,11 @@ export default function HowItWorksPage() {
       icon: <FileSearch className="w-6 h-6" />,
       description: "From thousands of files, AI identifies the exact files you need to touch.",
       features: [
-        "Code-aware dependency detection",
-        "Legacy pattern recognition",
-        "Non-obvious file connections",
-        "Impact surface analysis",
-        "Configuration file detection"
+        "Pattern groups generated per workflow stage",
+        "Regex filters and exclusions ready to apply",
+        "Relevance scoring before you commit to a selection",
+        "Undo/redo history for file picks",
+        "Support for external file metadata"
       ]
     },
     {
@@ -100,12 +100,12 @@ export default function HowItWorksPage() {
       icon: <Brain className="w-6 h-6" />,
       description: "Generate multiple implementation approaches from different AI models simultaneously.",
       models: [
-        "GPT-5 & GPT-4",
-        "Claude Sonnet 4",
-        "Gemini 2.5 Pro",
-        "o3/o4-mini",
-        "Grok 4",
-        "DeepSeek R1"
+        "OpenAI GPT-5",
+        "Anthropic Claude 4 Sonnet",
+        "Google Gemini 2.5 Pro",
+        "OpenAI o3 / o4 Mini",
+        "xAI Grok 4",
+        "DeepSeek R1 & Moonshot Kimi K2"
       ]
     },
     {
@@ -115,9 +115,9 @@ export default function HowItWorksPage() {
       icon: <Code2 className="w-6 h-6" />,
       description: "Full VS Code editor for AI-generated plans. Not a chat interface - a professional editing experience.",
       capabilities: [
-        "Syntax highlighting for XML plans",
-        "Multi-cursor editing",
-        "Find & replace with regex",
+        "Syntax highlighting inside Monaco",
+        "Prompt preview & copy buttons",
+        "Token estimation with context warnings",
         "Auto-save with change tracking",
         "Copy individual steps",
         "Reorder and restructure plans"
@@ -143,12 +143,12 @@ export default function HowItWorksPage() {
       icon: <Terminal className="w-6 h-6" />,
       description: "Run your perfected plan immediately. Integrated terminal with persistent sessions.",
       tools: [
-        "Claude Code with streaming",
+        "Claude Code CLI",
+        "Cursor CLI",
         "OpenAI Codex CLI",
-        "Aider for code editing",
-        "Custom command orchestration",
-        "Voice-to-terminal dictation",
-        "Session transcript retention"
+        "Gemini CLI",
+        "Voice transcription inside the terminal",
+        "Persistent terminal log with auto-recovery"
       ]
     }
   ];
@@ -162,12 +162,12 @@ export default function HowItWorksPage() {
     {
       icon: <Zap className="w-8 h-8" />,
       title: "Persistent Sessions",
-      description: "Complete history including terminal transcripts. Close the app, come back next week, continue debugging."
+      description: "Terminal output is stored locally and sessions restore on launch. Close the app, come back next week, continue debugging."
     },
     {
       icon: <Sparkles className="w-8 h-8" />,
-      title: "Professional Ready",
-      description: "Single-tenant servers, command approvals, transcript retention. Built for teams that can't use cloud-only tools."
+      title: "Deploy on your terms",
+      description: "Use the included Rust proxy server with your own API keys when you need to keep requests on infrastructure you control."
     }
   ];
 
@@ -196,25 +196,6 @@ export default function HowItWorksPage() {
                 </p>
               </div>
 
-              {/* Quick Demo Link */}
-              <div className="mb-16 text-center">
-                <GlassCard className="p-6 max-w-md mx-auto">
-                  <div className="flex items-center gap-3 mb-3">
-                    <Play className="w-5 h-5 text-primary" />
-                    <span className="font-semibold">See It In Action</span>
-                  </div>
-                  <p className="text-sm text-foreground/70 mb-4">
-                    Watch the interactive demo to see the complete workflow
-                  </p>
-                  <Link
-                    href="/demo"
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium"
-                  >
-                    Try Interactive Demo
-                    <ArrowRight className="w-4 h-4" />
-                  </Link>
-                </GlassCard>
-              </div>
 
               {/* Workflow Steps */}
               <div className="mb-20">
@@ -324,29 +305,6 @@ export default function HowItWorksPage() {
                 </div>
               </div>
 
-              {/* Screenshots Placeholder */}
-              <div className="mb-16">
-                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">See It In Action</h2>
-                <div className="grid md:grid-cols-2 gap-8">
-                  <GlassCard className="p-2">
-                    <div className="bg-black/50 rounded-lg p-8 text-center">
-                      <Code2 className="w-16 h-16 text-primary/50 mx-auto mb-4" />
-                      <p className="text-foreground/60 text-sm">
-                        [Screenshot: Monaco editor showing multiple AI plans side-by-side with merge instructions panel]
-                      </p>
-                    </div>
-                  </GlassCard>
-
-                  <GlassCard className="p-2">
-                    <div className="bg-black/50 rounded-lg p-8 text-center">
-                      <Terminal className="w-16 h-16 text-primary/50 mx-auto mb-4" />
-                      <p className="text-foreground/60 text-sm">
-                        [Screenshot: Integrated terminal executing Claude Code with voice dictation and session transcripts]
-                      </p>
-                    </div>
-                  </GlassCard>
-                </div>
-              </div>
 
               {/* Key Features */}
               <div className="mb-16">
@@ -409,7 +367,7 @@ export default function HowItWorksPage() {
                       </li>
                       <li className="flex items-start gap-2">
                         <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
-                        <span>Complete session transcripts</span>
+                        <span>Persistent terminal log</span>
                       </li>
                     </ul>
                   </GlassCard>
@@ -460,6 +418,24 @@ export default function HowItWorksPage() {
                 </div>
               </div>
 
+              {/* See It In Action */}
+              <div className="mb-16">
+                <GlassCard className="p-6 max-w-2xl mx-auto text-center">
+                  <div className="flex items-center justify-center gap-3 mb-3">
+                    <Play className="w-6 h-6 text-primary" />
+                    <h2 className="text-2xl font-bold">See It In Action</h2>
+                  </div>
+                  <p className="text-foreground/70 mb-6">
+                    Watch the interactive demo to see the complete workflow
+                  </p>
+                  <Button variant="cta" size="lg" asChild>
+                    <Link href="/demo">
+                      Try Interactive Demo
+                    </Link>
+                  </Button>
+                </GlassCard>
+              </div>
+
               {/* CTA */}
               <div className="text-center">
                 <GlassCard className="p-8 sm:p-12 max-w-4xl mx-auto" highlighted>
@@ -472,17 +448,17 @@ export default function HowItWorksPage() {
                   <PlatformDownloadSection location="how_it_works" />
 
                   <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4 text-sm text-foreground/60">
-                    <Link href="/demo" className="text-primary hover:underline">
-                      Try interactive demo →
-                    </Link>
+                    <LinkWithArrow href="/demo">
+                      Try interactive demo
+                    </LinkWithArrow>
                     <span className="hidden sm:inline">•</span>
-                    <Link href="/features/plan-editor" className="text-primary hover:underline">
-                      Learn about plan editing →
-                    </Link>
+                    <LinkWithArrow href="/features/plan-mode">
+                      Learn about plan editing
+                    </LinkWithArrow>
                     <span className="hidden sm:inline">•</span>
-                    <Link href="/docs" className="text-primary hover:underline">
-                      View documentation →
-                    </Link>
+                    <LinkWithArrow href="/docs">
+                      View documentation
+                    </LinkWithArrow>
                   </div>
                 </GlassCard>
               </div>

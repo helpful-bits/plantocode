@@ -13,10 +13,11 @@ interface TerminalViewProps {
   onBlur?: () => void;
   onImagePaste?: (file: File) => void;
   height?: number | string;
+  jobId?: string;
 }
 
 // Use React.memo to prevent unnecessary re-renders
-export const TerminalView = React.memo<TerminalViewProps>(({ onData, onReady, onResize, onFocus, onBlur, onImagePaste, height = "100%" }) => {
+export const TerminalView = React.memo<TerminalViewProps>(({ onData, onReady, onResize, onFocus, onBlur, onImagePaste, height = "100%", jobId }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -24,7 +25,10 @@ export const TerminalView = React.memo<TerminalViewProps>(({ onData, onReady, on
   const resizeListenerRef = useRef<IDisposable | null>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const disposedRef = useRef<boolean>(false);
-  const resizeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const resizeTimeoutRef = useRef<number | null>(null);
+  const unicode11AddonRef = useRef<Unicode11Addon | null>(null);
+  const webglAddonRef = useRef<WebglAddon | null>(null);
+  const jobIdRef = useRef<string | null>(null);
 
   // Store callbacks in refs to avoid re-creation issues
   const onDataRef = useRef<((data: string) => void) | undefined>(onData);
@@ -108,6 +112,7 @@ export const TerminalView = React.memo<TerminalViewProps>(({ onData, onReady, on
     // Load addons
     term.loadAddon(fitAddon);
     term.loadAddon(unicode11Addon);
+    unicode11AddonRef.current = unicode11Addon;
     term.open(containerRef.current);
 
     // Stop propagation in capture phase for critical keys so modal doesn't intercept
@@ -147,6 +152,7 @@ export const TerminalView = React.memo<TerminalViewProps>(({ onData, onReady, on
       try {
         const webglAddon = new WebglAddon();
         term.loadAddon(webglAddon);
+        webglAddonRef.current = webglAddon;
       } catch (error) {
         // WebGL renderer not available, falling back to canvas
       }
@@ -247,9 +253,9 @@ export const TerminalView = React.memo<TerminalViewProps>(({ onData, onReady, on
       if (!disposedRef.current) {
         // Throttle resize handling for better performance
         if (resizeTimeoutRef.current) {
-          clearTimeout(resizeTimeoutRef.current);
+          window.clearTimeout(resizeTimeoutRef.current);
         }
-        resizeTimeoutRef.current = setTimeout(() => {
+        resizeTimeoutRef.current = window.setTimeout(() => {
           safeFit();
           resizeTimeoutRef.current = null;
         }, 100); // Throttle to 100ms
@@ -258,47 +264,77 @@ export const TerminalView = React.memo<TerminalViewProps>(({ onData, onReady, on
     resizeObserverRef.current = resizeObserver;
     resizeObserver.observe(containerRef.current);
 
+    // Setup IntersectionObserver for visibility-based fitting
+    const intersectionObserver = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && entry.intersectionRatio > 0) {
+            safeFit();
+          }
+        });
+      },
+      { threshold: [0.01, 0.5, 1.0] }
+    );
+    intersectionObserver.observe(containerRef.current);
+
+    // Ensure fit happens even if initially zero-sized
+    const ensureFitLoop = () => {
+      let attempts = 0;
+      const maxAttempts = 30; // Try for up to ~1 second
+
+      const tryFit = () => {
+        if (disposedRef.current || attempts >= maxAttempts) return;
+
+        const rect = containerRef.current?.getBoundingClientRect();
+        if (rect && rect.width > 0 && rect.height > 0) {
+          safeFit();
+        } else {
+          attempts++;
+          requestAnimationFrame(tryFit);
+        }
+      };
+
+      tryFit();
+    };
+
+    // Call it after terminal is ready
+    ensureFitLoop();
+
     return () => {
       disposedRef.current = true;
 
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleFocus);
+      try { fitAddonRef.current?.dispose(); } catch {}
+      try { unicode11AddonRef.current?.dispose(); } catch {}
+      try { webglAddonRef.current?.dispose(); } catch {}
 
-      containerRef.current?.removeEventListener("keydown", stopCriticalKeys);
-      containerRef.current?.removeEventListener('contextmenu', handleContextMenu);
-
-      term.textarea?.removeEventListener('paste', handlePasteEvent);
-      term.textarea?.removeEventListener('focus', handleFocusEvent);
-      term.textarea?.removeEventListener('blur', handleBlurEvent);
+      dataListenerRef.current?.dispose();
+      resizeListenerRef.current?.dispose();
+      resizeObserverRef.current?.disconnect();
+      intersectionObserver?.disconnect();
 
       if (resizeTimeoutRef.current) {
         clearTimeout(resizeTimeoutRef.current);
-        resizeTimeoutRef.current = null;
       }
 
-      if (resizeObserverRef.current) {
-        resizeObserverRef.current.disconnect();
-        resizeObserverRef.current = null;
+      containerRef.current?.removeEventListener("keydown", stopCriticalKeys);
+      containerRef.current?.removeEventListener("mousedown", () => term.focus());
+
+      if (term.textarea) {
+        term.textarea.removeEventListener('focus', handleFocusEvent);
+        term.textarea.removeEventListener('blur', handleBlurEvent);
+        term.textarea.removeEventListener('paste', handlePasteEvent);
       }
 
-      if (resizeListenerRef.current) {
-        resizeListenerRef.current.dispose();
-        resizeListenerRef.current = null;
-      }
+      containerRef.current?.removeEventListener("contextmenu", handleContextMenu);
 
-      if (dataListenerRef.current) {
-        dataListenerRef.current.dispose();
-        dataListenerRef.current = null;
-      }
-
-      if (termRef.current) {
-        termRef.current.dispose();
-        termRef.current = null;
-      }
-
-      fitAddonRef.current = null;
+      try { term.dispose(); } catch {}
     };
   }, []); // Empty dependency array ensures terminal is created only once
+
+
+  useEffect(() => {
+    jobIdRef.current = jobId || null;
+  }, [jobId]);
 
 
   return (

@@ -1,0 +1,865 @@
+{
+  "category": "workflows",
+  "pages": [
+    {
+      "slug": "large-refactors/claude-code/macos",
+      "workflow": "large-refactors",
+      "tool_integration": "claude-code",
+      "os": "macos",
+      "headline": "Large Refactors with Claude Code on macOS",
+      "subhead": "Guide Claude Code through system-wide refactors without breaking dependencies",
+      "meta_title": "Large Refactors with Claude Code on macOS - Vibe Manager",
+      "meta_description": "Execute large-scale refactors with Claude Code on macOS. File discovery maps dependencies, plan mode prevents regressions, integrated terminal executes safely.",
+      "primary_cta": "Install Vibe Manager",
+      "publish": true,
+      "priority": 1,
+      "pain_points": [
+        {
+          "problem": "Claude Code changes one file, breaks three services",
+          "solution": "File discovery maps all dependencies before refactoring"
+        },
+        {
+          "problem": "Refactor touches 50+ files, no way to review scope",
+          "solution": "See exact changes across all files before execution"
+        },
+        {
+          "problem": "AI misses critical edge cases in large changes",
+          "solution": "Multi-model plans catch different perspectives"
+        }
+      ],
+      "workflow_steps": [
+        "File Discovery surfaces all affected code",
+        "Generate refactor plans with multiple models",
+        "AI architect merges best approaches",
+        "Execute in integrated terminal with full visibility"
+      ],
+      "key_features": [
+        "No truncation - full file context",
+        "Terminal session recording",
+        "Rollback points at each step"
+      ]
+    },
+    {
+      "slug": "bug-triage/cursor/windows",
+      "workflow": "bug-triage",
+      "tool_integration": "cursor",
+      "os": "windows",
+      "headline": "Bug Triage with Cursor on Windows",
+      "subhead": "Find root causes faster with architectural context Cursor doesn't have",
+      "meta_title": "Bug Triage with Cursor on Windows - WSL Terminal Integration | Vibe Manager",
+      "meta_description": "Enhance Cursor's bug fixing with architectural awareness. File discovery finds actual root causes, not just symptoms. Full WSL terminal support.",
+      "primary_cta": "Get Vibe Manager for Windows",
+      "publish": true,
+      "priority": 1,
+      "pain_points": [
+        {
+          "problem": "Cursor fixes the symptom, not the root cause",
+          "solution": "File discovery traces bugs to their architectural origin"
+        },
+        {
+          "problem": "Bug spans multiple services, Cursor sees one file",
+          "solution": "Map entire dependency chain before fixing"
+        },
+        {
+          "problem": "Fix introduces new bugs elsewhere",
+          "solution": "Impact analysis shows all affected code paths"
+        }
+      ],
+      "workflow_steps": [
+        "Trace bug through entire codebase",
+        "Generate fix strategies for root cause",
+        "Test fixes in WSL terminal",
+        "Verify no regressions introduced"
+      ],
+      "key_features": [
+        "Full WSL integration",
+        "PowerShell & CMD support",
+        "Cross-service debugging"
+      ]
+    },
+    {
+      "slug": "incident-response/production-debugging",
+      "workflow": "incident-response",
+      "use_case": "production-debugging",
+      "headline": "Incident Response & Production Debugging",
+      "subhead": "When every second counts, AI needs full system context",
+      "meta_title": "Incident Response with AI - Production Debugging Tools | Vibe Manager",
+      "meta_description": "AI-assisted incident response and production debugging. Trace issues across services, generate fixes with full context, execute safely.",
+      "primary_cta": "Install for Incident Response",
+      "publish": false,
+      "priority": 1,
+      "pain_points": [
+        {
+          "problem": "AI suggests fixes without seeing the full picture",
+          "solution": "File discovery maps entire incident scope"
+        },
+        {
+          "problem": "Hotfixes break other services",
+          "solution": "Impact analysis before deployment"
+        },
+        {
+          "problem": "Can't reproduce locally",
+          "solution": "Terminal sessions capture exact state"
+        }
+      ],
+      "workflow_steps": [
+        "Map incident impact across services",
+        "Generate targeted fixes",
+        "Test in isolated environment",
+        "Deploy with confidence"
+      ],
+      "key_features": [
+        "Real-time system mapping",
+        "Cross-service tracing",
+        "Rollback capabilities"
+      ]
+    },
+    {
+      "slug": "monorepo-migration/claude-code/macos",
+      "workflow": "monorepo-migration",
+      "tool_integration": "claude-code",
+      "os": "macos",
+      "headline": "Monorepo Migration with Claude Code on macOS",
+      "subhead": "Transform multiple repositories into a unified monorepo with complete dependency mapping",
+      "meta_title": "Monorepo Migration with Claude Code on macOS | Vibe Manager",
+      "meta_description": "Safely migrate to monorepo with Claude Code on macOS. File discovery maps all dependencies, ensures nothing breaks during consolidation.",
+      "primary_cta": "Start Monorepo Migration",
+      "publish": true,
+      "priority": 1,
+      "pain_points": [
+        {
+          "problem": "Breaking dependencies when consolidating repos",
+          "solution": "Complete dependency mapping before migration"
+        },
+        {
+          "problem": "Lost import paths during consolidation",
+          "solution": "Automated path updates across all files"
+        },
+        {
+          "problem": "Build system conflicts between projects",
+          "solution": "Unified build configuration with conflict resolution"
+        }
+      ],
+      "workflow_steps": [
+        "Map dependencies across all repositories",
+        "Generate consolidated project structure",
+        "Update import paths and build configs",
+        "Validate migration with integrated testing"
+      ],
+      "key_features": [
+        "Cross-repo dependency analysis",
+        "Automated path resolution",
+        "Build system unification"
+      ]
+    },
+    {
+      "slug": "monorepo-migration/cursor/windows",
+      "workflow": "monorepo-migration",
+      "tool_integration": "cursor",
+      "os": "windows",
+      "headline": "Cross-Package Changes in Monorepos with Cursor",
+      "subhead": "Navigate complex monorepo changes that span multiple packages and services",
+      "meta_title": "Monorepo Cross-Package Changes with Cursor on Windows | Vibe Manager",
+      "meta_description": "Handle monorepo complexity with Cursor on Windows. File discovery tracks cross-package dependencies, prevents breaking changes.",
+      "primary_cta": "Enhance Cursor Workflow",
+      "publish": true,
+      "priority": 1,
+      "pain_points": [
+        {
+          "problem": "Changes in one package break other packages",
+          "solution": "Cross-package impact analysis before changes"
+        },
+        {
+          "problem": "Cursor doesn't see full monorepo context",
+          "solution": "Complete workspace mapping and dependency tracking"
+        },
+        {
+          "problem": "Testing changes across multiple packages",
+          "solution": "Coordinated test execution across affected packages"
+        }
+      ],
+      "workflow_steps": [
+        "Discover all cross-package dependencies",
+        "Plan changes with full workspace context",
+        "Execute coordinated updates across packages",
+        "Run comprehensive cross-package tests"
+      ],
+      "key_features": [
+        "Workspace-wide dependency mapping",
+        "Cross-package change coordination",
+        "Multi-package test orchestration"
+      ]
+    },
+    {
+      "slug": "dockerization/legacy-apps/linux",
+      "workflow": "dockerization",
+      "use_case": "legacy-apps",
+      "os": "linux",
+      "headline": "Containerizing Legacy Applications on Linux",
+      "subhead": "Safely dockerize complex legacy systems without breaking critical dependencies",
+      "meta_title": "Legacy App Dockerization on Linux - Safe Container Migration | Vibe Manager",
+      "meta_description": "Dockerize legacy applications safely on Linux. Map system dependencies, create proper containers, validate functionality with terminal integration.",
+      "primary_cta": "Start Containerization",
+      "publish": true,
+      "priority": 2,
+      "pain_points": [
+        {
+          "problem": "Hidden system dependencies break in containers",
+          "solution": "Complete system dependency analysis and mapping"
+        },
+        {
+          "problem": "Configuration files scattered across filesystem",
+          "solution": "Automated discovery and consolidation of configs"
+        },
+        {
+          "problem": "Runtime environment mismatches",
+          "solution": "Exact environment replication with validation"
+        }
+      ],
+      "workflow_steps": [
+        "Analyze system dependencies and configurations",
+        "Generate optimized Dockerfile and compose files",
+        "Create container with exact environment match",
+        "Validate functionality with comprehensive testing"
+      ],
+      "key_features": [
+        "System dependency discovery",
+        "Configuration consolidation",
+        "Environment validation testing"
+      ]
+    },
+    {
+      "slug": "dependency-upgrades/javascript/automated",
+      "workflow": "dependency-upgrades",
+      "use_case": "javascript",
+      "specialty": "automated",
+      "headline": "Automated JavaScript Dependency Upgrades",
+      "subhead": "Upgrade JavaScript dependencies safely with automated testing and rollback capabilities",
+      "meta_title": "Automated JavaScript Dependency Upgrades with Testing | Vibe Manager",
+      "meta_description": "Safely upgrade JS dependencies with automated testing. AI analyzes breaking changes, runs comprehensive tests, provides instant rollback.",
+      "primary_cta": "Automate Upgrades",
+      "publish": true,
+      "priority": 1,
+      "pain_points": [
+        {
+          "problem": "Breaking changes in minor version updates",
+          "solution": "Automated breaking change detection and mitigation"
+        },
+        {
+          "problem": "Complex dependency trees with conflicts",
+          "solution": "Smart resolution of version conflicts"
+        },
+        {
+          "problem": "Time-consuming manual testing after upgrades",
+          "solution": "Comprehensive automated test suite execution"
+        }
+      ],
+      "workflow_steps": [
+        "Analyze current dependencies and available updates",
+        "Generate upgrade plan with conflict resolution",
+        "Execute upgrades with automated testing",
+        "Validate application functionality and performance"
+      ],
+      "key_features": [
+        "Breaking change detection",
+        "Automated conflict resolution",
+        "Comprehensive test automation"
+      ]
+    },
+    {
+      "slug": "test-flakiness/ci-pipelines/debugging",
+      "workflow": "test-flakiness",
+      "use_case": "ci-pipelines",
+      "specialty": "debugging",
+      "headline": "Fix Flaky Tests in CI Pipelines",
+      "subhead": "Systematically eliminate test flakiness with root cause analysis and targeted fixes",
+      "meta_title": "Fix Flaky CI Tests - Systematic Debugging Approach | Vibe Manager",
+      "meta_description": "Eliminate flaky tests in CI pipelines systematically. AI analyzes failure patterns, identifies root causes, implements targeted fixes.",
+      "primary_cta": "Debug Flaky Tests",
+      "publish": true,
+      "priority": 2,
+      "pain_points": [
+        {
+          "problem": "Random test failures blocking deployments",
+          "solution": "Pattern analysis to identify flakiness root causes"
+        },
+        {
+          "problem": "Time-consuming manual investigation of failures",
+          "solution": "Automated failure analysis and categorization"
+        },
+        {
+          "problem": "Fixes that reduce flakiness but don't eliminate it",
+          "solution": "Systematic elimination with comprehensive validation"
+        }
+      ],
+      "workflow_steps": [
+        "Analyze test failure patterns and timing",
+        "Identify root causes of flaky behavior",
+        "Implement targeted fixes for each failure mode",
+        "Validate stability with extended test runs"
+      ],
+      "key_features": [
+        "Failure pattern analysis",
+        "Root cause identification",
+        "Stability validation testing"
+      ]
+    },
+    {
+      "slug": "performance-profiling/nodejs/terminal",
+      "workflow": "performance-profiling",
+      "use_case": "nodejs",
+      "specialty": "terminal",
+      "headline": "Node.js Performance Profiling with Terminal Commands",
+      "subhead": "Identify and fix Node.js performance bottlenecks using integrated terminal profiling",
+      "meta_title": "Node.js Performance Profiling with Terminal Integration | Vibe Manager",
+      "meta_description": "Profile Node.js applications with integrated terminal. AI analyzes performance data, identifies bottlenecks, suggests optimizations.",
+      "primary_cta": "Start Profiling",
+      "publish": true,
+      "priority": 2,
+      "pain_points": [
+        {
+          "problem": "Performance issues only appear in production",
+          "solution": "Production-like profiling in development environment"
+        },
+        {
+          "problem": "Complex profiling data hard to interpret",
+          "solution": "AI-powered analysis of profiling results"
+        },
+        {
+          "problem": "Optimizations that help one metric hurt another",
+          "solution": "Holistic performance optimization strategies"
+        }
+      ],
+      "workflow_steps": [
+        "Set up comprehensive performance monitoring",
+        "Run profiling sessions with realistic workloads",
+        "Analyze bottlenecks and optimization opportunities",
+        "Implement and validate performance improvements"
+      ],
+      "key_features": [
+        "Integrated terminal profiling",
+        "AI-powered bottleneck analysis",
+        "Holistic optimization strategies"
+      ]
+    },
+    {
+      "slug": "security-patches/vulnerability-scanning",
+      "workflow": "security-patches",
+      "use_case": "vulnerability-scanning",
+      "headline": "Rapid Vulnerability Discovery and Patching",
+      "subhead": "Quickly identify security vulnerabilities and apply patches without breaking functionality",
+      "meta_title": "Security Vulnerability Scanning and Patching | Vibe Manager",
+      "meta_description": "Rapid security vulnerability detection and patching. AI scans codebase, prioritizes fixes, ensures patches don't break functionality.",
+      "primary_cta": "Scan for Vulnerabilities",
+      "publish": true,
+      "priority": 1,
+      "pain_points": [
+        {
+          "problem": "Security patches breaking application functionality",
+          "solution": "Impact analysis before applying security fixes"
+        },
+        {
+          "problem": "Missing indirect vulnerabilities in dependencies",
+          "solution": "Deep dependency tree vulnerability scanning"
+        },
+        {
+          "problem": "Urgent patches deployed without proper testing",
+          "solution": "Rapid but comprehensive testing of security fixes"
+        }
+      ],
+      "workflow_steps": [
+        "Scan entire codebase and dependency tree",
+        "Prioritize vulnerabilities by risk and impact",
+        "Generate patches with functionality validation",
+        "Deploy fixes with comprehensive testing"
+      ],
+      "key_features": [
+        "Deep dependency scanning",
+        "Risk-based prioritization",
+        "Functionality-preserving patches"
+      ]
+    },
+    {
+      "slug": "api-migration/rest-to-graphql",
+      "workflow": "api-migration",
+      "use_case": "rest-to-graphql",
+      "headline": "Migrate REST APIs to GraphQL Incrementally",
+      "subhead": "Transform REST endpoints to GraphQL without breaking existing clients",
+      "meta_title": "REST to GraphQL Migration - Incremental API Transformation | Vibe Manager",
+      "meta_description": "Migrate REST to GraphQL incrementally. AI maps endpoints, generates GraphQL schemas, maintains backward compatibility during transition.",
+      "primary_cta": "Start API Migration",
+      "publish": true,
+      "priority": 2,
+      "pain_points": [
+        {
+          "problem": "Breaking existing clients during API migration",
+          "solution": "Incremental migration with backward compatibility"
+        },
+        {
+          "problem": "Complex REST endpoint logic hard to translate",
+          "solution": "AI-assisted schema generation and resolver creation"
+        },
+        {
+          "problem": "Data fetching patterns different between REST and GraphQL",
+          "solution": "Optimized resolvers maintaining performance characteristics"
+        }
+      ],
+      "workflow_steps": [
+        "Analyze existing REST endpoints and data patterns",
+        "Generate GraphQL schema and resolver structure",
+        "Implement incremental migration strategy",
+        "Validate performance and client compatibility"
+      ],
+      "key_features": [
+        "Backward compatibility maintenance",
+        "AI-generated GraphQL schemas",
+        "Performance-optimized resolvers"
+      ]
+    },
+    {
+      "slug": "logging-standardization/microservices",
+      "workflow": "logging-standardization",
+      "use_case": "microservices",
+      "headline": "Unify Logging Across Microservices",
+      "subhead": "Standardize logging formats and practices across all services for better observability",
+      "meta_title": "Microservices Logging Standardization - Unified Observability | Vibe Manager",
+      "meta_description": "Standardize logging across microservices. AI analyzes existing patterns, creates unified formats, ensures consistent observability.",
+      "primary_cta": "Standardize Logging",
+      "publish": true,
+      "priority": 2,
+      "pain_points": [
+        {
+          "problem": "Inconsistent log formats across services",
+          "solution": "Unified logging standards with automated compliance"
+        },
+        {
+          "problem": "Critical information missing from logs",
+          "solution": "Comprehensive logging requirements based on service analysis"
+        },
+        {
+          "problem": "Log correlation difficult across service boundaries",
+          "solution": "Standardized correlation IDs and structured logging"
+        }
+      ],
+      "workflow_steps": [
+        "Analyze current logging patterns across services",
+        "Define unified logging standards and formats",
+        "Implement standardization across all services",
+        "Validate log correlation and searchability"
+      ],
+      "key_features": [
+        "Cross-service log analysis",
+        "Automated standards compliance",
+        "Correlation ID management"
+      ]
+    },
+    {
+      "slug": "feature-flags/rollout-planning",
+      "workflow": "feature-flags",
+      "use_case": "rollout-planning",
+      "headline": "Plan Phased Feature Rollouts",
+      "subhead": "Design and implement safe feature rollout strategies with automated monitoring",
+      "meta_title": "Feature Flag Rollout Planning - Safe Feature Deployment | Vibe Manager",
+      "meta_description": "Plan safe feature rollouts with feature flags. AI designs rollout strategies, implements monitoring, enables quick rollbacks.",
+      "primary_cta": "Plan Feature Rollout",
+      "publish": true,
+      "priority": 2,
+      "pain_points": [
+        {
+          "problem": "Feature rollouts causing production incidents",
+          "solution": "Gradual rollout with automated monitoring and rollback"
+        },
+        {
+          "problem": "Complex feature flag logic becoming unmaintainable",
+          "solution": "Clean flag implementation with automated cleanup"
+        },
+        {
+          "problem": "No visibility into feature performance during rollout",
+          "solution": "Comprehensive metrics and monitoring integration"
+        }
+      ],
+      "workflow_steps": [
+        "Design feature flag architecture and rollout strategy",
+        "Implement flags with monitoring and metrics",
+        "Execute phased rollout with safety checks",
+        "Monitor performance and clean up flags post-rollout"
+      ],
+      "key_features": [
+        "Automated rollout monitoring",
+        "Safety-first rollback mechanisms",
+        "Flag lifecycle management"
+      ]
+    },
+    {
+      "slug": "database-migrations/zero-downtime",
+      "workflow": "database-migrations",
+      "use_case": "zero-downtime",
+      "headline": "PostgreSQL Migrations Without Downtime",
+      "subhead": "Execute complex database schema changes with zero downtime and automatic rollback",
+      "meta_title": "Zero-Downtime PostgreSQL Migrations - Safe Schema Changes | Vibe Manager",
+      "meta_description": "Execute PostgreSQL migrations with zero downtime. AI plans safe schema changes, implements gradual transitions, ensures data integrity.",
+      "primary_cta": "Plan Migration",
+      "publish": true,
+      "priority": 1,
+      "pain_points": [
+        {
+          "problem": "Schema changes causing application downtime",
+          "solution": "Zero-downtime migration strategies with gradual transitions"
+        },
+        {
+          "problem": "Data corruption during complex migrations",
+          "solution": "Safe migration patterns with integrity validation"
+        },
+        {
+          "problem": "Rollback complications after migration failures",
+          "solution": "Automated rollback procedures with data safety"
+        }
+      ],
+      "workflow_steps": [
+        "Analyze schema changes and plan migration strategy",
+        "Implement gradual transition with compatibility layers",
+        "Execute migration with continuous validation",
+        "Complete transition and clean up compatibility code"
+      ],
+      "key_features": [
+        "Zero-downtime strategies",
+        "Automated rollback procedures",
+        "Data integrity validation"
+      ]
+    },
+    {
+      "slug": "cache-implementation/redis/patterns",
+      "workflow": "cache-implementation",
+      "use_case": "redis",
+      "specialty": "patterns",
+      "headline": "Redis Caching Patterns and Setup",
+      "subhead": "Implement optimal Redis caching strategies with performance monitoring and invalidation",
+      "meta_title": "Redis Caching Patterns - Performance Optimization Setup | Vibe Manager",
+      "meta_description": "Implement Redis caching with optimal patterns. AI analyzes access patterns, designs cache strategies, implements monitoring.",
+      "primary_cta": "Setup Redis Caching",
+      "publish": true,
+      "priority": 2,
+      "pain_points": [
+        {
+          "problem": "Cache invalidation logic becoming complex and error-prone",
+          "solution": "Systematic cache invalidation patterns with automation"
+        },
+        {
+          "problem": "Cache hit ratios lower than expected",
+          "solution": "Data access pattern analysis and optimization"
+        },
+        {
+          "problem": "Memory usage growing without proper eviction",
+          "solution": "Intelligent eviction policies and monitoring"
+        }
+      ],
+      "workflow_steps": [
+        "Analyze data access patterns and caching opportunities",
+        "Design optimal caching strategy and invalidation logic",
+        "Implement Redis setup with monitoring",
+        "Optimize based on performance metrics and usage patterns"
+      ],
+      "key_features": [
+        "Access pattern analysis",
+        "Intelligent invalidation strategies",
+        "Performance monitoring integration"
+      ]
+    },
+    {
+      "slug": "ci-cd-migration/github-actions",
+      "workflow": "ci-cd-migration",
+      "use_case": "github-actions",
+      "headline": "Migrate CI/CD to GitHub Actions Safely",
+      "subhead": "Transform existing CI/CD pipelines to GitHub Actions without disrupting deployments",
+      "meta_title": "CI/CD Migration to GitHub Actions - Safe Pipeline Transformation | Vibe Manager",
+      "meta_description": "Migrate CI/CD to GitHub Actions safely. AI analyzes existing pipelines, creates equivalent workflows, ensures deployment continuity.",
+      "primary_cta": "Migrate CI/CD",
+      "publish": true,
+      "priority": 2,
+      "pain_points": [
+        {
+          "problem": "Complex pipeline logic hard to translate",
+          "solution": "Automated conversion with logic preservation"
+        },
+        {
+          "problem": "Secret and environment management differences",
+          "solution": "Secure migration of secrets and configurations"
+        },
+        {
+          "problem": "Deployment disruptions during migration",
+          "solution": "Parallel pipeline validation before switchover"
+        }
+      ],
+      "workflow_steps": [
+        "Analyze existing CI/CD pipeline configurations",
+        "Generate equivalent GitHub Actions workflows",
+        "Validate pipelines with parallel execution",
+        "Switch over with deployment continuity"
+      ],
+      "key_features": [
+        "Automated pipeline conversion",
+        "Secret migration management",
+        "Parallel validation testing"
+      ]
+    },
+    {
+      "slug": "code-quality/linter-setup",
+      "workflow": "code-quality",
+      "use_case": "linter-setup",
+      "headline": "Repository-Wide Linter Configuration",
+      "subhead": "Establish consistent code quality standards across entire codebase with automated fixes",
+      "meta_title": "Repository-Wide Linter Setup - Code Quality Standards | Vibe Manager",
+      "meta_description": "Setup comprehensive linting across repository. AI analyzes codebase, configures appropriate linters, fixes existing violations.",
+      "primary_cta": "Setup Code Quality",
+      "publish": true,
+      "priority": 2,
+      "pain_points": [
+        {
+          "problem": "Overwhelming number of linter violations in legacy code",
+          "solution": "Gradual violation fixes with automated remediation"
+        },
+        {
+          "problem": "Inconsistent linting rules across different parts of codebase",
+          "solution": "Unified linting configuration with project-specific customizations"
+        },
+        {
+          "problem": "Developer resistance to strict linting rules",
+          "solution": "Reasonable rule selection with clear value demonstration"
+        }
+      ],
+      "workflow_steps": [
+        "Analyze codebase patterns and select appropriate linters",
+        "Configure rules balancing strictness and practicality",
+        "Fix existing violations with automated tools",
+        "Integrate into CI/CD with developer-friendly policies"
+      ],
+      "key_features": [
+        "Automated violation fixes",
+        "Gradual rule enforcement",
+        "Developer-friendly integration"
+      ]
+    },
+    {
+      "slug": "terraform-refactor/module-extraction",
+      "workflow": "terraform-refactor",
+      "use_case": "module-extraction",
+      "headline": "Extract and Refactor Terraform Modules",
+      "subhead": "Refactor monolithic Terraform into reusable modules without state disruption",
+      "meta_title": "Terraform Module Extraction - Infrastructure Refactoring | Vibe Manager",
+      "meta_description": "Refactor Terraform into reusable modules safely. AI analyzes dependencies, extracts modules, preserves state integrity.",
+      "primary_cta": "Refactor Terraform",
+      "publish": true,
+      "priority": 2,
+      "pain_points": [
+        {
+          "problem": "Terraform state corruption during refactoring",
+          "solution": "Safe state manipulation with backup and validation"
+        },
+        {
+          "problem": "Complex resource dependencies hard to untangle",
+          "solution": "Dependency analysis and gradual extraction"
+        },
+        {
+          "problem": "Module interfaces poorly designed for reuse",
+          "solution": "AI-designed interfaces based on usage patterns"
+        }
+      ],
+      "workflow_steps": [
+        "Analyze Terraform configurations and dependencies",
+        "Design modular architecture with clean interfaces",
+        "Extract modules with safe state transitions",
+        "Validate infrastructure integrity and functionality"
+      ],
+      "key_features": [
+        "Safe state manipulation",
+        "Dependency analysis and resolution",
+        "Reusable module design"
+      ]
+    },
+    {
+      "slug": "error-budgets/slo-implementation",
+      "workflow": "error-budgets",
+      "use_case": "slo-implementation",
+      "headline": "Implement SLOs and Error Budgets",
+      "subhead": "Establish service level objectives with automated error budget tracking and alerting",
+      "meta_title": "SLO and Error Budget Implementation - Reliability Engineering | Vibe Manager",
+      "meta_description": "Implement SLOs and error budgets systematically. AI analyzes service patterns, defines objectives, creates monitoring dashboards.",
+      "primary_cta": "Implement SLOs",
+      "publish": true,
+      "priority": 2,
+      "pain_points": [
+        {
+          "problem": "SLOs that don't reflect actual user experience",
+          "solution": "User-centric SLO definition based on real usage patterns"
+        },
+        {
+          "problem": "Error budget burn rate difficult to track and act upon",
+          "solution": "Automated tracking with proactive alerting and response"
+        },
+        {
+          "problem": "SLO violations discovered too late to take action",
+          "solution": "Real-time monitoring with early warning systems"
+        }
+      ],
+      "workflow_steps": [
+        "Analyze service usage patterns and user expectations",
+        "Define meaningful SLOs with appropriate error budgets",
+        "Implement monitoring and alerting infrastructure",
+        "Establish response procedures for budget exhaustion"
+      ],
+      "key_features": [
+        "User-centric SLO definition",
+        "Real-time budget tracking",
+        "Automated alert escalation"
+      ]
+    },
+    {
+      "slug": "release-automation/semantic-versioning",
+      "workflow": "release-automation",
+      "use_case": "semantic-versioning",
+      "headline": "Automate Releases with Semantic Versioning",
+      "subhead": "Fully automated release pipeline with semantic versioning and changelog generation",
+      "meta_title": "Automated Release Pipeline - Semantic Versioning Setup | Vibe Manager",
+      "meta_description": "Automate releases with semantic versioning. AI analyzes changes, determines version bumps, generates changelogs, handles deployment.",
+      "primary_cta": "Automate Releases",
+      "publish": true,
+      "priority": 2,
+      "pain_points": [
+        {
+          "problem": "Manual release process prone to human error",
+          "solution": "Fully automated release pipeline with validation"
+        },
+        {
+          "problem": "Inconsistent versioning across different projects",
+          "solution": "Standardized semantic versioning with automated enforcement"
+        },
+        {
+          "problem": "Release notes and changelogs always outdated",
+          "solution": "Automated changelog generation from commit history"
+        }
+      ],
+      "workflow_steps": [
+        "Analyze commit history and determine version impact",
+        "Generate changelog and release notes automatically",
+        "Create and tag release with proper versioning",
+        "Deploy to appropriate environments with validation"
+      ],
+      "key_features": [
+        "Automated version determination",
+        "Intelligent changelog generation",
+        "Multi-environment deployment"
+      ]
+    },
+    {
+      "slug": "accessibility-audit/remediation-plan",
+      "workflow": "accessibility-audit",
+      "use_case": "remediation-plan",
+      "headline": "Web Accessibility Fixes Systematically",
+      "subhead": "Comprehensive accessibility audit with prioritized remediation plan and automated fixes",
+      "meta_title": "Web Accessibility Audit and Remediation - WCAG Compliance | Vibe Manager",
+      "meta_description": "Systematic web accessibility improvements. AI audits for WCAG compliance, prioritizes fixes, implements automated remediation where possible.",
+      "primary_cta": "Audit Accessibility",
+      "publish": true,
+      "priority": 2,
+      "pain_points": [
+        {
+          "problem": "Overwhelming number of accessibility violations",
+          "solution": "Prioritized remediation plan based on user impact"
+        },
+        {
+          "problem": "Accessibility fixes breaking existing functionality",
+          "solution": "Careful implementation with regression testing"
+        },
+        {
+          "problem": "Accessibility compliance checking inconsistent",
+          "solution": "Automated testing integrated into development workflow"
+        }
+      ],
+      "workflow_steps": [
+        "Comprehensive accessibility audit across application",
+        "Prioritize violations by user impact and severity",
+        "Implement fixes with automated testing validation",
+        "Establish ongoing accessibility monitoring"
+      ],
+      "key_features": [
+        "Comprehensive WCAG auditing",
+        "Impact-based prioritization",
+        "Automated compliance testing"
+      ]
+    },
+    {
+      "slug": "i18n-implementation/nextjs-apps",
+      "workflow": "i18n-implementation",
+      "use_case": "nextjs-apps",
+      "headline": "Add Internationalization to Next.js",
+      "subhead": "Implement comprehensive i18n support with automated string extraction and translation management",
+      "meta_title": "Next.js Internationalization Implementation - i18n Setup | Vibe Manager",
+      "meta_description": "Add i18n to Next.js applications comprehensively. AI extracts translatable strings, sets up translation workflows, handles routing.",
+      "primary_cta": "Add Internationalization",
+      "publish": true,
+      "priority": 2,
+      "pain_points": [
+        {
+          "problem": "Missing translatable strings scattered throughout codebase",
+          "solution": "Automated string extraction and internationalization"
+        },
+        {
+          "problem": "Complex routing and URL structure for multiple locales",
+          "solution": "Next.js i18n routing setup with SEO optimization"
+        },
+        {
+          "problem": "Translation workflow management and updates",
+          "solution": "Integrated translation management with automated workflows"
+        }
+      ],
+      "workflow_steps": [
+        "Extract all translatable strings from codebase",
+        "Setup Next.js i18n configuration and routing",
+        "Implement translation management workflow",
+        "Validate functionality across all supported locales"
+      ],
+      "key_features": [
+        "Automated string extraction",
+        "SEO-optimized locale routing",
+        "Translation workflow integration"
+      ]
+    },
+    {
+      "slug": "edge-deployment/vercel-planning",
+      "workflow": "edge-deployment",
+      "use_case": "vercel-planning",
+      "headline": "Plan Edge Runtime Migrations",
+      "subhead": "Migrate applications to edge runtime with performance optimization and compatibility validation",
+      "meta_title": "Edge Runtime Migration Planning - Vercel Edge Deployment | Vibe Manager",
+      "meta_description": "Plan edge runtime migrations systematically. AI analyzes compatibility, optimizes for edge constraints, ensures performance improvements.",
+      "primary_cta": "Plan Edge Migration",
+      "publish": true,
+      "priority": 2,
+      "pain_points": [
+        {
+          "problem": "Code incompatible with edge runtime constraints",
+          "solution": "Compatibility analysis and automated refactoring"
+        },
+        {
+          "problem": "Performance degradation in edge environment",
+          "solution": "Edge-optimized code patterns and caching strategies"
+        },
+        {
+          "problem": "Complex deployment configuration for edge functions",
+          "solution": "Automated edge deployment configuration and optimization"
+        }
+      ],
+      "workflow_steps": [
+        "Analyze code compatibility with edge runtime",
+        "Refactor incompatible code for edge constraints",
+        "Optimize performance for edge deployment",
+        "Validate functionality and performance improvements"
+      ],
+      "key_features": [
+        "Edge runtime compatibility analysis",
+        "Performance optimization for edge",
+        "Automated deployment configuration"
+      ]
+    }
+  ]
+}

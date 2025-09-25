@@ -760,6 +760,7 @@ export type TauriInvoke = {
   
   // Terminal commands
   "read_terminal_log_command": (args: ReadTerminalLogCommandArgs) => Promise<string>;
+  "read_terminal_log_tail_command": (args: ReadTerminalLogTailCommandArgs) => Promise<string>;
   "clear_terminal_log_command": (args: ClearTerminalLogCommandArgs) => Promise<void>;
   "delete_terminal_log_command": (args: DeleteTerminalLogCommandArgs) => Promise<void>;
   "start_terminal_session_command": (args: StartTerminalSessionCommandArgs) => Promise<void>;
@@ -768,7 +769,7 @@ export type TauriInvoke = {
   "resize_terminal_session_command": (args: ResizeTerminalSessionCommandArgs) => Promise<void>;
   "send_ctrl_c_to_terminal_command": (args: SendCtrlCToTerminalCommandArgs) => Promise<void>;
   "kill_terminal_session_command": (args: KillTerminalSessionCommandArgs) => Promise<void>;
-  "attach_terminal_output_command": (args: { jobId: string; output: import("@tauri-apps/api/core").Channel<Uint8Array> }) => Promise<void>;
+  "attach_terminal_output_command": (args: { jobId: string; output: import("@tauri-apps/api/core").Channel<Uint8Array> }) => Promise<{ status: string; message?: string }>;
   "get_terminal_prerequisites_status_command": () => Promise<{ serverSelected: boolean; userAuthenticated: boolean; apiClientsReady: boolean; message?: string }>;
   "check_terminal_dependencies_command": () => Promise<{ availableCliTools: string[]; defaultShell: string }>;
   "get_terminal_session_status_command": (args: { jobId: string }) => Promise<any>;
@@ -778,6 +779,7 @@ export type TauriInvoke = {
   "get_terminal_health_status": (args: { jobId: string }) => Promise<HealthCheckResult>;
   "get_terminal_health_history": (args: { jobId: string }) => Promise<HealthHistoryEntry[]>;
   "trigger_terminal_recovery": (args: { jobId: string; action: RecoveryAction }) => Promise<void>;
+  "touch_session_by_job_id": (args: { jobId: string }) => Promise<void>;
   "get_performance_summary": () => Promise<any>;
 };
 
@@ -1136,6 +1138,11 @@ export interface ReadTerminalLogCommandArgs {
   jobId: string;
 }
 
+export interface ReadTerminalLogTailCommandArgs {
+  jobId: string;
+  maxBytes?: number | null;
+}
+
 export interface ClearTerminalLogCommandArgs {
   jobId: string;
 }
@@ -1186,7 +1193,7 @@ export type HealthStatus =
   | { type: 'healthy' }
   | { type: 'noOutput'; durationSecs: number }
   | { type: 'processDead'; exitCode?: number }
-  | { type: 'stuck'; lastOutputSecs: number }
+  | { type: 'agentRequiresAttention'; lastOutputSecs: number }
   | { type: 'disconnected' }
   | { type: 'persistenceLag'; pendingBytes: number };
 

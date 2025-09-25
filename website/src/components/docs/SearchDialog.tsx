@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, Command, X, File, Loader2 } from 'lucide-react';
 import type Fuse from 'fuse.js';
+import { docsManifest, type DocGroup, type DocItem } from '@/docs/docs-manifest';
 
 interface SearchResult {
   title: string;
@@ -11,6 +12,15 @@ interface SearchResult {
   url: string;
   category?: string;
 }
+
+type DocArticle = {
+  slug: string;
+  title: string;
+  shortTitle?: string;
+  description?: string;
+  category: string;
+  tags?: string[];
+};
 
 interface PagefindResult {
   id: string;
@@ -38,96 +48,34 @@ declare global {
   }
 }
 
-const docArticles = [
-  {
-    slug: 'plan-mode',
-    title: 'Plan Mode Comparison: Claude Code vs Cursor vs Cline vs Codex CLI',
-    shortTitle: 'Plan Mode Comparison',
-    description: 'Comprehensive comparison of plan modes across leading AI coding tools',
-    category: 'Plan Mode Guide',
-    tags: ['plan mode', 'claude code plan mode', 'cursor plan mode', 'safe planning'],
-  },
-  {
-    slug: 'claude-code-plan-mode',
-    title: 'Claude Code Plan Mode - Safe, Read-Only Planning (Shift+Tab)',
-    shortTitle: 'Claude Code Plan Mode',
-    description: 'Master Claude Code\'s Plan Mode for safe, read-only analysis',
-    category: 'Plan Mode Guide',
-    tags: ['claude code plan mode', 'shift tab', 'opusplan', 'read only planning'],
-  },
-  {
-    slug: 'openai-codex-cli',
-    title: 'OpenAI Codex CLI + Vibe Manager Integration',
-    shortTitle: 'OpenAI Codex CLI',
-    description: 'Complete guide to using OpenAI Codex CLI with Vibe Manager',
-    category: 'Integration Guide',
-    tags: ['openai codex cli', 'codex terminal', 'o3 model', 'agentic tools'],
-  },
-  {
-    slug: 'vibe-manager-architecture',
-    title: 'How Vibe Manager Enhances Claude Code & Cursor',
-    shortTitle: 'Vibe Manager Architecture',
-    description: 'Desktop companion app that prepares context and plans implementations',
-    category: 'Integration Guide',
-    tags: ['claude code integration', 'cursor enhancement', 'ai workflow companion'],
-  },
-  {
-    slug: 'claude-code-install',
-    title: 'Complete Claude Code Installation Guide',
-    shortTitle: 'Claude Code Install',
-    description: 'Step-by-step guide to install Claude Code and enhance it with Vibe Manager',
-    category: 'Installation Guide',
-    tags: ['claude code install', 'install claude code', 'claudecode', 'claude code setup'],
-  },
-  {
-    slug: 'claude-code-vs-cursor',
-    title: 'Maximizing Claude Code & Cursor with Vibe Manager',
-    shortTitle: 'Claude Code vs Cursor',
-    description: 'Learn how Vibe Manager acts as the perfect companion for both tools',
-    category: 'Workflow Enhancement',
-    tags: ['claude code companion', 'cursor workflow', 'ai tool enhancement'],
-  },
-  {
-    slug: 'claude-code-alternative',
-    title: 'Supercharge Claude Code with Vibe Manager Extensions',
-    shortTitle: 'Claude Code Extensions',
-    description: 'Discover how Vibe Manager extends Claude Code capabilities',
-    category: 'Extensions',
-    tags: ['claude code extension', 'mcp integration', 'agent workflows'],
-  },
-  {
-    slug: 'cursor-plan-mode',
-    title: 'Cursor Plan Mode - Generate plan.md and Manage Todos',
-    shortTitle: 'Cursor Plan Mode',
-    description: 'Use Cursor\'s Plan setup to create plan.md files and manage todos',
-    category: 'Plan Mode Guide',
-    tags: ['cursor plan mode', 'plan.md', 'todo management', 'queued messages'],
-  },
-  {
-    slug: 'cline-plan-mode',
-    title: 'Cline Plan & Act - Plan First, Implement After Approval',
-    shortTitle: 'Cline Plan Mode',
-    description: 'Master Cline\'s dual-mode design for safe planning',
-    category: 'Plan Mode Guide',
-    tags: ['cline plan mode', 'plan and act', 'safe planning', 'dual mode'],
-  },
-  {
-    slug: 'codex-cli-plan-mode',
-    title: 'Codex CLI Read-Only Mode - Plan Safely Before Edits',
-    shortTitle: 'Codex CLI Plan Mode',
-    description: 'Switch Codex CLI to Read-Only with /approvals command',
-    category: 'Plan Mode Guide',
-    tags: ['codex cli plan mode', 'read only mode', '/approvals', 'approval modes'],
-  },
-  {
-    slug: 'what-is-vibe-code-cleanup-specialist',
-    title: 'What is Vibe Code Cleanup Specialist? Complete Guide',
-    shortTitle: 'Vibe Code Cleanup Specialist',
-    description: 'Learn what Vibe Code Cleanup Specialist is and how it works',
-    category: 'FAQ Guide',
-    tags: ['what is vibe code cleanup', 'implementation planning', 'multi-model synthesis'],
-  },
-];
+const buildDocArticles = (groups: DocGroup[]): DocArticle[] => {
+  const articles: DocArticle[] = [];
+
+  const traverse = (items: (DocItem | DocGroup)[], category: string) => {
+    for (const item of items) {
+      if ('slug' in item) {
+        articles.push({
+          slug: item.slug,
+          title: item.title,
+          ...(item.shortTitle !== undefined && { shortTitle: item.shortTitle }),
+          ...(item.description !== undefined && { description: item.description }),
+          category,
+          ...(item.tags !== undefined && { tags: item.tags }),
+        });
+      } else if ('items' in item && item.items) {
+        traverse(item.items, item.title);
+      }
+    }
+  };
+
+  for (const group of groups) {
+    traverse(group.items, group.title);
+  }
+
+  return articles;
+};
+
+const docArticles = buildDocArticles(docsManifest);
 
 interface SearchDialogProps {
   isOpen: boolean;
@@ -144,7 +92,7 @@ export function SearchDialog({ isOpen, onClose }: SearchDialogProps) {
   
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
-  const fuseRef = useRef<Fuse<typeof docArticles[0]> | null>(null);
+  const fuseRef = useRef<Fuse<DocArticle> | null>(null);
 
   const initializeFuse = useCallback(async () => {
     if (fuseRef.current) return fuseRef.current;
@@ -205,8 +153,8 @@ export function SearchDialog({ isOpen, onClose }: SearchDialogProps) {
     const fuseResults = fuse.search(searchQuery).slice(0, 10);
     return fuseResults.map(result => ({
       title: result.item.title,
-      excerpt: result.item.description,
-      url: `/docs/${result.item.slug}`,
+      excerpt: result.item.description || '',
+      url: result.item.slug,
       category: result.item.category,
     }));
   }, [initializeFuse]);
@@ -414,7 +362,7 @@ export function SearchDialog({ isOpen, onClose }: SearchDialogProps) {
                 Popular searches:
               </p>
               <div className="flex flex-wrap gap-2">
-                {['plan mode', 'claude code', 'cursor', 'installation'].map((term) => (
+                {['text improvement', 'implementation plans', 'file discovery', 'terminal sessions', 'voice transcription'].map((term) => (
                   <button
                     key={term}
                     onClick={() => setQuery(term)}

@@ -1,0 +1,448 @@
+{
+  "category": "use-cases",
+  "pages": [
+    {
+      "slug": "staff-engineer/architectural-decisions",
+      "role": "staff-engineer",
+      "use_case": "architectural-decisions",
+      "headline": "Architectural Decision Support for Staff Engineers",
+      "subhead": "AI that understands your system's constraints and patterns",
+      "meta_title": "Staff Engineer AI Tools - Architectural Decision Support | Vibe Manager",
+      "meta_description": "AI planning tools for staff engineers. Multi-model architectural analysis, dependency mapping, impact assessment. Beyond code generation.",
+      "primary_cta": "Tools for Staff Engineers",
+      "publish": true,
+      "priority": 1,
+      "pain_points": [
+        {
+          "problem": "Junior devs + AI = architectural debt",
+          "solution": "AI architect enforces your patterns and principles"
+        },
+        {
+          "problem": "Can't review every PR for architectural violations",
+          "solution": "Pre-execution plan review catches issues early"
+        },
+        {
+          "problem": "AI doesn't know your system's constraints",
+          "solution": "Project-specific configuration and context"
+        }
+      ],
+      "workflow_steps": [
+        "Define architectural principles",
+        "AI generates conforming plans",
+        "Review before team executes",
+        "Maintain architectural integrity"
+      ],
+      "key_features": [
+        "SOLID principle enforcement",
+        "Design pattern recognition",
+        "Architectural drift detection"
+      ]
+    },
+    {
+      "slug": "platform-engineer/infrastructure-changes",
+      "role": "platform-engineer",
+      "use_case": "infrastructure-changes",
+      "headline": "Infrastructure Changes for Platform Engineers",
+      "subhead": "AI that understands both application and infrastructure layers",
+      "meta_title": "Platform Engineer AI Tools - Infrastructure Planning | Vibe Manager",
+      "meta_description": "AI planning for platform engineers. Terraform, Kubernetes, cloud resources - with full impact analysis.",
+      "primary_cta": "Platform Engineering AI",
+      "publish": false,
+      "priority": 2,
+      "workflow_steps": [
+        "Map infrastructure dependencies",
+        "Generate change plans",
+        "Validate in staging",
+        "Deploy with confidence"
+      ]
+    },
+    {
+      "slug": "tech-lead/code-reviews",
+      "role": "tech-lead",
+      "use_case": "code-reviews",
+      "headline": "AI-Powered Code Reviews for Tech Leads",
+      "subhead": "Review plans before code, not code after damage",
+      "meta_title": "Tech Lead AI Tools - Proactive Code Review | Vibe Manager",
+      "meta_description": "AI-powered code review for tech leads. Review implementation plans before execution, catch issues early.",
+      "primary_cta": "Enhance Code Reviews",
+      "publish": false,
+      "priority": 2,
+      "workflow_steps": [
+        "Team generates plans",
+        "AI analyzes for issues",
+        "Tech lead reviews plans",
+        "Approved plans execute"
+      ]
+    },
+    {
+      "slug": "devops-engineer/ci-pipeline-optimization",
+      "role": "devops-engineer",
+      "use_case": "ci-pipeline-optimization",
+      "headline": "CI/CD Pipeline Optimization for DevOps Engineers",
+      "subhead": "AI-powered pipeline debugging and performance improvements",
+      "meta_title": "DevOps Engineer AI Tools - CI/CD Pipeline Optimization | Vibe Manager",
+      "meta_description": "AI tools for DevOps engineers. CI/CD pipeline debugging, performance optimization, infrastructure as code improvements.",
+      "primary_cta": "Optimize CI/CD Pipelines",
+      "publish": true,
+      "priority": 1,
+      "pain_points": [
+        {
+          "problem": "Pipeline failures are hard to diagnose across multiple stages",
+          "solution": "AI analyzes logs and dependencies to identify root causes"
+        },
+        {
+          "problem": "Performance bottlenecks hidden in complex pipeline configurations",
+          "solution": "AI maps pipeline execution and suggests optimization points"
+        },
+        {
+          "problem": "Manual pipeline updates risk breaking existing workflows",
+          "solution": "Generate and review pipeline changes before deployment"
+        }
+      ],
+      "workflow_steps": [
+        "Analyze current pipeline performance",
+        "Generate optimization plans",
+        "Review impact on existing workflows",
+        "Deploy improvements safely"
+      ],
+      "key_features": [
+        "Pipeline dependency mapping",
+        "Performance bottleneck detection",
+        "Safe deployment planning"
+      ]
+    },
+    {
+      "slug": "sdet/test-automation-modernization",
+      "role": "sdet",
+      "use_case": "test-automation-modernization",
+      "headline": "Test Automation Modernization for SDETs",
+      "subhead": "AI-driven test suite refactoring and modernization",
+      "meta_title": "SDET AI Tools - Test Automation Modernization | Vibe Manager",
+      "meta_description": "AI tools for SDETs. Test suite refactoring, framework migrations, test coverage analysis and improvements.",
+      "primary_cta": "Modernize Test Automation",
+      "publish": true,
+      "priority": 1,
+      "pain_points": [
+        {
+          "problem": "Legacy test suites are brittle and hard to maintain",
+          "solution": "AI analyzes patterns and generates modernization plans"
+        },
+        {
+          "problem": "Framework migrations risk breaking existing test coverage",
+          "solution": "Generate migration plans with test equivalence validation"
+        },
+        {
+          "problem": "Test coverage gaps are hard to identify and fix",
+          "solution": "AI maps code coverage and suggests targeted test additions"
+        }
+      ],
+      "workflow_steps": [
+        "Analyze existing test architecture",
+        "Generate modernization roadmap",
+        "Plan incremental migration steps",
+        "Validate test coverage equivalence"
+      ],
+      "key_features": [
+        "Test pattern analysis",
+        "Framework migration planning",
+        "Coverage gap detection"
+      ]
+    },
+    {
+      "slug": "security-engineer/vulnerability-patching",
+      "role": "security-engineer",
+      "use_case": "vulnerability-patching",
+      "headline": "Vulnerability Patching Workflows for Security Engineers",
+      "subhead": "AI-assisted security remediation with impact analysis",
+      "meta_title": "Security Engineer AI Tools - Vulnerability Patching | Vibe Manager",
+      "meta_description": "AI tools for security engineers. Vulnerability analysis, remediation planning, security patch impact assessment.",
+      "primary_cta": "Enhance Security Workflows",
+      "publish": true,
+      "priority": 1,
+      "pain_points": [
+        {
+          "problem": "Security patches can break functionality in unexpected ways",
+          "solution": "AI analyzes code dependencies and predicts patch impacts"
+        },
+        {
+          "problem": "Vulnerability remediation requires deep code understanding",
+          "solution": "AI maps vulnerable code patterns and suggests fixes"
+        },
+        {
+          "problem": "Prioritizing security fixes without business context",
+          "solution": "AI assesses risk impact across application architecture"
+        }
+      ],
+      "workflow_steps": [
+        "Analyze vulnerability scope and impact",
+        "Generate remediation plans",
+        "Review security and functionality trade-offs",
+        "Deploy patches with monitoring"
+      ],
+      "key_features": [
+        "Vulnerability impact mapping",
+        "Security pattern recognition",
+        "Risk assessment automation"
+      ]
+    },
+    {
+      "slug": "data-engineer/etl-pipeline-migration",
+      "role": "data-engineer",
+      "use_case": "etl-pipeline-migration",
+      "headline": "ETL Pipeline Migration for Data Engineers",
+      "subhead": "AI-powered data pipeline modernization and migration",
+      "meta_title": "Data Engineer AI Tools - ETL Pipeline Migration | Vibe Manager",
+      "meta_description": "AI tools for data engineers. ETL pipeline migrations, data flow analysis, modern data stack transitions.",
+      "primary_cta": "Modernize Data Pipelines",
+      "publish": true,
+      "priority": 1,
+      "pain_points": [
+        {
+          "problem": "Legacy ETL systems are complex and poorly documented",
+          "solution": "AI reverse-engineers pipeline logic and data flows"
+        },
+        {
+          "problem": "Data migration risks losing critical transformations",
+          "solution": "AI validates transformation equivalence across systems"
+        },
+        {
+          "problem": "Performance impact of new pipeline architecture unknown",
+          "solution": "AI models data flow and predicts performance characteristics"
+        }
+      ],
+      "workflow_steps": [
+        "Map existing data flows and transformations",
+        "Design modern pipeline architecture",
+        "Plan incremental migration strategy",
+        "Validate data integrity and performance"
+      ],
+      "key_features": [
+        "Data flow visualization",
+        "Transformation validation",
+        "Performance modeling"
+      ]
+    },
+    {
+      "slug": "ml-engineer/model-deployment-planning",
+      "role": "ml-engineer",
+      "use_case": "model-deployment-planning",
+      "headline": "Model Deployment Planning for ML Engineers",
+      "subhead": "AI-assisted ML model deployment and infrastructure planning",
+      "meta_title": "ML Engineer AI Tools - Model Deployment Planning | Vibe Manager",
+      "meta_description": "AI tools for ML engineers. Model deployment strategies, infrastructure planning, MLOps workflow optimization.",
+      "primary_cta": "Optimize ML Deployments",
+      "publish": true,
+      "priority": 1,
+      "pain_points": [
+        {
+          "problem": "Model deployment requires complex infrastructure coordination",
+          "solution": "AI generates deployment plans with infrastructure requirements"
+        },
+        {
+          "problem": "Performance and scaling characteristics hard to predict",
+          "solution": "AI models resource usage and scaling patterns"
+        },
+        {
+          "problem": "Model versioning and rollback strategies unclear",
+          "solution": "AI plans deployment strategies with safe rollback options"
+        }
+      ],
+      "workflow_steps": [
+        "Analyze model requirements and constraints",
+        "Design deployment architecture",
+        "Plan monitoring and rollback strategies",
+        "Execute phased deployment with validation"
+      ],
+      "key_features": [
+        "Resource requirement analysis",
+        "Deployment strategy planning",
+        "Performance prediction modeling"
+      ]
+    },
+    {
+      "slug": "frontend-engineer/component-refactoring",
+      "role": "frontend-engineer",
+      "use_case": "component-refactoring",
+      "headline": "React Component Refactoring for Frontend Engineers",
+      "subhead": "AI-driven component architecture improvements and modernization",
+      "meta_title": "Frontend Engineer AI Tools - Component Refactoring | Vibe Manager",
+      "meta_description": "AI tools for frontend engineers. React component refactoring, architecture improvements, modern framework migrations.",
+      "primary_cta": "Refactor Frontend Components",
+      "publish": true,
+      "priority": 1,
+      "pain_points": [
+        {
+          "problem": "Large component trees are hard to refactor safely",
+          "solution": "AI maps component dependencies and suggests safe refactoring paths"
+        },
+        {
+          "problem": "State management patterns inconsistent across components",
+          "solution": "AI identifies patterns and generates consistent implementations"
+        },
+        {
+          "problem": "Performance implications of component changes unclear",
+          "solution": "AI analyzes render patterns and suggests optimizations"
+        }
+      ],
+      "workflow_steps": [
+        "Analyze component architecture and dependencies",
+        "Generate refactoring roadmap",
+        "Plan incremental component updates",
+        "Validate performance and functionality"
+      ],
+      "key_features": [
+        "Component dependency mapping",
+        "State pattern analysis",
+        "Performance impact prediction"
+      ]
+    },
+    {
+      "slug": "backend-engineer/api-versioning",
+      "role": "backend-engineer",
+      "use_case": "api-versioning",
+      "headline": "API Version Migration Planning for Backend Engineers",
+      "subhead": "AI-assisted API evolution and backward compatibility planning",
+      "meta_title": "Backend Engineer AI Tools - API Versioning | Vibe Manager",
+      "meta_description": "AI tools for backend engineers. API version migrations, backward compatibility, breaking change analysis.",
+      "primary_cta": "Plan API Migrations",
+      "publish": true,
+      "priority": 1,
+      "pain_points": [
+        {
+          "problem": "API changes can break client integrations unexpectedly",
+          "solution": "AI analyzes API usage patterns and predicts breaking changes"
+        },
+        {
+          "problem": "Backward compatibility strategies are complex to implement",
+          "solution": "AI generates migration plans with compatibility layers"
+        },
+        {
+          "problem": "Client migration coordination requires deep integration knowledge",
+          "solution": "AI maps client dependencies and suggests migration sequences"
+        }
+      ],
+      "workflow_steps": [
+        "Analyze current API usage and client dependencies",
+        "Design new API version with compatibility strategy",
+        "Plan client migration timeline",
+        "Execute versioning with monitoring"
+      ],
+      "key_features": [
+        "API usage analysis",
+        "Breaking change detection",
+        "Client migration planning"
+      ]
+    },
+    {
+      "slug": "mobile-engineer/cross-platform-refactor",
+      "role": "mobile-engineer",
+      "use_case": "cross-platform-refactor",
+      "headline": "Cross-Platform Mobile Refactoring for Mobile Engineers",
+      "subhead": "AI-driven mobile app architecture and framework migrations",
+      "meta_title": "Mobile Engineer AI Tools - Cross-Platform Refactoring | Vibe Manager",
+      "meta_description": "AI tools for mobile engineers. Cross-platform refactoring, framework migrations, mobile architecture improvements.",
+      "primary_cta": "Refactor Mobile Architecture",
+      "publish": true,
+      "priority": 1,
+      "pain_points": [
+        {
+          "problem": "Platform-specific code makes refactoring complex",
+          "solution": "AI identifies shared logic and suggests abstraction patterns"
+        },
+        {
+          "problem": "Framework migrations risk breaking platform integrations",
+          "solution": "AI maps platform dependencies and generates migration plans"
+        },
+        {
+          "problem": "Performance implications differ across mobile platforms",
+          "solution": "AI analyzes platform-specific performance characteristics"
+        }
+      ],
+      "workflow_steps": [
+        "Analyze platform-specific code and dependencies",
+        "Design cross-platform architecture",
+        "Plan incremental migration strategy",
+        "Validate performance across platforms"
+      ],
+      "key_features": [
+        "Platform abstraction planning",
+        "Dependency mapping",
+        "Performance analysis"
+      ]
+    },
+    {
+      "slug": "qa-lead/regression-test-planning",
+      "role": "qa-lead",
+      "use_case": "regression-test-planning",
+      "headline": "Regression Test Planning for QA Leads",
+      "subhead": "AI-powered test coverage strategies and risk assessment",
+      "meta_title": "QA Lead AI Tools - Regression Test Planning | Vibe Manager",
+      "meta_description": "AI tools for QA leads. Regression test planning, risk assessment, test coverage optimization, quality assurance strategies.",
+      "primary_cta": "Optimize Test Coverage",
+      "publish": true,
+      "priority": 1,
+      "pain_points": [
+        {
+          "problem": "Regression testing coverage is incomplete or inefficient",
+          "solution": "AI analyzes code changes and suggests targeted test scenarios"
+        },
+        {
+          "problem": "Risk assessment for releases lacks systematic approach",
+          "solution": "AI maps change impact and prioritizes testing efforts"
+        },
+        {
+          "problem": "Test automation gaps lead to manual testing bottlenecks",
+          "solution": "AI identifies automation opportunities and generates test plans"
+        }
+      ],
+      "workflow_steps": [
+        "Analyze code changes and impact scope",
+        "Generate risk-based test strategy",
+        "Plan automated and manual testing mix",
+        "Execute testing with coverage validation"
+      ],
+      "key_features": [
+        "Change impact analysis",
+        "Risk-based test prioritization",
+        "Coverage optimization"
+      ]
+    },
+    {
+      "slug": "engineering-manager/tech-debt-reduction",
+      "role": "engineering-manager",
+      "use_case": "tech-debt-reduction",
+      "headline": "Technical Debt Reduction for Engineering Managers",
+      "subhead": "AI-driven technical debt prioritization and remediation planning",
+      "meta_title": "Engineering Manager AI Tools - Tech Debt Reduction | Vibe Manager",
+      "meta_description": "AI tools for engineering managers. Technical debt assessment, prioritization strategies, team productivity optimization.",
+      "primary_cta": "Reduce Technical Debt",
+      "publish": true,
+      "priority": 1,
+      "pain_points": [
+        {
+          "problem": "Technical debt is hard to quantify and prioritize",
+          "solution": "AI analyzes codebase health and generates debt metrics"
+        },
+        {
+          "problem": "Team capacity planning for debt reduction unclear",
+          "solution": "AI estimates effort and suggests sprint allocation strategies"
+        },
+        {
+          "problem": "Business impact of technical improvements hard to communicate",
+          "solution": "AI generates business-focused impact assessments"
+        }
+      ],
+      "workflow_steps": [
+        "Assess current technical debt across projects",
+        "Prioritize debt reduction based on impact",
+        "Plan team capacity and sprint allocation",
+        "Track progress and business impact"
+      ],
+      "key_features": [
+        "Technical debt quantification",
+        "Impact-based prioritization",
+        "Business value communication"
+      ]
+    }
+  ]
+}

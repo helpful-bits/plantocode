@@ -17,7 +17,7 @@ export default function USPrivacyContent() {
           This Privacy Policy describes how helpful bits GmbH ("we," "us," or "our") collects, uses, and shares your personal information when you use our desktop application and related services. This policy applies to all users of our AI-powered workflow automation platform and has been tailored for US users to comply with applicable US privacy laws.
         </p>
         <p className="mt-4">
-          <strong>Effective Date:</strong> This Privacy Policy is effective as of August 12, 2025.
+          <strong>Effective Date:</strong> This Privacy Policy is effective as of September 22, 2025.
         </p>
       </section>
 

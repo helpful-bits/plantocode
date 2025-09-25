@@ -6,8 +6,7 @@ use crate::api_clients::{
 use crate::auth::TokenManager;
 use crate::constants::SERVER_API_URL;
 use crate::error::{AppError, AppResult};
-use crate::services::{BackupConfig, BackupService, initialize_cache_service, ConnectionManager, ConnectionManagerConfig};
-use crate::tls::cert_manager::CertificateManager;
+use crate::services::{BackupConfig, BackupService, initialize_cache_service};
 use log::{debug, error, info, warn};
 use sqlx::SqlitePool;
 use std::sync::Arc;
@@ -234,67 +233,8 @@ pub async fn initialize_backup_service(app_handle: &AppHandle) -> AppResult<()> 
 }
 
 /// Initialize the connection manager with TLS support for mobile connectivity
-pub async fn initialize_connection_manager(app_handle: &AppHandle) -> AppResult<()> {
-    info!("Initializing connection manager with TLS...");
-
-    // Get app data directory for storing certificates
-    let app_data_dir = app_handle.path().app_local_data_dir().map_err(|e| {
-        AppError::InitializationError(format!("Failed to get app local data dir: {}", e))
-    })?;
-
-    let cert_dir = app_data_dir.join("certs");
-
-    // Initialize certificate manager
-    let cert_manager = CertificateManager::new(cert_dir);
-    cert_manager.initialize().await.map_err(|e| {
-        AppError::InitializationError(format!("Failed to initialize certificate manager: {}", e))
-    })?;
-
-    // Generate or reuse self-signed certificate
-    cert_manager.generate_self_signed_cert().await.map_err(|e| {
-        AppError::InitializationError(format!("Failed to get/generate certificate: {}", e))
-    })?;
-
-    info!("Certificate manager initialized and certificates ready");
-
-    // Only start connection manager in release builds for security
-    #[cfg(not(debug_assertions))]
-    {
-        // Create connection manager configuration
-        let connection_config = ConnectionManagerConfig {
-            bind_address: "127.0.0.1".to_string(),
-            port: 4431, // Use non-standard port
-            require_auth: true,
-            enable_tls: true,
-            heartbeat_interval: std::time::Duration::from_secs(30),
-            connection_timeout: std::time::Duration::from_secs(300),
-            max_connections: 10,
-            message_buffer_size: 100,
-        };
-
-        // Create and start connection manager
-        let connection_manager = ConnectionManager::new(connection_config).map_err(|e| {
-            AppError::InitializationError(format!("Failed to create connection manager: {}", e))
-        })?;
-
-        // Store in app state for access by other components
-        app_handle.manage(Arc::new(connection_manager.clone()));
-
-        // Start the connection manager in the background
-        let manager_handle = connection_manager.clone();
-        tokio::spawn(async move {
-            if let Err(e) = manager_handle.start().await {
-                error!("Connection manager failed: {}", e);
-            }
-        });
-
-        info!("Connection manager started with TLS support on port 4431");
-    }
-
-    #[cfg(debug_assertions)]
-    {
-        info!("Connection manager disabled in debug builds for security");
-    }
-
+/// NOTE: Currently disabled due to missing TLS module implementation
+pub async fn initialize_connection_manager(_app_handle: &AppHandle) -> AppResult<()> {
+    info!("Connection manager initialization skipped - TLS module not implemented");
     Ok(())
 }

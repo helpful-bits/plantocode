@@ -2,8 +2,8 @@ import { Metadata } from 'next';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
+import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Terminal, Mic, Save, History, Zap, Heart, AlertCircle, Shield, Database, Activity, Cpu } from 'lucide-react';
-import Link from 'next/link';
 
 export const metadata: Metadata = {
   title: 'Job-Centric Terminal - Smart PTY Sessions with Health Monitoring | Vibe Manager',
@@ -53,8 +53,8 @@ export default function IntegratedTerminalPage() {
                   Job-Centric Terminal That Never Loses Context
                 </h1>
                 <p className="text-lg sm:text-xl md:text-2xl text-foreground/80 max-w-3xl mx-auto leading-relaxed">
-                  Every terminal is tied to a job. PTY sessions with health monitoring detect stuck processes,
-                  missing input, and connection issues. Auto-recovery keeps you productive. 5MB persistent ring buffer.
+                  Every terminal is tied to a job. PTY sessions with health monitoring detect agent inactivity
+                  and connection issues. Two-level attention system alerts when agents need guidance. 5MB persistent ring buffer.
                 </p>
               </div>
 
@@ -77,7 +77,7 @@ export default function IntegratedTerminalPage() {
                     </div>
                     <h3 className="text-lg font-semibold mb-2">Health Monitoring</h3>
                     <p className="text-foreground/80 text-sm">
-                      5-second health checks. Detects stuck/dead processes. Auto-recovery with intelligent actions.
+                      5-second health checks. Detects inactive/dead processes. Auto-recovery with intelligent actions.
                     </p>
                   </GlassCard>
 
@@ -119,7 +119,7 @@ export default function IntegratedTerminalPage() {
                           </li>
                           <li className="flex items-start gap-2">
                             <span className="text-orange-400">•</span>
-                            <span><strong>Stuck:</strong> No response to probes</span>
+                            <span><strong>Agent Requires Attention:</strong> 2+ minutes inactive</span>
                           </li>
                           <li className="flex items-start gap-2">
                             <span className="text-red-400">•</span>
@@ -172,39 +172,37 @@ export default function IntegratedTerminalPage() {
                 </div>
               </div>
 
-              {/* Attention Detection System */}
+              {/* Agent Attention System */}
               <div className="mb-16">
-                <GlassCard className="p-8 sm:p-12 bg-black/50">
-                  <h2 className="text-2xl sm:text-3xl font-bold mb-6 text-center">Smart Attention Detection</h2>
+                <GlassCard className="p-8 sm:p-12" highlighted>
+                  <h2 className="text-2xl sm:text-3xl font-bold mb-6 text-center">Two-Level Agent Attention System</h2>
 
                   <div className="grid md:grid-cols-2 gap-6 mb-6">
-                    <div className="bg-black/30 rounded-lg p-6">
-                      <h3 className="text-lg font-semibold mb-3 text-primary">Pattern Recognition</h3>
+                    <GlassCard className="p-6">
+                      <h3 className="text-lg font-semibold mb-3 text-primary">Inactivity Detection</h3>
                       <p className="text-foreground/80 text-sm mb-3">
-                        Regex detection for user input prompts with 30-second throttling.
+                        Simple time-based detection when agents stop producing output.
                       </p>
-                      <div className="bg-black rounded p-3 font-mono text-xs">
-                        <div className="text-green-400">Detected patterns:</div>
-                        <div className="text-yellow-400">• "awaiting input"</div>
-                        <div className="text-yellow-400">• "waiting for response"</div>
-                        <div className="text-yellow-400">• "[y/n]", "(yes/no)"</div>
-                        <div className="text-yellow-400">• "Press Enter to continue"</div>
+                      <div className="bg-slate-900 dark:bg-black rounded p-3 font-mono text-xs">
+                        <div className="text-green-400">Attention levels:</div>
+                        <div className="text-yellow-400">• 30 seconds: "Agent idle - may have completed task"</div>
+                        <div className="text-red-400">• 2 minutes: "Agent requires attention - check terminal"</div>
                       </div>
-                    </div>
+                    </GlassCard>
 
-                    <div className="bg-black/30 rounded-lg p-6">
+                    <GlassCard className="p-6">
                       <h3 className="text-lg font-semibold mb-3 text-primary">User Notifications</h3>
                       <p className="text-foreground/80 text-sm mb-3">
-                        Multi-level alerting when terminal needs attention.
+                        Progressive alerting when agents need human guidance.
                       </p>
-                      <div className="bg-black rounded p-3 font-mono text-xs">
+                      <div className="bg-slate-900 dark:bg-black rounded p-3 font-mono text-xs">
                         <div className="text-cyan-400">Alert mechanisms:</div>
-                        <div className="text-white">• Status badge indicators</div>
-                        <div className="text-white">• Desktop notifications</div>
-                        <div className="text-white">• Visual terminal borders</div>
-                        <div className="text-white">• Auto-clear on interaction</div>
+                        <div className="text-gray-200">• Yellow indicators for idle agents</div>
+                        <div className="text-gray-200">• Red alerts + desktop notifications</div>
+                        <div className="text-gray-200">• Visual terminal borders</div>
+                        <div className="text-gray-200">• Auto-clear on new output</div>
                       </div>
-                    </div>
+                    </GlassCard>
                   </div>
                 </GlassCard>
               </div>
@@ -380,7 +378,7 @@ export default function IntegratedTerminalPage() {
                         → 5-second interval checks<br />
                         → Process alive verification<br />
                         → Output timestamp tracking<br />
-                        → Stuck detection with probes<br />
+                        → Agent attention detection<br />
                         → Automatic recovery triggers
                       </div>
                     </div>
@@ -454,82 +452,86 @@ export default function IntegratedTerminalPage() {
 
               {/* Unique Value */}
               <div className="mb-16">
-                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">What Makes This Different</h2>
+                <h2 className="text-2xl sm:text-3xl font-bold mb-12 text-center">What Makes This Different</h2>
 
-                <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-                  <div>
-                    <h3 className="text-lg font-semibold mb-4 text-red-500">Standard Terminals</h3>
-                    <ul className="space-y-3 text-foreground/80">
-                      <li className="flex items-start gap-2">
-                        <span className="text-red-500 mt-1">✗</span>
-                        <span>No health monitoring</span>
+                <div className="grid md:grid-cols-2 gap-6 max-w-5xl mx-auto">
+                  <GlassCard className="p-6 sm:p-8 border-red-500/20 bg-red-500/5">
+                    <h3 className="text-xl font-bold mb-6 text-red-500 flex items-center gap-2">
+                      <span className="text-2xl">✗</span>
+                      Standard Terminals
+                    </h3>
+                    <ul className="space-y-4">
+                      <li className="flex items-start gap-3">
+                        <span className="text-red-400 mt-0.5 text-lg">✗</span>
+                        <span className="text-foreground/70">No health monitoring</span>
                       </li>
-                      <li className="flex items-start gap-2">
-                        <span className="text-red-500 mt-1">✗</span>
-                        <span>Manual stuck detection</span>
+                      <li className="flex items-start gap-3">
+                        <span className="text-red-400 mt-0.5 text-lg">✗</span>
+                        <span className="text-foreground/70">No agent attention tracking</span>
                       </li>
-                      <li className="flex items-start gap-2">
-                        <span className="text-red-500 mt-1">✗</span>
-                        <span>Lost on app restart</span>
+                      <li className="flex items-start gap-3">
+                        <span className="text-red-400 mt-0.5 text-lg">✗</span>
+                        <span className="text-foreground/70">Lost on app restart</span>
                       </li>
-                      <li className="flex items-start gap-2">
-                        <span className="text-red-500 mt-1">✗</span>
-                        <span>No attention alerts</span>
+                      <li className="flex items-start gap-3">
+                        <span className="text-red-400 mt-0.5 text-lg">✗</span>
+                        <span className="text-foreground/70">No attention alerts</span>
                       </li>
-                      <li className="flex items-start gap-2">
-                        <span className="text-red-500 mt-1">✗</span>
-                        <span>Separate from workflow</span>
+                      <li className="flex items-start gap-3">
+                        <span className="text-red-400 mt-0.5 text-lg">✗</span>
+                        <span className="text-foreground/70">Separate from workflow</span>
                       </li>
                     </ul>
-                  </div>
+                  </GlassCard>
 
-                  <div>
-                    <h3 className="text-lg font-semibold mb-4 text-green-500">Vibe Manager Terminal</h3>
-                    <ul className="space-y-3 text-foreground/80">
-                      <li className="flex items-start gap-2">
-                        <span className="text-green-500 mt-1">✓</span>
-                        <span>5-second health checks</span>
+                  <GlassCard className="p-6 sm:p-8 border-green-500/20 bg-green-500/5" highlighted>
+                    <h3 className="text-xl font-bold mb-6 text-green-500 flex items-center gap-2">
+                      <span className="text-2xl">✓</span>
+                      Vibe Manager Terminal
+                    </h3>
+                    <ul className="space-y-4">
+                      <li className="flex items-start gap-3">
+                        <span className="text-green-400 mt-0.5 text-lg">✓</span>
+                        <span className="text-foreground/90 font-medium">5-second health checks</span>
                       </li>
-                      <li className="flex items-start gap-2">
-                        <span className="text-green-500 mt-1">✓</span>
-                        <span>Auto-recovery actions</span>
+                      <li className="flex items-start gap-3">
+                        <span className="text-green-400 mt-0.5 text-lg">✓</span>
+                        <span className="text-foreground/90 font-medium">Auto-recovery actions</span>
                       </li>
-                      <li className="flex items-start gap-2">
-                        <span className="text-green-500 mt-1">✓</span>
-                        <span>5MB persistent buffer</span>
+                      <li className="flex items-start gap-3">
+                        <span className="text-green-400 mt-0.5 text-lg">✓</span>
+                        <span className="text-foreground/90 font-medium">5MB persistent buffer</span>
                       </li>
-                      <li className="flex items-start gap-2">
-                        <span className="text-green-500 mt-1">✓</span>
-                        <span>Smart input detection</span>
+                      <li className="flex items-start gap-3">
+                        <span className="text-green-400 mt-0.5 text-lg">✓</span>
+                        <span className="text-foreground/90 font-medium">Agent attention detection</span>
                       </li>
-                      <li className="flex items-start gap-2">
-                        <span className="text-green-500 mt-1">✓</span>
-                        <span>Job-centric integration</span>
+                      <li className="flex items-start gap-3">
+                        <span className="text-green-400 mt-0.5 text-lg">✓</span>
+                        <span className="text-foreground/90 font-medium">Job-centric integration</span>
                       </li>
                     </ul>
-                  </div>
+                  </GlassCard>
                 </div>
               </div>
 
               {/* CTA */}
               <div className="text-center">
                 <GlassCard className="p-8 sm:p-12 max-w-3xl mx-auto" highlighted>
-                  <h2 className="text-2xl sm:text-3xl font-bold mb-4">Terminal That Monitors Itself</h2>
+                  <h2 className="text-2xl sm:text-3xl font-bold mb-4">Experience the Terminal That Never Loses Context</h2>
                   <p className="text-lg text-foreground/80 mb-8 max-w-2xl mx-auto">
-                    Stop manually checking if terminals are stuck. Health monitoring detects issues and recovers automatically.
-                    Attention detection notifies you when input is needed. Sessions persist with 5MB buffers.
+                    Health monitoring, session persistence, agent attention detection.
+                    This is how terminals should work - resilient, intelligent, job-centric.
                   </p>
-
                   <PlatformDownloadSection location="features_integrated_terminal" />
-
                   <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4 text-sm text-foreground/60">
-                    <Link href="/features/plan-editor" className="text-primary hover:underline">
-                      See implementation plans →
-                    </Link>
+                    <LinkWithArrow href="/features/voice-transcription">
+                      Explore voice commands
+                    </LinkWithArrow>
                     <span className="hidden sm:inline">•</span>
-                    <Link href="/docs" className="text-primary hover:underline">
-                      Terminal documentation →
-                    </Link>
+                    <LinkWithArrow href="/docs/terminal">
+                      Read technical docs
+                    </LinkWithArrow>
                   </div>
                 </GlassCard>
               </div>

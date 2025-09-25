@@ -1,6 +1,7 @@
 import { Metadata } from 'next';
 import { FeatureBaseLink } from '@/components/support/FeatureBaseSSO';
 import GlassCard from '@/components/ui/GlassCard';
+import { Button } from '@/components/ui/button';
 import { Mail, HelpCircle } from 'lucide-react';
 
 export const metadata: Metadata = {
@@ -42,13 +43,12 @@ export default function SupportPage() {
 
           <div className="space-y-6">
             <div className="text-center">
-              <a 
-                href="mailto:support@vibemanager.app" 
-                className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors w-full"
-              >
-                <Mail className="w-5 h-5" />
-                Contact Support
-              </a>
+              <Button variant="cta" size="lg" asChild className="w-full">
+                <a href="mailto:support@vibemanager.app" className="flex items-center gap-2">
+                  <Mail className="w-5 h-5" />
+                  Contact Support
+                </a>
+              </Button>
               <p className="text-sm text-muted-foreground mt-2">
                 support@vibemanager.app
               </p>

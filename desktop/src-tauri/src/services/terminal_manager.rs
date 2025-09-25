@@ -18,60 +18,99 @@ use std::time::Duration;
 use tauri::async_runtime::JoinHandle;
 use tauri::{AppHandle, Emitter, Manager, ipc::Channel};
 use tokio::sync::{broadcast, mpsc};
-use std::sync::mpsc as sync_mpsc;
 use tokio::time;
+use std::time::Instant;
 use std::collections::HashSet;
 use which;
 use base64;
+use std::collections::VecDeque;
 
 // Global cached augmented PATH
 static CACHED_AUGMENTED_PATH: OnceLock<String> = OnceLock::new();
 
+struct ByteRing {
+    cap: usize,
+    total: usize,
+    q: VecDeque<Vec<u8>>,
+}
+impl ByteRing {
+    fn new(cap: usize) -> Self { Self { cap, total: 0, q: VecDeque::new() } }
+    fn push(&mut self, chunk: Vec<u8>) {
+        if chunk.is_empty() { return; }
+        self.total += chunk.len();
+        self.q.push_back(chunk);
+        while self.total > self.cap {
+            if let Some(front) = self.q.pop_front() {
+                self.total = self.total.saturating_sub(front.len());
+            } else { break; }
+        }
+    }
+    fn snapshot(&self) -> Vec<u8> {
+        let mut out = Vec::with_capacity(self.total.min(self.cap));
+        for c in &self.q { out.extend_from_slice(c); }
+        out
+    }
+}
+
 async fn persistence_worker(
     job_id: String,
-    log_rx: sync_mpsc::Receiver<Vec<u8>>,
+    mut log_rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
     repo: Arc<TerminalSessionsRepository>,
+    settings_repo: Arc<SettingsRepository>,
 ) {
     let mut queue_size = 0usize;
 
-    loop {
-        match log_rx.recv() {
-            Ok(data) => {
-                queue_size += 1;
+    while let Some(data) = log_rx.recv().await {
+        queue_size += 1;
 
-                // Warn if persistence queue grows too large
-                if queue_size > 10 {
-                    warn!(
-                        "Persistence queue for job {} has {} items, potential bottleneck",
-                        job_id, queue_size
-                    );
-                }
+        // Warn if persistence queue grows too large
+        if queue_size > 10 {
+            warn!(
+                "Persistence queue for job {} has {} items, potential bottleneck",
+                job_id, queue_size
+            );
+        }
 
-                let log_string = String::from_utf8_lossy(&data).to_string();
+        let log_string = String::from_utf8_lossy(&data).to_string();
 
-                // Check for prompt markers that need immediate flush
-                let has_prompt_marker = log_string.chars().any(|c| matches!(c, '$' | '#' | '>' | '%'));
+        // Check for prompt markers that need immediate flush
+        let has_prompt_marker = log_string.chars().any(|c| matches!(c, '$' | '#' | '>' | '%'));
 
-                if let Err(e) = repo.append_output_log(&job_id, &log_string).await {
-                    warn!(
-                        "Failed to persist terminal output for job {}: {}",
-                        job_id, e
-                    );
-                } else if has_prompt_marker {
-                    // Force immediate database flush for prompt markers
-                    debug!("Forced flush for prompt marker in job {}", job_id);
-                }
+        // Read settings for persistence configuration
+        let persistence_enabled = settings_repo
+            .get_value("terminal.persistence.enabled")
+            .await
+            .unwrap_or(Some("true".to_string()))
+            .unwrap_or("true".to_string()) == "true";
 
-                queue_size = queue_size.saturating_sub(1);
-            }
-            Err(_) => {
-                // Channel closed, do final synchronous flush
-                info!("Persistence worker for job {} shutting down, performing final flush", job_id);
-                // The database operations are already async, so this is the final opportunity
-                break;
+        if persistence_enabled {
+            let max_log_bytes_str = settings_repo
+                .get_value("terminal.persistence.max_log_bytes")
+                .await
+                .unwrap_or(Some("5242880".to_string()))
+                .unwrap_or("5242880".to_string());
+
+            let max_log_bytes = max_log_bytes_str
+                .parse::<i32>()
+                .unwrap_or(5242880)
+                .clamp(131072, 33554432);
+
+            if let Err(e) = repo.append_output_log_with_limit(&job_id, &log_string, max_log_bytes).await {
+                warn!(
+                    "Failed to persist terminal output for job {}: {}",
+                    job_id, e
+                );
+            } else if has_prompt_marker {
+                // Force immediate database flush for prompt markers
+                debug!("Forced flush for prompt marker in job {}", job_id);
             }
         }
+
+        queue_size = queue_size.saturating_sub(1);
     }
+
+    // Channel closed, do final synchronous flush
+    info!("terminal[{}] persistence worker exiting (finalized)", job_id);
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,17 +127,18 @@ enum SessionStatus {
     Running = 0,
     Completed = 1,
     Failed = 2,
-    Stuck = 3,
+    AgentRequiresAttention = 3,
 }
 
 struct SessionHandle {
     master: Arc<Mutex<Box<dyn MasterPty + Send>>>,
-    writer: Arc<Mutex<Box<dyn Write + Send>>>,
+    input_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
+    writer_task: tauri::async_runtime::JoinHandle<()>,
+    ring: Arc<Mutex<ByteRing>>,
     child: Arc<Mutex<Box<dyn Child + Send>>>,
     process_controller: Arc<Mutex<Box<dyn ChildKiller + Send + Sync>>>,
     status: Arc<AtomicU8>,
     exit_code: Arc<Mutex<Option<i32>>>,
-    output_channel: Channel<Vec<u8>>,
     pub output_sender: Arc<broadcast::Sender<Vec<u8>>>,
     pub _child_wait_task: tauri::async_runtime::JoinHandle<()>,
     pub remote_clients: Arc<Mutex<HashSet<String>>>, // Track remote client IDs
@@ -120,33 +160,43 @@ impl TerminalManager {
             health_monitor,
         };
 
-        // Start periodic cleanup task for stuck/failed sessions
-        let sessions = manager.sessions.clone();
-        tauri::async_runtime::spawn(async move {
-            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60)); // Every minute
-            loop {
-                interval.tick().await;
+        {
+            let repo = app.state::<Arc<TerminalSessionsRepository>>().inner().clone();
+            tauri::async_runtime::spawn(async move {
+                if let Ok(stale_sessions) = repo.list_active_sessions().await {
+                    if !stale_sessions.is_empty() {
+                        info!(
+                            "Reconciling {} stale terminal sessions after startup",
+                            stale_sessions.len()
+                        );
+                    }
+                    for session in stale_sessions {
+                        let job_id = session.job_id.clone();
 
-                let mut to_remove = Vec::new();
+                        if let Err(e) = repo
+                            .append_output_log_with_limit(
+                                &job_id,
+                                "\r\n\x1b[33m[Previous terminal session ended when the desktop app closed]\x1b[0m\r\n",
+                                5_242_880,
+                            )
+                            .await
+                        {
+                            warn!(
+                                "Failed to append shutdown note for terminal session {}: {}",
+                                job_id, e
+                            );
+                        }
 
-                // Identify sessions to clean up
-                for entry in sessions.iter() {
-                    let (key, value) = entry.pair();
-                    let status = value.status.load(Ordering::Relaxed);
-
-                    // Remove sessions that have been completed/failed/stuck for more than 5 minutes
-                    if status != SessionStatus::Running as u8 {
-                        to_remove.push(key.clone());
+                        if let Err(e) = repo
+                            .update_session_status_by_job_id(&job_id, "completed", session.exit_code)
+                            .await
+                        {
+                            warn!("Failed to mark terminal session {} as completed: {}", job_id, e);
+                        }
                     }
                 }
-
-                // Remove identified sessions
-                for key in to_remove {
-                    debug!("Cleaning up non-running session: {}", key);
-                    sessions.remove(&key);
-                }
-            }
-        });
+            });
+        }
 
         manager
     }
@@ -158,24 +208,14 @@ impl TerminalManager {
         output_channel: Channel<Vec<u8>>,
         window: tauri::Window,
     ) -> Result<(), AppError> {
-        // Check if session already exists and return Ok(()) if running
-        if let Some(session_handle) = self.sessions.get(job_id) {
-            let status = session_handle.status.load(Ordering::Relaxed);
-            if status == SessionStatus::Running as u8 {
-                info!("Terminal session {} already running, reattaching", job_id);
-                // Session already running, just emit ready event
-                let app_for_ready = self.app.clone();
-                let job_for_ready = job_id.to_string();
-                let app_clone = app_for_ready.clone();
-                let _ = app_for_ready.run_on_main_thread(move || {
-                    let _ = app_clone.emit(
-                        "terminal-ready",
-                        serde_json::json!({ "jobId": job_for_ready }),
-                    );
-                });
-
-                return Ok(());
+        // Check if session already exists and reattach if running
+        if let Some(_session_handle) = self.sessions.get(job_id) {
+            // Attach the new client instead of returning early
+            if let Err(e) = self.attach_client(job_id, output_channel, &self.app).await {
+                log::error!("attach_client failed for {}: {}", job_id, e);
+                return Err(e);
             }
+            return Ok(());
         }
 
         info!("Starting terminal session for job_id: {}", job_id);
@@ -337,12 +377,13 @@ impl TerminalManager {
             }
             #[cfg(not(target_os = "windows"))]
             {
+                // Use simpler args - some shells hang with both -l and -i
                 if command.ends_with("bash") {
-                    cmd.args(&["--login", "-i"]);
+                    cmd.arg("-i");
                 } else if command.ends_with("zsh") {
-                    cmd.args(&["-l", "-i"]);
+                    cmd.arg("-i");
                 } else if command.ends_with("fish") {
-                    cmd.args(&["--login", "-i"]);
+                    cmd.arg("-i");
                 } else {
                     cmd.arg("-i");
                 }
@@ -366,30 +407,59 @@ impl TerminalManager {
         let child = match pty_pair.slave.spawn_command(cmd) {
             Ok(child) => child,
             Err(e) => {
-                let error_msg = format!("Failed to spawn {} process in PTY: {}", command, e);
+                let error_msg = format!("Failed to spawn {} process in PTY for job_id={}: {}", command, job_id, e);
                 self.mark_session_failed_and_emit(job_id, &window).await;
                 return Err(AppError::TerminalError(error_msg));
             }
         };
+        // CRITICAL: Drop slave immediately after spawn so child has exclusive access
+        drop(pty_pair.slave);
 
         let process_id = child.process_id();
         debug!("Spawned {} process with PID: {:?}", command, process_id);
 
-        // Get writer for PTY master
-        let writer = pty_pair
-            .master
-            .take_writer()
-            .map_err(|e| AppError::TerminalError(format!("Failed to get PTY writer: {}", e)))?;
-        let writer = Arc::new(Mutex::new(writer));
+        // Create bounded writer channel
+        let (input_tx, mut input_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(256);
+
+        // Take the writer once
+        let mut writer = pty_pair.master.take_writer()
+            .map_err(|e| AppError::TerminalError(format!("Failed to get PTY writer for job_id={}: {}", job_id, e)))?;
+
+        // Create ring buffer for restoration
+        let ring = Arc::new(Mutex::new(ByteRing::new(8 * 1024 * 1024)));
+        let ring_for_reader = ring.clone();
+
+        // Spawn writer task
+        let job_id_for_writer = job_id.to_string();
+        let writer_task = tauri::async_runtime::spawn(async move {
+            while let Some(data) = input_rx.recv().await {
+                // Chunk into 4096 byte slices for writes
+                for chunk in data.chunks(4096) {
+                    if let Err(e) = writer.write_all(chunk) {
+                        warn!("Write error for job {}: {}", job_id_for_writer, e);
+                        break;
+                    }
+                }
+                if let Err(e) = writer.flush() {
+                    warn!("Flush error for job {}: {}", job_id_for_writer, e);
+                    break;
+                }
+            }
+            drop(writer); // Explicit drop for clarity
+            debug!("Writer task exiting for job {}", job_id_for_writer);
+        });
 
         // Get reader for PTY master
         let reader = pty_pair
             .master
             .try_clone_reader()
-            .map_err(|e| AppError::TerminalError(format!("Failed to get PTY reader: {}", e)))?;
+            .map_err(|e| AppError::TerminalError(format!("Failed to get PTY reader for job_id={}: {}", job_id, e)))?;
 
         // Get process controller handle
         let process_controller = child.clone_killer();
+
+        // Track whether this is the first time we're launching the session
+        let mut should_auto_launch_cli = false;
 
         // Create/update DB session
         let repo = self
@@ -402,6 +472,8 @@ impl TerminalManager {
         let session_id = match repo.get_session_by_job_id(job_id).await {
             Ok(Some(mut existing_session)) => {
                 // Reuse the existing session but update its status
+                let had_prior_output = !existing_session.output_log.trim().is_empty();
+
                 info!("Reusing existing terminal session for job {} (was: {})", job_id, existing_session.status);
 
                 // Update the session to running status with new process info
@@ -422,18 +494,18 @@ impl TerminalManager {
                 }
 
                 // Append a separator to the output log for the new session
-                if let Some(ref mut log) = existing_session.output_log {
-                    if !log.is_empty() {
-                        log.push_str("\r\n\x1b[36m=== New Terminal Session ===\x1b[0m\r\n");
-                    }
-                } else {
-                    existing_session.output_log = Some(String::new());
+                if !existing_session.output_log.is_empty() {
+                    existing_session.output_log.push_str("\r\n\x1b[36m=== New Terminal Session ===\x1b[0m\r\n");
+                }
+
+                if !had_prior_output {
+                    should_auto_launch_cli = true;
                 }
 
                 // Update the existing session
                 repo.update_session(&existing_session)
                     .await
-                    .map_err(|e| format!("Failed to update terminal session in DB: {}", e))?;
+                    .map_err(|e| format!("Failed to update terminal session in DB for job_id={}: {}", job_id, e))?;
 
                 existing_session.id
             }
@@ -458,7 +530,7 @@ impl TerminalManager {
                         .and_then(|opts| opts.environment.as_ref())
                         .and_then(|env| serde_json::to_string(env).ok()),
                     title: None,
-                    output_log: Some(String::new()),
+                    output_log: String::new(),
                 };
 
                 let id = new_session.id.clone();
@@ -466,13 +538,15 @@ impl TerminalManager {
                 // Create the new session
                 repo.create_session(&new_session)
                     .await
-                    .map_err(|e| format!("Failed to create terminal session in DB: {}", e))?;
+                    .map_err(|e| format!("Failed to create terminal session in DB for job_id={}: {}", job_id, e))?;
+
+                should_auto_launch_cli = true;
 
                 id
             }
             Err(e) => {
                 return Err(AppError::TerminalError(format!(
-                    "Failed to check for existing session for job {}: {}",
+                    "Failed to check for existing session for job_id={}: {}",
                     job_id, e
                 )));
             }
@@ -482,14 +556,14 @@ impl TerminalManager {
         let (tx, _rx) = broadcast::channel(1024);
         let output_sender = Arc::new(tx);
 
-        // Create sync mpsc channel for critical writes
-        let (log_tx, log_rx) = sync_mpsc::channel::<Vec<u8>>();
+        // Create tokio mpsc channel for persistence
+        let (log_tx, log_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(1000);
 
         // Spawn persistence worker
         let job_id_for_worker = job_id.to_string();
         let repo_for_worker = repo.clone();
         tauri::async_runtime::spawn(async move {
-            persistence_worker(job_id_for_worker, log_rx, repo_for_worker).await;
+            persistence_worker(job_id_for_worker, log_rx, repo_for_worker, settings_repo.clone()).await;
         });
 
         // Create shared state for the session
@@ -509,13 +583,19 @@ impl TerminalManager {
 
         // Clone required data for reader thread
         let output_sender_clone = output_sender.clone();
+        let health_monitor = self.health_monitor.clone();
+
+        // EMIT TERMINAL-READY after PTY and tasks are ready
+        self.app.emit("terminal-ready", &job_id)
+            .map_err(|e| AppError::TauriError(format!("Failed to emit terminal-ready: {}", e)))?;
 
         // Spawn PTY reader that writes to broadcast channel
         let mut reader = reader;
         std::thread::spawn(move || {
-            // 64KiB read buffer for performance
-            let mut buf = vec![0u8; 65536];
+            // 4KiB read buffer for performance
+            let mut buf = vec![0u8; 4096];
             let mut write_through_cache = Vec::new();
+            let mut last_flush = Instant::now();
             let mut bytes_processed = 0usize;
 
             loop {
@@ -523,7 +603,7 @@ impl TerminalManager {
                     Ok(0) => {
                         // EOF - do final flush of any buffered output
                         if !write_through_cache.is_empty() {
-                            if let Err(_) = log_tx.send(write_through_cache.clone()) {
+                            if let Err(_) = log_tx.try_send(write_through_cache.clone()) {
                                 warn!("Failed to send final cached data for job {}", job_id_clone);
                             }
                             write_through_cache.clear();
@@ -534,37 +614,38 @@ impl TerminalManager {
                         let data = buf[..n].to_vec();
                         bytes_processed += n;
 
+                        // Store in ring buffer for restoration
+                        if let Ok(mut ring) = ring_for_reader.lock() {
+                            ring.push(data.clone());
+                        }
+
                         // Send to broadcast channel (hot path)
                         let _ = output_sender_clone.send(data.clone());
 
                         // Update health monitor with output activity
-                        if let Some(app_state) = app_handle_for_reader.try_state::<Arc<TerminalManager>>() {
-                            app_state.health_monitor.update_output_time(&job_id_clone);
-                        }
+                        health_monitor.update_output_time(&job_id_clone);
 
                         // Add to write-through cache
                         write_through_cache.extend_from_slice(&data);
 
-                        // Check for critical output (prompts, errors) or size threshold
+                        // Check for critical output (prompts, errors) or size/time threshold
                         let data_str = String::from_utf8_lossy(&data);
                         let has_prompt_marker = data_str.chars().any(|c| matches!(c, '$' | '#' | '>' | '%'));
                         let has_error_marker = data_str.to_lowercase().contains("error") || data_str.contains("failed");
+                        let has_newline = data.contains(&b'\n');
                         let cache_too_large = write_through_cache.len() >= 4096; // 4KB threshold
+                        let time_elapsed = last_flush.elapsed() >= std::time::Duration::from_millis(250);
 
-                        if has_prompt_marker || has_error_marker || cache_too_large {
-                            // Force synchronous persist for critical data
-                            if let Err(_) = log_tx.send(write_through_cache.clone()) {
-                                warn!("Failed to persist critical output for job {}", job_id_clone);
+                        if has_prompt_marker || has_error_marker || has_newline || cache_too_large || time_elapsed {
+                            // Send cached data to persistence worker
+                            if let Err(_) = log_tx.try_send(write_through_cache.clone()) {
+                                warn!("Failed to persist output for job {}", job_id_clone);
                             }
                             write_through_cache.clear();
+                            last_flush = Instant::now();
 
                             if has_prompt_marker {
-                                debug!("Synchronous persist triggered by prompt marker for job {}", job_id_clone);
-                            }
-                        } else {
-                            // Normal async persistence for non-critical data
-                            if let Err(_) = log_tx.send(data.clone()) {
-                                warn!("Failed to persist output for job {}", job_id_clone);
+                                debug!("Flush triggered by prompt marker for job {}", job_id_clone);
                             }
                         }
                     }
@@ -573,7 +654,7 @@ impl TerminalManager {
                         warn!("pty read error: {}", e);
                         // Flush any remaining cached data before exiting
                         if !write_through_cache.is_empty() {
-                            if let Err(_) = log_tx.send(write_through_cache) {
+                            if let Err(_) = log_tx.try_send(write_through_cache) {
                                 warn!("Failed to send final error cached data for job {}", job_id_clone);
                             }
                         }
@@ -582,6 +663,7 @@ impl TerminalManager {
                 }
             }
 
+            info!("terminal[{}] final flush and reader shutdown", job_id_clone);
             info!("PTY reader for job {} processed {} bytes total", job_id_clone, bytes_processed);
         });
 
@@ -592,6 +674,7 @@ impl TerminalManager {
         let status_for_wait = status.clone();
         let exit_code_for_wait = exit_code.clone();
         let sessions_for_wait = self.sessions.clone();
+        let health_monitor_for_wait = self.health_monitor.clone();
         let child_wait_task = tauri::async_runtime::spawn(async move {
             let exit_status = tauri::async_runtime::spawn_blocking(move || {
                 let mut lock = child_for_wait.lock().unwrap();
@@ -650,12 +733,14 @@ impl TerminalManager {
                     // Wait before removing from memory, but session is already marked as completed/failed in DB
                     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                     sessions_for_wait.remove(&job_for_wait);
+                    health_monitor_for_wait.unregister_session(&job_for_wait);
                     info!("Removed terminal session {} from memory after completion", job_for_wait);
                 }
                 Err(e) => {
                     error!("Error waiting for child {}: {}", job_for_wait, e);
                     status_for_wait.store(SessionStatus::Failed as u8, Ordering::Relaxed);
                     sessions_for_wait.remove(&job_for_wait);
+                    health_monitor_for_wait.unregister_session(&job_for_wait);
                 }
             }
         });
@@ -663,12 +748,13 @@ impl TerminalManager {
         // Store session handle in DashMap
         let session_handle = Arc::new(SessionHandle {
             master: Arc::new(Mutex::new(pty_pair.master)),
-            writer,
+            input_tx,
+            writer_task,
+            ring,
             child: child_arc,
             process_controller: Arc::new(Mutex::new(process_controller)),
             status,
             exit_code,
-            output_channel: output_channel.clone(),
             output_sender: output_sender.clone(),
             _child_wait_task: child_wait_task,
             remote_clients: Arc::new(Mutex::new(HashSet::new())),
@@ -683,7 +769,7 @@ impl TerminalManager {
         // Auto-launch CLI tool for implementation plan terminals
         let is_implementation_plan = self.check_if_implementation_plan(job_id).await;
 
-        if is_implementation_plan {
+        if is_implementation_plan && should_auto_launch_cli {
             info!("Terminal session for implementation plan detected: {}", job_id);
 
             // Check if a CLI tool is configured
@@ -701,37 +787,18 @@ impl TerminalManager {
                         cli_command.push_str(&additional_args);
                     }
 
-                    // Add carriage return to execute
-                    cli_command.push('\r');
+                    // Add newline to execute
+                    cli_command.push('\n');
 
                     let session_clone = session_handle.clone();
                     let job_id_for_log = job_id.to_string();
-                    let cli_name_for_log = cli_name.clone();
                     tokio::spawn(async move {
-                        // Wait longer for shell to fully initialize
-                        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+                        // Wait for shell to initialize
+                        tokio::time::sleep(tokio::time::Duration::from_millis(400)).await;
 
-                        info!("Sending CLI command '{}' to terminal for plan {}", cli_command.trim(), job_id_for_log);
-
-                        // Send CR first to ensure clean prompt
-                        if let Ok(mut writer_guard) = session_clone.writer.lock() {
-                            let _ = writer_guard.write_all(b"\r");
-                            let _ = writer_guard.flush();
-                            drop(writer_guard); // Explicitly drop the guard before await
-                        }
-
-                        // Small delay to let shell process the CR
-                        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-
-                        // Now send the actual command
-                        if let Ok(mut writer_guard) = session_clone.writer.lock() {
-                            if let Err(e) = writer_guard.write_all(cli_command.as_bytes()) {
-                                warn!("Failed to send CLI command for plan {}: {}", job_id_for_log, e);
-                            } else if let Err(e) = writer_guard.flush() {
-                                warn!("Failed to flush CLI command for plan {}: {}", job_id_for_log, e);
-                            } else {
-                                info!("Successfully sent CLI command for plan {}", job_id_for_log);
-                            }
+                        // Send the command via channel
+                        if let Err(e) = session_clone.input_tx.send(cli_command.as_bytes().to_vec()).await {
+                            warn!("Failed to send CLI command for plan {}: {}", job_id_for_log, e);
                         }
                     });
                 } else {
@@ -742,22 +809,16 @@ impl TerminalManager {
                 info!("Auto-executing custom command for implementation plan");
 
                 let mut command = custom_cmd.replace("{PLAN_ID}", job_id);
-                command.push('\r');
+                command.push('\n');
 
                 let session_clone = session_handle.clone();
                 let job_id_for_log = job_id.to_string();
                 tokio::spawn(async move {
                     // Wait for shell to initialize
-                    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(400)).await;
 
-                    if let Ok(mut writer_guard) = session_clone.writer.lock() {
-                        if let Err(e) = writer_guard.write_all(command.as_bytes()) {
-                            warn!("Failed to send custom command for plan {}: {}", job_id_for_log, e);
-                        } else if let Err(e) = writer_guard.flush() {
-                            warn!("Failed to flush custom command for plan {}: {}", job_id_for_log, e);
-                        } else {
-                            info!("Successfully sent custom command for plan {}", job_id_for_log);
-                        }
+                    if let Err(e) = session_clone.input_tx.send(command.as_bytes().to_vec()).await {
+                        warn!("Failed to send custom command for plan {}: {}", job_id_for_log, e);
                     }
                 });
             } else {
@@ -765,8 +826,8 @@ impl TerminalManager {
             }
         }
 
-        // Attach client to the broadcast channel using the new method
-        if let Err(e) = self.attach_client(job_id, output_channel, &self.app).await {
+        // Attach client to the broadcast channel without emitting terminal-ready (already emitted above)
+        if let Err(e) = self.attach_client_internal(job_id, output_channel, &self.app, false).await {
             error!("Failed to attach client for job {}: {:?}", job_id, e);
         }
 
@@ -777,134 +838,132 @@ impl TerminalManager {
         Ok(())
     }
 
+    pub fn get_client_count(&self, job_id: &str) -> u64 {
+        self.sessions.get(job_id)
+            .map(|h| h.output_sender.receiver_count() as u64)
+            .unwrap_or(0)
+    }
+
     pub async fn attach_client(
         &self,
         job_id: &str,
         output: Channel<Vec<u8>>,
-        app: &AppHandle,
+        app_handle: &AppHandle,
     ) -> Result<(), AppError> {
-        // Check if session is currently running in memory
-        let is_running_in_memory = if let Some(session_handle) = self.sessions.get(job_id) {
-            let status = session_handle.status.load(Ordering::Relaxed);
-            status == SessionStatus::Running as u8
+        self.attach_client_internal(job_id, output, app_handle, true).await
+    }
+
+    async fn attach_client_internal(
+        &self,
+        job_id: &str,
+        output: Channel<Vec<u8>>,
+        app_handle: &AppHandle,
+        emit_ready: bool,
+    ) -> Result<(), AppError> {
+        let session = self.sessions.get(job_id)
+            .ok_or_else(|| AppError::NotFoundError(format!("Terminal session not found for job {}", job_id)))?;
+
+        // Create bounded channel for per-client queue
+        let (client_tx, mut client_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(200);
+
+        // Subscribe to broadcast
+        let mut broadcast_rx = session.output_sender.subscribe();
+
+        // EMIT TERMINAL-READY IMMEDIATELY after subscription (if requested)
+        if emit_ready {
+            app_handle.emit("terminal-ready", &job_id)
+                .map_err(|e| AppError::TauriError(format!("Failed to emit terminal-ready: {}", e)))?;
+        }
+
+        // Then send ring snapshot
+        let snapshot = if let Ok(ring) = session.ring.lock() {
+            ring.snapshot()
         } else {
-            false
+            Vec::new()
         };
-
-        let repo = app
-            .state::<Arc<TerminalSessionsRepository>>()
-            .inner()
-            .clone();
-
-        // ALWAYS send some output, never send nothing
-        if !is_running_in_memory {
-            // Session is not running, check for historical output
-            info!("Session {} is not running in memory, checking for historical output", job_id);
-
-            let history = repo.get_output_log(job_id).await.map_err(|e| {
-                warn!("Failed to get output log for job {}: {}", job_id, e);
-                AppError::DatabaseError(format!(
-                    "Failed to get output log for job {}: {}",
-                    job_id, e
-                ))
-            })?;
-
-            if !history.is_empty() {
-                // Send historical output
-                let history_bytes = history.into_bytes();
-                if let Err(_) = output.send(history_bytes) {
-                    return Err(AppError::TerminalError(format!(
-                        "Failed to send history to client for job {}",
-                        job_id
-                    )));
+        if !snapshot.is_empty() {
+            // Send snapshot in 64KB chunks
+            for chunk in snapshot.chunks(65536) {
+                if let Err(e) = output.send(chunk.to_vec()) {
+                    warn!("Failed to send ring buffer snapshot chunk to client for job {}: {}", job_id, e);
+                    return Err(AppError::TerminalError(format!("Failed to send initial snapshot: {}", e)));
                 }
-            } else {
-                // Check if session exists in database
-                match repo.get_session_by_job_id(job_id).await {
-                    Ok(Some(session)) => {
-                        // Session exists but no output - send appropriate message
-                        let status_msg = if session.status == "completed" || session.status == "failed" {
-                            format!("[Session ended - no output captured]\r\n")
-                        } else {
-                            format!("[Session active - waiting for output...]\r\n")
-                        };
+            }
+        }
 
-                        if let Err(_) = output.send(status_msg.into_bytes()) {
-                            return Err(AppError::TerminalError(format!(
-                                "Failed to send status message to client for job {}",
-                                job_id
-                            )));
+        // Task A: Forward from broadcast to client queue
+        let job_id_sub = job_id.to_string();
+        let _subscriber_task = tauri::async_runtime::spawn(async move {
+            loop {
+                match broadcast_rx.recv().await {
+                    Ok(data) => {
+                        // Try to send, drop if full to prevent backpressure
+                        if let Err(e) = client_tx.try_send(data) {
+                            if matches!(e, tokio::sync::mpsc::error::TrySendError::Full(_)) {
+                                warn!("Client queue full for job {}, dropping data", job_id_sub);
+                            } else {
+                                // Channel closed, exit task cleanly
+                                break;
+                            }
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(n)) => {
+                        warn!("Client for job {} lagged by {} messages", job_id_sub, n);
+                        continue;
+                    }
+                    Err(_) => break, // Channel closed
+                }
+            }
+            debug!("Subscriber task exiting for job {}", job_id_sub);
+        });
+
+        // Task B: Coalesce and send to Tauri channel
+        let job_id_send = job_id.to_string();
+        let _sender_task = tauri::async_runtime::spawn(async move {
+            let mut buffer = Vec::with_capacity(4096);
+            let mut last_send = std::time::Instant::now();
+
+            loop {
+                // Wait for data with timeout
+                match tokio::time::timeout(Duration::from_millis(10), client_rx.recv()).await {
+                    Ok(Some(data)) => {
+                        buffer.extend_from_slice(&data);
+
+                        // Send if buffer is large enough or enough time passed
+                        if buffer.len() >= 4096 || last_send.elapsed() >= Duration::from_millis(16) {
+                            if let Err(e) = output.send(buffer.clone()) {
+                                warn!("Failed to send to client channel for job {}: {}", job_id_send, e);
+                                break;
+                            }
+                            buffer.clear();
+                            last_send = std::time::Instant::now();
                         }
                     }
                     Ok(None) => {
-                        // No session exists - send initialization message
-                        let init_msg = "[Initializing new session...]\r\n";
-                        if let Err(_) = output.send(init_msg.as_bytes().to_vec()) {
-                            return Err(AppError::TerminalError(format!(
-                                "Failed to send initialization message to client for job {}",
-                                job_id
-                            )));
+                        // Channel closed, send remaining buffer
+                        if !buffer.is_empty() {
+                            let _ = output.send(buffer);
                         }
+                        break;
                     }
-                    Err(e) => {
-                        // Database error - send error details
-                        let error_msg = format!("[Error accessing session: {}]\r\n", e);
-                        if let Err(_) = output.send(error_msg.into_bytes()) {
-                            return Err(AppError::TerminalError(format!(
-                                "Failed to send error message to client for job {}",
-                                job_id
-                            )));
+                    Err(_) => {
+                        // Timeout, send buffer if not empty
+                        if !buffer.is_empty() {
+                            if let Err(e) = output.send(buffer.clone()) {
+                                warn!("Failed to send to client channel for job {}: {}", job_id_send, e);
+                                break;
+                            }
+                            buffer.clear();
+                            last_send = std::time::Instant::now();
                         }
                     }
                 }
             }
-        } else {
-            // Session is running, send a brief status message to confirm attachment
-            info!("Session {} is running in memory, sending status confirmation", job_id);
-            let status_msg = "[Attached to running session]\r\n";
-            if let Err(_) = output.send(status_msg.as_bytes().to_vec()) {
-                return Err(AppError::TerminalError(format!(
-                    "Failed to send status confirmation to client for job {}",
-                    job_id
-                )));
-            }
-        }
-
-        // Subscribe to the session's broadcast channel for live output
-        if let Some(session_handle) = self.sessions.get(job_id) {
-            let status = session_handle.status.load(Ordering::Relaxed);
-            if status == SessionStatus::Running as u8 {
-                let mut rx = session_handle.output_sender.subscribe();
-                let job_id_clone = job_id.to_string();
-
-                // Forward all subsequent broadcast messages to the output channel
-                tauri::async_runtime::spawn(async move {
-                    loop {
-                        match rx.recv().await {
-                            Ok(bytes) => {
-                                if output.send(bytes).is_err() {
-                                    break;
-                                }
-                            }
-                            Err(broadcast::error::RecvError::Lagged(_)) => {
-                                continue;
-                            }
-                            Err(_) => break,
-                        }
-                    }
-                });
-            }
-        }
-
-        // Emit a "terminal-ready" event to signal UI readiness
-        let app_clone = app.clone();
-        let job_for_ready = job_id.to_string();
-        let _ = app.run_on_main_thread(move || {
-            let _ = app_clone.emit(
-                "terminal-ready",
-                serde_json::json!({ "jobId": job_for_ready }),
-            );
+            debug!("Sender task exiting for job {}", job_id_send);
         });
+
+        // Store tasks for cleanup (if you track them)
+        // For now, just let them run to completion
 
         Ok(())
     }
@@ -945,18 +1004,10 @@ impl TerminalManager {
             })?;
 
             if !history.is_empty() {
-                let history_bytes = history.into_bytes();
-                let _ = output_channel.send(history_bytes);
+                let _ = output_channel.send(history.into_bytes());
             }
 
-            // Send a status message indicating the session has ended
-            let status_msg = format!(
-                "\r\n\x1b[33m[Session ended - Status: {}]\x1b[0m\r\n",
-                db_session.status
-            );
-            let _ = output_channel.send(status_msg.into_bytes());
-
-            // Still emit terminal-ready to unblock the UI
+            // Emit terminal-ready and return immediately
             let app_clone = self.app.clone();
             let job_for_ready = job_id.to_string();
             let _ = self.app.run_on_main_thread(move || {
@@ -970,14 +1021,21 @@ impl TerminalManager {
         }
 
         Err(AppError::TerminalError(format!(
-            "Terminal session {} not found",
+            "Terminal session not found for job_id={}",
             job_id
         )))
     }
 
-    pub async fn write_input(&self, job_id: &str, data: Vec<u8>) -> Result<(), String> {
-        // Skip health validation here to avoid recursion
-        // Health checks are done periodically by the health monitor
+    pub async fn write_input(&self, job_id: &str, data: Vec<u8>) -> Result<(), AppError> {
+        // Early return if data is empty
+        if data.is_empty() {
+            return Ok(());
+        }
+
+        // Check data size limit
+        if data.len() > 1_048_576 {
+            info!("Large input detected for job {} with size {} bytes", job_id, data.len());
+        }
 
         if let Some(session_handle) = self.sessions.get(job_id) {
             // Check if session is still running
@@ -987,21 +1045,18 @@ impl TerminalManager {
                 return Ok(()); // Silently ignore writes to ended sessions
             }
 
-            // Get access to writer through the mutex
-            let mut writer_guard = session_handle
-                .writer
-                .lock()
-                .map_err(|e| format!("Failed to acquire writer lock for job {}: {}", job_id, e))?;
-
-            writer_guard
-                .write_all(&data)
-                .map_err(|e| format!("Failed to write to PTY for job {}: {}", job_id, e))?;
-
-            // Explicitly flush for critical control characters like backspace
-            if data.len() == 1 && (data[0] == 0x7f || data[0] == 0x08 || data[0] == 0x03) {
-                writer_guard
-                    .flush()
-                    .map_err(|e| format!("Failed to flush PTY writer for job {}: {}", job_id, e))?;
+            // Send via channel for serialized writes
+            if data.len() > 8192 {
+                // Split large writes
+                for chunk in data.chunks(8192) {
+                    if let Err(e) = session_handle.input_tx.send(chunk.to_vec()).await {
+                        return Err(AppError::TerminalError(format!("Failed to send input: {}", e)));
+                    }
+                }
+            } else {
+                if let Err(e) = session_handle.input_tx.send(data).await {
+                    return Err(AppError::TerminalError(format!("Failed to send input: {}", e)));
+                }
             }
 
             Ok(())
@@ -1012,15 +1067,12 @@ impl TerminalManager {
         }
     }
 
-    pub async fn send_ctrl_c(&self, job_id: &str) -> Result<(), String> {
+    pub async fn send_ctrl_c(&self, job_id: &str) -> Result<(), AppError> {
         // Send Ctrl+C character (ETX) as bytes
         self.write_input(job_id, vec![0x03]).await
     }
 
-    pub async fn resize_session(&self, job_id: &str, cols: u16, rows: u16) -> Result<(), String> {
-        // Skip health validation here to avoid potential recursion issues
-        // Health checks are done periodically by the health monitor
-
+    pub async fn resize_session(&self, job_id: &str, cols: u16, rows: u16) -> Result<(), AppError> {
         if let Some(session_handle) = self.sessions.get(job_id) {
             // Only resize if the session is still running
             let status = session_handle.status.load(Ordering::Relaxed);
@@ -1039,9 +1091,9 @@ impl TerminalManager {
             session_handle
                 .master
                 .lock()
-                .map_err(|e| format!("Failed to acquire master lock for job {}: {}", job_id, e))?
+                .map_err(|e| AppError::TerminalError(format!("Failed to acquire master lock for job {}: {}", job_id, e)))?
                 .resize(pty_size)
-                .map_err(|e| format!("Failed to resize PTY for job {}: {}", job_id, e))?;
+                .map_err(|e| AppError::TerminalError(format!("Failed to resize PTY for job {}: {}", job_id, e)))?;
 
             info!("Resized PTY for job {} to {}x{}", job_id, cols, rows);
             Ok(())
@@ -1052,22 +1104,38 @@ impl TerminalManager {
         }
     }
 
-    pub async fn kill_session(&self, job_id: &str) -> Result<(), String> {
+    pub async fn kill_session(&self, job_id: &str) -> Result<(), AppError> {
         if let Some(session_handle) = self.sessions.get(job_id) {
             info!("Killing terminal session for job {}", job_id);
 
-            // Use the process controller to terminate the process
-            session_handle
+            // Try to kill the process, but don't fail if it's already dead
+            let kill_result = session_handle
                 .process_controller
                 .lock()
                 .map_err(|e| {
-                    format!(
+                    AppError::TerminalError(format!(
                         "Failed to acquire process controller lock for job {}: {}",
                         job_id, e
-                    )
+                    ))
                 })?
-                .kill()
-                .map_err(|e| format!("Failed to kill process for job {}: {}", job_id, e))?;
+                .kill();
+
+            // Log the kill result but continue regardless
+            match kill_result {
+                Ok(_) => {
+                    info!("Successfully sent kill signal to terminal process for job {}", job_id);
+                }
+                Err(e) => {
+                    // Check if error is because process doesn't exist (common case)
+                    let error_str = e.to_string();
+                    if error_str.contains("os error 3") || error_str.contains("No such process") {
+                        info!("Terminal process for job {} was already terminated", job_id);
+                    } else {
+                        // Log unexpected errors but don't fail - we still want to clean up
+                        warn!("Failed to kill terminal process for job {}: {}", job_id, e);
+                    }
+                }
+            }
 
             // Update DB status to completed
             let repo = self
@@ -1097,7 +1165,7 @@ impl TerminalManager {
             info!("Successfully killed terminal session for job {}", job_id);
             Ok(())
         } else {
-            Err(format!("Terminal session {} not found", job_id))
+            Err(AppError::TerminalError(format!("Terminal session not found for job_id={}", job_id)))
         }
     }
 
@@ -1114,7 +1182,7 @@ impl TerminalManager {
                 x if x == SessionStatus::Running as u8 => "running",
                 x if x == SessionStatus::Completed as u8 => "completed",
                 x if x == SessionStatus::Failed as u8 => "failed",
-                x if x == SessionStatus::Stuck as u8 => "stuck",
+                x if x == SessionStatus::AgentRequiresAttention as u8 => "agent_requires_attention",
                 _ => "unknown",
             };
 
@@ -1365,7 +1433,7 @@ impl TerminalManager {
             info!("Attached remote client {} to terminal session {}", client_id, job_id);
             Ok(())
         } else {
-            Err(AppError::TerminalError(format!("Terminal session {} not found", job_id)))
+            Err(AppError::TerminalError(format!("Terminal session not found for job_id={}", job_id)))
         }
     }
 
@@ -1378,7 +1446,7 @@ impl TerminalManager {
             info!("Detached remote client {} from terminal session {}", client_id, job_id);
             Ok(())
         } else {
-            Err(AppError::TerminalError(format!("Terminal session {} not found", job_id)))
+            Err(AppError::TerminalError(format!("Terminal session not found for job_id={}", job_id)))
         }
     }
 
@@ -1496,7 +1564,7 @@ impl TerminalManager {
             // If we get here, session appears healthy
             Ok(HealthStatus::Healthy)
         } else {
-            Err(AppError::TerminalError(format!("Terminal session {} not found", job_id)))
+            Err(AppError::TerminalError(format!("Terminal session not found for job_id={}", job_id)))
         }
     }
 
@@ -1509,30 +1577,28 @@ impl TerminalManager {
                 info!("Performing send prompt recovery for session {}", job_id);
 
                 // Send Enter key to trigger prompt
-                self.write_input(job_id, b"\r".to_vec()).await
-                    .map_err(|e| AppError::TerminalError(format!("Failed to send prompt: {}", e)))?;
+                self.write_input(job_id, b"\r".to_vec()).await?;
 
                 // Wait a moment then send probe command
                 tokio::time::sleep(Duration::from_millis(500)).await;
 
-                self.write_input(job_id, b"echo 'health-check-alive'\r".to_vec()).await
-                    .map_err(|e| AppError::TerminalError(format!("Failed to send probe: {}", e)))?;
+                self.write_input(job_id, b"echo 'health-check-alive'\r".to_vec()).await?;
             }
 
             RecoveryAction::Interrupt => {
                 info!("Performing interrupt recovery for session {}", job_id);
 
-                // Send Ctrl+C to interrupt any stuck command
+                // Send Ctrl+C to interrupt any command requiring attention
                 self.send_ctrl_c(job_id).await
                     .map_err(|e| AppError::TerminalError(format!("Failed to send Ctrl+C: {}", e)))?;
 
                 // Wait to see if process becomes responsive
                 tokio::time::sleep(Duration::from_secs(2)).await;
 
-                // Check if still stuck and kill if needed
-                let still_stuck = matches!(self.health_check(job_id).await?, HealthStatus::ProcessDead { .. });
-                if still_stuck {
-                    warn!("Session {} still stuck after interrupt, killing", job_id);
+                // Check if still requires attention and kill if needed
+                let still_requires_attention = matches!(self.health_check(job_id).await?, HealthStatus::ProcessDead { .. });
+                if still_requires_attention {
+                    warn!("Session {} still requires attention after interrupt, killing", job_id);
                     self.kill_session(job_id).await?;
                 }
             }
@@ -1578,6 +1644,12 @@ impl TerminalManager {
         self.health_monitor.clone()
     }
 
+    pub fn get_snapshot(&self, job_id: &str) -> Option<Vec<u8>> {
+        self.sessions.get(job_id).and_then(|session| {
+            session.ring.lock().ok().map(|ring| ring.snapshot())
+        })
+    }
+
     /// Validate session health during operations
     async fn validate_session_health(&self, job_id: &str) -> Result<(), AppError> {
         match self.health_check(job_id).await {
@@ -1599,5 +1671,17 @@ impl TerminalManager {
                 Ok(()) // Session might not be registered yet
             }
         }
+    }
+
+    async fn emit_terminal_ready(&self, job_id: &str) -> Result<(), AppError> {
+        let app_clone = self.app.clone();
+        let job_for_ready = job_id.to_string();
+        let _ = self.app.run_on_main_thread(move || {
+            let _ = app_clone.emit(
+                "terminal-ready",
+                serde_json::json!({ "jobId": job_for_ready }),
+            );
+        });
+        Ok(())
     }
 }

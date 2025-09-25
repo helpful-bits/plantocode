@@ -15,6 +15,8 @@ use crate::jobs::types::{
 };
 use crate::models::TaskType;
 use crate::utils::directory_tree::get_directory_tree_with_defaults;
+use crate::utils::path_utils::make_relative_to;
+use std::path::PathBuf;
 
 pub struct ExtendedPathFinderProcessor;
 
@@ -206,15 +208,46 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         // Validate extended paths found by LLM
         let mut validated_extended_paths = Vec::new();
         let mut unverified_extended_paths = Vec::new();
+        let project_dir = PathBuf::from(&session.project_directory);
 
-        for relative_path in &extended_paths {
-            let absolute_path = to_absolute_path(relative_path, &session.project_directory);
+        for path_from_llm in &extended_paths {
+            // Fix paths that might be missing leading slash
+            let corrected_path = if !path_from_llm.starts_with('/') && !path_from_llm.starts_with("\\\\")
+                && path_from_llm.starts_with("Users/") {
+                // macOS path missing leading slash
+                format!("/{}", path_from_llm)
+            } else if !path_from_llm.starts_with('/') && !path_from_llm.starts_with("\\\\")
+                && (path_from_llm.starts_with("home/") || path_from_llm.starts_with("var/") || path_from_llm.starts_with("tmp/")) {
+                // Linux path missing leading slash
+                format!("/{}", path_from_llm)
+            } else {
+                path_from_llm.clone()
+            };
+
+            let absolute_path = to_absolute_path(&corrected_path, &session.project_directory);
             match fs::metadata(&absolute_path).await {
                 Ok(metadata) if metadata.is_file() => {
-                    validated_extended_paths.push(relative_path.clone());
+                    // Normalize the path: convert to relative if within project, keep absolute if external
+                    let normalized_path = if absolute_path.starts_with(&project_dir) {
+                        // File is within project directory - convert to relative path
+                        match make_relative_to(&absolute_path, &project_dir) {
+                            Ok(rel_path) => rel_path.to_string_lossy().to_string(),
+                            Err(_) => {
+                                // Fallback: use strip_prefix
+                                absolute_path.strip_prefix(&project_dir)
+                                    .map(|p| p.to_string_lossy().to_string())
+                                    .unwrap_or_else(|_| path_from_llm.clone())
+                            }
+                        }
+                    } else {
+                        // File is external - keep as absolute path
+                        absolute_path.to_string_lossy().to_string()
+                    };
+
+                    validated_extended_paths.push(normalized_path);
                 }
                 _ => {
-                    unverified_extended_paths.push(relative_path.clone());
+                    unverified_extended_paths.push(path_from_llm.clone());
                 }
             }
         }

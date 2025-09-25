@@ -28,7 +28,7 @@ export interface DesktopButtonProps {
 
 const buttonVariants = {
   default: 'desktop-glass bg-primary/90 border border-primary/30 text-primary-foreground hover:bg-primary hover:border-primary/40 hover:scale-[1.02]',
-  outline: 'border border-primary/40 bg-background/90 text-foreground hover:bg-primary/10 hover:text-primary hover:border-primary/60 shadow-sm backdrop-blur-sm',
+  outline: 'border border-primary/40 dark:border-border/50 bg-white/90 dark:bg-gray-800/90 text-primary dark:text-gray-100 hover:bg-white/100 dark:hover:bg-gray-700/90 hover:text-primary dark:hover:text-white hover:border-primary/60 shadow-sm backdrop-blur-sm',
   ghost: 'text-foreground hover:bg-accent/40 hover:text-accent-foreground backdrop-blur-sm border border-transparent hover:border-accent/50',
   secondary: 'desktop-glass bg-secondary/80 border border-secondary/40 text-secondary-foreground hover:bg-secondary hover:border-secondary/60',
   destructive: 'desktop-glass bg-destructive/90 border border-destructive/30 text-destructive-foreground hover:bg-destructive hover:border-destructive/40',

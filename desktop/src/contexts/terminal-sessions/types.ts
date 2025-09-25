@@ -1,6 +1,8 @@
 "use client";
 
-export type TerminalStatus = "starting" | "idle" | "running" | "completed" | "failed" | "stuck" | "recovering" | "disconnected";
+import type { HealthCheckResult } from './useTerminalHealth';
+
+export type TerminalStatus = "starting" | "idle" | "running" | "completed" | "failed" | "agent_requires_attention" | "recovering" | "disconnected";
 
 export type AttentionLevel = 'none' | 'low' | 'medium' | 'high';
 
@@ -21,7 +23,7 @@ export interface TerminalSession {
   lastError?: string;
   recoveryAttempts?: number;
   connectionState?: 'connected' | 'connecting' | 'disconnected' | 'error';
-  healthStatus?: { healthy: boolean; reason?: string; recovery_hint?: string };
+  healthStatus?: HealthCheckResult;
 }
 
 export interface StartSessionOptions {
@@ -53,7 +55,8 @@ export interface TerminalSessionsContextShape {
   getAttentionCount: () => number;
   subscribeAttention: (cb: (map: Map<string, AttentionState>) => void) => () => void;
   // New error handling and recovery methods
-  getSessionHealth: (jobId: string) => Promise<{ healthy: boolean; reason?: string; recovery_hint?: string }>;
+  getSessionHealth: (jobId: string) => Promise<HealthCheckResult>;
   recoverSession: (jobId: string, recoveryType: 'restart_pty' | 'clear_session' | 'force_reconnect') => Promise<{ success: boolean; message?: string }>;
   getConnectionState: (jobId: string) => 'connected' | 'connecting' | 'disconnected' | 'error';
+  detachSession: (jobId: string) => void;
 }

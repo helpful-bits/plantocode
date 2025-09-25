@@ -44,8 +44,8 @@ export function Footer() {
               </div>
             </div>
 
-            {/* Links Grid */}
-            <div className="md:col-span-7 lg:col-span-6 grid grid-cols-2 sm:grid-cols-5 gap-8">
+            {/* Links Grid - Streamlined to 3 columns */}
+            <div className="md:col-span-7 lg:col-span-6 grid grid-cols-1 sm:grid-cols-3 gap-8">
               {/* Product */}
               <div>
                 <h4 className="font-semibold text-foreground mb-4 text-sm uppercase tracking-wide">
@@ -53,12 +53,12 @@ export function Footer() {
                 </h4>
                 <ul className="space-y-3">
                   <li>
-                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="#features">
-                      Features
+                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/demo">
+                      Interactive Demo
                     </Link>
                   </li>
                   <li>
-                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="#how-it-works">
+                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/how-it-works">
                       How It Works
                     </Link>
                   </li>
@@ -68,13 +68,13 @@ export function Footer() {
                     </Link>
                   </li>
                   <li>
-                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/changelog">
-                      Changelog
+                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/downloads">
+                      Downloads
                     </Link>
                   </li>
                   <li>
-                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/downloads">
-                      Downloads
+                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/changelog">
+                      Changelog
                     </Link>
                   </li>
                 </ul>
@@ -83,67 +83,33 @@ export function Footer() {
               {/* Resources */}
               <div>
                 <h4 className="font-semibold text-foreground mb-4 text-sm uppercase tracking-wide">
-                  Claude Code
+                  Resources
                 </h4>
                 <ul className="space-y-3">
                   <li>
-                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/docs/claude-code-install">
-                      Install Guide
+                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/docs">
+                      Documentation
                     </Link>
                   </li>
                   <li>
-                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/docs/claude-code-vs-cursor">
-                      Maximize Claude & Cursor
+                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/support">
+                      Support
                     </Link>
                   </li>
                   <li>
-                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/docs/claude-code-alternative">
-                      Extensions & Enhancements
+                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/docs/vibe-manager-architecture">
+                      Architecture
                     </Link>
                   </li>
                   <li>
-                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/vibe-code-cleanup-specialist">
-                      Code Cleanup Planning
-                    </Link>
-                  </li>
-                  <li>
-                    <a 
-                      className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" 
+                    <a
+                      className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline"
                       href="https://vibemanager.featurebase.app"
                       target="_blank"
                       rel="noopener noreferrer"
                     >
-                      Support
+                      Feedback
                     </a>
-                  </li>
-                </ul>
-              </div>
-
-              {/* Legal */}
-              <div>
-                <h4 className="font-semibold text-foreground mb-4 text-sm uppercase tracking-wide">
-                  Legal
-                </h4>
-                <ul className="space-y-3">
-                  <li>
-                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/privacy">
-                      Privacy Policy
-                    </Link>
-                  </li>
-                  <li>
-                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/terms">
-                      Terms of Service
-                    </Link>
-                  </li>
-                  <li>
-                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/legal/eu/imprint">
-                      Imprint
-                    </Link>
-                  </li>
-                  <li>
-                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/legal">
-                      All Legal Docs
-                    </Link>
                   </li>
                 </ul>
               </div>
@@ -160,42 +126,18 @@ export function Footer() {
                     </Link>
                   </li>
                   <li>
-                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/contact">
-                      Contact
-                    </Link>
-                  </li>
-                </ul>
-              </div>
-
-              {/* Plan Mode Guides */}
-              <div>
-                <h4 className="font-semibold text-foreground mb-4 text-sm uppercase tracking-wide">
-                  Plan Mode Guides
-                </h4>
-                <ul className="space-y-3">
-                  <li>
-                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/docs/plan-mode">
-                      Plan Mode Comparison
+                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/privacy">
+                      Privacy
                     </Link>
                   </li>
                   <li>
-                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/docs/claude-code-plan-mode">
-                      Claude Code Plan Mode
+                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/terms">
+                      Terms
                     </Link>
                   </li>
                   <li>
-                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/docs/cursor-plan-mode">
-                      Cursor Plan Mode
-                    </Link>
-                  </li>
-                  <li>
-                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/docs/cline-plan-mode">
-                      Cline Plan Mode
-                    </Link>
-                  </li>
-                  <li>
-                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/docs/codex-cli-plan-mode">
-                      Codex CLI Planning
+                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/legal">
+                      Legal
                     </Link>
                   </li>
                 </ul>

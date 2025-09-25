@@ -100,10 +100,10 @@ export function DocsArticle({
                 <span>{readTime} read</span>
               </div>
               <span>•</span>
-              <Button variant="ghost" size="compact" onClick={handleShare} className="gap-2">
+              <Button variant="ghost" size="sm" onClick={handleShare} className="gap-2">
                 <Share2 className="h-4 w-4" /> Share
               </Button>
-              <Button variant="ghost" size="compact" onClick={handleCopyLink} className="gap-2">
+              <Button variant="ghost" size="sm" onClick={handleCopyLink} className="gap-2">
                 {copied ? (
                   <>
                     <CheckCircle className="h-4 w-4" />

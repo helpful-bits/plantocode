@@ -8,7 +8,7 @@ use serde_json::Value;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Listener, Manager};
 use tokio::sync::mpsc;
-use tokio_tungstenite::{connect_async, tungstenite::{Message, handshake::client::Request}};
+use tokio_tungstenite::{connect_async_with_config, tungstenite::{Message, client::IntoClientRequest}};
 use futures_util::{SinkExt, StreamExt};
 use url::Url;
 
@@ -88,17 +88,22 @@ impl DeviceLinkClient {
 
         info!("Connecting to WebSocket at: {}", ws_url);
 
-        // Build request with headers
-        let request = Request::builder()
-            .uri(url.as_str())
-            .header("Authorization", format!("Bearer {}", token))
-            .header("X-Device-ID", device_id.clone())
-            .header("X-Client-Type", "desktop")
-            .body(())
+        // Create WebSocket request with custom headers
+        let mut request = ws_url.into_client_request()
             .map_err(|e| AppError::NetworkError(format!("Failed to build WebSocket request: {}", e)))?;
 
-        // Connect to WebSocket with headers
-        let (ws_stream, _) = connect_async(request).await
+        // Add custom headers to the existing request (which already has the WebSocket headers)
+        request.headers_mut().insert("Authorization", format!("Bearer {}", token).parse()
+            .map_err(|e| AppError::NetworkError(format!("Invalid Authorization header: {}", e)))?);
+        request.headers_mut().insert("X-Device-ID", device_id.clone().parse()
+            .map_err(|e| AppError::NetworkError(format!("Invalid Device ID header: {}", e)))?);
+        request.headers_mut().insert("X-Token-Binding", device_id.clone().parse()
+            .map_err(|e| AppError::NetworkError(format!("Invalid Token Binding header: {}", e)))?);
+        request.headers_mut().insert("X-Client-Type", "desktop".parse()
+            .map_err(|e| AppError::NetworkError(format!("Invalid Client Type header: {}", e)))?);
+
+        // Connect to WebSocket with custom headers
+        let (ws_stream, _) = connect_async_with_config(request, None, false).await
             .map_err(|e| AppError::NetworkError(format!("WebSocket connection failed: {}", e)))?;
 
         let (mut ws_sender, mut ws_receiver) = ws_stream.split();

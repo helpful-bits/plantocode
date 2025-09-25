@@ -22,7 +22,7 @@ const videos: Video[] = [
     description: 'Watch how Vibe Manager enhances Claude Code, Cursor, and OpenAI Codex with multi-model planning. Generate implementation plans from GPT-5, Claude Sonnet 4, and Gemini 2.5 Pro.',
     thumbnailLoc: `${CDN_BASE}/assets/images/hero-thumbnail.jpg`,
     duration: 60,
-    publicationDate: '2025-08-01T00:00:00Z'
+    publicationDate: '2025-09-20T00:00:00Z'
   },
   // Step-by-step Tutorial Videos
   {
@@ -32,7 +32,7 @@ const videos: Video[] = [
     description: 'Learn how to describe tasks with AI assistance that enhances your descriptions with goals, constraints, and affected areas.',
     thumbnailLoc: `${CDN_BASE}/assets/images/step-1-text-poster.jpg`,
     duration: 45,
-    publicationDate: '2025-08-01T00:00:00Z'
+    publicationDate: '2025-09-20T00:00:00Z'
   },
   {
     loc: SITE_URL,
@@ -41,7 +41,7 @@ const videos: Video[] = [
     description: 'Discover how voice dictation makes task input 10x faster for natural coding workflow with Claude Code and Cursor.',
     thumbnailLoc: `${CDN_BASE}/assets/images/step-1-voice-poster.jpg`,
     duration: 30,
-    publicationDate: '2025-08-01T00:00:00Z'
+    publicationDate: '2025-09-20T00:00:00Z'
   },
   {
     loc: SITE_URL,
@@ -50,7 +50,7 @@ const videos: Video[] = [
     description: 'Capture complex workflows and visual context with screen recording. Gemini 2.5 Pro analyzes recordings to extract technical details.',
     thumbnailLoc: `${CDN_BASE}/assets/images/step-1-video-poster.jpg`,
     duration: 40,
-    publicationDate: '2025-08-01T00:00:00Z'
+    publicationDate: '2025-09-20T00:00:00Z'
   },
   {
     loc: SITE_URL,
@@ -59,7 +59,7 @@ const videos: Video[] = [
     description: 'Watch how AI intelligently finds relevant files in your codebase using smart search patterns for better context curation.',
     thumbnailLoc: `${CDN_BASE}/assets/images/step-2-poster.jpg`,
     duration: 50,
-    publicationDate: '2025-08-01T00:00:00Z'
+    publicationDate: '2025-09-20T00:00:00Z'
   },
   {
     loc: SITE_URL,
@@ -68,7 +68,7 @@ const videos: Video[] = [
     description: 'See AI perform comprehensive research across your codebase to gather context and understand dependencies for accurate planning.',
     thumbnailLoc: `${CDN_BASE}/assets/images/step-3-poster.jpg`,
     duration: 55,
-    publicationDate: '2025-08-01T00:00:00Z'
+    publicationDate: '2025-09-20T00:00:00Z'
   },
   {
     loc: SITE_URL,
@@ -77,7 +77,7 @@ const videos: Video[] = [
     description: 'Generate implementation plans from GPT-5, Claude Sonnet 4, Gemini 2.5 Pro and merge the best approaches into a unified solution.',
     thumbnailLoc: `${CDN_BASE}/assets/images/step-4-poster.jpg`,
     duration: 60,
-    publicationDate: '2025-08-01T00:00:00Z'
+    publicationDate: '2025-09-20T00:00:00Z'
   },
   {
     loc: SITE_URL,
@@ -86,7 +86,7 @@ const videos: Video[] = [
     description: 'Configure AI models, edit system prompts, and customize settings to match your workflow with Claude Code, Cursor, or OpenAI Codex.',
     thumbnailLoc: `${CDN_BASE}/assets/images/step-5-poster.jpg`,
     duration: 45,
-    publicationDate: '2025-08-01T00:00:00Z'
+    publicationDate: '2025-09-20T00:00:00Z'
   }
 ];
 

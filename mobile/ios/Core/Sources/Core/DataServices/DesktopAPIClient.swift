@@ -1,4 +1,5 @@
 import Foundation
+import Foundation
 import Combine
 import Network
 import CryptoKit
@@ -577,6 +578,12 @@ struct ResponseError: Codable {
     let code: String
     let message: String
     let details: AnyCodable?
+    
+    init(code: String, message: String, details: Any? = nil) {
+        self.code = code
+        self.message = message
+        self.details = details.map { AnyCodable(any: $0) }
+    }
 }
 
 // Using EventMessage from CommonTypes
@@ -589,6 +596,11 @@ struct EventPayload: Codable {
     let type = "event"
     let eventType: String
     let payload: AnyCodable
+    
+    init(eventType: String, payload: Any) {
+        self.eventType = eventType
+        self.payload = AnyCodable(any: payload)
+    }
 }
 
 // AnyCodable is defined in CommonTypes

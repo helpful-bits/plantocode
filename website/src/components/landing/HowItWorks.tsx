@@ -209,7 +209,7 @@ export const HowItWorks = memo(function HowItWorks({ steps = defaultSteps }: How
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
-            <Button asChild size="lg" variant="gradient-outline">
+            <Button asChild size="lg" variant="outline">
               <Link href="/demo" className="no-hover-effect cursor-pointer">
                 Try the interactive demo
               </Link>

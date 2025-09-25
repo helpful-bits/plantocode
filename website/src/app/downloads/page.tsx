@@ -2,13 +2,13 @@ import type { Metadata } from 'next';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { MacDownloadButton } from '@/components/ui/MacDownloadButton';
 import { WindowsStoreButton } from '@/components/ui/WindowsStoreButton';
-import { CheckCircle2, Shield } from 'lucide-react';
-import Reveal from '@/components/motion/Reveal';
+import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
+import { CheckCircle2, Shield, Smartphone, Tablet } from 'lucide-react';
 import { Header } from '@/components/landing/Header';
 
 export const metadata: Metadata = {
-  title: 'Download - Vibe Manager AI Architect Studio',
-  description: 'Download Vibe Manager for macOS and Windows. AI Architect Studio for heavy coding-agent users. Integrated terminal for codex, claude, cursor, aider. Microsoft Store available.',
+  title: 'Download - Vibe Manager planning workspace',
+  description: 'Download Vibe Manager for macOS and Windows. Generate implementation plans, run the file discovery workflow, and launch claude, cursor, codex, or gemini from the integrated terminal.',
   keywords: [
     'vibe manager download',
     'ai architect studio',
@@ -20,8 +20,8 @@ export const metadata: Metadata = {
     'heavy coding agent users',
   ],
   openGraph: {
-    title: 'Download Vibe Manager - AI Coding Planning Tool',
-    description: 'Download Vibe Manager for Windows and macOS. Multi-model planning with integrated terminal for codex, claude, cursor, aider. Available on Microsoft Store.',
+    title: 'Download Vibe Manager - AI planning workspace',
+    description: 'Download Vibe Manager for Windows and macOS. Multi-model planning with an integrated terminal for claude, cursor, codex, and gemini. Available on Microsoft Store.',
     url: 'https://www.vibemanager.app/download',
     siteName: 'Vibe Manager',
     type: 'website',
@@ -44,18 +44,17 @@ export default function DownloadPage() {
           <section className="py-16 sm:py-20 md:py-24 lg:py-32 px-4">
             <div className="container mx-auto max-w-4xl">
               <div className="text-center mb-12">
-                <Reveal as="h1" className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-6 bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent">
+                <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-6 bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent">
                   Download Vibe Manager
-                </Reveal>
-                <Reveal as="p" className="text-lg sm:text-xl md:text-2xl mb-8 text-foreground/80 max-w-3xl mx-auto leading-relaxed" delay={0.1}>
-                  AI Architect Studio for heavy coding-agent users. Run codex, claude, cursor, aider directly in-app.
-                </Reveal>
+                </h1>
+                <p className="text-lg sm:text-xl md:text-2xl mb-8 text-foreground/80 max-w-3xl mx-auto leading-relaxed">
+                  Plan implementation work with Monaco editing, file discovery, and an integrated terminal for claude, cursor, codex, and gemini.
+                </p>
               </div>
 
               <div className="grid gap-8 md:gap-12">
                 {/* macOS Section */}
-                <Reveal delay={0.2}>
-                  <GlassCard>
+                <GlassCard>
                     <div className="p-8 sm:p-12">
                       <div className="flex items-center gap-4 mb-6">
                         <div className="flex items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-primary via-primary/90 to-accent">
@@ -105,8 +104,7 @@ export default function DownloadPage() {
                             <div>
                               <h4 className="font-semibold text-foreground mb-1">Professional Ready</h4>
                               <p className="text-sm text-foreground/80 leading-relaxed">
-                                Fully notarized by Apple. Code signed. Integrated terminal with full CLI support.
-                                Built for staff/principal engineers tackling large codebases.
+                                Fully notarized by Apple. Code signed. Integrated terminal with CLI auto-detection and session persistence.
                               </p>
                             </div>
                           </div>
@@ -121,12 +119,10 @@ export default function DownloadPage() {
                         />
                       </div>
                     </div>
-                  </GlassCard>
-                </Reveal>
+                </GlassCard>
 
                 {/* Windows Section */}
-                <Reveal delay={0.3}>
-                  <GlassCard>
+                <GlassCard>
                     <div className="p-8 sm:p-12">
                       <div className="flex items-center gap-4 mb-6">
                         <div className="flex items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-blue-500 via-blue-600 to-blue-700">
@@ -180,8 +176,7 @@ export default function DownloadPage() {
                             <div>
                               <h4 className="font-semibold text-foreground mb-1">Terminal Integration</h4>
                               <p className="text-sm text-foreground/80 leading-relaxed">
-                                PowerShell and Command Prompt support. Run codex, claude, cursor, aider natively.
-                                Built for power users who need production-grade tooling.
+                                PowerShell and Command Prompt support. Run claude, cursor, codex, or gemini with health monitoring and recovery.
                               </p>
                             </div>
                           </div>
@@ -192,19 +187,84 @@ export default function DownloadPage() {
                         <WindowsStoreButton size="large" />
                       </div>
                     </div>
-                  </GlassCard>
-                </Reveal>
+                </GlassCard>
+
+                {/* Mobile App Coming Soon */}
+                <GlassCard>
+                    <div className="p-8 sm:p-12">
+                      <div className="flex items-center gap-4 mb-6">
+                        <div className="flex items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-gray-500 via-gray-600 to-gray-700">
+                          <div className="flex gap-2">
+                            <Smartphone className="w-6 h-6 text-white" />
+                            <Tablet className="w-6 h-6 text-white" />
+                          </div>
+                        </div>
+                        <div>
+                          <h2 className="text-2xl sm:text-3xl font-bold text-foreground">iOS Mobile App</h2>
+                          <p className="text-foreground/60">Coming Soon for iPhone & iPad</p>
+                        </div>
+                      </div>
+
+                      <div className="mb-8">
+                        <h3 className="text-lg font-semibold mb-4 text-foreground">Planned Features</h3>
+                        <ul className="space-y-2 text-foreground/80">
+                          <li className="flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-primary/70 flex-shrink-0" />
+                            <span>Review and edit implementation plans on the go</span>
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-primary/70 flex-shrink-0" />
+                            <span>Voice transcription for quick idea capture</span>
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-primary/70 flex-shrink-0" />
+                            <span>Monitor terminal sessions remotely</span>
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-primary/70 flex-shrink-0" />
+                            <span>Sync with desktop workspace seamlessly</span>
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-primary/70 flex-shrink-0" />
+                            <span>Native iOS/iPadOS design language</span>
+                          </li>
+                        </ul>
+                      </div>
+
+                      <div className="mb-8">
+                        <GlassCard className="bg-primary/5 border-primary/20">
+                          <div className="p-4 flex items-start gap-3">
+                            <Shield className="w-5 h-5 text-primary/70 flex-shrink-0 mt-0.5" />
+                            <div>
+                              <h4 className="font-semibold text-foreground mb-1">Stay Connected</h4>
+                              <p className="text-sm text-foreground/80 leading-relaxed">
+                                Join our waitlist to be notified when the iOS app launches. Early access for heavy coding-agent users.
+                              </p>
+                            </div>
+                          </div>
+                        </GlassCard>
+                      </div>
+
+                      <div className="flex justify-center">
+                        <button
+                          disabled
+                          className="px-8 py-3 bg-gray-500 text-white font-semibold rounded-lg opacity-50 cursor-not-allowed"
+                        >
+                          Coming Soon to App Store
+                        </button>
+                      </div>
+                    </div>
+                </GlassCard>
 
                 {/* Trust Indicators */}
-                <Reveal delay={0.4}>
-                  <GlassCard highlighted>
+                <GlassCard highlighted>
                     <div className="p-8 sm:p-12">
                       <h3 className="text-2xl font-bold text-center mb-8">Built for Heavy Coding-Agent Users</h3>
                       <div className="grid sm:grid-cols-2 gap-6">
                         <div>
                           <h4 className="font-semibold mb-2">Integrated Terminal</h4>
                           <p className="text-foreground/80 text-sm">
-                            Run codex, claude, cursor, aider directly. Voice dictation. Session transcripts. No context switching.
+                            Run claude, cursor, codex, or gemini directly. Voice transcription is available, and logs persist locally so you can resume work without context switching.
                           </p>
                         </div>
                         <div>
@@ -220,32 +280,29 @@ export default function DownloadPage() {
                           </p>
                         </div>
                         <div>
-                          <h4 className="font-semibold mb-2">$10 Free Credits</h4>
+                          <h4 className="font-semibold mb-2">$5 Free Credits</h4>
                           <p className="text-foreground/80 text-sm">
                             Start immediately. Pay-as-you-go. No subscriptions. Token transparency for power users who track costs.
                           </p>
                         </div>
                       </div>
                     </div>
-                  </GlassCard>
-                </Reveal>
+                </GlassCard>
 
                 {/* Additional CTAs */}
-                <Reveal delay={0.5}>
-                  <div className="text-center">
+                <div className="text-center">
                     <h3 className="text-xl font-semibold mb-4 text-foreground">Ready to Level Up?</h3>
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-6">
-                      <a href="/schedule" className="text-primary hover:underline font-semibold">Talk to an architect →</a>
+                      <LinkWithArrow href="/schedule" className="font-semibold">Talk to an architect</LinkWithArrow>
                       <span className="hidden sm:inline text-foreground/40">•</span>
-                      <a href="/schedule" className="text-primary hover:underline font-semibold">Professional options →</a>
+                      <LinkWithArrow href="/schedule" className="font-semibold">Professional options</LinkWithArrow>
                       <span className="hidden sm:inline text-foreground/40">•</span>
-                      <a href="/docs/integrated-terminal-cli-orchestration" className="text-primary hover:underline font-semibold">Terminal docs →</a>
+                      <LinkWithArrow href="/docs/terminal-sessions" className="font-semibold">Terminal docs</LinkWithArrow>
                     </div>
                     <p className="text-sm text-foreground/60">
                       Made in Germany • GDPR Compliant • Local Session Storage
                     </p>
-                  </div>
-                </Reveal>
+                </div>
               </div>
             </div>
           </section>

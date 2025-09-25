@@ -1,12 +1,15 @@
 use chrono::Utc;
 use log::{debug, error, info, warn};
+use sqlx::SqlitePool;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::time::{Duration, timeout};
 
 use crate::constants::DEFAULT_JOB_TIMEOUT_SECONDS;
 use crate::db_utils::background_job_repository::BackgroundJobRepository;
+use crate::db_utils::session_repository::SessionRepository;
 use crate::error::{AppError, AppResult};
+use crate::events::session_events;
 use crate::jobs::job_processor_utils;
 use crate::jobs::processor_trait;
 use crate::jobs::queue::{JobPriority, get_job_queue};
@@ -15,6 +18,7 @@ use crate::jobs::types::{Job, JobPayload, JobProcessResult, JobResultData};
 use crate::jobs::workflow_orchestrator::get_workflow_orchestrator;
 use crate::jobs::{job_payload_utils, retry_utils};
 use crate::models::{BackgroundJob, JobStatus, TaskType};
+use crate::services::file_selection_auto_apply::{auto_apply_files_for_job};
 use serde_json::{Value, json};
 use std::str::FromStr;
 
@@ -387,6 +391,30 @@ async fn handle_job_success(
                 })?;
 
             // Job completion event handled by repository method above
+
+            // Auto-apply discovered files for supported tasks
+            if let Some(ref response_json) = serde_json::from_str::<Value>(&response_str).ok() {
+                let pool = Arc::new(app_handle.state::<sqlx::SqlitePool>().inner().clone());
+                let session_repo = SessionRepository::new(pool.clone());
+                if let Ok(Some(outcome)) = auto_apply_files_for_job(
+                    &pool,
+                    &session_repo,
+                    &completed_job.session_id,
+                    job_id,
+                    &completed_job.task_type,
+                    response_json,
+                ).await {
+                    if !outcome.applied_files.is_empty() {
+                        let payload = session_events::SessionAutoFilesAppliedPayload {
+                            session_id: outcome.session_id,
+                            job_id: outcome.job_id,
+                            task_type: outcome.task_type,
+                            files: outcome.applied_files,
+                        };
+                        session_events::emit_session_auto_files_applied(app_handle, payload);
+                    }
+                }
+            }
 
             // Check if this job is part of a workflow and notify WorkflowOrchestrator
             // Use the completed_job's metadata which contains the original workflowId

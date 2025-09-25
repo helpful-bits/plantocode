@@ -76,7 +76,13 @@ public class PushNotificationManager: NSObject, ObservableObject {
             return
         }
 
-        await UIApplication.shared.registerForRemoteNotifications()
+        #if targetEnvironment(simulator)
+        logger.info("[APNs] Skipping APNs registration on Simulator")
+        return
+        #endif
+
+        // registerForRemoteNotifications is synchronous and must be called on main thread
+        UIApplication.shared.registerForRemoteNotifications()
         logger.info("Registered for remote notifications")
     }
 

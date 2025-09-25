@@ -156,19 +156,28 @@ section .max-w-5xl {
     content-visibility: auto; /* Improve rendering performance */
 }
 
-/* Mobile panels - full width with explicit dimensions to prevent CLS */
+/* Mobile panels - full width with flexible height */
 @media (max-width: 639px) {
     .vibe-panel.w-full {
         width: 100% !important;
         height: auto;
-        min-height: 166px; /* Prevent height collapse */
-        aspect-ratio: 396 / 166; /* Lock aspect ratio based on final dimensions */
+        min-height: auto; /* Allow natural content height */
         padding: 1rem;
         contain: layout style; /* Prevent layout shifts */
     }
-    
+
     .vibe-panel.w-full .vibe-panel__title {
-        margin-bottom: 0.5rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .vibe-panel.w-full .vibe-models-container {
+        min-height: auto; /* Allow natural content height */
+        padding: 0.75rem;
+    }
+
+    .vibe-panel.w-full .vibe-code-block {
+        min-height: auto; /* Allow natural content height */
+        padding: 0.75rem;
     }
 }
 
@@ -186,7 +195,7 @@ section .max-w-5xl {
 }
 
 .vibe-panel--glow {
-    box-shadow: 
+    box-shadow:
         0 0 40px color-mix(in oklch, var(--color-primary) 20%, transparent),
         0 8px 32px color-mix(in oklch, var(--color-foreground) 12%, transparent),
         0 0 80px color-mix(in oklch, var(--color-primary) 10%, transparent) inset;
@@ -348,9 +357,9 @@ section .max-w-5xl {
 .vibe-code-block__content {
     color: var(--color-foreground);
     opacity: 1;
-    font-size: clamp(0.875rem, 1.5vw, 0.95rem);
+    font-size: clamp(0.75rem, 1.2vw, 0.85rem);
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-    line-height: 1.5;
+    line-height: 1.4;
     white-space: pre-wrap;
     overflow-x: hidden;
     margin: 0;

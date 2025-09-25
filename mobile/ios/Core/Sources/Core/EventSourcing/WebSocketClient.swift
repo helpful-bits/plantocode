@@ -1,4 +1,5 @@
 import Foundation
+import Foundation
 import Combine
 import OSLog
 import Network
@@ -138,7 +139,7 @@ public class WebSocketClient: NSObject, ObservableObject {
             return
         }
 
-        logger.info("Connecting to WebSocket: \\(serverURL)")
+        logger.info("Connecting to WebSocket: \(self.serverURL)")
         connectionState = .connecting
 
         establishConnection()
@@ -272,7 +273,7 @@ public class WebSocketClient: NSObject, ObservableObject {
         startReceiving()
         startHeartbeat()
 
-        logger.debug("WebSocket connection initiated to: \\(serverURL)")
+        logger.debug("WebSocket connection initiated to: \(self.serverURL)")
     }
 
     private func startReceiving() {
@@ -286,7 +287,7 @@ public class WebSocketClient: NSObject, ObservableObject {
                 self.startReceiving()
 
             case .failure(let error):
-                self.logger.error("WebSocket receive error: \\(error)")
+                self.logger.error("WebSocket receive error: \(error)")
                 self.handleConnectionFailure(.connectionError(error))
             }
         }
@@ -322,7 +323,7 @@ public class WebSocketClient: NSObject, ObservableObject {
             handleParsedMessage(message)
 
         } catch {
-            logger.error("Failed to decode WebSocket message: \\(error)")
+            logger.error("Failed to decode WebSocket message: \(error)")
         }
     }
 
@@ -358,7 +359,7 @@ public class WebSocketClient: NSObject, ObservableObject {
     }
 
     private func handleConnectedMessage(_ message: ConnectedMessage) {
-        logger.info("WebSocket connection confirmed: \\(message.sessionId)")
+        logger.info("WebSocket connection confirmed: \(message.sessionId)")
 
         DispatchQueue.main.async {
             let connectionResult = ConnectionHandshake(sessionId: message.sessionId, clientId: message.deviceId, transport: "websocket")
@@ -435,22 +436,22 @@ public class WebSocketClient: NSObject, ObservableObject {
             DispatchQueue.main.async {
                 self.roundTripTime = roundTrip
             }
-            logger.debug("Ping roundtrip: \\(roundTrip * 1000)ms")
+            logger.debug("Ping roundtrip: \(roundTrip * 1000)ms")
             updateMetrics(roundTripMs: roundTrip * 1000)
         }
     }
 
     private func handleSubscriptionConfirmed(_ message: SubscriptionConfirmedMessage) {
-        logger.info("Subscription confirmed: \\(message.subscriptionId)")
+        logger.info("Subscription confirmed: \(message.subscriptionId)")
     }
 
     private func handleSubscriptionError(_ message: SubscriptionErrorMessage) {
-        logger.error("Subscription error: \\(message.errorMessage)")
+        logger.error("Subscription error: \(message.errorMessage)")
         subscriptions.removeValue(forKey: message.subscriptionId)
     }
 
     private func handleErrorMessage(_ message: ErrorMessage) {
-        logger.error("WebSocket error: \\(message.errorMessage)")
+        logger.error("WebSocket error: \(message.errorMessage)")
 
         if message.fatal {
             handleConnectionFailure(.serverError(message.errorMessage))
@@ -458,7 +459,7 @@ public class WebSocketClient: NSObject, ObservableObject {
     }
 
     private func handleReplayResponse(_ message: ReplayResponseMessage) {
-        logger.info("Received replay with \\(message.events.count) events")
+        logger.info("Received replay with \(message.events.count) events")
 
         for event in message.events {
             DispatchQueue.main.async {
@@ -475,7 +476,7 @@ public class WebSocketClient: NSObject, ObservableObject {
 
                 // Create authentication message
                 let authMessage = WebSocketMessage.authenticate(AuthenticateMessage(
-                    token: nil, // Would get from AuthService if needed
+                    token: await AuthService.shared.getValidAccessToken(),
                     deviceId: deviceId,
                     clientType: "mobile"
                 ))
@@ -483,7 +484,7 @@ public class WebSocketClient: NSObject, ObservableObject {
                 try await sendMessage(authMessage)
                 logger.info("Authentication message sent")
             } catch {
-                logger.error("Failed to send authentication message: \\(error)")
+                logger.error("Failed to send authentication message: \(error)")
                 handleConnectionFailure(.authenticationFailed(error.localizedDescription))
             }
         }
@@ -569,7 +570,7 @@ public class WebSocketClient: NSObject, ObservableObject {
     }
 
     private func sendPing() {
-        guard case .connected(_) = connectionState else { return }
+        guard case .connected = connectionState else { return }
 
         let pingId = UUID().uuidString
         let now = Date()
@@ -598,7 +599,7 @@ public class WebSocketClient: NSObject, ObservableObject {
     // MARK: - Reconnection
 
     private func handleConnectionFailure(_ error: WebSocketError) {
-        logger.error("Connection failed: \\(error.localizedDescription)")
+        logger.error("Connection failed: \(error.localizedDescription)")
 
         DispatchQueue.main.async {
             self.connectionState = .disconnected
@@ -624,7 +625,7 @@ public class WebSocketClient: NSObject, ObservableObject {
         reconnectAttempts += 1
 
         let delay = reconnectionConfig.getReconnectDelay(attempt: reconnectAttempts)
-        logger.info("Scheduling reconnection in \\(delay) seconds (attempt \\(reconnectAttempts))")
+        logger.info("Scheduling reconnection in \(delay) seconds (attempt \(self.reconnectAttempts))")
 
         DispatchQueue.main.async {
             self.connectionState = .reconnecting
@@ -655,7 +656,7 @@ public class WebSocketClient: NSObject, ObservableObject {
                 DispatchQueue.main.async {
                     self.connect()
                 }
-            } else if path.status != .satisfied, case .connected(_) = self.connectionState {
+            } else if path.status != .satisfied, case .connected = self.connectionState {
                 self.logger.warning("Network became unavailable")
                 self.handleConnectionFailure(.networkUnavailable)
             }
@@ -936,6 +937,14 @@ public struct ErrorMessage: Codable {
     public let errorDetails: AnyCodable?
     public let retryAfter: UInt64?
     public let fatal: Bool
+    
+    public init(errorCode: String, errorMessage: String, errorDetails: Any? = nil, retryAfter: UInt64? = nil, fatal: Bool = false) {
+        self.errorCode = errorCode
+        self.errorMessage = errorMessage
+        self.errorDetails = errorDetails.map { AnyCodable(any: $0) }
+        self.retryAfter = retryAfter
+        self.fatal = fatal
+    }
 }
 
 public struct ReplayRequestMessage: Codable {
@@ -953,6 +962,7 @@ public struct ReplayResponseMessage: Codable {
     public let nextSeq: UInt64?
 }
 
+
 enum WebSocketError: LocalizedError {
     case notConnected
     case connectionError(Error)
@@ -966,13 +976,13 @@ enum WebSocketError: LocalizedError {
         case .notConnected:
             return "WebSocket not connected"
         case .connectionError(let error):
-            return "Connection error: \\(error.localizedDescription)"
+            return "Connection error: \(error.localizedDescription)"
         case .serverError(let message):
-            return "Server error: \\(message)"
+            return "Server error: \(message)"
         case .networkUnavailable:
             return "Network unavailable"
         case .authenticationFailed(let message):
-            return "Authentication failed: \\(message)"
+            return "Authentication failed: \(message)"
         case .encodingError:
             return "Message encoding error"
         }

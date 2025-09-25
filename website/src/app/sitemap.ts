@@ -1,8 +1,19 @@
 import type { MetadataRoute } from 'next';
+import pseoData from '@/data/pseo';
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = 'https://www.vibemanager.app';
   const now = new Date();
+
+  // Generate pSEO pages entries
+  const pseoPages = pseoData.pages
+    .filter(page => page.publish === true)
+    .map(page => ({
+      url: `${baseUrl}/${page.slug}`,
+      lastModified: now,
+      changeFrequency: 'weekly' as const,
+      priority: page.priority === 1 ? 0.85 : page.priority === 2 ? 0.75 : 0.7,
+    }));
 
   return [
     // Homepage
@@ -14,13 +25,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
     // Main pages
     {
-      url: `${baseUrl}/vibe-code-cleanup-specialist`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.95,
-    },
-    {
-      url: `${baseUrl}/download`,
+      url: `${baseUrl}/downloads`,
       lastModified: now,
       changeFrequency: 'weekly',
       priority: 0.9,
@@ -32,59 +37,45 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'weekly',
       priority: 0.95,
     },
-    // Planning section
+    // Documentation pages - verified feature coverage
     {
-      url: `${baseUrl}/docs/plan-mode`,
+      url: `${baseUrl}/docs/implementation-plans`,
       lastModified: now,
       changeFrequency: 'weekly',
       priority: 0.94,
     },
     {
-      url: `${baseUrl}/docs/claude-code-plan-mode`,
+      url: `${baseUrl}/docs/file-discovery`,
       lastModified: now,
       changeFrequency: 'weekly',
       priority: 0.93,
     },
     {
-      url: `${baseUrl}/docs/cursor-plan-mode`,
+      url: `${baseUrl}/docs/model-configuration`,
       lastModified: now,
       changeFrequency: 'weekly',
       priority: 0.92,
     },
     {
-      url: `${baseUrl}/docs/cline-plan-mode`,
+      url: `${baseUrl}/docs/terminal-sessions`,
       lastModified: now,
       changeFrequency: 'weekly',
       priority: 0.91,
     },
     {
-      url: `${baseUrl}/docs/codex-cli-plan-mode`,
+      url: `${baseUrl}/docs/voice-transcription`,
       lastModified: now,
       changeFrequency: 'weekly',
       priority: 0.91,
     },
-    // Integration section
     {
-      url: `${baseUrl}/docs/openai-codex-cli`,
+      url: `${baseUrl}/docs/text-improvement`,
       lastModified: now,
       changeFrequency: 'weekly',
-      priority: 0.9,
+      priority: 0.91,
     },
     {
-      url: `${baseUrl}/docs/claude-code-install`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.93,
-    },
-    // Comparisons & Enhancements
-    {
-      url: `${baseUrl}/docs/claude-code-vs-cursor`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.92,
-    },
-    {
-      url: `${baseUrl}/docs/claude-code-alternative`,
+      url: `${baseUrl}/docs/deep-research`,
       lastModified: now,
       changeFrequency: 'weekly',
       priority: 0.91,
@@ -96,12 +87,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'weekly',
       priority: 0.94,
     },
-    {
-      url: `${baseUrl}/docs/what-is-vibe-code-cleanup-specialist`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.9,
-    },
     // Feature pages
     {
       url: `${baseUrl}/demo`,
@@ -110,47 +95,59 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.85,
     },
     {
-      url: `${baseUrl}/file-finder`,
+      url: `${baseUrl}/features/text-improvement`,
       lastModified: now,
       changeFrequency: 'weekly',
       priority: 0.8,
     },
     {
-      url: `${baseUrl}/deep-research`,
+      url: `${baseUrl}/features/voice-transcription`,
       lastModified: now,
       changeFrequency: 'weekly',
       priority: 0.8,
     },
     {
-      url: `${baseUrl}/multi-model-plans`,
+      url: `${baseUrl}/features/integrated-terminal`,
       lastModified: now,
       changeFrequency: 'weekly',
       priority: 0.8,
     },
     {
-      url: `${baseUrl}/local-first`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.8,
-    },
-    // Hash fragment pages (for completeness, though less important for SEO)
-    {
-      url: `${baseUrl}/#features`,
+      url: `${baseUrl}/features/merge-instructions`,
       lastModified: now,
       changeFrequency: 'weekly',
       priority: 0.8,
     },
     {
-      url: `${baseUrl}/#how-it-works`,
+      url: `${baseUrl}/features/plan-mode`,
       lastModified: now,
       changeFrequency: 'weekly',
       priority: 0.8,
     },
     {
-      url: `${baseUrl}/#pricing`,
+      url: `${baseUrl}/features/file-discovery`,
       lastModified: now,
       changeFrequency: 'weekly',
       priority: 0.8,
+    },
+    {
+      url: `${baseUrl}/features/deep-research`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.8,
+    },
+    {
+      url: `${baseUrl}/features/copy-buttons`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.8,
+    },
+    // Plan mode page
+    {
+      url: `${baseUrl}/plan-mode`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.85,
     },
     // Legal pages
     {
@@ -190,6 +187,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.5,
     },
     {
+      url: `${baseUrl}/legal/eu/dpa`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.5,
+    },
+    {
       url: `${baseUrl}/legal/us/terms`,
       lastModified: now,
       changeFrequency: 'monthly',
@@ -201,6 +204,37 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'monthly',
       priority: 0.5,
     },
+    {
+      url: `${baseUrl}/legal/us/dpa`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.5,
+    },
+    // Solutions pages
+    {
+      url: `${baseUrl}/solutions/hard-bugs`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.75,
+    },
+    {
+      url: `${baseUrl}/solutions/large-features`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.75,
+    },
+    {
+      url: `${baseUrl}/solutions/library-upgrades`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.75,
+    },
+    {
+      url: `${baseUrl}/solutions/maintenance-enhancements`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.75,
+    },
     // Other pages
     {
       url: `${baseUrl}/about`,
@@ -209,9 +243,21 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.7,
     },
     {
-      url: `${baseUrl}/contact`,
+      url: `${baseUrl}/how-it-works`,
       lastModified: now,
-      changeFrequency: 'monthly',
+      changeFrequency: 'weekly',
+      priority: 0.8,
+    },
+    {
+      url: `${baseUrl}/screenshots`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.7,
+    },
+    {
+      url: `${baseUrl}/schedule`,
+      lastModified: now,
+      changeFrequency: 'weekly',
       priority: 0.7,
     },
     {
@@ -232,5 +278,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'monthly',
       priority: 0.7,
     },
+    // Add all pSEO pages
+    ...pseoPages,
   ];
 }

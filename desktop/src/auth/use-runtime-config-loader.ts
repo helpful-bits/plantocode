@@ -21,7 +21,7 @@ export interface RuntimeConfigLoaderResult {
 export function useRuntimeConfigLoader(): RuntimeConfigLoaderResult {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Use a try-catch to safely get the context
   let updateConfigFn: (config: RuntimeAIConfig) => void = () => {};
   try {
@@ -41,7 +41,7 @@ export function useRuntimeConfigLoader(): RuntimeConfigLoaderResult {
 
       // Get the token from Rust's secure storage
       const token = await invoke<string | null>('get_app_jwt');
-      
+
       if (!token) {
         console.error("Cannot load config without a valid token");
         setError("Authentication token not available.");

@@ -172,7 +172,7 @@ export const Value = memo(function Value({ propositions = defaultPropositions }:
           >
             <Button
               size="lg"
-              variant="gradient-outline"
+              variant="outline"
               asChild
               className="cursor-pointer"
             >

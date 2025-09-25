@@ -48,9 +48,10 @@ export function MacDownloadButton({
     <button
       onClick={handleDownload}
       className={cn(
-        'inline-flex items-center justify-center font-semibold transition-transform hover:scale-105 active:scale-95',
+        'inline-flex items-center justify-center font-semibold transition-transform hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
         className
       )}
+      aria-label="Download Vibe Manager for Mac"
       style={{
         width: dimensions.width,
         height: dimensions.height,

@@ -7,7 +7,7 @@ import { StructuredData } from '@/components/seo/StructuredData';
 import type { WebSite, Organization } from 'schema-dts';
 import { ClientProviders } from '@/components/providers/ClientProviders';
 // import { ConditionalBackground } from '@/components/system/ConditionalBackground';
-import { ConditionalFooter } from '@/components/system/ConditionalFooter';
+import { Footer } from '@/components/landing/Footer';
 import { CSSFix } from '@/components/system/CSSFix';
 import { cdnUrl } from '@/lib/cdn';
 
@@ -15,9 +15,9 @@ export const metadata: Metadata = {
   metadataBase: new URL('https://www.vibemanager.app'),
   title: {
     template: '%s | Vibe Manager',
-    default: 'Vibe Manager - AI Architect Studio with Integrated Terminal',
+    default: 'Vibe Manager - AI planning workspace with integrated terminal',
   },
-  description: 'AI Architect Studio for heavy coding-agent users. Integrated terminal runs codex, claude, cursor, aider. Edit plans in Monaco editor. Merge with your instructions. Windows & Mac. $10 free credits.',
+  description: 'Plan implementation work with a Monaco editor, staged file discovery, and an integrated terminal for claude, cursor, codex, and gemini. Configure models per task and keep sessions persistent on Windows and macOS.',
   keywords: ['vibe manager', 'vibe code cleanup specialist', 'claude code install', 'install claude code', 'claudecode', 'claude code planning', 'claude code agents', 'claude code mcp', 'claude code cli', 'claude code vs cursor', 'claude code github', 'claude code vscode', 'claude code windows', 'claude code router', 'claude code subagents', 'claude code sdk', 'claude code hooks', 'claude code docs', 'AI coding assistant', 'multi-model planning', 'implementation plan', 'file discovery'],
   authors: [{ name: 'Vibe Manager Team' }],
   creator: 'Vibe Manager',
@@ -33,8 +33,8 @@ export const metadata: Metadata = {
     canonical: 'https://www.vibemanager.app/',
   },
   openGraph: {
-    title: 'Vibe Manager - AI Architect Studio | Integrated Terminal for CLI Tools',
-    description: 'AI Architect Studio with integrated terminal. Run codex, claude, cursor, aider directly. Edit plans in Monaco, merge with custom instructions. GPT-5, Claude Sonnet 4, Gemini 2.5 Pro. Windows & Mac. $10 free credits.',
+    title: 'Vibe Manager - AI planning workspace | Integrated terminal for CLI tools',
+    description: 'Generate and edit implementation plans, run the file discovery workflow, and execute commands from the integrated terminal for claude, cursor, codex, and gemini. Configure models like GPT-5, Claude 4 Sonnet, Gemini 2.5 Pro, Grok 4, DeepSeek R1, and Kimi K2.',
     url: 'https://www.vibemanager.app/',
     siteName: 'Vibe Manager',
     images: [{
@@ -49,8 +49,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Vibe Manager - Multi-Model AI Planning Tool',
-    description: 'AI Architect Studio with integrated terminal for codex, claude, cursor, aider. Generate better plans from GPT-5, Claude Sonnet 4, Gemini 2.5 Pro. Free app.',
+    title: 'Vibe Manager - Multi-model implementation planning',
+    description: 'Monaco plan editing, staged file discovery, and an integrated terminal for claude, cursor, codex, and gemini. Choose models per task and keep sessions persistent.',
     images: [{
       url: cdnUrl('/images/og-image.png'),
       alt: 'Vibe Manager - AI Architect Studio with Integrated Terminal',
@@ -130,7 +130,7 @@ const websiteJsonLd: WebSite = {
   name: 'Vibe Manager',
   alternateName: 'VibeManager',
   url: 'https://www.vibemanager.app',
-  description: 'AI Architect Studio with integrated terminal for heavy coding-agent users. Run codex, claude, cursor, aider directly. Generate better implementation plans from multiple AI models.',
+  description: 'Desktop planning workspace with a Monaco editor, file discovery workflow, and integrated terminal for claude, cursor, codex, and gemini. Generate implementation plans from configured models and keep sessions persistent.',
   potentialAction: {
     '@type': 'SearchAction',
     target: 'https://www.vibemanager.app/search?q={search_term_string}',
@@ -153,7 +153,7 @@ const organizationJsonLd: Organization = {
     'https://twitter.com/vibemanagerapp',
     'https://github.com/vibemanager'
   ],
-  description: 'Vibe Manager - AI Architect Studio with integrated terminal. Run codex, claude, cursor, aider directly. Intelligent context curation and plan generation from multiple AI models.'
+  description: 'Vibe Manager - AI planning workspace with a Monaco editor, file discovery workflow, and integrated terminal for claude, cursor, codex, and gemini. Configure models like GPT-5, Claude 4 Sonnet, Gemini 2.5 Pro, Grok 4, DeepSeek R1, and Kimi K2.'
 };
 
 export default function RootLayout({
@@ -178,7 +178,7 @@ export default function RootLayout({
         <CSSFix />
         <ClientProviders>
           {children}
-          <ConditionalFooter />
+          <Footer />
         </ClientProviders>
         <StructuredData data={websiteJsonLd} />
         <StructuredData data={organizationJsonLd} />

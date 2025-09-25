@@ -113,7 +113,7 @@ export const SidebarHeader: FC<SidebarHeaderProps> = ({
                 }}
               >
                 <Bell className="h-4 w-4 text-foreground" />
-                {alertCount > 0 && (
+                {alertCount !== undefined && alertCount > 0 && (
                   <div className="absolute -top-1 -right-1 h-4 w-4 bg-red-500 rounded-full flex items-center justify-center">
                     <span className="text-white text-xs font-medium">
                       {alertCount > 9 ? '9+' : alertCount}

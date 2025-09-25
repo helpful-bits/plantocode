@@ -440,8 +440,8 @@ async fn main() -> std::io::Result<()> {
         let customer_billing_repository = std::sync::Arc::new(CustomerBillingRepository::new(db_pools.user_pool.clone()));
 
         // Device management - use system pool for device registry
-        let device_repository = std::sync::Arc::new(DeviceRepository::new(std::sync::Arc::new(db_pools.system_pool.clone())));
-        let device_connection_manager = std::sync::Arc::new(DeviceConnectionManager::new());
+        let device_repository = DeviceRepository::new(std::sync::Arc::new(db_pools.system_pool.clone()));
+        let device_connection_manager = DeviceConnectionManager::new();
         
         // Create application state
         let app_state = web::Data::new(AppState {
@@ -505,8 +505,8 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(app_settings.clone()))
             .app_data(web::Data::new(db_pools.clone()))
             .app_data(web::Data::new(ApiUsageRepository::new(db_pools.user_pool.clone())))
-            .app_data(web::Data::new(device_repository.clone()))
-            .app_data(web::Data::new(device_connection_manager.clone()))
+            .app_data(web::Data::new(device_repository))
+            .app_data(web::Data::new(device_connection_manager))
             
             // Register health check endpoint with IP-based rate limiting
             .service(
@@ -554,6 +554,7 @@ async fn main() -> std::io::Result<()> {
             .service(
                 web::scope("/ws")
                     .wrap(public_ip_rate_limiter.clone())
+                    .wrap(auth_middleware(db_pools.user_pool.clone(), db_pools.system_pool.clone()))
                     .route("/device-link", web::get().to(handlers::device_handlers::device_link_ws_handler))
             )
     })

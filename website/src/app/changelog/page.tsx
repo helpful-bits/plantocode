@@ -29,7 +29,7 @@ interface ChangelogEntry {
 const changelog: ChangelogEntry[] = [
   {
     version: '1.0.20',
-    date: '2025-09-10',
+    date: '2025-09-22',
     type: 'patch',
     changes: {
       fixed: [
@@ -52,7 +52,7 @@ const changelog: ChangelogEntry[] = [
   },
   {
     version: '1.0.19',
-    date: '2025-09-07',
+    date: '2025-09-22',
     type: 'patch',
     changes: {
       improved: [
@@ -66,7 +66,7 @@ const changelog: ChangelogEntry[] = [
   },
   {
     version: '1.0.18',
-    date: '2025-08-28',
+    date: '2025-09-21',
     type: 'patch',
     changes: {
       added: [
@@ -85,7 +85,7 @@ const changelog: ChangelogEntry[] = [
   },
   {
     version: '1.0.17',
-    date: '2025-08-21',
+    date: '2025-09-21',
     type: 'patch',
     changes: {
       improved: [
@@ -98,7 +98,7 @@ const changelog: ChangelogEntry[] = [
   },
   {
     version: '1.0.16',
-    date: '2025-08-17',
+    date: '2025-09-21',
     type: 'minor',
     changes: {
       added: [
@@ -114,7 +114,7 @@ const changelog: ChangelogEntry[] = [
   },
   {
     version: '1.0.15',
-    date: '2025-08-14',
+    date: '2025-09-20',
     type: 'minor',
     changes: {
       added: [
@@ -130,7 +130,7 @@ const changelog: ChangelogEntry[] = [
   },
   {
     version: '1.0.14',
-    date: '2025-08-14',
+    date: '2025-09-20',
     type: 'patch',
     changes: {
       fixed: [
@@ -147,7 +147,7 @@ const changelog: ChangelogEntry[] = [
   },
   {
     version: '1.0.13',
-    date: '2025-08-14',
+    date: '2025-09-20',
     type: 'patch',
     changes: {
       improved: [
@@ -164,7 +164,7 @@ const changelog: ChangelogEntry[] = [
   },
   {
     version: '1.0.12',
-    date: '2025-08-13',
+    date: '2025-09-20',
     type: 'patch',
     changes: {
       improved: [
@@ -178,7 +178,7 @@ const changelog: ChangelogEntry[] = [
   },
   {
     version: '1.0.11',
-    date: '2025-08-11',
+    date: '2025-09-19',
     type: 'patch',
     changes: {
       improved: [
@@ -194,7 +194,7 @@ const changelog: ChangelogEntry[] = [
   },
   {
     version: '1.0.10',
-    date: '2025-08-05',
+    date: '2025-09-19',
     type: 'minor',
     changes: {
       added: [
@@ -211,7 +211,7 @@ const changelog: ChangelogEntry[] = [
   },
   {
     version: '1.0.9',
-    date: '2025-07-28',
+    date: '2025-09-19',
     type: 'minor',
     changes: {
       added: [
@@ -232,7 +232,7 @@ const changelog: ChangelogEntry[] = [
   },
   {
     version: '1.0.8',
-    date: '2025-07-15',
+    date: '2025-09-19',
     type: 'major',
     changes: {
       added: [

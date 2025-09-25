@@ -659,7 +659,7 @@ impl BackgroundJobRepository {
     }
 
     /// Get all jobs, sorted by status priority and updated time
-    /// Prioritizes recent jobs and deprioritizes old stuck jobs
+    /// Prioritizes recent jobs and deprioritizes old jobs requiring attention
     pub async fn get_all_visible_jobs(&self) -> AppResult<Vec<BackgroundJob>> {
         // Get current timestamp for recency calculation
         let thirty_minutes_ago = get_timestamp() - (30 * 60 * 1000); // 30 minutes in milliseconds
@@ -685,7 +685,7 @@ impl BackgroundJobRepository {
                     WHEN status = $8 THEN 9   -- Completed (old)
                     WHEN status = $10 THEN 10 -- Failed (old)
                     WHEN status = $11 THEN 11 -- Canceled (old)
-                    -- Everything else (stuck jobs older than 30 minutes)
+                    -- Everything else (jobs requiring attention older than 30 minutes)
                     ELSE 12
                 END,
                 -- Within each priority group, sort by most recently updated
@@ -749,7 +749,7 @@ impl BackgroundJobRepository {
                     WHEN bj.status = $9 THEN 9   -- Completed (old)
                     WHEN bj.status = $11 THEN 10 -- Failed (old)
                     WHEN bj.status = $12 THEN 11 -- Canceled (old)
-                    -- Everything else (stuck jobs older than 30 minutes)
+                    -- Everything else (jobs requiring attention older than 30 minutes)
                     ELSE 12
                 END,
                 -- Within each priority group, sort by most recently updated

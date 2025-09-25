@@ -1,20 +1,19 @@
 'use client';
 
 import React, { useRef, useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { track } from '@/lib/track';
+import { motion } from 'framer-motion';
 import { cdnUrl } from '@/lib/cdn';
-import { Play, X } from 'lucide-react';
+import { Play, Search, BarChart3, CheckCircle2, Target, Zap } from 'lucide-react';
 import Link from 'next/link';
+import { Button } from '@/components/ui/button';
+import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 
 export function HeroSection() {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const desktopVideoRef = useRef<HTMLVideoElement>(null);
 
   // Start with null to match server/client
   const [isMobile, setIsMobile] = useState<boolean | null>(null);
   const [isDesktop, setIsDesktop] = useState<boolean | null>(null);
-  const [showVideoModal, setShowVideoModal] = useState(false);
 
   // Set initial values and handle resize
   useEffect(() => {
@@ -33,58 +32,6 @@ export function HeroSection() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
-  
-  const handlePlayVideo = () => {
-    if (isMobile) {
-      // On mobile, immediately play fullscreen
-      if (videoRef.current) {
-        // Reset video state for replay
-        videoRef.current.currentTime = 0;
-
-        // Set source if not already set
-        if (!videoRef.current.src) {
-          videoRef.current.src = cdnUrl('/assets/videos/hero-section.mp4');
-        }
-
-        videoRef.current.play().then(() => {
-          if (videoRef.current?.requestFullscreen) {
-            videoRef.current.requestFullscreen();
-          } else if ((videoRef.current as any)?.webkitEnterFullscreen) {
-            (videoRef.current as any).webkitEnterFullscreen();
-          }
-        }).catch(err => {
-          // Fallback to modal if fullscreen fails
-          console.log('Fullscreen failed, using modal', err);
-          setShowVideoModal(true);
-        });
-      }
-    } else {
-      // Desktop keeps the modal
-      setShowVideoModal(true);
-      setTimeout(() => {
-        if (desktopVideoRef.current) {
-          desktopVideoRef.current.play();
-        }
-      }, 100);
-    }
-    track({
-      event: 'hero_video_play',
-      props: {
-        location: 'hero_section',
-        trigger: 'user_click',
-        device: isMobile ? 'mobile' : 'desktop'
-      }
-    });
-  };
-
-  const handleCloseVideo = () => {
-    setShowVideoModal(false);
-    if (desktopVideoRef.current) {
-      desktopVideoRef.current.pause();
-      desktopVideoRef.current.currentTime = 0;
-      desktopVideoRef.current.controls = false;
-    }
-  };
 
 
   return (
@@ -92,7 +39,7 @@ export function HeroSection() {
       {/* Main heading */}
       <div className="relative z-10 text-center px-4 sm:px-6 lg:px-8 pt-24 sm:pt-28 pb-6 sm:pb-8 w-full">
         <h1
-          className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold leading-tight bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent"
+          className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold leading-tight bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent max-w-5xl mx-auto"
           style={{
             contentVisibility: 'auto',
             backgroundImage: 'linear-gradient(135deg, var(--color-adaptive-primary), var(--color-adaptive-accent), var(--teal-bright))',
@@ -101,49 +48,66 @@ export function HeroSection() {
             backgroundClip: 'text',
           }}
         >
-          Serious AI Architect Studio for Large & Legacy Codebases
+          Experience the true intelligence of GPT-5 and Gemini 2.5 Pro
         </h1>
         <p className="mt-6 text-lg sm:text-xl text-foreground/80 max-w-4xl mx-auto">
-          Multi-model planning with real code context - then execute via integrated terminal. Ship features and fixes safely, without regressions.
+          Discover relevant files automatically, compare implementation plans from the most powerful AI models, then execute through integrated terminal.
         </p>
       </div>
 
       {/* Hero Content with Panels */}
       <div className="relative w-full px-4 sm:px-6 lg:px-8">
-        <div className="max-w-6xl mx-auto relative">
+        <div className="w-full mx-auto relative">
           
           {/* Panels Container - Responsive */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-            className={isMobile === true ? "flex flex-col gap-6 pb-8 w-full" : "flex items-center justify-center gap-3 lg:gap-4 pb-6"}
+            className={isMobile === true ? "flex flex-col gap-6 pb-8 w-full" : "flex items-center justify-center gap-1 pb-6"}
           >
                 {/* Panel 1: Find Files */}
                 {isMobile ? (
-              <div className="vibe-panel w-full" style={{minHeight: 'fit-content'}}>
-                <h2 className="vibe-panel__title">Code-Aware Discovery</h2>
+              <div className="vibe-panel w-full" style={{minHeight: 'auto'}}>
+                <h2 className="vibe-panel__title">File discovery workflow</h2>
                 <p className="text-foreground/80 text-base leading-relaxed">
-                  From 1,000 files to the <strong>true impact surface</strong>. AI finds deps, patterns, and non-obvious links. Built for heavy coding-agent users. <Link href="/file-finder" className="text-primary hover:underline">Learn more →</Link>
+                  Generate search patterns, run relevance scoring, and review staged results before including files in your plan. <LinkWithArrow href="/features/file-discovery">See how it works</LinkWithArrow>
                 </p>
               </div>
             ) : (
-              <div className="vibe-panel flex-shrink-0" style={{width: 'min(320px, 28vw)', height: 'min(380px, 45vh)'}}>
-                <h2 className="vibe-panel__title">Code-Aware Discovery</h2>
+              <div className="vibe-panel flex-shrink-0" style={{width: 'min(380px, 32vw)', height: 'min(420px, 50vh)'}}>
+                <h2 className="vibe-panel__title">File discovery workflow</h2>
                 <div className="vibe-intent-box">
-                  <div className="vibe-intent-box__item text-base">Impact Surface</div>
-                  <div className="vibe-intent-box__item text-base">Dependencies</div>
-                  <div className="vibe-intent-box__item text-base">Legacy Patterns</div>
+                  <div className="vibe-intent-box__item text-base flex items-center gap-3 justify-start">
+                    <Search className="w-5 h-5 text-foreground/60" />
+                    <span>Pattern groups</span>
+                  </div>
+                  <div className="vibe-intent-box__item text-base flex items-center gap-3 justify-start">
+                    <BarChart3 className="w-5 h-5 text-foreground/60" />
+                    <span>Relevance scores</span>
+                  </div>
+                  <div className="vibe-intent-box__item text-base flex items-center gap-3 justify-start">
+                    <CheckCircle2 className="w-5 h-5 text-foreground/60" />
+                    <span>Stage reviews</span>
+                  </div>
+                  <div className="vibe-intent-box__item text-base flex items-center gap-3 justify-start">
+                    <Target className="w-5 h-5 text-foreground/60" />
+                    <span>Context optimization</span>
+                  </div>
+                  <div className="vibe-intent-box__item text-base flex items-center gap-3 justify-start">
+                    <Zap className="w-5 h-5 text-foreground/60" />
+                    <span>Real-time progress</span>
+                  </div>
                 </div>
                 <p className="vibe-panel__description text-base">
-                  True context for heavy coding-agent users. <Link href="/file-finder" className="text-primary hover:underline">Learn more →</Link>
+                  Surface the right files before you write prompts. <LinkWithArrow href="/features/file-discovery">Learn more</LinkWithArrow>
                 </p>
               </div>
             )}
 
             {/* Arrow between Panel 1 and 2 - Desktop only with spacer */}
             {isDesktop && (
-              <div className="flex items-center justify-center px-2 relative" style={{ minWidth: '56px', minHeight: '40px' }}>
+              <div className="flex items-center justify-center px-1 relative" style={{ minWidth: '32px', minHeight: '40px' }}>
                 <div className="relative">
                   <svg
                     className="w-10 h-10 animate-pulse"
@@ -177,8 +141,8 @@ export function HeroSection() {
             )}
 
             {/* Panel 2: Multi-Model Planning */}
-            <div className={isMobile ? "vibe-panel vibe-panel--accent vibe-panel--glow w-full" : "vibe-panel vibe-panel--accent vibe-panel--glow flex-shrink-0"} style={isMobile ? {minHeight: '166px'} : {width: 'min(300px, 30vw)', height: 'min(380px, 45vh)'}}>
-              <h2 className="vibe-panel__title vibe-panel__title--accent">Council of LLMs</h2>
+            <div className={isMobile ? "vibe-panel vibe-panel--accent vibe-panel--glow w-full" : "vibe-panel vibe-panel--accent vibe-panel--glow flex-shrink-0"} style={isMobile ? {minHeight: 'auto'} : {width: 'min(360px, 32vw)', height: 'min(420px, 50vh)'}}>
+              <h2 className="vibe-panel__title vibe-panel__title--accent">Multi-model planning</h2>
               <div className="vibe-models-container">
                 <div className="vibe-model-card">
                   <div className="vibe-model-card__header">
@@ -188,7 +152,6 @@ export function HeroSection() {
                   <div className="vibe-progress-bar">
                     <div className="vibe-progress-bar__fill" style={{width: '72%'}}></div>
                   </div>
-                  <div className="vibe-model-card__status">Structuring approach...</div>
                 </div>
                 <div className="vibe-model-card">
                   <div className="vibe-model-card__header">
@@ -198,7 +161,6 @@ export function HeroSection() {
                   <div className="vibe-progress-bar">
                     <div className="vibe-progress-bar__fill" style={{width: '91%'}}></div>
                   </div>
-                  <div className="vibe-model-card__status">Reviewing trade-offs...</div>
                 </div>
                 <div className="vibe-model-card">
                   <div className="vibe-model-card__header">
@@ -208,17 +170,16 @@ export function HeroSection() {
                   <div className="vibe-progress-bar">
                     <div className="vibe-progress-bar__fill" style={{width: '85%'}}></div>
                   </div>
-                  <div className="vibe-model-card__status">Analyzing patterns...</div>
                 </div>
               </div>
               <p className="vibe-panel__description">
-                Generate multiple plans. <Link href="/docs" className="text-primary hover:underline">Merge with your instructions →</Link>
+                Generate implementation plans from GPT-5, Gemini 2.5 Pro, Claude 4 Sonnet, Grok 4, and DeepSeek R1 and merge the best ideas. <LinkWithArrow href="/docs">Explore the workflow</LinkWithArrow>
               </p>
             </div>
 
             {/* Arrow between Panel 2 and 3 - Desktop only with spacer */}
             {isDesktop && (
-              <div className="flex items-center justify-center px-2 relative" style={{ minWidth: '56px', minHeight: '40px' }}>
+              <div className="flex items-center justify-center px-1 relative" style={{ minWidth: '32px', minHeight: '40px' }}>
                 <div className="relative">
                   <svg
                     className="w-10 h-10 animate-pulse"
@@ -253,17 +214,17 @@ export function HeroSection() {
             )}
 
             {/* Panel 3: Integrated Terminal - Always render to prevent layout shift */}
-            <div className={isMobile ? "vibe-panel w-full" : "vibe-panel flex-shrink-0"} style={isMobile ? {minHeight: '166px'} : {width: 'min(320px, 28vw)', height: 'min(380px, 45vh)'}}>
-              <h2 className="vibe-panel__title">Integrated Terminal</h2>
+            <div className={isMobile ? "vibe-panel w-full" : "vibe-panel flex-shrink-0"} style={isMobile ? {minHeight: 'auto'} : {width: 'min(380px, 32vw)', height: 'min(420px, 50vh)'}}>
+              <h2 className="vibe-panel__title">Integrated terminal</h2>
                 <div className="vibe-code-block">
-                  <pre className="vibe-code-block__content">{`$ codex | claude | cursor | aider
-> Voice dictation for prompts
-> Edit plans in Monaco editor
-> Execute with approvals
-> Full session transcripts`}</pre>
+                  <pre className="vibe-code-block__content">{`$ codex | claude | cursor | gemini
+> Voice transcription available
+> Prompt preview before run
+> Token guardrails in place
+> Logs persist locally`}</pre>
                 </div>
                 <p className="vibe-panel__description">
-                  Run <Link href="/docs/integrated-terminal-cli-orchestration" className="text-primary hover:underline">codex</Link>, <Link href="/docs/integrated-terminal-cli-orchestration" className="text-primary hover:underline">claude</Link>, <Link href="/docs/integrated-terminal-cli-orchestration" className="text-primary hover:underline">cursor</Link>, <Link href="/docs/integrated-terminal-cli-orchestration" className="text-primary hover:underline">aider</Link> directly. No context switch.
+                  Launch claude, cursor, codex, or gemini without leaving the workspace. Health monitoring and recovery keep long jobs running. <LinkWithArrow href="/docs/terminal-sessions">Terminal details</LinkWithArrow>
                 </p>
                 </div>
           </motion.div>
@@ -271,23 +232,25 @@ export function HeroSection() {
           {/* Simple CTAs */}
           <div className="flex flex-col items-center gap-4 pb-8">
             <div className="flex flex-col sm:flex-row items-center gap-3">
-              <Link
-                href="/downloads"
-                className="px-6 py-3 bg-primary text-primary-foreground rounded-lg font-semibold hover:bg-primary/90 transition-all"
-              >
-                Download Free
-              </Link>
-              <button
-                onClick={handlePlayVideo}
-                className="flex items-center gap-2 px-4 py-2 text-foreground/70 hover:text-foreground transition-all"
-                aria-label="Watch demo video"
-              >
-                <Play className="w-4 h-4" fill="currentColor" />
-                <span>Watch demo</span>
-              </button>
+              <Button variant="cta" size="lg" asChild>
+                <Link href="/downloads">
+                  Download Free
+                </Link>
+              </Button>
+              <Button variant="outline" size="lg" asChild>
+                <Link href="/demo" className="flex items-center gap-2">
+                  <Play className="w-4 h-4" fill="currentColor" />
+                  <span>Interactive Demo</span>
+                </Link>
+              </Button>
+              <Button variant="outline" size="lg" asChild>
+                <Link href="/how-it-works">
+                  How It Works
+                </Link>
+              </Button>
             </div>
             <div className="text-sm text-foreground/50">
-              macOS & Windows • $10 free credits
+              macOS & Windows • $5 free credits
             </div>
           </div>
         </div>
@@ -315,60 +278,6 @@ export function HeroSection() {
           }
         }}
       />
-
-      {/* Video Modal - Desktop only */}
-      <AnimatePresence>
-        {showVideoModal && !isMobile && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-background/80 backdrop-blur-xl"
-            onClick={handleCloseVideo}
-          >
-            <button
-              onClick={handleCloseVideo}
-              className="fixed top-24 right-4 z-[110] p-3 text-white hover:text-white transition-colors bg-black/70 rounded-full backdrop-blur-sm border border-white/20"
-              aria-label="Close video"
-            >
-              <X className="w-6 h-6" />
-            </button>
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] max-w-[1600px]"
-              style={{
-                aspectRatio: '16/9',
-                maxHeight: '90vh'
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <video
-                ref={desktopVideoRef}
-                className="w-full h-full object-contain"
-                style={{
-                  filter: 'brightness(1.2) contrast(1.1)',
-                  WebkitFilter: 'brightness(1.2) contrast(1.1)'
-                }}
-                poster={cdnUrl('/assets/images/hero-desktop-poster.jpg')}
-                playsInline
-                onClick={(e) => {
-                  const video = e.currentTarget;
-                  if (!video.controls) {
-                    video.controls = true;
-                  }
-                }}
-              >
-                <source src={cdnUrl('/assets/videos/hero-section-16by9_vp9.webm')} type="video/webm; codecs=vp9" />
-                <source src={cdnUrl('/assets/videos/hero-section-16by9.mp4')} type="video/mp4" />
-                Your browser does not support the video tag.
-              </video>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
 
     </section>
   );

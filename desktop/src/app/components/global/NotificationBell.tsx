@@ -45,7 +45,7 @@ export function NotificationBell() {
           variant="ghost"
           size="icon"
           className="relative"
-          title={`${notificationCount} terminal input${notificationCount === 1 ? '' : 's'} required`}
+          title={`${notificationCount} agent${notificationCount === 1 ? '' : 's'} require${notificationCount === 1 ? 's' : ''} attention`}
         >
           <Bell className="h-[1.2rem] w-[1.2rem]" />
           {notificationCount > 0 && (
@@ -62,7 +62,7 @@ export function NotificationBell() {
 
       <DropdownMenuContent className="w-80" align="end">
         <DropdownMenuLabel className="flex items-center justify-between">
-          <span>Terminal Input Required</span>
+          <span>Agent Requires Attention</span>
           <Badge variant="secondary">{notificationCount}</Badge>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />

@@ -8,7 +8,7 @@ pub struct RpcRequest {
     pub correlation_id: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RpcResponse {
     pub correlation_id: String,
     pub result: Option<Value>,

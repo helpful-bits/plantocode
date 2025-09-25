@@ -107,17 +107,8 @@ impl OpenAIClient {
     > {
         let request_id = self.get_next_request_id().await;
 
-        // Determine endpoint based on web_mode
-        let (endpoint, use_responses_api) = if web_mode {
-            ("/v1/responses", true)
-        } else {
-            ("/v1/chat/completions", false)
-        };
-
-        let url = format!("{}{}", self.base_url.trim_end_matches("/v1"), endpoint);
+        let url = format!("{}{}", self.base_url.trim_end_matches("/v1"), "/v1/responses");
         info!("OpenAI endpoint URL: {}", url);
-
-        if use_responses_api {
             // Use responses API for web mode
             let requires_background = model_requires_background(&request.model, web_mode);
 
@@ -208,66 +199,6 @@ impl OpenAIClient {
                 completion_tokens,
                 Some(response_id),
             ))
-        } else {
-            // Use chat completions API for non-web mode
-            let mut non_streaming_request = request.clone();
-            non_streaming_request.stream = Some(false);
-
-            // Log the request JSON (truncate long string values)
-            let mut request_value = serde_json::to_value(&non_streaming_request)
-                .unwrap_or_else(|_| serde_json::json!({"error": "Failed to serialize request"}));
-            truncate_long_strings(&mut request_value, 400);
-            let request_json = serde_json::to_string_pretty(&request_value)
-                .unwrap_or_else(|_| "Failed to serialize request".to_string());
-            info!("Sending request to OpenAI: {}", request_json);
-
-            let response = self
-                .client
-                .post(&url)
-                .bearer_auth(&self.api_key)
-                .header("Content-Type", "application/json")
-                .header("X-Request-ID", request_id.to_string())
-                .json(&non_streaming_request)
-                .send()
-                .await
-                .map_err(|e| AppError::External(format!("OpenAI request failed: {}", e)))?;
-
-            let status = response.status();
-            let headers = response.headers().clone();
-
-            if !status.is_success() {
-                let error_text = response
-                    .text()
-                    .await
-                    .unwrap_or_else(|_| "Failed to get error response".to_string());
-                return Err(AppError::External(format!(
-                    "OpenAI request failed with status {}: {}",
-                    status, error_text
-                )));
-            }
-
-            let chat_response: OpenAIChatResponse = response
-                .json()
-                .await
-                .map_err(|e| AppError::Internal(format!("OpenAI deserialization failed: {}", e)))?;
-
-            // Extract usage data from UsageExtractor
-            let response_body = serde_json::to_string(&chat_response)
-                .map_err(|e| AppError::Internal(format!("Failed to serialize response: {}", e)))?;
-            let usage = self
-                .extract_from_response_body(response_body.as_bytes(), &request.model)
-                .await?;
-
-            Ok((
-                chat_response,
-                headers,
-                usage.prompt_tokens,
-                usage.cache_write_tokens,
-                usage.cache_read_tokens,
-                usage.completion_tokens,
-                None,
-            ))
-        }
     }
 
     // Streaming Chat Completions for actix-web compatibility
@@ -302,14 +233,8 @@ impl OpenAIClient {
         let base_url = self.base_url.clone();
         let request_id_counter = self.request_id_counter.clone();
 
-        // Determine endpoint based on web_mode
-        let (endpoint, use_responses_api) = if web_mode {
-            ("/v1/responses", true)
-        } else {
-            ("/v1/chat/completions", false)
-        };
 
-        if use_responses_api && model_requires_background(&request.model, web_mode) {
+        if model_requires_background(&request.model, web_mode) {
             // For deep research models with web mode, use immediate streaming with progress updates
             tracing::info!(
                 "Using immediate synthetic streaming for deep research model: {}",
@@ -392,134 +317,66 @@ impl OpenAIClient {
                 *counter
             };
 
-            let url = format!("{}{}", base_url.trim_end_matches("/v1"), endpoint);
+            let url = format!("{}{}", base_url.trim_end_matches("/v1"), "/v1/responses");
             info!("OpenAI endpoint URL: {}", url);
 
-            if use_responses_api {
-                // Use responses API for web mode streaming
-                let (_, request_body) = prepare_request_body(&streaming_request, true, None)?;
+            let (_, request_body) = prepare_request_body(&streaming_request, web_mode, None)?;
 
-                let response = stream_client
-                    .post(&url)
-                    .bearer_auth(&api_key)
-                    .header("Content-Type", "application/json")
-                    .header("X-Request-ID", request_id.to_string())
-                    .json(&request_body)
-                    .send()
+            let response = stream_client
+                .post(&url)
+                .bearer_auth(&api_key)
+                .header("Content-Type", "application/json")
+                .header("X-Request-ID", request_id.to_string())
+                .json(&request_body)
+                .send()
+                .await
+                .map_err(|e| AppError::External(format!("OpenAI request failed: {}", e)))?;
+
+            let status = response.status();
+            let headers = response.headers().clone();
+
+            if !status.is_success() {
+                let error_text = response
+                    .text()
                     .await
-                    .map_err(|e| AppError::External(format!("OpenAI request failed: {}", e)))?;
-
-                let status = response.status();
-                let headers = response.headers().clone();
-
-                if !status.is_success() {
-                    let error_text = response
-                        .text()
-                        .await
-                        .unwrap_or_else(|_| "Failed to get error response".to_string());
-                    return Err(AppError::External(format!(
-                        "OpenAI streaming request failed with status {}: {}",
-                        status, error_text
-                    )));
-                }
-
-                // Return a stream that can be consumed by actix-web with enhanced error context
-                let model_for_error = streaming_request.model.clone();
-                let request_id_for_error = request_id;
-                let stream = response.bytes_stream().map(move |result| match result {
-                    Ok(bytes) => Ok(web::Bytes::from(bytes)),
-                    Err(e) => {
-                        // Enhanced error logging with context
-                        error!("OpenAI stream error - Model: {}, RequestID: {}, Error: {}", 
-                               model_for_error, request_id_for_error, e);
-                        
-                        // Categorize the error type
-                        if e.is_timeout() {
-                            Err(AppError::External(format!("OpenAI stream timeout [Model: {}, Request: {}]", 
-                                                         model_for_error, request_id_for_error)))
-                        } else if e.is_connect() {
-                            Err(AppError::External(format!("OpenAI connection failed [Model: {}, Request: {}]", 
-                                                         model_for_error, request_id_for_error)))
-                        } else if e.is_body() {
-                            Err(AppError::External(format!("OpenAI response body error [Model: {}, Request: {}]: {}", 
-                                                         model_for_error, request_id_for_error, e)))
-                        } else {
-                            Err(AppError::External(format!("OpenAI network error [Model: {}, Request: {}]: {}", 
-                                                         model_for_error, request_id_for_error, e)))
-                        }
-                    }
-                });
-
-                let boxed_stream: Pin<
-                    Box<dyn Stream<Item = Result<web::Bytes, AppError>> + Send + 'static>,
-                > = Box::pin(stream);
-                Ok((headers, boxed_stream, None))
-            } else {
-                // Use chat completions API for non-web mode streaming
-                // Log the streaming request JSON (truncate long string values)
-                let mut request_value = serde_json::to_value(&streaming_request)
-                    .unwrap_or_else(|_| serde_json::json!({"error": "Failed to serialize request"}));
-                truncate_long_strings(&mut request_value, 400);
-                let request_json = serde_json::to_string_pretty(&request_value)
-                    .unwrap_or_else(|_| "Failed to serialize request".to_string());
-                info!("Sending streaming request to OpenAI: {}", request_json);
-
-                let response = stream_client
-                    .post(&url)
-                    .bearer_auth(&api_key)
-                    .header("Content-Type", "application/json")
-                    .header("X-Request-ID", request_id.to_string())
-                    .json(&streaming_request)
-                    .send()
-                    .await
-                    .map_err(|e| AppError::External(format!("OpenAI request failed: {}", e)))?;
-
-                let status = response.status();
-                let headers = response.headers().clone();
-
-                if !status.is_success() {
-                    let error_text = response
-                        .text()
-                        .await
-                        .unwrap_or_else(|_| "Failed to get error response".to_string());
-                    return Err(AppError::External(format!(
-                        "OpenAI streaming request failed with status {}: {}",
-                        status, error_text
-                    )));
-                }
-
-                // Return a stream that can be consumed by actix-web with enhanced error context
-                let model_for_error = streaming_request.model.clone();
-                let request_id_for_error = request_id;
-                let stream = response.bytes_stream().map(move |result| match result {
-                    Ok(bytes) => Ok(web::Bytes::from(bytes)),
-                    Err(e) => {
-                        // Enhanced error logging with context
-                        error!("OpenAI stream error - Model: {}, RequestID: {}, Error: {}", 
-                               model_for_error, request_id_for_error, e);
-                        
-                        // Categorize the error type
-                        if e.is_timeout() {
-                            Err(AppError::External(format!("OpenAI stream timeout [Model: {}, Request: {}]", 
-                                                         model_for_error, request_id_for_error)))
-                        } else if e.is_connect() {
-                            Err(AppError::External(format!("OpenAI connection failed [Model: {}, Request: {}]", 
-                                                         model_for_error, request_id_for_error)))
-                        } else if e.is_body() {
-                            Err(AppError::External(format!("OpenAI response body error [Model: {}, Request: {}]: {}", 
-                                                         model_for_error, request_id_for_error, e)))
-                        } else {
-                            Err(AppError::External(format!("OpenAI network error [Model: {}, Request: {}]: {}", 
-                                                         model_for_error, request_id_for_error, e)))
-                        }
-                    }
-                });
-
-                let boxed_stream: Pin<
-                    Box<dyn Stream<Item = Result<web::Bytes, AppError>> + Send + 'static>,
-                > = Box::pin(stream);
-                Ok((headers, boxed_stream, None))
+                    .unwrap_or_else(|_| "Failed to get error response".to_string());
+                return Err(AppError::External(format!(
+                    "OpenAI streaming request failed with status {}: {}",
+                    status, error_text
+                )));
             }
+
+            // Return a stream that can be consumed by actix-web with enhanced error context
+            let model_for_error = streaming_request.model.clone();
+            let request_id_for_error = request_id;
+            let stream = response.bytes_stream().map(move |result| match result {
+                Ok(bytes) => Ok(web::Bytes::from(bytes)),
+                Err(e) => {
+                    // Enhanced error logging with context
+                    error!("OpenAI stream error - Model: {}, RequestID: {}, Error: {}",
+                           model_for_error, request_id_for_error, e);
+
+                    // Categorize the error type
+                    if e.is_timeout() {
+                        Err(AppError::External(format!("OpenAI stream timeout [Model: {}, Request: {}]",
+                                                     model_for_error, request_id_for_error)))
+                    } else if e.is_connect() {
+                        Err(AppError::External(format!("OpenAI connection failed [Model: {}, Request: {}]",
+                                                     model_for_error, request_id_for_error)))
+                    } else if e.is_body() {
+                        Err(AppError::External(format!("OpenAI response body error [Model: {}, Request: {}]: {}",
+                                                     model_for_error, request_id_for_error, e)))
+                    } else {
+                        Err(AppError::External(format!("OpenAI network error [Model: {}, Request: {}]: {}",
+                                                     model_for_error, request_id_for_error, e)))
+                    }
+                }
+            });
+
+            let boxed_stream: Pin<
+                Box<dyn Stream<Item = Result<web::Bytes, AppError>> + Send + 'static>,
+            > = Box::pin(stream);
+            Ok((headers, boxed_stream, None))
         }
         .await?;
         
