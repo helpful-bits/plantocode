@@ -6,10 +6,12 @@
   "scripts": {
     "dev": "serve .",
     "build": "echo 'Building ad components...'",
-    "preview": "serve reddit-ad-2025-08-21",
-    "preview:reddit-desktop": "open reddit-ad-2025-08-21/index.html",
-    "preview:reddit-mobile": "open reddit-ad-2025-08-21/mobile.html",
-    "preview:reddit-all": "open reddit-ad-2025-08-21/index.html && open reddit-ad-2025-08-21/mobile.html"
+    "preview": "serve reddit-ad-2025-09-25",
+    "preview:reddit-desktop": "open reddit-ad-2025-09-25/index.html",
+    "preview:reddit-mobile": "open reddit-ad-2025-09-25/mobile.html",
+    "preview:reddit-plan-mode": "open reddit-ad-2025-09-25/reddit-plan-mode.html",
+    "preview:reddit-carousel": "open reddit-ad-2025-09-25/reddit-carousel.html",
+    "preview:reddit-all": "open reddit-ad-2025-09-25/index.html && open reddit-ad-2025-09-25/mobile.html && open reddit-ad-2025-09-25/reddit-plan-mode.html"
   },
   "keywords": [
     "marketing",

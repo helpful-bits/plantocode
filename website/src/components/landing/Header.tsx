@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X, Sparkles, ChevronDown, Terminal, GitMerge, Code2, Bug, Package, Wrench } from 'lucide-react';
+import { Menu, X, Sparkles, ChevronDown, Terminal, GitMerge, Code2, Bug, Package, Wrench, Mic, Search, FileSearch, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DownloadButton } from '@/components/ui/DownloadButton';
 import { MacDownloadButton } from '@/components/ui/MacDownloadButton';
@@ -71,8 +71,13 @@ export function Header() {
       dropdown: true,
       href: undefined,
       items: [
-        { href: '/features/plan-editor', label: 'Plan Editor', icon: Code2, description: 'Full Monaco editor for AI plans' },
+        { href: '/features/file-discovery', label: 'File Discovery', icon: FileSearch, description: 'AI-powered intelligent file selection' },
+        { href: '/features/deep-research', label: 'Deep Research', icon: Search, description: 'Web search and information synthesis' },
+        { href: '/features/plan-mode', label: 'Plan Editor', icon: Code2, description: 'Full Monaco editor for AI plans' },
         { href: '/features/merge-instructions', label: 'Merge Instructions', icon: GitMerge, description: 'Control how plans merge' },
+        { href: '/features/copy-buttons', label: 'Copy Buttons', icon: Copy, description: 'Configurable workflow automation' },
+        { href: '/features/text-improvement', label: 'Text Improvement', icon: Sparkles, description: 'Inline rewriting across Monaco and task inputs' },
+        { href: '/features/voice-transcription', label: 'Voice Transcription', icon: Mic, description: 'Hands-free task and terminal input' },
         { href: '/features/integrated-terminal', label: 'Integrated Terminal', icon: Terminal, description: 'Persistent sessions with CLI auto-launch' },
       ]
     },
@@ -87,8 +92,9 @@ export function Header() {
         { href: '/solutions/library-upgrades', label: 'Library Upgrades', icon: Package, description: 'Dependency management' },
       ]
     },
-    { href: '/downloads', label: 'Downloads', dropdown: false },
     { href: '/docs', label: 'Docs', dropdown: false },
+    { href: '/demo', label: 'Demo', dropdown: false },
+    { href: '/downloads', label: 'Downloads', dropdown: false },
   ];
 
   return (
@@ -116,12 +122,13 @@ export function Header() {
             >
               <Link
                 className={cn(
-                  'group inline-flex items-center gap-2 sm:gap-3 font-bold text-base sm:text-lg md:text-xl lg:text-2xl cursor-pointer',
+                  'group inline-flex items-center gap-2 sm:gap-3 font-bold text-base sm:text-lg md:text-xl lg:text-2xl cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-lg',
                   scrolled
                     ? 'text-foreground hover:text-primary'
                     : 'text-foreground hover:text-primary drop-shadow-lg',
                 )}
                 href="/"
+                aria-label="Vibe Manager home page"
               >
                 <motion.div
                   className={cn(
@@ -159,11 +166,13 @@ export function Header() {
                       <button
                         className={cn(
                           'relative px-3 lg:px-4 py-2 rounded-xl font-medium text-sm lg:text-base',
-                          'group nav-link-hover cursor-pointer flex items-center gap-1',
+                          'group nav-link-hover cursor-pointer flex items-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 min-h-[44px]',
                           scrolled
                             ? 'text-foreground/75 dark:text-foreground/85 hover:text-foreground font-medium'
                             : 'text-foreground/90 hover:text-foreground drop-shadow-md',
                         )}
+                        aria-expanded={activeDropdown === link.label}
+                        aria-haspopup="true"
                       >
                         <span>{link.label}</span>
                         <ChevronDown className={cn(
@@ -178,7 +187,7 @@ export function Header() {
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: -10 }}
                             transition={{ duration: 0.2 }}
-                            className="absolute top-full mt-2 w-72 glass rounded-xl p-2 shadow-xl border border-border/50"
+                            className="absolute top-full mt-2 w-72 bg-popover backdrop-blur-xl rounded-xl p-2 shadow-xl border border-border/50"
                           >
                             {link.items?.map((item) => {
                               const Icon = item.icon;
@@ -186,14 +195,14 @@ export function Header() {
                                 <Link
                                   key={item.href}
                                   href={item.href}
-                                  className="flex items-start gap-3 px-3 py-2 rounded-lg hover:bg-primary/10 transition-colors group"
+                                  className="flex items-start gap-3 px-3 py-2 rounded-lg hover:bg-primary/10 transition-colors group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 min-h-[44px] items-center"
                                 >
                                   <div className="p-1.5 rounded-lg bg-primary/10 group-hover:bg-primary/20 transition-colors mt-0.5">
                                     <Icon className="w-4 h-4 text-primary" />
                                   </div>
                                   <div className="flex-1">
-                                    <div className="font-medium text-sm text-foreground">{item.label}</div>
-                                    <div className="text-xs text-foreground/60 mt-0.5">{item.description}</div>
+                                    <div className="font-medium text-sm text-popover-foreground">{item.label}</div>
+                                    <div className="text-xs text-popover-foreground/70 mt-0.5">{item.description}</div>
                                   </div>
                                 </Link>
                               );
@@ -207,7 +216,7 @@ export function Header() {
                       className={cn(
                         'relative px-3 lg:px-4 py-2 rounded-xl font-medium text-sm lg:text-base',
                         'group nav-link-hover cursor-pointer clickable-text-underline',
-                        'flex items-center',
+                        'flex items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 min-h-[44px]',
                         scrolled
                           ? 'text-foreground/75 dark:text-foreground/85 hover:text-foreground font-medium'
                           : 'text-foreground/90 hover:text-foreground drop-shadow-md',
@@ -260,7 +269,7 @@ export function Header() {
                   <div className="relative flex items-center gap-1 lg:gap-1.5">
                     <span className="text-sm lg:text-base drop-shadow-md" role="img" aria-label="gift">🎁</span>
                     <span className="text-white text-xs lg:text-sm font-black tracking-wide uppercase drop-shadow-md whitespace-nowrap">
-                      $10 FREE
+                      $5 FREE
                     </span>
                   </div>
                   
@@ -311,17 +320,18 @@ export function Header() {
                 <div className="relative flex items-center gap-1">
                   <span className="text-sm drop-shadow" role="img" aria-label="gift">🎁</span>
                   <span className="text-white text-[10px] font-black tracking-wide uppercase">
-                    $10 FREE
+                    $5 FREE
                   </span>
                 </div>
               </motion.div>
               <ThemeToggle />
               <motion.button
                 animate={{ opacity: 1 }}
-                aria-label="Toggle menu"
+                aria-label="Toggle navigation menu"
+                aria-expanded={mobileMenuOpen}
                 className={cn(
-                  'relative p-2 rounded-xl',
-                  'focus:outline-none focus:ring-2 focus:ring-primary/50',
+                  'relative p-2 rounded-xl min-h-[44px] min-w-[44px] flex items-center justify-center',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
                   scrolled
                     ? 'glass text-foreground'
                     : 'bg-background/80 backdrop-blur-sm text-foreground hover:bg-background/90 border border-border/50',
@@ -392,8 +402,8 @@ export function Header() {
                 'glass',
                 'rounded-2xl',
                 'p-6 sm:p-8',
-                // Enhanced background for light mode visibility
-                'bg-card/98 dark:bg-background/95 backdrop-blur-xl border border-border/60',
+                // Theme-aware background colors with full opacity
+                'bg-popover backdrop-blur-xl border border-border/60',
                 'shadow-2xl shadow-black/20 dark:shadow-black/40',
                 'overflow-y-auto',
               )}
@@ -416,10 +426,10 @@ export function Header() {
               {/* Close button inside the menu */}
               <button
                 onClick={() => setMobileMenuOpen(false)}
-                className="absolute top-3 right-3 p-2 rounded-full bg-background/80 hover:bg-background border border-border/50 hover:border-primary/50 transition-all z-10"
-                aria-label="Close menu"
+                className="absolute top-3 right-3 p-2 rounded-full bg-background/80 hover:bg-background border border-border/50 hover:border-primary/50 transition-all z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 min-h-[44px] min-w-[44px] flex items-center justify-center"
+                aria-label="Close navigation menu"
               >
-                <X className="w-5 h-5" />
+                <X className="w-5 h-5" aria-hidden="true" />
               </button>
 
               <div className="space-y-1">
@@ -437,7 +447,7 @@ export function Header() {
                   >
                     {link.dropdown ? (
                       <>
-                        <div className="px-4 py-2 font-semibold text-sm text-foreground/60 uppercase tracking-wider">
+                        <div className="px-4 py-2 font-semibold text-sm text-popover-foreground/60 uppercase tracking-wider">
                           {link.label}
                         </div>
                         <div className="pl-4 space-y-1">
@@ -452,18 +462,18 @@ export function Header() {
                                 <Link
                                   className={cn(
                                     'flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer',
-                                    'text-foreground hover:text-primary',
+                                    'text-popover-foreground hover:text-primary',
                                     'hover:bg-primary/10 active:bg-primary/20',
                                     'relative overflow-hidden',
-                                    'transition-all duration-200',
+                                    'transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 min-h-[44px]',
                                   )}
                                   href={item.href}
                                   onClick={() => setMobileMenuOpen(false)}
                                 >
                                   <Icon className="w-4 h-4 text-primary flex-shrink-0" />
                                   <div className="flex-1">
-                                    <div className="font-medium text-sm">{item.label}</div>
-                                    <div className="text-xs text-foreground/60 mt-0.5">{item.description}</div>
+                                    <div className="font-medium text-sm text-popover-foreground">{item.label}</div>
+                                    <div className="text-xs text-popover-foreground/70 mt-0.5">{item.description}</div>
                                   </div>
                                 </Link>
                               </motion.div>
@@ -482,7 +492,7 @@ export function Header() {
                             'text-primary hover:text-primary/80',
                             'hover:bg-primary/10 active:bg-primary/20',
                             'relative overflow-hidden',
-                            'transition-all duration-200',
+                            'transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 min-h-[44px] flex items-center',
                           )}
                           href={link.href!}
                           onClick={() => setMobileMenuOpen(false)}

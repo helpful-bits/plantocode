@@ -33,7 +33,7 @@ export function Pricing() {
                     Transparent Pricing
                   </h3>
                   <p className="text-lg mb-8 text-muted-foreground">
-                    $10 free credits to validate this actually works. Then pay-as-you-go. No subscriptions. No per-seat licensing. Just raw API costs with full transparency.
+                    $5 free credits to validate this actually works. Then pay-as-you-go. No subscriptions. No per-seat licensing. Just raw API costs with full transparency.
                   </p>
                 </Reveal>
 
@@ -51,7 +51,7 @@ export function Pricing() {
                   </motion.div>
 
                   <h4 className="text-4xl font-bold mb-3 text-primary text-shadow-subtle">
-                    $10 Free Credits
+                    $5 Free Credits
                   </h4>
                   <p className="text-lg font-medium text-accent-highlight">
                     Test Plan Editor, Merge Instructions, Terminal Integration

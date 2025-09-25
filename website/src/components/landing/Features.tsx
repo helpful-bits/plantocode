@@ -1,13 +1,16 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import { GlassCard } from '@/components/ui/GlassCard';
 import Reveal from '@/components/motion/Reveal';
+import { ArrowUpRight } from 'lucide-react';
 
 interface Feature {
   title: string;
   description: string;
   icon: React.ReactNode;
+  href?: string;
 }
 
 interface FeaturesProps {
@@ -52,6 +55,18 @@ export function Features({ features = defaultFeatures }: FeaturesProps) {
                   <p className="text-center text-sm leading-relaxed text-foreground/80">
                     {feature.description}
                   </p>
+
+                  {feature.href && (
+                    <div className="mt-4 text-center">
+                      <Link
+                        href={feature.href}
+                        className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+                      >
+                        Learn more
+                        <ArrowUpRight className="w-4 h-4" />
+                      </Link>
+                    </div>
+                  )}
                 </div>
               </GlassCard>
             </Reveal>

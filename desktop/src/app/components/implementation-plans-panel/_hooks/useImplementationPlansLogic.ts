@@ -180,9 +180,9 @@ export function useImplementationPlansLogic({
       try {
         const result = await deleteBackgroundJobAction(jobToDelete.id);
         if (result.isSuccess) {
-          // Clean up terminal session if running or stuck
+          // Clean up terminal session if running or requires attention
           const session = getSession(jobToDelete.id);
-          if (session && (session.status === "running" || session.status === "stuck")) {
+          if (session && (session.status === "running" || session.status === "agent_requires_attention")) {
             try {
               await kill(jobToDelete.id);
             } catch (error) {

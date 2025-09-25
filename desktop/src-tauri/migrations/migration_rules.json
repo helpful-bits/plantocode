@@ -71,6 +71,15 @@
       "description": "Add terminal sessions table for Claude CLI integration",
       "required": true,
       "priority": 25
+    },
+    {
+      "id": "terminal_sessions_rebuild",
+      "from_version": ">=1.0.17",
+      "to_version": ">=1.0.18",
+      "migration_file": "migrations/features/005_terminal_sessions_rebuild.sql",
+      "description": "Rebuild terminal sessions table with superset statuses and NOT NULL output_log",
+      "required": true,
+      "priority": 26
     }
   ]
 }

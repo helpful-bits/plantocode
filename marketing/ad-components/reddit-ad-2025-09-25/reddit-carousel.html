@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vibe Manager - Reddit Carousel Ad (4 Cards)</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            background: #0a0a0b;
+            color: #e0e6ed;
+            padding: 20px;
+        }
+
+        .carousel-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .carousel-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            justify-content: center;
+        }
+
+        .carousel-btn {
+            padding: 8px 16px;
+            background: #7dd3c0;
+            color: #0a0a0b;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .carousel-btn:hover {
+            background: #22d3ee;
+        }
+
+        .carousel-btn.active {
+            background: #60a5fa;
+        }
+
+        .cards-wrapper {
+            display: flex;
+            gap: 20px;
+            overflow-x: auto;
+            padding-bottom: 20px;
+        }
+
+        .card {
+            width: 1200px;
+            height: 1200px;
+            background: linear-gradient(135deg, #0f0f10 0%, #18181b 100%);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 64px;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card-number {
+            position: absolute;
+            top: 48px;
+            right: 48px;
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #7dd3c0 0%, #22d3ee 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 36px;
+            font-weight: 700;
+            color: #0a0a0b;
+        }
+
+        .card-header {
+            margin-bottom: 48px;
+        }
+
+        .card-title {
+            font-size: 56px;
+            font-weight: 700;
+            line-height: 1.2;
+            margin-bottom: 24px;
+            background: linear-gradient(135deg, #7dd3c0 0%, #22d3ee 50%, #60a5fa 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .card-subtitle {
+            font-size: 28px;
+            color: #cbd5e1;
+            line-height: 1.4;
+        }
+
+        .card-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        /* Card 1 - File Discovery */
+        .file-list {
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 12px;
+            padding: 32px;
+            margin: 32px 0;
+            border: 1px solid rgba(125, 211, 192, 0.2);
+        }
+
+        .file-item {
+            display: flex;
+            align-items: center;
+            padding: 16px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 20px;
+        }
+
+        .file-item:last-child {
+            border-bottom: none;
+        }
+
+        .file-icon {
+            color: #7dd3c0;
+            margin-right: 16px;
+            font-size: 24px;
+        }
+
+        .file-path {
+            color: #e0e6ed;
+            font-family: 'Monaco', 'Courier New', monospace;
+        }
+
+        .file-status {
+            margin-left: auto;
+            color: #10b981;
+            font-weight: 600;
+        }
+
+        /* Card 2 - Generate Plans */
+        .models-grid {
+            display: grid;
+            gap: 24px;
+            margin: 32px 0;
+        }
+
+        .model-card {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(125, 211, 192, 0.2);
+            border-radius: 12px;
+            padding: 28px;
+        }
+
+        .model-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .model-name {
+            font-size: 24px;
+            font-weight: 600;
+            color: #7dd3c0;
+        }
+
+        .model-progress {
+            font-size: 20px;
+            color: #22d3ee;
+            font-weight: 700;
+        }
+
+        .progress-bar {
+            height: 12px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            overflow: hidden;
+            margin-bottom: 12px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #7dd3c0 0%, #22d3ee 100%);
+            transition: width 0.3s ease;
+        }
+
+        .model-status {
+            font-size: 18px;
+            color: #94a3b8;
+        }
+
+        /* Card 3 - AI Architect Merges */
+        .merge-visual {
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 12px;
+            padding: 40px;
+            margin: 32px 0;
+            border: 1px solid rgba(125, 211, 192, 0.2);
+            text-align: center;
+        }
+
+        .merge-icon {
+            font-size: 80px;
+            color: #7dd3c0;
+            margin-bottom: 24px;
+        }
+
+        .merge-description {
+            font-size: 24px;
+            line-height: 1.5;
+            color: #e0e6ed;
+            margin-bottom: 32px;
+        }
+
+        .merge-features {
+            display: grid;
+            gap: 20px;
+            text-align: left;
+        }
+
+        .merge-feature {
+            display: flex;
+            align-items: center;
+            font-size: 20px;
+        }
+
+        .check-icon {
+            color: #10b981;
+            margin-right: 16px;
+            font-size: 28px;
+        }
+
+        /* Card 4 - Execute */
+        .terminal {
+            background: #000;
+            border-radius: 12px;
+            padding: 32px;
+            margin: 32px 0;
+            border: 1px solid rgba(125, 211, 192, 0.3);
+            font-family: 'Monaco', 'Courier New', monospace;
+        }
+
+        .terminal-line {
+            font-size: 20px;
+            line-height: 1.8;
+            color: #10b981;
+            margin-bottom: 8px;
+        }
+
+        .terminal-prompt {
+            color: #7dd3c0;
+        }
+
+        .terminal-command {
+            color: #e0e6ed;
+        }
+
+        .terminal-output {
+            color: #94a3b8;
+        }
+
+        /* CTA Section (appears on all cards) */
+        .card-cta {
+            margin-top: auto;
+            padding-top: 48px;
+            text-align: center;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .cta-button {
+            display: inline-block;
+            background: linear-gradient(135deg, #7dd3c0 0%, #22d3ee 100%);
+            color: #0a0a0b;
+            padding: 20px 48px;
+            border-radius: 12px;
+            font-weight: 700;
+            text-decoration: none;
+            font-size: 24px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .cta-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(125, 211, 192, 0.3);
+        }
+
+        .cta-subtitle {
+            margin-top: 16px;
+            font-size: 18px;
+            color: #94a3b8;
+        }
+
+        .preview-info {
+            background: rgba(0, 0, 0, 0.8);
+            color: #888;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .preview-info strong {
+            color: #aaa;
+        }
+    </style>
+</head>
+<body>
+    <div class="preview-info">
+        <strong>Reddit Carousel Ad Format</strong> |
+        4 Cards @ 1200x1200px (1:1 aspect ratio) |
+        Swipeable storytelling format
+    </div>
+
+    <div id="root"></div>
+
+    <script type="text/babel">
+        function RedditCarouselAd() {
+            const [activeCard, setActiveCard] = React.useState(0);
+
+            const cards = [
+                {
+                    title: "File Discovery",
+                    subtitle: "AI finds the right files before you code",
+                    content: (
+                        <>
+                            <div className="file-list">
+                                <div className="file-item">
+                                    <span className="file-icon">📁</span>
+                                    <span className="file-path">/src/services/auth.ts</span>
+                                    <span className="file-status">Critical</span>
+                                </div>
+                                <div className="file-item">
+                                    <span className="file-icon">📄</span>
+                                    <span className="file-path">/src/hooks/useAuth.tsx</span>
+                                    <span className="file-status">Dependent</span>
+                                </div>
+                                <div className="file-item">
+                                    <span className="file-icon">📄</span>
+                                    <span className="file-path">/api/endpoints/login.ts</span>
+                                    <span className="file-status">Affected</span>
+                                </div>
+                                <div className="file-item">
+                                    <span className="file-icon">⚡</span>
+                                    <span className="file-path">/tests/auth.test.ts</span>
+                                    <span className="file-status">Must Update</span>
+                                </div>
+                            </div>
+                            <div style={{ textAlign: 'center', fontSize: '24px', color: '#cbd5e1', marginTop: '32px' }}>
+                                From 1,000 files to the 10 that actually matter.
+                                <br />
+                                <span style={{ color: '#7dd3c0' }}>No more breaking hidden dependencies.</span>
+                            </div>
+                        </>
+                    )
+                },
+                {
+                    title: "Generate Plans",
+                    subtitle: "Multiple models, parallel planning",
+                    content: (
+                        <>
+                            <div className="models-grid">
+                                <div className="model-card">
+                                    <div className="model-header">
+                                        <span className="model-name">GPT-5</span>
+                                        <span className="model-progress">85%</span>
+                                    </div>
+                                    <div className="progress-bar">
+                                        <div className="progress-fill" style={{ width: '85%' }}></div>
+                                    </div>
+                                    <div className="model-status">Comprehensive approach with error handling...</div>
+                                </div>
+                                <div className="model-card">
+                                    <div className="model-header">
+                                        <span className="model-name">Gemini 2.5 Pro</span>
+                                        <span className="model-progress">72%</span>
+                                    </div>
+                                    <div className="progress-bar">
+                                        <div className="progress-fill" style={{ width: '72%' }}></div>
+                                    </div>
+                                    <div className="model-status">Minimal changes, surgical approach...</div>
+                                </div>
+                                <div className="model-card">
+                                    <div className="model-header">
+                                        <span className="model-name">DeepSeek R1</span>
+                                        <span className="model-progress">91%</span>
+                                    </div>
+                                    <div className="progress-bar">
+                                        <div className="progress-fill" style={{ width: '91%' }}></div>
+                                    </div>
+                                    <div className="model-status">Type-safe implementation with tests...</div>
+                                </div>
+                            </div>
+                            <div style={{ textAlign: 'center', fontSize: '24px', color: '#7dd3c0', marginTop: '32px' }}>
+                                One catches edge cases. Another adds types. Third handles errors.
+                            </div>
+                        </>
+                    )
+                },
+                {
+                    title: "AI Architect Merges",
+                    subtitle: "Tell it what you want. It creates the perfect plan.",
+                    content: (
+                        <>
+                            <div className="merge-visual">
+                                <div className="merge-icon">🧠</div>
+                                <div className="merge-description">
+                                    Your AI architect analyzes all plans,<br />
+                                    synthesizes best insights,<br />
+                                    creates one superior approach.
+                                </div>
+                                <div className="merge-features">
+                                    <div className="merge-feature">
+                                        <span className="check-icon">✓</span>
+                                        <span>Catches gaps one model missed</span>
+                                    </div>
+                                    <div className="merge-feature">
+                                        <span className="check-icon">✓</span>
+                                        <span>Combines complementary approaches</span>
+                                    </div>
+                                    <div className="merge-feature">
+                                        <span className="check-icon">✓</span>
+                                        <span>Follows your architectural guidance</span>
+                                    </div>
+                                    <div className="merge-feature">
+                                        <span className="check-icon">✓</span>
+                                        <span>Resolves conflicts intelligently</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style={{ textAlign: 'center', fontSize: '22px', color: '#cbd5e1', marginTop: '32px' }}>
+                                "Prefer minimal changes" → AI picks the surgical approach
+                            </div>
+                        </>
+                    )
+                },
+                {
+                    title: "Execute with Confidence",
+                    subtitle: "Run in terminal or paste to your IDE",
+                    content: (
+                        <>
+                            <div className="terminal">
+                                <div className="terminal-line">
+                                    <span className="terminal-prompt">$</span>
+                                    <span className="terminal-command"> vibe execute plan-001</span>
+                                </div>
+                                <div className="terminal-line terminal-output">
+                                    ✓ Analyzing 4 file changes...
+                                </div>
+                                <div className="terminal-line terminal-output">
+                                    ✓ No breaking changes detected
+                                </div>
+                                <div className="terminal-line terminal-output">
+                                    ✓ Tests passing (47/47)
+                                </div>
+                                <div className="terminal-line terminal-output">
+                                    ✓ Type check successful
+                                </div>
+                                <div className="terminal-line">
+                                    <span className="terminal-prompt">$</span>
+                                    <span className="terminal-command"> git commit -m "feat: auth refactor"</span>
+                                </div>
+                                <div className="terminal-line terminal-output">
+                                    ✓ [main abc123] feat: auth refactor
+                                </div>
+                                <div className="terminal-line terminal-output">
+                                    4 files changed, 127 insertions(+), 89 deletions(-)
+                                </div>
+                            </div>
+                            <div style={{ textAlign: 'center', fontSize: '24px', color: '#7dd3c0', marginTop: '32px' }}>
+                                Ship big changes with clarity and traceability.
+                            </div>
+                        </>
+                    )
+                }
+            ];
+
+            return (
+                <div className="carousel-container">
+                    <div className="carousel-controls">
+                        {cards.map((_, index) => (
+                            <button
+                                key={index}
+                                className={`carousel-btn ${activeCard === index ? 'active' : ''}`}
+                                onClick={() => setActiveCard(index)}
+                            >
+                                Card {index + 1}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="cards-wrapper">
+                        {cards.map((card, index) => (
+                            <div key={index} className="card" style={{ display: activeCard === index ? 'flex' : 'none' }}>
+                                <div className="card-number">{index + 1}</div>
+
+                                <div className="card-header">
+                                    <h2 className="card-title">{card.title}</h2>
+                                    <p className="card-subtitle">{card.subtitle}</p>
+                                </div>
+
+                                <div className="card-content">
+                                    {card.content}
+                                </div>
+
+                                <div className="card-cta">
+                                    <a href="https://vibemanager.app/plan-mode" className="cta-button">
+                                        Get Plan Mode
+                                    </a>
+                                    <div className="cta-subtitle">
+                                        $5 free credits • No subscription
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<RedditCarouselAd />, document.getElementById('root'));
+    </script>
+</body>
+</html>

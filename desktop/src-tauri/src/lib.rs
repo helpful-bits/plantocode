@@ -18,7 +18,6 @@ pub mod jobs;
 pub mod models;
 pub mod remote_api;
 pub mod services;
-pub mod tls;
 pub mod utils;
 pub mod validation;
 
@@ -428,6 +427,9 @@ pub fn run() {
             commands::logging_commands::log_client_error,
             commands::logging_commands::append_to_log_file,
             commands::terminal_commands::read_terminal_log_command,
+            commands::terminal_commands::read_terminal_log_len_command,
+            commands::terminal_commands::read_terminal_log_since_command,
+            commands::terminal_commands::read_terminal_log_tail_command,
             commands::terminal_commands::clear_terminal_log_command,
             commands::terminal_commands::delete_terminal_log_command,
             commands::terminal_commands::start_terminal_session_command,
@@ -439,7 +441,6 @@ pub fn run() {
             commands::terminal_commands::get_terminal_prerequisites_status_command,
             commands::terminal_commands::check_terminal_dependencies_command,
             commands::terminal_commands::attach_terminal_output_command,
-            commands::terminal_commands::get_session_health_command,
             commands::terminal_commands::recover_terminal_session_command,
             commands::terminal_commands::save_pasted_image_command,
             commands::terminal_commands::list_active_terminal_sessions_command,
@@ -449,6 +450,8 @@ pub fn run() {
             commands::terminal_commands::get_terminal_health_status,
             commands::terminal_commands::get_terminal_health_history,
             commands::terminal_commands::trigger_terminal_recovery,
+            commands::terminal_commands::touch_session_by_job_id,
+            commands::terminal_commands::get_terminal_snapshot_command,
         ])
         .run(tauri_context)
         .expect("Error while running tauri application");

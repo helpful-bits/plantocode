@@ -71,10 +71,4 @@ public struct ConnectionHandshake: Codable, Equatable {
         self.clientId = clientId
         self.transport = transport
     }
-
-    public static func == (lhs: ConnectionHandshake, rhs: ConnectionHandshake) -> Bool {
-        return lhs.sessionId == rhs.sessionId &&
-               lhs.clientId == rhs.clientId &&
-               lhs.transport == rhs.transport
-    }
 }

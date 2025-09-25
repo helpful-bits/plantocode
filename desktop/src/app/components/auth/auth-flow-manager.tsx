@@ -275,7 +275,7 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
 
     // Add a fallback timeout to prevent infinite loading
     useEffect(() => {
-      // If we're stuck on initializing for more than 15 seconds, force a state
+      // If we're taking too long on initializing for more than 15 seconds, force a state
       const fallbackTimeout = setTimeout(() => {
         if (isOnboardingNeeded === null) {
           setIsOnboardingNeeded(false); // Default to no onboarding needed

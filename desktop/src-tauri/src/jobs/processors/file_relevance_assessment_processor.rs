@@ -8,6 +8,8 @@ use tokio::fs;
 
 use crate::error::{AppError, AppResult};
 use crate::jobs::job_processor_utils;
+use crate::utils::path_utils::make_relative_to;
+use std::path::PathBuf;
 use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::processors::abstract_llm_processor::{
     LlmPromptContext, LlmTaskConfig, LlmTaskConfigBuilder, LlmTaskRunner,
@@ -505,19 +507,58 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
         // Validate the parsed paths against the filesystem
         let mut validated_relevant_paths = Vec::new();
         let mut invalid_relevant_paths = Vec::new();
+        let project_dir = PathBuf::from(project_directory);
 
-        for relative_path in &relevant_paths {
-            let absolute_path = std::path::Path::new(project_directory).join(relative_path);
+        for path_from_llm in &relevant_paths {
+            // Fix paths that might be missing leading slash
+            let corrected_path = if !path_from_llm.starts_with('/') && !path_from_llm.starts_with("\\\\")
+                && path_from_llm.starts_with("Users/") {
+                // macOS path missing leading slash
+                format!("/{}", path_from_llm)
+            } else if !path_from_llm.starts_with('/') && !path_from_llm.starts_with("\\\\")
+                && (path_from_llm.starts_with("home/") || path_from_llm.starts_with("var/") || path_from_llm.starts_with("tmp/")) {
+                // Linux path missing leading slash
+                format!("/{}", path_from_llm)
+            } else {
+                path_from_llm.clone()
+            };
+
+            // Handle both relative and absolute paths
+            let absolute_path = if corrected_path.starts_with('/') || corrected_path.starts_with("\\\\") {
+                // Already absolute
+                PathBuf::from(corrected_path)
+            } else {
+                // Relative path
+                project_dir.join(&corrected_path)
+            };
+
             match tokio::fs::metadata(&absolute_path).await {
                 Ok(metadata) if metadata.is_file() => {
-                    validated_relevant_paths.push(relative_path.clone());
+                    // Normalize the path: convert to relative if within project, keep absolute if external
+                    let normalized_path = if absolute_path.starts_with(&project_dir) {
+                        // File is within project directory - convert to relative path
+                        match make_relative_to(&absolute_path, &project_dir) {
+                            Ok(rel_path) => rel_path.to_string_lossy().to_string(),
+                            Err(_) => {
+                                // Fallback: use strip_prefix
+                                absolute_path.strip_prefix(&project_dir)
+                                    .map(|p| p.to_string_lossy().to_string())
+                                    .unwrap_or_else(|_| path_from_llm.clone())
+                            }
+                        }
+                    } else {
+                        // File is external - keep as absolute path
+                        absolute_path.to_string_lossy().to_string()
+                    };
+
+                    validated_relevant_paths.push(normalized_path);
                 }
                 _ => {
                     debug!(
                         "Path doesn't exist or isn't a regular file: {}",
                         absolute_path.display()
                     );
-                    invalid_relevant_paths.push(relative_path.clone());
+                    invalid_relevant_paths.push(path_from_llm.clone());
                 }
             }
         }

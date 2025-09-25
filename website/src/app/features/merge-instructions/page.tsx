@@ -2,8 +2,8 @@ import { Metadata } from 'next';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
+import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { GitMerge, MessageSquare, CheckCircle2, Layers, Target, Brain } from 'lucide-react';
-import Link from 'next/link';
 
 export const metadata: Metadata = {
   title: 'Architectural Plan Synthesis - Intelligent Multi-Plan Merging | Vibe Manager',
@@ -229,45 +229,87 @@ export default function MergeInstructionsPage() {
 
               {/* System Capabilities */}
               <div className="mb-16">
-                <GlassCard className="p-8 sm:p-12 bg-black/50">
-                  <h2 className="text-2xl sm:text-3xl font-bold mb-6 text-center">Actual System Capabilities</h2>
+                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">Actual System Capabilities</h2>
 
-                  <div className="grid md:grid-cols-2 gap-6 mb-6">
-                    <div className="bg-black/30 rounded-lg p-6">
-                      <h3 className="text-lg font-semibold mb-3 text-primary">What the AI Actually Does</h3>
-                      <ul className="space-y-2 text-sm text-foreground/80">
-                        <li>• Studies all source plans to identify unique insights</li>
-                        <li>• Resolves architectural conflicts using SOLID principles</li>
-                        <li>• Creates emergent solutions beyond simple combination</li>
-                        <li>• Adds inline source markers for every decision</li>
-                        <li>• Validates architectural coherence throughout</li>
-                        <li>• Handles external example integration</li>
-                        <li>• Maintains relevance to original task</li>
-                      </ul>
-                    </div>
+                <div className="grid md:grid-cols-2 gap-6 mb-6 max-w-5xl mx-auto">
+                  <GlassCard className="p-6">
+                    <h3 className="text-lg font-semibold mb-4 text-primary">What the AI Actually Does</h3>
+                    <ul className="space-y-3 text-sm text-foreground/80">
+                      <li className="flex items-start gap-2">
+                        <span className="text-primary mt-0.5">•</span>
+                        <span>Studies all source plans to identify unique insights</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-primary mt-0.5">•</span>
+                        <span>Resolves architectural conflicts using SOLID principles</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-primary mt-0.5">•</span>
+                        <span>Creates emergent solutions beyond simple combination</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-primary mt-0.5">•</span>
+                        <span>Adds inline source markers for every decision</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-primary mt-0.5">•</span>
+                        <span>Validates architectural coherence throughout</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-primary mt-0.5">•</span>
+                        <span>Handles external example integration</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-primary mt-0.5">•</span>
+                        <span>Maintains relevance to original task</span>
+                      </li>
+                    </ul>
+                  </GlassCard>
 
-                    <div className="bg-black/30 rounded-lg p-6">
-                      <h3 className="text-lg font-semibold mb-3 text-primary">How Instructions Control Synthesis</h3>
-                      <ul className="space-y-2 text-sm text-foreground/80">
-                        <li>• <span className="text-yellow-400">Prioritization:</span> "Focus on Plan 2's security"</li>
-                        <li>• <span className="text-yellow-400">Structure:</span> "Organize by component"</li>
-                        <li>• <span className="text-yellow-400">Approach:</span> "Use Plan 1's database strategy"</li>
-                        <li>• <span className="text-yellow-400">Quality:</span> "Include comprehensive testing"</li>
-                        <li>• <span className="text-yellow-400">Scope:</span> "Exclude deployment steps"</li>
-                        <li>• <span className="text-yellow-400">Integration:</span> "Use example from docs"</li>
-                        <li>• <span className="text-yellow-400">Resolution:</span> "Prefer microservices over monolith"</li>
-                      </ul>
-                    </div>
-                  </div>
+                  <GlassCard className="p-6">
+                    <h3 className="text-lg font-semibold mb-4 text-primary">How Instructions Control Synthesis</h3>
+                    <ul className="space-y-3 text-sm">
+                      <li className="flex items-start gap-2">
+                        <span className="text-yellow-500 dark:text-yellow-400 font-semibold">Prioritization:</span>
+                        <span className="text-foreground/80">"Focus on Plan 2's security"</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-yellow-500 dark:text-yellow-400 font-semibold">Structure:</span>
+                        <span className="text-foreground/80">"Organize by component"</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-yellow-500 dark:text-yellow-400 font-semibold">Approach:</span>
+                        <span className="text-foreground/80">"Use Plan 1's database strategy"</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-yellow-500 dark:text-yellow-400 font-semibold">Quality:</span>
+                        <span className="text-foreground/80">"Include comprehensive testing"</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-yellow-500 dark:text-yellow-400 font-semibold">Scope:</span>
+                        <span className="text-foreground/80">"Exclude deployment steps"</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-yellow-500 dark:text-yellow-400 font-semibold">Integration:</span>
+                        <span className="text-foreground/80">"Use example from docs"</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-yellow-500 dark:text-yellow-400 font-semibold">Resolution:</span>
+                        <span className="text-foreground/80">"Prefer microservices over monolith"</span>
+                      </li>
+                    </ul>
+                  </GlassCard>
+                </div>
 
-                  <div className="bg-black rounded-lg p-6 font-mono text-sm">
-                    <div className="text-gray-500 mb-2"># Example merged output with source traceability:</div>
-                    <div className="text-green-400">
-                      Step 1: Set up database schema [src:P1 step 3]<br />
-                      Step 2: Implement authentication [src:P2 step 1, P3 step 2]<br />
-                      Step 3: Create API endpoints [src:P3 step 4 - cleaner approach]<br />
-                      Step 4: Add error handling [src:EMERGENT - combining P1, P2 patterns]<br />
-                      Step 5: Implement caching [src:P1 step 7, optimized with P2 insights]
+                <GlassCard className="p-6 max-w-5xl mx-auto" highlighted>
+                  <div className="bg-slate-900 dark:bg-black rounded-lg p-6 font-mono text-sm">
+                    <div className="text-gray-400 mb-3"># Example merged output with source traceability:</div>
+                    <div className="space-y-1">
+                      <div className="text-green-400">Step 1: Set up database schema [src:P1 step 3]</div>
+                      <div className="text-green-400">Step 2: Implement authentication [src:P2 step 1, P3 step 2]</div>
+                      <div className="text-green-400">Step 3: Create API endpoints [src:P3 step 4 - cleaner approach]</div>
+                      <div className="text-green-400">Step 4: Add error handling [src:EMERGENT - combining P1, P2 patterns]</div>
+                      <div className="text-green-400">Step 5: Implement caching [src:P1 step 7, optimized with P2 insights]</div>
                     </div>
                   </div>
                 </GlassCard>
@@ -397,20 +439,18 @@ export default function MergeInstructionsPage() {
                 <GlassCard className="p-8 sm:p-12 max-w-3xl mx-auto" highlighted>
                   <h2 className="text-2xl sm:text-3xl font-bold mb-4">Experience True Architectural Synthesis</h2>
                   <p className="text-lg text-foreground/80 mb-8 max-w-2xl mx-auto">
-                    Go beyond simple plan merging. Get AI-powered architectural synthesis with SOLID principles,
-                    complete source traceability, and emergent solutions that exceed any single plan.
+                    Beyond merging - intelligent architectural analysis with SOLID principles.
+                    This is how plan synthesis should work - intelligent, traceable, emergent.
                   </p>
-
                   <PlatformDownloadSection location="features_merge_instructions" />
-
                   <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4 text-sm text-foreground/60">
-                    <Link href="/features/plan-editor" className="text-primary hover:underline">
-                      See the plan editor →
-                    </Link>
+                    <LinkWithArrow href="/features/plan-mode">
+                      Explore plan generation
+                    </LinkWithArrow>
                     <span className="hidden sm:inline">•</span>
-                    <Link href="/demo" className="text-primary hover:underline">
-                      Try interactive demo →
-                    </Link>
+                    <LinkWithArrow href="/docs/demo">
+                      Watch it in action
+                    </LinkWithArrow>
                   </div>
                 </GlassCard>
               </div>

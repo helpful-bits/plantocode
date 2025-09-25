@@ -1,0 +1,497 @@
+{
+  "category": "integrations",
+  "pages": [
+    {
+      "slug": "claude-code/terminal/implementation-plans",
+      "tool_integration": "claude-code",
+      "feature": "terminal",
+      "headline": "Run Claude Code in a Real Terminal",
+      "subhead": "No more copy-paste. Direct terminal execution with session recording.",
+      "meta_title": "Claude Code Terminal Integration - Direct Execution | Vibe Manager",
+      "meta_description": "Execute Claude Code directly in persistent terminal sessions. Voice input, session recording, health monitoring. No more copy-paste workflows.",
+      "primary_cta": "Install Terminal Integration",
+      "publish": true,
+      "priority": 1,
+      "pain_points": [
+        {
+          "problem": "Copy-pasting Claude Code output loses context",
+          "solution": "Direct execution in persistent terminal sessions"
+        },
+        {
+          "problem": "Can't see what Claude Code will run before it runs",
+          "solution": "Review mode shows exact commands before execution"
+        },
+        {
+          "problem": "Terminal history lost between sessions",
+          "solution": "SQLite recording of all terminal activity"
+        }
+      ],
+      "workflow_steps": [
+        "Generate plan in Claude Code",
+        "Copy to Vibe Manager terminal",
+        "Review commands before execution",
+        "Execute with voice commands or clicks"
+      ],
+      "key_features": [
+        "Persistent terminal sessions",
+        "Voice transcription input",
+        "Session health monitoring",
+        "SQLite activity recording"
+      ]
+    },
+    {
+      "slug": "openai-o3/terminal-agent",
+      "tool_integration": "openai-o3",
+      "feature": "terminal-agent",
+      "headline": "OpenAI o3 as Your Terminal Agent",
+      "subhead": "Run o3 reasoning models directly in persistent terminal sessions",
+      "meta_title": "OpenAI o3 Terminal Agent - Direct Execution | Vibe Manager",
+      "meta_description": "Execute OpenAI o3 reasoning directly in terminal. Chain-of-thought visible, persistent sessions, voice input. The missing o3 terminal interface.",
+      "primary_cta": "Run o3 in Terminal",
+      "publish": true,
+      "priority": 1,
+      "pain_points": [
+        {
+          "problem": "o3's output requires full context",
+          "solution": "Detailed reasoning traces in terminal"
+        },
+        {
+          "problem": "Can't execute o3's complex plans",
+          "solution": "Direct terminal execution with review"
+        },
+        {
+          "problem": "o3 lacks persistent context",
+          "solution": "Session recording maintains full history"
+        }
+      ],
+      "workflow_steps": [
+        "Connect o3 to Vibe Manager",
+        "Stream reasoning to terminal",
+        "Review generated commands",
+        "Execute with full visibility"
+      ],
+      "key_features": [
+        "Full reasoning chain visibility",
+        "Persistent session context",
+        "Voice-controlled execution"
+      ]
+    },
+    {
+      "slug": "cursor/composer-mode/architectural-plans",
+      "tool_integration": "cursor",
+      "feature": "composer-mode",
+      "headline": "Cursor Composer with Architectural Context",
+      "subhead": "Give Cursor's Composer the system-wide awareness it needs",
+      "meta_title": "Cursor Composer Mode + Architectural Planning | Vibe Manager",
+      "meta_description": "Enhance Cursor Composer with full codebase context. File discovery, dependency mapping, impact analysis before Composer executes.",
+      "primary_cta": "Enhance Cursor Composer",
+      "publish": false,
+      "priority": 2,
+      "pain_points": [
+        {
+          "problem": "Composer changes break downstream dependencies",
+          "solution": "Map all impacts before Composer runs"
+        },
+        {
+          "problem": "Limited context window for large changes",
+          "solution": "Vibe Manager handles unlimited file context"
+        },
+        {
+          "problem": "Can't review Composer's full scope",
+          "solution": "See all affected files before execution"
+        }
+      ],
+      "workflow_steps": [
+        "Analyze task with file discovery",
+        "Generate architectural plan",
+        "Feed context to Cursor Composer",
+        "Execute with full awareness"
+      ],
+      "key_features": [
+        "File discovery across architecture",
+        "Dependency impact mapping",
+        "Pre-execution review mode"
+      ]
+    },
+    {
+      "slug": "aider/terminal/collaborative-coding",
+      "tool_integration": "aider",
+      "feature": "terminal",
+      "headline": "Run Aider Sessions with Plan Guidance",
+      "subhead": "Transform Aider's collaborative coding with structured implementation plans",
+      "meta_title": "Aider Terminal Integration - Guided Collaborative Coding | Vibe Manager",
+      "meta_description": "Run Aider with implementation plans and terminal execution. Voice input, session recording, and structured guidance for collaborative AI coding.",
+      "primary_cta": "Start Guided Aider Sessions",
+      "publish": true,
+      "priority": 1,
+      "pain_points": [
+        {
+          "problem": "Aider sessions lack structured planning approach",
+          "solution": "Pre-generate implementation plans to guide Aider"
+        },
+        {
+          "problem": "Complex changes get lost in chat history",
+          "solution": "Persistent terminal sessions with SQLite recording"
+        },
+        {
+          "problem": "Manual file selection for large refactors",
+          "solution": "Automated file discovery for Aider context"
+        }
+      ],
+      "workflow_steps": [
+        "Generate implementation plan for your task",
+        "Launch Aider with relevant files auto-selected",
+        "Guide Aider with structured plan steps",
+        "Execute with voice commands and session recording"
+      ],
+      "key_features": [
+        "Plan-guided Aider sessions",
+        "Automated file context selection",
+        "Voice-controlled execution",
+        "Persistent session recording"
+      ]
+    },
+    {
+      "slug": "anthropic-claude/monorepo-awareness",
+      "tool_integration": "anthropic-claude",
+      "feature": "monorepo-awareness",
+      "headline": "Claude with Full Monorepo Context",
+      "subhead": "Give Claude complete understanding of your monorepo structure and dependencies",
+      "meta_title": "Claude Monorepo Integration - Full Context Awareness | Vibe Manager",
+      "meta_description": "Enhance Claude with monorepo-wide context. File discovery, dependency mapping, cross-package awareness for better architectural decisions.",
+      "primary_cta": "Enable Monorepo Context",
+      "publish": true,
+      "priority": 1,
+      "pain_points": [
+        {
+          "problem": "Claude misses cross-package dependencies in monorepos",
+          "solution": "Map all package relationships and shared dependencies"
+        },
+        {
+          "problem": "Changes break unrelated packages",
+          "solution": "Impact analysis across entire monorepo structure"
+        },
+        {
+          "problem": "Context window limits monorepo understanding",
+          "solution": "Intelligent file selection based on dependency graph"
+        }
+      ],
+      "workflow_steps": [
+        "Analyze monorepo structure and dependencies",
+        "Generate architectural context map",
+        "Provide Claude with relevant cross-package context",
+        "Execute changes with full impact awareness"
+      ],
+      "key_features": [
+        "Cross-package dependency mapping",
+        "Intelligent context selection",
+        "Impact analysis across packages",
+        "Monorepo-aware file discovery"
+      ]
+    },
+    {
+      "slug": "cursor/terminal-bridge",
+      "tool_integration": "cursor",
+      "feature": "terminal-bridge",
+      "headline": "Bridge Cursor Outputs to Terminal Execution",
+      "subhead": "Execute Cursor's generated commands safely in persistent terminal sessions",
+      "meta_title": "Cursor Terminal Bridge - Safe Command Execution | Vibe Manager",
+      "meta_description": "Bridge Cursor IDE to terminal execution. Review generated commands, execute with voice control, maintain session history and health monitoring.",
+      "primary_cta": "Bridge Cursor to Terminal",
+      "publish": true,
+      "priority": 1,
+      "pain_points": [
+        {
+          "problem": "Copy-pasting Cursor commands loses context and safety",
+          "solution": "Direct bridge with review mode before execution"
+        },
+        {
+          "problem": "Cursor's terminal integration lacks persistence",
+          "solution": "Persistent sessions with full history recording"
+        },
+        {
+          "problem": "No visibility into command execution health",
+          "solution": "Real-time terminal health monitoring"
+        }
+      ],
+      "workflow_steps": [
+        "Generate commands in Cursor IDE",
+        "Bridge to Vibe Manager terminal",
+        "Review commands in safe execution mode",
+        "Execute with voice control and monitoring"
+      ],
+      "key_features": [
+        "Safe command review before execution",
+        "Persistent terminal session bridge",
+        "Voice-controlled execution",
+        "Real-time health monitoring"
+      ]
+    },
+    {
+      "slug": "openai-o3/reasoning-synthesis",
+      "tool_integration": "openai-o3",
+      "feature": "reasoning-synthesis",
+      "headline": "Synthesize o3 Reasoning into Plans",
+      "subhead": "Transform o3's complex reasoning chains into executable implementation plans",
+      "meta_title": "OpenAI o3 Reasoning Synthesis - Executable Plans | Vibe Manager",
+      "meta_description": "Convert o3's reasoning chains into structured implementation plans. File discovery, dependency analysis, and terminal execution from o3 insights.",
+      "primary_cta": "Synthesize o3 Reasoning",
+      "publish": true,
+      "priority": 1,
+      "pain_points": [
+        {
+          "problem": "o3's reasoning is too abstract for direct implementation",
+          "solution": "Synthesize reasoning into concrete, executable plans"
+        },
+        {
+          "problem": "Complex reasoning chains get lost in translation",
+          "solution": "Preserve reasoning context in structured plan format"
+        },
+        {
+          "problem": "No bridge from reasoning to actual code execution",
+          "solution": "Direct path from o3 insights to terminal execution"
+        }
+      ],
+      "workflow_steps": [
+        "Analyze o3's reasoning chain output",
+        "Synthesize into structured implementation plan",
+        "Map reasoning to specific files and commands",
+        "Execute plan with preserved reasoning context"
+      ],
+      "key_features": [
+        "Reasoning-to-plan synthesis",
+        "Context preservation through execution",
+        "File mapping from abstract reasoning",
+        "Executable plan generation"
+      ]
+    },
+    {
+      "slug": "github-actions/plan-validation",
+      "tool_integration": "github-actions",
+      "feature": "plan-validation",
+      "headline": "Validate Plans in GitHub Actions",
+      "subhead": "Run implementation plan validation as part of your CI/CD pipeline",
+      "meta_title": "GitHub Actions Plan Validation - CI/CD Integration | Vibe Manager",
+      "meta_description": "Validate implementation plans in GitHub Actions. Pre-merge plan review, impact analysis, and automated plan execution in CI/CD workflows.",
+      "primary_cta": "Add Plan Validation to CI/CD",
+      "publish": true,
+      "priority": 2,
+      "pain_points": [
+        {
+          "problem": "Implementation plans aren't validated before merge",
+          "solution": "Automated plan validation in GitHub Actions workflow"
+        },
+        {
+          "problem": "Complex changes break CI without plan review",
+          "solution": "Pre-merge impact analysis and plan validation"
+        },
+        {
+          "problem": "No automated execution of validated plans",
+          "solution": "Execute approved plans directly in CI/CD pipeline"
+        }
+      ],
+      "workflow_steps": [
+        "Generate implementation plan for PR changes",
+        "Run plan validation in GitHub Actions",
+        "Review plan impact analysis results",
+        "Auto-execute validated plans in CI/CD"
+      ],
+      "key_features": [
+        "Automated plan validation workflows",
+        "Pre-merge impact analysis",
+        "CI/CD plan execution",
+        "Plan approval gates"
+      ]
+    },
+    {
+      "slug": "sentry/error-to-plan",
+      "tool_integration": "sentry",
+      "feature": "error-to-plan",
+      "headline": "Convert Sentry Errors to Fix Plans",
+      "subhead": "Transform error reports into structured implementation plans for rapid resolution",
+      "meta_title": "Sentry Error to Implementation Plan - Automated Fixes | Vibe Manager",
+      "meta_description": "Convert Sentry errors into implementation plans. Stack trace analysis, file discovery, and structured fix plans with terminal execution.",
+      "primary_cta": "Generate Fix Plans from Errors",
+      "publish": true,
+      "priority": 2,
+      "pain_points": [
+        {
+          "problem": "Sentry errors require manual investigation and planning",
+          "solution": "Automated analysis converts errors to fix plans"
+        },
+        {
+          "problem": "Stack traces don't show full impact scope",
+          "solution": "File discovery finds all affected components"
+        },
+        {
+          "problem": "Error fixes lack structured approach",
+          "solution": "Generated plans ensure systematic resolution"
+        }
+      ],
+      "workflow_steps": [
+        "Import Sentry error with full stack trace",
+        "Analyze error context and affected files",
+        "Generate structured fix implementation plan",
+        "Execute fix plan with terminal integration"
+      ],
+      "key_features": [
+        "Stack trace to plan conversion",
+        "Automated file impact discovery",
+        "Structured fix plan generation",
+        "Terminal-based plan execution"
+      ]
+    },
+    {
+      "slug": "datadog/performance-plans",
+      "tool_integration": "datadog",
+      "feature": "performance-plans",
+      "headline": "Performance Fixes from APM Data",
+      "subhead": "Transform Datadog APM insights into executable performance optimization plans",
+      "meta_title": "Datadog APM Performance Plans - Optimization Automation | Vibe Manager",
+      "meta_description": "Convert Datadog APM data into performance optimization plans. Trace analysis, bottleneck identification, and structured improvement execution.",
+      "primary_cta": "Generate Performance Plans",
+      "publish": true,
+      "priority": 2,
+      "pain_points": [
+        {
+          "problem": "APM data shows problems but not solutions",
+          "solution": "Convert performance metrics to actionable fix plans"
+        },
+        {
+          "problem": "Performance bottlenecks require manual investigation",
+          "solution": "Automated trace analysis with file discovery"
+        },
+        {
+          "problem": "Optimization efforts lack systematic approach",
+          "solution": "Structured plans prioritize highest-impact fixes"
+        }
+      ],
+      "workflow_steps": [
+        "Import Datadog APM trace and metrics data",
+        "Analyze performance bottlenecks and patterns",
+        "Generate prioritized optimization plan",
+        "Execute performance fixes with validation"
+      ],
+      "key_features": [
+        "APM data to plan conversion",
+        "Bottleneck prioritization",
+        "Performance-focused file discovery",
+        "Optimization plan execution"
+      ]
+    },
+    {
+      "slug": "prisma/migration-planning",
+      "tool_integration": "prisma",
+      "feature": "migration-planning",
+      "headline": "Plan Prisma Schema Changes Safely",
+      "subhead": "Generate comprehensive migration plans with impact analysis and rollback strategies",
+      "meta_title": "Prisma Migration Planning - Safe Schema Changes | Vibe Manager",
+      "meta_description": "Plan Prisma schema migrations safely. Impact analysis, rollback strategies, and structured migration execution with terminal integration.",
+      "primary_cta": "Plan Safe Migrations",
+      "publish": true,
+      "priority": 2,
+      "pain_points": [
+        {
+          "problem": "Schema migrations break production without planning",
+          "solution": "Comprehensive migration plans with impact analysis"
+        },
+        {
+          "problem": "Complex migrations lack rollback strategies",
+          "solution": "Generated plans include rollback procedures"
+        },
+        {
+          "problem": "Migration dependencies aren't mapped",
+          "solution": "File discovery finds all schema-dependent code"
+        }
+      ],
+      "workflow_steps": [
+        "Analyze proposed Prisma schema changes",
+        "Generate migration plan with impact analysis",
+        "Create rollback strategy and validation steps",
+        "Execute migration with monitoring and safety checks"
+      ],
+      "key_features": [
+        "Schema change impact analysis",
+        "Automated rollback strategy generation",
+        "Migration dependency mapping",
+        "Safe execution with monitoring"
+      ]
+    },
+    {
+      "slug": "terraform/blast-radius-analysis",
+      "tool_integration": "terraform",
+      "feature": "blast-radius-analysis",
+      "headline": "Analyze Terraform Change Impacts",
+      "subhead": "Understand the full blast radius of infrastructure changes before applying",
+      "meta_title": "Terraform Blast Radius Analysis - Safe Infrastructure Changes | Vibe Manager",
+      "meta_description": "Analyze Terraform change impacts before applying. Resource dependency mapping, blast radius visualization, and safe execution plans.",
+      "primary_cta": "Analyze Infrastructure Changes",
+      "publish": true,
+      "priority": 2,
+      "pain_points": [
+        {
+          "problem": "Terraform changes have unexpected downstream impacts",
+          "solution": "Map full resource dependency chain before changes"
+        },
+        {
+          "problem": "Infrastructure changes break dependent services",
+          "solution": "Analyze blast radius across entire system"
+        },
+        {
+          "problem": "Terraform plans don't show application impact",
+          "solution": "Connect infrastructure changes to application code"
+        }
+      ],
+      "workflow_steps": [
+        "Analyze Terraform configuration changes",
+        "Map resource dependencies and blast radius",
+        "Generate impact analysis with affected services",
+        "Execute changes with safety monitoring"
+      ],
+      "key_features": [
+        "Resource dependency mapping",
+        "Blast radius visualization",
+        "Cross-system impact analysis",
+        "Safe execution with rollback plans"
+      ]
+    },
+    {
+      "slug": "launchdarkly/feature-lifecycle",
+      "tool_integration": "launchdarkly",
+      "feature": "feature-lifecycle",
+      "headline": "Full Feature Flag Lifecycle Planning",
+      "subhead": "Plan, implement, test, and cleanup feature flags with structured lifecycle management",
+      "meta_title": "LaunchDarkly Feature Lifecycle Planning - Flag Management | Vibe Manager",
+      "meta_description": "Manage LaunchDarkly feature flag lifecycle with implementation plans. Flag creation, testing, rollout, and cleanup with terminal execution.",
+      "primary_cta": "Plan Feature Flag Lifecycle",
+      "publish": true,
+      "priority": 2,
+      "pain_points": [
+        {
+          "problem": "Feature flags accumulate without cleanup strategy",
+          "solution": "Lifecycle plans include flag retirement timeline"
+        },
+        {
+          "problem": "Flag rollouts lack systematic testing approach",
+          "solution": "Structured rollout plans with validation steps"
+        },
+        {
+          "problem": "Flag dependencies create complex cleanup challenges",
+          "solution": "Map flag dependencies for safe removal planning"
+        }
+      ],
+      "workflow_steps": [
+        "Plan feature flag implementation and rollout strategy",
+        "Generate validation and testing procedures",
+        "Execute rollout with monitoring and safety checks",
+        "Plan and execute flag cleanup and retirement"
+      ],
+      "key_features": [
+        "Complete flag lifecycle planning",
+        "Rollout strategy generation",
+        "Flag dependency mapping",
+        "Automated cleanup planning"
+      ]
+    }
+  ]
+}

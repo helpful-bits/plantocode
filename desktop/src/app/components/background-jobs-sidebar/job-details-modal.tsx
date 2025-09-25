@@ -243,15 +243,30 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
   // Format structured response data for display based on task type
   const formatStructuredResponse = useCallback((job: BackgroundJob): React.ReactNode | null => {
     if (!job.response) return null;
-    
+
     try {
       const response = typeof job.response === 'string' ? JSON.parse(job.response) : job.response;
-      
+
       switch (job.taskType) {
         case 'video_analysis':
           // Let the default response section handle video analysis with copy button
           return null;
-          
+
+        case 'root_folder_selection':
+          // Display root directories as a simple list
+          if (response.root_directories && Array.isArray(response.root_directories)) {
+            return (
+              <div className="space-y-1">
+                {response.root_directories.map((dir: string, index: number) => (
+                  <div key={index} className="text-sm font-mono bg-muted p-2 rounded">
+                    {dir}
+                  </div>
+                ))}
+              </div>
+            );
+          }
+          break;
+
         case 'regex_file_filter':
         case 'file_relevance_assessment':
         case 'extended_path_finder':

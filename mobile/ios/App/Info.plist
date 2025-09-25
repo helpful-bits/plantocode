@@ -2,16 +2,16 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>AUTH0_API_AUDIENCE</key>
+	<string>https://vibemanager.app</string>
 	<key>AUTH0_DOMAIN</key>
 	<string>vibemanager.us.auth0.com</string>
 	<key>AUTH0_NATIVE_CLIENT_ID</key>
 	<string>cKFTdfxE1uPjUvDFZsnmo6021oaxHTw0</string>
-	<key>AUTH0_API_AUDIENCE</key>
-	<string>https://vibemanager.app</string>
-	<key>AUTH_SCOPE</key>
-	<string>openid profile email</string>
 	<key>AUTH_CALLBACK_SCHEME</key>
 	<string>vibe-manager</string>
+	<key>AUTH_SCOPE</key>
+	<string>openid profile email</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -28,10 +28,25 @@
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
 	<string>1.0</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>vibe-manager</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>This app uses the microphone to enable voice dictation for creating task descriptions and entering terminal commands.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>
@@ -49,15 +64,6 @@
 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
-	</array>
-	<key>CFBundleURLTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>vibe-manager</string>
-			</array>
-		</dict>
 	</array>
 </dict>
 </plist>

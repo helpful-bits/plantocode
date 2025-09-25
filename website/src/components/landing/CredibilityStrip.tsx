@@ -14,7 +14,7 @@ function CredibilityStrip() {
           className="text-center"
         >
           <p className="text-lg sm:text-xl text-foreground/80 font-medium">
-            Planning layer trusted by <strong>users of coding agents</strong> (codex, claude, cursor, aider).
+            Planning layer trusted by <strong>users of coding agents</strong> (codex, claude, cursor, gemini).
           </p>
           <div className="flex flex-wrap justify-center gap-4 mt-4">
             <span className="px-4 py-2 bg-primary/10 text-primary rounded-full text-sm font-semibold">

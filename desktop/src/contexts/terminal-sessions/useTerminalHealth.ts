@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invoke } from '@/utils/tauri-invoke-wrapper';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 
 // Health status types matching Rust enums
@@ -7,7 +7,7 @@ export type HealthStatus =
   | { type: 'healthy' }
   | { type: 'noOutput'; durationSecs: number }
   | { type: 'processDead'; exitCode?: number }
-  | { type: 'stuck'; lastOutputSecs: number }
+  | { type: 'agentRequiresAttention'; lastOutputSecs: number }
   | { type: 'disconnected' }
   | { type: 'persistenceLag'; pendingBytes: number };
 
@@ -64,7 +64,7 @@ function getHealthSeverity(status: HealthStatus): HealthSeverity {
       return status.durationSecs > 30 ? 'warning' : 'good';
     case 'processDead':
       return 'critical';
-    case 'stuck':
+    case 'agentRequiresAttention':
       return 'warning';
     case 'disconnected':
       return 'warning';
@@ -85,7 +85,7 @@ export function useTerminalHealth(jobId: string): UseTerminalHealthResult {
   const [recovering, setRecovering] = useState(false);
   const [events, setEvents] = useState<HealthEvent[]>([]);
 
-  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollIntervalRef = useRef<number | null>(null);
   const unlistenFunctionsRef = useRef<UnlistenFn[]>([]);
 
   // Start health monitoring when component mounts
@@ -159,7 +159,7 @@ export function useTerminalHealth(jobId: string): UseTerminalHealthResult {
         await pollHealth();
 
         // Set up polling interval
-        pollIntervalRef.current = setInterval(pollHealth, 3000);
+        pollIntervalRef.current = window.setInterval(pollHealth, 3000);
 
       } catch (error) {
         console.error(`Failed to start health monitoring for job ${jobId}:`, error);
@@ -173,7 +173,7 @@ export function useTerminalHealth(jobId: string): UseTerminalHealthResult {
 
       // Clear polling interval
       if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
+        window.clearInterval(pollIntervalRef.current);
         pollIntervalRef.current = null;
       }
 
@@ -188,7 +188,7 @@ export function useTerminalHealth(jobId: string): UseTerminalHealthResult {
       unlistenFunctionsRef.current = [];
 
       // Unregister session from health monitoring
-      invoke('unregister_terminal_health_session', { jobId }).catch(error => {
+      invoke('unregister_terminal_health_session', { jobId }).catch((error: unknown) => {
         console.warn(`Failed to unregister health session for job ${jobId}:`, error);
       });
     };
@@ -281,11 +281,11 @@ export function useHealthStatusDisplay(status: HealthStatus): {
         action: 'restart',
       };
 
-    case 'stuck':
+    case 'agentRequiresAttention':
       return {
         color: 'yellow',
         icon: '●',
-        message: `Terminal stuck (${status.lastOutputSecs}s)`,
+        message: `Agent requires attention (${status.lastOutputSecs}s)`,
         action: 'interrupt',
       };
 

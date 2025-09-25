@@ -1,4 +1,5 @@
 import Foundation
+import Foundation
 import Combine
 import OSLog
 
@@ -524,7 +525,7 @@ public struct RpcRequest: Codable {
 
     public init(method: String, params: [String: Any] = [:], id: String = UUID().uuidString) {
         self.method = method
-        self.params = params.mapValues { AnyCodable($0) }
+        self.params = params.mapValues { AnyCodable(any: $0) }
         self.id = id
     }
 }
@@ -537,7 +538,7 @@ public struct RpcResponse: Codable {
 
     public init(id: String, result: Any? = nil, error: RpcError? = nil, isFinal: Bool = true) {
         self.id = id
-        self.result = result.map { AnyCodable($0) }
+        self.result = result.map { AnyCodable(any: $0) }
         self.error = error
         self.isFinal = isFinal
     }
@@ -547,6 +548,12 @@ public struct RpcError: Codable {
     public let code: Int
     public let message: String
     public let data: AnyCodable?
+    
+    public init(code: Int, message: String, data: Any? = nil) {
+        self.code = code
+        self.message = message
+        self.data = data.map { AnyCodable(any: $0) }
+    }
 }
 
 // Event types
@@ -555,6 +562,13 @@ public struct RelayEvent: Codable {
     public let data: [String: AnyCodable]
     public let timestamp: Date
     public let sourceDeviceId: String?
+    
+    public init(eventType: String, data: [String: Any], timestamp: Date = Date(), sourceDeviceId: String? = nil) {
+        self.eventType = eventType
+        self.data = data.mapValues { AnyCodable(any: $0) }
+        self.timestamp = timestamp
+        self.sourceDeviceId = sourceDeviceId
+    }
 }
 
 // Relay message types
@@ -565,6 +579,15 @@ public struct RelayMessage: Codable {
     public let sourceDeviceId: String
     public let payload: RelayPayload
     public let timestamp: Date
+    
+    public init(messageType: String, callId: String, targetDeviceId: String?, sourceDeviceId: String, payload: RelayPayload, timestamp: Date = Date()) {
+        self.messageType = messageType
+        self.callId = callId
+        self.targetDeviceId = targetDeviceId
+        self.sourceDeviceId = sourceDeviceId
+        self.payload = payload
+        self.timestamp = timestamp
+    }
 }
 
 public enum RelayPayload: Codable {

@@ -1,4 +1,5 @@
 import { createContext, useContext, useMemo, useEffect, useCallback, useRef } from "react";
+import { listen } from '@tauri-apps/api/event';
 
 import { useProject } from "@/contexts/project-context";
 import { useUILayout } from "@/contexts/ui-layout-context";
@@ -234,7 +235,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
     };
 
     window.addEventListener("app-will-close", handleAppClose);
-    
+
     return () => {
       window.removeEventListener("app-will-close", handleAppClose);
     };
@@ -243,6 +244,77 @@ export function SessionProvider({ children }: SessionProviderProps) {
     sessionStateHook.currentSession,
     sessionActions.saveCurrentSession,
   ]);
+
+  // Listen for backend auto-applied files
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+
+    const setupListener = async () => {
+      try {
+        unlisten = await listen<{
+          session_id: string;
+          job_id: string;
+          task_type: string;
+          files: string[];
+        }>('session:auto-files-applied', async (event) => {
+          try {
+            const payload = event.payload;
+
+            // Only process for current session
+            if (!sessionStateHook.currentSession?.id || payload.session_id !== sessionStateHook.currentSession.id) {
+              return;
+            }
+
+            // Validate files array
+            const files = Array.isArray(payload.files)
+              ? payload.files.filter((s: any) => typeof s === 'string' && s.trim().length > 0)
+              : [];
+
+            if (files.length === 0) {
+              return;
+            }
+
+            // Apply files to current session's includedFiles and remove from forceExcludedFiles
+            const updatedIncluded = new Set(sessionStateHook.currentSession.includedFiles);
+            const updatedExcluded = new Set(sessionStateHook.currentSession.forceExcludedFiles);
+
+            files.forEach(file => {
+              updatedIncluded.add(file);
+              updatedExcluded.delete(file);
+            });
+
+            // Update session state
+            sessionStateHook.setCurrentSession(prev => {
+              if (!prev || prev.id !== payload.session_id) return prev;
+              return {
+                ...prev,
+                includedFiles: Array.from(updatedIncluded),
+                forceExcludedFiles: Array.from(updatedExcluded),
+              };
+            });
+
+            // Emit file selection applied event for UI components
+            await window.dispatchEvent(new CustomEvent('file-selection-applied', {
+              detail: { files, source: payload.task_type === 'extended_path_finder' ? 'AI Path Finder' : 'AI Relevance' }
+            }));
+
+          } catch (e) {
+            console.warn('session:auto-files-applied handler error', e);
+          }
+        });
+      } catch (e) {
+        console.warn('Failed to setup session:auto-files-applied listener', e);
+      }
+    };
+
+    setupListener();
+
+    return () => {
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, [sessionStateHook.currentSession?.id, sessionStateHook.setCurrentSession]);
 
   return (
     <SessionStateContext.Provider value={stateContextValue}>
