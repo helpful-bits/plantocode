@@ -12,6 +12,7 @@ export async function estimatePromptTokensAction(params: {
   selectedRootDirectories?: string[];
   taskType: TaskType;
   model: string;
+  includeProjectStructure?: boolean;
 }): Promise<ActionState<{
   estimatedTokens: number;
   systemPromptTokens: number;
@@ -32,6 +33,7 @@ export async function estimatePromptTokensAction(params: {
       selectedRootDirectories: params.selectedRootDirectories,
       taskType: params.taskType,
       model: params.model,
+      includeProjectStructure: params.includeProjectStructure,
     });
 
     return {

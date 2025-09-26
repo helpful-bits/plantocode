@@ -27,12 +27,16 @@ export function useImplementationPlanActions() {
    * Create an implementation plan based on task description and selected files
    * Uses direct Tauri command invocation for backend processing
    * @param selectedRootDirectories - Optional array of root directories to scope the directory tree
+   * @param enableWebSearch - Optional flag to enable web search for latest docs and examples
+   * @param includeProjectStructure - Optional flag to include project directory tree in the prompt
    */
   const handleCreateImplementationPlan = useCallback(
     async (
-      taskDescription: string, 
+      taskDescription: string,
       includedPaths: string[],
-      selectedRootDirectories?: string[] | null
+      selectedRootDirectories?: string[] | null,
+      enableWebSearch?: boolean,
+      includeProjectStructure?: boolean
     ) => {
       // Input validation
       if (!projectDirectory || !taskDescription.trim() || !activeSessionId) {
@@ -63,6 +67,8 @@ export function useImplementationPlanActions() {
         await flushSaves();
         
         // Call the Tauri command directly
+        // Note: enableWebSearch parameter is not yet supported by the backend command
+        // and will need to be added when backend support is implemented
         await invoke<{ jobId: string }>(
           "create_implementation_plan_command",
           {
@@ -75,6 +81,8 @@ export function useImplementationPlanActions() {
             model: undefined,
             temperature: undefined,
             maxTokens: undefined,
+            enableWebSearch: enableWebSearch || false,
+            includeProjectStructure: includeProjectStructure !== false, // Default to true if undefined
           }
         );
 

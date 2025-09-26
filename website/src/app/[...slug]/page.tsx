@@ -245,7 +245,7 @@ export default async function PseoPage({ params }: { params: Promise<PageParams>
                   <span>{pageData.category.charAt(0).toUpperCase() + pageData.category.slice(1).replace('-', ' ')}</span>
                 </div>
 
-                <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-6 bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent">
+                <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-6 leading-tight sm:leading-tight md:leading-snug lg:leading-snug bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent">
                   {pageData.headline}
                 </h1>
 
@@ -383,21 +383,29 @@ export default async function PseoPage({ params }: { params: Promise<PageParams>
                         <h3 className="text-xl font-bold mb-3">Intelligent File Discovery</h3>
                         <p className="text-foreground/80 mb-4">
                           {pageData.category === 'workflows'
-                            ? 'Multi-stage AI workflow surfaces every file involved in your ' + (pageData.workflow || 'workflow')
-                            : 'Context-aware file discovery that understands your project structure'}
+                            ? 'Multi-stage AI workflow identifies relevant files for your ' + (pageData.workflow || 'workflow')
+                            : 'Hierarchical folder selection, pattern filtering, and AI relevance assessment'}
                         </p>
                         <ul className="space-y-2 text-foreground/70">
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
-                            <span>No truncation - full file context</span>
+                            <span>Root folder selection based on task</span>
                           </li>
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
-                            <span>Dependency graph visualization</span>
+                            <span>Targeted regex pattern groups</span>
                           </li>
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
-                            <span>Impact analysis before changes</span>
+                            <span>LLM analyzes actual file contents</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
+                            <span>Automatic dependency detection</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
+                            <span>Files organized into XML for LLM consumption</span>
                           </li>
                         </ul>
                       </div>
@@ -417,7 +425,7 @@ export default async function PseoPage({ params }: { params: Promise<PageParams>
                         <ul className="space-y-2 text-foreground/70">
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
-                            <span>GPT-5, Claude 4, Gemini 2.5 Pro</span>
+                            <span>OpenAI GPT‑5 family (GPT‑5 and GPT‑5 Thinking/Pro), historical o‑series (e.g., o3 variants); Anthropic Claude Sonnet 4 and Opus 4.1; Google Gemini 2.5 Pro — availability and features vary by plan and endpoint (ChatGPT vs API).</span>
                           </li>
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
@@ -428,6 +436,9 @@ export default async function PseoPage({ params }: { params: Promise<PageParams>
                             <span>Your guidance shapes the merge</span>
                           </li>
                         </ul>
+                        <p className="text-sm text-foreground/60 mt-4">
+                          Use official vendor docs to confirm features like streaming, function calling, and background mode for each model.
+                        </p>
                       </div>
                     </div>
                   </GlassCard>
@@ -481,21 +492,16 @@ export default async function PseoPage({ params }: { params: Promise<PageParams>
                     </div>
                   </div>
 
-                  <div className="mt-8 p-4 bg-primary/5 rounded-lg border border-primary/20">
-                    <div className="font-mono text-sm text-foreground/80">
-                      {pageData.os === 'macos' && (
-                        <div>$ brew install --cask vibe-manager</div>
-                      )}
-                      {pageData.os === 'windows' && (
-                        <div>winget install VibeManager</div>
-                      )}
-                      {pageData.os === 'linux' && (
-                        <div>$ sudo snap install vibe-manager</div>
-                      )}
-                      {!pageData.os && (
-                        <div># Download from vibemanager.app/downloads</div>
-                      )}
-                    </div>
+                  {/* Download CTA */}
+                  <div className="mt-8 flex flex-col items-center gap-4">
+                    <Button variant="cta" size="lg" asChild>
+                      <Link href="/downloads">
+                        Download Vibe Manager
+                      </Link>
+                    </Button>
+                    <p className="text-sm text-foreground/60">
+                      {pageData.os ? `Available for ${formatOS(pageData.os)}` : 'Available for macOS & Windows'} • $5 free credits
+                    </p>
                   </div>
                 </GlassCard>
               </div>

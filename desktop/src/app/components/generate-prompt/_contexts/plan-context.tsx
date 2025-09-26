@@ -10,6 +10,7 @@ const defaultValue: PlanContextValue = {
   state: {
     isCreatingPlan: false,
     planCreationState: "idle",
+    currentModel: undefined,
   },
   actions: {
     // These default implementations will be replaced by actual implementations

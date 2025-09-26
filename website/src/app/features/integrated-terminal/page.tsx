@@ -77,7 +77,7 @@ export default function IntegratedTerminalPage() {
                     </div>
                     <h3 className="text-lg font-semibold mb-2">Health Monitoring</h3>
                     <p className="text-foreground/80 text-sm">
-                      5-second health checks. Detects inactive/dead processes. Auto-recovery with intelligent actions.
+                      Health checks every 5 seconds. Detects inactive/dead processes. Auto-recovery with intelligent actions.
                     </p>
                   </GlassCard>
 
@@ -108,7 +108,7 @@ export default function IntegratedTerminalPage() {
                         <p className="text-foreground/80 mb-4">
                           Continuous monitoring every 5 seconds with intelligent state detection and recovery actions.
                         </p>
-                        <ul className="space-y-2 text-foreground/70">
+                        <ul className="space-y-2 text-foreground/70 dark:text-foreground/60">
                           <li className="flex items-start gap-2">
                             <span className="text-green-400">•</span>
                             <span><strong>Healthy:</strong> Normal operation</span>
@@ -144,7 +144,7 @@ export default function IntegratedTerminalPage() {
                         <p className="text-foreground/80 mb-4">
                           Intelligent recovery based on health state. No manual intervention required.
                         </p>
-                        <ul className="space-y-2 text-foreground/70">
+                        <ul className="space-y-2 text-foreground/70 dark:text-foreground/60">
                           <li className="flex items-start gap-2">
                             <Zap className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
                             <span><strong>SendPrompt:</strong> Echo 'alive' probe</span>
@@ -222,7 +222,7 @@ export default function IntegratedTerminalPage() {
                         <p className="text-foreground/80 mb-4">
                           OpenAI Whisper integration for voice commands. Direct PTY input with staging area.
                         </p>
-                        <ul className="space-y-2 text-foreground/70">
+                        <ul className="space-y-2 text-foreground/70 dark:text-foreground/60">
                           <li className="flex items-start gap-2">
                             <AlertCircle className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
                             <span>Real-time audio processing</span>
@@ -254,7 +254,7 @@ export default function IntegratedTerminalPage() {
                         <p className="text-foreground/80 mb-4">
                           SQLite-backed sessions with 5MB ring buffer. Survives app restarts and crashes.
                         </p>
-                        <ul className="space-y-2 text-foreground/70">
+                        <ul className="space-y-2 text-foreground/70 dark:text-foreground/60">
                           <li className="flex items-start gap-2">
                             <Save className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
                             <span>Async persistence worker</span>
@@ -286,7 +286,7 @@ export default function IntegratedTerminalPage() {
                         <p className="text-foreground/80 mb-4">
                           Detects implementation plans and auto-launches configured CLI tools after shell init.
                         </p>
-                        <ul className="space-y-2 text-foreground/70">
+                        <ul className="space-y-2 text-foreground/70 dark:text-foreground/60">
                           <li className="flex items-start gap-2">
                             <Terminal className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
                             <span>2-second shell initialization delay</span>
@@ -318,7 +318,7 @@ export default function IntegratedTerminalPage() {
                         <p className="text-foreground/80 mb-4">
                           VS Code's terminal renderer with WebGL acceleration and full Unicode support.
                         </p>
-                        <ul className="space-y-2 text-foreground/70">
+                        <ul className="space-y-2 text-foreground/70 dark:text-foreground/60">
                           <li className="flex items-start gap-2">
                             <History className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
                             <span>10K line scrollback buffer</span>
@@ -346,51 +346,63 @@ export default function IntegratedTerminalPage() {
               <div className="mb-16">
                 <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">Technical Architecture</h2>
 
-                <GlassCard className="p-8 bg-black/50">
+                <GlassCard className="p-8 bg-slate-50 text-slate-900 dark:bg-black/50 dark:text-white">
                   <div className="font-mono text-sm">
-                    <div className="text-gray-500 mb-4"># Terminal Session Lifecycle</div>
+                    <div className="text-foreground/70 dark:text-foreground/60 mb-4"># Terminal Session Lifecycle</div>
 
-                    <div className="mb-6">
-                      <div className="text-green-400 mb-2">## 1. Session Creation</div>
-                      <div className="text-white ml-4">
+                    <div className="mb-6 flex gap-4">
+                      <div className="text-green-400 font-bold text-xl">1.</div>
+                      <div className="flex-1">
+                        <div className="text-green-400 mb-2 font-semibold">Session Creation</div>
+                        <div className="text-white">
                         → JWT authentication check<br />
                         → PTY pair creation (portable_pty)<br />
                         → Shell detection (zsh/bash/PowerShell)<br />
                         → Environment setup + PATH augmentation<br />
                         → Process spawn with login flags (-l -i)
+                        </div>
                       </div>
                     </div>
 
-                    <div className="mb-6">
-                      <div className="text-green-400 mb-2">## 2. I/O Streaming</div>
-                      <div className="text-white ml-4">
+                    <div className="mb-6 flex gap-4">
+                      <div className="text-green-400 font-bold text-xl">2.</div>
+                      <div className="flex-1">
+                        <div className="text-green-400 mb-2 font-semibold">I/O Streaming</div>
+                        <div className="text-white">
                         → 64KB read buffers<br />
                         → Broadcast channels for output<br />
                         → Sync MPSC for persistence queue<br />
                         → 16ms batch processing in frontend<br />
                         → Direct Uint8Array handling
+                        </div>
                       </div>
                     </div>
 
-                    <div className="mb-6">
-                      <div className="text-green-400 mb-2">## 3. Health Monitoring</div>
-                      <div className="text-white ml-4">
-                        → 5-second interval checks<br />
+                    <div className="mb-6 flex gap-4">
+                      <div className="text-green-400 font-bold text-xl">3.</div>
+                      <div className="flex-1">
+                        <div className="text-green-400 mb-2 font-semibold">Health Monitoring</div>
+                        <div className="text-white">
+                        → Health checks every 5 seconds<br />
                         → Process alive verification<br />
                         → Output timestamp tracking<br />
                         → Agent attention detection<br />
                         → Automatic recovery triggers
+                        </div>
                       </div>
                     </div>
 
-                    <div className="mb-6">
-                      <div className="text-green-400 mb-2">## 4. Persistence</div>
-                      <div className="text-white ml-4">
+                    <div className="mb-6 flex gap-4">
+                      <div className="text-green-400 font-bold text-xl">4.</div>
+                      <div className="flex-1">
+                        <div className="text-green-400 mb-2 font-semibold">Persistence</div>
+                        <div className="text-white">
                         → SQLite terminal_sessions table<br />
                         → 5MB ring buffer (SUBSTR truncation)<br />
                         → Prompt marker priority flush<br />
                         → Session recovery on restart<br />
                         → Full audit trail capability
+                        </div>
                       </div>
                     </div>
 
@@ -492,7 +504,7 @@ export default function IntegratedTerminalPage() {
                     <ul className="space-y-4">
                       <li className="flex items-start gap-3">
                         <span className="text-green-400 mt-0.5 text-lg">✓</span>
-                        <span className="text-foreground/90 font-medium">5-second health checks</span>
+                        <span className="text-foreground/90 font-medium">Health checks every 5 seconds</span>
                       </li>
                       <li className="flex items-start gap-3">
                         <span className="text-green-400 mt-0.5 text-lg">✓</span>

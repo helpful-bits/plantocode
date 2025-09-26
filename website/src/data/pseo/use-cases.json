@@ -47,7 +47,7 @@
       "meta_title": "Platform Engineer AI Tools - Infrastructure Planning | Vibe Manager",
       "meta_description": "AI planning for platform engineers. Terraform, Kubernetes, cloud resources - with full impact analysis.",
       "primary_cta": "Platform Engineering AI",
-      "publish": false,
+      "publish": true,
       "priority": 2,
       "workflow_steps": [
         "Map infrastructure dependencies",
@@ -65,7 +65,7 @@
       "meta_title": "Tech Lead AI Tools - Proactive Code Review | Vibe Manager",
       "meta_description": "AI-powered code review for tech leads. Review implementation plans before execution, catch issues early.",
       "primary_cta": "Enhance Code Reviews",
-      "publish": false,
+      "publish": true,
       "priority": 2,
       "workflow_steps": [
         "Team generates plans",
@@ -229,11 +229,19 @@
       "headline": "Model Deployment Planning for ML Engineers",
       "subhead": "AI-assisted ML model deployment and infrastructure planning",
       "meta_title": "ML Engineer AI Tools - Model Deployment Planning | Vibe Manager",
-      "meta_description": "AI tools for ML engineers. Model deployment strategies, infrastructure planning, MLOps workflow optimization.",
+      "meta_description": "AI planning tools for ML engineers. Model deployment strategies with actionable terminal execution, infrastructure planning, MLOps workflow optimization.",
       "primary_cta": "Optimize ML Deployments",
       "publish": true,
       "priority": 1,
       "pain_points": [
+        {
+          "problem": "Docker/packaging drift between training and serving",
+          "solution": "Plan proposes unified Dockerfile + build args"
+        },
+        {
+          "problem": "Env/config scatter (model paths, tokens)",
+          "solution": "Plan maps .env/.yaml files and injects variables safely"
+        },
         {
           "problem": "Model deployment requires complex infrastructure coordination",
           "solution": "AI generates deployment plans with infrastructure requirements"
@@ -248,15 +256,15 @@
         }
       ],
       "workflow_steps": [
-        "Analyze model requirements and constraints",
-        "Design deployment architecture",
-        "Plan monitoring and rollback strategies",
-        "Execute phased deployment with validation"
+        "Locate serving code, env/config, and infra manifests with file discovery",
+        "Draft deployment plan (containers, env vars, resource targets) with validation gates",
+        "Run build/publish commands in terminal with step-by-step approvals",
+        "Smoke test endpoints and capture logs for rollback readiness"
       ],
       "key_features": [
-        "Resource requirement analysis",
-        "Deployment strategy planning",
-        "Performance prediction modeling"
+        "File-path inventory and diffs",
+        "Container build/run commands",
+        "Rollout checkpoints and verification steps"
       ]
     },
     {

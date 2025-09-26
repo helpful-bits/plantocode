@@ -59,7 +59,20 @@ pub fn convert_messages_to_responses_input(
 }
 
 pub fn model_requires_tools(model: &str, web_mode: bool) -> Option<Vec<OpenAIResponsesTool>> {
-    if model.contains("deep-research") || web_mode {
+    // Only allow web search for OpenAI models
+    // Models may have provider prefixes like "openrouter/openai/gpt-4"
+    let model_lower = model.to_lowercase();
+    let is_openai_model = model_lower.contains("openai/") ||
+                          model_lower.contains("/gpt-") ||
+                          model_lower.contains("/o1-") ||
+                          model_lower.contains("/o3-") ||
+                          model_lower.contains("/o4-") ||
+                          model_lower.starts_with("gpt-") ||
+                          model_lower.starts_with("o1-") ||
+                          model_lower.starts_with("o3-") ||
+                          model_lower.starts_with("o4-");
+
+    if model.contains("deep-research") || (web_mode && is_openai_model) {
         // Web search tool with location and context configuration
         Some(vec![OpenAIResponsesTool::WebSearch {
             tool_type: "web_search_preview".to_string(),
@@ -74,7 +87,19 @@ pub fn model_requires_tools(model: &str, web_mode: bool) -> Option<Vec<OpenAIRes
 }
 
 pub fn model_requires_background(model: &str, web_mode: bool) -> bool {
-    model.contains("deep-research") || web_mode
+    // Models may have provider prefixes like "openrouter/openai/gpt-4"
+    let model_lower = model.to_lowercase();
+    let is_openai_model = model_lower.contains("openai/") ||
+                          model_lower.contains("/gpt-") ||
+                          model_lower.contains("/o1-") ||
+                          model_lower.contains("/o3-") ||
+                          model_lower.contains("/o4-") ||
+                          model_lower.starts_with("gpt-") ||
+                          model_lower.starts_with("o1-") ||
+                          model_lower.starts_with("o3-") ||
+                          model_lower.starts_with("o4-");
+
+    model.contains("deep-research") || (web_mode && is_openai_model)
 }
 
 pub fn prepare_request_body(
@@ -172,7 +197,7 @@ pub fn prepare_request_body(
                 effort: "medium".to_string(),
                 summary: "auto".to_string(),
             }),
-            Some(true), // Store is typically true for web search
+            Some(false), // Store is set to false for web search
             Some("auto".to_string()),
             Some(true),
             Some("disabled".to_string()),
