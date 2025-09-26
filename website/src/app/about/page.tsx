@@ -89,7 +89,7 @@ export default function AboutPage() {
                     </div>
                     <h3 className="text-lg font-semibold mb-2">Intelligent File Discovery</h3>
                     <p className="text-foreground/80 text-sm">
-                      5-stage AI workflow with smart token management. Cost-effective (~$0.10-0.15 per workflow) with git integration and binary file filtering.
+                      Multi-stage workflow: root folder selection, regex pattern filtering, AI relevance assessment. Focused file selection with path validation.
                     </p>
                   </GlassCard>
 

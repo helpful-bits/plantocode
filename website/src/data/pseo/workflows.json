@@ -15,8 +15,8 @@
       "priority": 1,
       "pain_points": [
         {
-          "problem": "Claude Code changes one file, breaks three services",
-          "solution": "File discovery maps all dependencies before refactoring"
+          "problem": "Edits in one module can impact other modules and build steps",
+          "solution": "File discovery maps dependent modules/files before refactoring"
         },
         {
           "problem": "Refactor touches 50+ files, no way to review scope",
@@ -37,7 +37,8 @@
         "No truncation - full file context",
         "Terminal session recording",
         "Rollback points at each step"
-      ]
+      ],
+      "example": "Example: discover and stage edits across packages/ui/, services/api/, and CI configs before running refactor commands."
     },
     {
       "slug": "bug-triage/cursor/windows",
@@ -72,7 +73,7 @@
         "Verify no regressions introduced"
       ],
       "key_features": [
-        "Full WSL integration",
+        "Windows terminal support; bridge to persistent sessions",
         "PowerShell & CMD support",
         "Cross-service debugging"
       ]
@@ -86,7 +87,7 @@
       "meta_title": "Incident Response with AI - Production Debugging Tools | Vibe Manager",
       "meta_description": "AI-assisted incident response and production debugging. Trace issues across services, generate fixes with full context, execute safely.",
       "primary_cta": "Install for Incident Response",
-      "publish": false,
+      "publish": true,
       "priority": 1,
       "pain_points": [
         {
@@ -122,7 +123,7 @@
       "headline": "Monorepo Migration with Claude Code on macOS",
       "subhead": "Transform multiple repositories into a unified monorepo with complete dependency mapping",
       "meta_title": "Monorepo Migration with Claude Code on macOS | Vibe Manager",
-      "meta_description": "Safely migrate to monorepo with Claude Code on macOS. File discovery maps all dependencies, ensures nothing breaks during consolidation.",
+      "meta_description": "Safely migrate to monorepo with Claude Code on macOS. File discovery maps all dependencies, ensures nothing breaks during consolidation. XML plan structure and source traceability help enforce step order during migration.",
       "primary_cta": "Start Monorepo Migration",
       "publish": true,
       "priority": 1,
@@ -142,15 +143,17 @@
       ],
       "workflow_steps": [
         "Map dependencies across all repositories",
-        "Generate consolidated project structure",
+        "Generate consolidated project structure and XML-structured plan",
         "Update import paths and build configs",
         "Validate migration with integrated testing"
       ],
       "key_features": [
         "Cross-repo dependency analysis",
         "Automated path resolution",
-        "Build system unification"
-      ]
+        "Build system unification",
+        "XML-structured plan steps with [src:Pn] markers to guide LLM execution"
+      ],
+      "example": "Example: XML plan maps old packages/* to apps/*; steps include git mv, tsconfig path updates, and workspace scripts."
     },
     {
       "slug": "monorepo-migration/cursor/windows",
@@ -264,82 +267,6 @@
         "Breaking change detection",
         "Automated conflict resolution",
         "Comprehensive test automation"
-      ]
-    },
-    {
-      "slug": "test-flakiness/ci-pipelines/debugging",
-      "workflow": "test-flakiness",
-      "use_case": "ci-pipelines",
-      "specialty": "debugging",
-      "headline": "Fix Flaky Tests in CI Pipelines",
-      "subhead": "Systematically eliminate test flakiness with root cause analysis and targeted fixes",
-      "meta_title": "Fix Flaky CI Tests - Systematic Debugging Approach | Vibe Manager",
-      "meta_description": "Eliminate flaky tests in CI pipelines systematically. AI analyzes failure patterns, identifies root causes, implements targeted fixes.",
-      "primary_cta": "Debug Flaky Tests",
-      "publish": true,
-      "priority": 2,
-      "pain_points": [
-        {
-          "problem": "Random test failures blocking deployments",
-          "solution": "Pattern analysis to identify flakiness root causes"
-        },
-        {
-          "problem": "Time-consuming manual investigation of failures",
-          "solution": "Automated failure analysis and categorization"
-        },
-        {
-          "problem": "Fixes that reduce flakiness but don't eliminate it",
-          "solution": "Systematic elimination with comprehensive validation"
-        }
-      ],
-      "workflow_steps": [
-        "Analyze test failure patterns and timing",
-        "Identify root causes of flaky behavior",
-        "Implement targeted fixes for each failure mode",
-        "Validate stability with extended test runs"
-      ],
-      "key_features": [
-        "Failure pattern analysis",
-        "Root cause identification",
-        "Stability validation testing"
-      ]
-    },
-    {
-      "slug": "performance-profiling/nodejs/terminal",
-      "workflow": "performance-profiling",
-      "use_case": "nodejs",
-      "specialty": "terminal",
-      "headline": "Node.js Performance Profiling with Terminal Commands",
-      "subhead": "Identify and fix Node.js performance bottlenecks using integrated terminal profiling",
-      "meta_title": "Node.js Performance Profiling with Terminal Integration | Vibe Manager",
-      "meta_description": "Profile Node.js applications with integrated terminal. AI analyzes performance data, identifies bottlenecks, suggests optimizations.",
-      "primary_cta": "Start Profiling",
-      "publish": true,
-      "priority": 2,
-      "pain_points": [
-        {
-          "problem": "Performance issues only appear in production",
-          "solution": "Production-like profiling in development environment"
-        },
-        {
-          "problem": "Complex profiling data hard to interpret",
-          "solution": "AI-powered analysis of profiling results"
-        },
-        {
-          "problem": "Optimizations that help one metric hurt another",
-          "solution": "Holistic performance optimization strategies"
-        }
-      ],
-      "workflow_steps": [
-        "Set up comprehensive performance monitoring",
-        "Run profiling sessions with realistic workloads",
-        "Analyze bottlenecks and optimization opportunities",
-        "Implement and validate performance improvements"
-      ],
-      "key_features": [
-        "Integrated terminal profiling",
-        "AI-powered bottleneck analysis",
-        "Holistic optimization strategies"
       ]
     },
     {
@@ -714,78 +641,38 @@
       ]
     },
     {
-      "slug": "release-automation/semantic-versioning",
-      "workflow": "release-automation",
-      "use_case": "semantic-versioning",
-      "headline": "Automate Releases with Semantic Versioning",
-      "subhead": "Fully automated release pipeline with semantic versioning and changelog generation",
-      "meta_title": "Automated Release Pipeline - Semantic Versioning Setup | Vibe Manager",
-      "meta_description": "Automate releases with semantic versioning. AI analyzes changes, determines version bumps, generates changelogs, handles deployment.",
-      "primary_cta": "Automate Releases",
-      "publish": true,
-      "priority": 2,
-      "pain_points": [
-        {
-          "problem": "Manual release process prone to human error",
-          "solution": "Fully automated release pipeline with validation"
-        },
-        {
-          "problem": "Inconsistent versioning across different projects",
-          "solution": "Standardized semantic versioning with automated enforcement"
-        },
-        {
-          "problem": "Release notes and changelogs always outdated",
-          "solution": "Automated changelog generation from commit history"
-        }
-      ],
-      "workflow_steps": [
-        "Analyze commit history and determine version impact",
-        "Generate changelog and release notes automatically",
-        "Create and tag release with proper versioning",
-        "Deploy to appropriate environments with validation"
-      ],
-      "key_features": [
-        "Automated version determination",
-        "Intelligent changelog generation",
-        "Multi-environment deployment"
-      ]
-    },
-    {
       "slug": "accessibility-audit/remediation-plan",
       "workflow": "accessibility-audit",
       "use_case": "remediation-plan",
       "headline": "Web Accessibility Fixes Systematically",
-      "subhead": "Comprehensive accessibility audit with prioritized remediation plan and automated fixes",
+      "subhead": "Generate a targeted remediation plan, then make fixes with reviewable steps",
       "meta_title": "Web Accessibility Audit and Remediation - WCAG Compliance | Vibe Manager",
-      "meta_description": "Systematic web accessibility improvements. AI audits for WCAG compliance, prioritizes fixes, implements automated remediation where possible.",
+      "meta_description": "Plan and track accessibility fixes. Identify affected files, generate concrete remediation steps, and apply changes with review in the terminal.",
       "primary_cta": "Audit Accessibility",
       "publish": true,
       "priority": 2,
       "pain_points": [
         {
-          "problem": "Overwhelming number of accessibility violations",
-          "solution": "Prioritized remediation plan based on user impact"
+          "problem": "Accessibility issues are scattered across templates and components",
+          "solution": "File discovery highlights likely hotspots (img[alt], ARIA roles, headings, color tokens)"
         },
         {
-          "problem": "Accessibility fixes breaking existing functionality",
-          "solution": "Careful implementation with regression testing"
-        },
-        {
-          "problem": "Accessibility compliance checking inconsistent",
-          "solution": "Automated testing integrated into development workflow"
+          "problem": "Hard to coordinate fixes and keep evidence",
+          "solution": "Structured plans with checklists and terminal logs for audit evidence"
         }
       ],
       "workflow_steps": [
-        "Comprehensive accessibility audit across application",
-        "Prioritize violations by user impact and severity",
-        "Implement fixes with automated testing validation",
-        "Establish ongoing accessibility monitoring"
+        "Identify target areas with file discovery (templates, components, styles)",
+        "Draft a focused remediation plan with concrete selectors and examples",
+        "Execute changes in the terminal with commit-by-commit checkpoints",
+        "Capture before/after evidence in session logs"
       ],
       "key_features": [
-        "Comprehensive WCAG auditing",
-        "Impact-based prioritization",
-        "Automated compliance testing"
-      ]
+        "Selector- and file-pattern guidance (e.g., img[alt], aria-*, headings)",
+        "Plan checklists you can copy into PR templates",
+        "Terminal session logs for evidence tracking"
+      ],
+      "example": "Example: update components/Button.tsx aria-labels and styles/tokens.css contrast variables; record terminal session for audit."
     },
     {
       "slug": "i18n-implementation/nextjs-apps",
@@ -800,29 +687,30 @@
       "priority": 2,
       "pain_points": [
         {
-          "problem": "Missing translatable strings scattered throughout codebase",
-          "solution": "Automated string extraction and internationalization"
+          "problem": "Scattered hard-coded strings",
+          "solution": "File discovery across pages/app routes"
         },
         {
-          "problem": "Complex routing and URL structure for multiple locales",
-          "solution": "Next.js i18n routing setup with SEO optimization"
+          "problem": "Complex App Router locale routing",
+          "solution": "Config path suggestions (next.config, middleware, app/[locale]/...)"
         },
         {
-          "problem": "Translation workflow management and updates",
-          "solution": "Integrated translation management with automated workflows"
+          "problem": "Manual updates across components",
+          "solution": "Actionable diffs/commands in plan"
         }
       ],
       "workflow_steps": [
-        "Extract all translatable strings from codebase",
-        "Setup Next.js i18n configuration and routing",
-        "Implement translation management workflow",
-        "Validate functionality across all supported locales"
+        "Identify hard-coded strings and likely locales",
+        "Locate and update Next.js i18n routing and middleware",
+        "Create/organize translation files",
+        "Apply changes via reviewable plan steps"
       ],
       "key_features": [
-        "Automated string extraction",
-        "SEO-optimized locale routing",
-        "Translation workflow integration"
-      ]
+        "File discovery across pages/app routes",
+        "Config path suggestions (next.config, middleware, app/[locale]/...)",
+        "Actionable diffs/commands in plan"
+      ],
+      "example": "Example: create app/[locale]/layout.tsx and messages/en.json; replace hard-coded strings in app/(marketing)/ with t() helper calls."
     },
     {
       "slug": "edge-deployment/vercel-planning",

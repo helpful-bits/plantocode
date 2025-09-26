@@ -29,6 +29,8 @@ pub struct CreateImplementationPlanArgs {
     pub model: Option<String>,
     pub temperature: Option<f32>,
     pub max_tokens: Option<u32>,
+    pub enable_web_search: Option<bool>,
+    pub include_project_structure: Option<bool>,
 }
 
 /// Creates an implementation plan for a development task
@@ -43,6 +45,8 @@ pub async fn create_implementation_plan_command(
     model: Option<String>,
     temperature: Option<f32>,
     max_tokens: Option<u32>,
+    enable_web_search: Option<bool>,
+    include_project_structure: Option<bool>,
     app_handle: AppHandle,
 ) -> AppResult<JobCommandResponse> {
     let args = CreateImplementationPlanArgs {
@@ -55,6 +59,8 @@ pub async fn create_implementation_plan_command(
         model,
         temperature,
         max_tokens,
+        enable_web_search,
+        include_project_structure,
     };
     info!(
         "Creating implementation plan job for task: {}",
@@ -96,6 +102,8 @@ pub async fn create_implementation_plan_command(
         task_description: args.task_description.clone(),
         relevant_files: args.relevant_files,
         selected_root_directories: args.selected_root_directories,
+        enable_web_search: args.enable_web_search.unwrap_or(false),
+        include_project_structure: args.include_project_structure.unwrap_or(true),
     };
 
     // Create and queue the job
@@ -168,6 +176,8 @@ pub async fn estimate_prompt_tokens_command(
     project_directory: String,
     relevant_files: Vec<String>,
     selected_root_directories: Option<Vec<String>>,
+    model: Option<String>,
+    include_project_structure: Option<bool>,
     app_handle: AppHandle,
 ) -> AppResult<PromptTokenEstimateResponse> {
     info!("Estimating tokens for {} prompt", task_type);
@@ -231,8 +241,12 @@ pub async fn estimate_prompt_tokens_command(
     let file_contents_map: std::collections::HashMap<String, String> =
         results.into_iter().filter_map(|result| result).collect();
 
-    // Generate directory tree - use scoped tree if root directories are provided
-    let directory_tree = if let Some(ref root_dirs) = selected_root_directories {
+    // Generate directory tree only if include_project_structure is true (default to true if not specified)
+    let should_include_structure = include_project_structure.unwrap_or(true);
+    let directory_tree = if !should_include_structure {
+        log::debug!("Skipping directory tree generation for token estimation as include_project_structure is false");
+        None
+    } else if let Some(ref root_dirs) = selected_root_directories {
         if !root_dirs.is_empty() {
             log::debug!(
                 "Using scoped directory tree for {} root directories",
@@ -300,7 +314,7 @@ pub async fn estimate_prompt_tokens_command(
         &app_handle,
         parsed_task_type,
         actual_project_directory,
-        None,
+        model,
         None,
         None,
     )

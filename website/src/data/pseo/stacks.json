@@ -2,44 +2,6 @@
   "category": "stacks",
   "pages": [
     {
-      "slug": "rust/tauri-v2/desktop-apps",
-      "language": "rust",
-      "framework": "tauri-v2",
-      "use_case": "desktop-apps",
-      "headline": "Rust + Tauri v2 Desktop Development",
-      "subhead": "Build cross-platform desktop apps with AI assistance that understands Tauri's architecture",
-      "meta_title": "Rust Tauri v2 Desktop App Development - AI Planning | Vibe Manager",
-      "meta_description": "AI-assisted Rust development for Tauri v2 desktop apps. Handles IPC complexity, state management, window orchestration. Full architectural awareness.",
-      "primary_cta": "Start Building with Tauri",
-      "publish": true,
-      "priority": 2,
-      "pain_points": [
-        {
-          "problem": "AI doesn't understand Tauri's IPC patterns",
-          "solution": "Context includes Tauri v2 architecture knowledge"
-        },
-        {
-          "problem": "Frontend-backend state sync is complex",
-          "solution": "Plans handle both Rust and React sides together"
-        },
-        {
-          "problem": "Platform-specific code breaks other platforms",
-          "solution": "Multi-platform testing in planning phase"
-        }
-      ],
-      "workflow_steps": [
-        "Load Rust backend + React frontend context",
-        "Generate Tauri-aware implementation plans",
-        "Handle IPC and state management",
-        "Test on target platforms"
-      ],
-      "key_features": [
-        "Tauri v2 specific patterns",
-        "Cross-platform awareness",
-        "IPC command generation"
-      ]
-    },
-    {
       "slug": "python/django/web-apps",
       "language": "python",
       "framework": "django",

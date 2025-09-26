@@ -34,7 +34,7 @@ export async function writeTerminalInput(
 ): Promise<void> {
   return invoke("write_terminal_input_command", {
     jobId,
-    input: Array.from(bytes),
+    data: Array.from(bytes),
   });
 }
 

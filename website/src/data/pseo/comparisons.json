@@ -26,7 +26,7 @@
           {
             "name": "Session Persistence",
             "vibe_manager": "SQLite + hot reload",
-            "competitor": "File-based only"
+            "competitor": "No built-in cross-reboot persistence (tmux needs plugins; script/asciinema record to files)"
           },
           {
             "name": "Playback",
@@ -46,7 +46,7 @@
           "solution": "SQLite persistence survives crashes"
         },
         {
-          "problem": "asciinema recordings can't be searched",
+          "problem": "asciinema recordings lack built-in full-text search across contents",
           "solution": "Full-text search across all sessions"
         },
         {
@@ -91,12 +91,12 @@
           {
             "name": "Integration",
             "vibe_manager": "Claude Code, Cursor, Codex CLI",
-            "competitor": "Built-in AI only"
+            "competitor": "Built-in Warp AI (no native integration with Cursor or Claude Code)"
           },
           {
             "name": "Pricing",
             "vibe_manager": "$5 credits, pay-as-you-go",
-            "competitor": "$10-25/month subscription"
+            "competitor": "Free, Pro, Turbo, Business, Lightspeed (as of 2025‑09‑26)."
           }
         ]
       },
@@ -129,7 +129,7 @@
       "meta_title": "Vibe Manager vs Raycast AI - Developer Tool Comparison",
       "meta_description": "Compare Vibe Manager's deep architectural planning with Raycast AI's quick commands. File discovery, multi-model planning, terminal integration.",
       "primary_cta": "Try Deep AI Planning",
-      "publish": false,
+      "publish": true,
       "priority": 2,
       "comparison_table": {
         "features": [
@@ -141,7 +141,7 @@
           {
             "name": "Context",
             "vibe_manager": "Full codebase awareness",
-            "competitor": "Current selection only"
+            "competitor": "AI Commands/Chat and AI Extensions with BYOK; productivity launcher focus; not an architectural planning tool or integrated PTY terminal."
           },
           {
             "name": "Terminal",
@@ -181,7 +181,7 @@
           {
             "name": "Multi-Model Support",
             "vibe_manager": "Claude, GPT-4, multiple providers",
-            "competitor": "OpenAI and Claude only"
+            "competitor": "OpenAI, Anthropic (Claude), Google Gemini, DeepSeek, OpenRouter (many providers), and local models (Ollama/OpenAI‑compatible)"
           },
           {
             "name": "Execution Safety",
@@ -226,27 +226,27 @@
           {
             "name": "Context Awareness",
             "vibe_manager": "Full project architecture mapping",
-            "competitor": "Editor-focused context"
+            "competitor": "Indexed codebase context (Codebase Indexing), multi-file edits, Agent Terminal and Shell Mode with approvals/allowlists."
           },
           {
             "name": "Execution Control",
             "vibe_manager": "Plan review and approval workflow",
-            "competitor": "Direct editor modifications"
+            "competitor": "Autonomous edits and terminal execution with review/diff flow and optional approvals/allowlists."
           },
           {
             "name": "Plan Review",
             "vibe_manager": "Multi-step plan generation and review",
-            "competitor": "Inline suggestions only"
+            "competitor": "Review/diff UI, checkpoints, and apply workflow for multi-file changes"
           },
           {
             "name": "Cross-File Changes",
             "vibe_manager": "Coordinated multi-file planning",
-            "competitor": "File-by-file modifications"
+            "competitor": "Agent/tool-driven multi-file edits"
           },
           {
             "name": "Terminal Integration",
             "vibe_manager": "Native terminal with AI plans",
-            "competitor": "Editor terminal only"
+            "competitor": "Shared agent terminal and Shell/Agent modes; background agents can run in remote environments (tmux). Persistence behavior depends on agent/editor context."
           }
         ]
       },
@@ -301,7 +301,7 @@
           {
             "name": "Model Selection",
             "vibe_manager": "Switch between Claude, GPT-4, others",
-            "competitor": "Claude Sonnet only"
+            "competitor": "Anthropic Claude models (e.g., Sonnet 4, Opus 4.1); not multi-provider"
           },
           {
             "name": "Voice Integration",

@@ -1,6 +1,6 @@
 "use client";
 
-import { FileCode, Eye, ClipboardCopy, Loader2 } from "lucide-react";
+import { FileCode, Eye, ClipboardCopy, Loader2, CircleHelp } from "lucide-react";
 import { useCallback, useState, useEffect, useMemo } from "react";
 import { ExternalFoldersManager } from "../generate-prompt/_components/external-folders-manager";
 
@@ -30,6 +30,8 @@ import {
 } from "@/ui/card";
 import { ScrollArea } from "@/ui/scroll-area";
 import { AnimatedNumber } from "@/ui";
+import { Checkbox } from "@/ui/checkbox";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/ui/tooltip";
 
 import { estimatePromptTokensAction } from "@/actions/ai/prompt.actions";
 import ImplementationPlanCard from "./_components/ImplementationPlanCard";
@@ -52,7 +54,15 @@ interface ImplementationPlansPanelProps {
   includedPaths?: string[];
   isCreatingPlan?: boolean;
   planCreationState?: "idle" | "submitting" | "submitted";
-  onCreatePlan?: (taskDescription: string, includedPaths: string[], selectedRootDirectories?: string[] | null) => Promise<void>;
+  onCreatePlan?: (taskDescription: string, includedPaths: string[], selectedRootDirectories?: string[] | null, enableWebSearch?: boolean, includeProjectStructure?: boolean) => Promise<void>;
+  // Web search toggle props
+  enableWebSearch?: boolean;
+  onWebSearchToggle?: (enabled: boolean) => void;
+  // Project structure toggle props
+  includeProjectStructure?: boolean;
+  onProjectStructureToggle?: (enabled: boolean) => void;
+  // Current model prop to determine if web search should be shown
+  currentModel?: string;
 }
 
 export function ImplementationPlansPanel({
@@ -63,8 +73,36 @@ export function ImplementationPlansPanel({
   isCreatingPlan,
   planCreationState,
   onCreatePlan,
+  enableWebSearch = false,
+  onWebSearchToggle,
+  includeProjectStructure = true,
+  onProjectStructureToggle,
+  currentModel,
 }: ImplementationPlansPanelProps) {
   const { trackEvent } = usePlausible();
+
+  // Initialize selectedModelId with currentModel if provided (moved up before useMemo)
+  const [selectedModelId, setSelectedModelId] = useState<string | undefined>(currentModel);
+
+  // Check if the selected model is an OpenAI model
+  const isOpenAIModel = useMemo(() => {
+    // Use the actual selected model from the dropdown, not the initial model from settings
+    const modelToCheck = selectedModelId || currentModel;
+    if (!modelToCheck) return false;
+
+    // Check if the model ID contains OpenAI model patterns
+    // Models may have provider prefixes like "openrouter/openai/gpt-4"
+    const modelLower = modelToCheck.toLowerCase();
+    return modelLower.includes("openai/") ||
+           modelLower.includes("/gpt-") ||
+           modelLower.includes("/o1-") ||
+           modelLower.includes("/o3-") ||
+           modelLower.includes("/o4-") ||
+           modelLower.startsWith("gpt-") ||
+           modelLower.startsWith("o1-") ||
+           modelLower.startsWith("o3-") ||
+           modelLower.startsWith("o4-");
+  }, [selectedModelId, currentModel]);
   const {
     implementationPlans,
     isLoading,
@@ -192,7 +230,6 @@ export function ImplementationPlansPanel({
   // Implementation plan settings state
   const [implementationPlanSettings, setImplementationPlanSettings] = useState<CopyButtonConfig[] | null>(null);
   const [selectedStepNumber, setSelectedStepNumber] = useState<string | null>(null);
-  const [selectedModelId, setSelectedModelId] = useState<string | undefined>(undefined);
   const [allowedModelsForPlan, setAllowedModelsForPlan] = useState<ModelInfo[]>([]);
   
   // Preloaded prompt content state
@@ -370,7 +407,8 @@ export function ImplementationPlansPanel({
           relevantFiles: finalIncludedPaths,
           selectedRootDirectories: selectedRootDirectories || undefined,
           taskType: "implementation_plan",
-          model: selectedModelId!
+          model: selectedModelId!,
+          includeProjectStructure: includeProjectStructure
         });
 
         if (result.isSuccess && result.data) {
@@ -391,7 +429,7 @@ export function ImplementationPlansPanel({
     // Debounce token estimation
     const timeoutId = setTimeout(estimateTokens, 500);
     return () => clearTimeout(timeoutId);
-  }, [sessionId, taskDescription, currentSession?.taskDescription, projectDirectory, includedPaths, selectedRootDirectories, selectedModelId]);
+  }, [sessionId, taskDescription, currentSession?.taskDescription, projectDirectory, includedPaths, selectedRootDirectories, selectedModelId, includeProjectStructure]);
 
 
   // Handle view prompt (renamed from copy prompt)
@@ -542,7 +580,7 @@ export function ImplementationPlansPanel({
         location: 'implementation_plans_panel'
       });
       
-      await onCreatePlan(finalTaskDescription, finalIncludedPaths, selectedRootDirectories);
+      await onCreatePlan(finalTaskDescription, finalIncludedPaths, selectedRootDirectories, enableWebSearch, includeProjectStructure);
     } catch (error) {
       showNotification({
         title: "Implementation Plan Creation Failed",
@@ -617,13 +655,13 @@ export function ImplementationPlansPanel({
         <Card className="bg-card p-6 rounded-lg border border-border shadow-sm mb-6">
           <div>
             <h3 className="text-sm font-medium mb-3 text-foreground">Create New Plan</h3>
-            
-            {/* External Folders Manager - for selecting root directories */}
+
+            {/* External Folders Manager */}
             <ExternalFoldersManager
               onRootsChange={setSelectedRootDirectories}
               className="mb-4"
             />
-            
+
             {/* Token count display with warnings */}
             {(estimatedTokens !== null || isEstimatingTokens) && (
               <div className="mb-3">
@@ -667,17 +705,103 @@ export function ImplementationPlansPanel({
                 </Button>
               </div>
 
-              <Button
-                variant="default"
-                size="sm"
-                onClick={handleCreatePlan}
-                disabled={!canCreatePlan || (() => { if (!estimatedTokens || !runtimeConfig || !selectedModelId) return false; const modelInfo = allowedModelsForPlan.find(m => m.id === selectedModelId); const contextWindow = modelInfo?.contextWindow; if (!contextWindow) return false; const maxOutputTokens = runtimeConfig.tasks?.implementationPlan?.maxTokens ?? 0; return (estimatedTokens + maxOutputTokens) > contextWindow; })()}
-                className="flex items-center justify-center w-full h-9"
-              >
-                <FileCode className="h-4 w-4 mr-2" />
-                {buttonText}
-              </Button>
+              <div className="flex gap-2 items-center">
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handleCreatePlan}
+                  disabled={!canCreatePlan || (() => { if (!estimatedTokens || !runtimeConfig || !selectedModelId) return false; const modelInfo = allowedModelsForPlan.find(m => m.id === selectedModelId); const contextWindow = modelInfo?.contextWindow; if (!contextWindow) return false; const maxOutputTokens = runtimeConfig.tasks?.implementationPlan?.maxTokens ?? 0; return (estimatedTokens + maxOutputTokens) > contextWindow; })()}
+                  className="flex items-center justify-center flex-1 h-9"
+                >
+                  <FileCode className="h-4 w-4 mr-2" />
+                  {buttonText}
+                </Button>
+
+                {/* Web Search Toggle - only show for OpenAI models, inline with button */}
+                {onWebSearchToggle && isOpenAIModel && (
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="enableWebSearch"
+                      checked={enableWebSearch}
+                      onCheckedChange={onWebSearchToggle}
+                      className="data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground"
+                    />
+                    <label
+                      htmlFor="enableWebSearch"
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer whitespace-nowrap"
+                    >
+                      Web Search
+                    </label>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            className="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium ring-offset-background focus-ring disabled:pointer-events-none disabled:opacity-50 cursor-pointer text-foreground hover:bg-accent/40 hover:text-accent-foreground transition-all duration-200 backdrop-blur-sm h-6 w-6 rounded-md"
+                            aria-label="Web search information"
+                          >
+                            <CircleHelp className="h-4 w-4" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-xs">
+                          <p className="text-xs">
+                            When enabled, the AI will search online for the latest documentation and examples.
+                            This may increase token usage and cost but provides more up-to-date information.
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                )}
+
+                {/* Project Structure Toggle - always available */}
+                {onProjectStructureToggle && (
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="includeProjectStructure"
+                      checked={includeProjectStructure}
+                      onCheckedChange={onProjectStructureToggle}
+                      className="data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground"
+                    />
+                    <label
+                      htmlFor="includeProjectStructure"
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer whitespace-nowrap"
+                    >
+                      Project Tree
+                    </label>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            className="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium ring-offset-background focus-ring disabled:pointer-events-none disabled:opacity-50 cursor-pointer text-foreground hover:bg-accent/40 hover:text-accent-foreground transition-all duration-200 backdrop-blur-sm h-6 w-6 rounded-md"
+                            aria-label="Project structure information"
+                          >
+                            <CircleHelp className="h-4 w-4" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-xs">
+                          <p className="text-xs">
+                            When enabled, includes the project directory tree structure in the prompt.
+                            Disable this for very large projects to reduce token usage when the structure isn't needed.
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                )}
+              </div>
             </div>
+
+            {/* Web Search Warning - show right below the checkbox when enabled */}
+            {enableWebSearch && onWebSearchToggle && isOpenAIModel && (
+              <div className="mt-2 p-2 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/30 rounded-md">
+                <p className="text-xs text-amber-700 dark:text-amber-300 flex items-start">
+                  <span className="inline-block w-1 h-1 bg-amber-500 rounded-full mt-1.5 mr-2 flex-shrink-0"></span>
+                  Web search enabled. This will increase token usage by 3-10x or more, resulting in significantly higher costs than the estimate shown.
+                </p>
+              </div>
+            )}
           </div>
 
           <p className="text-xs text-muted-foreground mt-3 text-balance">

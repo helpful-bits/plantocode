@@ -471,7 +471,8 @@ impl TerminalManager {
         // Check if a session already exists for this job and reuse or create
         let session_id = match repo.get_session_by_job_id(job_id).await {
             Ok(Some(mut existing_session)) => {
-                // Reuse the existing session but update its status
+                // For completed/failed sessions, we keep the session record but need a fresh PTY
+                // The session history is preserved, but we start a new terminal process
                 let had_prior_output = !existing_session.output_log.trim().is_empty();
 
                 info!("Reusing existing terminal session for job {} (was: {})", job_id, existing_session.status);
@@ -533,16 +534,56 @@ impl TerminalManager {
                     output_log: String::new(),
                 };
 
-                let id = new_session.id.clone();
+                let mut session_id = new_session.id.clone();
 
-                // Create the new session
-                repo.create_session(&new_session)
-                    .await
-                    .map_err(|e| format!("Failed to create terminal session in DB for job_id={}: {}", job_id, e))?;
+                // Create the new session - handle UNIQUE constraint violation
+                match repo.create_session(&new_session).await {
+                    Ok(_) => {
+                        should_auto_launch_cli = true;
+                    },
+                    Err(e) => {
+                        let error_msg = e.to_string();
+                        if error_msg.contains("UNIQUE constraint failed") {
+                            // Session already exists, try to fetch it again
+                            info!("Session already exists for job {}, attempting to reuse it", job_id);
+                            match repo.get_session_by_job_id(job_id).await {
+                                Ok(Some(existing)) => {
+                                    // Use the existing session
+                                    session_id = existing.id.clone();
+                                    let had_prior_output = !existing.output_log.trim().is_empty();
 
-                should_auto_launch_cli = true;
+                                    // Update it to running status (exit_code is None for running sessions)
+                                    repo.update_session_status_by_job_id(job_id, "running", None)
+                                        .await
+                                        .map_err(|e| format!("Failed to update existing session status for job_id={}: {}", job_id, e))?;
 
-                id
+                                    if !had_prior_output {
+                                        should_auto_launch_cli = true;
+                                    }
+                                },
+                                Ok(None) => {
+                                    return Err(AppError::TerminalError(format!(
+                                        "Failed to create terminal session due to UNIQUE constraint, but session not found for job_id={}",
+                                        job_id
+                                    )));
+                                },
+                                Err(e) => {
+                                    return Err(AppError::TerminalError(format!(
+                                        "Failed to fetch existing session after UNIQUE constraint error for job_id={}: {}",
+                                        job_id, e
+                                    )));
+                                }
+                            }
+                        } else {
+                            return Err(AppError::TerminalError(format!(
+                                "Failed to create terminal session in DB for job_id={}: {}",
+                                job_id, e
+                            )));
+                        }
+                    }
+                }
+
+                session_id
             }
             Err(e) => {
                 return Err(AppError::TerminalError(format!(

@@ -131,22 +131,6 @@ export const TerminalView = React.memo<TerminalViewProps>(({ onData, onReady, on
     // Enable Unicode 11 width tables for proper CJK/emoji alignment
     term.unicode.activeVersion = '11';
 
-    // Prevent browser from intercepting critical keys, but let xterm handle everything
-    term.attachCustomKeyEventHandler((e) => {
-      // Prevent browser defaults for critical keys
-      if (
-        e.key === "Escape" ||
-        e.key === "Backspace" ||
-        e.key === "Tab" ||
-        (e.ctrlKey && (e.key === "c" || e.key === "C"))
-      ) {
-        e.preventDefault?.();
-      }
-      // Always return true - xterm handles the key and fires onData
-      // The PTY will echo back what should be displayed
-      return true;
-    });
-
     // Try to load WebGL renderer only if explicitly enabled
     if (typeof window !== "undefined" && window.localStorage?.getItem("terminal.renderer") === "webgl") {
       try {
