@@ -46,6 +46,9 @@ impl JobProcessor for ImplementationPlanProcessor {
             _ => return Err(AppError::JobError("Invalid payload type".to_string())),
         };
 
+        // Extract web search flag
+        let enable_web_search = payload.enable_web_search;
+
         // Setup job processing
         let (repo, session_repo, settings_repo, mut db_job) =
             job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
@@ -82,8 +85,11 @@ impl JobProcessor for ImplementationPlanProcessor {
         }
         let file_contents = Some(file_contents_map);
 
-        // Generate directory tree - use scoped tree if root directories are provided
-        let directory_tree = if let Some(ref root_dirs) = payload.selected_root_directories {
+        // Generate directory tree only if include_project_structure is true
+        let directory_tree = if !payload.include_project_structure {
+            debug!("Skipping directory tree generation as include_project_structure is false");
+            None
+        } else if let Some(ref root_dirs) = payload.selected_root_directories {
             if !root_dirs.is_empty() {
                 debug!(
                     "Using scoped directory tree for {} root directories",
@@ -206,7 +212,12 @@ impl JobProcessor for ImplementationPlanProcessor {
                 .build();
 
         // Create LLM task runner
-        let task_runner = LlmTaskRunner::new(app_handle.clone(), job.clone(), llm_config);
+        let mut task_runner = LlmTaskRunner::new(app_handle.clone(), job.clone(), llm_config);
+
+        // Add task type for web mode detection
+        if enable_web_search {
+            task_runner = task_runner.with_task_type("implementation_plan_with_web".to_string());
+        }
 
         // Create prompt context - reuse the file contents we already loaded
         let prompt_context = LlmPromptContext {

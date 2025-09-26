@@ -6,9 +6,9 @@
       "tool_integration": "claude-code",
       "feature": "terminal",
       "headline": "Run Claude Code in a Real Terminal",
-      "subhead": "No more copy-paste. Direct terminal execution with session recording.",
+      "subhead": "Bring Claude Code's actions into persistent PTY sessions with review and recording",
       "meta_title": "Claude Code Terminal Integration - Direct Execution | Vibe Manager",
-      "meta_description": "Execute Claude Code directly in persistent terminal sessions. Voice input, session recording, health monitoring. No more copy-paste workflows.",
+      "meta_description": "Run Claude Code inside Vibe Manager's persistent terminal sessions. Copy commands, require approval, and keep a searchable session record with health monitoring.",
       "primary_cta": "Install Terminal Integration",
       "publish": true,
       "priority": 1,
@@ -27,16 +27,18 @@
         }
       ],
       "workflow_steps": [
-        "Generate plan in Claude Code",
-        "Copy to Vibe Manager terminal",
-        "Review commands before execution",
-        "Execute with voice commands or clicks"
+        "Open Vibe Manager terminal (persistent PTY)",
+        "Generate or discuss changes in Claude Code",
+        "Copy commands or plan steps to Vibe Manager terminal",
+        "Review and approve before execution",
+        "Persist output and continue later"
       ],
       "key_features": [
         "Persistent terminal sessions",
         "Voice transcription input",
         "Session health monitoring",
-        "SQLite activity recording"
+        "SQLite activity recording",
+        "Default command approvals remain in Claude Code; Vibe Manager adds persistence and health indicators."
       ]
     },
     {
@@ -46,7 +48,7 @@
       "headline": "OpenAI o3 as Your Terminal Agent",
       "subhead": "Run o3 reasoning models directly in persistent terminal sessions",
       "meta_title": "OpenAI o3 Terminal Agent - Direct Execution | Vibe Manager",
-      "meta_description": "Execute OpenAI o3 reasoning directly in terminal. Chain-of-thought visible, persistent sessions, voice input. The missing o3 terminal interface.",
+      "meta_description": "Execute OpenAI o3 reasoning directly in terminal. Reasoning summaries via the Responses API (raw internal chains are not exposed), persistent sessions, voice input. The missing o3 terminal interface.",
       "primary_cta": "Run o3 in Terminal",
       "publish": true,
       "priority": 1,
@@ -71,8 +73,8 @@
         "Execute with full visibility"
       ],
       "key_features": [
-        "Full reasoning chain visibility",
-        "Persistent session context",
+        "Reasoning summaries available (Responses API) — raw internal chains withheld",
+        "Persistent session context via Responses API threads/objects (no raw chain-of-thought; reasoning summaries only)",
         "Voice-controlled execution"
       ]
     },
@@ -85,7 +87,7 @@
       "meta_title": "Cursor Composer Mode + Architectural Planning | Vibe Manager",
       "meta_description": "Enhance Cursor Composer with full codebase context. File discovery, dependency mapping, impact analysis before Composer executes.",
       "primary_cta": "Enhance Cursor Composer",
-      "publish": false,
+      "publish": true,
       "priority": 2,
       "pain_points": [
         {
@@ -126,8 +128,8 @@
       "priority": 1,
       "pain_points": [
         {
-          "problem": "Aider sessions lack structured planning approach",
-          "solution": "Pre-generate implementation plans to guide Aider"
+          "problem": "Need to control whether AI edits are auto-applied or reviewed",
+          "solution": "Use Aider's /architect to propose and your choice of /ask or /code to apply; you control when changes are edited and committed."
         },
         {
           "problem": "Complex changes get lost in chat history",
@@ -145,10 +147,10 @@
         "Execute with voice commands and session recording"
       ],
       "key_features": [
-        "Plan-guided Aider sessions",
-        "Automated file context selection",
-        "Voice-controlled execution",
-        "Persistent session recording"
+        "Plan-guided Aider sessions (architect + editor workflow)",
+        "Automated file context selection via repo map",
+        "Voice-to-code (/voice) for spoken instructions",
+        "Session save/export (/save) and shareable transcripts — not a hosted continuous cloud recording"
       ]
     },
     {
@@ -196,7 +198,7 @@
       "headline": "Bridge Cursor Outputs to Terminal Execution",
       "subhead": "Execute Cursor's generated commands safely in persistent terminal sessions",
       "meta_title": "Cursor Terminal Bridge - Safe Command Execution | Vibe Manager",
-      "meta_description": "Bridge Cursor IDE to terminal execution. Review generated commands, execute with voice control, maintain session history and health monitoring.",
+      "meta_description": "Bridge Cursor IDE to Vibe Manager's terminal. Review generated commands, execute with voice control, and leverage Vibe Manager's persistent sessions and health monitoring.",
       "primary_cta": "Bridge Cursor to Terminal",
       "publish": true,
       "priority": 1,
@@ -206,12 +208,12 @@
           "solution": "Direct bridge with review mode before execution"
         },
         {
-          "problem": "Cursor's terminal integration lacks persistence",
-          "solution": "Persistent sessions with full history recording"
+          "problem": "Foreground terminal sessions may not persist across app reloads; Shell Mode commands do not persist state",
+          "solution": "Editor-embedded terminals are tied to the editor/agent lifecycle; bridging to Vibe Manager adds persistent PTY sessions with ring-buffered history."
         },
         {
-          "problem": "No visibility into command execution health",
-          "solution": "Real-time terminal health monitoring"
+          "problem": "Limited built-in process health insights in editor terminals",
+          "solution": "Bridge adds real-time terminal health indicators and monitoring in Vibe Manager"
         }
       ],
       "workflow_steps": [
@@ -221,10 +223,10 @@
         "Execute with voice control and monitoring"
       ],
       "key_features": [
-        "Safe command review before execution",
-        "Persistent terminal session bridge",
-        "Voice-controlled execution",
-        "Real-time health monitoring"
+        "Safe command review before execution (user approval) — provided by Vibe Manager",
+        "Persistent sessions with full history recording — provided by Vibe Manager",
+        "Voice-controlled execution — provided by Vibe Manager",
+        "Real-time terminal health monitoring — provided by Vibe Manager"
       ]
     },
     {
@@ -232,9 +234,9 @@
       "tool_integration": "openai-o3",
       "feature": "reasoning-synthesis",
       "headline": "Synthesize o3 Reasoning into Plans",
-      "subhead": "Transform o3's complex reasoning chains into executable implementation plans",
+      "subhead": "Transform o3's complex reasoning outputs into executable implementation plans",
       "meta_title": "OpenAI o3 Reasoning Synthesis - Executable Plans | Vibe Manager",
-      "meta_description": "Convert o3's reasoning chains into structured implementation plans. File discovery, dependency analysis, and terminal execution from o3 insights.",
+      "meta_description": "Convert o3's reasoning outputs (summaries; raw internal chains are not exposed) into structured implementation plans. File discovery, dependency analysis, and terminal execution from o3 insights.",
       "primary_cta": "Synthesize o3 Reasoning",
       "publish": true,
       "priority": 1,
@@ -244,7 +246,7 @@
           "solution": "Synthesize reasoning into concrete, executable plans"
         },
         {
-          "problem": "Complex reasoning chains get lost in translation",
+          "problem": "Complex reasoning outputs get lost in translation",
           "solution": "Preserve reasoning context in structured plan format"
         },
         {

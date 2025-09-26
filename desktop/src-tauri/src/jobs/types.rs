@@ -46,6 +46,8 @@ pub struct ImplementationPlanPayload {
     pub task_description: String,
     pub relevant_files: Vec<String>,
     pub selected_root_directories: Option<Vec<String>>,
+    pub enable_web_search: bool,
+    pub include_project_structure: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

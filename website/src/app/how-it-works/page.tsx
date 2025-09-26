@@ -82,15 +82,15 @@ export default function HowItWorksPage() {
     {
       step: 2,
       title: "Intelligent File Discovery",
-      subtitle: "AI finds the true impact surface",
+      subtitle: "Multi-stage AI identifies relevant files",
       icon: <FileSearch className="w-6 h-6" />,
-      description: "From thousands of files, AI identifies the exact files you need to touch.",
+      description: "Hierarchical folder selection, pattern-based filtering, and AI relevance assessment to find exactly the files needed for your task.",
       features: [
-        "Pattern groups generated per workflow stage",
-        "Regex filters and exclusions ready to apply",
-        "Relevance scoring before you commit to a selection",
-        "Undo/redo history for file picks",
-        "Support for external file metadata"
+        "Root folder selection based on task context",
+        "Targeted regex pattern groups for specific functionality",
+        "AI-powered relevance assessment and filtering",
+        "Extended path finding for dependencies",
+        "Path correction and validation against filesystem"
       ]
     },
     {

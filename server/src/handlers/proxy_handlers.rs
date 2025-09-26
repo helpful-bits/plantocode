@@ -378,7 +378,10 @@ pub async fn llm_chat_completion_handler(
     let web_mode = payload
         .task_type
         .as_ref()
-        .map(|task_type| task_type == "web_search_execution")
+        .map(|task_type| {
+            task_type == "web_search_execution" ||
+            task_type == "implementation_plan_with_web"
+        })
         .unwrap_or(false);
 
     // Check if request is streaming

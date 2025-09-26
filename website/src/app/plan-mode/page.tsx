@@ -133,13 +133,13 @@ export default function HirePage() {
   ];
 
   return (
-    <React.Fragment>
+    <>
       <StructuredData data={softwareApplicationJsonLd} />
       <div className="fixed inset-0 -z-20" style={{ background: 'var(--background-gradient)' }} />
-      <div className="relative z-0 bg-transparent min-h-screen flex flex-col">
+      <div className="relative z-0 bg-transparent">
         <Header />
 
-        <main className="flex-grow">
+        <main>
           <section className="py-16 sm:py-20 md:py-24 lg:py-32 px-4">
             <div className="container mx-auto max-w-6xl">
               {/* Hero */}
@@ -333,6 +333,6 @@ export default function HirePage() {
           </section>
         </main>
       </div>
-    </React.Fragment>
+    </>
   );
 }

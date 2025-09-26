@@ -48,6 +48,7 @@ pub struct LlmTaskRunner {
     app_handle: AppHandle,
     job: Job,
     config: LlmTaskConfig,
+    custom_task_type: Option<String>,
 }
 
 impl LlmTaskRunner {
@@ -56,7 +57,13 @@ impl LlmTaskRunner {
             app_handle,
             job,
             config,
+            custom_task_type: None,
         }
+    }
+
+    pub fn with_task_type(mut self, task_type: String) -> Self {
+        self.custom_task_type = Some(task_type);
+        self
     }
 
     pub fn get_config(&self) -> &LlmTaskConfig {
@@ -118,7 +125,11 @@ impl LlmTaskRunner {
         )?;
 
         // Add task type for web mode detection
-        api_options.task_type = Some(self.job.task_type.to_string());
+        api_options.task_type = Some(
+            self.custom_task_type
+                .clone()
+                .unwrap_or_else(|| self.job.task_type.to_string())
+        );
 
         // Execute the LLM call
         let response =
@@ -218,7 +229,11 @@ impl LlmTaskRunner {
         // DO NOT set request_id - server will generate and return it in stream_started event
 
         // Add task type for web mode detection
-        api_options.task_type = Some(self.job.task_type.to_string());
+        api_options.task_type = Some(
+            self.custom_task_type
+                .clone()
+                .unwrap_or_else(|| self.job.task_type.to_string())
+        );
 
         // Log full prompt to file for debugging
         self.log_prompt_to_file(&system_prompt, &user_prompt, "streaming")

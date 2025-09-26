@@ -10,7 +10,7 @@
       "meta_title": "Voice to Terminal - Natural Language Commands | Vibe Manager",
       "meta_description": "Convert voice to terminal commands with AI. Natural language processing, command preview, voice transcription. Hands-free terminal control.",
       "primary_cta": "Enable Voice Commands",
-      "publish": false,
+      "publish": true,
       "priority": 2,
       "pain_points": [
         {
@@ -47,7 +47,7 @@
       "meta_title": "AI File Discovery - Smart Context Loading | Vibe Manager",
       "meta_description": "AI-powered file discovery that understands your task. Finds relevant files, maps dependencies, loads full context.",
       "primary_cta": "Try File Discovery",
-      "publish": false,
+      "publish": true,
       "priority": 2,
       "workflow_steps": [
         "Describe your task",
@@ -65,7 +65,7 @@
       "meta_title": "Multi-Model AI Planning - Best of All Models | Vibe Manager",
       "meta_description": "Generate plans with multiple AI models, then synthesize the best approach. GPT-5, Claude 4, Gemini 2.5 Pro working together.",
       "primary_cta": "Try Multi-Model Planning",
-      "publish": false,
+      "publish": true,
       "priority": 2,
       "workflow_steps": [
         "Generate with Model A",

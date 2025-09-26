@@ -746,6 +746,12 @@ async fn handle_actions_create_implementation_plan(app_handle: &AppHandle, reque
         .and_then(|v| v.as_u64())
         .map(|u| u as u32);
 
+    let enable_web_search = request.params.get("enableWebSearch")
+        .and_then(|v| v.as_bool());
+
+    let include_project_structure = request.params.get("includeProjectStructure")
+        .and_then(|v| v.as_bool());
+
     match implementation_plan_commands::create_implementation_plan_command(
         session_id,
         task_description,
@@ -756,6 +762,8 @@ async fn handle_actions_create_implementation_plan(app_handle: &AppHandle, reque
         model,
         temperature,
         max_tokens,
+        enable_web_search,
+        include_project_structure,
         app_handle.clone()
     ).await {
         Ok(response) => RpcResponse {
