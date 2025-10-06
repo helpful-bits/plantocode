@@ -17,7 +17,7 @@ FROM (VALUES
     
     -- Anthropic models - input 1.3
     ('anthropic/claude-opus-4-20250514', 1.3::DECIMAL(5,3), 2.6::DECIMAL(5,3), 500),
-    ('anthropic/claude-sonnet-4-20250514', 1.3::DECIMAL(5,3), 2.6::DECIMAL(5,3), 355),
+    ('anthropic/claude-sonnet-4-5-20250929', 1.3::DECIMAL(5,3), 2.6::DECIMAL(5,3), 355),
     ('anthropic/claude-3-7-sonnet-20250219', 1.3::DECIMAL(5,3), 2.6::DECIMAL(5,3), 360),
     
     -- Google models - input 1.15

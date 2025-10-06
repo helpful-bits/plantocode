@@ -81,7 +81,7 @@ export const MonitoringPanel = ({ onBack, onOpenTerminal }: MonitoringPanelProps
     const attention = getAttention(job.id);
 
     // Attention takes precedence
-    if (attention && attention.level !== 'none') {
+    if (attention && attention.level) {
       const attentionColors = {
         high: 'text-red-500',
         medium: 'text-yellow-500',

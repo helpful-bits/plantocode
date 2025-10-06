@@ -244,7 +244,9 @@ pub async fn estimate_prompt_tokens_command(
     // Generate directory tree only if include_project_structure is true (default to true if not specified)
     let should_include_structure = include_project_structure.unwrap_or(true);
     let directory_tree = if !should_include_structure {
-        log::debug!("Skipping directory tree generation for token estimation as include_project_structure is false");
+        log::debug!(
+            "Skipping directory tree generation for token estimation as include_project_structure is false"
+        );
         None
     } else if let Some(ref root_dirs) = selected_root_directories {
         if !root_dirs.is_empty() {

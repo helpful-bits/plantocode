@@ -7,11 +7,11 @@ use serde_json::Value;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::{info, error, instrument};
+use tracing::{error, info, instrument};
 
-use super::structs::*;
-use super::streaming::*;
 use super::polling::*;
+use super::streaming::*;
+use super::structs::*;
 use super::transcription::*;
 use super::utils::*;
 
@@ -107,98 +107,105 @@ impl OpenAIClient {
     > {
         let request_id = self.get_next_request_id().await;
 
-        let url = format!("{}{}", self.base_url.trim_end_matches("/v1"), "/v1/responses");
+        let url = format!(
+            "{}{}",
+            self.base_url.trim_end_matches("/v1"),
+            "/v1/responses"
+        );
         info!("OpenAI endpoint URL: {}", url);
-            // Use responses API for web mode
-            let requires_background = model_requires_background(&request.model, web_mode);
+        // Use responses API for web mode
+        let requires_background = model_requires_background(&request.model, web_mode);
 
-            let mut non_streaming_request = request.clone();
-            non_streaming_request.stream = Some(false);
-            let (_, request_body) = prepare_request_body(
-                &non_streaming_request,
-                web_mode,
-                Some(requires_background),
-            )?;
+        let mut non_streaming_request = request.clone();
+        non_streaming_request.stream = Some(false);
+        let (_, request_body) =
+            prepare_request_body(&non_streaming_request, web_mode, Some(requires_background))?;
 
-            let response = self
-                .client
-                .post(&url)
-                .bearer_auth(&self.api_key)
-                .header("Content-Type", "application/json")
-                .header("X-Request-ID", request_id.to_string())
-                .json(&request_body)
-                .send()
+        let response = self
+            .client
+            .post(&url)
+            .bearer_auth(&self.api_key)
+            .header("Content-Type", "application/json")
+            .header("X-Request-ID", request_id.to_string())
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| AppError::External(format!("OpenAI request failed: {}", e)))?;
+
+        let status = response.status();
+        let headers = response.headers().clone();
+
+        if !status.is_success() {
+            let error_text = response
+                .text()
                 .await
-                .map_err(|e| AppError::External(format!("OpenAI request failed: {}", e)))?;
+                .unwrap_or_else(|_| "Failed to get error response".to_string());
+            return Err(AppError::External(format!(
+                "OpenAI request failed with status {}: {}",
+                status, error_text
+            )));
+        }
 
-            let status = response.status();
-            let headers = response.headers().clone();
+        let responses_response: OpenAIResponsesResponse = response
+            .json()
+            .await
+            .map_err(|e| AppError::Internal(format!("OpenAI deserialization failed: {}", e)))?;
 
-            if !status.is_success() {
-                let error_text = response
-                    .text()
-                    .await
-                    .unwrap_or_else(|_| "Failed to get error response".to_string());
-                return Err(AppError::External(format!(
-                    "OpenAI request failed with status {}: {}",
-                    status, error_text
-                )));
-            }
+        let final_response = if requires_background {
+            wait_until_complete(
+                &self.client,
+                &self.api_key,
+                &self.base_url,
+                &responses_response.id,
+            )
+            .await?
+        } else {
+            responses_response
+        };
 
-            let responses_response: OpenAIResponsesResponse = response
-                .json()
-                .await
-                .map_err(|e| AppError::Internal(format!("OpenAI deserialization failed: {}", e)))?;
-
-            let final_response = if requires_background {
-                wait_until_complete(&self.client, &self.api_key, &self.base_url, &responses_response.id).await?
+        let (prompt_tokens, cache_write, cache_read, completion_tokens) =
+            if let Some(usage) = &final_response.usage {
+                (usage.input_tokens, 0, 0, usage.output_tokens)
             } else {
-                responses_response
+                (0, 0, 0, 0)
             };
 
-            let (prompt_tokens, cache_write, cache_read, completion_tokens) =
-                if let Some(usage) = &final_response.usage {
-                    (usage.input_tokens, 0, 0, usage.output_tokens)
-                } else {
-                    (0, 0, 0, 0)
-                };
+        let content = extract_content_from_responses(&final_response);
 
-            let content = extract_content_from_responses(&final_response);
+        let chat_usage = final_response.usage.map(|responses_usage| OpenAIUsage {
+            prompt_tokens: responses_usage.input_tokens,
+            completion_tokens: responses_usage.output_tokens,
+            total_tokens: responses_usage.total_tokens,
+            prompt_tokens_details: None,
+            other: None,
+        });
 
-            let chat_usage = final_response.usage.map(|responses_usage| OpenAIUsage {
-                prompt_tokens: responses_usage.input_tokens,
-                completion_tokens: responses_usage.output_tokens,
-                total_tokens: responses_usage.total_tokens,
-                prompt_tokens_details: None,
-                other: None,
-            });
+        let response_id = final_response.id.clone();
+        let chat_response = OpenAIChatResponse {
+            id: final_response.id,
+            choices: vec![OpenAIChoice {
+                message: OpenAIResponseMessage {
+                    role: "assistant".to_string(),
+                    content: Some(content),
+                },
+                index: 0,
+                finish_reason: Some("stop".to_string()),
+            }],
+            created: final_response.created_at,
+            model: final_response.model,
+            object: Some("chat.completion".to_string()),
+            usage: chat_usage,
+        };
 
-            let response_id = final_response.id.clone();
-            let chat_response = OpenAIChatResponse {
-                id: final_response.id,
-                choices: vec![OpenAIChoice {
-                    message: OpenAIResponseMessage {
-                        role: "assistant".to_string(),
-                        content: Some(content),
-                    },
-                    index: 0,
-                    finish_reason: Some("stop".to_string()),
-                }],
-                created: final_response.created_at,
-                model: final_response.model,
-                object: Some("chat.completion".to_string()),
-                usage: chat_usage,
-            };
-
-            Ok((
-                chat_response,
-                headers,
-                prompt_tokens,
-                cache_write,
-                cache_read,
-                completion_tokens,
-                Some(response_id),
-            ))
+        Ok((
+            chat_response,
+            headers,
+            prompt_tokens,
+            cache_write,
+            cache_read,
+            completion_tokens,
+            Some(response_id),
+        ))
     }
 
     // Streaming Chat Completions for actix-web compatibility
@@ -224,15 +231,19 @@ impl OpenAIClient {
             .pool_idle_timeout(Some(std::time::Duration::from_secs(0))) // Disable connection reuse
             .tcp_keepalive(std::time::Duration::from_secs(60)) // Keep connection alive during streaming
             .build()
-            .map_err(|e| AppError::Internal(format!("Failed to create isolated HTTP client: {}", e)))?;
-        
-        info!("Created isolated HTTP client for streaming request - Model: {}", request.model);
-        
+            .map_err(|e| {
+                AppError::Internal(format!("Failed to create isolated HTTP client: {}", e))
+            })?;
+
+        info!(
+            "Created isolated HTTP client for streaming request - Model: {}",
+            request.model
+        );
+
         // Clone necessary parts for 'static lifetime
         let api_key = self.api_key.clone();
         let base_url = self.base_url.clone();
         let request_id_counter = self.request_id_counter.clone();
-
 
         if model_requires_background(&request.model, web_mode) {
             // For deep research models with web mode, use immediate streaming with progress updates
@@ -353,22 +364,32 @@ impl OpenAIClient {
                 Ok(bytes) => Ok(web::Bytes::from(bytes)),
                 Err(e) => {
                     // Enhanced error logging with context
-                    error!("OpenAI stream error - Model: {}, RequestID: {}, Error: {}",
-                           model_for_error, request_id_for_error, e);
+                    error!(
+                        "OpenAI stream error - Model: {}, RequestID: {}, Error: {}",
+                        model_for_error, request_id_for_error, e
+                    );
 
                     // Categorize the error type
                     if e.is_timeout() {
-                        Err(AppError::External(format!("OpenAI stream timeout [Model: {}, Request: {}]",
-                                                     model_for_error, request_id_for_error)))
+                        Err(AppError::External(format!(
+                            "OpenAI stream timeout [Model: {}, Request: {}]",
+                            model_for_error, request_id_for_error
+                        )))
                     } else if e.is_connect() {
-                        Err(AppError::External(format!("OpenAI connection failed [Model: {}, Request: {}]",
-                                                     model_for_error, request_id_for_error)))
+                        Err(AppError::External(format!(
+                            "OpenAI connection failed [Model: {}, Request: {}]",
+                            model_for_error, request_id_for_error
+                        )))
                     } else if e.is_body() {
-                        Err(AppError::External(format!("OpenAI response body error [Model: {}, Request: {}]: {}",
-                                                     model_for_error, request_id_for_error, e)))
+                        Err(AppError::External(format!(
+                            "OpenAI response body error [Model: {}, Request: {}]: {}",
+                            model_for_error, request_id_for_error, e
+                        )))
                     } else {
-                        Err(AppError::External(format!("OpenAI network error [Model: {}, Request: {}]: {}",
-                                                     model_for_error, request_id_for_error, e)))
+                        Err(AppError::External(format!(
+                            "OpenAI network error [Model: {}, Request: {}]: {}",
+                            model_for_error, request_id_for_error, e
+                        )))
                     }
                 }
             });
@@ -379,7 +400,7 @@ impl OpenAIClient {
             Ok((headers, boxed_stream, None))
         }
         .await?;
-        
+
         Ok(result)
     }
 
@@ -513,7 +534,7 @@ impl OpenAIClient {
                 completion_tokens as i32,
                 0, // cache_write_tokens is 0 for OpenAI
                 cache_read_tokens,
-                model_id.to_string()
+                model_id.to_string(),
             );
 
             usage.validate().ok()?;
@@ -538,7 +559,7 @@ impl OpenAIClient {
                 output_tokens as i32,
                 0, // Responses API doesn't provide cache write details
                 cache_read_tokens,
-                model_id.to_string()
+                model_id.to_string(),
             );
 
             usage.validate().ok()?;

@@ -1,10 +1,10 @@
-use actix_web::{get, web, HttpResponse, Result};
-use std::sync::Arc;
+use actix_web::{HttpResponse, Result, get, web};
+use log::info;
 use serde::{Deserialize, Serialize};
-use log::{info};
+use std::sync::Arc;
 
-use crate::models::AuthenticatedUser;
 use crate::error::AppError;
+use crate::models::AuthenticatedUser;
 use crate::models::ListInvoicesResponse;
 use crate::services::billing_service::BillingService;
 
@@ -22,12 +22,15 @@ pub async fn list_invoices(
 ) -> Result<HttpResponse, AppError> {
     // Validate and sanitize pagination parameters
     let limit = query.limit.unwrap_or(50).clamp(1, 100); // Limit between 1 and 100
-    
-    
+
     let response = billing_service
         .list_invoices_for_user(user.user_id, limit, query.starting_after.clone())
         .await?;
-    
-    info!("Successfully retrieved {} invoices for user {}", response.invoices.len(), user.user_id);
+
+    info!(
+        "Successfully retrieved {} invoices for user {}",
+        response.invoices.len(),
+        user.user_id
+    );
     Ok(HttpResponse::Ok().json(response))
 }

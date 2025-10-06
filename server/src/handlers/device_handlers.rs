@@ -1,19 +1,22 @@
-use actix_web::{web, HttpResponse, Result, HttpRequest};
+use actix_web::{HttpRequest, HttpResponse, Result, web};
 use actix_web_actors::ws;
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-use std::sync::Arc;
-use serde_json::Value as JsonValue;
-use tracing::{info, warn, error, debug};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 use sqlx::types::{BigDecimal, ipnetwork::IpNetwork};
 use std::str::FromStr;
+use std::sync::Arc;
+use tracing::{debug, error, info, warn};
+use uuid::Uuid;
 
-use crate::db::repositories::device_repository::{DeviceRepository, RegisterDeviceRequest, HeartbeatRequest};
+use crate::db::repositories::device_repository::{
+    DeviceRepository, HeartbeatRequest, RegisterDeviceRequest,
+};
+use crate::error::AppError;
+use crate::models::AuthenticatedUser;
 use crate::services::device_connection_manager::DeviceConnectionManager;
 use crate::services::device_link_ws::{DeviceLinkWs, create_device_link_ws};
-use crate::models::AuthenticatedUser;
-use crate::error::AppError;
+use crate::services::relay_session_store::RelaySessionStore;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RegisterDeviceRequestBody {
@@ -82,31 +85,64 @@ pub async fn register_device_handler(
     device_repo: web::Data<DeviceRepository>,
     user: AuthenticatedUser,
     req_body: web::Json<RegisterDeviceRequestBody>,
+    req: HttpRequest,
 ) -> Result<HttpResponse, AppError> {
-    let device_id = Uuid::new_v4();
+    // Extract X-Device-ID header if present, otherwise generate new UUID
+    let device_id = if let Some(header_device_id) = req.headers().get("X-Device-ID") {
+        if let Ok(id_str) = header_device_id.to_str() {
+            if let Ok(uuid) = Uuid::parse_str(id_str) {
+                info!(
+                    user_id = %user.user_id,
+                    device_id = %uuid,
+                    "Using client-provided device ID from X-Device-ID header"
+                );
+                uuid
+            } else {
+                warn!(
+                    user_id = %user.user_id,
+                    "Invalid X-Device-ID header format, generating new UUID"
+                );
+                Uuid::new_v4()
+            }
+        } else {
+            warn!(
+                user_id = %user.user_id,
+                "Could not parse X-Device-ID header, generating new UUID"
+            );
+            Uuid::new_v4()
+        }
+    } else {
+        Uuid::new_v4()
+    };
 
     // Convert IP addresses to JSON
-    let local_ips = req_body.local_ips.as_ref().map(|ips| {
-        serde_json::to_value(ips).unwrap_or(JsonValue::Null)
-    });
+    let local_ips = req_body
+        .local_ips
+        .as_ref()
+        .map(|ips| serde_json::to_value(ips).unwrap_or(JsonValue::Null));
 
     // Parse public IP if provided
     let public_ip = req_body.public_ip.as_ref().and_then(|ip_str| {
-        ip_str.parse::<std::net::IpAddr>().ok().map(|ip| {
-            IpNetwork::from(ip)
-        })
+        ip_str
+            .parse::<std::net::IpAddr>()
+            .ok()
+            .map(|ip| IpNetwork::from(ip))
     });
 
     // Convert available ports to JSON
-    let available_ports = req_body.available_ports.as_ref().map(|ports| {
-        serde_json::to_value(ports).unwrap_or(JsonValue::Null)
-    });
+    let available_ports = req_body
+        .available_ports
+        .as_ref()
+        .map(|ports| serde_json::to_value(ports).unwrap_or(JsonValue::Null));
 
     let register_request = RegisterDeviceRequest {
         device_id,
         user_id: user.user_id,
         device_name: req_body.device_name.clone(),
-        device_type: req_body.device_type.clone().unwrap_or_else(|| "desktop".to_string()),
+        device_type: req_body
+            .device_type
+            .clone()
+            .unwrap_or_else(|| "desktop".to_string()),
         platform: req_body.platform.clone(),
         platform_version: req_body.platform_version.clone(),
         app_version: req_body.app_version.clone(),
@@ -114,7 +150,10 @@ pub async fn register_device_handler(
         public_ip,
         relay_eligible: req_body.relay_eligible.unwrap_or(true),
         available_ports,
-        capabilities: req_body.capabilities.clone().unwrap_or_else(|| serde_json::json!({})),
+        capabilities: req_body
+            .capabilities
+            .clone()
+            .unwrap_or_else(|| serde_json::json!({})),
     };
 
     let device = device_repo.register_device(register_request).await?;
@@ -144,23 +183,32 @@ pub async fn get_devices_handler(
 ) -> Result<HttpResponse, AppError> {
     let devices = device_repo.list_devices_by_user(&user.user_id).await?;
 
-    let device_infos: Vec<DeviceInfo> = devices.into_iter().map(|device| DeviceInfo {
-        device_id: device.device_id,
-        device_name: device.device_name,
-        device_type: device.device_type,
-        platform: device.platform,
-        platform_version: device.platform_version,
-        app_version: device.app_version,
-        status: device.status,
-        last_heartbeat: device.last_heartbeat,
-        cpu_usage: device.cpu_usage.as_ref().and_then(|bd| bd.to_string().parse::<f64>().ok()),
-        memory_usage: device.memory_usage.as_ref().and_then(|bd| bd.to_string().parse::<f64>().ok()),
-        disk_space_gb: device.disk_space_gb,
-        active_jobs: device.active_jobs,
-        capabilities: device.capabilities,
-        created_at: device.created_at,
-        updated_at: device.updated_at,
-    }).collect();
+    let device_infos: Vec<DeviceInfo> = devices
+        .into_iter()
+        .map(|device| DeviceInfo {
+            device_id: device.device_id,
+            device_name: device.device_name,
+            device_type: device.device_type,
+            platform: device.platform,
+            platform_version: device.platform_version,
+            app_version: device.app_version,
+            status: device.status,
+            last_heartbeat: device.last_heartbeat,
+            cpu_usage: device
+                .cpu_usage
+                .as_ref()
+                .and_then(|bd| bd.to_string().parse::<f64>().ok()),
+            memory_usage: device
+                .memory_usage
+                .as_ref()
+                .and_then(|bd| bd.to_string().parse::<f64>().ok()),
+            disk_space_gb: device.disk_space_gb,
+            active_jobs: device.active_jobs,
+            capabilities: device.capabilities,
+            created_at: device.created_at,
+            updated_at: device.updated_at,
+        })
+        .collect();
 
     debug!(
         user_id = %user.user_id,
@@ -179,7 +227,9 @@ pub async fn unregister_device_handler(
 ) -> Result<HttpResponse, AppError> {
     let device_id = path.into_inner();
 
-    device_repo.unregister_device(&device_id, &user.user_id).await?;
+    device_repo
+        .unregister_device(&device_id, &user.user_id)
+        .await?;
 
     info!(
         user_id = %user.user_id,
@@ -200,14 +250,20 @@ pub async fn heartbeat_handler(
     let device_id = path.into_inner();
 
     let heartbeat_request = HeartbeatRequest {
-        cpu_usage: req_body.cpu_usage.and_then(|v| BigDecimal::from_str(&v.to_string()).ok()),
-        memory_usage: req_body.memory_usage.and_then(|v| BigDecimal::from_str(&v.to_string()).ok()),
+        cpu_usage: req_body
+            .cpu_usage
+            .and_then(|v| BigDecimal::from_str(&v.to_string()).ok()),
+        memory_usage: req_body
+            .memory_usage
+            .and_then(|v| BigDecimal::from_str(&v.to_string()).ok()),
         disk_space_gb: req_body.disk_space_gb,
         active_jobs: req_body.active_jobs.unwrap_or(0),
         status: req_body.status.clone(),
     };
 
-    device_repo.update_heartbeat(&device_id, heartbeat_request).await?;
+    device_repo
+        .update_heartbeat(&device_id, heartbeat_request)
+        .await?;
 
     debug!(
         user_id = %user.user_id,
@@ -260,7 +316,9 @@ pub async fn save_push_token_handler(
 ) -> Result<HttpResponse, AppError> {
     let device_id = path.into_inner();
 
-    device_repo.save_push_token(&device_id, &req_body.push_token).await?;
+    device_repo
+        .save_push_token(&device_id, &req_body.push_token)
+        .await?;
 
     info!(
         user_id = %user.user_id,
@@ -280,16 +338,23 @@ pub async fn device_link_ws_handler(
     stream: web::Payload,
     connection_manager: web::Data<DeviceConnectionManager>,
     device_repo: web::Data<DeviceRepository>,
+    relay_store: web::Data<RelaySessionStore>,
     user: AuthenticatedUser,
 ) -> Result<HttpResponse, actix_web::Error> {
     let user_id = user.user_id;
+    let correlation_id = Uuid::new_v4();
 
     // Add targeted observability before WebSocket upgrade
-    let remote_peer = req.peer_addr().map(|addr| addr.to_string()).unwrap_or_else(|| "unknown".to_string());
+    let remote_peer = req
+        .peer_addr()
+        .map(|addr| addr.to_string())
+        .unwrap_or_else(|| "unknown".to_string());
     let has_auth_header = req.headers().contains_key("Authorization");
     let has_device_id_header = req.headers().contains_key("X-Device-ID");
 
     info!(
+        ws_upgrade_start = true,
+        correlation_id = %correlation_id,
         user_id = %user_id,
         request_path = req.path(),
         remote_peer = %remote_peer,
@@ -298,12 +363,18 @@ pub async fn device_link_ws_handler(
         "Starting device WebSocket connection"
     );
 
-    let ws_actor = create_device_link_ws(Some(user_id), connection_manager, device_repo);
+    let ws_actor =
+        create_device_link_ws(Some(user_id), connection_manager, device_repo, relay_store);
 
     // Wrap ws::start in match for robust error handling
-    match ws::start(ws_actor, &req, stream) {
+    // Configure WebSocket with larger frame size (10MB) to handle large session lists
+    match ws::WsResponseBuilder::new(ws_actor, &req, stream)
+        .frame_size(10 * 1024 * 1024) // 10MB max frame size
+        .start() {
         Ok(resp) => {
             info!(
+                ws_upgrade_success = true,
+                correlation_id = %correlation_id,
                 user_id = %user_id,
                 "WebSocket upgrade success"
             );
@@ -311,6 +382,7 @@ pub async fn device_link_ws_handler(
         }
         Err(e) => {
             error!(
+                correlation_id = %correlation_id,
                 user_id = %user_id,
                 error = %e,
                 "WebSocket handshake failed"
@@ -321,7 +393,6 @@ pub async fn device_link_ws_handler(
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -374,3 +445,36 @@ mod tests {
 // 3. Server logs show "WebSocket upgrade success" on successful connection
 // 4. Server logs show proper error messages with codes on failure
 // 5. No more generic HTTP 500 errors during handshake
+
+pub async fn events_stream_handler(
+    _req: HttpRequest,
+    user: web::ReqData<AuthenticatedUser>,
+) -> Result<impl actix_web::Responder, actix_web::Error> {
+    use actix_web_lab::sse;
+    use futures_util::stream;
+    use std::time::Duration;
+    use tokio::time::interval;
+
+    let user_id = user.user_id;
+    info!("SSE events stream requested by user: {}", user_id);
+
+    let event_stream = stream::unfold(
+        interval(Duration::from_secs(30)),
+        move |mut interval| async move {
+            interval.tick().await;
+
+            let event = sse::Event::Data(sse::Data::new(
+                serde_json::json!({
+                    "type": "heartbeat",
+                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                    "user_id": user_id.to_string(),
+                })
+                .to_string(),
+            ));
+
+            Some((Ok::<_, std::convert::Infallible>(event), interval))
+        },
+    );
+
+    Ok(sse::Sse::from_stream(event_stream))
+}

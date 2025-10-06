@@ -1,6 +1,8 @@
 import Foundation
 import KeychainAccess
+#if canImport(UIKit)
 import UIKit
+#endif
 
 /// Manages device identification and persistence for authentication token binding
 public final class DeviceManager {
@@ -11,7 +13,7 @@ public final class DeviceManager {
 
     private init() {}
 
-    /// Get or create a persistent device ID for X-Client-ID token binding
+    /// Get or create a persistent device ID for device-binding headers (X-Device-ID, X-Token-Binding)
     public func getOrCreateDeviceID() -> String {
         // Try to retrieve existing device ID from keychain
         if let existingDeviceID = try? keychain.get(deviceIDKey),

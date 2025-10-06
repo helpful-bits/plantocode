@@ -18,7 +18,7 @@ use crate::jobs::types::{Job, JobPayload, JobProcessResult, JobResultData};
 use crate::jobs::workflow_orchestrator::get_workflow_orchestrator;
 use crate::jobs::{job_payload_utils, retry_utils};
 use crate::models::{BackgroundJob, JobStatus, TaskType};
-use crate::services::file_selection_auto_apply::{auto_apply_files_for_job};
+use crate::services::file_selection_auto_apply::auto_apply_files_for_job;
 use serde_json::{Value, json};
 use std::str::FromStr;
 
@@ -35,7 +35,7 @@ fn is_file_finding_task(task_type: &TaskType) -> bool {
 
 /// Standardize file-finding job responses to a consistent format
 fn standardize_file_finding_response(response: Value, task_type: &TaskType) -> Value {
-    match task_type {
+    let standardized = match task_type {
         TaskType::RegexFileFilter => {
             // {"filteredFiles": [...]} -> {"files": [...], "count": n}
             if let Some(filtered_files) = response.get("filteredFiles").and_then(|v| v.as_array()) {
@@ -72,7 +72,29 @@ fn standardize_file_finding_response(response: Value, task_type: &TaskType) -> V
             }
         }
         _ => response,
+    };
+
+    if let Some(files_array) = standardized.get("files").and_then(|v| v.as_array()) {
+        let files: Vec<String> = files_array
+            .iter()
+            .filter_map(|f| f.as_str().map(|s| s.to_string()))
+            .collect();
+
+        let total = files.len();
+        let mut abs = 0usize;
+        for f in &files {
+            if std::path::Path::new(f).is_absolute() {
+                abs += 1;
+            }
+        }
+        let rel = total.saturating_sub(abs);
+        debug!(
+            "StandardizeFileFinding: total={}, rel={}, abs={}",
+            total, rel, abs
+        );
     }
+
+    standardized
 }
 
 // Clean retry system using JobUIMetadata
@@ -392,6 +414,8 @@ async fn handle_job_success(
 
             // Job completion event handled by repository method above
 
+            // Centralized auto-apply for file-finding tasks
+            // This is the ONLY place auto-apply happens to avoid double-application races
             // Auto-apply discovered files for supported tasks
             if let Some(ref response_json) = serde_json::from_str::<Value>(&response_str).ok() {
                 let pool = Arc::new(app_handle.state::<sqlx::SqlitePool>().inner().clone());
@@ -403,7 +427,9 @@ async fn handle_job_success(
                     job_id,
                     &completed_job.task_type,
                     response_json,
-                ).await {
+                )
+                .await
+                {
                     if !outcome.applied_files.is_empty() {
                         let payload = session_events::SessionAutoFilesAppliedPayload {
                             session_id: outcome.session_id,

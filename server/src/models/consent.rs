@@ -1,7 +1,7 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::Type;
-use sqlx::types::ipnetwork::IpNetwork;  // Use sqlx's IpNetwork type
+use sqlx::types::ipnetwork::IpNetwork; // Use sqlx's IpNetwork type
 use std::net::IpAddr;
 use std::str::FromStr;
 use uuid::Uuid;
@@ -10,7 +10,7 @@ use uuid::Uuid;
 mod ip_serde {
     use super::*;
     use serde::{Deserializer, Serializer};
-    
+
     pub fn serialize<S>(value: &Option<IpNetwork>, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -20,14 +20,15 @@ mod ip_serde {
             None => serializer.serialize_none(),
         }
     }
-    
+
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<IpNetwork>, D::Error>
     where
         D: Deserializer<'de>,
     {
         let s: Option<String> = Option::deserialize(deserializer)?;
         match s {
-            Some(s) => s.parse::<IpNetwork>()
+            Some(s) => s
+                .parse::<IpNetwork>()
                 .map(Some)
                 .map_err(serde::de::Error::custom),
             None => Ok(None),
@@ -86,7 +87,7 @@ pub struct LegalDocument {
     pub doc_type: ConsentDocumentType,
     pub region: ConsentRegion,
     pub version: String,
-    pub effective_at: NaiveDate,  // Changed from DateTime<Utc> to match DB DATE type
+    pub effective_at: NaiveDate, // Changed from DateTime<Utc> to match DB DATE type
     pub url: String,
     pub content_hash: Option<String>,
     pub material_change: bool,
@@ -104,7 +105,7 @@ pub struct ConsentEvent {
     pub action: ConsentAction,
     pub source: ConsentSource,
     #[serde(with = "ip_serde")]
-    pub ip_address: Option<IpNetwork>,  // Changed to IpNetwork for PostgreSQL inet type
+    pub ip_address: Option<IpNetwork>, // Changed to IpNetwork for PostgreSQL inet type
     pub user_agent: Option<String>,
     pub metadata: Option<serde_json::Value>,
     pub created_at: DateTime<Utc>,
@@ -116,9 +117,9 @@ pub struct UserConsentSnapshot {
     pub user_id: Uuid,
     pub doc_type: ConsentDocumentType,
     pub region: ConsentRegion,
-    pub accepted_version: Option<String>,  // Nullable in DB
-    pub accepted_at: Option<DateTime<Utc>>,  // Nullable in DB
-    pub source: Option<ConsentSource>,  // Nullable in DB
+    pub accepted_version: Option<String>,   // Nullable in DB
+    pub accepted_at: Option<DateTime<Utc>>, // Nullable in DB
+    pub source: Option<ConsentSource>,      // Nullable in DB
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -132,7 +133,7 @@ pub struct ConsentStatusItem {
     pub accepted_version: Option<String>,
     pub accepted_at: Option<DateTime<Utc>>,
     pub requires_reconsent: bool,
-    pub effective_at: NaiveDate,  // Changed to match DB DATE type
+    pub effective_at: NaiveDate, // Changed to match DB DATE type
     pub url: String,
 }
 
@@ -168,7 +169,7 @@ impl FromStr for ConsentDocumentType {
         match s.to_lowercase().as_str() {
             "terms" => Ok(ConsentDocumentType::Terms),
             "privacy" => Ok(ConsentDocumentType::Privacy),
-            _ => Err(format!("Invalid document type: {}", s))
+            _ => Err(format!("Invalid document type: {}", s)),
         }
     }
 }
@@ -180,7 +181,7 @@ impl FromStr for ConsentRegion {
         match s.to_lowercase().as_str() {
             "eu" => Ok(ConsentRegion::Eu),
             "us" => Ok(ConsentRegion::Us),
-            _ => Err(format!("Invalid region: {}", s))
+            _ => Err(format!("Invalid region: {}", s)),
         }
     }
 }

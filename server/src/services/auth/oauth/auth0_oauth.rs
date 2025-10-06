@@ -2,17 +2,17 @@ use crate::config::settings::AppSettings;
 use crate::db::repositories::user_repository::UserRepository;
 use crate::error::AppError;
 use crate::models::auth_jwt_claims::Claims;
-use crate::services::auth::jwt;
 use crate::security::encryption;
+use crate::services::auth::jwt;
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header};
+use log::{debug, error, info, warn};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use uuid::Uuid;
 use std::sync::Arc;
 use std::time::Duration;
-use log::{debug, error, info, warn};
-use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use tokio::sync::Mutex;
+use uuid::Uuid;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Auth0AccessTokenClaims {
@@ -107,7 +107,7 @@ impl Auth0OAuthService {
     pub fn new(settings: &AppSettings, db_pool: PgPool) -> Self {
         let refresh_token_encryption_key = hex::decode(&settings.auth.refresh_token_encryption_key)
             .expect("Invalid refresh token encryption key format");
-        
+
         Self {
             client: Client::new(),
             auth0_domain: settings.api_keys.auth0_domain.clone(),
@@ -120,7 +120,6 @@ impl Auth0OAuthService {
             refresh_token_encryption_key,
         }
     }
-
 
     async fn get_jwks(&self) -> Result<Auth0Jwks, AppError> {
         let cache_ttl = std::time::Duration::from_secs(300); // 5 minutes
@@ -135,7 +134,8 @@ impl Auth0OAuthService {
         } // cache_guard dropped here
 
         let jwks_url = format!("https://{}/.well-known/jwks.json", self.auth0_domain);
-        let response = self.client
+        let response = self
+            .client
             .get(&jwks_url)
             .send()
             .await
@@ -154,14 +154,21 @@ impl Auth0OAuthService {
         Ok(jwks)
     }
 
-    pub async fn validate_auth0_access_token(&self, access_token_str: &str) -> Result<Auth0AccessTokenClaims, AppError> {
+    pub async fn validate_auth0_access_token(
+        &self,
+        access_token_str: &str,
+    ) -> Result<Auth0AccessTokenClaims, AppError> {
         let header = decode_header(access_token_str)
             .map_err(|e| AppError::Auth(format!("Invalid token header: {}", e)))?;
 
-        let kid = header.kid.ok_or_else(|| AppError::Auth("Token missing kid".to_string()))?;
+        let kid = header
+            .kid
+            .ok_or_else(|| AppError::Auth("Token missing kid".to_string()))?;
 
         let jwks = self.get_jwks().await?;
-        let key = jwks.keys.iter()
+        let key = jwks
+            .keys
+            .iter()
             .find(|k| k.kid == kid)
             .ok_or_else(|| AppError::Auth("Key not found in JWKS".to_string()))?;
 
@@ -173,38 +180,42 @@ impl Auth0OAuthService {
         validation.validate_aud = false;
         validation.set_issuer(&[&format!("https://{}/", self.auth0_domain)]);
 
-        let token_data = decode::<Auth0AccessTokenClaims>(access_token_str, &decoding_key, &validation)
-            .map_err(|e| AppError::Auth(format!("Token validation failed: {}", e)))?;
+        let token_data =
+            decode::<Auth0AccessTokenClaims>(access_token_str, &decoding_key, &validation)
+                .map_err(|e| AppError::Auth(format!("Token validation failed: {}", e)))?;
 
         // Manually validate audience after token parsing
         let claims = &token_data.claims;
         let audience_valid = match &claims.aud {
-            serde_json::Value::String(aud_str) => {
-                aud_str == &self.auth0_api_audience
-            },
-            serde_json::Value::Array(aud_array) => {
-                aud_array.iter().any(|aud| {
-                    if let serde_json::Value::String(aud_str) = aud {
-                        aud_str == &self.auth0_api_audience
-                    } else {
-                        false
-                    }
-                })
-            },
+            serde_json::Value::String(aud_str) => aud_str == &self.auth0_api_audience,
+            serde_json::Value::Array(aud_array) => aud_array.iter().any(|aud| {
+                if let serde_json::Value::String(aud_str) = aud {
+                    aud_str == &self.auth0_api_audience
+                } else {
+                    false
+                }
+            }),
             _ => false,
         };
-        
+
         if !audience_valid {
-            return Err(AppError::Auth(format!("Invalid audience: expected {}, got {:?}", self.auth0_api_audience, claims.aud)));
+            return Err(AppError::Auth(format!(
+                "Invalid audience: expected {}, got {:?}",
+                self.auth0_api_audience, claims.aud
+            )));
         }
 
         Ok(token_data.claims)
     }
 
-    pub async fn get_user_info_from_access_token(&self, access_token: &str) -> Result<Auth0UserInfo, AppError> {
+    pub async fn get_user_info_from_access_token(
+        &self,
+        access_token: &str,
+    ) -> Result<Auth0UserInfo, AppError> {
         let userinfo_url = format!("https://{}/userinfo", self.auth0_domain);
-        
-        let response = self.client
+
+        let response = self
+            .client
             .get(&userinfo_url)
             .bearer_auth(access_token)
             .send()
@@ -215,7 +226,10 @@ impl Auth0OAuthService {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
             error!("Auth0 userinfo error: {} - {}", status, text);
-            return Err(AppError::Auth(format!("Failed to get user info: HTTP {}", status)));
+            return Err(AppError::Auth(format!(
+                "Failed to get user info: HTTP {}",
+                status
+            )));
         }
 
         let user_info: Auth0UserInfo = response
@@ -226,15 +240,21 @@ impl Auth0OAuthService {
         Ok(user_info)
     }
 
-    pub async fn exchange_auth0_refresh_token(&self, refresh_token: &str) -> Result<Auth0TokenResponse, AppError> {
-        let client_id = self.auth0_server_client_id.as_ref()
-            .ok_or_else(|| AppError::Configuration("Auth0 server client ID not configured".to_string()))?;
-        let client_secret = self.auth0_server_client_secret.as_ref()
-            .ok_or_else(|| AppError::Configuration("Auth0 server client secret not configured".to_string()))?;
+    pub async fn exchange_auth0_refresh_token(
+        &self,
+        refresh_token: &str,
+    ) -> Result<Auth0TokenResponse, AppError> {
+        let client_id = self.auth0_server_client_id.as_ref().ok_or_else(|| {
+            AppError::Configuration("Auth0 server client ID not configured".to_string())
+        })?;
+        let client_secret = self.auth0_server_client_secret.as_ref().ok_or_else(|| {
+            AppError::Configuration("Auth0 server client secret not configured".to_string())
+        })?;
 
         let token_url = format!("https://{}/oauth/token", self.auth0_domain);
-        
-        let response = self.client
+
+        let response = self
+            .client
             .post(&token_url)
             .form(&[
                 ("grant_type", "refresh_token"),
@@ -250,7 +270,10 @@ impl Auth0OAuthService {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
             error!("Auth0 token refresh error: {} - {}", status, text);
-            return Err(AppError::Auth(format!("Failed to refresh token: HTTP {}", status)));
+            return Err(AppError::Auth(format!(
+                "Failed to refresh token: HTTP {}",
+                status
+            )));
         }
 
         let token_response: Auth0TokenResponse = response
@@ -269,42 +292,69 @@ impl Auth0OAuthService {
     ) -> Result<AuthDataResponse, AppError> {
         // Skip email verification for GitHub users (GitHub is a trusted provider)
         let is_github_user = user_info.sub.starts_with("github|");
-        
+
         // Debug logging for GitHub users
         if is_github_user {
-            info!("GitHub user login - sub: {}, email: {:?}, email_verified: {:?}, name: {:?}", 
-                user_info.sub, user_info.email, user_info.email_verified, user_info.name);
+            info!(
+                "GitHub user login - sub: {}, email: {:?}, email_verified: {:?}, name: {:?}",
+                user_info.sub, user_info.email, user_info.email_verified, user_info.name
+            );
         }
-        
+
         if !is_github_user && !user_info.email_verified.unwrap_or(false) {
             return Err(AppError::Unauthorized("Email verification is required to log in. Please verify your email with your provider.".to_string()));
         }
-        
+
         let auth0_sub = user_info.sub.clone();
         let email = user_info.email.clone().unwrap_or_else(|| {
-            warn!("No email provided by Auth0 for user: {}. Using fallback.", auth0_sub);
+            warn!(
+                "No email provided by Auth0 for user: {}. Using fallback.",
+                auth0_sub
+            );
             format!("user-{}", auth0_sub)
         });
         let name = user_info.name.clone();
 
         let user_repo = UserRepository::new(self.db_pool.clone());
-        
-        let user = user_repo.find_or_create_by_auth0_details(&auth0_sub, &email, name.as_deref()).await?;
+
+        let user = user_repo
+            .find_or_create_by_auth0_details(&auth0_sub, &email, name.as_deref())
+            .await?;
 
         if let Some(refresh_token) = auth0_refresh_token {
-            let encrypted_token = encryption::encrypt(&refresh_token, &self.refresh_token_encryption_key)?;
-            user_repo.store_auth0_refresh_token(&user.id, &encrypted_token).await?;
+            let encrypted_token =
+                encryption::encrypt(&refresh_token, &self.refresh_token_encryption_key)?;
+            user_repo
+                .store_auth0_refresh_token(&user.id, &encrypted_token)
+                .await?;
         }
 
         info!("Authenticated user {} (ID: {}) via Auth0", email, user.id);
 
         // Use device_id for token binding if available
         let token = if let Some(device_id_value) = device_id.as_deref() {
-            debug!("Creating token with device binding and token binding hash for device_id: {}", device_id_value);
-            jwt::create_token(user.id, &user.role, &email, Some(device_id_value), Some(user_info.sub.as_str()), self.jwt_token_duration_days)?
+            debug!(
+                "Creating token with device binding and token binding hash for device_id: {}",
+                device_id_value
+            );
+            jwt::create_token(
+                user.id,
+                &user.role,
+                &email,
+                Some(device_id_value),
+                Some(user_info.sub.as_str()),
+                self.jwt_token_duration_days,
+            )?
         } else {
             debug!("Creating token without device binding");
-            jwt::create_token(user.id, &user.role, &email, None, Some(user_info.sub.as_str()), self.jwt_token_duration_days)?
+            jwt::create_token(
+                user.id,
+                &user.role,
+                &email,
+                None,
+                Some(user_info.sub.as_str()),
+                self.jwt_token_duration_days,
+            )?
         };
 
         let expires_in = self.jwt_token_duration_days * 24 * 60 * 60;

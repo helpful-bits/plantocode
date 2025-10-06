@@ -1,0 +1,419 @@
+import SwiftUI
+import Core
+
+/// Session selection modal that allows users to browse and select existing sessions or create new ones
+/// Similar to the desktop's SessionManager component
+public struct SessionSelectionView: View {
+    let projectDirectory: String
+    let onSessionSelected: (Session) -> Void
+
+    @State private var sessions: [Session] = []
+    @State private var searchText = ""
+    @State private var isLoading = false
+    @State private var errorMessage: String?
+    @State private var showingNewSessionForm = false
+    @State private var newSessionName = ""
+    @Environment(\.presentationMode) var presentationMode
+    @Environment(\.dismiss) private var dismiss
+
+    public init(projectDirectory: String, onSessionSelected: @escaping (Session) -> Void) {
+        self.projectDirectory = projectDirectory
+        self.onSessionSelected = onSessionSelected
+    }
+
+    public var body: some View {
+        VStack(spacing: 0) {
+                // Header with search and new button
+                VStack(spacing: 12) {
+                    // Search Bar
+                    HStack {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundColor(Color.mutedForeground)
+
+                        TextField("Search sessions...", text: $searchText)
+                            .textFieldStyle(PlainTextFieldStyle())
+
+                        if !searchText.isEmpty {
+                            Button(action: { searchText = "" }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(Color.mutedForeground)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color.card)
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.border, lineWidth: 1)
+                    )
+
+                    // Action buttons
+                    HStack(spacing: 12) {
+                        Button(action: { loadSessions() }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.clockwise")
+                                    .small()
+                                Text("Refresh")
+                                    .small()
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(isLoading)
+
+                        Spacer()
+
+                        Button(action: { showingNewSessionForm = true }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "plus.circle")
+                                    .small()
+                                Text("New Session")
+                                    .small()
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                }
+                .padding()
+                .background(Color.background)
+
+                Divider()
+
+                // Loading State
+                if isLoading {
+                    VStack {
+                        Spacer()
+                        HStack {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: Color.primary))
+                                .scaleEffect(0.8)
+                            Text("Loading sessions...")
+                                .paragraph()
+                                .foregroundColor(Color.mutedForeground)
+                        }
+                        Spacer()
+                    }
+                }
+                // Error Message
+                else if let errorMessage = errorMessage {
+                    VStack {
+                        Spacer()
+                        StatusAlertView(variant: .destructive, title: "Error", message: errorMessage)
+                        Button("Try Again") {
+                            loadSessions()
+                        }
+                        .buttonStyle(.bordered)
+                        .padding(.top)
+                        Spacer()
+                    }
+                    .padding()
+                }
+                // Sessions List
+                else if !filteredSessions.isEmpty {
+                    ScrollView {
+                        LazyVStack(spacing: 12) {
+                            ForEach(filteredSessions) { session in
+                                SessionSelectionCard(session: session) {
+                                    onSessionSelected(session)
+                                }
+                            }
+                        }
+                        .padding()
+                    }
+                }
+                // Empty State
+                else {
+                    VStack(spacing: 16) {
+                        Spacer()
+
+                        Image(systemName: "folder.badge.gearshape")
+                            .font(.system(size: 48))
+                            .foregroundColor(Color.mutedForeground)
+
+                        VStack(spacing: 8) {
+                            Text(searchText.isEmpty ? "No Sessions" : "No Matching Sessions")
+                                .h4()
+                                .foregroundColor(Color.cardForeground)
+
+                            Text(searchText.isEmpty ?
+                                "Create a new session to get started" :
+                                "Try adjusting your search terms")
+                                .paragraph()
+                                .foregroundColor(Color.mutedForeground)
+                                .multilineTextAlignment(.center)
+                        }
+
+                        if searchText.isEmpty {
+                            Button("Create Session") {
+                                showingNewSessionForm = true
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .padding(.top)
+                        }
+
+                        Spacer()
+                    }
+                    .padding()
+                }
+            }
+            .background(Color.background)
+            .navigationTitle("Select Session")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+            .sheet(isPresented: $showingNewSessionForm) {
+                NewSessionFormView(
+                    projectDirectory: projectDirectory,
+                    onSessionCreated: { session in
+                        showingNewSessionForm = false
+                        sessions.insert(session, at: 0)
+                        onSessionSelected(session)
+                    },
+                    onCancel: {
+                        showingNewSessionForm = false
+                    }
+                )
+            }
+        .onAppear {
+            loadSessions()
+        }
+    }
+
+    private var filteredSessions: [Session] {
+        if searchText.isEmpty {
+            return sessions
+        } else {
+            return sessions.filter { session in
+                session.name.localizedCaseInsensitiveContains(searchText) ||
+                session.projectDirectory.localizedCaseInsensitiveContains(searchText) ||
+                (session.taskDescription?.localizedCaseInsensitiveContains(searchText) ?? false)
+            }
+        }
+    }
+
+    private func loadSessions() {
+        isLoading = true
+        errorMessage = nil
+
+        Task {
+            do {
+                guard let dataServices = VibeManagerCore.shared.dataServices else {
+                    await MainActor.run {
+                        errorMessage = "App not initialized"
+                        isLoading = false
+                    }
+                    return
+                }
+                let sessionsList = try await dataServices.sessionService.fetchSessions(projectDirectory: projectDirectory)
+                await MainActor.run {
+                    sessions = sessionsList.sorted { $0.updatedAt > $1.updatedAt }
+                    isLoading = false
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                    isLoading = false
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Session Selection Card
+
+struct SessionSelectionCard: View {
+    let session: Session
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(alignment: .leading, spacing: 12) {
+                // Header
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(session.name)
+                            .h4()
+                            .foregroundColor(Color.cardForeground)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+
+                        Text(projectName)
+                            .small()
+                            .foregroundColor(Color.mutedForeground)
+                            .lineLimit(1)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .small()
+                        .foregroundColor(Color.mutedForeground)
+                }
+
+                // Task Description
+                if let taskDescription = session.taskDescription, !taskDescription.isEmpty {
+                    Text(taskDescription)
+                        .paragraph()
+                        .foregroundColor(Color.cardForeground.opacity(0.8))
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                }
+
+                // Footer
+                HStack {
+                    Label(session.formattedDate, systemImage: "calendar")
+                        .small()
+                        .foregroundColor(Color.mutedForeground)
+
+                    Spacer()
+
+                    if !session.includedFiles.isEmpty {
+                        Label("\(session.includedFiles.count) files", systemImage: "doc.text")
+                            .small()
+                            .foregroundColor(Color.mutedForeground)
+                    }
+                }
+            }
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.card)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.border, lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    private var projectName: String {
+        return URL(fileURLWithPath: session.projectDirectory).lastPathComponent
+    }
+}
+
+// MARK: - New Session Form
+
+struct NewSessionFormView: View {
+    let projectDirectory: String
+    let onSessionCreated: (Session) -> Void
+    let onCancel: () -> Void
+
+    @State private var sessionName = ""
+    @State private var isCreating = false
+    @State private var errorMessage: String?
+    @Environment(\.presentationMode) var presentationMode
+
+    init(projectDirectory: String, onSessionCreated: @escaping (Session) -> Void, onCancel: @escaping () -> Void) {
+        self.projectDirectory = projectDirectory
+        self.onSessionCreated = onSessionCreated
+        self.onCancel = onCancel
+    }
+
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 20) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Session Name")
+                        .h4()
+                        .foregroundColor(Color.cardForeground)
+
+                    TextField("e.g., Feature Implementation", text: $sessionName)
+                        .textFieldStyle(PlainTextFieldStyle())
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(Color.card)
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.border, lineWidth: 1)
+                        )
+                }
+
+                if let errorMessage = errorMessage {
+                    StatusAlertView(variant: .destructive, title: "Error", message: errorMessage)
+                }
+
+                Button(action: createSession) {
+                    if isCreating {
+                        HStack {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: Color.primaryForeground))
+                                .scaleEffect(0.8)
+                            Text("Creating...")
+                        }
+                    } else {
+                        Text("Create Session")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(sessionName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isCreating)
+                .frame(maxWidth: .infinity)
+
+                Spacer()
+            }
+            .padding()
+            .background(Color.background)
+            .navigationTitle("New Session")
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarItems(
+                trailing: Button("Cancel") {
+                    onCancel()
+                }
+                .disabled(isCreating)
+            )
+        }
+    }
+
+    private func createSession() {
+        let trimmedName = sessionName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return }
+
+        isCreating = true
+        errorMessage = nil
+
+        Task {
+            do {
+                guard let dataServices = VibeManagerCore.shared.dataServices else {
+                    await MainActor.run {
+                        errorMessage = "App not initialized"
+                        isCreating = false
+                    }
+                    return
+                }
+                let session = try await dataServices.sessionService.createSession(
+                    name: trimmedName,
+                    projectDirectory: projectDirectory,
+                    taskDescription: nil
+                )
+
+                await MainActor.run {
+                    isCreating = false
+                    onSessionCreated(session)
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                    isCreating = false
+                }
+            }
+        }
+    }
+}
+
+#Preview {
+    SessionSelectionView(
+        projectDirectory: "/path/to/project",
+        onSessionSelected: { _ in }
+    )
+}

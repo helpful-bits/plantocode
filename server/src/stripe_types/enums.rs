@@ -10,7 +10,7 @@ pub const PAYMENT_INTENT_STATUS_PROCESSING: &str = "processing";
 pub const PAYMENT_INTENT_STATUS_REQUIRES_CAPTURE: &str = "requires_capture";
 pub const PAYMENT_INTENT_STATUS_CANCELED: &str = "canceled";
 
-// Checkout Session Statuses  
+// Checkout Session Statuses
 pub const CHECKOUT_SESSION_STATUS_COMPLETE: &str = "complete";
 pub const CHECKOUT_SESSION_STATUS_EXPIRED: &str = "expired";
 pub const CHECKOUT_SESSION_STATUS_OPEN: &str = "open";
@@ -32,4 +32,3 @@ pub const EVENT_INVOICE_FINALIZED: &str = "invoice.finalized";
 pub const EVENT_INVOICE_PAID: &str = "invoice.paid";
 pub const EVENT_INVOICE_PAYMENT_FAILED: &str = "invoice.payment_failed";
 pub const EVENT_INVOICE_PAYMENT_SUCCEEDED: &str = "invoice.payment_succeeded";
-

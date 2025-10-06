@@ -1,15 +1,19 @@
-use crate::auth::{device_id_manager, token_manager::TokenManager};
+use crate::auth::{device_id_manager, header_utils, token_manager::TokenManager};
+use crate::db_utils::SettingsRepository;
+use crate::error::AppError;
 use crate::remote_api::desktop_command_handler;
 use crate::remote_api::types::{RpcRequest, RpcResponse, UserContext};
-use crate::error::AppError;
+use futures_util::{SinkExt, StreamExt};
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Listener, Manager};
 use tokio::sync::mpsc;
-use tokio_tungstenite::{connect_async_with_config, tungstenite::{Message, client::IntoClientRequest}};
-use futures_util::{SinkExt, StreamExt};
+use tokio_tungstenite::{
+    connect_async_with_config,
+    tungstenite::{Message, client::IntoClientRequest},
+};
 use url::Url;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -26,10 +30,7 @@ pub enum DeviceLinkMessage {
         response: RpcResponse,
     },
     #[serde(rename = "event")]
-    Event {
-        event_type: String,
-        payload: Value,
-    },
+    Event { event_type: String, payload: Value },
     #[serde(rename = "ping")]
     Ping,
     #[serde(rename = "pong")]
@@ -40,7 +41,20 @@ pub enum DeviceLinkMessage {
 #[serde(tag = "type")]
 pub enum ServerMessage {
     #[serde(rename = "registered")]
-    Registered,
+    Registered {
+        #[serde(default)]
+        session_id: Option<String>,
+        #[serde(default)]
+        resume_token: Option<String>,
+        #[serde(default)]
+        expires_at: Option<String>,
+    },
+    #[serde(rename = "resumed")]
+    Resumed {
+        session_id: String,
+        #[serde(default)]
+        expires_at: Option<String>,
+    },
     #[serde(rename = "error")]
     Error { message: String },
     #[serde(rename = "relay")]
@@ -71,15 +85,40 @@ impl DeviceLinkClient {
 
     /// Start the device link client and connect to the server
     pub async fn start(&mut self) -> Result<(), AppError> {
-        info!("Starting DeviceLinkClient connection to {}", self.server_url);
+        info!(
+            "Starting DeviceLinkClient connection to {}",
+            self.server_url
+        );
+
+        // Check if device is discoverable
+        let pool = self.app_handle.state::<sqlx::SqlitePool>().inner().clone();
+        let settings_repo = SettingsRepository::new(std::sync::Arc::new(pool));
+        let device_settings = settings_repo.get_device_settings().await?;
+
+        if !device_settings.is_discoverable {
+            info!("Desktop not discoverable: enable 'Allow Remote Access' in Settings");
+            return Ok(());
+        }
+
+        if !device_settings.allow_remote_access {
+            info!(
+                "Remote access disabled: enable 'Allow Remote Access' in Settings to connect via relay"
+            );
+            return Ok(());
+        }
 
         // Get device ID and token
         let device_id = device_id_manager::get_or_create(&self.app_handle)
             .map_err(|e| AppError::AuthError(format!("Failed to get device ID: {}", e)))?;
 
         let token_manager = self.app_handle.state::<Arc<TokenManager>>();
-        let token = token_manager.get().await
+        let token = token_manager
+            .get()
+            .await
             .ok_or_else(|| AppError::AuthError("No authentication token available".to_string()))?;
+
+        // Register device with server before connecting WebSocket
+        self.register_device(&device_id, &token).await?;
 
         // Build WebSocket URL
         let ws_url = format!("{}/ws/device-link", self.server_url.replace("http", "ws"));
@@ -89,21 +128,40 @@ impl DeviceLinkClient {
         info!("Connecting to WebSocket at: {}", ws_url);
 
         // Create WebSocket request with custom headers
-        let mut request = ws_url.into_client_request()
-            .map_err(|e| AppError::NetworkError(format!("Failed to build WebSocket request: {}", e)))?;
+        let mut request = ws_url.into_client_request().map_err(|e| {
+            AppError::NetworkError(format!("Failed to build WebSocket request: {}", e))
+        })?;
 
         // Add custom headers to the existing request (which already has the WebSocket headers)
-        request.headers_mut().insert("Authorization", format!("Bearer {}", token).parse()
-            .map_err(|e| AppError::NetworkError(format!("Invalid Authorization header: {}", e)))?);
-        request.headers_mut().insert("X-Device-ID", device_id.clone().parse()
-            .map_err(|e| AppError::NetworkError(format!("Invalid Device ID header: {}", e)))?);
-        request.headers_mut().insert("X-Token-Binding", device_id.clone().parse()
-            .map_err(|e| AppError::NetworkError(format!("Invalid Token Binding header: {}", e)))?);
-        request.headers_mut().insert("X-Client-Type", "desktop".parse()
-            .map_err(|e| AppError::NetworkError(format!("Invalid Client Type header: {}", e)))?);
+        request.headers_mut().insert(
+            "Authorization",
+            format!("Bearer {}", token).parse().map_err(|e| {
+                AppError::NetworkError(format!("Invalid Authorization header: {}", e))
+            })?,
+        );
+        request.headers_mut().insert(
+            "X-Device-ID",
+            device_id
+                .clone()
+                .parse()
+                .map_err(|e| AppError::NetworkError(format!("Invalid Device ID header: {}", e)))?,
+        );
+        request.headers_mut().insert(
+            "X-Token-Binding",
+            device_id.parse().map_err(|e| {
+                AppError::NetworkError(format!("Invalid Token Binding header: {}", e))
+            })?,
+        );
+        request.headers_mut().insert(
+            "X-Client-Type",
+            "desktop".parse().map_err(|e| {
+                AppError::NetworkError(format!("Invalid Client Type header: {}", e))
+            })?,
+        );
 
         // Connect to WebSocket with custom headers
-        let (ws_stream, _) = connect_async_with_config(request, None, false).await
+        let (ws_stream, _) = connect_async_with_config(request, None, false)
+            .await
             .map_err(|e| AppError::NetworkError(format!("WebSocket connection failed: {}", e)))?;
 
         let (mut ws_sender, mut ws_receiver) = ws_stream.split();
@@ -120,7 +178,7 @@ impl DeviceLinkClient {
             if let Ok(event_data) = serde_json::from_str::<Value>(payload) {
                 if let (Some(event_type), Some(event_payload)) = (
                     event_data.get("type").and_then(|v| v.as_str()),
-                    event_data.get("payload")
+                    event_data.get("payload"),
                 ) {
                     let msg = DeviceLinkMessage::Event {
                         event_type: event_type.to_string(),
@@ -147,11 +205,16 @@ impl DeviceLinkClient {
             device_name: hostname,
         };
 
-        let register_json = serde_json::to_string(&register_msg)
-            .map_err(|e| AppError::SerializationError(format!("Failed to serialize register message: {}", e)))?;
+        let register_json = serde_json::to_string(&register_msg).map_err(|e| {
+            AppError::SerializationError(format!("Failed to serialize register message: {}", e))
+        })?;
 
-        ws_sender.send(Message::Text(register_json)).await
-            .map_err(|e| AppError::NetworkError(format!("Failed to send register message: {}", e)))?;
+        ws_sender
+            .send(Message::Text(register_json))
+            .await
+            .map_err(|e| {
+                AppError::NetworkError(format!("Failed to send register message: {}", e))
+            })?;
 
         info!("Sent registration message for device: {}", device_id);
 
@@ -182,22 +245,22 @@ impl DeviceLinkClient {
         let receiver_handle = tokio::spawn(async move {
             while let Some(msg) = ws_receiver.next().await {
                 match msg {
-                    Ok(Message::Text(text)) => {
-                        match serde_json::from_str::<ServerMessage>(&text) {
-                            Ok(server_msg) => {
-                                if let Err(e) = Self::handle_server_message(
-                                    &app_handle,
-                                    server_msg,
-                                    &tx_for_receiver,
-                                ).await {
-                                    error!("Failed to handle server message: {}", e);
-                                }
-                            }
-                            Err(e) => {
-                                warn!("Failed to parse server message: {} - Raw: {}", e, text);
+                    Ok(Message::Text(text)) => match serde_json::from_str::<ServerMessage>(&text) {
+                        Ok(server_msg) => {
+                            if let Err(e) = Self::handle_server_message(
+                                &app_handle,
+                                server_msg,
+                                &tx_for_receiver,
+                            )
+                            .await
+                            {
+                                error!("Failed to handle server message: {}", e);
                             }
                         }
-                    }
+                        Err(e) => {
+                            warn!("Failed to parse server message: {} - Raw: {}", e, text);
+                        }
+                    },
                     Ok(Message::Close(_)) => {
                         info!("WebSocket connection closed by server");
                         break;
@@ -221,12 +284,27 @@ impl DeviceLinkClient {
             debug!("WebSocket receiver task terminated");
         });
 
-        // Spawn heartbeat task
+        // Spawn heartbeat task with visibility checking
         let tx_for_heartbeat = tx.clone();
+        let app_handle_for_heartbeat = self.app_handle.clone();
         let heartbeat_handle = tokio::spawn(async move {
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(30));
             loop {
                 interval.tick().await;
+
+                // Check if device is still visible
+                if let Some(pool) = app_handle_for_heartbeat.try_state::<sqlx::SqlitePool>() {
+                    let pool = pool.inner().clone();
+                    let settings_repo = SettingsRepository::new(std::sync::Arc::new(pool));
+                    if let Ok(device_settings) = settings_repo.get_device_settings().await {
+                        if !device_settings.is_discoverable || !device_settings.allow_remote_access
+                        {
+                            info!("Device visibility settings changed, terminating connection");
+                            break;
+                        }
+                    }
+                }
+
                 if tx_for_heartbeat.send(DeviceLinkMessage::Ping).is_err() {
                     debug!("Heartbeat channel closed, terminating heartbeat task");
                     break;
@@ -247,7 +325,9 @@ impl DeviceLinkClient {
             }
         }
 
-        Ok(())
+        Err(AppError::NetworkError(
+            "Device link tasks completed, reconnecting".to_string(),
+        ))
     }
 
     /// Handle incoming server messages
@@ -257,8 +337,54 @@ impl DeviceLinkClient {
         tx: &mpsc::UnboundedSender<DeviceLinkMessage>,
     ) -> Result<(), AppError> {
         match msg {
-            ServerMessage::Registered => {
-                info!("Successfully registered with device link server");
+            ServerMessage::Registered {
+                session_id,
+                resume_token,
+                expires_at,
+            } => {
+                info!(
+                    "Successfully registered with device link server; session_id={:?} resume_token_present={} expires_at={:?}",
+                    session_id,
+                    resume_token
+                        .as_ref()
+                        .map(|token| !token.is_empty())
+                        .unwrap_or(false),
+                    expires_at
+                );
+
+                // Emit an event so the UI (or other listeners) can persist resume credentials if needed.
+                let payload = serde_json::json!({
+                    "status": "registered",
+                    "session_id": session_id,
+                    "resume_token": resume_token,
+                    "expires_at": expires_at,
+                });
+                debug!("device-link-status event about to be emitted: registered");
+                if let Err(e) = app_handle.emit("device-link-status", payload) {
+                    warn!("Failed to emit device link status event: {}", e);
+                }
+
+                Ok(())
+            }
+            ServerMessage::Resumed {
+                session_id,
+                expires_at,
+            } => {
+                info!(
+                    "Resumed device link session; session_id={} expires_at={:?}",
+                    session_id, expires_at
+                );
+
+                let payload = serde_json::json!({
+                    "status": "resumed",
+                    "session_id": session_id,
+                    "expires_at": expires_at,
+                });
+                debug!("device-link-status event about to be emitted: resumed");
+                if let Err(e) = app_handle.emit("device-link-status", payload) {
+                    warn!("Failed to emit device link status event: {}", e);
+                }
+
                 Ok(())
             }
             ServerMessage::Error { message } => {
@@ -266,7 +392,10 @@ impl DeviceLinkClient {
                 Err(AppError::NetworkError(format!("Server error: {}", message)))
             }
             ServerMessage::Relay { client_id, request } => {
-                debug!("Received relay request from client {}: method={}", client_id, request.method);
+                debug!(
+                    "Received relay request from client {}: method={}",
+                    client_id, request.method
+                );
 
                 // Create user context (this could be enhanced with actual user info from the server)
                 let user_context = UserContext {
@@ -281,7 +410,8 @@ impl DeviceLinkClient {
                     app_handle,
                     request,
                     &user_context,
-                ).await;
+                )
+                .await;
 
                 // Send response back via WebSocket
                 let relay_response = DeviceLinkMessage::RelayResponse {
@@ -307,6 +437,74 @@ impl DeviceLinkClient {
         }
     }
 
+    /// Register device with the server's device registry
+    async fn register_device(&self, device_id: &str, token: &str) -> Result<(), AppError> {
+        info!("Registering device with server: {}", device_id);
+
+        // Get device information
+        let device_name = hostname::get()
+            .ok()
+            .and_then(|h| h.into_string().ok())
+            .unwrap_or_else(|| "Desktop Device".to_string());
+
+        let platform = std::env::consts::OS.to_string();
+        let app_version = self.app_handle.package_info().version.to_string();
+
+        // Build registration request
+        let registration_body = serde_json::json!({
+            "device_name": device_name,
+            "device_type": "desktop",
+            "platform": platform,
+            "platform_version": std::env::consts::OS,
+            "app_version": app_version,
+            "relay_eligible": true,
+            "capabilities": {
+                "supports_terminal": true,
+                "supports_file_browser": true,
+                "supports_implementation_plans": true
+            }
+        });
+
+        // Make HTTP POST request to register device
+        let register_url = format!("{}/api/devices/register", self.server_url);
+        let client = reqwest::Client::new();
+
+        let request_builder = client
+            .post(&register_url)
+            .header("X-Client-Type", "desktop")
+            .header("Content-Type", "application/json");
+
+        let request_builder =
+            header_utils::apply_auth_headers(request_builder, token, &self.app_handle)?;
+
+        let response = request_builder
+            .json(&registration_body)
+            .send()
+            .await
+            .map_err(|e| {
+                AppError::NetworkError(format!("Device registration request failed: {}", e))
+            })?;
+
+        let status = response.status();
+        if status.is_success() || status == reqwest::StatusCode::CONFLICT {
+            // 201 Created = new registration
+            // 409 Conflict = already registered (this is fine)
+            info!("Device registered successfully (status: {})", status);
+            Ok(())
+        } else {
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            let body_snippet: String = error_text.chars().take(512).collect();
+            error!("Register failed: status={} body={}", status, body_snippet);
+            Err(AppError::NetworkError(format!(
+                "Device registration failed with status {}: {}",
+                status, error_text
+            )))
+        }
+    }
+
     /// Send an event to the server
     pub async fn send_event(&self, event_type: String, payload: Value) -> Result<(), AppError> {
         if let Some(sender) = &self.sender {
@@ -315,12 +513,15 @@ impl DeviceLinkClient {
                 payload,
             };
 
-            sender.send(msg)
+            sender
+                .send(msg)
                 .map_err(|_| AppError::NetworkError("Device link channel closed".to_string()))?;
 
             Ok(())
         } else {
-            Err(AppError::NetworkError("Device link client not connected".to_string()))
+            Err(AppError::NetworkError(
+                "Device link client not connected".to_string(),
+            ))
         }
     }
 
@@ -328,10 +529,37 @@ impl DeviceLinkClient {
     pub fn is_connected(&self) -> bool {
         self.sender.is_some()
     }
+
+    /// Check if device is visible (discoverable and allows remote access)
+    pub async fn is_device_visible(&self) -> bool {
+        if let Some(pool) = self.app_handle.try_state::<sqlx::SqlitePool>() {
+            let pool = pool.inner().clone();
+            let settings_repo = SettingsRepository::new(std::sync::Arc::new(pool));
+            if let Ok(device_settings) = settings_repo.get_device_settings().await {
+                return device_settings.is_discoverable && device_settings.allow_remote_access;
+            }
+        }
+        false
+    }
+
+    pub async fn shutdown(&mut self) {
+        tracing::info!("Shutting down DeviceLinkClient");
+        if let Some(sender) = self.sender.take() {
+            drop(sender);
+        }
+        // WebSocket task will terminate when sender is dropped
+    }
+
+    pub fn connection_state(&self) -> bool {
+        self.is_connected()
+    }
 }
 
 /// Start the device link client with the given server URL
-pub async fn start_device_link_client(app_handle: AppHandle, server_url: String) -> Result<(), AppError> {
+pub async fn start_device_link_client(
+    app_handle: AppHandle,
+    server_url: String,
+) -> Result<(), AppError> {
     info!("Starting device link client for server: {}", server_url);
 
     let mut client = DeviceLinkClient::new(app_handle, server_url);

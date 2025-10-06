@@ -1,9 +1,9 @@
+use crate::error::AppError;
+use chrono::{DateTime, Utc};
+use log::info;
+use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use crate::error::AppError;
-use log::info;
 
 /// Enhanced webhook idempotency record with locking, retries, and detailed status tracking
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -12,36 +12,36 @@ pub struct WebhookIdempotencyRecord {
     pub webhook_event_id: String,
     pub webhook_type: String,
     pub event_type: String,
-    
+
     // Processing status and lifecycle
     pub status: String,
     pub processing_result: Option<String>,
     pub processed_at: Option<DateTime<Utc>>,
-    
+
     // Locking mechanism for concurrent webhook handling
     pub locked_at: Option<DateTime<Utc>>,
     pub locked_by: Option<String>,
     pub lock_expires_at: Option<DateTime<Utc>>,
-    
+
     // Retry mechanism for failed webhooks
     pub retry_count: i32,
     pub max_retries: i32,
     pub next_retry_at: Option<DateTime<Utc>>,
-    
+
     // Error tracking and debugging
     pub error_message: Option<String>,
     pub error_details: Option<serde_json::Value>,
     pub last_error_at: Option<DateTime<Utc>>,
-    
+
     // Webhook payload and metadata
     pub webhook_payload: Option<serde_json::Value>,
     pub metadata: Option<serde_json::Value>,
-    
+
     // Audit and timing
     pub first_seen_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-    
+
     // Performance and monitoring
     pub processing_duration_ms: Option<i32>,
     pub payload_size_bytes: Option<i32>,
@@ -70,7 +70,7 @@ impl WebhookIdempotencyRepository {
     ) -> Result<WebhookIdempotencyRecord, AppError> {
         let record_id = Uuid::new_v4();
         let lock_expires_at = Utc::now() + chrono::Duration::minutes(lock_duration_minutes as i64);
-        
+
         // Attempt to insert a new record or acquire lock on existing record
         let result = sqlx::query_as!(
             WebhookIdempotencyRecord,
@@ -154,14 +154,14 @@ impl WebhookIdempotencyRepository {
         }
 
         // Check if we successfully acquired the lock
-        if result.locked_by.as_ref() == Some(&locked_by.to_string()) && 
-           result.status == "processing" {
+        if result.locked_by.as_ref() == Some(&locked_by.to_string())
+            && result.status == "processing"
+        {
             Ok(result)
         } else {
             Err(AppError::Database(format!(
                 "Failed to acquire lock for webhook {}: already locked by {:?}",
-                webhook_event_id,
-                result.locked_by
+                webhook_event_id, result.locked_by
             )))
         }
     }
@@ -237,14 +237,18 @@ impl WebhookIdempotencyRepository {
         error_metadata: Option<serde_json::Value>,
     ) -> Result<(), AppError> {
         let next_retry_at = Utc::now() + chrono::Duration::minutes(retry_delay_minutes as i64);
-        
+
         // First, get the current retry count to determine if we should retry or fail
-        let current_record = self.get_by_event_id(webhook_event_id).await?
-            .ok_or_else(|| AppError::Database(format!("Webhook record not found: {}", webhook_event_id)))?;
-        
+        let current_record = self
+            .get_by_event_id(webhook_event_id)
+            .await?
+            .ok_or_else(|| {
+                AppError::Database(format!("Webhook record not found: {}", webhook_event_id))
+            })?;
+
         let new_retry_count = current_record.retry_count + 1;
         let should_retry = new_retry_count < current_record.max_retries;
-        
+
         if should_retry {
             // Schedule retry
             sqlx::query!(
@@ -295,13 +299,21 @@ impl WebhookIdempotencyRepository {
         }
         .execute(&self.pool)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to release webhook lock with failure: {}", e)))?;
+        .map_err(|e| {
+            AppError::Database(format!(
+                "Failed to release webhook lock with failure: {}",
+                e
+            ))
+        })?;
 
         Ok(())
     }
 
     /// Get webhook record by event ID
-    pub async fn get_by_event_id(&self, webhook_event_id: &str) -> Result<Option<WebhookIdempotencyRecord>, AppError> {
+    pub async fn get_by_event_id(
+        &self,
+        webhook_event_id: &str,
+    ) -> Result<Option<WebhookIdempotencyRecord>, AppError> {
         let result = sqlx::query_as!(
             WebhookIdempotencyRecord,
             r#"
@@ -327,7 +339,10 @@ impl WebhookIdempotencyRepository {
     }
 
     /// Get webhooks ready for retry
-    pub async fn get_webhooks_ready_for_retry(&self, limit: i32) -> Result<Vec<WebhookIdempotencyRecord>, AppError> {
+    pub async fn get_webhooks_ready_for_retry(
+        &self,
+        limit: i32,
+    ) -> Result<Vec<WebhookIdempotencyRecord>, AppError> {
         let results = sqlx::query_as!(
             WebhookIdempotencyRecord,
             r#"
@@ -369,11 +384,16 @@ impl WebhookIdempotencyRepository {
         )
         .execute(&self.pool)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to cleanup expired webhook events: {}", e)))?
+        .map_err(|e| {
+            AppError::Database(format!("Failed to cleanup expired webhook events: {}", e))
+        })?
         .rows_affected();
 
         if deleted_count > 0 {
-            info!("Cleaned up {} expired webhook events (24-hour TTL)", deleted_count);
+            info!(
+                "Cleaned up {} expired webhook events (24-hour TTL)",
+                deleted_count
+            );
         }
 
         Ok(deleted_count as i64)

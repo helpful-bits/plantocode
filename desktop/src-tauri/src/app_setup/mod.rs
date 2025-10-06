@@ -10,7 +10,9 @@ pub mod job_system;
 pub mod services;
 
 // Re-export important functions for easy access
-pub use services::{initialize_system_prompts, reinitialize_api_clients};
+pub use services::{
+    initialize_system_prompts, initialize_terminal_manager, reinitialize_api_clients,
+};
 
 /// Run deferred initialization steps for the application
 async fn run_deferred_initialization(app_handle: &AppHandle) -> Result<(), AppError> {
@@ -77,6 +79,17 @@ async fn run_deferred_initialization(app_handle: &AppHandle) -> Result<(), AppEr
             info!("Backup service initialized successfully");
         }
     });
+
+    // Initialize terminal manager
+    if let Err(e) = services::initialize_terminal_manager(app_handle).await {
+        warn!(
+            "Terminal manager initialization failed (non-critical): {}",
+            e
+        );
+        // Don't fail startup for this
+    } else {
+        info!("Terminal manager initialized successfully");
+    }
 
     // Sync early in-memory values to DB if not already present
     // This should happen after deferred DB tasks complete and repos are available
@@ -202,6 +215,12 @@ pub async fn run_background_initialization(app_handle: AppHandle) -> Result<(), 
                 "No selected server URL found, API clients will be initialized when user selects a server region"
             );
         }
+    }
+
+    // Initialize device link connection after API clients are ready
+    if let Err(e) = crate::app_setup::services::initialize_device_link_connection(&app_handle).await
+    {
+        tracing::warn!(error = ?e, "failed_to_start_device_link_client");
     }
 
     info!("Background initialization completed");

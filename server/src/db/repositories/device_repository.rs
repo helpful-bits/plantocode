@@ -1,10 +1,10 @@
-use uuid::Uuid;
-use sqlx::{PgPool, query, query_as, types::ipnetwork::IpNetwork};
+use crate::error::AppError;
 use chrono::{DateTime, Utc};
-use std::sync::Arc;
 use serde_json::Value as JsonValue;
 use sqlx::types::BigDecimal;
-use crate::error::AppError;
+use sqlx::{PgPool, query, query_as, types::ipnetwork::IpNetwork};
+use std::sync::Arc;
+use uuid::Uuid;
 
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct Device {
@@ -68,7 +68,10 @@ impl DeviceRepository {
     }
 
     /// Register a new device or update existing device information
-    pub async fn register_device(&self, request: RegisterDeviceRequest) -> Result<Device, AppError> {
+    pub async fn register_device(
+        &self,
+        request: RegisterDeviceRequest,
+    ) -> Result<Device, AppError> {
         let device = query_as!(
             Device,
             r#"
@@ -121,7 +124,11 @@ impl DeviceRepository {
     }
 
     /// Unregister a device
-    pub async fn unregister_device(&self, device_id: &Uuid, user_id: &Uuid) -> Result<(), AppError> {
+    pub async fn unregister_device(
+        &self,
+        device_id: &Uuid,
+        user_id: &Uuid,
+    ) -> Result<(), AppError> {
         let result = query!(
             "DELETE FROM devices WHERE device_id = $1 AND user_id = $2",
             device_id,
@@ -132,7 +139,9 @@ impl DeviceRepository {
         .map_err(|e| AppError::Database(format!("Failed to unregister device: {}", e)))?;
 
         if result.rows_affected() == 0 {
-            return Err(AppError::NotFound("Device not found or not owned by user".to_string()));
+            return Err(AppError::NotFound(
+                "Device not found or not owned by user".to_string(),
+            ));
         }
 
         Ok(())
@@ -157,7 +166,9 @@ impl DeviceRepository {
         .fetch_one(&*self.db_pool)
         .await
         .map_err(|e| match e {
-            sqlx::Error::RowNotFound => AppError::NotFound(format!("Device not found: {}", device_id)),
+            sqlx::Error::RowNotFound => {
+                AppError::NotFound(format!("Device not found: {}", device_id))
+            }
             _ => AppError::Database(format!("Failed to fetch device: {}", e)),
         })?;
 
@@ -189,7 +200,11 @@ impl DeviceRepository {
     }
 
     /// Update device heartbeat and health metrics
-    pub async fn update_heartbeat(&self, device_id: &Uuid, heartbeat: HeartbeatRequest) -> Result<(), AppError> {
+    pub async fn update_heartbeat(
+        &self,
+        device_id: &Uuid,
+        heartbeat: HeartbeatRequest,
+    ) -> Result<(), AppError> {
         let status = heartbeat.status.unwrap_or_else(|| "online".to_string());
 
         let result = query!(
@@ -241,7 +256,11 @@ impl DeviceRepository {
     }
 
     /// Save push notification token for a device
-    pub async fn save_push_token(&self, device_id: &Uuid, push_token: &str) -> Result<(), AppError> {
+    pub async fn save_push_token(
+        &self,
+        device_id: &Uuid,
+        push_token: &str,
+    ) -> Result<(), AppError> {
         // Store push token in capabilities as device_push_token
         let result = query!(
             r#"
@@ -270,7 +289,7 @@ impl DeviceRepository {
         &self,
         device_id: &Uuid,
         descriptor: JsonValue,
-        signature: &str
+        signature: &str,
     ) -> Result<(), AppError> {
         let result = query!(
             r#"
@@ -287,7 +306,9 @@ impl DeviceRepository {
         )
         .execute(&*self.db_pool)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to update connection descriptor: {}", e)))?;
+        .map_err(|e| {
+            AppError::Database(format!("Failed to update connection descriptor: {}", e))
+        })?;
 
         if result.rows_affected() == 0 {
             return Err(AppError::NotFound("Device not found".to_string()));
@@ -297,7 +318,11 @@ impl DeviceRepository {
     }
 
     /// Get connection descriptor for a device
-    pub async fn get_connection_descriptor(&self, device_id: &Uuid, user_id: &Uuid) -> Result<(JsonValue, String), AppError> {
+    pub async fn get_connection_descriptor(
+        &self,
+        device_id: &Uuid,
+        user_id: &Uuid,
+    ) -> Result<(JsonValue, String), AppError> {
         let result = query!(
             r#"
             SELECT connection_descriptor, connection_signature
@@ -310,13 +335,17 @@ impl DeviceRepository {
         .fetch_one(&*self.db_pool)
         .await
         .map_err(|e| match e {
-            sqlx::Error::RowNotFound => AppError::NotFound("Device not found or not owned by user".to_string()),
+            sqlx::Error::RowNotFound => {
+                AppError::NotFound("Device not found or not owned by user".to_string())
+            }
             _ => AppError::Database(format!("Failed to fetch connection descriptor: {}", e)),
         })?;
 
-        let descriptor = result.connection_descriptor
+        let descriptor = result
+            .connection_descriptor
             .ok_or_else(|| AppError::NotFound("Connection descriptor not available".to_string()))?;
-        let signature = result.connection_signature
+        let signature = result
+            .connection_signature
             .ok_or_else(|| AppError::NotFound("Connection signature not available".to_string()))?;
 
         Ok((descriptor, signature))
@@ -349,7 +378,9 @@ impl DeviceRepository {
         )
         .execute(&*self.db_pool)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to cleanup old presence history: {}", e)))?;
+        .map_err(|e| {
+            AppError::Database(format!("Failed to cleanup old presence history: {}", e))
+        })?;
 
         Ok(result.rows_affected() as i64)
     }
@@ -380,5 +411,39 @@ impl DeviceRepository {
         }
 
         Ok(tokens)
+    }
+
+    /// Upsert push token for a device, validating ownership
+    pub async fn upsert_push_token(
+        &self,
+        user_id: &Uuid,
+        device_id: &Uuid,
+        platform: &str,
+        token: &str,
+    ) -> Result<(), AppError> {
+        // Store push token in capabilities as device_push_token and validate user ownership
+        let result = query!(
+            r#"
+            UPDATE devices
+            SET
+                capabilities = jsonb_set(capabilities, '{device_push_token}', $3, true),
+                updated_at = NOW()
+            WHERE device_id = $1 AND user_id = $2
+            "#,
+            device_id,
+            user_id,
+            JsonValue::String(token.to_string())
+        )
+        .execute(&*self.db_pool)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to upsert push token: {}", e)))?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::NotFound(
+                "Device not found or not owned by user".to_string(),
+            ));
+        }
+
+        Ok(())
     }
 }

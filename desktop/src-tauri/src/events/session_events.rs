@@ -1,4 +1,5 @@
 use serde::Serialize;
+use serde_json;
 use tauri::{AppHandle, Emitter};
 
 /// Emitted after backend auto-applies discovered files to a session:
@@ -12,9 +13,15 @@ pub struct SessionAutoFilesAppliedPayload {
     pub files: Vec<String>,
 }
 
-pub fn emit_session_auto_files_applied(
-    app: &AppHandle,
-    payload: SessionAutoFilesAppliedPayload,
-) {
+pub fn emit_session_auto_files_applied(app: &AppHandle, payload: SessionAutoFilesAppliedPayload) {
     let _ = app.emit("session:auto-files-applied", &payload);
+
+    // Also emit device-link-event for remote devices
+    let _ = app.emit(
+        "device-link-event",
+        serde_json::json!({
+            "type": "session:auto-files-applied",
+            "payload": payload
+        }),
+    );
 }

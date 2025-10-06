@@ -1,5 +1,5 @@
 use actix_web::web;
-use eventsource_stream::{Eventsource, Event as SseEvent};
+use eventsource_stream::{Event as SseEvent, Eventsource};
 use futures_util::{Stream, StreamExt, TryStreamExt};
 use pin_project_lite::pin_project;
 use std::pin::Pin;
@@ -17,11 +17,11 @@ pub struct ParsedSseEvent {
 
 pin_project! {
     /// Adapter that converts a byte stream into parsed SSE events
-    /// 
+    ///
     /// This wraps eventsource-stream to provide a clean interface for
     /// consuming SSE streams from various LLM providers.
-    pub struct SseAdapter<S> 
-    where 
+    pub struct SseAdapter<S>
+    where
         S: Stream<Item = Result<web::Bytes, AppError>>
     {
         #[pin]
@@ -38,18 +38,13 @@ where
     pub fn new(stream: S) -> Self {
         // Convert AppError to io::Error for eventsource-stream
         let mapped_stream = stream.map(|result| {
-            result
-                .map(|bytes| bytes.to_vec())
-                .map_err(|e| {
-                    std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("Stream error: {}", e)
-                    )
-                })
+            result.map(|bytes| bytes.to_vec()).map_err(|e| {
+                std::io::Error::new(std::io::ErrorKind::Other, format!("Stream error: {}", e))
+            })
         });
-        
+
         let eventsource = mapped_stream.eventsource();
-        
+
         Self {
             inner: Box::pin(eventsource),
             _phantom: std::marker::PhantomData,
@@ -72,7 +67,7 @@ where
                         event_type: Some(event.event),
                         data: event.data,
                     };
-                    
+
                     debug!("Parsed SSE event: {:?}", parsed_event);
                     return Poll::Ready(Some(Ok(parsed_event)));
                 }

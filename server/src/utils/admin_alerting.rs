@@ -1,11 +1,11 @@
+use crate::services::email_notification_service::MailgunConfig;
 use chrono::Utc;
-use log::{error, warn, info};
+use log::{error, info, warn};
+use reqwest;
 use serde_json::json;
 use std::collections::HashMap;
 use std::env;
 use uuid::Uuid;
-use reqwest;
-use crate::services::email_notification_service::MailgunConfig;
 
 /// Severity levels for admin alerts
 #[derive(Debug, Clone)]
@@ -20,7 +20,7 @@ impl AlertSeverity {
     pub fn as_str(&self) -> &'static str {
         match self {
             AlertSeverity::Critical => "CRITICAL",
-            AlertSeverity::High => "HIGH", 
+            AlertSeverity::High => "HIGH",
             AlertSeverity::Medium => "MEDIUM",
             AlertSeverity::Low => "LOW",
         }
@@ -153,13 +153,13 @@ impl AdminAlertingService {
         match alert.severity {
             AlertSeverity::Critical => {
                 self.send_critical_alert(&alert).await;
-            },
+            }
             AlertSeverity::High => {
                 self.send_high_priority_alert(&alert).await;
-            },
+            }
             AlertSeverity::Medium | AlertSeverity::Low => {
                 self.send_standard_alert(&alert).await;
-            },
+            }
         }
     }
 
@@ -179,20 +179,23 @@ impl AdminAlertingService {
         match alert.severity {
             AlertSeverity::Critical => {
                 error!("🚨 ADMIN ALERT: {}", alert_json);
-            },
+            }
             AlertSeverity::High => {
                 warn!("⚠️ ADMIN ALERT: {}", alert_json);
-            },
+            }
             AlertSeverity::Medium | AlertSeverity::Low => {
                 info!("ℹ️ ADMIN ALERT: {}", alert_json);
-            },
+            }
         }
     }
 
     /// Send critical alert (requires immediate attention)
     async fn send_critical_alert(&self, alert: &AdminAlert) {
-        info!("🚨 CRITICAL ALERT sent to on-call engineers: {} - {}", alert.title, alert.description);
-        
+        info!(
+            "🚨 CRITICAL ALERT sent to on-call engineers: {} - {}",
+            alert.title, alert.description
+        );
+
         self.send_email_notification(alert).await;
         self.simulate_pagerduty_alert(alert).await;
         self.simulate_slack_critical_alert(alert).await;
@@ -201,8 +204,11 @@ impl AdminAlertingService {
 
     /// Send high priority alert
     async fn send_high_priority_alert(&self, alert: &AdminAlert) {
-        info!("⚠️ HIGH PRIORITY ALERT sent to engineering team: {} - {}", alert.title, alert.description);
-        
+        info!(
+            "⚠️ HIGH PRIORITY ALERT sent to engineering team: {} - {}",
+            alert.title, alert.description
+        );
+
         self.send_email_notification(alert).await;
         self.simulate_slack_alert(alert).await;
     }
@@ -212,59 +218,90 @@ impl AdminAlertingService {
         // In production, this would:
         // 1. Send to Slack #monitoring channel
         // 2. Create low-priority ticket for review
-        
-        info!("ℹ️ STANDARD ALERT logged: {} - {}", alert.title, alert.description);
-        
+
+        info!(
+            "ℹ️ STANDARD ALERT logged: {} - {}",
+            alert.title, alert.description
+        );
+
         self.simulate_monitoring_log(alert).await;
     }
 
     // Simulation methods for external services (replace with real implementations)
-    
+
     async fn simulate_pagerduty_alert(&self, alert: &AdminAlert) {
-        info!("📟 PagerDuty Alert Sent: [{}] {} (Alert ID: {})", 
-              alert.severity.as_str(), alert.title, alert.alert_id);
+        info!(
+            "📟 PagerDuty Alert Sent: [{}] {} (Alert ID: {})",
+            alert.severity.as_str(),
+            alert.title,
+            alert.alert_id
+        );
     }
 
     async fn simulate_slack_critical_alert(&self, alert: &AdminAlert) {
-        info!("💬 Slack Critical Alert Sent to #critical-alerts: [{}] {} (Alert ID: {})", 
-              alert.severity.as_str(), alert.title, alert.alert_id);
+        info!(
+            "💬 Slack Critical Alert Sent to #critical-alerts: [{}] {} (Alert ID: {})",
+            alert.severity.as_str(),
+            alert.title,
+            alert.alert_id
+        );
     }
 
     async fn simulate_slack_alert(&self, alert: &AdminAlert) {
-        info!("💬 Slack Alert Sent to #alerts: [{}] {} (Alert ID: {})", 
-              alert.severity.as_str(), alert.title, alert.alert_id);
+        info!(
+            "💬 Slack Alert Sent to #alerts: [{}] {} (Alert ID: {})",
+            alert.severity.as_str(),
+            alert.title,
+            alert.alert_id
+        );
     }
 
     async fn send_email_notification(&self, alert: &AdminAlert) {
-        if let (Some(config), Some(recipient)) = (
-            &self.mailgun_config,
-            &self.admin_recipient,
-        ) {
+        if let (Some(config), Some(recipient)) = (&self.mailgun_config, &self.admin_recipient) {
             let subject = format!("[{}] Admin Alert: {}", alert.severity.as_str(), alert.title);
             let body = self.create_alert_email_body(alert);
 
-            match self.send_via_mailgun(&subject, &body, recipient, config).await {
+            match self
+                .send_via_mailgun(&subject, &body, recipient, config)
+                .await
+            {
                 Ok(_) => {
-                    info!("📧 Admin alert email sent successfully to {}: [{}] {} (Alert ID: {})", 
-                          recipient, alert.severity.as_str(), alert.title, alert.alert_id);
+                    info!(
+                        "📧 Admin alert email sent successfully to {}: [{}] {} (Alert ID: {})",
+                        recipient,
+                        alert.severity.as_str(),
+                        alert.title,
+                        alert.alert_id
+                    );
                 }
                 Err(e) => {
                     error!("Failed to send admin alert email: {}", e);
                 }
             }
         } else {
-            warn!("Admin email configuration not available, skipping email notification for alert: {}", alert.alert_id);
+            warn!(
+                "Admin email configuration not available, skipping email notification for alert: {}",
+                alert.alert_id
+            );
         }
     }
 
     async fn simulate_incident_management_ticket(&self, alert: &AdminAlert) {
-        info!("🎫 Incident Management Ticket Created: [{}] {} (Alert ID: {})", 
-              alert.severity.as_str(), alert.title, alert.alert_id);
+        info!(
+            "🎫 Incident Management Ticket Created: [{}] {} (Alert ID: {})",
+            alert.severity.as_str(),
+            alert.title,
+            alert.alert_id
+        );
     }
 
     async fn simulate_monitoring_log(&self, alert: &AdminAlert) {
-        info!("📊 Monitoring Log Entry: [{}] {} (Alert ID: {})", 
-              alert.severity.as_str(), alert.title, alert.alert_id);
+        info!(
+            "📊 Monitoring Log Entry: [{}] {} (Alert ID: {})",
+            alert.severity.as_str(),
+            alert.title,
+            alert.alert_id
+        );
     }
 
     fn create_alert_email_body(&self, alert: &AdminAlert) -> String {
@@ -297,7 +334,7 @@ impl AdminAlertingService {
         }
 
         body.push_str("This is an automated notification from Vibe Manager admin alerting system.");
-        
+
         body
     }
 
@@ -308,7 +345,10 @@ impl AdminAlertingService {
         recipient: &str,
         config: &MailgunConfig,
     ) -> Result<(), String> {
-        let base_url = config.base_url.as_deref().unwrap_or("https://api.mailgun.net");
+        let base_url = config
+            .base_url
+            .as_deref()
+            .unwrap_or("https://api.mailgun.net");
         let url = format!("{}/v3/{}/messages", base_url, config.domain);
 
         let from_email = format!("{} <{}>", config.from_name, config.from_email);
@@ -319,7 +359,8 @@ impl AdminAlertingService {
         form.insert("subject", subject);
         form.insert("text", body);
 
-        match self.http_client
+        match self
+            .http_client
             .post(&url)
             .basic_auth("api", Some(&config.api_key))
             .form(&form)
@@ -329,11 +370,20 @@ impl AdminAlertingService {
             Ok(response) => {
                 let status = response.status();
                 if status.is_success() {
-                    let response_text = response.text().await.unwrap_or_else(|_| "no response body".to_string());
-                    info!("Admin alert email sent via Mailgun to {}: {}", recipient, response_text);
+                    let response_text = response
+                        .text()
+                        .await
+                        .unwrap_or_else(|_| "no response body".to_string());
+                    info!(
+                        "Admin alert email sent via Mailgun to {}: {}",
+                        recipient, response_text
+                    );
                     Ok(())
                 } else {
-                    let error_text = response.text().await.unwrap_or_else(|_| "no error details".to_string());
+                    let error_text = response
+                        .text()
+                        .await
+                        .unwrap_or_else(|_| "no error details".to_string());
                     error!("Mailgun API error ({}): {}", status, error_text);
                     Err(format!("Mailgun API error: {} - {}", status, error_text))
                 }
@@ -344,7 +394,6 @@ impl AdminAlertingService {
             }
         }
     }
-
 }
 
 /// Convenience function to send critical data integrity alert
@@ -355,7 +404,7 @@ pub async fn send_data_integrity_alert(
     additional_context: HashMap<String, String>,
 ) {
     let alerting_service = AdminAlertingService::new();
-    
+
     let alert = AdminAlert::new(
         AlertSeverity::Critical,
         AlertType::DataIntegrityIssue,
@@ -371,9 +420,9 @@ pub async fn send_data_integrity_alert(
     .with_metadata("requires_manual_intervention".to_string(), "true".to_string());
 
     // Add any additional context
-    let alert = additional_context.into_iter().fold(alert, |acc, (k, v)| {
-        acc.with_metadata(k, v)
-    });
+    let alert = additional_context
+        .into_iter()
+        .fold(alert, |acc, (k, v)| acc.with_metadata(k, v));
 
     alerting_service.send_alert(alert).await;
 }
@@ -385,7 +434,7 @@ pub async fn send_stripe_webhook_failure_alert(
     event_type: &str,
 ) {
     let alerting_service = AdminAlertingService::new();
-    
+
     let alert = AdminAlert::new(
         AlertSeverity::High,
         AlertType::StripeWebhookFailure,
@@ -409,7 +458,7 @@ pub async fn send_payment_processing_error_alert(
     error_message: &str,
 ) {
     let alerting_service = AdminAlertingService::new();
-    
+
     let alert = AdminAlert::new(
         AlertSeverity::Critical,
         AlertType::PaymentProcessingError,
@@ -419,7 +468,10 @@ pub async fn send_payment_processing_error_alert(
             customer_id, payment_intent_id, error_message
         ),
     )
-    .with_metadata("payment_intent_id".to_string(), payment_intent_id.to_string())
+    .with_metadata(
+        "payment_intent_id".to_string(),
+        payment_intent_id.to_string(),
+    )
     .with_metadata("customer_id".to_string(), customer_id.to_string())
     .with_metadata("error_message".to_string(), error_message.to_string())
     .with_immediate_attention(true);
@@ -435,9 +487,13 @@ pub async fn send_authentication_attack_alert(
     user_agent: Option<&str>,
 ) {
     let alerting_service = AdminAlertingService::new();
-    
-    let severity = if failed_attempts > 50 { AlertSeverity::Critical } else { AlertSeverity::High };
-    
+
+    let severity = if failed_attempts > 50 {
+        AlertSeverity::Critical
+    } else {
+        AlertSeverity::High
+    };
+
     let alert = AdminAlert::new(
         severity,
         AlertType::AuthenticationAttack,
@@ -463,7 +519,7 @@ pub async fn send_ddos_attack_alert(
     action_taken: &str,
 ) {
     let alerting_service = AdminAlertingService::new();
-    
+
     let alert = AdminAlert::new(
         AlertSeverity::Critical,
         AlertType::DdosAttack,
@@ -488,14 +544,14 @@ pub async fn send_api_key_compromise_alert(
     action_taken: &str,
 ) {
     let alerting_service = AdminAlertingService::new();
-    
+
     let alert = AdminAlert::new(
         AlertSeverity::Critical,
         AlertType::ApiKeyCompromise,
         "API Key Compromise Detected".to_string(),
         format!(
             "Potential compromise detected for {} API key. Indicators: {}. Action taken: {}",
-            key_type, 
+            key_type,
             compromise_indicators.join(", "),
             action_taken
         ),
@@ -515,7 +571,7 @@ pub async fn send_webhook_security_breach_alert(
     details: &str,
 ) {
     let alerting_service = AdminAlertingService::new();
-    
+
     let alert = AdminAlert::new(
         AlertSeverity::High,
         AlertType::WebhookSecurityBreach,
@@ -540,9 +596,13 @@ pub async fn send_compliance_violation_alert(
     remediation_required: bool,
 ) {
     let alerting_service = AdminAlertingService::new();
-    
-    let severity = if remediation_required { AlertSeverity::Critical } else { AlertSeverity::High };
-    
+
+    let severity = if remediation_required {
+        AlertSeverity::Critical
+    } else {
+        AlertSeverity::High
+    };
+
     let alert = AdminAlert::new(
         severity,
         AlertType::ComplianceViolation,
@@ -570,9 +630,13 @@ pub async fn send_rate_limit_exceeded_alert(
     action_taken: &str,
 ) {
     let alerting_service = AdminAlertingService::new();
-    
-    let severity = if current_rate > threshold * 2 { AlertSeverity::High } else { AlertSeverity::Medium };
-    
+
+    let severity = if current_rate > threshold * 2 {
+        AlertSeverity::High
+    } else {
+        AlertSeverity::Medium
+    };
+
     let alert = AdminAlert::new(
         severity,
         AlertType::RateLimitExceeded,
@@ -598,7 +662,7 @@ pub async fn send_suspicious_activity_alert(
     details: HashMap<String, String>,
 ) {
     let alerting_service = AdminAlertingService::new();
-    
+
     let alert = AdminAlert::new(
         AlertSeverity::Medium,
         AlertType::SuspiciousActivity,
@@ -612,9 +676,9 @@ pub async fn send_suspicious_activity_alert(
     .with_metadata("source".to_string(), source.to_string());
 
     // Add all details as metadata
-    let alert = details.into_iter().fold(alert, |acc, (k, v)| {
-        acc.with_metadata(k, v)
-    });
+    let alert = details
+        .into_iter()
+        .fold(alert, |acc, (k, v)| acc.with_metadata(k, v));
 
     alerting_service.send_alert(alert).await;
 }
@@ -626,7 +690,7 @@ pub async fn send_billing_allowance_reset_failure_alert(
     error_message: &str,
 ) {
     let alerting_service = AdminAlertingService::new();
-    
+
     let alert = AdminAlert::new(
         AlertSeverity::Critical,
         AlertType::PaymentProcessingError,

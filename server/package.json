@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Vibe Manager Server Component",
   "scripts": {
-    "server:run": "cargo run",
+    "server:run": "bash -c 'mkdir -p gen && cargo run 2>&1 | tee gen/server.log'",
     "server:check": "cargo check",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "build:scripts": "tsc -p tsconfig.json"

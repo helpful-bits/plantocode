@@ -1,12 +1,12 @@
-use crate::error::AppError;
-use uuid::Uuid;
-use chrono::{DateTime, Utc};
-use serde_json::{json, Value as JsonValue};
-use log::{debug, error, info};
 use crate::db::connection::DatabasePools;
+use crate::error::AppError;
 use bigdecimal::BigDecimal;
+use chrono::{DateTime, Utc};
+use log::{debug, error, info};
 use reqwest;
+use serde_json::{Value as JsonValue, json};
 use std::collections::HashMap;
+use uuid::Uuid;
 
 #[derive(Debug)]
 pub struct EmailNotificationService {
@@ -58,10 +58,10 @@ impl EmailNotificationService {
         currency: &str,
     ) -> Result<(), AppError> {
         let subject = "Credits Successfully Added to Your Account".to_string();
-        
+
         // Format the amount to 2 decimal places
         let formatted_amount = format!("{:.2}", amount);
-        
+
         let html_content = format!(
             r#"
             <html>
@@ -77,24 +77,35 @@ impl EmailNotificationService {
             formatted_amount, currency
         );
 
-        self.send_via_mailgun_direct(&subject, &html_content, user_email).await
+        self.send_via_mailgun_direct(&subject, &html_content, user_email)
+            .await
     }
 
     async fn send_via_mailgun_direct(
-        &self, 
-        subject: &str, 
-        html_content: &str, 
-        email_address: &str
+        &self,
+        subject: &str,
+        html_content: &str,
+        email_address: &str,
     ) -> Result<(), AppError> {
         debug!("Sending email via Mailgun API:");
-        debug!("  From: {} <{}>", self.mailgun_config.from_name, self.mailgun_config.from_email);
+        debug!(
+            "  From: {} <{}>",
+            self.mailgun_config.from_name, self.mailgun_config.from_email
+        );
         debug!("  To: {}", email_address);
         debug!("  Subject: {}", subject);
 
-        let base_url = self.mailgun_config.base_url.as_deref().unwrap_or("https://api.mailgun.net");
+        let base_url = self
+            .mailgun_config
+            .base_url
+            .as_deref()
+            .unwrap_or("https://api.mailgun.net");
         let url = format!("{}/v3/{}/messages", base_url, self.mailgun_config.domain);
 
-        let from_email = format!("{} <{}>", self.mailgun_config.from_name, self.mailgun_config.from_email);
+        let from_email = format!(
+            "{} <{}>",
+            self.mailgun_config.from_name, self.mailgun_config.from_email
+        );
 
         let mut form = HashMap::new();
         form.insert("from", from_email.as_str());
@@ -102,7 +113,8 @@ impl EmailNotificationService {
         form.insert("subject", subject);
         form.insert("html", html_content);
 
-        match self.http_client
+        match self
+            .http_client
             .post(&url)
             .basic_auth("api", Some(&self.mailgun_config.api_key))
             .form(&form)
@@ -112,13 +124,25 @@ impl EmailNotificationService {
             Ok(response) => {
                 let status = response.status();
                 if status.is_success() {
-                    let response_text = response.text().await.unwrap_or_else(|_| "no response body".to_string());
-                    info!("Email sent successfully via Mailgun to {}: {}", email_address, response_text);
+                    let response_text = response
+                        .text()
+                        .await
+                        .unwrap_or_else(|_| "no response body".to_string());
+                    info!(
+                        "Email sent successfully via Mailgun to {}: {}",
+                        email_address, response_text
+                    );
                     Ok(())
                 } else {
-                    let error_text = response.text().await.unwrap_or_else(|_| "no error details".to_string());
+                    let error_text = response
+                        .text()
+                        .await
+                        .unwrap_or_else(|_| "no error details".to_string());
                     error!("Mailgun API error ({}): {}", status, error_text);
-                    Err(AppError::External(format!("Mailgun API error: {} - {}", status, error_text)))
+                    Err(AppError::External(format!(
+                        "Mailgun API error: {} - {}",
+                        status, error_text
+                    )))
                 }
             }
             Err(e) => {

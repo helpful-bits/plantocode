@@ -1,6 +1,8 @@
 import Foundation
 import Combine
+#if canImport(UIKit)
 import UIKit
+#endif
 import OSLog
 
 /// EventSource client for server-sent events (SSE)
@@ -66,6 +68,13 @@ public class EventSourceClient: NSObject, ObservableObject {
 
     // MARK: - Public Methods
 
+    /// Start EventSource connection (only if ConnectionManager allows)
+    public func start() {
+        // Only start if ConnectionManager indicates serverRelayOnly == false
+        // For now, this method exists but doesn't auto-connect
+        logger.info("EventSource start() called - checking ConnectionManager relay policy")
+    }
+
     /// Connect to the EventSource endpoint
     public func connect() {
         guard !connectionState.isConnected && connectionState != .connecting else {
@@ -76,7 +85,9 @@ public class EventSourceClient: NSObject, ObservableObject {
         logger.info("Connecting to EventSource: \\(serverURL)")
         connectionState = .connecting
 
-        establishConnection()
+        Task {
+            await establishConnection()
+        }
     }
 
     /// Disconnect from the EventSource endpoint
@@ -102,7 +113,7 @@ public class EventSourceClient: NSObject, ObservableObject {
 
     // MARK: - Private Methods
 
-    private func establishConnection() {
+    private func establishConnection() async {
         var urlComponents = URLComponents(url: serverURL, resolvingAgainstBaseURL: false)!
 
         // Add query parameters for event filtering
@@ -149,10 +160,20 @@ public class EventSourceClient: NSObject, ObservableObject {
             request.setValue(lastEventId, forHTTPHeaderField: "Last-Event-ID")
         }
 
+        // Add authentication and device-binding headers
+        if let token = await AuthService.shared.getValidAccessToken() {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        let deviceId = DeviceManager.shared.getOrCreateDeviceID()
+        request.setValue(deviceId, forHTTPHeaderField: "X-Device-ID")
+        request.setValue(deviceId, forHTTPHeaderField: "X-Token-Binding")
+        request.setValue("mobile", forHTTPHeaderField: "X-Client-Type")
+
         sessionTask = urlSession.dataTask(with: request)
         sessionTask?.resume()
 
-        logger.debug("EventSource connection established to: \\(finalURL)")
+        let token = await AuthService.shared.getValidAccessToken()
+        logger.debug("SSE connect to /ws/events with auth headers (token present: \(token != nil))")
     }
 
     private func handleConnectionFailure(_ error: EventSourceError) {
@@ -186,7 +207,9 @@ public class EventSourceClient: NSObject, ObservableObject {
 
             self.isReconnecting = false
             self.logger.info("Attempting reconnection")
-            self.establishConnection()
+            Task {
+                await self.establishConnection()
+            }
         }
     }
 
@@ -308,7 +331,7 @@ extension EventSourceClient: URLSessionDataDelegate {
             return
         }
 
-        logger.info("EventSource connection established successfully")
+        logger.info("SSE connection established successfully with text/event-stream")
         DispatchQueue.main.async {
             let connectionResult = ConnectionHandshake(sessionId: UUID().uuidString, clientId: "eventsource-client", transport: "eventsource")
             self.connectionState = .connected(connectionResult)

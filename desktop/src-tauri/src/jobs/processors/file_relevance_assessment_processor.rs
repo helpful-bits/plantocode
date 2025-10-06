@@ -8,8 +8,6 @@ use tokio::fs;
 
 use crate::error::{AppError, AppResult};
 use crate::jobs::job_processor_utils;
-use crate::utils::path_utils::make_relative_to;
-use std::path::PathBuf;
 use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::processors::abstract_llm_processor::{
     LlmPromptContext, LlmTaskConfig, LlmTaskConfigBuilder, LlmTaskRunner,
@@ -19,6 +17,8 @@ use crate::jobs::types::{
     FileRelevanceAssessmentQualityDetails, FileRelevanceAssessmentResponse, Job, JobPayload,
     JobProcessResult, JobResultData,
 };
+use crate::utils::path_utils::make_relative_to;
+use std::path::PathBuf;
 
 pub struct FileRelevanceAssessmentProcessor;
 
@@ -511,12 +511,18 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
 
         for path_from_llm in &relevant_paths {
             // Fix paths that might be missing leading slash
-            let corrected_path = if !path_from_llm.starts_with('/') && !path_from_llm.starts_with("\\\\")
-                && path_from_llm.starts_with("Users/") {
+            let corrected_path = if !path_from_llm.starts_with('/')
+                && !path_from_llm.starts_with("\\\\")
+                && path_from_llm.starts_with("Users/")
+            {
                 // macOS path missing leading slash
                 format!("/{}", path_from_llm)
-            } else if !path_from_llm.starts_with('/') && !path_from_llm.starts_with("\\\\")
-                && (path_from_llm.starts_with("home/") || path_from_llm.starts_with("var/") || path_from_llm.starts_with("tmp/")) {
+            } else if !path_from_llm.starts_with('/')
+                && !path_from_llm.starts_with("\\\\")
+                && (path_from_llm.starts_with("home/")
+                    || path_from_llm.starts_with("var/")
+                    || path_from_llm.starts_with("tmp/"))
+            {
                 // Linux path missing leading slash
                 format!("/{}", path_from_llm)
             } else {
@@ -524,13 +530,14 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
             };
 
             // Handle both relative and absolute paths
-            let absolute_path = if corrected_path.starts_with('/') || corrected_path.starts_with("\\\\") {
-                // Already absolute
-                PathBuf::from(corrected_path)
-            } else {
-                // Relative path
-                project_dir.join(&corrected_path)
-            };
+            let absolute_path =
+                if corrected_path.starts_with('/') || corrected_path.starts_with("\\\\") {
+                    // Already absolute
+                    PathBuf::from(corrected_path)
+                } else {
+                    // Relative path
+                    project_dir.join(&corrected_path)
+                };
 
             match tokio::fs::metadata(&absolute_path).await {
                 Ok(metadata) if metadata.is_file() => {
@@ -541,7 +548,8 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
                             Ok(rel_path) => rel_path.to_string_lossy().to_string(),
                             Err(_) => {
                                 // Fallback: use strip_prefix
-                                absolute_path.strip_prefix(&project_dir)
+                                absolute_path
+                                    .strip_prefix(&project_dir)
                                     .map(|p| p.to_string_lossy().to_string())
                                     .unwrap_or_else(|_| path_from_llm.clone())
                             }

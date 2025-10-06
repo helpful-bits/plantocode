@@ -1,7 +1,7 @@
 import Foundation
 import Combine
 
-public struct Region {
+public struct Region: Equatable {
   public let id: String
   public let name: String
   public let baseURL: URL
@@ -22,6 +22,22 @@ public final class AppState: ObservableObject {
   @Published public private(set) var authError: String? = nil
   @Published public var selectedDeviceId: UUID? = nil
   @Published public var isInMainApp: Bool = false
+  @Published public private(set) var activeRegion: Region? = nil
+  @Published public var hasSelectedRegionOnce: Bool = false {
+    didSet {
+      UserDefaults.standard.set(hasSelectedRegionOnce, forKey: "hasSelectedRegionOnce")
+    }
+  }
+  @Published public private(set) var authBootstrapCompleted: Bool = false
+
+  // MARK: - Debug toggles for validation
+  @Published public var isEventsWebSocketEnabled: Bool = false
+
+  // MARK: - Validation counters
+  @Published public private(set) var fileSearchesPerformed: Int = 0
+  @Published public private(set) var planSavesCount: Int = 0
+  @Published public private(set) var terminalExecuteCount: Int = 0
+  @Published public private(set) var voiceTranscriptionAttempts: Int = 0
 
   public let availableRegions: [Region] = [
     Region(id: "us", name: "United States", baseURL: URL(string: "https://api.us.vibemanager.app")!),
@@ -37,6 +53,13 @@ public final class AppState: ObservableObject {
     self.isAuthenticated = authService.isAuthenticated
     self.currentUser = authService.currentUser
     self.authError = authService.authError
+
+    // Initialize active region from repository
+    let activeRegionName = regionRepository.getActiveRegion()
+    self.activeRegion = availableRegions.first { $0.name == activeRegionName }
+
+    // Load hasSelectedRegionOnce from UserDefaults
+    self.hasSelectedRegionOnce = UserDefaults.standard.bool(forKey: "hasSelectedRegionOnce")
 
     authService.$isAuthenticated
       .receive(on: DispatchQueue.main)
@@ -78,12 +101,10 @@ public final class AppState: ObservableObject {
   }
 
   public func setActiveRegion(_ region: Region) {
+    // Update published property immediately for UI reactivity
+    self.activeRegion = region
+    // Persist to database asynchronously
     regionRepository.setActiveRegion(region: region.name)
-  }
-
-  public var activeRegion: Region? {
-    let activeRegionName = regionRepository.getActiveRegion()
-    return availableRegions.first { $0.name == activeRegionName }
   }
 
   public func getActiveRegion() async -> Region? {
@@ -107,6 +128,51 @@ public final class AppState: ObservableObject {
   public func resetToLogin() {
     isInMainApp = false
     selectedDeviceId = nil
+  }
+
+  // MARK: - Validation counter methods
+
+  public func incrementFileSearchCount() {
+    fileSearchesPerformed += 1
+  }
+
+  public func incrementPlanSaveCount() {
+    planSavesCount += 1
+  }
+
+  public func incrementTerminalExecuteCount() {
+    terminalExecuteCount += 1
+  }
+
+  public func incrementVoiceTranscriptionCount() {
+    voiceTranscriptionAttempts += 1
+  }
+
+  public func resetValidationCounters() {
+    fileSearchesPerformed = 0
+    planSavesCount = 0
+    terminalExecuteCount = 0
+    voiceTranscriptionAttempts = 0
+  }
+
+  public func getValidationCounters() -> (fileSearches: Int, planSaves: Int, terminalExecutes: Int, voiceTranscriptions: Int) {
+    return (fileSearchesPerformed, planSavesCount, terminalExecuteCount, voiceTranscriptionAttempts)
+  }
+
+  // MARK: - Onboarding and Auth Bootstrap methods
+
+  public func markRegionSelectionCompleted() {
+    hasSelectedRegionOnce = true
+  }
+
+  public func markAuthBootstrapCompleted() {
+    if Thread.isMainThread {
+      authBootstrapCompleted = true
+    } else {
+      DispatchQueue.main.async {
+        self.authBootstrapCompleted = true
+      }
+    }
   }
 
   // URL handling is no longer needed with Auth0.swift 2.13+

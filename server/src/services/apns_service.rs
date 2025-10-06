@@ -1,11 +1,14 @@
+use chrono::{Duration, Utc};
+use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
+use reqwest::{
+    Client,
+    header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue},
+};
+use serde::{Deserialize, Serialize};
+use serde_json::{Value as JsonValue, json};
 use std::sync::Arc;
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
-use serde_json::{json, Value as JsonValue};
-use tracing::{info, warn, error, debug};
-use reqwest::{Client, header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE}};
-use chrono::{Utc, Duration};
-use jsonwebtoken::{encode, Header, Algorithm, EncodingKey};
-use serde::{Serialize, Deserialize};
 
 use crate::db::repositories::device_repository::DeviceRepository;
 use crate::error::AppError;
@@ -151,7 +154,8 @@ impl ApnsService {
         notification: &NotificationRequest,
     ) -> Result<(), String> {
         // Generate JWT token
-        let jwt_token = self.generate_jwt_token()
+        let jwt_token = self
+            .generate_jwt_token()
             .map_err(|e| format!("Failed to generate JWT: {}", e))?;
 
         // Create APNs payload
@@ -165,10 +169,21 @@ impl ApnsService {
                 badge: notification.badge,
                 sound: notification.sound.clone(),
                 category: notification.category.clone(),
-                content_available: if notification.content_available { Some(1) } else { None },
-                mutable_content: if notification.mutable_content { Some(1) } else { None },
+                content_available: if notification.content_available {
+                    Some(1)
+                } else {
+                    None
+                },
+                mutable_content: if notification.mutable_content {
+                    Some(1)
+                } else {
+                    None
+                },
             },
-            custom_data: notification.custom_data.clone().unwrap_or(JsonValue::Object(Default::default())),
+            custom_data: notification
+                .custom_data
+                .clone()
+                .unwrap_or(JsonValue::Object(Default::default())),
         };
 
         // Create headers
@@ -205,7 +220,8 @@ impl ApnsService {
             "Sending APNs notification"
         );
 
-        let response = self.http_client
+        let response = self
+            .http_client
             .post(&url)
             .headers(headers)
             .json(&payload)
@@ -214,7 +230,9 @@ impl ApnsService {
             .map_err(|e| format!("HTTP request failed: {}", e))?;
 
         let status = response.status();
-        let response_body = response.text().await
+        let response_body = response
+            .text()
+            .await
             .map_err(|e| format!("Failed to read response body: {}", e))?;
 
         if status.is_success() {
@@ -255,7 +273,8 @@ impl ApnsService {
         );
 
         // Get all push tokens for the user
-        let push_tokens = self.device_repository
+        let push_tokens = self
+            .device_repository
             .get_push_tokens_for_user(user_id)
             .await?;
 
@@ -357,9 +376,9 @@ impl ApnsService {
         custom_data: JsonValue,
     ) -> Result<NotificationResult, AppError> {
         let notification = NotificationRequest {
-            title: String::new(), // Empty title for silent notifications
-            body: String::new(),  // Empty body for silent notifications
-            sound: None,          // No sound for silent notifications
+            title: String::new(),    // Empty title for silent notifications
+            body: String::new(),     // Empty body for silent notifications
+            sound: None,             // No sound for silent notifications
             content_available: true, // Mark as background update
             custom_data: Some(custom_data),
             ..Default::default()
@@ -452,15 +471,20 @@ impl ApnsServiceBuilder {
     }
 
     pub fn build(self) -> Result<ApnsService, AppError> {
-        let device_repository = self.device_repository
+        let device_repository = self
+            .device_repository
             .ok_or_else(|| AppError::Configuration("Device repository is required".to_string()))?;
-        let team_id = self.team_id
+        let team_id = self
+            .team_id
             .ok_or_else(|| AppError::Configuration("APNs team ID is required".to_string()))?;
-        let key_id = self.key_id
+        let key_id = self
+            .key_id
             .ok_or_else(|| AppError::Configuration("APNs key ID is required".to_string()))?;
-        let private_key = self.private_key
+        let private_key = self
+            .private_key
             .ok_or_else(|| AppError::Configuration("APNs private key is required".to_string()))?;
-        let bundle_id = self.bundle_id
+        let bundle_id = self
+            .bundle_id
             .ok_or_else(|| AppError::Configuration("Bundle ID is required".to_string()))?;
 
         Ok(ApnsService::new(

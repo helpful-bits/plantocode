@@ -2,18 +2,27 @@ import Foundation
 import Network
 import Combine
 import OSLog
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Main connection manager that implements the hybrid connectivity strategy
 /// Coordinates direct connections, relay connections, and failover logic
 public class ConnectionManager: ConnectionStrategyCoordinator {
 
     // MARK: - Properties
-    
+
     /// Logger for debugging and monitoring
     private let logger = Logger(subsystem: "VibeManager", category: "ConnectionManager")
 
+    /// Relay-first architecture enforcement - disable direct connections
+    private let serverRelayOnly = true
+
     /// Current connection state
     public private(set) var connectionState = ConnectionState.disconnected
+
+    /// Previous state for tracking state changes
+    private var previousState = ConnectionState.disconnected
 
     /// Current established connection type
     public private(set) var currentConnectionType: EstablishedConnectionType?
@@ -74,14 +83,27 @@ public class ConnectionManager: ConnectionStrategyCoordinator {
 
         let deviceId = DeviceManager.shared.getOrCreateDeviceID()
 
+        // Get pinning delegate for relay endpoint
+        let pinningDelegate = CertificatePinningManager.shared.createURLSessionDelegate(endpointType: .relay)
+
         // Initialize all stored properties first
-        self.webSocketClient = WebSocketClient(serverURL: serverURL)
-        self.relayClient = relayClient ?? ServerRelayClient(serverURL: serverURL, deviceId: deviceId)
+        self.webSocketClient = WebSocketClient(serverURL: serverURL, sessionDelegate: pinningDelegate)
+        self.relayClient = relayClient ?? ServerRelayClient(serverURL: serverURL, deviceId: deviceId, sessionDelegate: pinningDelegate)
         self.networkMonitor = networkMonitor ?? DefaultNetworkMonitor()
 
         // Now call instance methods after all properties are initialized
         setupEventHandlers()
         startNetworkMonitoring()
+        setupLifecycleObservers()
+    }
+
+    /// Start events if enabled (WebSocket connection gated behind relay-first check)
+    public func startEventsIfEnabled() {
+        guard serverRelayOnly == false else {
+            logger.info("Events disabled due to server relay only mode")
+            return
+        }
+        // Would start WebSocket client here if not in relay-only mode
     }
 
     private func getServerURL() -> URL? {
@@ -269,6 +291,21 @@ public class ConnectionManager: ConnectionStrategyCoordinator {
             .store(in: &cancellables)
     }
 
+    private func setupLifecycleObservers() {
+        #if canImport(UIKit)
+        // Add observer for app becoming active
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task {
+                await MultiConnectionManager.shared.restoreConnections()
+            }
+        }
+        #endif
+    }
+
     private func startNetworkMonitoring() {
         networkMonitor.startMonitoring()
 
@@ -296,6 +333,10 @@ public class ConnectionManager: ConnectionStrategyCoordinator {
                     _ = await connect(config: config)
                 }
             }
+            // Also restore multi-connections when network becomes available
+            Task {
+                await MultiConnectionManager.shared.restoreConnections()
+            }
         }
     }
 
@@ -303,7 +344,8 @@ public class ConnectionManager: ConnectionStrategyCoordinator {
 
     private func emitStateChange() {
         stateContinuation?.yield(connectionState)
-        emitEvent(.stateChanged(from: connectionState, to: connectionState))
+        emitEvent(.stateChanged(from: previousState, to: connectionState))
+        previousState = connectionState
     }
 
     private func emitEvent(_ event: ConnectionEvent) {

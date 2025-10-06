@@ -2,6 +2,7 @@ import SwiftUI
 import Core
 
 public struct FileManagementView: View {
+    @EnvironmentObject private var container: AppContainer
     @State private var searchText = ""
     @State private var isSearching = false
     @State private var searchResults: [FileSearchResult] = []
@@ -11,28 +12,20 @@ public struct FileManagementView: View {
     public init() {}
 
     public var body: some View {
-        NavigationView {
-            VStack(spacing: 20) {
-                // Header
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("File Management")
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
-                        .foregroundColor(Color("CardForeground"))
-
-                    Text("Find and manage project files")
-                        .font(.body)
-                        .foregroundColor(Color("MutedForeground"))
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(spacing: 20) {
+            // Header
+            AppHeaderBar(
+                title: "Files",
+                subtitle: "Find and manage project files"
+            )
 
                 // Action Buttons
                 HStack(spacing: 16) {
                     ActionButton(
                         title: "Find Relevant Files",
                         subtitle: "Discover files related to your task",
-                        icon: "doc.magnifyingglass",
-                        color: Color("Primary")
+                        icon: "doc.text.magnifyingglass",
+                        color: Color.primary
                     ) {
                         startFileFinderWorkflow()
                     }
@@ -51,7 +44,7 @@ public struct FileManagementView: View {
                 VStack(spacing: 16) {
                     HStack {
                         Image(systemName: "magnifyingglass")
-                            .foregroundColor(Color("MutedForeground"))
+                            .foregroundColor(Color.mutedForeground)
 
                         TextField("Search files...", text: $searchText)
                             .textFieldStyle(PlainTextFieldStyle())
@@ -64,16 +57,16 @@ public struct FileManagementView: View {
                                 searchText = ""
                                 searchResults = []
                             }
-                            .foregroundColor(Color("MutedForeground"))
+                            .foregroundColor(Color.mutedForeground)
                             .font(.caption)
                         }
                     }
                     .padding(12)
-                    .background(Color("Card"))
+                    .background(Color.card)
                     .cornerRadius(8)
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color("Border"), lineWidth: 1)
+                            .stroke(Color.border, lineWidth: 1)
                     )
 
                     HStack {
@@ -87,7 +80,7 @@ public struct FileManagementView: View {
 
                         if isLoading {
                             ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: Color("Primary")))
+                                .progressViewStyle(CircularProgressViewStyle(tint: Color.primary))
                                 .scaleEffect(0.8)
                         }
                     }
@@ -103,14 +96,14 @@ public struct FileManagementView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         HStack {
                             Text("Search Results")
-                                .font(.headline)
-                                .foregroundColor(Color("CardForeground"))
+                                .h4()
+                                .foregroundColor(Color.cardForeground)
 
                             Spacer()
 
                             Text("\(searchResults.count) files found")
-                                .font(.caption)
-                                .foregroundColor(Color("MutedForeground"))
+                                .small()
+                                .foregroundColor(Color.mutedForeground)
                         }
 
                         LazyVStack(spacing: 8) {
@@ -125,16 +118,16 @@ public struct FileManagementView: View {
                     VStack(spacing: 16) {
                         Image(systemName: "doc.questionmark")
                             .font(.system(size: 48))
-                            .foregroundColor(Color("MutedForeground"))
+                            .foregroundColor(Color.mutedForeground)
 
                         VStack(spacing: 8) {
                             Text("No Files Found")
-                                .font(.headline)
-                                .foregroundColor(Color("CardForeground"))
+                                .h4()
+                                .foregroundColor(Color.cardForeground)
 
                             Text("Try different search terms or use the workflow buttons above to find relevant files.")
-                                .font(.body)
-                                .foregroundColor(Color("MutedForeground"))
+                                .paragraph()
+                                .foregroundColor(Color.mutedForeground)
                                 .multilineTextAlignment(.center)
                         }
                     }
@@ -144,77 +137,70 @@ public struct FileManagementView: View {
                 Spacer()
             }
             .padding()
-        }
-        .navigationTitle("Files")
     }
 
     private func startFileFinderWorkflow() {
         Task {
-            await executeWorkflow("file_finder")
+            await executeFileFinderWorkflow()
         }
     }
 
     private func startWebSearchWorkflow() {
         Task {
-            await executeWorkflow("web_search")
+            await executeWebSearchWorkflow()
         }
     }
 
-    private func executeWorkflow(_ workflowType: String) async {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
-            await MainActor.run {
-                errorMessage = "No active device connection"
-            }
-            return
-        }
-
+    private func executeFileFinderWorkflow() async {
         await MainActor.run {
             isLoading = true
             errorMessage = nil
         }
 
-        let method = workflowType == "file_finder" ? "workflows.startFileFinder" : "workflows.startWebSearch"
-        let request = RpcRequest(
-            method: method,
-            params: [
-                "sessionId": AnyCodable("mobile-session"), // TODO: Get actual session ID
-                "taskDescription": AnyCodable("Find relevant files for mobile app"),
-                "projectDirectory": AnyCodable("/path/to/project"), // TODO: Get actual project directory
-                "excludedPaths": AnyCodable(["node_modules", ".git", "target", "build"]),
-                "timeoutMs": AnyCodable(60000)
-            ]
-        )
-
         do {
-            var workflowResult: [String: Any]?
+            let sessionId = container.sessionService.currentSessionId ?? "mobile-session"
 
-            for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
-                if let error = response.error {
-                    await MainActor.run {
-                        errorMessage = "Workflow error: \(error.message)"
-                        isLoading = false
-                    }
-                    return
-                }
-
-                if let result = response.result?.value as? [String: Any] {
-                    workflowResult = result
-                    if response.isFinal {
-                        break
+            for try await result in container.filesService.startFileFinderWorkflow(sessionId: sessionId) {
+                await MainActor.run {
+                    if let resultDict = result as? [String: Any],
+                       let jobId = resultDict["jobId"] as? String {
+                        errorMessage = nil
                     }
                 }
             }
 
             await MainActor.run {
                 isLoading = false
-                if let result = workflowResult {
-                    // Handle workflow completion
-                    if let jobId = result["jobId"] as? String {
-                        // Could navigate to job status view or show success message
+            }
+
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                isLoading = false
+            }
+        }
+    }
+
+    private func executeWebSearchWorkflow() async {
+        await MainActor.run {
+            isLoading = true
+            errorMessage = nil
+        }
+
+        do {
+            let sessionId = container.sessionService.currentSessionId ?? "mobile-session"
+
+            for try await result in container.filesService.startWebSearchWorkflow(sessionId: sessionId, query: "Find relevant files for mobile app") {
+                await MainActor.run {
+                    if let resultDict = result as? [String: Any],
+                       let jobId = resultDict["jobId"] as? String {
                         errorMessage = nil
                     }
                 }
+            }
+
+            await MainActor.run {
+                isLoading = false
             }
 
         } catch {
@@ -236,58 +222,35 @@ public struct FileManagementView: View {
     }
 
     private func searchFiles(query: String) async {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
-            await MainActor.run {
-                errorMessage = "No active device connection"
-            }
-            return
-        }
-
         await MainActor.run {
             isLoading = true
             errorMessage = nil
             searchResults = []
         }
 
-        let request = RpcRequest(
-            method: "files.search",
-            params: [
-                "projectDirectory": AnyCodable("/path/to/project"), // TODO: Get actual project directory
-                "query": AnyCodable(query),
-                "includeContent": AnyCodable(true),
-                "maxResults": AnyCodable(50)
-            ]
-        )
-
         do {
-            var searchData: [String: Any]?
-
-            for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
-                if let error = response.error {
-                    await MainActor.run {
-                        errorMessage = "Search error: \(error.message)"
-                        isLoading = false
-                    }
-                    return
-                }
-
-                if let result = response.result?.value as? [String: Any] {
-                    searchData = result
-                    if response.isFinal {
-                        break
-                    }
-                }
-            }
+            let projectDirectory = "/path/to/project"
+            let results = try await container.filesService.searchFiles(
+                query: query,
+                maxResults: 50,
+                includeContent: true,
+                projectDirectory: projectDirectory
+            )
 
             await MainActor.run {
-                isLoading = false
-                if let data = searchData,
-                   let files = data["files"] as? [[String: Any]] {
-                    searchResults = files.compactMap { fileData in
-                        FileSearchResult.from(dictionary: fileData)
+                searchResults = results.compactMap { fileInfo in
+                    var dict: [String: Any] = [
+                        "path": fileInfo.path,
+                        "name": fileInfo.name,
+                        "size": fileInfo.size,
+                        "modifiedAt": Double(fileInfo.modifiedAt)
+                    ]
+                    if let preview = fileInfo.contentPreview {
+                        dict["contentSnippet"] = preview
                     }
+                    return FileSearchResult.from(dictionary: dict)
                 }
+                isLoading = false
             }
 
         } catch {
@@ -315,19 +278,19 @@ private struct ActionButton: View {
 
                 VStack(spacing: 4) {
                     Text(title)
-                        .font(.headline)
-                        .foregroundColor(Color("CardForeground"))
+                        .h4()
+                        .foregroundColor(Color.cardForeground)
                         .multilineTextAlignment(.center)
 
                     Text(subtitle)
-                        .font(.caption)
-                        .foregroundColor(Color("MutedForeground"))
+                        .small()
+                        .foregroundColor(Color.mutedForeground)
                         .multilineTextAlignment(.center)
                 }
             }
             .padding(20)
             .frame(maxWidth: .infinity)
-            .background(Color("Card"))
+            .background(Color.card)
             .cornerRadius(12)
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
@@ -349,39 +312,52 @@ private struct FileResultRow: View {
                     .foregroundColor(fileIconColor)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(result.name)
-                        .font(.headline)
-                        .foregroundColor(Color("CardForeground"))
+                    HStack {
+                        Text(result.name)
+                            .h4()
+                            .foregroundColor(Color.cardForeground)
+
+                        Spacer()
+
+                        if let relevanceScore = result.relevanceScore {
+                            Text(String(format: "%.2f", relevanceScore))
+                                .small()
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.primary.opacity(0.1))
+                                .foregroundColor(Color.primary)
+                                .cornerRadius(4)
+                        }
+                    }
 
                     Text(result.path)
-                        .font(.caption)
-                        .foregroundColor(Color("MutedForeground"))
+                        .small()
+                        .foregroundColor(Color.mutedForeground)
                         .lineLimit(1)
                 }
 
-                Spacer()
-
                 if let size = result.size {
                     Text(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file))
-                        .font(.caption2)
-                        .foregroundColor(Color("MutedForeground"))
+                        .small()
+                        .foregroundColor(Color.mutedForeground)
                 }
             }
 
             if let snippet = result.contentSnippet, !snippet.isEmpty {
                 Text(snippet)
-                    .font(.caption)
-                    .foregroundColor(Color("MutedForeground"))
-                    .lineLimit(2)
+                    .small()
+                    .foregroundColor(Color.mutedForeground)
+                    .lineLimit(3)
                     .padding(.leading, 28)
+                    .padding(.top, 4)
             }
         }
         .padding(12)
-        .background(Color("Card"))
+        .background(Color.card)
         .cornerRadius(8)
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(Color("Border"), lineWidth: 1)
+                .stroke(Color.border, lineWidth: 1)
         )
     }
 
@@ -407,29 +383,16 @@ private struct FileResultRow: View {
         let ext = (result.name as NSString).pathExtension.lowercased()
         switch ext {
         case "swift":
-            return .orange
+            return Color.warning
         case "js", "ts":
-            return .yellow
+            return Color.warning
         case "py":
-            return .blue
+            return Color.primary
         case "json":
-            return .green
+            return Color.success
         default:
-            return Color("MutedForeground")
+            return Color.mutedForeground
         }
-    }
-}
-
-private struct PrimaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .padding(.horizontal, 20)
-            .padding(.vertical, 10)
-            .background(Color("Primary"))
-            .foregroundColor(.white)
-            .cornerRadius(8)
-            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
-            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
     }
 }
 

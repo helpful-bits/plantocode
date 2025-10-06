@@ -8,12 +8,12 @@ VALUES
 -- ANTHROPIC MODELS
 -- =============================================================================
 -- Anthropic models routed through OpenRouter using canonical slugs
-('anthropic/claude-sonnet-4-20250514', 'openrouter', 'anthropic/claude-sonnet-4'),
+('anthropic/claude-sonnet-4-5-20250929', 'openrouter', 'anthropic/claude-sonnet-4.5'),
 ('anthropic/claude-opus-4-20250514', 'openrouter', 'anthropic/claude-opus-4'),
 ('anthropic/claude-3-7-sonnet-20250219', 'openrouter', 'anthropic/claude-3.7-sonnet'),
 
 -- Anthropic direct API mappings
-('anthropic/claude-sonnet-4-20250514', 'anthropic', 'claude-sonnet-4-20250514'),
+('anthropic/claude-sonnet-4-5-20250929', 'anthropic', 'claude-sonnet-4-5-20250929'),
 ('anthropic/claude-opus-4-20250514', 'anthropic', 'claude-opus-4-20250514'),
 ('anthropic/claude-3-7-sonnet-20250219', 'anthropic', 'claude-3-7-sonnet-20250219'),
 

@@ -1,18 +1,16 @@
-use actix_web::{web, HttpResponse, get, post};
-use std::sync::Arc;
-use serde::{Deserialize, Serialize};
 use crate::error::AppError;
-use crate::services::billing_service::BillingService;
 use crate::models::AuthenticatedUser;
 use crate::models::billing::{AutoTopOffSettings, UpdateAutoTopOffRequest};
-use log::{info, warn};
+use crate::services::billing_service::BillingService;
+use actix_web::{HttpResponse, get, post, web};
 use bigdecimal::{BigDecimal, FromPrimitive};
-
+use log::{info, warn};
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 // ========================================
 // AUTO TOP-OFF HANDLERS
 // ========================================
-
 
 /// Get auto top-off settings for the user
 #[get("/auto-top-off-settings")]
@@ -20,10 +18,14 @@ pub async fn get_auto_top_off_settings_handler(
     user: web::ReqData<AuthenticatedUser>,
     billing_service: web::Data<Arc<BillingService>>,
 ) -> Result<HttpResponse, AppError> {
-    
-    let settings = billing_service.get_auto_top_off_settings(&user.user_id).await?;
-    
-    info!("Successfully retrieved auto top-off settings for user: {}", user.user_id);
+    let settings = billing_service
+        .get_auto_top_off_settings(&user.user_id)
+        .await?;
+
+    info!(
+        "Successfully retrieved auto top-off settings for user: {}",
+        user.user_id
+    );
     Ok(HttpResponse::Ok().json(settings))
 }
 
@@ -34,55 +36,81 @@ pub async fn update_auto_top_off_settings_handler(
     request: web::Json<UpdateAutoTopOffRequest>,
     billing_service: web::Data<Arc<BillingService>>,
 ) -> Result<HttpResponse, AppError> {
-    
     // Validate the request
     let threshold_decimal = if request.enabled {
         if let Some(threshold_str) = &request.threshold {
             let threshold = BigDecimal::parse_bytes(threshold_str.as_bytes(), 10)
                 .ok_or_else(|| AppError::BadRequest("Invalid threshold format".to_string()))?;
             if threshold <= BigDecimal::from(0) || threshold > BigDecimal::from(1000) {
-                return Err(AppError::BadRequest("Auto top-off threshold must be between $0.01 and $1000.00".to_string()));
+                return Err(AppError::BadRequest(
+                    "Auto top-off threshold must be between $0.01 and $1000.00".to_string(),
+                ));
             }
             Some(threshold)
         } else {
-            return Err(AppError::BadRequest("Auto top-off threshold is required when auto top-off is enabled".to_string()));
+            return Err(AppError::BadRequest(
+                "Auto top-off threshold is required when auto top-off is enabled".to_string(),
+            ));
         }
     } else {
-        request.threshold.as_ref().map(|t| BigDecimal::parse_bytes(t.as_bytes(), 10).unwrap_or_default())
+        request
+            .threshold
+            .as_ref()
+            .map(|t| BigDecimal::parse_bytes(t.as_bytes(), 10).unwrap_or_default())
     };
-    
+
     let amount_decimal = if request.enabled {
         if let Some(amount_str) = &request.amount {
             let amount = BigDecimal::parse_bytes(amount_str.as_bytes(), 10)
                 .ok_or_else(|| AppError::BadRequest("Invalid amount format".to_string()))?;
             if amount <= BigDecimal::from(0) || amount > BigDecimal::from(1000) {
-                return Err(AppError::BadRequest("Auto top-off amount must be between $0.01 and $1000.00".to_string()));
+                return Err(AppError::BadRequest(
+                    "Auto top-off amount must be between $0.01 and $1000.00".to_string(),
+                ));
             }
             Some(amount)
         } else {
-            return Err(AppError::BadRequest("Auto top-off amount is required when auto top-off is enabled".to_string()));
+            return Err(AppError::BadRequest(
+                "Auto top-off amount is required when auto top-off is enabled".to_string(),
+            ));
         }
     } else {
-        request.amount.as_ref().map(|a| BigDecimal::parse_bytes(a.as_bytes(), 10).unwrap_or_default())
+        request
+            .amount
+            .as_ref()
+            .map(|a| BigDecimal::parse_bytes(a.as_bytes(), 10).unwrap_or_default())
     };
-    
-    let settings = billing_service.update_auto_top_off_settings(
-        &user.user_id,
-        request.enabled,
-        threshold_decimal,
-        amount_decimal,
-    ).await?;
-    
+
+    let settings = billing_service
+        .update_auto_top_off_settings(
+            &user.user_id,
+            request.enabled,
+            threshold_decimal,
+            amount_decimal,
+        )
+        .await?;
+
     // If auto top-off was enabled, immediately check if we need to trigger it
     if request.enabled {
-        info!("Auto top-off enabled for user {}, checking if immediate top-off is needed", user.user_id);
-        if let Err(e) = billing_service.check_and_trigger_auto_top_off(&user.user_id).await {
-            warn!("Failed to check auto top-off immediately after enabling for user {}: {}", user.user_id, e);
+        info!(
+            "Auto top-off enabled for user {}, checking if immediate top-off is needed",
+            user.user_id
+        );
+        if let Err(e) = billing_service
+            .check_and_trigger_auto_top_off(&user.user_id)
+            .await
+        {
+            warn!(
+                "Failed to check auto top-off immediately after enabling for user {}: {}",
+                user.user_id, e
+            );
             // Don't fail the settings update, just log the error
         }
     }
-    
-    info!("Successfully updated auto top-off settings for user: {}", user.user_id);
+
+    info!(
+        "Successfully updated auto top-off settings for user: {}",
+        user.user_id
+    );
     Ok(HttpResponse::Ok().json(settings))
 }
-

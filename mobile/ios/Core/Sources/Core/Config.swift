@@ -32,6 +32,7 @@ public struct Config {
     }
 
     /// Auth scope from Info.plist with default fallback
+    // Server-issued app JWT includes read write rpc; no need to add server scopes here
     public static var authScope: String {
         return Bundle.main.infoDictionary?["AUTH_SCOPE"] as? String ?? "openid profile email"
     }
@@ -46,7 +47,60 @@ public struct Config {
     /// Dynamic server URL based on region selection
     /// Reads from RegionSettingsRepository for current active region
     public static var serverURL: String {
+        #if DEBUG
+        // Force local development server for DEBUG builds
+        return "http://192.168.0.38:8080"
+        #else
         return RegionSettingsRepository.shared.getActive().baseURL
+        #endif
+    }
+
+    /// Auth server URL - use dev server in DEBUG builds
+    public static var authServerURL: String {
+        #if DEBUG
+        // Use local development server for DEBUG builds
+        return "http://192.168.0.38:8080"
+        #else
+        // Use production US server for Auth0 authentication
+        return "https://api.us.vibemanager.app"
+        #endif
+    }
+
+    /// WebSocket events path from Info.plist
+    public static let wsEventsPath: String = Bundle.main.object(forInfoDictionaryKey: "WS_EVENTS_PATH") as? String ?? "/ws/events"
+
+    /// WebSocket device-link path from Info.plist
+    public static let wsDeviceLinkPath: String = Bundle.main.object(forInfoDictionaryKey: "WS_DEVICE_LINK_PATH") as? String ?? "/ws/device-link"
+
+    /// Construct WebSocket URL from base URL and path
+    public static func websocketURL(base: String, path: String) -> URL {
+        guard let baseURL = URL(string: base) else {
+            fatalError("Invalid base URL: \(base)")
+        }
+
+        // Convert http -> ws and https -> wss
+        var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)!
+        if components.scheme == "http" {
+            components.scheme = "ws"
+        } else if components.scheme == "https" {
+            components.scheme = "wss"
+        }
+        components.path = path
+
+        guard let wsURL = components.url else {
+            fatalError("Failed to construct WebSocket URL")
+        }
+        return wsURL
+    }
+
+    /// Events WebSocket URL computed from server URL and events path
+    public static var eventsWebSocketURL: URL {
+        return websocketURL(base: serverURL, path: wsEventsPath)
+    }
+
+    /// Device-link WebSocket URL computed from server URL and device-link path
+    public static var deviceLinkWebSocketURL: URL {
+        return websocketURL(base: serverURL, path: wsDeviceLinkPath)
     }
 
     // MARK: - Auth0 Scope
@@ -59,16 +113,18 @@ public struct Config {
     /// Generates Auth0 callback URL that matches desktop - uses server callback
     /// - Returns: Server callback URL for Auth0 to redirect to
     public static func callbackURL() -> String {
-        // Match desktop: Auth0 redirects to server, not to app directly
-        // The app polls the server for the result
-        return "\(serverURL)/auth/auth0/callback"
+        // Always use production server for Auth0 callbacks
+        // Auth0 is configured to redirect to the production server
+        return "\(authServerURL)/auth/auth0/callback"
     }
 
     /// Generates Auth0 logout URL for the current app
     /// - Parameter serverURL: The server URL to redirect to after logout
     /// - Returns: Formatted logout URL string matching server expectations
     public static func loggedOutURL(serverURL: URL) -> String {
-        return serverURL.appendingPathComponent("auth/auth0/logged-out").absoluteString
+        // Use auth server for logout callbacks
+        let authURL = URL(string: authServerURL)!
+        return authURL.appendingPathComponent("auth/auth0/logged-out").absoluteString
     }
 
     /// URL encodes a string for safe URL usage

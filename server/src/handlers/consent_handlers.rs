@@ -1,10 +1,12 @@
-use actix_web::{web, HttpResponse, HttpRequest};
+use crate::error::AppError;
+use crate::models::{
+    AcceptConsentRequest, AuthenticatedUser, ConsentDocumentType, ConsentRegion, ConsentSource,
+};
+use crate::services::consent_service::ConsentService;
+use actix_web::{HttpRequest, HttpResponse, web};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
-use crate::error::AppError;
-use crate::models::{AuthenticatedUser, AcceptConsentRequest, ConsentRegion, ConsentDocumentType, ConsentSource};
-use crate::services::consent_service::ConsentService;
 
 // Query structs
 #[derive(Debug, Deserialize)]
@@ -26,11 +28,13 @@ pub async fn get_current_legal_documents(
     query: web::Query<RegionQuery>,
     consent_service: web::Data<Arc<ConsentService>>,
 ) -> Result<HttpResponse, AppError> {
-    let region = query.region.parse::<ConsentRegion>()
+    let region = query
+        .region
+        .parse::<ConsentRegion>()
         .map_err(|_| AppError::BadRequest(format!("Invalid region: {}", query.region)))?;
 
     let documents = consent_service.get_current_legal_documents(&region).await?;
-    
+
     Ok(HttpResponse::Ok().json(documents))
 }
 
@@ -40,11 +44,15 @@ pub async fn get_consent_status(
     query: web::Query<RegionQuery>,
     consent_service: web::Data<Arc<ConsentService>>,
 ) -> Result<HttpResponse, AppError> {
-    let region = query.region.parse::<ConsentRegion>()
+    let region = query
+        .region
+        .parse::<ConsentRegion>()
         .map_err(|_| AppError::BadRequest(format!("Invalid region: {}", query.region)))?;
 
-    let status = consent_service.get_consent_status(&auth.user_id, &region).await?;
-    
+    let status = consent_service
+        .get_consent_status(&auth.user_id, &region)
+        .await?;
+
     Ok(HttpResponse::Ok().json(status))
 }
 
@@ -54,11 +62,15 @@ pub async fn verify_consent(
     query: web::Query<RegionQuery>,
     consent_service: web::Data<Arc<ConsentService>>,
 ) -> Result<HttpResponse, AppError> {
-    let region = query.region.parse::<ConsentRegion>()
+    let region = query
+        .region
+        .parse::<ConsentRegion>()
         .map_err(|_| AppError::BadRequest(format!("Invalid region: {}", query.region)))?;
 
-    let verification = consent_service.verify_consent(&auth.user_id, &region).await?;
-    
+    let verification = consent_service
+        .verify_consent(&auth.user_id, &region)
+        .await?;
+
     Ok(HttpResponse::Ok().json(verification))
 }
 
@@ -70,36 +82,46 @@ pub async fn accept_consent(
     consent_service: web::Data<Arc<ConsentService>>,
 ) -> Result<HttpResponse, AppError> {
     let request = json.into_inner();
-    
+
     // Extract IP from connection info
-    let ip_address = req.connection_info()
+    let ip_address = req
+        .connection_info()
         .realip_remote_addr()
         .and_then(|ip_str| ip_str.parse().ok());
-    
+
     // Extract User-Agent from headers
-    let user_agent = req.headers()
+    let user_agent = req
+        .headers()
         .get("user-agent")
         .and_then(|h| h.to_str().ok())
         .map(|s| s.to_string());
 
     // Parse document type and region
-    let doc_type = request.doc_type.parse::<ConsentDocumentType>()
-        .map_err(|_| AppError::BadRequest(format!("Invalid document type: {}", request.doc_type)))?;
-    
-    let region = request.region.parse::<ConsentRegion>()
+    let doc_type = request
+        .doc_type
+        .parse::<ConsentDocumentType>()
+        .map_err(|_| {
+            AppError::BadRequest(format!("Invalid document type: {}", request.doc_type))
+        })?;
+
+    let region = request
+        .region
+        .parse::<ConsentRegion>()
         .map_err(|_| AppError::BadRequest(format!("Invalid region: {}", request.region)))?;
 
     // Call service to accept current consent
-    consent_service.accept_current(
-        &auth.user_id,
-        &doc_type,
-        &region,
-        ConsentSource::Api, // Since this is coming through the API
-        ip_address,
-        user_agent,
-        request.metadata,
-    ).await?;
-    
+    consent_service
+        .accept_current(
+            &auth.user_id,
+            &doc_type,
+            &region,
+            ConsentSource::Api, // Since this is coming through the API
+            ip_address,
+            user_agent,
+            request.metadata,
+        )
+        .await?;
+
     Ok(HttpResponse::NoContent().finish())
 }
 
@@ -116,43 +138,52 @@ pub async fn get_consent_report(
 
     // Parse optional parameters
     let region = if let Some(region_str) = &query.region {
-        Some(region_str.parse::<ConsentRegion>()
-            .map_err(|_| AppError::BadRequest(format!("Invalid region: {}", region_str)))?)
+        Some(
+            region_str
+                .parse::<ConsentRegion>()
+                .map_err(|_| AppError::BadRequest(format!("Invalid region: {}", region_str)))?,
+        )
     } else {
         None
     };
 
     let doc_type = if let Some(doc_type_str) = &query.doc_type {
-        Some(doc_type_str.parse::<ConsentDocumentType>()
-            .map_err(|_| AppError::BadRequest(format!("Invalid document type: {}", doc_type_str)))?)
+        Some(doc_type_str.parse::<ConsentDocumentType>().map_err(|_| {
+            AppError::BadRequest(format!("Invalid document type: {}", doc_type_str))
+        })?)
     } else {
         None
     };
 
     // Parse date filters if provided
     let from = if let Some(from_str) = &query.from {
-        Some(chrono::DateTime::parse_from_rfc3339(from_str)
-            .map_err(|_| AppError::BadRequest("Invalid 'from' date format. Use RFC3339".to_string()))?
-            .with_timezone(&chrono::Utc))
+        Some(
+            chrono::DateTime::parse_from_rfc3339(from_str)
+                .map_err(|_| {
+                    AppError::BadRequest("Invalid 'from' date format. Use RFC3339".to_string())
+                })?
+                .with_timezone(&chrono::Utc),
+        )
     } else {
         None
     };
 
     let to = if let Some(to_str) = &query.to {
-        Some(chrono::DateTime::parse_from_rfc3339(to_str)
-            .map_err(|_| AppError::BadRequest("Invalid 'to' date format. Use RFC3339".to_string()))?
-            .with_timezone(&chrono::Utc))
+        Some(
+            chrono::DateTime::parse_from_rfc3339(to_str)
+                .map_err(|_| {
+                    AppError::BadRequest("Invalid 'to' date format. Use RFC3339".to_string())
+                })?
+                .with_timezone(&chrono::Utc),
+        )
     } else {
         None
     };
 
     // Get the report data
-    let report_data = consent_service.generate_consent_report(
-        query.region.as_deref(),
-        query.doc_type.as_deref(),
-        from,
-        to,
-    ).await?;
+    let report_data = consent_service
+        .generate_consent_report(query.region.as_deref(), query.doc_type.as_deref(), from, to)
+        .await?;
 
     // Check if CSV format is requested
     if let Some(format) = &query.format {
@@ -160,7 +191,10 @@ pub async fn get_consent_report(
             let csv_data = consent_service.format_report_as_csv(&report_data);
             return Ok(HttpResponse::Ok()
                 .content_type("text/csv")
-                .append_header(("Content-Disposition", "attachment; filename=\"consent_report.csv\""))
+                .append_header((
+                    "Content-Disposition",
+                    "attachment; filename=\"consent_report.csv\"",
+                ))
                 .body(csv_data));
         }
     }

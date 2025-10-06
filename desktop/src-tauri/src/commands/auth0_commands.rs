@@ -316,7 +316,6 @@ pub async fn refresh_app_jwt_auth0(
         .await
         .ok_or_else(|| AppError::ValidationError("No app JWT found".to_string()))?;
 
-
     // Get server URL from app state
     let server_url = app_state.get_server_url().ok_or_else(|| {
         AppError::ConfigError(
@@ -383,7 +382,6 @@ pub async fn logout_auth0(
 
     // Call server logout endpoint if we have a token
     if let Some(token) = &current_token {
-    
         let server_url = app_state.get_server_url().ok_or_else(|| {
             AppError::ConfigError(
                 "No server URL configured. Please select a server region first.".to_string(),

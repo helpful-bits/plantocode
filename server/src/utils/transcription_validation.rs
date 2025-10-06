@@ -1,14 +1,14 @@
 //! Server-side Transcription Validation Utilities
-//! 
+//!
 //! This module provides server-specific validation logic for transcription parameters,
 //! including request validation, parameter sanitization, and configuration validation.
 
 use crate::error::AppError;
-use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use once_cell::sync::Lazy;
 use regex::Regex;
-use tracing::{debug, warn, error};
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use tracing::{debug, error, warn};
 
 /// Maximum allowed prompt length in characters (server-side)
 pub const MAX_PROMPT_LENGTH: usize = 1000;
@@ -29,8 +29,14 @@ pub const MAX_REQUESTS_PER_HOUR: u32 = 1000;
 /// Valid audio MIME types
 pub static VALID_AUDIO_MIME_TYPES: Lazy<HashSet<&'static str>> = Lazy::new(|| {
     [
-        "audio/mpeg", "audio/wav", "audio/webm", "audio/ogg", 
-        "audio/mp4", "audio/flac", "audio/aac", "audio/x-wav"
+        "audio/mpeg",
+        "audio/wav",
+        "audio/webm",
+        "audio/ogg",
+        "audio/mp4",
+        "audio/flac",
+        "audio/aac",
+        "audio/x-wav",
     ]
     .iter()
     .copied()
@@ -40,11 +46,10 @@ pub static VALID_AUDIO_MIME_TYPES: Lazy<HashSet<&'static str>> = Lazy::new(|| {
 /// Valid ISO 639-1 language codes supported by transcription services
 pub static VALID_LANGUAGE_CODES: Lazy<HashSet<&'static str>> = Lazy::new(|| {
     [
-        "en", "es", "fr", "de", "it", "pt", "ru", "ja", "ko", "zh", 
-        "ar", "hi", "tr", "pl", "nl", "sv", "da", "no", "fi", "he",
-        "th", "vi", "id", "ms", "tl", "uk", "bg", "hr", "cs", "sk",
-        "sl", "et", "lv", "lt", "mt", "ga", "cy", "is", "mk", "sq",
-        "sr", "bs", "ca", "eu", "gl", "ro", "hu", "el", "be", "ka"
+        "en", "es", "fr", "de", "it", "pt", "ru", "ja", "ko", "zh", "ar", "hi", "tr", "pl", "nl",
+        "sv", "da", "no", "fi", "he", "th", "vi", "id", "ms", "tl", "uk", "bg", "hr", "cs", "sk",
+        "sl", "et", "lv", "lt", "mt", "ga", "cy", "is", "mk", "sq", "sr", "bs", "ca", "eu", "gl",
+        "ro", "hu", "el", "be", "ka",
     ]
     .iter()
     .copied()
@@ -140,8 +145,9 @@ impl From<ValidationError> for AppError {
     fn from(err: ValidationError) -> Self {
         match err {
             ValidationError::RateLimitExceeded { .. } => AppError::TooManyRequests(err.to_string()),
-            ValidationError::FileSizeExceeded { .. } | 
-            ValidationError::RequestTooLarge { .. } => AppError::BadRequest(err.to_string()),
+            ValidationError::FileSizeExceeded { .. } | ValidationError::RequestTooLarge { .. } => {
+                AppError::BadRequest(err.to_string())
+            }
             ValidationError::UnsafeContent { .. } => AppError::Validation(err.to_string()),
             _ => AppError::BadRequest(err.to_string()),
         }
@@ -185,7 +191,7 @@ pub fn validate_server_prompt(prompt: Option<&str>) -> ValidationResult<Option<S
     };
 
     let trimmed = prompt_str.trim();
-    
+
     if trimmed.is_empty() {
         return Ok(None);
     }
@@ -208,7 +214,10 @@ pub fn validate_server_prompt(prompt: Option<&str>) -> ValidationResult<Option<S
     // Security validation - check for unsafe patterns
     for (i, pattern) in UNSAFE_PROMPT_PATTERNS.iter().enumerate() {
         if pattern.is_match(trimmed) {
-            warn!("Unsafe prompt pattern detected: pattern {} matched in prompt", i);
+            warn!(
+                "Unsafe prompt pattern detected: pattern {} matched in prompt",
+                i
+            );
             return Err(ValidationError::UnsafeContent {
                 field: "prompt".to_string(),
                 reason: "Contains potentially unsafe instructions or content".to_string(),
@@ -226,8 +235,12 @@ pub fn validate_server_prompt(prompt: Option<&str>) -> ValidationResult<Option<S
 
     // Sanitize and return
     let sanitized = sanitize_server_prompt(trimmed);
-    debug!("Server prompt validated: {} chars -> {} chars", prompt_str.len(), sanitized.len());
-    
+    debug!(
+        "Server prompt validated: {} chars -> {} chars",
+        prompt_str.len(),
+        sanitized.len()
+    );
+
     Ok(Some(sanitized))
 }
 
@@ -253,7 +266,7 @@ pub fn validate_server_temperature(temperature: Option<f32>) -> ValidationResult
     // Round to avoid floating point precision issues
     let rounded = (temp * 1000.0).round() / 1000.0;
     debug!("Server temperature validated: {} -> {}", temp, rounded);
-    
+
     Ok(Some(rounded))
 }
 
@@ -264,7 +277,7 @@ pub fn validate_server_language(language: Option<&str>) -> ValidationResult<Opti
     };
 
     let normalized = lang_str.trim().to_lowercase();
-    
+
     if normalized.is_empty() {
         return Ok(None);
     }
@@ -279,7 +292,7 @@ pub fn validate_server_language(language: Option<&str>) -> ValidationResult<Opti
 
     // Handle locale variants (e.g., "en-US" -> "en")
     let base_code = normalized.split('-').next().unwrap_or(&normalized);
-    
+
     // Check if base language is supported
     if !VALID_LANGUAGE_CODES.contains(base_code) {
         return Err(ValidationError::UnsupportedLanguage {
@@ -323,8 +336,10 @@ pub fn validate_server_audio_file(
     // File size validation
     if data_size < MIN_AUDIO_FILE_SIZE {
         return Err(ValidationError::InvalidAudioFile {
-            reason: format!("File too small: {} bytes (minimum: {} bytes)", 
-                data_size, MIN_AUDIO_FILE_SIZE),
+            reason: format!(
+                "File too small: {} bytes (minimum: {} bytes)",
+                data_size, MIN_AUDIO_FILE_SIZE
+            ),
         });
     }
 
@@ -335,7 +350,10 @@ pub fn validate_server_audio_file(
         });
     }
 
-    debug!("Server audio file validated: {} ({} bytes, {})", filename, data_size, mime_type);
+    debug!(
+        "Server audio file validated: {} ({} bytes, {})",
+        filename, data_size, mime_type
+    );
 
     Ok(ValidatedAudioMetadata {
         filename: sanitize_filename(filename),
@@ -437,9 +455,11 @@ pub fn validate_rate_limit(
         });
     }
 
-    debug!("Rate limit validation passed for user {}: {}/min, {}/hour", 
-        user_id, requests_per_minute, requests_per_hour);
-    
+    debug!(
+        "Rate limit validation passed for user {}: {}/min, {}/hour",
+        user_id, requests_per_minute, requests_per_hour
+    );
+
     Ok(())
 }
 
@@ -453,7 +473,7 @@ pub fn validate_server_config(config: &serde_json::Value) -> ValidationResult<()
         "default_language",
         "default_temperature",
         "rate_limit_per_minute",
-        "rate_limit_per_hour"
+        "rate_limit_per_hour",
     ];
 
     for field in &required_fields {
@@ -484,7 +504,10 @@ pub fn validate_server_config(config: &serde_json::Value) -> ValidationResult<()
     if let Some(rate_limit) = config.get("rate_limit_per_minute").and_then(|v| v.as_u64()) {
         if rate_limit > MAX_REQUESTS_PER_MINUTE as u64 {
             return Err(ValidationError::InvalidConfiguration {
-                reason: format!("rate_limit_per_minute cannot exceed {}", MAX_REQUESTS_PER_MINUTE),
+                reason: format!(
+                    "rate_limit_per_minute cannot exceed {}",
+                    MAX_REQUESTS_PER_MINUTE
+                ),
             });
         }
     }
@@ -566,13 +589,13 @@ pub fn format_api_error_response(error: &ValidationError) -> serde_json::Value {
 
 /// Generates unique request ID for tracking
 fn generate_request_id(user_id: &str, timestamp: chrono::DateTime<chrono::Utc>) -> String {
-    use sha2::{Sha256, Digest};
-    
+    use sha2::{Digest, Sha256};
+
     let mut hasher = Sha256::new();
     hasher.update(user_id.as_bytes());
     hasher.update(timestamp.to_rfc3339().as_bytes());
     hasher.update(rand::random::<u64>().to_string().as_bytes());
-    
+
     format!("req_{}", hex::encode(&hasher.finalize()[..8]))
 }
 
@@ -592,7 +615,10 @@ pub fn validate_user_id(user_id: &str) -> ValidationResult<()> {
     }
 
     // Check for valid characters (alphanumeric, hyphens, underscores)
-    if !user_id.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '|') {
+    if !user_id
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '|')
+    {
         return Err(ValidationError::InvalidParameter {
             field: "user_id".to_string(),
             reason: "User ID contains invalid characters".to_string(),
@@ -605,18 +631,14 @@ pub fn validate_user_id(user_id: &str) -> ValidationResult<()> {
 /// Validates request timeout parameters
 pub fn validate_timeout_config(timeout_seconds: Option<u32>) -> ValidationResult<u32> {
     match timeout_seconds {
-        Some(timeout) if timeout == 0 => {
-            Err(ValidationError::InvalidParameter {
-                field: "timeout".to_string(),
-                reason: "Timeout cannot be zero".to_string(),
-            })
-        }
-        Some(timeout) if timeout > 300 => {
-            Err(ValidationError::InvalidParameter {
-                field: "timeout".to_string(),
-                reason: "Timeout cannot exceed 300 seconds".to_string(),
-            })
-        }
+        Some(timeout) if timeout == 0 => Err(ValidationError::InvalidParameter {
+            field: "timeout".to_string(),
+            reason: "Timeout cannot be zero".to_string(),
+        }),
+        Some(timeout) if timeout > 300 => Err(ValidationError::InvalidParameter {
+            field: "timeout".to_string(),
+            reason: "Timeout cannot exceed 300 seconds".to_string(),
+        }),
         Some(timeout) => Ok(timeout),
         None => Ok(60), // Default 60 seconds
     }
@@ -626,7 +648,7 @@ pub fn validate_timeout_config(timeout_seconds: Option<u32>) -> ValidationResult
 pub fn mime_type_to_extension(mime_type: &str) -> &'static str {
     match mime_type {
         "audio/webm" => "webm",
-        "audio/mp4" => "mp4", 
+        "audio/mp4" => "mp4",
         "audio/mpeg" => "mp3",
         "audio/wav" => "wav",
         "audio/x-wav" => "wav",
@@ -672,10 +694,7 @@ mod tests {
 
     #[test]
     fn test_validate_server_language() {
-        assert_eq!(
-            validate_server_language(Some("en")).unwrap().unwrap(),
-            "en"
-        );
+        assert_eq!(validate_server_language(Some("en")).unwrap().unwrap(), "en");
         assert_eq!(
             validate_server_language(Some("en-US")).unwrap().unwrap(),
             "en"
@@ -691,7 +710,10 @@ mod tests {
     #[test]
     fn test_validate_audio_file_invalid_mime() {
         let result = validate_server_audio_file("test.txt", "text/plain", 50000);
-        assert!(matches!(result, Err(ValidationError::UnsupportedMimeType { .. })));
+        assert!(matches!(
+            result,
+            Err(ValidationError::UnsupportedMimeType { .. })
+        ));
     }
 
     #[test]
@@ -705,7 +727,7 @@ mod tests {
     fn test_is_repetitive_content() {
         let repetitive = "spam spam spam spam spam spam spam spam spam spam";
         assert!(is_repetitive_content(repetitive));
-        
+
         let normal = "This is a normal sentence with varied words";
         assert!(!is_repetitive_content(normal));
     }
@@ -713,12 +735,8 @@ mod tests {
     #[test]
     fn test_validate_transcription_request() {
         let context = create_test_context();
-        let result = validate_transcription_request(
-            Some("Test prompt"),
-            Some(0.5),
-            Some("en"),
-            &context,
-        );
+        let result =
+            validate_transcription_request(Some("Test prompt"), Some(0.5), Some("en"), &context);
         assert!(result.is_ok());
     }
 }

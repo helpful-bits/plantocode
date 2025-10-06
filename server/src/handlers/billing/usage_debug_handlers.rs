@@ -1,14 +1,14 @@
-use actix_web::{web, HttpResponse, HttpRequest, HttpMessage};
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-use chrono::{DateTime, Utc};
-use crate::models::AuthenticatedUser;
-use bigdecimal::BigDecimal;
-use sqlx::Row;
-use crate::error::AppError;
 use crate::db::repositories::api_usage_repository::ApiUsageRepository;
+use crate::error::AppError;
+use crate::models::AuthenticatedUser;
 use crate::models::auth_jwt_claims::Claims;
-use log::{info, error};
+use actix_web::{HttpMessage, HttpRequest, HttpResponse, web};
+use bigdecimal::BigDecimal;
+use chrono::{DateTime, Utc};
+use log::{error, info};
+use serde::{Deserialize, Serialize};
+use sqlx::Row;
+use uuid::Uuid;
 
 // ========================================
 // USAGE DEBUG HANDLERS (ADMIN ONLY)
@@ -74,30 +74,33 @@ pub async fn get_usage_debug_data(
 ) -> Result<HttpResponse, AppError> {
     // Extract JWT claims to verify admin role
     let extensions = req.extensions();
-    let claims = extensions.get::<Claims>()
+    let claims = extensions
+        .get::<Claims>()
         .ok_or_else(|| AppError::Unauthorized("JWT claims not found".to_string()))?;
-    
+
     // Check if user has admin role
     if claims.role != "admin" {
-        error!("User {} attempted to access admin-only usage debug endpoint", user.user_id);
+        error!(
+            "User {} attempted to access admin-only usage debug endpoint",
+            user.user_id
+        );
         return Err(AppError::Forbidden("Admin access required".to_string()));
     }
-    
-    
+
     let limit = query.limit.unwrap_or(200).min(1000); // Cap at 1000 records
     let user_filter = query.user_id.as_ref().and_then(|s| Uuid::parse_str(s).ok());
     let service_filter = query.service_name.as_deref();
-    
+
     // Get raw usage records with debugging information
-    let debug_data = get_raw_usage_records(
-        &api_usage_repo,
-        limit,
-        user_filter,
-        service_filter,
-    ).await?;
-    
-    info!("Admin user {} retrieved {} usage debug records", user.user_id, debug_data.records.len());
-    
+    let debug_data =
+        get_raw_usage_records(&api_usage_repo, limit, user_filter, service_filter).await?;
+
+    info!(
+        "Admin user {} retrieved {} usage debug records",
+        user.user_id,
+        debug_data.records.len()
+    );
+
     Ok(HttpResponse::Ok().json(debug_data))
 }
 
@@ -108,8 +111,10 @@ async fn get_raw_usage_records(
     user_filter: Option<Uuid>,
     service_filter: Option<&str>,
 ) -> Result<UsageDebugResponse, AppError> {
-    let rows = api_usage_repo.get_raw_usage_records_for_debug(limit, user_filter, service_filter).await?;
-    
+    let rows = api_usage_repo
+        .get_raw_usage_records_for_debug(limit, user_filter, service_filter)
+        .await?;
+
     if rows.is_empty() {
         return Ok(UsageDebugResponse {
             records: vec![],
@@ -126,7 +131,7 @@ async fn get_raw_usage_records(
             },
         });
     }
-    
+
     let first_row = &rows[0];
     let total_records: i64 = first_row.try_get("total_records")?;
     let cost_methods: Vec<String> = first_row.try_get("cost_methods")?;
@@ -134,7 +139,7 @@ async fn get_raw_usage_records(
     let user_ids: Vec<String> = first_row.try_get("user_ids")?;
     let earliest_record: Option<DateTime<Utc>> = first_row.try_get("earliest_record")?;
     let latest_record: Option<DateTime<Utc>> = first_row.try_get("latest_record")?;
-    
+
     let mut records = Vec::new();
     for row in rows {
         let id: Uuid = row.try_get("id")?;
@@ -151,7 +156,7 @@ async fn get_raw_usage_records(
         let metadata: Option<serde_json::Value> = row.try_get("metadata")?;
         let cost_resolution_method: String = row.try_get("cost_resolution_method")?;
         let effective_model_id: String = row.try_get("effective_model_id")?;
-        
+
         records.push(UsageDebugRecord {
             id: id.to_string(),
             user_id: user_id.to_string(),
@@ -169,7 +174,7 @@ async fn get_raw_usage_records(
             effective_model_id,
         });
     }
-    
+
     Ok(UsageDebugResponse {
         records,
         total_records,

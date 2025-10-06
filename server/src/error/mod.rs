@@ -1,8 +1,8 @@
-use actix_web::{error::ResponseError, http::StatusCode, HttpResponse};
+use actix_web::{HttpResponse, error::ResponseError, http::StatusCode};
 use serde::{Deserialize, Serialize};
-use std::fmt;
-use std::error::Error as StdError;
 use sqlx::error::Error as SqlxError;
+use std::error::Error as StdError;
+use std::fmt;
 
 #[derive(Debug)]
 pub enum AppError {
@@ -72,7 +72,9 @@ impl fmt::Display for AppError {
             AppError::PaymentRequired(e) => write!(f, "Payment required: {}", e),
             AppError::PaymentFailed(e) => write!(f, "Payment failed: {}", e),
             AppError::PaymentDeclined(e) => write!(f, "Payment declined: {}", e),
-            AppError::PaymentAuthenticationRequired(e) => write!(f, "Payment authentication required: {}", e),
+            AppError::PaymentAuthenticationRequired(e) => {
+                write!(f, "Payment authentication required: {}", e)
+            }
             AppError::BillingExpired(e) => write!(f, "Billing expired: {}", e),
             AppError::BillingCancelled(e) => write!(f, "Billing cancelled: {}", e),
             AppError::CreditInsufficient(e) => write!(f, "Insufficient credits: {}", e),
@@ -110,7 +112,9 @@ impl ResponseError for AppError {
             AppError::NotFound(_) => (StatusCode::NOT_FOUND, "not_found"),
             AppError::BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request"),
             AppError::Forbidden(_) => (StatusCode::FORBIDDEN, "forbidden"),
-            AppError::Configuration(_) => (StatusCode::INTERNAL_SERVER_ERROR, "configuration_error"),
+            AppError::Configuration(_) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, "configuration_error")
+            }
             AppError::Validation(_) => (StatusCode::BAD_REQUEST, "validation_error"),
             AppError::External(_) => (StatusCode::BAD_GATEWAY, "external_service_error"),
             AppError::InvalidArgument(_) => (StatusCode::BAD_REQUEST, "invalid_argument"),
@@ -118,26 +122,47 @@ impl ResponseError for AppError {
             AppError::PaymentRequired(_) => (StatusCode::PAYMENT_REQUIRED, "payment_required"),
             AppError::PaymentFailed(_) => (StatusCode::PAYMENT_REQUIRED, "payment_failed"),
             AppError::PaymentDeclined(_) => (StatusCode::PAYMENT_REQUIRED, "payment_declined"),
-            AppError::PaymentAuthenticationRequired(_) => (StatusCode::PAYMENT_REQUIRED, "payment_authentication_required"),
+            AppError::PaymentAuthenticationRequired(_) => (
+                StatusCode::PAYMENT_REQUIRED,
+                "payment_authentication_required",
+            ),
             AppError::BillingExpired(_) => (StatusCode::PAYMENT_REQUIRED, "billing_expired"),
             AppError::BillingCancelled(_) => (StatusCode::PAYMENT_REQUIRED, "billing_cancelled"),
-            AppError::CreditInsufficient(_) => (StatusCode::PAYMENT_REQUIRED, "credit_insufficient"),
-            AppError::CreditPurchaseRequired(_) => (StatusCode::PAYMENT_REQUIRED, "credit_purchase_required"),
+            AppError::CreditInsufficient(_) => {
+                (StatusCode::PAYMENT_REQUIRED, "credit_insufficient")
+            }
+            AppError::CreditPurchaseRequired(_) => {
+                (StatusCode::PAYMENT_REQUIRED, "credit_purchase_required")
+            }
             AppError::ConsentRequired(_) => (StatusCode::FORBIDDEN, "consent_required"),
-            AppError::TaskInitiationFailed(_) => (StatusCode::PAYMENT_REQUIRED, "task_initiation_failed"),
-            AppError::TaskFinalizationFailed(_) => (StatusCode::PAYMENT_REQUIRED, "task_finalization_failed"),
-            AppError::PaymentMethodRequired(_) => (StatusCode::PAYMENT_REQUIRED, "payment_method_required"),
-            AppError::BillingAddressRequired(_) => (StatusCode::BAD_REQUEST, "billing_address_required"),
+            AppError::TaskInitiationFailed(_) => {
+                (StatusCode::PAYMENT_REQUIRED, "task_initiation_failed")
+            }
+            AppError::TaskFinalizationFailed(_) => {
+                (StatusCode::PAYMENT_REQUIRED, "task_finalization_failed")
+            }
+            AppError::PaymentMethodRequired(_) => {
+                (StatusCode::PAYMENT_REQUIRED, "payment_method_required")
+            }
+            AppError::BillingAddressRequired(_) => {
+                (StatusCode::BAD_REQUEST, "billing_address_required")
+            }
             AppError::BillingConflict(_) => (StatusCode::CONFLICT, "billing_conflict"),
             AppError::InvoiceError(_) => (StatusCode::BAD_REQUEST, "invoice_error"),
-            AppError::Serialization(_) => (StatusCode::INTERNAL_SERVER_ERROR, "serialization_error"),
+            AppError::Serialization(_) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, "serialization_error")
+            }
             AppError::LockPoisoned(_) => (StatusCode::INTERNAL_SERVER_ERROR, "lock_poisoned"),
             AppError::NotImplemented(_) => (StatusCode::NOT_IMPLEMENTED, "not_implemented"),
             AppError::TooManyRequests(_) => (StatusCode::TOO_MANY_REQUESTS, "too_many_requests"),
             AppError::Billing(_) => (StatusCode::PAYMENT_REQUIRED, "billing_error"),
             AppError::AlreadyExists(_) => (StatusCode::CONFLICT, "already_exists"),
-            AppError::DataIntegrity(_) => (StatusCode::INTERNAL_SERVER_ERROR, "data_integrity_error"),
-            AppError::SpendingLimitExceeded(_) => (StatusCode::PAYMENT_REQUIRED, "spending_limit_exceeded"),
+            AppError::DataIntegrity(_) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, "data_integrity_error")
+            }
+            AppError::SpendingLimitExceeded(_) => {
+                (StatusCode::PAYMENT_REQUIRED, "spending_limit_exceeded")
+            }
             AppError::CheckoutError(_) => (StatusCode::PAYMENT_REQUIRED, "checkout_error"),
             AppError::VideoAnalysisError(_) => (StatusCode::BAD_REQUEST, "video_analysis_error"),
         };
@@ -229,7 +254,10 @@ impl From<actix_multipart::MultipartError> for AppError {
 
 impl From<serde_json::Error> for AppError {
     fn from(error: serde_json::Error) -> Self {
-        AppError::Internal(format!("JSON deserialization/serialization error: {}", error))
+        AppError::Internal(format!(
+            "JSON deserialization/serialization error: {}",
+            error
+        ))
     }
 }
 

@@ -3,7 +3,9 @@ import Foundation
 import Combine
 import Network
 import CryptoKit
+#if canImport(UIKit)
 import UIKit
+#endif
 // Import CommonTypes for shared type definitions
 
 /// Client for communicating with desktop application via WebSocket
@@ -140,7 +142,7 @@ public class DesktopAPIClient: ObservableObject {
 
             // Create WebSocket connection
             var request = URLRequest(url: self.serverURL)
-            request.setValue(self.deviceId, forHTTPHeaderField: "X-Client-ID")
+            request.setValue(self.deviceId, forHTTPHeaderField: "X-Device-ID")
 
             self.webSocketTask = self.urlSession.webSocketTask(with: request)
             self.connectionState = .connecting

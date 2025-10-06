@@ -1,21 +1,21 @@
+use crate::db::repositories::consent_repository::{ConsentReportRow, ConsentRepository};
 use crate::error::AppError;
 use crate::models::{
-    ConsentRegion, ConsentDocumentType, ConsentAction, ConsentSource,
-    LegalDocument, ConsentEvent, ConsentStatusResponse, ConsentStatusItem,
-    ConsentVerificationResponse, UserConsentSnapshot, AcceptConsentRequest
+    AcceptConsentRequest, ConsentAction, ConsentDocumentType, ConsentEvent, ConsentRegion,
+    ConsentSource, ConsentStatusItem, ConsentStatusResponse, ConsentVerificationResponse,
+    LegalDocument, UserConsentSnapshot,
 };
-use crate::db::repositories::consent_repository::{ConsentRepository, ConsentReportRow};
-use crate::services::audit_service::{AuditService, AuditContext, AuditEvent};
+use crate::services::audit_service::{AuditContext, AuditEvent, AuditService};
 use chrono::{DateTime, Utc};
+use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sqlx::types::ipnetwork::IpNetwork;
 use std::collections::HashMap;
 use std::net::IpAddr;
+use std::str::FromStr;
 use std::sync::Arc;
 use uuid::Uuid;
-use log::{info, warn, error, debug};
-use sqlx::types::ipnetwork::IpNetwork;
-use std::str::FromStr;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConsentReportEntry {
@@ -46,8 +46,11 @@ pub struct ConsentService {
 }
 
 impl ConsentService {
-    pub fn new(consent_repository: Arc<ConsentRepository>, audit_service: Arc<AuditService>) -> Self {
-        Self { 
+    pub fn new(
+        consent_repository: Arc<ConsentRepository>,
+        audit_service: Arc<AuditService>,
+    ) -> Self {
+        Self {
             consent_repository,
             audit_service,
         }
@@ -62,11 +65,18 @@ impl ConsentService {
             ConsentRegion::Eu => "eu",
             ConsentRegion::Us => "us",
         };
-        
+
         debug!("Getting current legal documents for region: {}", region_str);
-        let documents = self.consent_repository.get_current_documents_by_region(region_str).await?;
-        info!("Retrieved {} current legal documents for region: {}", documents.len(), region_str);
-        
+        let documents = self
+            .consent_repository
+            .get_current_documents_by_region(region_str)
+            .await?;
+        info!(
+            "Retrieved {} current legal documents for region: {}",
+            documents.len(),
+            region_str
+        );
+
         Ok(documents)
     }
 
@@ -76,44 +86,52 @@ impl ConsentService {
         user_id: &Uuid,
         region: &ConsentRegion,
     ) -> Result<ConsentStatusResponse, AppError> {
-        debug!("Getting consent status for user {} in region {:?}", user_id, region);
-        
+        debug!(
+            "Getting consent status for user {} in region {:?}",
+            user_id, region
+        );
+
         let current_docs = self.get_current_legal_documents(region).await?;
-        
+
         let region_str = match region {
             ConsentRegion::Eu => "eu",
             ConsentRegion::Us => "us",
         };
-        
+
         // Get user's accepted versions
-        let user_snapshots = self.consent_repository
+        let user_snapshots = self
+            .consent_repository
             .get_user_snapshots_by_region(*user_id, region_str)
             .await?;
-        
+
         // Map user consents by doc_type
         let mut consent_map = HashMap::new();
         for snapshot in user_snapshots {
             consent_map.insert(
                 snapshot.doc_type.clone(),
-                (snapshot.accepted_version, snapshot.accepted_at, snapshot.source)
+                (
+                    snapshot.accepted_version,
+                    snapshot.accepted_at,
+                    snapshot.source,
+                ),
             );
         }
-        
+
         // Build status items
         let mut items = Vec::new();
         let mut all_consented = true;
-        
+
         for doc in current_docs {
             let (accepted_version, accepted_at, _source) = consent_map
                 .get(&doc.doc_type)
                 .cloned()
                 .unwrap_or((None, None, None));
-            
+
             let requires_reconsent = accepted_version.as_ref() != Some(&doc.version);
             if requires_reconsent {
                 all_consented = false;
             }
-            
+
             items.push(ConsentStatusItem {
                 doc_type: doc.doc_type,
                 region: doc.region,
@@ -125,7 +143,7 @@ impl ConsentService {
                 url: doc.url,
             });
         }
-        
+
         Ok(ConsentStatusResponse {
             user_id: *user_id,
             region: region.clone(),
@@ -140,10 +158,13 @@ impl ConsentService {
         user_id: &Uuid,
         region: &ConsentRegion,
     ) -> Result<ConsentVerificationResponse, AppError> {
-        debug!("Verifying consent for user {} in region {:?}", user_id, region);
-        
+        debug!(
+            "Verifying consent for user {} in region {:?}",
+            user_id, region
+        );
+
         let status = self.get_consent_status(user_id, region).await?;
-        
+
         let mut missing = Vec::new();
         for item in &status.items {
             if item.requires_reconsent {
@@ -154,7 +175,7 @@ impl ConsentService {
                 missing.push(doc_type_str.to_string());
             }
         }
-        
+
         Ok(ConsentVerificationResponse {
             requires_reconsent: !status.all_consented,
             missing,
@@ -173,70 +194,82 @@ impl ConsentService {
         user_agent: Option<String>,
         metadata: Option<serde_json::Value>,
     ) -> Result<(), AppError> {
-        info!("User {} accepting current {:?} for region {:?}", user_id, doc_type, region);
-        
+        info!(
+            "User {} accepting current {:?} for region {:?}",
+            user_id, doc_type, region
+        );
+
         let doc_type_str = match doc_type {
             ConsentDocumentType::Terms => "terms",
             ConsentDocumentType::Privacy => "privacy",
         };
-        
+
         let region_str = match region {
             ConsentRegion::Eu => "eu",
             ConsentRegion::Us => "us",
         };
-        
+
         let source_str = match source {
             ConsentSource::Desktop => "desktop",
             ConsentSource::Website => "website",
             ConsentSource::Api => "api",
         };
-        
+
         // Get the current document to get its version
-        let current_doc = self.consent_repository
+        let current_doc = self
+            .consent_repository
             .get_current_document(doc_type_str, region_str)
             .await?
-            .ok_or_else(|| AppError::NotFound(format!(
-                "No current legal document found for {} in {}", doc_type_str, region_str
-            )))?;
-        
+            .ok_or_else(|| {
+                AppError::NotFound(format!(
+                    "No current legal document found for {} in {}",
+                    doc_type_str, region_str
+                ))
+            })?;
+
         // Insert consent event
-        let event = self.consent_repository.insert_event(
-            *user_id,
-            doc_type_str,
-            region_str,
-            current_doc.version.clone(),
-            "accepted",
-            source_str,
-            ip_address,
-            user_agent.clone(),
-            metadata.clone(),
-        ).await?;
-        
+        let event = self
+            .consent_repository
+            .insert_event(
+                *user_id,
+                doc_type_str,
+                region_str,
+                current_doc.version.clone(),
+                "accepted",
+                source_str,
+                ip_address,
+                user_agent.clone(),
+                metadata.clone(),
+            )
+            .await?;
+
         // Update user consent snapshot
-        self.consent_repository.upsert_user_consent(
-            *user_id,
-            doc_type_str,
-            region_str,
-            Some(current_doc.version.clone()),
-            Some(Utc::now()),
-            Some(source_str),
-            metadata.clone(),
-        ).await?;
-        
+        self.consent_repository
+            .upsert_user_consent(
+                *user_id,
+                doc_type_str,
+                region_str,
+                Some(current_doc.version.clone()),
+                Some(Utc::now()),
+                Some(source_str),
+                metadata.clone(),
+            )
+            .await?;
+
         // Create audit context
         let mut audit_context = AuditContext::new(*user_id);
-        
+
         // Convert IP address if provided
         if let Some(ip) = ip_address {
             if let Ok(ip_network) = IpNetwork::from_str(&ip.to_string()) {
                 audit_context = audit_context.with_ip_address(ip_network);
             }
         }
-        
+
         if let Some(ua) = user_agent {
             audit_context = audit_context.with_user_agent(ua);
         }
-        
+
         // Log audit event
         let audit_metadata = json!({
             "doc_type": doc_type_str,
@@ -246,7 +279,7 @@ impl ConsentService {
             "content_hash": current_doc.content_hash,
             "event_id": event.id,
         });
-        
+
         let audit_event = AuditEvent {
             action_type: "consent_accepted".to_string(),
             entity_type: "legal_document".to_string(),
@@ -258,12 +291,16 @@ impl ConsentService {
             status: Some("success".to_string()),
             error_message: None,
         };
-        
-        self.audit_service.log_event(&audit_context, audit_event).await?;
-        
-        info!("Successfully recorded consent acceptance for user {} - {:?} in {:?}", 
-              user_id, doc_type, region);
-        
+
+        self.audit_service
+            .log_event(&audit_context, audit_event)
+            .await?;
+
+        info!(
+            "Successfully recorded consent acceptance for user {} - {:?} in {:?}",
+            user_id, doc_type, region
+        );
+
         Ok(())
     }
 
@@ -275,30 +312,37 @@ impl ConsentService {
         _from: Option<DateTime<Utc>>,
         _to: Option<DateTime<Utc>>,
     ) -> Result<Vec<ConsentReportRow>, AppError> {
-        debug!("Generating consent report with filters - region: {:?}, doc_type: {:?}",
-               region, doc_type);
-        
+        debug!(
+            "Generating consent report with filters - region: {:?}, doc_type: {:?}",
+            region, doc_type
+        );
+
         // Determine report type based on filters
         let report_type = match (region, doc_type) {
             (Some(_), None) => "by_region",
             (None, Some(_)) => "by_type",
             _ => "by_document",
         };
-        
-        self.consent_repository.get_consent_report(report_type, region, doc_type).await
+
+        self.consent_repository
+            .get_consent_report(report_type, region, doc_type)
+            .await
     }
 
     /// Format report as CSV
     pub fn format_report_as_csv(&self, report: &[ConsentReportRow]) -> String {
-        let mut csv = String::from("Region,Document Type,Version,Accepted Count,Total Count,Acceptance Rate\n");
-        
+        let mut csv = String::from(
+            "Region,Document Type,Version,Accepted Count,Total Count,Acceptance Rate\n",
+        );
+
         for row in report {
             // Convert BigDecimal to f64 for display
-            let rate = row.acceptance_rate
+            let rate = row
+                .acceptance_rate
                 .as_ref()
                 .and_then(|bd| bd.to_string().parse::<f64>().ok())
                 .unwrap_or(0.0);
-            
+
             csv.push_str(&format!(
                 "{},{},{},{},{},{:.2}%\n",
                 row.region.as_deref().unwrap_or(""),
@@ -309,7 +353,7 @@ impl ConsentService {
                 rate * 100.0
             ));
         }
-        
+
         csv
     }
 }

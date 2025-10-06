@@ -8,9 +8,9 @@ use std::fs;
 use std::path::Path;
 use tauri::AppHandle;
 use tokio::fs as tokio_fs;
-use tokio::task;
+use tokio::task::{self, spawn_blocking};
 use tokio::time::timeout;
-use tokio::time::{Duration, sleep};
+use tokio::time::{Duration, Instant, sleep};
 
 use crate::error::{AppError, AppResult};
 use crate::jobs::job_processor_utils;
@@ -19,6 +19,7 @@ use crate::jobs::processors::{LlmPromptContext, LlmTaskConfigBuilder, LlmTaskRun
 use crate::jobs::types::{Job, JobPayload, JobProcessResult, JobResultData, PatternGroup};
 use crate::utils::directory_tree::get_directory_tree_with_defaults;
 use crate::utils::git_utils;
+use crate::utils::markdown_utils::extract_json_from_markdown;
 
 #[derive(Debug)]
 struct CompiledPatternGroup {
@@ -35,21 +36,88 @@ impl RegexFileFilterProcessor {
         Self {}
     }
 
+    /// Sanitize and fix common regex issues before compilation
+    fn sanitize_regex_pattern(&self, pattern: &str) -> String {
+        let mut sanitized = pattern.to_string();
+
+        // Fix common invalid escape sequences
+        // Replace invalid escapes like \s, \d when they appear as literal strings from LLM
+        sanitized = sanitized.replace(r"\\s", r"\s");
+        sanitized = sanitized.replace(r"\\d", r"\d");
+        sanitized = sanitized.replace(r"\\w", r"\w");
+        sanitized = sanitized.replace(r"\\b", r"\b");
+        sanitized = sanitized.replace(r"\\n", r"\n");
+        sanitized = sanitized.replace(r"\\t", r"\t");
+        sanitized = sanitized.replace(r"\\r", r"\r");
+
+        // Fix double-escaped special characters
+        sanitized = sanitized.replace(r"\\\\", r"\\");
+
+        // Fix invalid escapes at specific positions (e.g., line 7 column 64 from error)
+        // Check for unescaped special characters that should be escaped
+        sanitized = self.escape_special_chars(&sanitized);
+
+        sanitized
+    }
+
+    /// Escape special regex characters that might be intended as literals
+    fn escape_special_chars(&self, pattern: &str) -> String {
+        let mut result = String::new();
+        let chars: Vec<char> = pattern.chars().collect();
+        let mut i = 0;
+
+        while i < chars.len() {
+            let ch = chars[i];
+
+            // If we encounter a backslash, check what follows
+            if ch == '\\' && i + 1 < chars.len() {
+                let next = chars[i + 1];
+
+                // Valid escape sequences we want to preserve
+                if "sdwbSntrfvxuAZzGBDWS.*+?()[]{}^$|\\nrt".contains(next) {
+                    result.push(ch);
+                    result.push(next);
+                    i += 2;
+                } else {
+                    // Invalid escape sequence, escape the backslash itself
+                    result.push_str("\\\\");
+                    i += 1;
+                }
+            } else {
+                result.push(ch);
+                i += 1;
+            }
+        }
+
+        result
+    }
+
     /// Compile regex pattern with validation (now supports lookahead/lookbehind)
     fn compile_regex(&self, pattern: &str) -> AppResult<Regex> {
-        match Regex::new(pattern) {
+        // First sanitize the pattern
+        let sanitized = self.sanitize_regex_pattern(pattern);
+
+        // Try to compile the sanitized pattern
+        match Regex::new(&sanitized) {
             Ok(regex) => {
-                debug!(
-                    "Successfully compiled regex pattern (with fancy features): {}",
-                    pattern
-                );
+                if sanitized != pattern {
+                    debug!(
+                        "Successfully compiled sanitized regex pattern. Original: '{}', Sanitized: '{}'",
+                        pattern, sanitized
+                    );
+                } else {
+                    debug!(
+                        "Successfully compiled regex pattern (with fancy features): {}",
+                        pattern
+                    );
+                }
                 Ok(regex)
             }
             Err(e) => {
-                error!("Invalid regex pattern '{}': {}", pattern, e);
+                error!("Invalid regex pattern '{}': {}", sanitized, e);
                 Err(AppError::JobError(format!(
                     "Invalid regex pattern '{}': {}",
-                    pattern, e
+                    sanitized, e
                 )))
             }
         }
@@ -283,109 +351,240 @@ impl JobProcessor for RegexFileFilterProcessor {
 
         job_processor_utils::log_job_start(&job.id, "parallel regex pattern generation");
 
-        info!("Processing {} root directories in parallel", roots.len());
+        let root_concurrency: usize = 3;
+        info!(
+            "RegexFileFilter: per-root concurrency limit={}",
+            root_concurrency
+        );
 
-        // Process each root directory in parallel
-        let mut parallel_tasks = Vec::new();
-        let total_roots = roots.len();
+        let project_dir = session.project_directory.clone();
+        let selected_roots = roots.clone();
 
-        for (index, root_dir) in roots.iter().enumerate() {
-            let root_dir_clone = root_dir.clone();
-            let task_description_clone = task_description_for_prompt.clone();
-            let model_used_clone = model_used.clone();
-            let app_handle_clone = app_handle.clone();
-            let job_clone = job.clone();
-            let settings_repo_clone = settings_repo.clone();
+        let root_results = stream::iter(selected_roots.into_iter().enumerate())
+            .map(|(index, root_dir)| {
+                let task_description_clone = task_description_for_prompt.clone();
+                let model_used_clone = model_used.clone();
+                let app_handle_clone = app_handle.clone();
+                let job_clone = job.clone();
+                let settings_repo_clone = settings_repo.clone();
+                let project_dir_clone = project_dir.clone();
+                let total_roots = roots.len();
 
-            // Spawn parallel task for this root
-            let task = tokio::spawn(async move {
-                info!(
-                    "Processing root {} of {}: {}",
-                    index + 1,
-                    total_roots,
-                    root_dir_clone
-                );
+                async move {
+                    let start_time = Instant::now();
+                    info!("Processing root {} of {}: {}", index + 1, total_roots, root_dir);
 
-                // Generate directory tree for this specific root
-                let directory_tree =
-                    match crate::utils::directory_tree::get_directory_tree_with_defaults(
-                        &root_dir_clone,
-                    )
-                    .await
-                    {
+                    // Generate directory tree for this specific root
+                    let directory_tree = match crate::utils::directory_tree::get_directory_tree_with_defaults(&root_dir).await {
                         Ok(tree) => tree,
                         Err(e) => {
-                            error!(
-                                "Failed to generate directory tree for root {}: {}",
-                                root_dir_clone, e
-                            );
-                            return Err(AppError::JobError(format!(
-                                "Failed to generate directory tree for {}: {}",
-                                root_dir_clone, e
-                            )));
+                            error!("Failed to generate directory tree for root {}: {}", root_dir, e);
+                            return Err(AppError::JobError(format!("Failed to generate directory tree for {}: {}", root_dir, e)));
                         }
                     };
 
-                // Setup LLM task configuration for this root
-                let llm_config =
-                    LlmTaskConfigBuilder::new(model_used_clone, temperature, max_output_tokens)
+                    // Setup LLM task configuration for this root
+                    let llm_config = LlmTaskConfigBuilder::new(model_used_clone, temperature, max_output_tokens)
                         .stream(false)
                         .build();
 
-                // Create LLM task runner for this root
-                let task_runner = LlmTaskRunner::new(app_handle_clone, job_clone, llm_config);
+                    // Create LLM task runner for this root
+                    let task_runner = LlmTaskRunner::new(app_handle_clone, job_clone, llm_config);
 
-                // Create LLM prompt context with THIS root's directory tree
-                let llm_context = LlmPromptContext {
-                    task_description: task_description_clone,
-                    file_contents: None,
-                    directory_tree: Some(directory_tree),
-                };
+                    // Create LLM prompt context with THIS root's directory tree
+                    let llm_context = LlmPromptContext {
+                        task_description: task_description_clone,
+                        file_contents: None,
+                        directory_tree: Some(directory_tree),
+                    };
 
-                // Execute LLM call for this specific root
-                let llm_result = task_runner
-                    .execute_llm_task(llm_context, &settings_repo_clone)
-                    .await
-                    .map_err(|e| {
-                        error!("LLM task failed for root {}: {}", root_dir_clone, e);
-                        AppError::JobError(format!("LLM task failed for {}: {}", root_dir_clone, e))
-                    })?;
+                    // Execute LLM call for this specific root
+                    let llm_result = task_runner
+                        .execute_llm_task(llm_context, &settings_repo_clone)
+                        .await
+                        .map_err(|e| {
+                            error!("LLM task failed for root {}: {}", root_dir, e);
+                            AppError::JobError(format!("LLM task failed for {}: {}", root_dir, e))
+                        })?;
 
-                // Parse the response
-                let parsed_json: serde_json::Value = serde_json::from_str(&llm_result.response)
-                    .map_err(|e| {
-                        error!(
-                            "Failed to parse LLM response for root {}: {}",
-                            root_dir_clone, e
-                        );
-                        AppError::JobError(format!(
-                            "Failed to parse response for {}: {}",
-                            root_dir_clone, e
-                        ))
-                    })?;
+                    // Extract JSON from markdown code blocks (Claude Sonnet 4.5 wraps JSON in ```json...```)
+                    let cleaned_response = extract_json_from_markdown(&llm_result.response);
 
-                // Extract pattern groups
-                let pattern_groups: Vec<PatternGroup> = if let Some(groups_array) =
-                    parsed_json.get("patternGroups").and_then(|v| v.as_array())
-                {
-                    groups_array
+                    // Parse the response with better error handling
+                    let parsed_json: serde_json::Value = match serde_json::from_str(&cleaned_response) {
+                        Ok(json) => json,
+                        Err(e) => {
+                            error!("Failed to parse LLM response for root {}: {}. Response: {}", root_dir, e, llm_result.response);
+                            warn!("Returning empty pattern groups for root {} due to parse error", root_dir);
+                            return Ok((root_dir, vec![], llm_result.usage, Vec::new()));
+                        }
+                    };
+
+                    // Extract pattern groups with robust error handling
+                    let pattern_groups: Vec<PatternGroup> = if let Some(groups_array) = parsed_json.get("patternGroups").and_then(|v| v.as_array()) {
+                        groups_array
+                            .iter()
+                            .filter_map(|group_json| {
+                                match serde_json::from_value::<PatternGroup>(group_json.clone()) {
+                                    Ok(pattern) => Some(pattern),
+                                    Err(e) => {
+                                        warn!("Failed to parse pattern group for root {}: {}. JSON: {:?}", root_dir, e, group_json);
+                                        None
+                                    }
+                                }
+                            })
+                            .collect()
+                    } else {
+                        warn!("No 'patternGroups' field found in LLM response for root: {}", root_dir);
+                        vec![]
+                    };
+
+                    if pattern_groups.is_empty() {
+                        warn!("No pattern groups generated for root: {}. This may be due to parsing errors or empty LLM response.", root_dir);
+                        let elapsed = start_time.elapsed();
+                        info!("Completed root {} in {:?}", root_dir, elapsed);
+                        return Ok((root_dir, pattern_groups, llm_result.usage, Vec::new()));
+                    }
+
+                    // Compile pattern groups for this root with detailed error logging
+                    let compiled_groups: Vec<CompiledPatternGroup> = pattern_groups
                         .iter()
-                        .filter_map(|group_json| {
-                            serde_json::from_value::<PatternGroup>(group_json.clone()).ok()
+                        .filter_map(|group| {
+                            match self.compile_pattern_group(group) {
+                                Ok(compiled) => Some(compiled),
+                                Err(e) => {
+                                    warn!("Failed to compile pattern group '{}' for root {}: {}. Skipping this group.", group.title, root_dir, e);
+                                    if let Some(ref pattern) = group.path_pattern {
+                                        debug!("  Problematic path_pattern: {}", pattern);
+                                    }
+                                    if let Some(ref pattern) = group.content_pattern {
+                                        debug!("  Problematic content_pattern: {}", pattern);
+                                    }
+                                    if let Some(ref pattern) = group.negative_path_pattern {
+                                        debug!("  Problematic negative_path_pattern: {}", pattern);
+                                    }
+                                    None
+                                }
+                            }
                         })
-                        .collect()
-                } else {
-                    vec![]
-                };
+                        .collect();
 
-                Ok((root_dir_clone, pattern_groups, llm_result.usage))
-            });
+                    if compiled_groups.is_empty() && !pattern_groups.is_empty() {
+                        warn!("All pattern groups failed to compile for root: {}", root_dir);
+                        let elapsed = start_time.elapsed();
+                        info!("Completed root {} in {:?}", root_dir, elapsed);
+                        return Ok((root_dir, pattern_groups, llm_result.usage, Vec::new()));
+                    }
 
-            parallel_tasks.push(task);
-        }
+                    // Get files for THIS specific root directory using spawn_blocking
+                    let root_dir_for_blocking = root_dir.clone();
+                    let all_files_result = spawn_blocking(move || {
+                        let root_path = std::path::Path::new(&root_dir_for_blocking);
+                        if !root_path.is_dir() {
+                            warn!("Root directory does not exist: {}", root_dir_for_blocking);
+                            return Ok::<Vec<String>, AppError>(vec![]);
+                        }
 
-        // Wait for all parallel tasks to complete
-        let results = futures::future::join_all(parallel_tasks).await;
+                        // Find the git repository root for this directory
+                        let git_root = {
+                            let mut current = root_path;
+                            loop {
+                                if git_utils::is_git_repository(current) {
+                                    break current;
+                                }
+                                if let Some(parent) = current.parent() {
+                                    current = parent;
+                                } else {
+                                    break root_path;
+                                }
+                            }
+                        };
+
+                        // Get all non-ignored files from the git repository
+                        let all_git_files = match git_utils::get_all_non_ignored_files(git_root) {
+                            Ok((files, _)) => files,
+                            Err(e) => {
+                                warn!("Failed to get git files for root {}: {}", root_dir_for_blocking, e);
+                                return Ok(vec![]);
+                            }
+                        };
+
+                        // Filter to only files under this specific root directory
+                        let mut root_files: Vec<String> = Vec::new();
+                        for rel_path in &all_git_files {
+                            let abs_path = git_root.join(rel_path);
+                            if abs_path.starts_with(root_path) && abs_path.is_file() {
+                                root_files.push(abs_path.to_string_lossy().to_string());
+                            }
+                        }
+
+                        Ok(root_files)
+                    }).await;
+
+                    let all_files = match all_files_result {
+                        Ok(Ok(files)) => files,
+                        Ok(Err(e)) => {
+                            error!("Failed to get files for root {}: {}", root_dir, e);
+                            let elapsed = start_time.elapsed();
+                            info!("Completed root {} in {:?}", root_dir, elapsed);
+                            return Err(e);
+                        }
+                        Err(e) => {
+                            error!("spawn_blocking failed for root {}: {}", root_dir, e);
+                            let elapsed = start_time.elapsed();
+                            info!("Completed root {} in {:?}", root_dir, elapsed);
+                            return Err(AppError::JobError(format!("spawn_blocking failed: {}", e)));
+                        }
+                    };
+
+                    debug!("Enumerated {} files in root {}", all_files.len(), root_dir);
+
+                    // Apply patterns to files from this root
+                    let mut root_matches = Vec::new();
+                    for compiled_group in &compiled_groups {
+                        let matches = match timeout(Duration::from_secs(10), self.process_pattern_group(&compiled_group, &all_files)).await {
+                            Ok(group_matches) => group_matches,
+                            Err(_) => {
+                                warn!("Pattern group '{}' timed out for root {}", compiled_group.title, root_dir);
+                                vec![]
+                            }
+                        };
+                        root_matches.extend(matches);
+                    }
+
+                    // Normalize paths relative to project directory
+                    let mut normalized_matches = Vec::new();
+                    let mut absolute_paths_kept = 0;
+
+                    for file_path in root_matches {
+                        let normalized = if let (Ok(project_path), Ok(file_path_buf)) = (
+                            std::path::Path::new(&project_dir_clone).canonicalize(),
+                            std::path::Path::new(&file_path).canonicalize()
+                        ) {
+                            if let Ok(relative) = file_path_buf.strip_prefix(&project_path) {
+                                relative.to_string_lossy().replace('\\', "/")
+                            } else {
+                                absolute_paths_kept += 1;
+                                file_path.replace('\\', "/")
+                            }
+                        } else {
+                            absolute_paths_kept += 1;
+                            file_path.replace('\\', "/")
+                        };
+                        normalized_matches.push(normalized);
+                    }
+
+                    info!("Root {} matched {} files, absolute paths kept: {}", root_dir, normalized_matches.len(), absolute_paths_kept);
+
+                    let elapsed = start_time.elapsed();
+                    info!("Completed root {} in {:?}", root_dir, elapsed);
+
+                    Ok((root_dir, pattern_groups, llm_result.usage, normalized_matches))
+                }
+            })
+            .buffer_unordered(root_concurrency)
+            .collect::<Vec<_>>()
+            .await;
 
         // Process results and combine files from all roots
         let mut all_filtered_files = HashSet::new();
@@ -393,9 +592,9 @@ impl JobProcessor for RegexFileFilterProcessor {
         let mut total_completion_tokens = 0u32;
         let mut total_cost = 0.0f64;
 
-        for (index, result) in results.iter().enumerate() {
+        for result in root_results {
             match result {
-                Ok(Ok((root_dir, pattern_groups, usage))) => {
+                Ok((root_dir, pattern_groups, usage, normalized_matches)) => {
                     info!(
                         "Root {} returned {} pattern groups",
                         root_dir,
@@ -411,102 +610,23 @@ impl JobProcessor for RegexFileFilterProcessor {
                         }
                     }
 
-                    if pattern_groups.is_empty() {
-                        warn!("No pattern groups generated for root: {}", root_dir);
-                        continue;
+                    // Add normalized matches to the overall set
+                    for file in normalized_matches {
+                        all_filtered_files.insert(file);
                     }
-
-                    // Compile pattern groups for this root
-                    let compiled_groups: Vec<CompiledPatternGroup> = pattern_groups
-                        .iter()
-                        .filter_map(|group| self.compile_pattern_group(group).ok())
-                        .collect();
-
-                    // Get files for THIS specific root directory
-                    let root_path = std::path::Path::new(root_dir);
-                    if !root_path.is_dir() {
-                        warn!("Root directory does not exist: {}", root_dir);
-                        continue;
-                    }
-
-                    // Find the git repository root for this directory
-                    let git_root = {
-                        let mut current = root_path;
-                        loop {
-                            if git_utils::is_git_repository(current) {
-                                break current;
-                            }
-                            if let Some(parent) = current.parent() {
-                                current = parent;
-                            } else {
-                                // Not in a git repo, use the root directory itself
-                                break root_path;
-                            }
-                        }
-                    };
-
-                    // Get all non-ignored files from the git repository
-                    let all_git_files = match git_utils::get_all_non_ignored_files(git_root) {
-                        Ok((files, _)) => files,
-                        Err(e) => {
-                            warn!("Failed to get git files for root {}: {}", root_dir, e);
-                            vec![]
-                        }
-                    };
-
-                    // Filter to only files under this specific root directory
-                    let mut root_files: Vec<String> = Vec::new();
-                    for rel_path in &all_git_files {
-                        let abs_path = git_root.join(rel_path);
-
-                        // Check if this file is under the current root directory
-                        if abs_path.starts_with(root_path) && abs_path.is_file() {
-                            root_files.push(abs_path.to_string_lossy().to_string());
-                        }
-                    }
-
-                    debug!("Found {} files in root {}", root_files.len(), root_dir);
-
-                    // Apply patterns to files from this root
-                    for compiled_group in &compiled_groups {
-                        let matches = match timeout(
-                            Duration::from_secs(10),
-                            self.process_pattern_group(&compiled_group, &root_files),
-                        )
-                        .await
-                        {
-                            Ok(group_matches) => group_matches,
-                            Err(_) => {
-                                warn!(
-                                    "Pattern group '{}' timed out for root {}",
-                                    compiled_group.title, root_dir
-                                );
-                                vec![]
-                            }
-                        };
-
-                        // Add matches to the overall set
-                        for file in matches {
-                            all_filtered_files.insert(file);
-                        }
-                    }
-                }
-                Ok(Err(e)) => {
-                    error!("Task failed: {:?}", e);
                 }
                 Err(e) => {
-                    error!("Task panicked: {:?}", e);
+                    error!(
+                        "Task failed for root: {:?}. Continuing with other roots.",
+                        e
+                    );
                 }
             }
         }
 
         let filtered_files: Vec<String> = all_filtered_files.into_iter().collect();
 
-        info!(
-            "Parallel processing complete. Found {} total files across {} roots",
-            filtered_files.len(),
-            total_roots
-        );
+        info!("Total normalized matches: {}", filtered_files.len());
 
         // Check if no files were found - this is a valid result, not an error
         if filtered_files.is_empty() {

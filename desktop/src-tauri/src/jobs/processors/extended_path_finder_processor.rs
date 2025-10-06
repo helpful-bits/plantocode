@@ -212,12 +212,18 @@ impl JobProcessor for ExtendedPathFinderProcessor {
 
         for path_from_llm in &extended_paths {
             // Fix paths that might be missing leading slash
-            let corrected_path = if !path_from_llm.starts_with('/') && !path_from_llm.starts_with("\\\\")
-                && path_from_llm.starts_with("Users/") {
+            let corrected_path = if !path_from_llm.starts_with('/')
+                && !path_from_llm.starts_with("\\\\")
+                && path_from_llm.starts_with("Users/")
+            {
                 // macOS path missing leading slash
                 format!("/{}", path_from_llm)
-            } else if !path_from_llm.starts_with('/') && !path_from_llm.starts_with("\\\\")
-                && (path_from_llm.starts_with("home/") || path_from_llm.starts_with("var/") || path_from_llm.starts_with("tmp/")) {
+            } else if !path_from_llm.starts_with('/')
+                && !path_from_llm.starts_with("\\\\")
+                && (path_from_llm.starts_with("home/")
+                    || path_from_llm.starts_with("var/")
+                    || path_from_llm.starts_with("tmp/"))
+            {
                 // Linux path missing leading slash
                 format!("/{}", path_from_llm)
             } else {
@@ -234,7 +240,8 @@ impl JobProcessor for ExtendedPathFinderProcessor {
                             Ok(rel_path) => rel_path.to_string_lossy().to_string(),
                             Err(_) => {
                                 // Fallback: use strip_prefix
-                                absolute_path.strip_prefix(&project_dir)
+                                absolute_path
+                                    .strip_prefix(&project_dir)
                                     .map(|p| p.to_string_lossy().to_string())
                                     .unwrap_or_else(|_| path_from_llm.clone())
                             }

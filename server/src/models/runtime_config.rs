@@ -1,11 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use crate::db::repositories::{
-    ApiUsageRepository, ModelRepository, CustomerBillingRepository,
-    UserRepository, SettingsRepository
-};
 use crate::config::AppSettings;
+use crate::db::repositories::{
+    ApiUsageRepository, CustomerBillingRepository, ModelRepository, SettingsRepository,
+    UserRepository,
+};
 // use crate::devices::DeviceService; // TODO: Enable when DeviceService is implemented
 use crate::handlers::config_handlers::DesktopRuntimeAIConfig;
 

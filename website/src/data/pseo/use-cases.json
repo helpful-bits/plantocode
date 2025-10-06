@@ -451,6 +451,71 @@
         "Impact-based prioritization",
         "Business value communication"
       ]
+    },
+    {
+      "slug": "vibe-code-cleanup-specialist",
+      "role": "vibe-specialist",
+      "use_case": "code-cleanup",
+      "headline": "Vibe Code Cleanup Specialist - Technical Debt Recovery Expert",
+      "subhead": "When 2 engineers created the tech debt of 50, and now it's giving everyone bad vibes. Note: This is a humorous take on real AI-assisted development challenges.",
+      "meta_title": "Vibe Code Cleanup Specialist - Fix Bad Code Vibes & Technical Debt | Vibe Manager",
+      "meta_description": "Transform vibe-coded chaos into maintainable systems. Fix the panicky feeling of black-box AI code, restore developer well-being, and prevent technical debt tsunamis before they crash.",
+      "primary_cta": "Restore Good Vibes",
+      "publish": true,
+      "priority": 1,
+      "pain_points": [
+        {
+          "problem": "Your codebase is 95% AI-generated and nobody knows why any line exists",
+          "solution": "AI archaeologist reverse-engineers the vibes into documented logic"
+        },
+        {
+          "problem": "That panicky feeling when you need to debug without AI assistance",
+          "solution": "Learning debt repayment plans that restore your confidence"
+        },
+        {
+          "problem": "Senior engineers experiencing 'development hell' with vibe-coded projects",
+          "solution": "Systematic de-vibification that transforms black boxes into glass boxes"
+        },
+        {
+          "problem": "The code 'feels right' but nobody can explain what it actually does",
+          "solution": "Vibe-to-logic translator creates human-readable documentation"
+        },
+        {
+          "problem": "Your February 2025 'throwaway weekend project' is now in production",
+          "solution": "Emergency vibe containment and architectural reconstruction"
+        },
+        {
+          "problem": "The 'vibe coding aftermath' where exponential tech debt hits reality",
+          "solution": "Recovery protocols that gradually restore code comprehension"
+        },
+        {
+          "problem": "Your vibe architect quit and took all the intuition with them",
+          "solution": "AI captures implicit knowledge and codifies the unwritten rules"
+        }
+      ],
+      "workflow_steps": [
+        "Vibe audit: Measure the ratio of understood vs mystery code (spoiler: it's bad)",
+        "Emotional damage report: Quantify developer anxiety levels and crying frequency",
+        "Pattern archaeology: Excavate the original intent buried under 47 regenerations",
+        "Vibe-to-spec translation: Turn 'it just works' into actual requirements",
+        "Incremental de-vibification: Replace mystery boxes with documented components",
+        "Learning debt consolidation: Structured knowledge transfer sessions",
+        "Good vibe restoration: Deploy patterns that spark joy AND make sense"
+      ],
+      "key_features": [
+        "Vibe debt calculator (measures months of future suffering per line)",
+        "AI code archaeologist (excavates intent from random regenerations)",
+        "Emotional support linter (validates both syntax AND developer feelings)",
+        "Black box illuminator (turns 'forgot the code exists' into 'I understand this')",
+        "Panic attack preventer (adds guardrails before the next production incident)",
+        "Technical debt tsunami early warning system (Forrester-approved metrics)",
+        "Vibe aftermath recovery (systematic cleanup from February 2025 mistakes)",
+        "Learning debt repayment scheduler (fills knowledge gaps incrementally)",
+        "Developer well-being dashboard (tracks mood from 'existential dread' to 'zen')",
+        "Intuition-to-documentation converter (captures that 'feels right' knowledge)",
+        "Legacy vibe quarantine (prevents bad patterns from spreading to new code)",
+        "Post-vibe-coding therapy sessions (group healing for traumatized teams)"
+      ]
     }
   ]
 }

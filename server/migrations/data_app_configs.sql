@@ -5,17 +5,25 @@ VALUES (
     "tasks": {
       "implementation_plan": {
         "model": "google/gemini-2.5-pro",
-        "allowed_models": ["openai/o3", "openai/gpt-5", "deepseek/deepseek-r1-0528", "moonshotai/kimi-k2", "google/gemini-2.5-pro", "xai/grok-4", "anthropic/claude-sonnet-4-20250514"],
+        "allowed_models": ["openai/o3", "openai/gpt-5", "deepseek/deepseek-r1-0528", "moonshotai/kimi-k2", "google/gemini-2.5-pro", "xai/grok-4", "anthropic/claude-sonnet-4-5-20250929"],
         "max_tokens": 23000,
         "temperature": 0.7,
         "copy_buttons": [
           {
             "label": "Parallel Claude Coding Agents",
-            "content": "{{IMPLEMENTATION_PLAN}}\nNOW, think deeply! Read the files mentioned, understand them and launch parallel Claude coding agents that run AT THE SAME TIME TO SAVE TIME and implement EVERY SINGLE aspect of the perfect plan precisely and systematically, and instruct the agents EXACTLY about what they are supposed to do in great detail. Think even more deeply to give REALLY clear instructions for the agents! Instruct each of the agents NOT to run any git, cargo, or TypeScript check commands. I do not need deprecated comments or annotations; the deprecated or fallback features must be COMPLETELY REMOVED!"
+            "content": "Original Task: {{TASK_DESCRIPTION}}\n\n{{IMPLEMENTATION_PLAN}}\n\nNOW, think deeply! Read the files mentioned, understand them and launch parallel Claude coding agents that run AT THE SAME TIME TO SAVE TIME and implement EVERY SINGLE aspect of the perfect plan precisely and systematically, and instruct the agents EXACTLY about what they are supposed to do in great detail. Think even more deeply to give REALLY clear instructions for the agents! Instruct each of the agents NOT to run any git, cargo, or TypeScript check commands. I do not need deprecated comments or annotations; the deprecated or fallback features must be COMPLETELY REMOVED!"
           },
           {
             "label": "Investigate Results",
             "content": "Investigate the results of ALL agents that were launched and ensure we have implemented the COMPLETE plan CORRECTLY! Perform a thorough self-check without launching background agents. Think deeply to verify EVERYTHING has been properly executed."
+          },
+          {
+            "label": "Task",
+            "content": "{{TASK_DESCRIPTION}}"
+          },
+          {
+            "label": "Task + Plan",
+            "content": "Task: {{TASK_DESCRIPTION}}\n\nImplementation Plan:\n{{IMPLEMENTATION_PLAN}}"
           }
         ]
       },
@@ -26,8 +34,8 @@ VALUES (
         "temperature": 0.35
       },
       "text_improvement": {
-        "model": "anthropic/claude-sonnet-4-20250514",
-        "allowed_models": ["anthropic/claude-sonnet-4-20250514", "google/gemini-2.5-flash"],
+        "model": "anthropic/claude-sonnet-4-5-20250929",
+        "allowed_models": ["anthropic/claude-sonnet-4-5-20250929", "google/gemini-2.5-flash"],
         "max_tokens": 4096,
         "temperature": 0.7
       },
@@ -44,9 +52,9 @@ VALUES (
         "temperature": 0.3
       },
       "regex_file_filter": {
-        "model": "anthropic/claude-sonnet-4-20250514",
-        "allowed_models": ["anthropic/claude-sonnet-4-20250514", "google/gemini-2.5-flash"],
-        "max_tokens": 6000,
+        "model": "anthropic/claude-sonnet-4-5-20250929",
+        "allowed_models": ["anthropic/claude-sonnet-4-5-20250929", "google/gemini-2.5-flash"],
+        "max_tokens": 35000,
         "temperature": 0.2
       },
       "task_refinement": {
@@ -81,7 +89,7 @@ VALUES (
       },
       "root_folder_selection": {
         "model": "openai/gpt-5-mini",
-        "allowed_models": ["google/gemini-2.5-flash", "openai/gpt-5-mini", "anthropic/claude-sonnet-4-20250514"],
+        "allowed_models": ["google/gemini-2.5-flash", "openai/gpt-5-mini", "anthropic/claude-sonnet-4-5-20250929"],
         "max_tokens": 4096,
         "temperature": 0.2
       },
@@ -92,20 +100,20 @@ VALUES (
         "temperature": 0.4
       },
       "generic_llm_stream": {
-        "model": "anthropic/claude-sonnet-4-20250514",
-        "allowed_models": ["anthropic/claude-sonnet-4-20250514", "google/gemini-2.5-flash", "openai/o4-mini"],
+        "model": "anthropic/claude-sonnet-4-5-20250929",
+        "allowed_models": ["anthropic/claude-sonnet-4-5-20250929", "google/gemini-2.5-flash", "openai/o4-mini"],
         "max_tokens": 8192,
         "temperature": 0.7
       },
       "streaming": {
-        "model": "anthropic/claude-sonnet-4-20250514",
-        "allowed_models": ["anthropic/claude-sonnet-4-20250514", "google/gemini-2.5-flash"],
+        "model": "anthropic/claude-sonnet-4-5-20250929",
+        "allowed_models": ["anthropic/claude-sonnet-4-5-20250929", "google/gemini-2.5-flash"],
         "max_tokens": 4096,
         "temperature": 0.7
       },
       "unknown": {
         "model": "google/gemini-2.5-flash",
-        "allowed_models": ["google/gemini-2.5-flash", "anthropic/claude-sonnet-4-20250514"],
+        "allowed_models": ["google/gemini-2.5-flash", "anthropic/claude-sonnet-4-5-20250929"],
         "max_tokens": 2048,
         "temperature": 0.5
       }

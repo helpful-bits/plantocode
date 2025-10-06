@@ -26,7 +26,6 @@ use crate::auth::auth0_state::{Auth0StateStore, cleanup_old_attempts};
 use crate::db_utils::{BackgroundJobRepository, SessionRepository, SettingsRepository};
 use crate::error::AppError;
 use crate::services::config_cache_service::ConfigCache;
-use crate::services::terminal_manager::TerminalManager;
 use crate::utils::FileLockManager;
 use dotenvy::dotenv;
 use log::{debug, error, info, warn};
@@ -182,9 +181,6 @@ pub fn run() {
                 }
             });
 
-            let terminal_manager = Arc::new(TerminalManager::new(app.handle().clone()));
-            app.manage(terminal_manager);
-
             // Start DeviceLinkClient after auth is ready
             let app_handle_for_device_link = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -195,10 +191,13 @@ pub fn run() {
                         let app_state = app_handle_for_device_link.state::<AppState>();
                         if let Some(server_url) = app_state.get_server_url() {
                             info!("Starting DeviceLinkClient for server: {}", server_url);
-                            if let Err(e) = crate::services::device_link_client::start_device_link_client(
-                                app_handle_for_device_link.clone(),
-                                server_url
-                            ).await {
+                            if let Err(e) =
+                                crate::services::device_link_client::start_device_link_client(
+                                    app_handle_for_device_link.clone(),
+                                    server_url,
+                                )
+                                .await
+                            {
                                 error!("DeviceLinkClient error: {}", e);
                             }
                         }
@@ -217,10 +216,13 @@ pub fn run() {
                 tauri::async_runtime::spawn(async move {
                     // This would be sent via DeviceLinkClient if it was available as a global service
                     // For now, we'll emit a generic event that DeviceLinkClient can listen to
-                    let _ = app_handle.emit("device-link-event", serde_json::json!({
-                        "type": "job-status-changed",
-                        "payload": payload
-                    }));
+                    let _ = app_handle.emit(
+                        "device-link-event",
+                        serde_json::json!({
+                            "type": "job-status-changed",
+                            "payload": payload
+                        }),
+                    );
                 });
             });
 
@@ -230,10 +232,13 @@ pub fn run() {
                 let payload = event.payload().to_string();
                 let app_handle = app_handle_for_terminal_events.clone();
                 tauri::async_runtime::spawn(async move {
-                    let _ = app_handle.emit("device-link-event", serde_json::json!({
-                        "type": "terminal:output",
-                        "payload": payload
-                    }));
+                    let _ = app_handle.emit(
+                        "device-link-event",
+                        serde_json::json!({
+                            "type": "terminal:output",
+                            "payload": payload
+                        }),
+                    );
                 });
             });
 
@@ -257,6 +262,34 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let _ = window.emit("app-will-close", ());
+
+                // Cleanup all terminals before closing
+                let app_handle = window.app_handle();
+                if let Some(terminal_manager) =
+                    app_handle.try_state::<std::sync::Arc<crate::services::TerminalManager>>()
+                {
+                    tauri::async_runtime::block_on(async {
+                        if let Err(e) = terminal_manager.cleanup_all_sessions().await {
+                            error!("Error during terminal cleanup: {}", e);
+                        } else {
+                            info!("All terminal sessions cleaned up successfully");
+                        }
+                    });
+                }
+
+                // Shutdown DeviceLinkClient before closing
+                if let Some(client_state) =
+                    app_handle.try_state::<Arc<
+                        tokio::sync::Mutex<crate::services::device_link_client::DeviceLinkClient>,
+                    >>()
+                {
+                    let client_state = client_state.inner().clone();
+                    tauri::async_runtime::spawn(async move {
+                        if let Ok(mut client) = client_state.try_lock() {
+                            client.shutdown().await;
+                        }
+                    });
+                }
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -336,6 +369,7 @@ pub fn run() {
             commands::workflow_commands::cancel_workflow_stage_command,
             commands::text_commands::improve_text_command,
             commands::text_commands::generate_simple_text_command,
+            commands::audio_commands::transcribe_audio_command,
             commands::implementation_plan_commands::create_implementation_plan_command,
             commands::implementation_plan_commands::read_implementation_plan_command,
             commands::implementation_plan_commands::update_implementation_plan_content_command,
@@ -395,6 +429,10 @@ pub fn run() {
             commands::settings_commands::change_server_url_and_reset_command,
             commands::settings_commands::get_external_folders_command,
             commands::settings_commands::set_external_folders_command,
+            commands::settings_commands::get_device_settings,
+            commands::settings_commands::update_device_settings,
+            commands::settings_commands::get_app_setting,
+            commands::settings_commands::set_app_setting,
             commands::session_commands::create_session_command,
             commands::session_commands::get_session_command,
             commands::session_commands::get_sessions_for_project_command,
@@ -426,32 +464,20 @@ pub fn run() {
             commands::backup_commands::delete_backup_command,
             commands::logging_commands::log_client_error,
             commands::logging_commands::append_to_log_file,
-            commands::terminal_commands::read_terminal_log_command,
-            commands::terminal_commands::read_terminal_log_len_command,
-            commands::terminal_commands::read_terminal_log_since_command,
-            commands::terminal_commands::read_terminal_log_tail_command,
-            commands::terminal_commands::clear_terminal_log_command,
-            commands::terminal_commands::delete_terminal_log_command,
             commands::terminal_commands::start_terminal_session_command,
+            commands::terminal_commands::attach_terminal_output_command,
             commands::terminal_commands::write_terminal_input_command,
-            commands::terminal_commands::send_ctrl_c_to_terminal_command,
             commands::terminal_commands::resize_terminal_session_command,
             commands::terminal_commands::kill_terminal_session_command,
             commands::terminal_commands::get_terminal_session_status_command,
-            commands::terminal_commands::get_terminal_prerequisites_status_command,
-            commands::terminal_commands::check_terminal_dependencies_command,
-            commands::terminal_commands::attach_terminal_output_command,
-            commands::terminal_commands::recover_terminal_session_command,
-            commands::terminal_commands::save_pasted_image_command,
-            commands::terminal_commands::list_active_terminal_sessions_command,
-            commands::terminal_commands::start_terminal_session_remote_command,
-            commands::terminal_commands::register_terminal_health_session,
-            commands::terminal_commands::unregister_terminal_health_session,
-            commands::terminal_commands::get_terminal_health_status,
-            commands::terminal_commands::get_terminal_health_history,
-            commands::terminal_commands::trigger_terminal_recovery,
-            commands::terminal_commands::touch_session_by_job_id,
-            commands::terminal_commands::get_terminal_snapshot_command,
+            commands::terminal_commands::list_terminal_sessions_command,
+            commands::terminal_commands::restore_terminal_sessions_command,
+            commands::terminal_commands::get_active_terminal_sessions_command,
+            commands::terminal_commands::reconnect_terminal_session_command,
+            commands::terminal_commands::clear_terminal_log_command,
+            commands::terminal_commands::get_terminal_metadata_command,
+            commands::terminal_commands::graceful_exit_terminal_command,
+            commands::image_commands::save_pasted_image_command,
         ])
         .run(tauri_context)
         .expect("Error while running tauri application");

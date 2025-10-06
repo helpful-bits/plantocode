@@ -1,17 +1,17 @@
 // Anthropic API client implementation with proper token counting
 // Handles both cached and uncached tokens according to the 2025-07 API specification
+use crate::config::settings::AppSettings;
 use crate::error::AppError;
-use actix_web::{web, HttpResponse};
+use actix_web::{HttpResponse, web};
 use futures_util::{Stream, StreamExt, TryStreamExt};
 use reqwest::{Client, Response, header::HeaderMap};
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use serde_with::skip_serializing_none;
-use serde_json::{json, Value};
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use crate::config::settings::AppSettings;
-use tracing::{debug, info, warn, error, instrument};
+use tracing::{debug, error, info, instrument, warn};
 
 use crate::clients::usage_extractor::{ProviderUsage, UsageExtractor};
 use crate::services::model_mapping_service::ModelWithMapping;
@@ -153,11 +153,18 @@ pub struct AnthropicClient {
 
 impl AnthropicClient {
     pub fn new(app_settings: &AppSettings) -> Result<Self, crate::error::AppError> {
-        let api_key = app_settings.api_keys.anthropic_api_key.clone()
-            .ok_or_else(|| crate::error::AppError::Configuration("Anthropic API key must be configured".to_string()))?;
-        
+        let api_key = app_settings
+            .api_keys
+            .anthropic_api_key
+            .clone()
+            .ok_or_else(|| {
+                crate::error::AppError::Configuration(
+                    "Anthropic API key must be configured".to_string(),
+                )
+            })?;
+
         let client = crate::utils::http_client::new_api_client();
-        
+
         Ok(Self {
             client,
             api_key,
@@ -179,14 +186,20 @@ impl AnthropicClient {
 
     // Chat Completions
     #[instrument(skip(self, request, model), fields(model = %model.resolved_model_id))]
-    pub async fn chat_completion(&self, mut request: AnthropicChatRequest, model: &ModelWithMapping, user_id: &str) -> Result<(AnthropicChatResponse, HeaderMap, i32, i32, i32, i32), AppError> {
+    pub async fn chat_completion(
+        &self,
+        mut request: AnthropicChatRequest,
+        model: &ModelWithMapping,
+        user_id: &str,
+    ) -> Result<(AnthropicChatResponse, HeaderMap, i32, i32, i32, i32), AppError> {
         let request_id = self.get_next_request_id().await;
         let url = format!("{}/messages", self.base_url);
-        
+
         // Use the resolved model ID from the mapping service
         request.model = model.resolved_model_id.clone();
-        
-        let response = self.client
+
+        let response = self
+            .client
             .post(&url)
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", "2023-06-01")
@@ -195,48 +208,73 @@ impl AnthropicClient {
             .json(&request)
             .send()
             .await
-            .map_err(|e| AppError::External(format!("Anthropic request failed: {}", e.to_string())))?;
-        
+            .map_err(|e| {
+                AppError::External(format!("Anthropic request failed: {}", e.to_string()))
+            })?;
+
         let status = response.status();
         let headers = response.headers().clone();
-        
+
         if !status.is_success() {
-            let error_text = response.text().await
+            let error_text = response
+                .text()
+                .await
                 .unwrap_or_else(|_| "Failed to get error response".to_string());
             return Err(AppError::External(format!(
                 "Anthropic request failed with status {}: {}",
                 status, error_text
             )));
         }
-        
-        let body = response.bytes().await
+
+        let body = response
+            .bytes()
+            .await
             .map_err(|e| AppError::Internal(format!("Failed to read response body: {}", e)))?;
-        
-        let result: AnthropicChatResponse = serde_json::from_slice(&body)
-            .map_err(|e| AppError::Internal(format!("Anthropic deserialization failed: {}", e.to_string())))?;
-        
-        let usage = self.extract_from_response_body(&body, &request.model).await?;
-            
-        Ok((result, headers, usage.prompt_tokens, usage.cache_write_tokens, usage.cache_read_tokens, usage.completion_tokens))
+
+        let result: AnthropicChatResponse = serde_json::from_slice(&body).map_err(|e| {
+            AppError::Internal(format!(
+                "Anthropic deserialization failed: {}",
+                e.to_string()
+            ))
+        })?;
+
+        let usage = self
+            .extract_from_response_body(&body, &request.model)
+            .await?;
+
+        Ok((
+            result,
+            headers,
+            usage.prompt_tokens,
+            usage.cache_write_tokens,
+            usage.cache_read_tokens,
+            usage.completion_tokens,
+        ))
     }
 
     // Streaming Chat Completions for actix-web compatibility
     #[instrument(skip(self, request, model), fields(model = %model.resolved_model_id, user_id = %user_id))]
     pub async fn stream_chat_completion(
-        &self, 
+        &self,
         mut request: AnthropicChatRequest,
         model: &ModelWithMapping,
-        user_id: String
-    ) -> Result<(HeaderMap, Pin<Box<dyn Stream<Item = Result<web::Bytes, AppError>> + Send + 'static>>), AppError> {
+        user_id: String,
+    ) -> Result<
+        (
+            HeaderMap,
+            Pin<Box<dyn Stream<Item = Result<web::Bytes, AppError>> + Send + 'static>>,
+        ),
+        AppError,
+    > {
         // Use the resolved model ID from the mapping service
         request.model = model.resolved_model_id.clone();
-        
+
         // Clone necessary parts for 'static lifetime
         let client = self.client.clone();
         let api_key = self.api_key.clone();
         let base_url = self.base_url.clone();
         let request_id_counter = self.request_id_counter.clone();
-        
+
         // Create the stream in an async move block to ensure 'static lifetime
         let result = async move {
             let request_id = {
@@ -245,11 +283,11 @@ impl AnthropicClient {
                 *counter
             };
             let url = format!("{}/messages", base_url);
-            
+
             // Ensure stream is set to true
             let mut streaming_request = request.clone();
             streaming_request.stream = Some(true);
-            
+
             let response = client
                 .post(&url)
                 .header("x-api-key", api_key)
@@ -259,43 +297,56 @@ impl AnthropicClient {
                 .json(&streaming_request)
                 .send()
                 .await
-                .map_err(|e| AppError::External(format!("Anthropic request failed: {}", e.to_string())))?;
-            
+                .map_err(|e| {
+                    AppError::External(format!("Anthropic request failed: {}", e.to_string()))
+                })?;
+
             let status = response.status();
             let headers = response.headers().clone();
-            
+
             if !status.is_success() {
-                let error_text = response.text().await
+                let error_text = response
+                    .text()
+                    .await
                     .unwrap_or_else(|_| "Failed to get error response".to_string());
                 return Err(AppError::External(format!(
                     "Anthropic streaming request failed with status {}: {}",
                     status, error_text
                 )));
             }
-            
+
             // Return a stream that can be consumed by actix-web
-            let stream = response.bytes_stream()
-                .map(|result| {
-                    match result {
-                        Ok(bytes) => Ok(web::Bytes::from(bytes)),
-                        Err(e) => Err(AppError::External(format!("Anthropic network error: {}", e.to_string()))),
-                    }
-                });
-                
-            let boxed_stream: Pin<Box<dyn Stream<Item = Result<web::Bytes, AppError>> + Send + 'static>> = Box::pin(stream);
+            let stream = response.bytes_stream().map(|result| match result {
+                Ok(bytes) => Ok(web::Bytes::from(bytes)),
+                Err(e) => Err(AppError::External(format!(
+                    "Anthropic network error: {}",
+                    e.to_string()
+                ))),
+            });
+
+            let boxed_stream: Pin<
+                Box<dyn Stream<Item = Result<web::Bytes, AppError>> + Send + 'static>,
+            > = Box::pin(stream);
             Ok((headers, boxed_stream))
-        }.await?;
-        
+        }
+        .await?;
+
         Ok(result)
     }
-    
-    
+
     // Convert a generic JSON Value into an AnthropicChatRequest
-    pub fn convert_to_chat_request(&self, payload: Value) -> Result<AnthropicChatRequest, AppError> {
+    pub fn convert_to_chat_request(
+        &self,
+        payload: Value,
+    ) -> Result<AnthropicChatRequest, AppError> {
         // First, try to deserialize as a generic request to extract messages
-        let mut request: AnthropicChatRequest = serde_json::from_value(payload)
-            .map_err(|e| AppError::BadRequest(format!("Failed to convert payload to Anthropic chat request: {}", e)))?;
-        
+        let mut request: AnthropicChatRequest = serde_json::from_value(payload).map_err(|e| {
+            AppError::BadRequest(format!(
+                "Failed to convert payload to Anthropic chat request: {}",
+                e
+            ))
+        })?;
+
         // Transform model name to remove provider prefix if present
         // This ensures correct model names are sent to Anthropic API:
         // "anthropic/claude-4-sonnet" -> "claude-4-sonnet"
@@ -303,29 +354,38 @@ impl AnthropicClient {
         // "claude-4-sonnet" -> "claude-4-sonnet" (unchanged)
         if request.model.starts_with("anthropic/") {
             let original_model = request.model.clone();
-            request.model = request.model.strip_prefix("anthropic/").unwrap().to_string();
-            
+            request.model = request
+                .model
+                .strip_prefix("anthropic/")
+                .unwrap()
+                .to_string();
+
             // Validate that we don't have an empty model name after transformation
             if request.model.is_empty() {
-                return Err(AppError::BadRequest("Invalid model name: empty after removing provider prefix".to_string()));
+                return Err(AppError::BadRequest(
+                    "Invalid model name: empty after removing provider prefix".to_string(),
+                ));
             }
-            
-            debug!("Transformed model name: {} -> {}", original_model, request.model);
+
+            debug!(
+                "Transformed model name: {} -> {}",
+                original_model, request.model
+            );
         } else {
             debug!("Using model name as-is: {}", request.model);
         }
-        
+
         // Extract system messages from the messages array and combine them
         let mut system_messages = Vec::new();
         let mut non_system_messages = Vec::new();
-        
+
         for message in request.messages {
             if message.role == "system" {
                 // Extract text content from system messages
                 match message.content {
                     AnthropicContent::Text(text) => {
                         system_messages.push(text);
-                    },
+                    }
                     AnthropicContent::Parts(parts) => {
                         for part in parts {
                             if part.part_type == "text" {
@@ -341,21 +401,23 @@ impl AnthropicClient {
             }
             // Skip any other roles that aren't supported by Anthropic
         }
-        
+
         // Combine system messages into a single system parameter
         if !system_messages.is_empty() {
             let combined_system = system_messages.join("\n\n");
             request.system = Some(combined_system);
         }
-        
+
         // Update messages array to only contain user and assistant messages
         request.messages = non_system_messages;
-        
+
         // Validate that we have at least one message after filtering
         if request.messages.is_empty() {
-            return Err(AppError::BadRequest("Request must contain at least one user or assistant message".to_string()));
+            return Err(AppError::BadRequest(
+                "Request must contain at least one user or assistant message".to_string(),
+            ));
         }
-        
+
         Ok(request)
     }
 }
@@ -367,30 +429,39 @@ impl UsageExtractor for AnthropicClient {
 
     /// Extract usage information from Anthropic API HTTP response body (2025-07 format)
     /// Handles only non-streaming JSON responses - streaming is processed by transformers
-    async fn extract_from_response_body(&self, body: &[u8], model_id: &str) -> Result<ProviderUsage, AppError> {
+    async fn extract_from_response_body(
+        &self,
+        body: &[u8],
+        model_id: &str,
+    ) -> Result<ProviderUsage, AppError> {
         let body_str = std::str::from_utf8(body)
             .map_err(|e| AppError::InvalidArgument(format!("Invalid UTF-8: {}", e)))?;
-        
+
         // Handle non-streaming JSON response
         let json: serde_json::Value = serde_json::from_str(body_str)
             .map_err(|e| AppError::External(format!("Failed to parse JSON: {}", e)))?;
-        
+
         self.extract_usage_from_json(&json, model_id)
             .map(|mut usage| {
                 usage.model_id = model_id.to_string();
                 usage
             })
-            .ok_or_else(|| AppError::External("Failed to extract usage from Anthropic response".to_string()))
+            .ok_or_else(|| {
+                AppError::External("Failed to extract usage from Anthropic response".to_string())
+            })
     }
-    
 }
 
 impl AnthropicClient {
     /// Extract usage information from Anthropic response JSON
-    fn extract_usage_from_json(&self, json_value: &serde_json::Value, model_id: &str) -> Option<ProviderUsage> {
+    fn extract_usage_from_json(
+        &self,
+        json_value: &serde_json::Value,
+        model_id: &str,
+    ) -> Option<ProviderUsage> {
         // Extract usage from parsed JSON
         let usage = json_value.get("usage")?;
-        
+
         // Anthropic's input_tokens IS the total prompt tokens
         let input_tokens = match usage.get("input_tokens").and_then(|v| v.as_i64()) {
             Some(tokens) => tokens as i32,
@@ -399,7 +470,7 @@ impl AnthropicClient {
                 return None;
             }
         };
-        
+
         let output_tokens = match usage.get("output_tokens").and_then(|v| v.as_i64()) {
             Some(tokens) => tokens as i32,
             None => {
@@ -407,14 +478,14 @@ impl AnthropicClient {
                 return None;
             }
         };
-        
-        
+
         // Extract optional cost field
-        let cost = usage.get("cost")
+        let cost = usage
+            .get("cost")
             .and_then(|v| v.as_f64())
             .map(|f| BigDecimal::from_str(&f.to_string()).ok())
             .flatten();
-        
+
         let mut usage = if let Some(cost_val) = cost {
             ProviderUsage::with_cost(
                 input_tokens,
@@ -422,23 +493,16 @@ impl AnthropicClient {
                 0,
                 0,
                 model_id.to_string(),
-                cost_val
+                cost_val,
             )
         } else {
-            ProviderUsage::new(
-                input_tokens,
-                output_tokens,
-                0,
-                0,
-                model_id.to_string()
-            )
+            ProviderUsage::new(input_tokens, output_tokens, 0, 0, model_id.to_string())
         };
-        
+
         usage.validate().ok()?;
-        
+
         Some(usage)
     }
-    
 }
 
 impl Clone for AnthropicClient {

@@ -161,7 +161,6 @@ public class ServerFeatureService: ObservableObject {
         }
 
         let deviceId = DeviceManager.shared.getOrCreateDeviceID()
-        request.setValue(deviceId, forHTTPHeaderField: "X-Client-ID")
         request.setValue(deviceId, forHTTPHeaderField: "X-Device-ID")
         request.setValue(deviceId, forHTTPHeaderField: "X-Token-Binding")
 
