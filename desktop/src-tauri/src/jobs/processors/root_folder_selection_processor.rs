@@ -92,8 +92,12 @@ impl JobProcessor for RootFolderSelectionProcessor {
             .execute_llm_task(prompt_context, &_settings_repo)
             .await?;
 
+        // Extract JSON from markdown code blocks (Claude Sonnet 4.5 wraps JSON in ```json...```)
+        let cleaned_response =
+            crate::utils::markdown_utils::extract_json_from_markdown(&llm_response.response);
+
         let parsed_paths: Vec<String> =
-            if let Ok(json_array) = serde_json::from_str::<Vec<String>>(&llm_response.response) {
+            if let Ok(json_array) = serde_json::from_str::<Vec<String>>(&cleaned_response) {
                 json_array
             } else {
                 llm_response

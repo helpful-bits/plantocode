@@ -7,9 +7,11 @@ use crate::db_utils::session_repository::SessionRepository;
 use crate::error::{AppError, AppResult};
 
 /// Auto-apply discovered files service
+/// - Backend auto-apply is additive-only and respects user force_excluded_files;
+///   items in excluded are never re-included by backend jobs.
+/// - Concurrency is hardened in repository with BEGIN IMMEDIATE.
 /// - Persists into sessions.included_files / sessions.force_excluded_files (newline-delimited TEXT).
 /// - Only for file_relevance_assessment and extended_path_finder jobs.
-/// - Dedupe, trim; when including a file, ensure it is removed from force_excluded_files for consistency.
 #[derive(Debug)]
 pub struct AutoApplyOutcome {
     pub session_id: String,
@@ -30,15 +32,6 @@ fn extract_files_from_response(response: &Value) -> Vec<String> {
     }
 }
 
-fn merge_newline_list(existing: &str) -> BTreeSet<String> {
-    existing
-        .lines()
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string())
-        .collect()
-}
-
 pub async fn auto_apply_files_for_job(
     pool: &Arc<SqlitePool>,
     session_repo: &SessionRepository,
@@ -48,7 +41,10 @@ pub async fn auto_apply_files_for_job(
     response_json: &Value,
 ) -> AppResult<Option<AutoApplyOutcome>> {
     // Limit to supported types
-    let is_supported = matches!(task_type, "file_relevance_assessment" | "extended_path_finder");
+    let is_supported = matches!(
+        task_type,
+        "file_relevance_assessment" | "extended_path_finder"
+    );
     if !is_supported {
         return Ok(None);
     }
@@ -65,43 +61,32 @@ pub async fn auto_apply_files_for_job(
         return Ok(None);
     }
 
-    // Load current session
-    let session_opt = session_repo
-        .get_session_by_id(session_id)
+    // Convert to vec for the atomic merge operation
+    let files_to_add: Vec<String> = files_set.into_iter().collect();
+
+    log::debug!(
+        "auto_apply_files_for_job: session={}, task_type={}, files_to_add={}",
+        session_id,
+        task_type,
+        files_to_add.len()
+    );
+
+    // Use atomic merge operation that respects exclusions to avoid race conditions
+    // and ensure user manual selections (exclusions) are never overridden
+    let actually_applied = session_repo
+        .atomic_merge_included_files_respecting_exclusions(session_id, &files_to_add)
         .await
-        .map_err(|e| AppError::DatabaseError(format!("Failed to load session {}: {}", session_id, e)))?;
+        .map_err(|e| {
+            AppError::DatabaseError(format!(
+                "Failed to atomically merge files (respecting exclusions) for session {}: {}",
+                session_id, e
+            ))
+        })?;
 
-    let mut session = match session_opt {
-        Some(s) => s,
-        None => return Ok(None),
-    };
-
-    // Merge included_files (newline list) with new files; remove from force_excluded_files
-    let mut included = merge_newline_list(&session.included_files.join("\n"));
-    let mut excluded = merge_newline_list(&session.force_excluded_files.join("\n"));
-
-    let mut actually_applied = Vec::new();
-    for f in &files_set {
-        if !included.contains(f) {
-            actually_applied.push(f.clone());
-        }
-        included.insert(f.clone());
-        excluded.remove(f);
-    }
-
-    // Only update if we actually applied new files
+    // Only return outcome if we actually applied new files
     if actually_applied.is_empty() {
         return Ok(None);
     }
-
-    // Persist updates
-    session.included_files = included.into_iter().collect::<Vec<_>>();
-    session.force_excluded_files = excluded.into_iter().collect::<Vec<_>>();
-
-    session_repo
-        .update_session(&session)
-        .await
-        .map_err(|e| AppError::DatabaseError(format!("Failed to persist auto-applied files for session {}: {}", session_id, e)))?;
 
     Ok(Some(AutoApplyOutcome {
         session_id: session_id.to_string(),

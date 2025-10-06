@@ -2,28 +2,60 @@ import SwiftUI
 import Core
 import Combine
 
+/// Enhanced Plan Detail View with "Use" buttons for copying plan content
 public struct PlanDetailView: View {
     let plan: PlanSummary
     let allPlans: [PlanSummary]
-    @StateObject private var plansService = DataServicesManager(baseURL: URL(string: Config.serverURL)!, deviceId: DeviceManager.shared.getOrCreateDeviceID()).plansService
+    let plansService: PlansDataService
+
     @State private var content: String = ""
     @State private var isLoading = false
+    @State private var isSaving = false
     @State private var errorMessage: String?
+    @State private var saveMessage: String?
     @State private var currentIndex: Int
     @State private var showingTerminal = false
+    @State private var showingShareSheet = false
+    @State private var shareContent: String = ""
+    @State private var selectedStepNumber: String?
+    @State private var showingStepSelector = false
+    @State private var copiedButtonId: String?
 
-    public init(plan: PlanSummary, allPlans: [PlanSummary]) {
+    @StateObject private var copyButtonManager = CopyButtonManager.shared
+    @State private var cancellables = Set<AnyCancellable>()
+
+    public init(plan: PlanSummary, allPlans: [PlanSummary], plansService: PlansDataService) {
         self.plan = plan
         self.allPlans = allPlans
-        // Find the index of the current plan
+        self.plansService = plansService
         let index = allPlans.firstIndex { $0.jobId == plan.jobId } ?? 0
         self._currentIndex = State(initialValue: index)
     }
 
     public var body: some View {
         VStack(spacing: 0) {
-            // Navigation toolbar with Previous/Next arrows
-            navigationToolbar()
+            // Header with breadcrumb
+            AppHeaderBar(
+                title: currentPlan.title ?? "Plan Details",
+                breadcrumb: ["Plans", currentPlan.title ?? "Untitled"],
+                actions: AnyView(
+                    HStack(spacing: 16) {
+                        Button(action: previousPlan) {
+                            Image(systemName: "chevron.left")
+                                .font(.title3)
+                        }
+                        .foregroundColor(canGoPrevious ? Color.primary : Color.mutedForeground)
+                        .disabled(!canGoPrevious)
+
+                        Button(action: nextPlan) {
+                            Image(systemName: "chevron.right")
+                                .font(.title3)
+                        }
+                        .foregroundColor(canGoNext ? Color.primary : Color.mutedForeground)
+                        .disabled(!canGoNext)
+                    }
+                )
+            )
 
             // Content area
             if isLoading {
@@ -39,71 +71,39 @@ public struct PlanDetailView: View {
         .sheet(isPresented: $showingTerminal) {
             RemoteTerminalView(jobId: currentPlan.jobId)
         }
+        .sheet(isPresented: $showingShareSheet) {
+            ShareSheet(activityItems: [shareContent])
+        }
+        .sheet(isPresented: $showingStepSelector) {
+            StepSelectorSheet(
+                steps: parsedSteps,
+                selectedStep: $selectedStepNumber,
+                onSelect: { step in
+                    selectedStepNumber = step
+                    showingStepSelector = false
+                }
+            )
+        }
         .onAppear {
             loadPlanContent()
         }
     }
 
-    @ViewBuilder
-    private func navigationToolbar() -> some View {
-        HStack {
-            // Previous button
-            Button(action: previousPlan) {
-                HStack(spacing: 4) {
-                    Image(systemName: "chevron.left")
-                        .font(.caption)
-                    Text("Previous")
-                        .font(.caption)
-                }
-                .foregroundColor(canGoPrevious ? Color("Primary") : Color("MutedForeground"))
-            }
-            .disabled(!canGoPrevious)
-
-            Spacer()
-
-            // Plan counter
-            Text("Plan \(currentIndex + 1) of \(allPlans.count)")
-                .font(.caption)
-                .foregroundColor(Color("MutedForeground"))
-
-            Spacer()
-
-            // Next button
-            Button(action: nextPlan) {
-                HStack(spacing: 4) {
-                    Text("Next")
-                        .font(.caption)
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                }
-                .foregroundColor(canGoNext ? Color("Primary") : Color("MutedForeground"))
-            }
-            .disabled(!canGoNext)
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 8)
-        .background(Color("Card"))
-        .overlay(
-            Rectangle()
-                .frame(height: 1)
-                .foregroundColor(Color("Border")),
-            alignment: .bottom
-        )
-    }
+    // MARK: - Loading & Error Views
 
     @ViewBuilder
     private func loadingView() -> some View {
         VStack(spacing: 16) {
             ProgressView()
-                .progressViewStyle(CircularProgressViewStyle(tint: Color("Primary")))
+                .progressViewStyle(CircularProgressViewStyle(tint: Color.primary))
                 .scaleEffect(1.2)
 
             Text("Loading plan content...")
-                .font(.body)
-                .foregroundColor(Color("MutedForeground"))
+                .paragraph()
+                .foregroundColor(Color.mutedForeground)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color("Background"))
+        .background(Color.background)
     }
 
     @ViewBuilder
@@ -111,15 +111,15 @@ public struct PlanDetailView: View {
         VStack(spacing: 16) {
             Image(systemName: "exclamationmark.triangle")
                 .font(.system(size: 48))
-                .foregroundColor(Color("Destructive"))
+                .foregroundColor(Color.destructive)
 
             Text("Error Loading Plan")
-                .font(.headline)
-                .foregroundColor(Color("CardForeground"))
+                .h4()
+                .foregroundColor(Color.cardForeground)
 
             Text(message)
-                .font(.body)
-                .foregroundColor(Color("MutedForeground"))
+                .paragraph()
+                .foregroundColor(Color.mutedForeground)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
 
@@ -129,8 +129,10 @@ public struct PlanDetailView: View {
             .buttonStyle(PrimaryButtonStyle())
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color("Background"))
+        .background(Color.background)
     }
+
+    // MARK: - Content View
 
     @ViewBuilder
     private func contentView() -> some View {
@@ -138,27 +140,141 @@ public struct PlanDetailView: View {
             // Plan header info
             planHeaderInfo()
 
+            // Use Buttons Section (Mobile-optimized)
+            useButtonsSection()
+
             // Code editor with content
-            CodeEditor(text: .constant(content), language: .xml)
-                .background(Color("Card"))
+            VStack(spacing: 0) {
+                // Editor toolbar
+                HStack {
+                    Text("Plan Content")
+                        .h4()
+                        .foregroundColor(Color.cardForeground)
+
+                    Spacer()
+
+                    if isSaving {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: Color.primary))
+                            .scaleEffect(0.8)
+                    }
+
+                    Button("Save") {
+                        savePlan()
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .disabled(isSaving)
+                }
+                .padding()
+                .background(Color.card)
+                .overlay(
+                    Rectangle()
+                        .frame(height: 1)
+                        .foregroundColor(Color.border),
+                    alignment: .bottom
+                )
+
+                // Save/Error messages
+                if let saveMessage = saveMessage {
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(Color.success)
+                        Text(saveMessage)
+                            .small()
+                            .foregroundColor(Color.success)
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
+                    .background(Color.success.opacity(0.1))
+                }
+
+                // Code editor
+                CodeEditor(text: $content, language: .markdown)
+                    .background(Color.card)
+            }
         }
     }
+
+    // MARK: - Use Buttons Section
+
+    @ViewBuilder
+    private func useButtonsSection() -> some View {
+        VStack(spacing: 12) {
+            // Section header
+            HStack {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.caption)
+                    .foregroundColor(Color.primary)
+                Text("Quick Actions")
+                    .h4()
+                    .foregroundColor(Color.cardForeground)
+
+                Spacer()
+
+                // Step selector button
+                if !parsedSteps.isEmpty {
+                    Button(action: { showingStepSelector = true }) {
+                        HStack(spacing: 4) {
+                            if let stepNum = selectedStepNumber {
+                                Text("Step \(stepNum)")
+                                    .small()
+                            } else {
+                                Text("All Steps")
+                                    .small()
+                            }
+                            Image(systemName: "chevron.down")
+                                .small()
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.secondary)
+                        .foregroundColor(Color.secondaryForeground)
+                        .cornerRadius(4)
+                    }
+                }
+            }
+
+            // Copy buttons grid (2 columns for mobile)
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                ForEach(copyButtonManager.buttons) { button in
+                    UseButton(
+                        button: button,
+                        isCopied: copiedButtonId == button.id,
+                        onTap: {
+                            handleCopyButtonClick(button)
+                        }
+                    )
+                }
+            }
+        }
+        .padding()
+        .background(Color.card)
+        .overlay(
+            Rectangle()
+                .frame(height: 1)
+                .foregroundColor(Color.border),
+            alignment: .bottom
+        )
+    }
+
+    // MARK: - Plan Header
 
     @ViewBuilder
     private func planHeaderInfo() -> some View {
         VStack(alignment: .leading, spacing: 8) {
             if let title = currentPlan.title {
                 Text(title)
-                    .font(.headline)
-                    .foregroundColor(Color("CardForeground"))
+                    .h4()
+                    .foregroundColor(Color.cardForeground)
                     .lineLimit(2)
             }
 
             HStack {
                 if let filePath = currentPlan.filePath {
                     Text(filePath)
-                        .font(.caption)
-                        .foregroundColor(Color("MutedForeground"))
+                        .small()
+                        .foregroundColor(Color.mutedForeground)
                         .lineLimit(1)
                 }
 
@@ -169,22 +285,22 @@ public struct PlanDetailView: View {
 
             HStack {
                 Text(currentPlan.formattedDate)
-                    .font(.caption2)
-                    .foregroundColor(Color("MutedForeground"))
+                    .small()
+                    .foregroundColor(Color.mutedForeground)
 
                 Spacer()
 
                 Text(currentPlan.size)
-                    .font(.caption2)
-                    .foregroundColor(Color("MutedForeground"))
+                    .small()
+                    .foregroundColor(Color.mutedForeground)
             }
         }
         .padding()
-        .background(Color("Card"))
+        .background(Color.card)
         .overlay(
             Rectangle()
                 .frame(height: 1)
-                .foregroundColor(Color("Border")),
+                .foregroundColor(Color.border),
             alignment: .bottom
         )
     }
@@ -192,7 +308,10 @@ public struct PlanDetailView: View {
     // MARK: - Computed Properties
 
     private var currentPlan: PlanSummary {
-        return allPlans[safe: currentIndex] ?? plan
+        guard currentIndex >= 0 && currentIndex < allPlans.count else {
+            return plan
+        }
+        return allPlans[currentIndex]
     }
 
     private var canGoPrevious: Bool {
@@ -203,17 +322,52 @@ public struct PlanDetailView: View {
         return currentIndex < allPlans.count - 1
     }
 
+    private var parsedSteps: [PlanContentParser.ParsedStep] {
+        guard !content.isEmpty else { return [] }
+        return PlanContentParser.extractSteps(from: content)
+    }
+
+    // MARK: - Button Handlers
+
+    private func handleCopyButtonClick(_ button: CopyButton) {
+        let processedContent = button.processContent(
+            planContent: content,
+            stepNumber: selectedStepNumber
+        )
+
+        // Copy to clipboard
+        UIPasteboard.general.string = processedContent
+
+        // Show feedback
+        copiedButtonId = button.id
+
+        // Haptic feedback
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(.success)
+
+        // Reset copied state after 2 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            copiedButtonId = nil
+        }
+
+        // Also trigger share sheet for iOS sharing
+        shareContent = processedContent
+        showingShareSheet = true
+    }
+
     // MARK: - Navigation Methods
 
     private func previousPlan() {
         guard canGoPrevious else { return }
         currentIndex -= 1
+        selectedStepNumber = nil
         loadPlanContent()
     }
 
     private func nextPlan() {
         guard canGoNext else { return }
         currentIndex += 1
+        selectedStepNumber = nil
         loadPlanContent()
     }
 
@@ -230,20 +384,172 @@ public struct PlanDetailView: View {
             .receive(on: DispatchQueue.main)
             .sink(
                 receiveCompletion: { completion in
-                    isLoading = false
+                    self.isLoading = false
                     if case .failure(let error) = completion {
-                        errorMessage = error.localizedDescription
+                        self.errorMessage = error.localizedDescription
                     }
                 },
                 receiveValue: { planContent in
-                    content = planContent
-                    isLoading = false
+                    self.content = planContent
+                    self.isLoading = false
                 }
             )
             .store(in: &cancellables)
     }
 
-    @State private var cancellables = Set<AnyCancellable>()
+    private func savePlan() {
+        let planToSave = currentPlan
+
+        isSaving = true
+        errorMessage = nil
+        saveMessage = nil
+
+        Task {
+            do {
+                for try await result in plansService.savePlan(id: planToSave.jobId, content: content) {
+                    await MainActor.run {
+                        if let resultDict = result as? [String: Any],
+                           let success = resultDict["success"] as? Bool, success {
+                            saveMessage = "Plan saved successfully"
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                                saveMessage = nil
+                            }
+                        }
+                    }
+                }
+
+                await MainActor.run {
+                    isSaving = false
+                }
+
+            } catch {
+                await MainActor.run {
+                    isSaving = false
+                    errorMessage = "Save failed: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Use Button Component
+
+struct UseButton: View {
+    let button: CopyButton
+    let isCopied: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 6) {
+                Image(systemName: isCopied ? "checkmark" : "doc.on.doc")
+                    .font(.caption)
+                    .foregroundColor(isCopied ? Color.success : Color.primary)
+
+                Text(button.label)
+                    .small()
+                    .foregroundColor(isCopied ? Color.success : Color.cardForeground)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .padding(.horizontal, 8)
+            .background(
+                isCopied ?
+                Color.success.opacity(0.1) :
+                Color.secondary.opacity(0.5)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(
+                        isCopied ? Color.success : Color.border,
+                        lineWidth: 1
+                    )
+            )
+            .cornerRadius(8)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+}
+
+// MARK: - Step Selector Sheet
+
+struct StepSelectorSheet: View {
+    let steps: [PlanContentParser.ParsedStep]
+    @Binding var selectedStep: String?
+    let onSelect: (String?) -> Void
+    @Environment(\.presentationMode) var presentationMode
+
+    var body: some View {
+        NavigationView {
+            List {
+                // All steps option
+                Button(action: {
+                    onSelect(nil)
+                    presentationMode.wrappedValue.dismiss()
+                }) {
+                    HStack {
+                        Text("All Steps")
+                            .foregroundColor(Color.cardForeground)
+                        Spacer()
+                        if selectedStep == nil {
+                            Image(systemName: "checkmark")
+                                .foregroundColor(Color.primary)
+                        }
+                    }
+                }
+
+                // Individual steps
+                ForEach(steps, id: \.number) { step in
+                    Button(action: {
+                        onSelect(step.number)
+                        presentationMode.wrappedValue.dismiss()
+                    }) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Step \(step.number)")
+                                    .small()
+                                    .foregroundColor(Color.mutedForeground)
+                                Text(step.title)
+                                    .paragraph()
+                                    .foregroundColor(Color.cardForeground)
+                            }
+                            Spacer()
+                            if selectedStep == step.number {
+                                Image(systemName: "checkmark")
+                                    .foregroundColor(Color.primary)
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Select Step")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Cancel") {
+                        presentationMode.wrappedValue.dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Share Sheet
+
+struct ShareSheet: UIViewControllerRepresentable {
+    let activityItems: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(
+            activityItems: activityItems,
+            applicationActivities: nil
+        )
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 // MARK: - Supporting Views
@@ -253,8 +559,7 @@ private struct StatusBadge: View {
 
     var body: some View {
         Text(status.capitalized)
-            .font(.caption2)
-            .fontWeight(.medium)
+            .small()
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(statusColor.opacity(0.2))
@@ -265,42 +570,20 @@ private struct StatusBadge: View {
     private var statusColor: Color {
         switch status.lowercased() {
         case "completed":
-            return .green
+            return Color.success
         case "running", "processing":
-            return .blue
+            return Color.primary
         case "failed", "error":
-            return .red
+            return Color.destructive
         case "pending", "queued":
-            return .orange
+            return Color.warning
         default:
-            return .gray
+            return Color.muted
         }
     }
 }
 
-private struct PrimaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .padding(.horizontal, 20)
-            .padding(.vertical, 10)
-            .background(Color("Primary"))
-            .foregroundColor(.white)
-            .cornerRadius(8)
-            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
-            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
-    }
-}
-
-// MARK: - Extensions
-
-extension Array {
-    subscript(safe index: Int) -> Element? {
-        return indices.contains(index) ? self[index] : nil
-    }
-}
-
 #Preview {
-    // Create mock data via JSON decoding
     let planJSON = """
     {
         "id": "1",
@@ -314,9 +597,14 @@ extension Array {
     }
     """
 
-    let samplePlan = try! JSONDecoder().decode(PlanSummary.self, from: planJSON.data(using: .utf8)!)
+    guard let jsonData = planJSON.data(using: .utf8),
+          let samplePlan = try? JSONDecoder().decode(PlanSummary.self, from: jsonData),
+          let serverURL = URL(string: Config.serverURL) else {
+        return Text("Preview data unavailable")
+    }
 
     let allPlans = [samplePlan]
+    let plansService = DataServicesManager(baseURL: serverURL, deviceId: DeviceManager.shared.getOrCreateDeviceID()).plansService
 
-    PlanDetailView(plan: samplePlan, allPlans: allPlans)
+    return PlanDetailView(plan: samplePlan, allPlans: allPlans, plansService: plansService)
 }

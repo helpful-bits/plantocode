@@ -42,6 +42,7 @@ interface PlanContentModalProps {
   mergeInstructions?: string;
   onMergeInstructionsChange?: (value: string) => void;
   selectedCount?: number;
+  taskDescription?: string; // Current task description from the form
 }
 
 
@@ -65,6 +66,7 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
   mergeInstructions = "",
   onMergeInstructionsChange,
   selectedCount = 0,
+  taskDescription
 }) => {
   const [isSaving, setIsSaving] = React.useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = React.useState(false);
@@ -72,16 +74,30 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
   const [fullPlanDetails, setFullPlanDetails] = React.useState<BackgroundJob | null>(null);
   const [isLoadingFullDetails, setIsLoadingFullDetails] = React.useState(false);
   const { showNotification } = useNotification();
-  
+
   // Get live jobs from context for real-time updates
-  const { jobs } = useContext(BackgroundJobsContext) as BackgroundJobsContextType;
+  const { jobs, setViewedImplementationPlanId } = useContext(BackgroundJobsContext) as BackgroundJobsContextType;
   
   // Get the live version of the current plan for real-time streaming updates
   const livePlan = useMemo(() => {
     if (!plan) return null;
     return jobs.find((j: BackgroundJob) => j.id === plan.id) || plan;
   }, [plan, jobs]);
-  
+
+  // Register this plan as viewed when modal is open for optimized streaming
+  useEffect(() => {
+    if (open && plan) {
+      // Fetch accumulated content for streaming plans, then enable chunk appending
+      void setViewedImplementationPlanId(plan.id);
+    }
+    return () => {
+      // Clear when modal closes
+      if (!open) {
+        void setViewedImplementationPlanId(null);
+      }
+    };
+  }, [open, plan?.id, setViewedImplementationPlanId]);
+
   // Fetch full plan details when modal opens or plan changes
   useEffect(() => {
     if (!plan || !open) {
@@ -199,12 +215,13 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
     try {
       const data = {
         IMPLEMENTATION_PLAN: editedContent,
-        STEP_CONTENT: selectedStepNumber ? getContentForStep(editedContent, selectedStepNumber) : ''
+        STEP_CONTENT: selectedStepNumber ? getContentForStep(editedContent, selectedStepNumber) : '',
+        TASK_DESCRIPTION: taskDescription ?? ''
       };
-      
+
       const processedContent = replacePlaceholders(button.content, data);
       await navigator.clipboard.writeText(processedContent);
-      
+
       showNotification({
         title: "Copied to clipboard",
         message: `${button.label} copied successfully`,
@@ -220,7 +237,7 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
         duration: 3000,
       });
     }
-  }, [editedContent, selectedStepNumber, showNotification]);
+  }, [editedContent, selectedStepNumber, taskDescription, showNotification]);
 
   // Initialize edited content when plan changes or streaming completes
   React.useEffect(() => {

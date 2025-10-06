@@ -17,14 +17,14 @@ pub fn utf8_safe_split(text: &str, target_chars: usize) -> (String, String) {
 
     // Convert to char boundaries for safe splitting
     let char_indices: Vec<(usize, char)> = text.char_indices().collect();
-    
+
     if char_indices.len() <= target_chars {
         return (text.to_string(), String::new());
     }
 
     // Find ideal split position (prefer whitespace)
     let mut split_index = target_chars.min(char_indices.len() - 1);
-    
+
     // Look backwards from target position for whitespace
     for i in (target_chars / 2..split_index).rev() {
         if i < char_indices.len() && char_indices[i].1.is_whitespace() {
@@ -43,7 +43,7 @@ pub fn utf8_safe_split(text: &str, target_chars: usize) -> (String, String) {
     // Split at character boundary (UTF-8 safe)
     let chunk = text[..split_byte_index].to_string();
     let remaining = text[split_byte_index..].to_string();
-    
+
     (chunk, remaining)
 }
 
@@ -202,17 +202,14 @@ pub fn create_deep_research_stream(
                     consecutive_queued,
                 } => {
                     // Check for early timeout (10 minutes) if stuck in queued
-                    if start_time.elapsed() > Duration::from_secs(600)
-                        && consecutive_queued > 150
-                    {
+                    if start_time.elapsed() > Duration::from_secs(600) && consecutive_queued > 150 {
                         error!(
                             "Request appears stuck in queued state after 10 minutes: response_id={}",
                             response_id
                         );
 
                         // Try to cancel the stuck request
-                        let cancel_url =
-                            format!("{}/responses/{}/cancel", base_url, response_id);
+                        let cancel_url = format!("{}/responses/{}/cancel", base_url, response_id);
                         let _ = client.post(&cancel_url).bearer_auth(&api_key).send().await;
 
                         let error_chunk = create_chat_completion_chunk(
@@ -222,10 +219,7 @@ pub fn create_deep_research_stream(
                             true,
                             None,
                         );
-                        return Some((
-                            Ok(web::Bytes::from(error_chunk)),
-                            StreamState::Completed,
-                        ));
+                        return Some((Ok(web::Bytes::from(error_chunk)), StreamState::Completed));
                     }
 
                     // Check for maximum polling duration (30 minutes)
@@ -241,10 +235,7 @@ pub fn create_deep_research_stream(
                             true,
                             None,
                         );
-                        return Some((
-                            Ok(web::Bytes::from(error_chunk)),
-                            StreamState::Completed,
-                        ));
+                        return Some((Ok(web::Bytes::from(error_chunk)), StreamState::Completed));
                     }
 
                     // Send keep-alive comment every 500ms
@@ -268,16 +259,13 @@ pub fn create_deep_research_stream(
                         Ok(poll_response) => {
                             if let Ok(response_text) = poll_response.text().await {
                                 if let Ok(responses_response) =
-                                    serde_json::from_str::<OpenAIResponsesResponse>(
-                                        &response_text,
-                                    )
+                                    serde_json::from_str::<OpenAIResponsesResponse>(&response_text)
                                 {
                                     match responses_response.status.as_str() {
                                         "completed" => {
                                             // Extract content and prepare for streaming
-                                            let content = extract_content_from_responses(
-                                                &responses_response,
-                                            );
+                                            let content =
+                                                extract_content_from_responses(&responses_response);
 
                                             Some((
                                                 Ok(web::Bytes::from("")), // Transition chunk
@@ -289,23 +277,31 @@ pub fn create_deep_research_stream(
                                         }
                                         "failed" | "cancelled" => {
                                             // Extract more detailed error information if available from extra fields
-                                            let error_message = if let Some(error) = responses_response.extra.get("error") {
-                                                error.get("message")
+                                            let error_message = if let Some(error) =
+                                                responses_response.extra.get("error")
+                                            {
+                                                error
+                                                    .get("message")
                                                     .and_then(|m| m.as_str())
-                                                    .unwrap_or(&format!("Research {}: Unknown error", responses_response.status))
+                                                    .unwrap_or(&format!(
+                                                        "Research {}: Unknown error",
+                                                        responses_response.status
+                                                    ))
                                                     .to_string()
                                             } else {
-                                                format!("Research {}: No error details available", responses_response.status)
+                                                format!(
+                                                    "Research {}: No error details available",
+                                                    responses_response.status
+                                                )
                                             };
-                                            
-                                            let error_chunk =
-                                                create_chat_completion_chunk(
-                                                    &response_id,
-                                                    &model,
-                                                    &error_message,
-                                                    true,
-                                                    None,
-                                                );
+
+                                            let error_chunk = create_chat_completion_chunk(
+                                                &response_id,
+                                                &model,
+                                                &error_message,
+                                                true,
+                                                None,
+                                            );
                                             Some((
                                                 Ok(web::Bytes::from(error_chunk)),
                                                 StreamState::Completed,
@@ -339,29 +335,26 @@ pub fn create_deep_research_stream(
                                                     "Searching multiple sources...".to_string(),
                                                     "Analyzing search results...".to_string(),
                                                     "Processing web content...".to_string(),
-                                                    "Gathering comprehensive data..."
-                                                        .to_string(),
+                                                    "Gathering comprehensive data...".to_string(),
                                                 ]
                                             } else {
                                                 vec![
                                                     "Conducting web research...".to_string(),
                                                     "Analyzing information...".to_string(),
-                                                    "Processing research findings..."
-                                                        .to_string(),
+                                                    "Processing research findings...".to_string(),
                                                     "Synthesizing comprehensive response..."
                                                         .to_string(),
                                                 ]
                                             };
-                                            let message_idx = (poll_count / 3) as usize
-                                                % progress_messages.len();
-                                            let progress_chunk =
-                                                create_chat_completion_chunk(
-                                                    &response_id,
-                                                    &model,
-                                                    &progress_messages[message_idx],
-                                                    false,
-                                                    None,
-                                                );
+                                            let message_idx =
+                                                (poll_count / 3) as usize % progress_messages.len();
+                                            let progress_chunk = create_chat_completion_chunk(
+                                                &response_id,
+                                                &model,
+                                                &progress_messages[message_idx],
+                                                false,
+                                                None,
+                                            );
 
                                             // Log polling status
                                             if poll_count % 10 == 0 {
@@ -420,10 +413,7 @@ pub fn create_deep_research_stream(
                                     true,
                                     None,
                                 );
-                                Some((
-                                    Ok(web::Bytes::from(error_chunk)),
-                                    StreamState::Completed,
-                                ))
+                                Some((Ok(web::Bytes::from(error_chunk)), StreamState::Completed))
                             } else {
                                 // Continue polling for transient errors
                                 Some((

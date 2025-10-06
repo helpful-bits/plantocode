@@ -1,14 +1,14 @@
-use uuid::Uuid;
-use sqlx::PgPool;
-use sqlx::types::ipnetwork::IpNetwork;
-use chrono::{DateTime, Utc, NaiveDate};
-use std::net::IpAddr;
-use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 use crate::models::consent::{
-    LegalDocument, ConsentEvent, UserConsentSnapshot, 
-    ConsentDocumentType, ConsentRegion, ConsentAction, ConsentSource
+    ConsentAction, ConsentDocumentType, ConsentEvent, ConsentRegion, ConsentSource, LegalDocument,
+    UserConsentSnapshot,
 };
+use chrono::{DateTime, NaiveDate, Utc};
+use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
+use sqlx::types::ipnetwork::IpNetwork;
+use std::net::IpAddr;
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConsentReportRow {
@@ -74,7 +74,9 @@ impl ConsentRepository {
         )
         .fetch_all(&self.db_pool)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to get current documents by region: {}", e)))?;
+        .map_err(|e| {
+            AppError::Database(format!("Failed to get current documents by region: {}", e))
+        })?;
 
         Ok(documents)
     }
@@ -141,7 +143,7 @@ impl ConsentRepository {
                 }
             })
         });
-        
+
         // We need to insert as strings and then query back as enums
         sqlx::query!(
             r#"
@@ -328,7 +330,7 @@ impl ConsentRepository {
                 )
                 .fetch_all(&self.db_pool)
                 .await
-            },
+            }
             (Some(r), None) => {
                 sqlx::query_as!(
                     ConsentEvent,
@@ -357,7 +359,7 @@ impl ConsentRepository {
                 )
                 .fetch_all(&self.db_pool)
                 .await
-            },
+            }
             (None, Some(dt)) => {
                 sqlx::query_as!(
                     ConsentEvent,
@@ -386,7 +388,7 @@ impl ConsentRepository {
                 )
                 .fetch_all(&self.db_pool)
                 .await
-            },
+            }
             (None, None) => {
                 sqlx::query_as!(
                     ConsentEvent,

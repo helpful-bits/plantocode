@@ -1,9 +1,9 @@
+use chrono::{DateTime, Duration, Utc};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
-use chrono::{DateTime, Utc, Duration};
 
 #[derive(Debug, Clone)]
 pub struct TrackedRequest {
@@ -28,33 +28,56 @@ impl RequestTracker {
         }
     }
 
-    pub async fn track_request(&self, request_id: String, user_id: Uuid, provider: String, is_streaming: bool) {
+    pub async fn track_request(
+        &self,
+        request_id: String,
+        user_id: Uuid,
+        provider: String,
+        is_streaming: bool,
+    ) {
         let mut requests = self.requests.write().await;
-        requests.insert(request_id.clone(), TrackedRequest {
-            request_id,
-            user_id,
-            provider,
-            openai_response_id: None,
-            created_at: Utc::now(),
-            is_streaming,
-            cancellation_token: None,
-        });
+        requests.insert(
+            request_id.clone(),
+            TrackedRequest {
+                request_id,
+                user_id,
+                provider,
+                openai_response_id: None,
+                created_at: Utc::now(),
+                is_streaming,
+                cancellation_token: None,
+            },
+        );
     }
 
-    pub async fn track_request_with_cancellation(&self, request_id: String, user_id: Uuid, provider: String, is_streaming: bool, cancellation_token: CancellationToken) {
+    pub async fn track_request_with_cancellation(
+        &self,
+        request_id: String,
+        user_id: Uuid,
+        provider: String,
+        is_streaming: bool,
+        cancellation_token: CancellationToken,
+    ) {
         let mut requests = self.requests.write().await;
-        requests.insert(request_id.clone(), TrackedRequest {
-            request_id,
-            user_id,
-            provider,
-            openai_response_id: None,
-            created_at: Utc::now(),
-            is_streaming,
-            cancellation_token: Some(cancellation_token),
-        });
+        requests.insert(
+            request_id.clone(),
+            TrackedRequest {
+                request_id,
+                user_id,
+                provider,
+                openai_response_id: None,
+                created_at: Utc::now(),
+                is_streaming,
+                cancellation_token: Some(cancellation_token),
+            },
+        );
     }
 
-    pub async fn update_openai_response_id(&self, request_id: &str, response_id: String) -> Result<(), String> {
+    pub async fn update_openai_response_id(
+        &self,
+        request_id: &str,
+        response_id: String,
+    ) -> Result<(), String> {
         let mut requests = self.requests.write().await;
         if let Some(tracked) = requests.get_mut(request_id) {
             tracked.openai_response_id = Some(response_id);
@@ -91,7 +114,7 @@ impl RequestTracker {
     pub async fn cleanup_old_requests(&self, max_age_hours: i64) {
         let mut requests = self.requests.write().await;
         let cutoff = Utc::now() - Duration::hours(max_age_hours);
-        
+
         requests.retain(|_, tracked| tracked.created_at > cutoff);
     }
 
@@ -106,7 +129,8 @@ impl RequestTracker {
 
     pub async fn get_active_stream_count(&self) -> Option<usize> {
         let requests = self.requests.read().await;
-        let count = requests.iter()
+        let count = requests
+            .iter()
             .filter(|(_, tracked)| tracked.is_streaming)
             .count();
         Some(count)

@@ -16,6 +16,9 @@ public class PlansDataService: ObservableObject {
     private let cacheManager: CacheManager
     private var cancellables = Set<AnyCancellable>()
 
+    // Real-time data publisher
+    @Published public private(set) var lastUpdateEvent: RelayEvent?
+
     // MARK: - Initialization
     public init(
         desktopAPIClient: DesktopAPIClient,
@@ -25,6 +28,8 @@ public class PlansDataService: ObservableObject {
         self.desktopAPIClient = desktopAPIClient
         self.apiClient = apiClient
         self.cacheManager = cacheManager
+
+        setupRelayEventSubscription()
     }
 
     // MARK: - Public Methods
@@ -222,6 +227,241 @@ public class PlansDataService: ObservableObject {
 
         // Use RPC call via relay for remote connections
         return getPlanDetailsViaRPC(jobId: jobId)
+    }
+
+    /// List plans using RPC call
+    public func listPlans(taskId: String?) -> AsyncThrowingStream<Any, Error> {
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: DataServiceError.connectionError("No active device connection"))
+            }
+        }
+
+        return AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    var params: [String: AnyCodable] = [:]
+                    if let taskId = taskId {
+                        params["taskId"] = AnyCodable(taskId)
+                    }
+
+                    let request = RpcRequest(method: "plans.list", params: params)
+
+                    for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
+                        if let error = response.error {
+                            continuation.finish(throwing: DataServiceError.serverError("RPC Error: \(error.message)"))
+                            return
+                        }
+
+                        if let result = response.result?.value {
+                            continuation.yield(result)
+                            if response.isFinal {
+                                continuation.finish()
+                                return
+                            }
+                        }
+                    }
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
+    /// Get plan content using RPC call
+    public func getPlan(id: String) -> AsyncThrowingStream<Any, Error> {
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: DataServiceError.connectionError("No active device connection"))
+            }
+        }
+
+        return AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    let request = RpcRequest(
+                        method: "plans.get",
+                        params: ["id": AnyCodable(id)]
+                    )
+
+                    for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
+                        if let error = response.error {
+                            continuation.finish(throwing: DataServiceError.serverError("RPC Error: \(error.message)"))
+                            return
+                        }
+
+                        if let result = response.result?.value {
+                            continuation.yield(result)
+                            if response.isFinal {
+                                continuation.finish()
+                                return
+                            }
+                        }
+                    }
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
+    /// Save plan content using RPC call
+    public func savePlan(id: String, content: String) -> AsyncThrowingStream<Any, Error> {
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: DataServiceError.connectionError("No active device connection"))
+            }
+        }
+
+        return AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    let request = RpcRequest(
+                        method: "plans.save",
+                        params: [
+                            "id": AnyCodable(id),
+                            "content": AnyCodable(content)
+                        ]
+                    )
+
+                    for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
+                        if let error = response.error {
+                            continuation.finish(throwing: DataServiceError.serverError("RPC Error: \(error.message)"))
+                            return
+                        }
+
+                        if let result = response.result?.value {
+                            continuation.yield(result)
+                            if response.isFinal {
+                                continuation.finish()
+                                return
+                            }
+                        }
+                    }
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
+    /// Create plan from task using RPC call
+    public func createPlanFromTask(taskId: String, options: [String: Any] = [:]) -> AsyncThrowingStream<Any, Error> {
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: DataServiceError.connectionError("No active device connection"))
+            }
+        }
+
+        return AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    var params: [String: AnyCodable] = ["taskId": AnyCodable(taskId)]
+                    for (key, value) in options {
+                        params[key] = AnyCodable(value)
+                    }
+
+                    let request = RpcRequest(method: "plans.create", params: params)
+
+                    for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
+                        if let error = response.error {
+                            continuation.finish(throwing: DataServiceError.serverError("RPC Error: \(error.message)"))
+                            return
+                        }
+
+                        if let result = response.result?.value {
+                            continuation.yield(result)
+                            if response.isFinal {
+                                continuation.finish()
+                                return
+                            }
+                        }
+                    }
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
+    /// Activate plan using RPC call
+    public func activatePlan(id: String) -> AsyncThrowingStream<Any, Error> {
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: DataServiceError.connectionError("No active device connection"))
+            }
+        }
+
+        return AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    let request = RpcRequest(
+                        method: "plans.activate",
+                        params: ["id": AnyCodable(id)]
+                    )
+
+                    for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
+                        if let error = response.error {
+                            continuation.finish(throwing: DataServiceError.serverError("RPC Error: \(error.message)"))
+                            return
+                        }
+
+                        if let result = response.result?.value {
+                            continuation.yield(result)
+                            if response.isFinal {
+                                continuation.finish()
+                                return
+                            }
+                        }
+                    }
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
+    /// Delete plan using RPC call
+    public func deletePlan(id: String) -> AsyncThrowingStream<Any, Error> {
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: DataServiceError.connectionError("No active device connection"))
+            }
+        }
+
+        return AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    let request = RpcRequest(
+                        method: "plans.delete",
+                        params: ["id": AnyCodable(id)]
+                    )
+
+                    for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
+                        if let error = response.error {
+                            continuation.finish(throwing: DataServiceError.serverError("RPC Error: \(error.message)"))
+                            return
+                        }
+
+                        if let result = response.result?.value {
+                            continuation.yield(result)
+                            if response.isFinal {
+                                continuation.finish()
+                                return
+                            }
+                        }
+                    }
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
     }
 
     private func getPlanDetailsViaAPI(jobId: String) -> AnyPublisher<PlanDetails, DataServiceError> {
@@ -535,6 +775,41 @@ public class PlansDataService: ObservableObject {
             return DataServiceError.connectionError("Disconnected from desktop")
         case .invalidURL, .invalidState:
             return DataServiceError.invalidResponse(error.localizedDescription)
+        }
+    }
+
+    /// Setup subscription to relay events for real-time synchronization
+    private func setupRelayEventSubscription() {
+        guard let activeDeviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: activeDeviceId) else {
+            return
+        }
+
+        relayClient.events
+            .filter { event in
+                ["PlansUpdated", "PlanCreated", "PlanDeleted", "PlanModified"].contains(event.eventType)
+            }
+            .sink { [weak self] event in
+                guard let self = self else { return }
+
+                self.lastUpdateEvent = event
+
+                switch event.eventType {
+                case "PlansUpdated", "PlanCreated", "PlanDeleted", "PlanModified":
+                    self.handlePlanDataChange(event: event)
+                default:
+                    break
+                }
+            }
+            .store(in: &cancellables)
+    }
+
+    /// Handle plan data changes from relay events
+    private func handlePlanDataChange(event: RelayEvent) {
+        invalidateCache()
+
+        if let projectDirectory = event.data["projectDirectory"]?.value as? String {
+            preloadPlans(for: projectDirectory)
         }
     }
 }

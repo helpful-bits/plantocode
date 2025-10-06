@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
-use crate::stripe_types;
 use crate::error::AppError;
+use crate::stripe_types;
+use serde::{Deserialize, Serialize};
 
 // Invoice-related models
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -87,29 +87,32 @@ pub struct CustomerBillingInfo {
 impl From<&stripe_types::customer::Customer> for CustomerBillingInfo {
     fn from(customer: &stripe_types::customer::Customer) -> Self {
         // Use billing address, fall back to shipping address if billing is missing
-        let address = customer.address.as_ref().or_else(|| {
-            customer.shipping.as_ref().and_then(|s| s.address.as_ref())
-        });
-        
+        let address = customer
+            .address
+            .as_ref()
+            .or_else(|| customer.shipping.as_ref().and_then(|s| s.address.as_ref()));
+
         // Calculate has_billing_info based on name and complete address
-        let has_billing_info = customer.name.is_some() && 
-            address.as_ref().map_or(false, |addr| {
-                addr.line1.is_some() && 
-                addr.city.is_some() && 
-                addr.country.is_some()
+        let has_billing_info = customer.name.is_some()
+            && address.as_ref().map_or(false, |addr| {
+                addr.line1.is_some() && addr.city.is_some() && addr.country.is_some()
             });
-        
+
         // Convert tax_exempt enum to string
         let tax_exempt = customer.tax_exempt.as_ref().map(|te| {
-            serde_json::to_string(te).unwrap_or_else(|_| "\"none\"".to_string())
-                .trim_matches('"').to_string()
+            serde_json::to_string(te)
+                .unwrap_or_else(|_| "\"none\"".to_string())
+                .trim_matches('"')
+                .to_string()
         });
-        
+
         // Convert tax_ids from TaxIdList
-        let tax_ids = customer.tax_ids.as_ref()
+        let tax_ids = customer
+            .tax_ids
+            .as_ref()
             .map(|list| list.data.iter().map(TaxIdInfo::from).collect())
             .unwrap_or_default();
-        
+
         Self {
             customer_name: customer.name.clone(),
             customer_email: customer.email.clone(),
@@ -166,15 +169,14 @@ pub struct UpdateAutoTopOffRequest {
     pub amount: Option<String>,
 }
 
-
 // New unified credit history entry that includes API usage token details
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UnifiedCreditHistoryEntry {
     pub id: String,
-    pub price: f64,  // Negative for usage, positive for purchases
+    pub price: f64, // Negative for usage, positive for purchases
     pub date: String,
-    pub model: String,  // Model name or "Credit Purchase" for purchases
+    pub model: String, // Model name or "Credit Purchase" for purchases
     pub input_tokens: Option<i64>,
     pub output_tokens: Option<i64>,
     pub cache_write_tokens: Option<i64>,
@@ -209,14 +211,16 @@ pub struct FeeTierConfig {
 }
 
 impl FeeTierConfig {
-    pub fn get_tier_for_amount(&self, amount: &bigdecimal::BigDecimal) -> Result<&FeeTier, AppError> {
+    pub fn get_tier_for_amount(
+        &self,
+        amount: &bigdecimal::BigDecimal,
+    ) -> Result<&FeeTier, AppError> {
         // Find the tier where amount >= min and (max is None or amount < max)
-        self.tiers.iter()
-            .find(|tier| {
-                amount >= &tier.min && tier.max.as_ref().map_or(true, |max| amount < max)
+        self.tiers
+            .iter()
+            .find(|tier| amount >= &tier.min && tier.max.as_ref().map_or(true, |max| amount < max))
+            .ok_or_else(|| {
+                AppError::Configuration(format!("No fee tier found for amount: {}", amount))
             })
-            .ok_or_else(|| AppError::Configuration(
-                format!("No fee tier found for amount: {}", amount)
-            ))
     }
 }

@@ -1,6 +1,8 @@
 import Foundation
 import UserNotifications
+#if canImport(UIKit)
 import UIKit
+#endif
 import OSLog
 
 /// Manager for handling Apple Push Notifications (APNs) registration and token management
@@ -36,6 +38,14 @@ public class PushNotificationManager: NSObject, ObservableObject {
             self,
             selector: #selector(applicationDidBecomeActive),
             name: UIApplication.didBecomeActiveNotification,
+            object: nil
+        )
+
+        // Register for auth token refresh notifications
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAuthTokenRefreshed),
+            name: NSNotification.Name("auth-token-refreshed"),
             object: nil
         )
     }
@@ -91,12 +101,17 @@ public class PushNotificationManager: NSObject, ObservableObject {
         let tokenString = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
 
         logger.info("Received APNs device token: \(tokenString.prefix(20))...")
+        print("Registering APNs device token: \(tokenString.prefix(20))...")
 
         self.deviceToken = tokenString
 
-        // Send token to server
+        // Send token to server only if authenticated
         Task {
-            await registerTokenWithServer(tokenString)
+            if await getCurrentAuthToken() != nil {
+                await registerTokenWithServer(tokenString)
+            } else {
+                logger.info("Deferring push token registration until authentication")
+            }
         }
     }
 
@@ -104,6 +119,18 @@ public class PushNotificationManager: NSObject, ObservableObject {
     public func didFailToRegisterForRemoteNotifications(withError error: Error) {
         logger.error("Failed to register for remote notifications: \(error)")
         lastError = .registrationFailed(error)
+    }
+
+    /// Register device token with server (new method as per requirements)
+    public func register(token: Data) {
+        let tokenString = token.map { String(format: "%02.2hhx", $0) }.joined()
+        logger.info("Registering APNs device token: \(tokenString.prefix(20))...")
+
+        self.deviceToken = tokenString
+
+        Task {
+            await registerDeviceTokenWithServer(tokenString)
+        }
     }
 
     /// Handle received push notification
@@ -137,11 +164,13 @@ public class PushNotificationManager: NSObject, ObservableObject {
     }
 
     private func registerTokenWithServer(_ token: String) async {
-        guard let deviceId = UUID(uuidString: DeviceManager.shared.getOrCreateDeviceID()) else {
-            logger.error("Invalid device ID format")
-            lastError = .invalidDeviceId
+        guard let authToken = await getCurrentAuthToken() else {
+            logger.error("No valid auth token available for push registration")
+            print("No valid auth token available for push registration")
             return
         }
+
+        let deviceId = DeviceManager.shared.getOrCreateDeviceID()
 
         do {
             let request = PushTokenRegistrationRequest(
@@ -150,19 +179,70 @@ public class PushNotificationManager: NSObject, ObservableObject {
                 environment: isProduction() ? "production" : "sandbox"
             )
 
+            // Register push token with the correct endpoint
             let _: PushTokenRegistrationResponse = try await serverAPIClient.request(
-                path: "api/devices/\(deviceId)/push-token",
+                path: "api/devices/push/register",
                 method: .POST,
                 body: request,
-                token: await getCurrentAuthToken(),
+                token: authToken,
                 includeDeviceId: true
             )
 
             isTokenRegistered = true
             logger.info("Successfully registered push token with server")
+            print("Successfully registered push token with server")
 
         } catch {
             logger.error("Failed to register push token with server: \(error)")
+            print("Failed to register device token with server: \(error)")
+            lastError = .serverRegistrationFailed(error)
+        }
+    }
+
+    /// Register push token after successful authentication
+    public func registerPushTokenIfAvailable() async {
+        guard let token = deviceToken else {
+            logger.info("No device token available to register")
+            return
+        }
+
+        await registerTokenWithServer(token)
+    }
+
+    private func registerDeviceTokenWithServer(_ token: String) async {
+        // This is a duplicate method - using registerTokenWithServer instead
+        await registerTokenWithServer(token)
+    }
+
+    private func OLD_registerDeviceTokenWithServer_DEPRECATED(_ token: String) async {
+        guard let authToken = await getCurrentAuthToken() else {
+            logger.error("No valid auth token available for push registration")
+            lastError = .serverRegistrationFailed(NSError(domain: "PushNotificationManager", code: 401, userInfo: [NSLocalizedDescriptionKey: "No auth token"]))
+            return
+        }
+
+        let currentEnvironment = isProduction() ? "production" : "sandbox"
+
+        do {
+            let request = PushTokenRegistrationRequest(
+                deviceToken: token,
+                platform: "ios",
+                environment: currentEnvironment
+            )
+
+            let response: PushTokenRegistrationResponse = try await serverAPIClient.request(
+                path: "api/devices/push/register",
+                method: .POST,
+                body: request,
+                token: authToken,
+                includeDeviceId: true
+            )
+
+            isTokenRegistered = true
+            logger.info("Successfully registered device token with server")
+
+        } catch {
+            logger.error("Failed to register device token with server: \(error)")
             lastError = .serverRegistrationFailed(error)
         }
     }
@@ -278,6 +358,12 @@ public class PushNotificationManager: NSObject, ObservableObject {
             }
         }
     }
+
+    @objc private func handleAuthTokenRefreshed() {
+        Task {
+            await registerPushTokenIfAvailable()
+        }
+    }
 }
 
 // MARK: - UNUserNotificationCenterDelegate
@@ -362,11 +448,9 @@ public struct PushTokenRegistrationRequest: Codable {
 
 public struct PushTokenRegistrationResponse: Codable {
     public let success: Bool
-    public let message: String
 
-    public init(success: Bool, message: String) {
+    public init(success: Bool) {
         self.success = success
-        self.message = message
     }
 }
 

@@ -1,7 +1,7 @@
-use uuid::Uuid;
-use sqlx::{PgPool, query, query_as};
-use chrono::{DateTime, Utc};
 use crate::error::AppError;
+use chrono::{DateTime, Utc};
+use sqlx::{PgPool, query, query_as};
+use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub struct User {
@@ -47,8 +47,11 @@ impl UserRepository {
     }
 
     // Get user by ID with custom executor
-    pub async fn get_by_id_with_executor(&self, id: &Uuid, executor: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<User, AppError>
-    {
+    pub async fn get_by_id_with_executor(
+        &self,
+        id: &Uuid,
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<User, AppError> {
         let user = query_as!(
             User,
             r#"
@@ -92,8 +95,11 @@ impl UserRepository {
     }
 
     // Get user by email with custom executor
-    pub async fn get_by_email_with_executor(&self, email: &str, executor: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<User, AppError>
-    {
+    pub async fn get_by_email_with_executor(
+        &self,
+        email: &str,
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<User, AppError> {
         let user = query_as!(
             User,
             r#"
@@ -113,7 +119,7 @@ impl UserRepository {
         Ok(user)
     }
 
-    // Get user by Auth0 user ID  
+    // Get user by Auth0 user ID
     // SECURITY WARNING: This method bypasses RLS - only use with system pool (vibe_manager_app role)
     // Never call from user-facing handlers that use user pool (authenticated role)
     pub async fn get_by_auth0_user_id(&self, auth0_user_id: &str) -> Result<User, AppError> {
@@ -139,8 +145,11 @@ impl UserRepository {
     }
 
     // Get user by Auth0 user ID with custom executor
-    pub async fn get_by_auth0_user_id_with_executor(&self, auth0_user_id: &str, executor: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<User, AppError>
-    {
+    pub async fn get_by_auth0_user_id_with_executor(
+        &self,
+        auth0_user_id: &str,
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<User, AppError> {
         let user = query_as!(
             User,
             r#"
@@ -202,8 +211,7 @@ impl UserRepository {
         auth0_user_id: Option<&str>,
         role: Option<&str>,
         executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    ) -> Result<Uuid, AppError>
-    {
+    ) -> Result<Uuid, AppError> {
         let id = Uuid::new_v4();
         let role = role.unwrap_or("user");
 
@@ -238,7 +246,7 @@ impl UserRepository {
     ) -> Result<(), AppError> {
         // Get current user to preserve fields that are not being updated
         let current_user = self.get_by_id(id).await?;
-        
+
         query!(
             r#"
             UPDATE users
@@ -275,8 +283,7 @@ impl UserRepository {
         role: Option<&str>,
         current_user: &User,
         executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    ) -> Result<(), AppError>
-    {
+    ) -> Result<(), AppError> {
         query!(
             r#"
             UPDATE users
@@ -317,9 +324,12 @@ impl UserRepository {
 
         Ok(())
     }
-    
+
     // Get user by Stripe customer ID
-    pub async fn get_by_stripe_customer_id(&self, stripe_customer_id: &str) -> Result<User, AppError> {
+    pub async fn get_by_stripe_customer_id(
+        &self,
+        stripe_customer_id: &str,
+    ) -> Result<User, AppError> {
         let user = query_as!(
             User,
             r#"
@@ -341,8 +351,11 @@ impl UserRepository {
     }
 
     // Get user by Stripe customer ID with custom executor
-    pub async fn get_by_stripe_customer_id_with_executor(&self, stripe_customer_id: &str, executor: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<User, AppError>
-    {
+    pub async fn get_by_stripe_customer_id_with_executor(
+        &self,
+        stripe_customer_id: &str,
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<User, AppError> {
         let user = query_as!(
             User,
             r#"
@@ -362,7 +375,7 @@ impl UserRepository {
 
         Ok(user)
     }
-    
+
     // Find or create a user based on Auth0 details (Auth0 user ID and email)
     pub async fn find_or_create_by_auth0_details(
         &self,
@@ -371,7 +384,9 @@ impl UserRepository {
         full_name: Option<&str>,
     ) -> Result<User, AppError> {
         let mut tx = self.db_pool.begin().await.map_err(AppError::from)?;
-        let result = self._find_or_create_by_auth0_details_in_tx(auth0_user_id, email, full_name, &mut tx).await;
+        let result = self
+            ._find_or_create_by_auth0_details_in_tx(auth0_user_id, email, full_name, &mut tx)
+            .await;
         match result {
             Ok(user) => {
                 tx.commit().await.map_err(AppError::from)?;
@@ -393,26 +408,29 @@ impl UserRepository {
         tx: &mut sqlx::Transaction<'a, sqlx::Postgres>,
     ) -> Result<User, AppError> {
         // First, try to find by Auth0 user ID
-        match self.get_by_auth0_user_id_with_executor(auth0_user_id, tx).await {
+        match self
+            .get_by_auth0_user_id_with_executor(auth0_user_id, tx)
+            .await
+        {
             Ok(user) => {
                 // User exists with this Auth0 user ID
                 let mut update_needed = false;
                 let mut updated_email = None;
                 let mut updated_full_name = None;
-                
+
                 // Check if any details need to be updated
                 if user.email != email {
                     updated_email = Some(email);
                     update_needed = true;
                 }
-                
+
                 if let Some(name) = full_name {
                     if user.full_name.as_deref() != Some(name) {
                         updated_full_name = Some(name);
                         update_needed = true;
                     }
                 }
-                
+
                 if update_needed {
                     // Update user details
                     self.update_with_executor(
@@ -424,14 +442,15 @@ impl UserRepository {
                         None, // Don't change role
                         &user,
                         tx,
-                    ).await?;
-                    
+                    )
+                    .await?;
+
                     // Return updated user
                     return self.get_by_id_with_executor(&user.id, tx).await;
                 }
-                
+
                 return Ok(user);
-            },
+            }
             Err(AppError::NotFound(_)) => {
                 // User doesn't exist with this Auth0 user ID
                 // Now try to find by email
@@ -441,41 +460,48 @@ impl UserRepository {
                         // Update the Auth0 user ID
                         self.update_with_executor(
                             &user.id,
-                            None, // Don't change email
-                            None, // Don't change password
-                            full_name, // Update name if provided
+                            None,                // Don't change email
+                            None,                // Don't change password
+                            full_name,           // Update name if provided
                             Some(auth0_user_id), // Add Auth0 user ID
-                            None, // Don't change role
+                            None,                // Don't change role
                             &user,
                             tx,
-                        ).await?;
-                        
+                        )
+                        .await?;
+
                         // Return updated user
                         return self.get_by_id_with_executor(&user.id, tx).await;
-                    },
+                    }
                     Err(AppError::NotFound(_)) => {
                         // User doesn't exist with this email either
                         // Create a new user
-                        let user_id = self.create_with_executor(
-                            email,
-                            None, // No password for Auth0 auth
-                            full_name,
-                            Some(auth0_user_id),
-                            None, // Default role
-                            tx,
-                        ).await?;
-                        
+                        let user_id = self
+                            .create_with_executor(
+                                email,
+                                None, // No password for Auth0 auth
+                                full_name,
+                                Some(auth0_user_id),
+                                None, // Default role
+                                tx,
+                            )
+                            .await?;
+
                         return self.get_by_id_with_executor(&user_id, tx).await;
-                    },
+                    }
                     Err(e) => return Err(e), // Other database errors
                 }
-            },
+            }
             Err(e) => return Err(e), // Other database errors
         }
     }
-    
+
     // Store Auth0 refresh token
-    pub async fn store_auth0_refresh_token(&self, user_id: &Uuid, refresh_token: &Vec<u8>) -> Result<(), AppError> {
+    pub async fn store_auth0_refresh_token(
+        &self,
+        user_id: &Uuid,
+        refresh_token: &Vec<u8>,
+    ) -> Result<(), AppError> {
         query!(
             r#"
             UPDATE users
@@ -489,12 +515,15 @@ impl UserRepository {
         .execute(&self.db_pool)
         .await
         .map_err(|e| AppError::Database(format!("Failed to store Auth0 refresh token: {}", e)))?;
-        
+
         Ok(())
     }
-    
+
     // Get Auth0 refresh token
-    pub async fn get_auth0_refresh_token(&self, user_id: &Uuid) -> Result<Option<Vec<u8>>, AppError> {
+    pub async fn get_auth0_refresh_token(
+        &self,
+        user_id: &Uuid,
+    ) -> Result<Option<Vec<u8>>, AppError> {
         let result = query!(
             r#"
             SELECT auth0_refresh_token as "auth0_refresh_token: Vec<u8>"
@@ -509,7 +538,7 @@ impl UserRepository {
             sqlx::Error::RowNotFound => AppError::NotFound(format!("User not found: {}", user_id)),
             _ => AppError::Database(format!("Failed to fetch Auth0 refresh token: {}", e)),
         })?;
-        
+
         Ok(result.auth0_refresh_token)
     }
 }

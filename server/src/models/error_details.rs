@@ -71,18 +71,22 @@ impl ProviderErrorInfo {
         // Try to parse OpenAI error format
         if let Ok(error_json) = serde_json::from_str::<serde_json::Value>(error_body) {
             if let Some(error) = error_json.get("error") {
-                let error_type = error.get("type")
+                let error_type = error
+                    .get("type")
                     .and_then(|t| t.as_str())
                     .unwrap_or("unknown")
                     .to_string();
-                
-                let message = error.get("message")
+
+                let message = error
+                    .get("message")
                     .and_then(|m| m.as_str())
                     .unwrap_or(error_body)
                     .to_string();
-                
+
                 // Extract context for specific error types
-                let context = if error_type == "invalid_request_error" && message.contains("context length") {
+                let context = if error_type == "invalid_request_error"
+                    && message.contains("context length")
+                {
                     // Parse token limits from message
                     let mut ctx = ErrorContext {
                         requested_tokens: None,
@@ -90,25 +94,27 @@ impl ProviderErrorInfo {
                         model_limit: None,
                         additional_info: None,
                     };
-                    
+
                     // Extract numbers from message like "maximum context length is 200000 tokens. However, you requested 207660 tokens"
                     if let Some(cap) = regex::Regex::new(r"maximum context length is (\d+) tokens")
                         .ok()
-                        .and_then(|re| re.captures(&message)) {
+                        .and_then(|re| re.captures(&message))
+                    {
                         ctx.model_limit = cap.get(1).and_then(|m| m.as_str().parse().ok());
                     }
-                    
+
                     if let Some(cap) = regex::Regex::new(r"you requested (\d+) tokens")
                         .ok()
-                        .and_then(|re| re.captures(&message)) {
+                        .and_then(|re| re.captures(&message))
+                    {
                         ctx.requested_tokens = cap.get(1).and_then(|m| m.as_str().parse().ok());
                     }
-                    
+
                     Some(ctx)
                 } else {
                     None
                 };
-                
+
                 return Some(ProviderErrorInfo {
                     provider: "openai".to_string(),
                     status_code,
@@ -118,7 +124,7 @@ impl ProviderErrorInfo {
                 });
             }
         }
-        
+
         // Fallback for unparseable errors
         Some(ProviderErrorInfo {
             provider: "openai".to_string(),
@@ -128,7 +134,7 @@ impl ProviderErrorInfo {
             context: None,
         })
     }
-    
+
     /// Create provider error info for other providers
     pub fn from_provider_error(provider: &str, status_code: u16, error_body: &str) -> Self {
         ProviderErrorInfo {

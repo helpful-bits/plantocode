@@ -195,6 +195,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
       renameActiveSession: sessionActions.renameActiveSession,
       renameSession: sessionActions.renameSession,
       applyFileSelectionUpdate: sessionActions.applyFileSelectionUpdate,
+      applyBackendFileUpdate: sessionActions.applyBackendFileUpdate,
     }),
     [
       // Stable function references from hooks that use useCallback internally
@@ -212,6 +213,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
       sessionActions.renameActiveSession,
       sessionActions.renameSession,
       sessionActions.applyFileSelectionUpdate,
+      sessionActions.applyBackendFileUpdate,
       sessionLoader.loadSessionById,
     ]
   );
@@ -245,7 +247,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
     sessionActions.saveCurrentSession,
   ]);
 
-  // Listen for backend auto-applied files
+  // Listen for backend auto-applied files and filter out user exclusions
   useEffect(() => {
     let unlisten: (() => void) | null = null;
 
@@ -274,29 +276,23 @@ export function SessionProvider({ children }: SessionProviderProps) {
               return;
             }
 
-            // Apply files to current session's includedFiles and remove from forceExcludedFiles
-            const updatedIncluded = new Set(sessionStateHook.currentSession.includedFiles);
-            const updatedExcluded = new Set(sessionStateHook.currentSession.forceExcludedFiles);
+            // CRITICAL: Filter out files that are in forceExcludedFiles
+            // Backend additions must never override manual user exclusions
+            const excludedSet = new Set(sessionStateHook.currentSession.forceExcludedFiles);
+            const filtered = files.filter((f) => !excludedSet.has(f));
 
-            files.forEach(file => {
-              updatedIncluded.add(file);
-              updatedExcluded.delete(file);
-            });
+            if (filtered.length === 0) {
+              console.log('session:auto-files-applied: All files were already excluded by user, skipping');
+              return;
+            }
 
-            // Update session state
-            sessionStateHook.setCurrentSession(prev => {
-              if (!prev || prev.id !== payload.session_id) return prev;
-              return {
-                ...prev,
-                includedFiles: Array.from(updatedIncluded),
-                forceExcludedFiles: Array.from(updatedExcluded),
-              };
-            });
+            // Use centralized action to ensure additive merge + dirty flag
+            // This action already handles window event dispatch
+            const source = payload.task_type === 'extended_path_finder'
+              ? 'AI Path Finder'
+              : (payload.task_type === 'file_relevance_assessment' ? 'AI Relevance' : 'backend');
 
-            // Emit file selection applied event for UI components
-            await window.dispatchEvent(new CustomEvent('file-selection-applied', {
-              detail: { files, source: payload.task_type === 'extended_path_finder' ? 'AI Path Finder' : 'AI Relevance' }
-            }));
+            sessionActions.applyBackendFileUpdate(filtered, source);
 
           } catch (e) {
             console.warn('session:auto-files-applied handler error', e);
@@ -314,7 +310,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
         unlisten();
       }
     };
-  }, [sessionStateHook.currentSession?.id, sessionStateHook.setCurrentSession]);
+  }, [sessionStateHook.currentSession?.id, sessionStateHook.currentSession?.forceExcludedFiles, sessionActions]);
 
   return (
     <SessionStateContext.Provider value={stateContextValue}>

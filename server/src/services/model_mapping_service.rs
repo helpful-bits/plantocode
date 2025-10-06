@@ -1,16 +1,14 @@
-use sqlx::{Pool, Postgres};
-use serde::{Serialize, Deserialize};
+use crate::error::{AppError, AppResult};
+use crate::models::model_pricing::ModelPricing;
 use chrono::{DateTime, Utc};
+use once_cell::sync::Lazy;
+use serde::{Deserialize, Serialize};
+use sqlx::{Pool, Postgres};
 use std::sync::Arc;
 use tracing::{info, instrument};
-use crate::error::{AppResult, AppError};
-use crate::models::model_pricing::ModelPricing;
-use once_cell::sync::Lazy;
 
 // Default empty pricing JSON
-static DEFAULT_PRICING: Lazy<serde_json::Value> = Lazy::new(|| {
-    serde_json::json!({})
-});
+static DEFAULT_PRICING: Lazy<serde_json::Value> = Lazy::new(|| serde_json::json!({}));
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ModelWithMapping {
@@ -40,7 +38,7 @@ impl ModelPricing for ModelWithMapping {
     fn get_pricing_info(&self) -> &serde_json::Value {
         self.pricing_info.as_ref().unwrap_or(&DEFAULT_PRICING)
     }
-    
+
     fn get_provider_code(&self) -> String {
         self.provider_code.clone()
     }
@@ -60,9 +58,16 @@ impl ModelMappingService {
 
     /// Resolve a model ID to its provider-specific format
     #[instrument(skip(self))]
-    pub async fn resolve_model_id(&self, internal_id: &str, provider_code: &str) -> Result<String, String> {
-        info!("Resolving model ID {} for provider {}", internal_id, provider_code);
-        
+    pub async fn resolve_model_id(
+        &self,
+        internal_id: &str,
+        provider_code: &str,
+    ) -> Result<String, String> {
+        info!(
+            "Resolving model ID {} for provider {}",
+            internal_id, provider_code
+        );
+
         let result = sqlx::query!(
             "SELECT provider_model_id FROM model_provider_mappings WHERE internal_model_id = $1 AND provider_code = $2",
             internal_id,
@@ -71,14 +76,20 @@ impl ModelMappingService {
         .fetch_optional(&*self.pool)
         .await
         .map_err(|e| format!("Failed to query model provider mappings for model {} with provider {}: {}", internal_id, provider_code, e))?;
-        
+
         match result {
             Some(row) => {
-                info!("Resolved model ID: {} -> {}", internal_id, row.provider_model_id);
+                info!(
+                    "Resolved model ID: {} -> {}",
+                    internal_id, row.provider_model_id
+                );
                 Ok(row.provider_model_id)
             }
             None => {
-                let error_msg = format!("No mapping found for model {} with provider {}", internal_id, provider_code);
+                let error_msg = format!(
+                    "No mapping found for model {} with provider {}",
+                    internal_id, provider_code
+                );
                 info!("{}", error_msg);
                 Err(error_msg)
             }
@@ -87,9 +98,16 @@ impl ModelMappingService {
 
     /// Get a model with its provider information and resolved model ID
     #[instrument(skip(self))]
-    pub async fn get_model_with_mapping(&self, internal_id: &str, provider_code: &str) -> Result<ModelWithMapping, String> {
-        info!("Getting model with mapping for {} from provider {}", internal_id, provider_code);
-        
+    pub async fn get_model_with_mapping(
+        &self,
+        internal_id: &str,
+        provider_code: &str,
+    ) -> Result<ModelWithMapping, String> {
+        info!(
+            "Getting model with mapping for {} from provider {}",
+            internal_id, provider_code
+        );
+
         let result = sqlx::query!(
             r#"
             SELECT 
@@ -112,7 +130,12 @@ impl ModelMappingService {
         )
         .fetch_optional(&*self.pool)
         .await
-        .map_err(|e| format!("Failed to fetch model with mapping for {} from provider {}: {}", internal_id, provider_code, e))?;
+        .map_err(|e| {
+            format!(
+                "Failed to fetch model with mapping for {} from provider {}: {}",
+                internal_id, provider_code, e
+            )
+        })?;
 
         match result {
             Some(row) => {
@@ -136,12 +159,18 @@ impl ModelMappingService {
                     provider_status: row.provider_status,
                     resolved_model_id: row.resolved_model_id,
                 };
-                
-                info!("Found model with mapping: {} -> {}", internal_id, model.resolved_model_id);
+
+                info!(
+                    "Found model with mapping: {} -> {}",
+                    internal_id, model.resolved_model_id
+                );
                 Ok(model)
             }
             None => {
-                let error_msg = format!("No model found with mapping for {} from provider {}", internal_id, provider_code);
+                let error_msg = format!(
+                    "No model found with mapping for {} from provider {}",
+                    internal_id, provider_code
+                );
                 info!("{}", error_msg);
                 Err(error_msg)
             }
@@ -150,9 +179,15 @@ impl ModelMappingService {
 
     /// Get all models with their resolved provider-specific IDs for a given provider
     #[instrument(skip(self))]
-    pub async fn get_all_models_with_mappings(&self, provider_code: &str) -> Result<Vec<ModelWithMapping>, String> {
-        info!("Getting all models with mappings for provider {}", provider_code);
-        
+    pub async fn get_all_models_with_mappings(
+        &self,
+        provider_code: &str,
+    ) -> Result<Vec<ModelWithMapping>, String> {
+        info!(
+            "Getting all models with mappings for provider {}",
+            provider_code
+        );
+
         let results = sqlx::query!(
             r#"
             SELECT 
@@ -175,38 +210,52 @@ impl ModelMappingService {
         )
         .fetch_all(&*self.pool)
         .await
-        .map_err(|e| format!("Failed to fetch models with mappings for provider {}: {}", provider_code, e))?;
+        .map_err(|e| {
+            format!(
+                "Failed to fetch models with mappings for provider {}: {}",
+                provider_code, e
+            )
+        })?;
 
-        let models: Vec<ModelWithMapping> = results.into_iter().map(|row| ModelWithMapping {
-            id: row.id,
-            name: row.name,
-            context_window: row.context_window,
-            pricing_info: Some(row.pricing_info),
-            model_type: row.model_type,
-            capabilities: row.capabilities,
-            status: row.status,
-            description: row.description,
-            created_at: row.created_at,
-            provider_id: row.provider_id,
-            provider_code: row.provider_code,
-            provider_name: row.provider_name,
-            provider_description: row.provider_description,
-            provider_website: row.provider_website,
-            provider_api_base: row.provider_api_base,
-            provider_capabilities: row.provider_capabilities,
-            provider_status: row.provider_status,
-            resolved_model_id: row.resolved_model_id,
-        }).collect();
+        let models: Vec<ModelWithMapping> = results
+            .into_iter()
+            .map(|row| ModelWithMapping {
+                id: row.id,
+                name: row.name,
+                context_window: row.context_window,
+                pricing_info: Some(row.pricing_info),
+                model_type: row.model_type,
+                capabilities: row.capabilities,
+                status: row.status,
+                description: row.description,
+                created_at: row.created_at,
+                provider_id: row.provider_id,
+                provider_code: row.provider_code,
+                provider_name: row.provider_name,
+                provider_description: row.provider_description,
+                provider_website: row.provider_website,
+                provider_api_base: row.provider_api_base,
+                provider_capabilities: row.provider_capabilities,
+                provider_status: row.provider_status,
+                resolved_model_id: row.resolved_model_id,
+            })
+            .collect();
 
-        info!("Retrieved {} models with mappings for provider {}", models.len(), provider_code);
+        info!(
+            "Retrieved {} models with mappings for provider {}",
+            models.len(),
+            provider_code
+        );
         Ok(models)
     }
 
     /// Get all models with their resolved provider-specific IDs for all providers
     #[instrument(skip(self))]
-    pub async fn get_all_models_with_mappings_all_providers(&self) -> Result<Vec<ModelWithMapping>, String> {
+    pub async fn get_all_models_with_mappings_all_providers(
+        &self,
+    ) -> Result<Vec<ModelWithMapping>, String> {
         info!("Getting all models with mappings for all providers");
-        
+
         let results = sqlx::query!(
             r#"
             SELECT 
@@ -229,36 +278,45 @@ impl ModelMappingService {
         .await
         .map_err(|e| format!("Failed to fetch all models with mappings: {}", e))?;
 
-        let models: Vec<ModelWithMapping> = results.into_iter().map(|row| ModelWithMapping {
-            id: row.id,
-            name: row.name,
-            context_window: row.context_window,
-            pricing_info: Some(row.pricing_info),
-            model_type: row.model_type,
-            capabilities: row.capabilities,
-            status: row.status,
-            description: row.description,
-            created_at: row.created_at,
-            provider_id: row.provider_id,
-            provider_code: row.provider_code,
-            provider_name: row.provider_name,
-            provider_description: row.provider_description,
-            provider_website: row.provider_website,
-            provider_api_base: row.provider_api_base,
-            provider_capabilities: row.provider_capabilities,
-            provider_status: row.provider_status,
-            resolved_model_id: row.resolved_model_id,
-        }).collect();
+        let models: Vec<ModelWithMapping> = results
+            .into_iter()
+            .map(|row| ModelWithMapping {
+                id: row.id,
+                name: row.name,
+                context_window: row.context_window,
+                pricing_info: Some(row.pricing_info),
+                model_type: row.model_type,
+                capabilities: row.capabilities,
+                status: row.status,
+                description: row.description,
+                created_at: row.created_at,
+                provider_id: row.provider_id,
+                provider_code: row.provider_code,
+                provider_name: row.provider_name,
+                provider_description: row.provider_description,
+                provider_website: row.provider_website,
+                provider_api_base: row.provider_api_base,
+                provider_capabilities: row.provider_capabilities,
+                provider_status: row.provider_status,
+                resolved_model_id: row.resolved_model_id,
+            })
+            .collect();
 
-        info!("Retrieved {} models with mappings for all providers", models.len());
+        info!(
+            "Retrieved {} models with mappings for all providers",
+            models.len()
+        );
         Ok(models)
     }
 
     /// Get models by type with their resolved provider-specific IDs
     #[instrument(skip(self))]
-    pub async fn get_models_by_type_with_mappings(&self, model_type: &str) -> Result<Vec<ModelWithMapping>, String> {
+    pub async fn get_models_by_type_with_mappings(
+        &self,
+        model_type: &str,
+    ) -> Result<Vec<ModelWithMapping>, String> {
         info!("Getting models of type {} with mappings", model_type);
-        
+
         let results = sqlx::query!(
             r#"
             SELECT 
@@ -281,30 +339,42 @@ impl ModelMappingService {
         )
         .fetch_all(&*self.pool)
         .await
-        .map_err(|e| format!("Failed to fetch models of type {} with mappings: {}", model_type, e))?;
+        .map_err(|e| {
+            format!(
+                "Failed to fetch models of type {} with mappings: {}",
+                model_type, e
+            )
+        })?;
 
-        let models: Vec<ModelWithMapping> = results.into_iter().map(|row| ModelWithMapping {
-            id: row.id,
-            name: row.name,
-            context_window: row.context_window,
-            pricing_info: Some(row.pricing_info),
-            model_type: row.model_type,
-            capabilities: row.capabilities,
-            status: row.status,
-            description: row.description,
-            created_at: row.created_at,
-            provider_id: row.provider_id,
-            provider_code: row.provider_code,
-            provider_name: row.provider_name,
-            provider_description: row.provider_description,
-            provider_website: row.provider_website,
-            provider_api_base: row.provider_api_base,
-            provider_capabilities: row.provider_capabilities,
-            provider_status: row.provider_status,
-            resolved_model_id: row.resolved_model_id,
-        }).collect();
+        let models: Vec<ModelWithMapping> = results
+            .into_iter()
+            .map(|row| ModelWithMapping {
+                id: row.id,
+                name: row.name,
+                context_window: row.context_window,
+                pricing_info: Some(row.pricing_info),
+                model_type: row.model_type,
+                capabilities: row.capabilities,
+                status: row.status,
+                description: row.description,
+                created_at: row.created_at,
+                provider_id: row.provider_id,
+                provider_code: row.provider_code,
+                provider_name: row.provider_name,
+                provider_description: row.provider_description,
+                provider_website: row.provider_website,
+                provider_api_base: row.provider_api_base,
+                provider_capabilities: row.provider_capabilities,
+                provider_status: row.provider_status,
+                resolved_model_id: row.resolved_model_id,
+            })
+            .collect();
 
-        info!("Retrieved {} models of type {} with mappings", models.len(), model_type);
+        info!(
+            "Retrieved {} models of type {} with mappings",
+            models.len(),
+            model_type
+        );
         Ok(models)
     }
 }

@@ -18,7 +18,8 @@ let package = Package(
         "KeychainAccess",
         .product(name: "SQLite", package: "SQLite.swift")
       ],
-      path: "Sources/Core"
+      path: "Sources",
+      sources: ["Core", "Security"]
     )
   ]
 )

@@ -1750,7 +1750,7 @@ COMMENT ON FUNCTION record_consent_event IS 'Records a consent event and updates
 -- =============================================================================
 -- This database schema implements enterprise-grade security controls including:
 -- - Financial transaction integrity (negative balance prevention)
--- - User data isolation (comprehensive RLS policies)  
+-- - User data isolation (comprehensive RLS policies)
 -- - Audit trail immutability (hash chaining + signatures)
 -- - Webhook replay attack prevention (TTL + idempotency)
 -- - Cost calculation bounds checking (application-level)
@@ -1760,4 +1760,15 @@ COMMENT ON FUNCTION record_consent_event IS 'Records a consent event and updates
 --
 -- All security hardening requirements have been implemented
 -- and are ready for production deployment with appropriate monitoring.
+
+-- =============================================================================
+-- STEP 9: CONNECTION POOL OPTIMIZATION - Indexes for hot query paths
+-- =============================================================================
+-- Indexes to mitigate pool exhaustion due to slow scans
+CREATE INDEX IF NOT EXISTS idx_api_usage_user_time ON api_usage(user_id, "timestamp" DESC);
+CREATE INDEX IF NOT EXISTS idx_api_usage_request_id ON api_usage(request_id);
+CREATE INDEX IF NOT EXISTS idx_api_usage_status_pending ON api_usage(status) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_credit_tx_user_time ON credit_transactions(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_credit_tx_stripe_charge ON credit_transactions(stripe_charge_id);
+CREATE INDEX IF NOT EXISTS idx_customer_billing_user ON customer_billing(user_id);
 

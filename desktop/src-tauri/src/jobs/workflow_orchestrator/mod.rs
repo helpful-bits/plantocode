@@ -975,7 +975,10 @@ impl WorkflowOrchestrator {
         .await;
 
         // Send completion notification to server for mobile push notifications
-        if let Err(e) = self.send_job_completion_notification(workflow_id, &workflow_state).await {
+        if let Err(e) = self
+            .send_job_completion_notification(workflow_id, &workflow_state)
+            .await
+        {
             warn!("Failed to send job completion notification: {}", e);
         }
 
@@ -1052,7 +1055,10 @@ impl WorkflowOrchestrator {
         .await;
 
         // Send failure notification to server for mobile push notifications
-        if let Err(e) = self.send_job_failure_notification(workflow_id, &workflow_state, error_message).await {
+        if let Err(e) = self
+            .send_job_failure_notification(workflow_id, &workflow_state, error_message)
+            .await
+        {
             warn!("Failed to send job failure notification: {}", e);
         }
 
@@ -1301,13 +1307,14 @@ impl WorkflowOrchestrator {
     ) -> AppResult<()> {
         use crate::api_clients::client_factory;
 
-        let server_proxy_client = match client_factory::get_server_proxy_client(&self.app_handle).await {
-            Ok(client) => client,
-            Err(e) => {
-                warn!("Server proxy client not available for notification: {}", e);
-                return Ok(()); // Don't fail the workflow completion if notifications fail
-            }
-        };
+        let server_proxy_client =
+            match client_factory::get_server_proxy_client(&self.app_handle).await {
+                Ok(client) => client,
+                Err(e) => {
+                    warn!("Server proxy client not available for notification: {}", e);
+                    return Ok(()); // Don't fail the workflow completion if notifications fail
+                }
+            };
 
         let payload = serde_json::json!({
             "job_id": workflow_id,
@@ -1321,8 +1328,13 @@ impl WorkflowOrchestrator {
             }
         });
 
-        server_proxy_client.send_job_completed_notification(payload.clone()).await?;
-        info!("Job completion notification sent for workflow: {}", workflow_id);
+        server_proxy_client
+            .send_job_completed_notification(payload.clone())
+            .await?;
+        info!(
+            "Job completion notification sent for workflow: {}",
+            workflow_id
+        );
 
         // Forward event to device link for real-time sync
         let event_payload = serde_json::json!({
@@ -1346,13 +1358,14 @@ impl WorkflowOrchestrator {
     ) -> AppResult<()> {
         use crate::api_clients::client_factory;
 
-        let server_proxy_client = match client_factory::get_server_proxy_client(&self.app_handle).await {
-            Ok(client) => client,
-            Err(e) => {
-                warn!("Server proxy client not available for notification: {}", e);
-                return Ok(()); // Don't fail the workflow if notifications fail
-            }
-        };
+        let server_proxy_client =
+            match client_factory::get_server_proxy_client(&self.app_handle).await {
+                Ok(client) => client,
+                Err(e) => {
+                    warn!("Server proxy client not available for notification: {}", e);
+                    return Ok(()); // Don't fail the workflow if notifications fail
+                }
+            };
 
         let payload = serde_json::json!({
             "job_id": workflow_id,
@@ -1366,8 +1379,13 @@ impl WorkflowOrchestrator {
             }
         });
 
-        server_proxy_client.send_job_failed_notification(payload.clone()).await?;
-        info!("Job failure notification sent for workflow: {}", workflow_id);
+        server_proxy_client
+            .send_job_failed_notification(payload.clone())
+            .await?;
+        info!(
+            "Job failure notification sent for workflow: {}",
+            workflow_id
+        );
 
         // Forward event to device link for real-time sync
         let event_payload = serde_json::json!({
@@ -1387,21 +1405,21 @@ impl WorkflowOrchestrator {
         match workflow_state.workflow_definition_name.as_str() {
             "implementation_plan_creation" => {
                 "Your implementation plan has been generated and is ready for review."
-            },
+            }
             "implementation_plan_execution" => {
                 "Your implementation plan has been executed successfully."
-            },
-            "video_analysis" => {
-                "Your video analysis is complete."
-            },
+            }
+            "video_analysis" => "Your video analysis is complete.",
             _ => {
-                if let Some(message) = &workflow_state.intermediate_data.workflow_completion_message {
+                if let Some(message) = &workflow_state.intermediate_data.workflow_completion_message
+                {
                     message
                 } else {
                     "Your task has completed successfully."
                 }
             }
-        }.to_string()
+        }
+        .to_string()
     }
 }
 

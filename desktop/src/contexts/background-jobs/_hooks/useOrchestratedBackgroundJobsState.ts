@@ -17,6 +17,7 @@ import { getAllVisibleJobsAction } from "@/actions/background-jobs/jobs.actions"
 export interface UseOrchestratedBackgroundJobsStateParams {
   initialJobs?: BackgroundJob[];
   projectDirectory?: string;
+  sessionId?: string;
 }
 
 /**
@@ -34,14 +35,15 @@ export interface UseOrchestratedBackgroundJobsStateParams {
 export function useOrchestratedBackgroundJobsState({
   initialJobs = [],
   projectDirectory,
+  sessionId,
 }: UseOrchestratedBackgroundJobsStateParams = {}) {
   const { showNotification } = useNotification();
   // Authoritative job store using Map for O(1) operations
   const jobsMapRef = useRef(new Map<string, BackgroundJob>());
-  
+
   // React state derived from Map for rendering
   const [jobs, setJobs] = useState<BackgroundJob[]>(initialJobs);
-  
+
   // Track loading and error states
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -52,6 +54,9 @@ export function useOrchestratedBackgroundJobsState({
   const isFetchingRef = useRef(false);
   const consecutiveErrorsRef = useRef(0);
   const notifiedJobsRef = useRef(new Map<string, number>());
+
+  // Track which implementation plan job is currently open in a modal for optimized streaming
+  const viewedImplementationPlanIdRef = useRef<string | null>(null);
   
   // Initialize Map with initial jobs
   useEffect(() => {
@@ -91,9 +96,9 @@ export function useOrchestratedBackgroundJobsState({
         setIsLoading(true);
       }
 
-      // Use action to get all visible jobs for the current project
-      const result = await getAllVisibleJobsAction(projectDirectory);
-      
+      // Use action to get all visible jobs for the current project and session
+      const result = await getAllVisibleJobsAction(projectDirectory, sessionId);
+
       if (!result.isSuccess) {
         throw new Error(result.error?.message || result.error?.toString() || 'Failed to fetch jobs');
       }
@@ -144,7 +149,7 @@ export function useOrchestratedBackgroundJobsState({
         setInitialLoad(false);
       }
     }
-  }, [initialLoad, projectDirectory]);
+  }, [initialLoad, projectDirectory, sessionId]);
 
   // Manual refresh function - fetches all jobs and replaces Map contents
   const refreshJobs = useCallback(async () => {
@@ -405,11 +410,22 @@ export function useOrchestratedBackgroundJobsState({
         });
 
         // Listen for job response appended events - Append chunk to response field
+        // OPTIMIZATION: For implementation plans, only append if currently being viewed in a modal
         unlistenJobResponseAppended = await safeListen("job:response-appended", async (event) => {
           try {
             const update = event.payload as { jobId: string; chunk: string; accumulatedLength: number };
             const existingJob = jobsMapRef.current.get(update.jobId);
             if (existingJob) {
+              // Skip appending for implementation plans that aren't being viewed
+              const isImplementationPlan =
+                existingJob.taskType === 'implementation_plan' ||
+                existingJob.taskType === 'implementation_plan_merge';
+
+              if (isImplementationPlan && viewedImplementationPlanIdRef.current !== update.jobId) {
+                // Skip this update - the modal will fetch full content when it opens
+                return;
+              }
+
               const currentResponse = existingJob.response || '';
               const updatedJob: BackgroundJob = {
                 ...existingJob,
@@ -509,11 +525,70 @@ export function useOrchestratedBackgroundJobsState({
     void refreshJobs();
   }, [initialJobs.length, initialLoad, refreshJobs]);
 
+  // Refetch jobs when sessionId changes
+  useEffect(() => {
+    if (sessionId && !initialLoad) {
+      void refreshJobs();
+    }
+  }, [sessionId, initialLoad, refreshJobs]);
+
   // Get job by ID helper
   const getJobById = useCallback(
     (jobId: string) => jobsMapRef.current.get(jobId) || undefined,
     []
   );
+
+  // Set which implementation plan is currently being viewed in a modal
+  // This optimizes streaming by only appending chunks for the viewed job
+  const setViewedImplementationPlanId = useCallback(async (jobId: string | null) => {
+    // If setting a job as viewed (not clearing), fetch current accumulated response first
+    if (jobId) {
+      const existingJob = jobsMapRef.current.get(jobId);
+
+      // Only fetch if this is a streaming implementation plan
+      const isImplementationPlan =
+        existingJob?.taskType === 'implementation_plan' ||
+        existingJob?.taskType === 'implementation_plan_merge';
+
+      const isStreaming = existingJob?.status &&
+        ['queued', 'running', 'processing', 'generating'].includes(existingJob.status);
+
+      if (isImplementationPlan && isStreaming) {
+        try {
+          // Fetch the current accumulated response from database
+          const fullJob = await invoke<BackgroundJob>("get_background_job_by_id_command", {
+            jobId
+          });
+
+          // Update the job in the map with the full accumulated response
+          // This ensures we don't lose content that was accumulated before viewing started
+          if (fullJob && fullJob.response) {
+            const updatedJob: BackgroundJob = {
+              ...existingJob,
+              response: fullJob.response,
+              // Also sync other fields that might have been updated
+              tokensSent: fullJob.tokensSent ?? existingJob.tokensSent,
+              tokensReceived: fullJob.tokensReceived ?? existingJob.tokensReceived,
+              cacheReadTokens: fullJob.cacheReadTokens ?? existingJob.cacheReadTokens,
+              cacheWriteTokens: fullJob.cacheWriteTokens ?? existingJob.cacheWriteTokens,
+              actualCost: fullJob.actualCost ?? existingJob.actualCost,
+              updatedAt: Date.now(),
+            };
+            jobsMapRef.current.set(jobId, updatedJob);
+            updateJobsFromMap();
+
+            console.log(`[BackgroundJobs] Synced ${fullJob.response.length} chars for streaming plan ${jobId}`);
+          }
+        } catch (err) {
+          console.error(`[BackgroundJobs] Failed to fetch accumulated response for plan ${jobId}:`, err);
+          // Continue anyway - incremental updates will still work from this point
+        }
+      }
+    }
+
+    // Set the viewed ID to enable chunk appending
+    viewedImplementationPlanIdRef.current = jobId;
+  }, [updateJobsFromMap]);
 
   return useMemo(
     () => ({
@@ -529,6 +604,7 @@ export function useOrchestratedBackgroundJobsState({
       clearHistory,
       refreshJobs,
       getJobById,
+      setViewedImplementationPlanId,
 
       // For debugging/testing
       isFetchingRef,
@@ -542,13 +618,14 @@ export function useOrchestratedBackgroundJobsState({
       isLoading,
       error,
       lastFetchTime,
-      
+
       // Action callbacks
       cancelJob,
       deleteJob,
       clearHistory,
       refreshJobs,
       getJobById,
+      setViewedImplementationPlanId,
     ]
   );
 }

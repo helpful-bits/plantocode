@@ -1,19 +1,19 @@
 use actix_web::{
+    Error, HttpMessage, HttpResponse, Result,
     dev::{Service, ServiceRequest, ServiceResponse, Transform},
     http::StatusCode,
-    Error, HttpMessage, HttpResponse, Result,
 };
-use futures_util::future::{ok, ready, Ready};
+use dashmap::DashMap;
+use futures_util::future::{Ready, ok, ready};
+use log::{debug, error, info, warn};
+use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use log::{debug, warn, error, info};
 use uuid::Uuid;
-use dashmap::DashMap;
 
 use crate::config::settings::RateLimitConfig;
 use crate::models::AuthenticatedUser;
@@ -144,7 +144,10 @@ impl SlidingWindowEntry {
     fn current_count(&self) -> u64 {
         let now = Instant::now();
         let cutoff = now - self.window_duration;
-        self.requests.iter().filter(|&&request_time| request_time > cutoff).count() as u64
+        self.requests
+            .iter()
+            .filter(|&&request_time| request_time > cutoff)
+            .count() as u64
     }
 
     /// Get time until next request is allowed
@@ -193,7 +196,7 @@ impl RateLimitStorage {
             sliding_window_storage: Arc::new(DashMap::new()),
         }
     }
-    
+
     /// Get the Redis connection manager if using Redis storage
     pub fn get_redis_connection_manager(&self) -> Option<Arc<redis::aio::ConnectionManager>> {
         match self {
@@ -206,9 +209,12 @@ impl RateLimitStorage {
     pub async fn new_redis(redis_url: &str) -> Result<Self, redis::RedisError> {
         let client = redis::Client::open(redis_url)?;
         let connection_manager = redis::aio::ConnectionManager::new(client).await?;
-        
-        info!("Redis connection established for rate limiting: {}", redis_url);
-        
+
+        info!(
+            "Redis connection established for rate limiting: {}",
+            redis_url
+        );
+
         Ok(Self::Redis {
             connection_manager: Arc::new(connection_manager),
         })
@@ -240,7 +246,10 @@ impl RateLimitStorage {
         sliding_window_storage.retain(|_, entry| {
             let now = Instant::now();
             let cutoff = now - window_duration;
-            entry.requests.iter().any(|&request_time| request_time > cutoff)
+            entry
+                .requests
+                .iter()
+                .any(|&request_time| request_time > cutoff)
         });
 
         debug!("Rate limit cleanup completed");
@@ -331,19 +340,19 @@ impl RateLimitStorage {
         redis_key_prefix: &Option<String>,
     ) -> Result<bool, redis::RedisError> {
         use redis::AsyncCommands;
-        
+
         let prefix = redis_key_prefix.as_deref().unwrap_or("default");
         let key = format!("rate_limit:{}:ip:{}", prefix, ip);
         let mut conn = connection_manager.as_ref().clone();
-        
+
         // Use Redis pipeline for atomic operations
         let count: i64 = conn.incr(&key, 1).await?;
-        
+
         if count == 1 {
             // Set expiration only on first increment
             let _: () = conn.expire(&key, window_secs as i64).await?;
         }
-        
+
         Ok(count <= max_requests as i64)
     }
 
@@ -424,19 +433,26 @@ impl RateLimitStorage {
     ) -> bool {
         match self {
             Self::Memory { ip_storage, .. } => {
-                Self::check_ip_rate_limit_memory(
-                    ip_storage,
-                    ip,
-                    max_requests,
-                    window_duration
-                ).await
-            },
+                Self::check_ip_rate_limit_memory(ip_storage, ip, max_requests, window_duration)
+                    .await
+            }
             Self::Redis { connection_manager } => {
                 let window_secs = window_duration.as_secs();
-                match Self::check_ip_rate_limit_redis(connection_manager, ip, max_requests, window_secs, redis_key_prefix).await {
+                match Self::check_ip_rate_limit_redis(
+                    connection_manager,
+                    ip,
+                    max_requests,
+                    window_secs,
+                    redis_key_prefix,
+                )
+                .await
+                {
                     Ok(allowed) => allowed,
                     Err(e) => {
-                        error!("Redis rate limit check failed for IP {}: {}. Denying request (fail closed).", ip, e);
+                        error!(
+                            "Redis rate limit check failed for IP {}: {}. Denying request (fail closed).",
+                            ip, e
+                        );
                         // Fail closed - deny the request if Redis is down
                         false
                     }
@@ -458,15 +474,27 @@ impl RateLimitStorage {
                     user_storage,
                     user_id,
                     max_requests,
-                    window_duration
-                ).await
-            },
+                    window_duration,
+                )
+                .await
+            }
             Self::Redis { connection_manager } => {
                 let window_secs = window_duration.as_secs();
-                match Self::check_user_rate_limit_redis(connection_manager, user_id, max_requests, window_secs, redis_key_prefix).await {
+                match Self::check_user_rate_limit_redis(
+                    connection_manager,
+                    user_id,
+                    max_requests,
+                    window_secs,
+                    redis_key_prefix,
+                )
+                .await
+                {
                     Ok(allowed) => allowed,
                     Err(e) => {
-                        error!("Redis rate limit check failed for user {}: {}. Denying request (fail closed).", user_id, e);
+                        error!(
+                            "Redis rate limit check failed for user {}: {}. Denying request (fail closed).",
+                            user_id, e
+                        );
                         // Fail closed - deny the request if Redis is down
                         false
                     }
@@ -488,15 +516,27 @@ impl RateLimitStorage {
                     device_storage,
                     device_id,
                     max_requests,
-                    window_duration
-                ).await
-            },
+                    window_duration,
+                )
+                .await
+            }
             Self::Redis { connection_manager } => {
                 let window_secs = window_duration.as_secs();
-                match Self::check_device_rate_limit_redis(connection_manager, device_id, max_requests, window_secs, redis_key_prefix).await {
+                match Self::check_device_rate_limit_redis(
+                    connection_manager,
+                    device_id,
+                    max_requests,
+                    window_secs,
+                    redis_key_prefix,
+                )
+                .await
+                {
                     Ok(allowed) => allowed,
                     Err(e) => {
-                        error!("Redis rate limit check failed for device {}: {}. Denying request (fail closed).", device_id, e);
+                        error!(
+                            "Redis rate limit check failed for device {}: {}. Denying request (fail closed).",
+                            device_id, e
+                        );
                         false
                     }
                 }
@@ -517,15 +557,27 @@ impl RateLimitStorage {
                     client_storage,
                     client_id,
                     max_requests,
-                    window_duration
-                ).await
-            },
+                    window_duration,
+                )
+                .await
+            }
             Self::Redis { connection_manager } => {
                 let window_secs = window_duration.as_secs();
-                match Self::check_client_rate_limit_redis(connection_manager, client_id, max_requests, window_secs, redis_key_prefix).await {
+                match Self::check_client_rate_limit_redis(
+                    connection_manager,
+                    client_id,
+                    max_requests,
+                    window_secs,
+                    redis_key_prefix,
+                )
+                .await
+                {
                     Ok(allowed) => allowed,
                     Err(e) => {
-                        error!("Redis rate limit check failed for client {}: {}. Denying request (fail closed).", client_id, e);
+                        error!(
+                            "Redis rate limit check failed for client {}: {}. Denying request (fail closed).",
+                            client_id, e
+                        );
                         false
                     }
                 }
@@ -540,19 +592,26 @@ impl RateLimitStorage {
         window_duration: Duration,
     ) -> bool {
         match self {
-            Self::Memory { sliding_window_storage, .. } => {
+            Self::Memory {
+                sliding_window_storage,
+                ..
+            } => {
                 Self::check_sliding_window_rate_limit_memory(
                     sliding_window_storage,
                     key,
                     max_requests,
-                    window_duration
-                ).await
-            },
+                    window_duration,
+                )
+                .await
+            }
             Self::Redis { .. } => {
                 // For Redis, we fall back to regular rate limiting for now
                 // A full sliding window implementation in Redis would require Lua scripts
-                warn!("Sliding window rate limiting not fully supported with Redis backend, using fixed window");
-                self.check_ip_rate_limit(key, max_requests, window_duration, &None).await
+                warn!(
+                    "Sliding window rate limiting not fully supported with Redis backend, using fixed window"
+                );
+                self.check_ip_rate_limit(key, max_requests, window_duration, &None)
+                    .await
             }
         }
     }
@@ -672,7 +731,8 @@ impl RateLimitMiddleware {
 
                 if ua_lower.contains("vibe-manager-mobile") || ua_lower.contains("mobile") {
                     return ClientType::Mobile;
-                } else if ua_lower.contains("vibe-manager-desktop") || ua_lower.contains("electron") {
+                } else if ua_lower.contains("vibe-manager-desktop") || ua_lower.contains("electron")
+                {
                     return ClientType::Desktop;
                 } else if ua_lower.contains("vibe-manager-api") {
                     return ClientType::Api;
@@ -719,14 +779,16 @@ impl RateLimitMiddleware {
     fn get_operation_type(&self, req: &ServiceRequest) -> &str {
         match req.method() {
             &actix_web::http::Method::GET | &actix_web::http::Method::HEAD => "read",
-            &actix_web::http::Method::POST | &actix_web::http::Method::PUT |
-            &actix_web::http::Method::DELETE | &actix_web::http::Method::PATCH => {
+            &actix_web::http::Method::POST
+            | &actix_web::http::Method::PUT
+            | &actix_web::http::Method::DELETE
+            | &actix_web::http::Method::PATCH => {
                 if req.path().contains("/admin/") {
                     "admin"
                 } else {
                     "write"
                 }
-            },
+            }
             _ => "other",
         }
     }
@@ -737,14 +799,20 @@ impl RateLimitMiddleware {
         match self.strategy {
             RateLimitStrategy::ByIp => {
                 let ip = self.extract_client_ip(req);
-                self.check_rate_limit_with_strategy(&ip, max_requests, window_duration, "ip").await
+                self.check_rate_limit_with_strategy(&ip, max_requests, window_duration, "ip")
+                    .await
             }
             RateLimitStrategy::ByUser => {
                 // Extract user ID from request extensions (set by auth middleware)
                 if let Some(user) = req.extensions().get::<AuthenticatedUser>() {
                     let key = user.user_id.to_string();
                     self.storage
-                        .check_user_rate_limit(&user.user_id, max_requests, window_duration, &self.config.redis_key_prefix)
+                        .check_user_rate_limit(
+                            &user.user_id,
+                            max_requests,
+                            window_duration,
+                            &self.config.redis_key_prefix,
+                        )
                         .await
                 } else {
                     // No user context, allow request (should be handled by auth middleware)
@@ -754,33 +822,53 @@ impl RateLimitMiddleware {
             RateLimitStrategy::ByDevice => {
                 if let Some(device_id) = self.get_device_id(req) {
                     self.storage
-                        .check_device_rate_limit(&device_id, max_requests, window_duration, &self.config.redis_key_prefix)
+                        .check_device_rate_limit(
+                            &device_id,
+                            max_requests,
+                            window_duration,
+                            &self.config.redis_key_prefix,
+                        )
                         .await
                 } else {
                     // No device ID, fall back to IP-based limiting
                     let ip = self.extract_client_ip(req);
-                    self.check_rate_limit_with_strategy(&ip, max_requests, window_duration, "ip").await
+                    self.check_rate_limit_with_strategy(&ip, max_requests, window_duration, "ip")
+                        .await
                 }
             }
             RateLimitStrategy::ByClient => {
                 if let Some(client_id) = self.get_client_id(req) {
                     self.storage
-                        .check_client_rate_limit(&client_id, max_requests, window_duration, &self.config.redis_key_prefix)
+                        .check_client_rate_limit(
+                            &client_id,
+                            max_requests,
+                            window_duration,
+                            &self.config.redis_key_prefix,
+                        )
                         .await
                 } else {
                     // No client ID, fall back to IP-based limiting
                     let ip = self.extract_client_ip(req);
-                    self.check_rate_limit_with_strategy(&ip, max_requests, window_duration, "ip").await
+                    self.check_rate_limit_with_strategy(&ip, max_requests, window_duration, "ip")
+                        .await
                 }
             }
             RateLimitStrategy::ByOperationType => {
                 let operation_type = self.get_operation_type(req);
                 let key = format!("{}:{}", self.extract_client_ip(req), operation_type);
-                self.check_rate_limit_with_strategy(&key, max_requests, window_duration, "operation").await
+                self.check_rate_limit_with_strategy(
+                    &key,
+                    max_requests,
+                    window_duration,
+                    "operation",
+                )
+                .await
             }
             RateLimitStrategy::ByIpAndUser => {
                 let ip = self.extract_client_ip(req);
-                let ip_allowed = self.check_rate_limit_with_strategy(&ip, max_requests, window_duration, "ip").await;
+                let ip_allowed = self
+                    .check_rate_limit_with_strategy(&ip, max_requests, window_duration, "ip")
+                    .await;
 
                 if !ip_allowed {
                     return false;
@@ -789,7 +877,12 @@ impl RateLimitMiddleware {
                 // Also check user limit if authenticated
                 if let Some(user) = req.extensions().get::<AuthenticatedUser>() {
                     self.storage
-                        .check_user_rate_limit(&user.user_id, max_requests, window_duration, &self.config.redis_key_prefix)
+                        .check_user_rate_limit(
+                            &user.user_id,
+                            max_requests,
+                            window_duration,
+                            &self.config.redis_key_prefix,
+                        )
                         .await
                 } else {
                     true
@@ -825,7 +918,10 @@ impl RateLimitMiddleware {
         }
 
         // Default limits
-        (self.config.max_requests, Duration::from_millis(self.config.window_ms))
+        (
+            self.config.max_requests,
+            Duration::from_millis(self.config.window_ms),
+        )
     }
 
     /// Check rate limit using appropriate strategy (sliding window or fixed window)
@@ -843,16 +939,29 @@ impl RateLimitMiddleware {
                 .await
         } else {
             match strategy_type {
-                "ip" => self.storage
-                    .check_ip_rate_limit(key, max_requests, window_duration, &self.config.redis_key_prefix)
-                    .await,
-                _ => self.storage
-                    .check_ip_rate_limit(key, max_requests, window_duration, &self.config.redis_key_prefix)
-                    .await,
+                "ip" => {
+                    self.storage
+                        .check_ip_rate_limit(
+                            key,
+                            max_requests,
+                            window_duration,
+                            &self.config.redis_key_prefix,
+                        )
+                        .await
+                }
+                _ => {
+                    self.storage
+                        .check_ip_rate_limit(
+                            key,
+                            max_requests,
+                            window_duration,
+                            &self.config.redis_key_prefix,
+                        )
+                        .await
+                }
             }
         }
     }
-
 }
 
 impl<S, B> Transform<S, ServiceRequest> for RateLimitMiddleware
@@ -907,8 +1016,11 @@ where
 
             let request_path = req.path().to_string();
             let client_ip = middleware.extract_client_ip(&req);
-            
-            debug!("Rate limiting check for {} from IP: {}", request_path, client_ip);
+
+            debug!(
+                "Rate limiting check for {} from IP: {}",
+                request_path, client_ip
+            );
 
             // Check if request is allowed
             let is_allowed = middleware.is_request_allowed(&req).await;
@@ -918,50 +1030,68 @@ where
                     "Rate limit exceeded for {} from IP: {} (strategy: {:?})",
                     request_path, client_ip, middleware.strategy
                 );
-                
+
                 return Err(Error::from(actix_web::error::ErrorTooManyRequests(
-                    "Rate limit exceeded. Please try again later."
+                    "Rate limit exceeded. Please try again later.",
                 )));
             }
 
-            debug!("Rate limit passed for {} from IP: {}", request_path, client_ip);
+            debug!(
+                "Rate limit passed for {} from IP: {}",
+                request_path, client_ip
+            );
             service.call(req).await
         })
     }
 }
 
 /// Initialize rate limiting storage based on configuration
-pub async fn create_rate_limit_storage(config: &RateLimitConfig, redis_url: &Option<String>) -> Result<RateLimitStorage, String> {
+pub async fn create_rate_limit_storage(
+    config: &RateLimitConfig,
+    redis_url: &Option<String>,
+) -> Result<RateLimitStorage, String> {
     match redis_url {
-        Some(url) => {
-            match RateLimitStorage::new_redis(url).await {
-                Ok(storage) => {
-                    info!("Redis connected for rate limiting");
-                    Ok(storage)
-                },
-                Err(e) => {
-                    error!("Failed to connect to Redis for rate limiting: {}", e);
-                    Err(format!("Failed to connect to Redis: {}. Redis is required for rate limiting.", e))
-                }
+        Some(url) => match RateLimitStorage::new_redis(url).await {
+            Ok(storage) => {
+                info!("Redis connected for rate limiting");
+                Ok(storage)
+            }
+            Err(e) => {
+                error!("Failed to connect to Redis for rate limiting: {}", e);
+                Err(format!(
+                    "Failed to connect to Redis: {}. Redis is required for rate limiting.",
+                    e
+                ))
             }
         },
         None => {
             error!("REDIS_URL is not set. Redis is required for the application to run.");
-            Err(String::from("REDIS_URL must be set. Redis is required for the application."))
+            Err(String::from(
+                "REDIS_URL must be set. Redis is required for the application.",
+            ))
         }
     }
 }
 
 /// Helper function to create rate limiting middleware with different configurations
-pub fn create_ip_rate_limiter(config: RateLimitConfig, storage: RateLimitStorage) -> RateLimitMiddleware {
+pub fn create_ip_rate_limiter(
+    config: RateLimitConfig,
+    storage: RateLimitStorage,
+) -> RateLimitMiddleware {
     RateLimitMiddleware::with_shared_storage(config, RateLimitStrategy::ByIp, storage)
 }
 
-pub fn create_user_rate_limiter(config: RateLimitConfig, storage: RateLimitStorage) -> RateLimitMiddleware {
+pub fn create_user_rate_limiter(
+    config: RateLimitConfig,
+    storage: RateLimitStorage,
+) -> RateLimitMiddleware {
     RateLimitMiddleware::with_shared_storage(config, RateLimitStrategy::ByUser, storage)
 }
 
-pub fn create_strict_rate_limiter(config: RateLimitConfig, storage: RateLimitStorage) -> RateLimitMiddleware {
+pub fn create_strict_rate_limiter(
+    config: RateLimitConfig,
+    storage: RateLimitStorage,
+) -> RateLimitMiddleware {
     RateLimitMiddleware::with_shared_storage(config, RateLimitStrategy::ByIpAndUser, storage)
 }
 
@@ -970,11 +1100,8 @@ pub fn create_mobile_rate_limiter(
     device_limits: DeviceRateLimits,
     storage: RateLimitStorage,
 ) -> RateLimitMiddleware {
-    RateLimitMiddleware::with_device_limits(
-        RateLimitStrategy::ByDevice,
-        storage,
-        device_limits,
-    ).with_sliding_window()
+    RateLimitMiddleware::with_device_limits(RateLimitStrategy::ByDevice, storage, device_limits)
+        .with_sliding_window()
 }
 
 /// Create operation-aware rate limiter
@@ -990,12 +1117,18 @@ pub fn create_operation_aware_rate_limiter(
 }
 
 /// Create device rate limiter
-pub fn create_device_rate_limiter(config: RateLimitConfig, storage: RateLimitStorage) -> RateLimitMiddleware {
+pub fn create_device_rate_limiter(
+    config: RateLimitConfig,
+    storage: RateLimitStorage,
+) -> RateLimitMiddleware {
     RateLimitMiddleware::with_shared_storage(config, RateLimitStrategy::ByDevice, storage)
 }
 
 /// Create client rate limiter
-pub fn create_client_rate_limiter(config: RateLimitConfig, storage: RateLimitStorage) -> RateLimitMiddleware {
+pub fn create_client_rate_limiter(
+    config: RateLimitConfig,
+    storage: RateLimitStorage,
+) -> RateLimitMiddleware {
     RateLimitMiddleware::with_shared_storage(config, RateLimitStrategy::ByClient, storage)
 }
 
@@ -1006,7 +1139,10 @@ pub async fn start_memory_store_cleanup_task(
     cleanup_interval_secs: u64,
 ) {
     let mut interval = tokio::time::interval(Duration::from_secs(cleanup_interval_secs));
-    info!("Starting rate limit memory store cleanup task (interval: {}s)", cleanup_interval_secs);
+    info!(
+        "Starting rate limit memory store cleanup task (interval: {}s)",
+        cleanup_interval_secs
+    );
 
     loop {
         interval.tick().await;
@@ -1018,7 +1154,8 @@ pub async fn start_memory_store_cleanup_task(
             device_storage,
             client_storage,
             sliding_window_storage,
-        } = &storage {
+        } = &storage
+        {
             RateLimitStorage::cleanup_expired_entries_memory(
                 ip_storage,
                 user_storage,

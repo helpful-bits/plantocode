@@ -9,7 +9,7 @@ struct VibeManagerApp: App {
   var body: some Scene {
     WindowGroup {
       AppView()
-      // No onOpenURL needed - Auth0.swift 2.13+ handles callbacks automatically
+        .environmentObject(AppState.shared)
     }
   }
 }

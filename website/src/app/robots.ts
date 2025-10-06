@@ -15,49 +15,14 @@ export default function robots(): MetadataRoute.Robots {
           '/callbacks/',
           '/auth/',
           '/billing/',
+          '/all-pages', // Internal review page with noindex
         ],
       },
-      // Search crawlers
-      {
-        userAgent: 'Googlebot',
-        allow: '/',
-      },
-      {
-        userAgent: 'Bingbot',
-        allow: '/',
-      },
-      {
-        userAgent: 'Applebot',
-        allow: '/',
-      },
-      // OpenAI
-      {
-        userAgent: 'GPTBot',
-        allow: '/',
-        disallow: ['/api/', '/debug/', '/private/'],
-      },
-      {
-        userAgent: 'ChatGPT-User',
-        allow: '/',
-        disallow: ['/api/', '/debug/', '/private/'],
-      },
-      {
-        userAgent: 'OAI-SearchBot',
-        allow: '/',
-        disallow: ['/api/', '/debug/', '/private/'],
-      },
-      // Anthropic
-      {
-        userAgent: 'ClaudeBot',
-        allow: '/',
-        disallow: ['/api/', '/debug/', '/private/'],
-      },
-      // Perplexity
-      {
-        userAgent: 'PerplexityBot',
-        allow: '/',
-        disallow: ['/api/', '/debug/', '/private/'],
-      },
+      // Major search engines (no need for explicit Allow as they inherit from *)
+      // Googlebot, Bingbot, Applebot will follow the default rules above
+      // AI Assistants - inherit base rules (no need for Allow: /)
+      // GPTBot, ChatGPT-User, OAI-SearchBot, ClaudeBot, PerplexityBot
+      // They can access everything except paths in the default disallow list
       // Block some noisy crawlers
       {
         userAgent: 'CCBot',
@@ -75,14 +40,15 @@ export default function robots(): MetadataRoute.Robots {
         userAgent: 'Bytespider',
         disallow: '/',
       },
-      // AI training controls (optional)
+      // AI training controls - these bots are for AI model training data collection
+      // Keeping them separate in case you want to block AI training in the future
       {
         userAgent: 'Google-Extended',
-        allow: '/',
+        disallow: '', // Empty disallow = allow all (more compatible than Allow: /)
       },
       {
         userAgent: 'Applebot-Extended',
-        allow: '/',
+        disallow: '', // Empty disallow = allow all (more compatible than Allow: /)
       },
     ],
     sitemap: [

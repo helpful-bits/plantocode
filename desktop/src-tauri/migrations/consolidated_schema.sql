@@ -89,6 +89,18 @@ CREATE TABLE IF NOT EXISTS key_value_store (
 -- Create index for key_value_store table
 CREATE INDEX IF NOT EXISTS idx_key_value_store_key ON key_value_store(key);
 
+-- Create app_settings table for application configuration
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  description TEXT,
+  created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+  updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+);
+
+-- Create index for app_settings table
+CREATE INDEX IF NOT EXISTS idx_app_settings_key ON app_settings(key);
+
 -- =========================================================================
 -- Transcription Configuration
 -- =========================================================================
@@ -236,39 +248,52 @@ WHERE server_request_id IS NOT NULL;
 -- Create terminal_sessions table to track Claude CLI terminal sessions
 CREATE TABLE IF NOT EXISTS terminal_sessions (
   id TEXT PRIMARY KEY,
-  job_id TEXT NOT NULL UNIQUE, -- Links to implementation plan or background job
-  status TEXT NOT NULL DEFAULT 'idle' CHECK(status IN ('idle', 'running', 'completed', 'failed', 'stuck')),
+  job_id TEXT NOT NULL UNIQUE,
+  session_id TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'initializing' CHECK (status IN (
+    'idle','starting','initializing','running','completed','failed','agent_requires_attention','recovering','disconnected','stuck','restored'
+  )),
   process_pid INTEGER DEFAULT NULL,
-  created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-  updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+  created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+  updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+  started_at INTEGER DEFAULT NULL,
+  ended_at INTEGER DEFAULT NULL,
   last_output_at INTEGER DEFAULT NULL,
   exit_code INTEGER DEFAULT NULL,
   working_directory TEXT DEFAULT NULL,
-  environment_vars TEXT DEFAULT NULL, -- JSON string of environment variables
+  environment_vars TEXT DEFAULT NULL,
   title TEXT DEFAULT NULL,
-  output_log TEXT DEFAULT '', -- Terminal output log stored directly in database
-  
-  -- Foreign key constraint (optional - depends on whether job_id always references background_jobs)
+  output_log TEXT NOT NULL DEFAULT '',
+  output_snapshot TEXT DEFAULT NULL,
   FOREIGN KEY (job_id) REFERENCES background_jobs(id) ON DELETE CASCADE
 );
 
--- Create indexes for terminal_sessions table
 CREATE INDEX IF NOT EXISTS idx_terminal_sessions_job_id ON terminal_sessions(job_id);
 CREATE INDEX IF NOT EXISTS idx_terminal_sessions_status ON terminal_sessions(status);
 CREATE INDEX IF NOT EXISTS idx_terminal_sessions_updated_at ON terminal_sessions(updated_at);
 CREATE INDEX IF NOT EXISTS idx_terminal_sessions_last_output_at ON terminal_sessions(last_output_at);
 CREATE INDEX IF NOT EXISTS idx_terminal_sessions_output_log_length ON terminal_sessions(LENGTH(output_log));
+CREATE INDEX IF NOT EXISTS idx_terminal_sessions_session_id ON terminal_sessions(session_id);
+
+DROP TRIGGER IF EXISTS trg_terminal_sessions_updated_at;
+CREATE TRIGGER trg_terminal_sessions_updated_at
+AFTER UPDATE ON terminal_sessions
+BEGIN
+  UPDATE terminal_sessions
+  SET updated_at = strftime('%s','now')
+  WHERE id = NEW.id;
+END;
 
 -- Record this consolidated schema in the key_value_store table
 -- =========================================================================
--- Insert Default Transcription Configuration Data
+-- Insert Default Configuration Data
 -- =========================================================================
 
 -- Transcription configurations are fetched from server and cached in memory
 -- User preferences stored as JSON in key_value_store by voice_commands.rs
 
 INSERT OR REPLACE INTO key_value_store (key, value, updated_at)
-VALUES ('schema_version', '2025-01-10-terminal-sessions', strftime('%s', 'now')),
+VALUES ('schema_version', '2025-02-05-terminal-sessions-persistence-v2', strftime('%s', 'now')),
        ('last_model_update', strftime('%s', 'now'), strftime('%s', 'now')),
        ('initial_setup_with_2025_models', 'true', strftime('%s', 'now')),
        ('enhanced_system_prompts_migration_applied', strftime('%s', 'now'), strftime('%s', 'now')),
@@ -276,3 +301,10 @@ VALUES ('schema_version', '2025-01-10-terminal-sessions', strftime('%s', 'now'))
        ('system_prompts_table_removed', strftime('%s', 'now'), strftime('%s', 'now')),
        ('two_phase_billing_migration_applied', strftime('%s', 'now'), strftime('%s', 'now')),
        ('terminal_sessions_migration_applied', strftime('%s', 'now'), strftime('%s', 'now'));
+
+-- Insert default device visibility settings
+INSERT OR IGNORE INTO app_settings (key, value, description) VALUES
+    ('device.is_discoverable', 'true', 'Whether this device is discoverable by other devices'),
+    ('device.allow_remote_access', 'false', 'Whether to allow remote access from mobile devices'),
+    ('device.require_approval', 'true', 'Whether to require approval for new connections'),
+    ('device.session_timeout_minutes', '60', 'Session timeout in minutes for remote connections');

@@ -71,6 +71,22 @@ public struct BackgroundJob: Codable, Identifiable {
     public let createdAt: Int64
     public var updatedAt: Int64?
 
+    // New fields matching desktop implementation
+    public let projectHash: String?
+    public let tokensSent: Int32?
+    public let tokensReceived: Int32?
+    public let modelUsed: String?
+    public let durationMs: Int32?
+    public let metadata: String? // JSON string
+    public let systemPromptTemplate: String?
+    public let startTime: Int64?
+    public let endTime: Int64?
+    public let cacheWriteTokens: Int32?
+    public let cacheReadTokens: Int32?
+    public let isFinalized: Bool?
+    public let progressPercentage: Int32?
+    public let subStatusMessage: String?
+
     public var jobStatus: JobStatus {
         JobStatus(rawValue: status) ?? .idle
     }
@@ -78,6 +94,114 @@ public struct BackgroundJob: Codable, Identifiable {
     public var formattedCost: String {
         guard let cost = actualCost else { return "Unknown" }
         return String(format: "$%.4f", cost)
+    }
+
+    public var formattedDate: String {
+        let date = Date(timeIntervalSince1970: TimeInterval(createdAt))
+        return DateFormatter.medium.string(from: date)
+    }
+
+    // Duration formatting
+    public var formattedDuration: String? {
+        guard let durationMs = durationMs else { return nil }
+        let seconds = Double(durationMs) / 1000.0
+        if seconds < 60 {
+            return String(format: "%.1fs", seconds)
+        } else {
+            let minutes = Int(seconds / 60)
+            let remainingSeconds = Int(seconds) % 60
+            return "\(minutes)m \(remainingSeconds)s"
+        }
+    }
+
+    // Token totals
+    public var totalTokens: Int32 {
+        (tokensSent ?? 0) + (tokensReceived ?? 0)
+    }
+
+    public init(
+        id: String,
+        sessionId: String,
+        taskType: String,
+        status: String,
+        prompt: String,
+        response: String?,
+        errorMessage: String?,
+        tokensUsed: Int32?,
+        actualCost: Double?,
+        createdAt: Int64,
+        updatedAt: Int64?,
+        projectHash: String? = nil,
+        tokensSent: Int32? = nil,
+        tokensReceived: Int32? = nil,
+        modelUsed: String? = nil,
+        durationMs: Int32? = nil,
+        metadata: String? = nil,
+        systemPromptTemplate: String? = nil,
+        startTime: Int64? = nil,
+        endTime: Int64? = nil,
+        cacheWriteTokens: Int32? = nil,
+        cacheReadTokens: Int32? = nil,
+        isFinalized: Bool? = nil,
+        progressPercentage: Int32? = nil,
+        subStatusMessage: String? = nil
+    ) {
+        self.id = id
+        self.sessionId = sessionId
+        self.taskType = taskType
+        self.status = status
+        self.prompt = prompt
+        self.response = response
+        self.errorMessage = errorMessage
+        self.tokensUsed = tokensUsed
+        self.actualCost = actualCost
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.projectHash = projectHash
+        self.tokensSent = tokensSent
+        self.tokensReceived = tokensReceived
+        self.modelUsed = modelUsed
+        self.durationMs = durationMs
+        self.metadata = metadata
+        self.systemPromptTemplate = systemPromptTemplate
+        self.startTime = startTime
+        self.endTime = endTime
+        self.cacheWriteTokens = cacheWriteTokens
+        self.cacheReadTokens = cacheReadTokens
+        self.isFinalized = isFinalized
+        self.progressPercentage = progressPercentage
+        self.subStatusMessage = subStatusMessage
+    }
+}
+
+public struct Session: Codable, Identifiable {
+    public let id: String
+    public let name: String
+    public let projectDirectory: String
+    public let taskDescription: String?
+    public let createdAt: Int64
+    public let updatedAt: Int64
+    public let includedFiles: [String]
+    public let forceExcludedFiles: [String]
+
+    public init(
+        id: String,
+        name: String,
+        projectDirectory: String,
+        taskDescription: String? = nil,
+        createdAt: Int64,
+        updatedAt: Int64,
+        includedFiles: [String] = [],
+        forceExcludedFiles: [String] = []
+    ) {
+        self.id = id
+        self.name = name
+        self.projectDirectory = projectDirectory
+        self.taskDescription = taskDescription
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.includedFiles = includedFiles
+        self.forceExcludedFiles = forceExcludedFiles
     }
 
     public var formattedDate: String {
@@ -185,6 +309,7 @@ public enum DataServiceError: Error, LocalizedError {
     case networkError(Error)
     case invalidResponse(String)
     case invalidRequest(String)
+    case invalidInput(String)
     case invalidState(String)
     case fileSystemError(Error)
     case cacheError(String)
@@ -196,6 +321,7 @@ public enum DataServiceError: Error, LocalizedError {
     case timeout
     case serverError(String)
     case conflictDetected(taskId: String, serverTask: TaskDescription)
+    case offline
 
     public var errorDescription: String? {
         switch self {
@@ -205,6 +331,8 @@ public enum DataServiceError: Error, LocalizedError {
             return "Invalid response: \(message)"
         case .invalidRequest(let message):
             return "Invalid request: \(message)"
+        case .invalidInput(let message):
+            return "Invalid input: \(message)"
         case .invalidState(let message):
             return "Invalid state: \(message)"
         case .fileSystemError(let error):
@@ -227,6 +355,8 @@ public enum DataServiceError: Error, LocalizedError {
             return "Server error: \(message)"
         case .conflictDetected(let taskId, _):
             return "Task \(taskId) has conflicting changes. Review before continuing."
+        case .offline:
+            return "Device is offline. Action will be queued."
         }
     }
 
@@ -236,6 +366,8 @@ public enum DataServiceError: Error, LocalizedError {
             return "Check your internet connection and try again."
         case .invalidResponse, .invalidRequest:
             return "Please restart the app and try again."
+        case .invalidInput:
+            return "Please check your input and try again."
         case .invalidState:
             return "Please refresh the data and try again."
         case .fileSystemError:
@@ -258,6 +390,8 @@ public enum DataServiceError: Error, LocalizedError {
             return "Contact support if this issue persists."
         case .conflictDetected:
             return "Review the conflicting changes and merge manually."
+        case .offline:
+            return "Action will be processed when connection is restored."
         }
     }
 }

@@ -1,6 +1,6 @@
-use sqlx::PgPool;
-use serde::{Deserialize, Serialize};
 use crate::error::AppError;
+use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
 use std::sync::Arc;
 use tracing::{info, instrument};
 
@@ -46,7 +46,7 @@ impl ProviderRepository {
     #[instrument(skip(self))]
     pub async fn get_all_active(&self) -> Result<Vec<Provider>, AppError> {
         info!("Fetching all active providers");
-        
+
         let providers = sqlx::query_as!(
             Provider,
             r#"
@@ -69,7 +69,7 @@ impl ProviderRepository {
     #[instrument(skip(self))]
     pub async fn get_all_with_model_counts(&self) -> Result<Vec<ProviderWithModelCount>, AppError> {
         info!("Fetching all providers with model counts");
-        
+
         let providers = sqlx::query!(
             r#"
             SELECT p.id, p.code, p.name, p.description, p.website_url, p.api_base_url,
@@ -85,21 +85,29 @@ impl ProviderRepository {
         )
         .fetch_all(&*self.db_pool)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to fetch providers with model counts: {}", e)))?;
+        .map_err(|e| {
+            AppError::Database(format!(
+                "Failed to fetch providers with model counts: {}",
+                e
+            ))
+        })?;
 
-        let result: Vec<ProviderWithModelCount> = providers.into_iter().map(|row| ProviderWithModelCount {
-            id: row.id,
-            code: row.code,
-            name: row.name,
-            description: row.description,
-            website_url: row.website_url,
-            api_base_url: row.api_base_url,
-            capabilities: row.capabilities,
-            status: row.status,
-            model_count: row.model_count.unwrap_or(0),
-            created_at: row.created_at,
-            updated_at: row.updated_at,
-        }).collect();
+        let result: Vec<ProviderWithModelCount> = providers
+            .into_iter()
+            .map(|row| ProviderWithModelCount {
+                id: row.id,
+                code: row.code,
+                name: row.name,
+                description: row.description,
+                website_url: row.website_url,
+                api_base_url: row.api_base_url,
+                capabilities: row.capabilities,
+                status: row.status,
+                model_count: row.model_count.unwrap_or(0),
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+            })
+            .collect();
 
         info!("Retrieved {} providers with model counts", result.len());
         Ok(result)
@@ -109,7 +117,7 @@ impl ProviderRepository {
     #[instrument(skip(self))]
     pub async fn get_by_code(&self, code: &str) -> Result<Option<Provider>, AppError> {
         info!("Fetching provider by code: {}", code);
-        
+
         let provider = sqlx::query_as!(
             Provider,
             r#"
@@ -122,7 +130,9 @@ impl ProviderRepository {
         )
         .fetch_optional(&*self.db_pool)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to fetch provider by code {}: {}", code, e)))?;
+        .map_err(|e| {
+            AppError::Database(format!("Failed to fetch provider by code {}: {}", code, e))
+        })?;
 
         match &provider {
             Some(_) => info!("Found provider with code: {}", code),
@@ -136,7 +146,7 @@ impl ProviderRepository {
     #[instrument(skip(self))]
     pub async fn get_by_id(&self, id: i32) -> Result<Option<Provider>, AppError> {
         info!("Fetching provider by ID: {}", id);
-        
+
         let provider = sqlx::query_as!(
             Provider,
             r#"
@@ -163,7 +173,7 @@ impl ProviderRepository {
     #[instrument(skip(self))]
     pub async fn get_by_capability(&self, capability: &str) -> Result<Vec<Provider>, AppError> {
         info!("Fetching providers with capability: {}", capability);
-        
+
         let providers = sqlx::query_as!(
             Provider,
             r#"
@@ -178,9 +188,18 @@ impl ProviderRepository {
         )
         .fetch_all(&*self.db_pool)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to fetch providers by capability {}: {}", capability, e)))?;
+        .map_err(|e| {
+            AppError::Database(format!(
+                "Failed to fetch providers by capability {}: {}",
+                capability, e
+            ))
+        })?;
 
-        info!("Retrieved {} providers with capability: {}", providers.len(), capability);
+        info!(
+            "Retrieved {} providers with capability: {}",
+            providers.len(),
+            capability
+        );
         Ok(providers)
     }
 }

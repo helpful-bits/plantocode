@@ -117,7 +117,7 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
   // Get attention icon with priority over status icon
   const getAttentionIcon = () => {
     // Check for attention first (priority)
-    if (attention && attention.level !== 'none') {
+    if (attention && attention.level) {
       const attentionColors = {
         high: 'text-red-500',
         medium: 'text-yellow-500',

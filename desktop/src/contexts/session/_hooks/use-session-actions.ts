@@ -64,13 +64,51 @@ export function useSessionActions({
       return true;
     }
 
-
     try {
       if (!currentSessionRef.current) {
         return false;
       }
 
-      const result = await saveSessionAction(currentSessionRef.current);
+      // Merge-before-save: fetch latest session to avoid clobbering backend additions
+      let sessionToSave = currentSessionRef.current;
+
+      try {
+        const { getSessionAction } = await import("@/actions");
+        const latestResult = await getSessionAction(currentSessionRef.current.id);
+
+        if (latestResult.isSuccess && latestResult.data) {
+          // Merge logic:
+          // excluded_final = UI.forceExcluded (UI is authoritative for exclusions)
+          // included_final = (UI.included ∪ DB.included) \ UI.forceExcluded (union then difference)
+          const uiIncluded = new Set(currentSessionRef.current.includedFiles);
+          const dbIncluded = new Set(latestResult.data.includedFiles);
+          const uiExcluded = new Set(currentSessionRef.current.forceExcludedFiles);
+
+          // UI exclusions are authoritative - don't merge with DB exclusions
+          // This allows user to remove exclusions and have them stay removed
+          const excludedFinal = uiExcluded;
+
+          // Union inclusions (preserve both UI changes and backend additions)
+          // Then remove UI exclusions to ensure consistency
+          const includedUnion = new Set([...uiIncluded, ...dbIncluded]);
+          const includedFinal = new Set(
+            Array.from(includedUnion).filter(path => !uiExcluded.has(path))
+          );
+
+          sessionToSave = {
+            ...currentSessionRef.current,
+            includedFiles: Array.from(includedFinal),
+            forceExcludedFiles: Array.from(excludedFinal),
+          };
+
+          console.log('merge-before-save: merged DB inclusions with UI state');
+        }
+      } catch (fetchErr) {
+        // Fall back to saving current state if fetch fails
+        console.warn('merge-before-save: failed to fetch latest session, saving current state', fetchErr);
+      }
+
+      const result = await saveSessionAction(sessionToSave);
 
       if (!result.isSuccess) {
         throw new Error(result.message || "Failed to save session");
@@ -102,7 +140,7 @@ export function useSessionActions({
             );
 
       setSessionError(dbError);
-      
+
       // Show error notification
       showNotification({
         title: "Session Save Failed",
@@ -124,11 +162,10 @@ export function useSessionActions({
       return false;
     }
   }, [
-    projectDirectory, // From useProject()
-    setSessionModified, // Stable setter from SessionStateContext
-    setSessionError, // Stable setter from SessionStateContext
-    showNotification, // From NotificationContext, assumed stable
-    // saveSessionAction is an external import, inherently stable
+    projectDirectory,
+    setSessionModified,
+    setSessionError,
+    showNotification,
   ]);
 
   // Direct reference to saveCurrentSession as flushSaves
@@ -178,6 +215,14 @@ export function useSessionActions({
       }
 
       if (changed) {
+        // Sanitize: if both includedFiles and forceExcludedFiles are being updated together,
+        // ensure includedFiles doesn't contain any excluded paths
+        if (updatedFields.includedFiles && updatedFields.forceExcludedFiles) {
+          const excludedSet = new Set(updatedFields.forceExcludedFiles as string[]);
+          const prunedIncluded = (updatedFields.includedFiles as string[]).filter(p => !excludedSet.has(p));
+          updatedFields.includedFiles = prunedIncluded;
+        }
+
         const updatedSession = { ...currentSessionRef.current, ...updatedFields };
         setSessionModified(true);
         setCurrentSession(updatedSession);
@@ -490,29 +535,29 @@ export function useSessionActions({
   const applyFileSelectionUpdate = useCallback(
     async (paths: string[], source?: string) => {
       if (!currentSessionRef.current) return;
-      
+
       const { includedFiles = [], forceExcludedFiles = [] } = currentSessionRef.current;
-      
+
       // Calculate delta before updating
       const currentIncludedSet = new Set(includedFiles);
-      
+
       // Files being added (in paths but not already in includedFiles)
       const filesBeingAdded = paths.filter(path => !currentIncludedSet.has(path));
       const added = filesBeingAdded.length;
-      
+
       // Extend logic: add new paths to existing included files
       const newIncludedFiles = Array.from(new Set([...includedFiles, ...paths]));
-      
+
       // Remove newly included paths from excluded files
       const newExcludedFiles = forceExcludedFiles.filter(
         (path) => !paths.includes(path)
       );
-      
+
       updateCurrentSessionFields({
         includedFiles: newIncludedFiles,
         forceExcludedFiles: newExcludedFiles,
       });
-      
+
       // Show notification with delta information
       if (added > 0) {
         if (source) {
@@ -535,7 +580,59 @@ export function useSessionActions({
           type: 'info',
         });
       }
-      
+
+      // Dispatch custom event in a microtask to ensure state is updated first
+      queueMicrotask(() => {
+        window.dispatchEvent(new CustomEvent('file-selection-applied'));
+      });
+    },
+    [updateCurrentSessionFields, showNotification]
+  );
+
+  const applyBackendFileUpdate = useCallback(
+    async (paths: string[], source?: string) => {
+      if (!currentSessionRef.current) return;
+
+      const { includedFiles = [] } = currentSessionRef.current;
+
+      // Calculate delta before updating
+      const currentIncludedSet = new Set(includedFiles);
+
+      // Files being added (in paths but not already in includedFiles)
+      const filesBeingAdded = paths.filter(path => !currentIncludedSet.has(path));
+      const added = filesBeingAdded.length;
+
+      // Backend-driven update: purely additive merge into includedFiles
+      // NEVER touch forceExcludedFiles - backend must respect user exclusions
+      const newIncludedFiles = Array.from(new Set([...includedFiles, ...paths]));
+
+      updateCurrentSessionFields({
+        includedFiles: newIncludedFiles,
+      });
+
+      // Show notification with delta information
+      if (added > 0) {
+        if (source) {
+          showNotification({
+            title: 'Files Applied',
+            message: `Added ${added} files from ${source} to selection.`,
+            type: 'success',
+          });
+        } else {
+          showNotification({
+            title: 'Files Applied',
+            message: `Added ${added} files to selection.`,
+            type: 'success',
+          });
+        }
+      } else {
+        showNotification({
+          title: 'No New Files',
+          message: source ? `All files from ${source} were already selected.` : 'All files were already selected.',
+          type: 'info',
+        });
+      }
+
       // Dispatch custom event in a microtask to ensure state is updated first
       queueMicrotask(() => {
         window.dispatchEvent(new CustomEvent('file-selection-applied'));
@@ -556,6 +653,7 @@ export function useSessionActions({
       renameActiveSession,
       renameSession,
       applyFileSelectionUpdate,
+      applyBackendFileUpdate,
     }),
     [
       saveCurrentSession,
@@ -568,6 +666,7 @@ export function useSessionActions({
       renameActiveSession,
       renameSession,
       applyFileSelectionUpdate,
+      applyBackendFileUpdate,
     ]
   );
 }

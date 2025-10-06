@@ -1,20 +1,20 @@
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
-use uuid::Uuid;
-use sqlx::types::ipnetwork::IpNetwork;
-use std::sync::Arc;
-use log::{debug, error, info, warn};
-use sha2::{Sha256, Digest};
-use hmac::{Hmac, Mac};
 use hex;
+use hmac::{Hmac, Mac};
+use log::{debug, error, info, warn};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use sqlx::PgPool;
+use sqlx::types::ipnetwork::IpNetwork;
 use std::env;
+use std::sync::Arc;
+use uuid::Uuid;
 
-use crate::error::AppError;
 use crate::db::connection::DatabasePools;
 use crate::db::repositories::audit_log_repository::{
-    AuditLogRepository, AuditLog, CreateAuditLogRequest, AuditLogFilter
+    AuditLog, AuditLogFilter, AuditLogRepository, CreateAuditLogRequest,
 };
+use crate::error::AppError;
 
 /// High-level audit service for tracking billing and account management operations
 #[derive(Debug, Clone)]
@@ -50,7 +50,7 @@ impl AuditContext {
         self.ip_address = Some(ip_address);
         self
     }
-    
+
     pub fn with_ip_addr(mut self, ip_addr: std::net::IpAddr) -> Self {
         self.ip_address = Some(IpNetwork::from(ip_addr));
         self
@@ -147,7 +147,7 @@ impl AuditService {
                 "default-audit-secret-change-in-production".to_string()
             })
             .into_bytes();
-            
+
         Self {
             audit_log_repository: Arc::new(AuditLogRepository::new(db_pools.system_pool)),
             hmac_secret,
@@ -157,24 +157,24 @@ impl AuditService {
     /// Generate compliance tags based on action type and entity
     fn generate_compliance_tags(&self, action_type: &str, entity_type: &str) -> Vec<String> {
         let mut tags = Vec::new();
-        
+
         match (action_type, entity_type) {
             ("payment_processed" | "payment_failed", "payment") => {
                 tags.push("PCI_DSS".to_string());
                 tags.push("PAYMENT_DATA".to_string());
-            },
+            }
             ("webhook_processed", "webhook") => {
                 tags.push("PSD2".to_string());
                 tags.push("WEBHOOK_PROCESSING".to_string());
-            },
+            }
             _ => {
                 tags.push("GENERAL".to_string());
             }
         }
-        
+
         // Add region-specific tags if available
         tags.push("GDPR_APPLICABLE".to_string());
-        
+
         tags
     }
 
@@ -185,7 +185,7 @@ impl AuditService {
         hasher.update(hash_input.as_bytes());
         format!("{:x}", hasher.finalize())
     }
-    
+
     /// Generate cryptographic signature for audit entry
     fn generate_entry_signature(&self, entry_hash: &str) -> Result<String, AppError> {
         let mut mac = HmacSha256::new_from_slice(&self.hmac_secret)
@@ -194,26 +194,26 @@ impl AuditService {
         let signature = mac.finalize().into_bytes();
         Ok(hex::encode(signature))
     }
-    
+
     /// Verify cryptographic signature of audit entry
     fn verify_entry_signature(&self, entry_hash: &str, signature: &str) -> Result<bool, AppError> {
         let mut mac = HmacSha256::new_from_slice(&self.hmac_secret)
             .map_err(|e| AppError::Internal(format!("Failed to create HMAC: {}", e)))?;
         mac.update(entry_hash.as_bytes());
-        
+
         let expected_signature = hex::decode(signature)
             .map_err(|e| AppError::Internal(format!("Failed to decode signature: {}", e)))?;
-            
+
         mac.verify_slice(&expected_signature)
             .map(|_| true)
             .or_else(|_| Ok(false))
     }
-    
+
     /// Get the last audit entry hash for chain validation
     async fn get_last_entry_hash(&self) -> Result<Option<String>, AppError> {
         self.audit_log_repository.get_last_entry_hash().await
     }
-    
+
     /// Create entry data string for consistent hashing
     fn create_entry_data(&self, request: &CreateAuditLogRequest) -> String {
         format!(
@@ -224,8 +224,16 @@ impl AuditService {
             request.entity_id.as_deref().unwrap_or(""),
             request.performed_by,
             request.status.as_deref().unwrap_or("completed"),
-            request.old_values.as_ref().map(|v| v.to_string()).unwrap_or_default(),
-            request.new_values.as_ref().map(|v| v.to_string()).unwrap_or_default(),
+            request
+                .old_values
+                .as_ref()
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
+            request
+                .new_values
+                .as_ref()
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
             Utc::now().to_rfc3339()
         )
     }
@@ -236,14 +244,18 @@ impl AuditService {
         context: &AuditContext,
         event: AuditEvent,
     ) -> Result<AuditLog, AppError> {
-        debug!("Logging audit event: {} for entity: {}", event.action_type, event.entity_type);
+        debug!(
+            "Logging audit event: {} for entity: {}",
+            event.action_type, event.entity_type
+        );
 
         // Generate compliance tags
         let compliance_tags = self.generate_compliance_tags(&event.action_type, &event.entity_type);
-        
+
         // Add compliance tags to metadata
         let mut enhanced_metadata = event.metadata.unwrap_or_else(|| serde_json::json!({}));
-        enhanced_metadata["compliance_tags"] = serde_json::to_value(&compliance_tags).unwrap_or_default();
+        enhanced_metadata["compliance_tags"] =
+            serde_json::to_value(&compliance_tags).unwrap_or_default();
         enhanced_metadata["audit_timestamp"] = serde_json::Value::String(Utc::now().to_rfc3339());
 
         let mut request = CreateAuditLogRequest {
@@ -269,21 +281,28 @@ impl AuditService {
         // SECURITY: Implement hash chaining for tamper-proof audit trail
         let previous_hash = self.get_last_entry_hash().await?;
         let entry_data = self.create_entry_data(&request);
-        let entry_hash = self.calculate_entry_hash(previous_hash.as_deref(), &entry_data).await;
+        let entry_hash = self
+            .calculate_entry_hash(previous_hash.as_deref(), &entry_data)
+            .await;
         let signature = self.generate_entry_signature(&entry_hash)?;
-        
+
         // Update request with security fields
         request.previous_hash = previous_hash;
         request.entry_hash = entry_hash.clone();
         request.signature = signature;
 
         let audit_log = self.audit_log_repository.create_secure(request).await?;
-        
-        debug!("Audit log created with hash chain: {} -> {}", 
-               audit_log.previous_hash.as_deref().unwrap_or("genesis"), 
-               audit_log.entry_hash);
-        
-        info!("✅ Secure audit event logged with tamper-proof features: {}", audit_log.id);
+
+        debug!(
+            "Audit log created with hash chain: {} -> {}",
+            audit_log.previous_hash.as_deref().unwrap_or("genesis"),
+            audit_log.entry_hash
+        );
+
+        info!(
+            "✅ Secure audit event logged with tamper-proof features: {}",
+            audit_log.id
+        );
         Ok(audit_log)
     }
 
@@ -294,14 +313,18 @@ impl AuditService {
         event: AuditEvent,
         tx: &mut sqlx::Transaction<'a, sqlx::Postgres>,
     ) -> Result<AuditLog, AppError> {
-        debug!("Logging audit event with transaction: {} for entity: {}", event.action_type, event.entity_type);
+        debug!(
+            "Logging audit event with transaction: {} for entity: {}",
+            event.action_type, event.entity_type
+        );
 
         // Generate compliance tags
         let compliance_tags = self.generate_compliance_tags(&event.action_type, &event.entity_type);
-        
+
         // Add compliance tags to metadata
         let mut enhanced_metadata = event.metadata.unwrap_or_else(|| serde_json::json!({}));
-        enhanced_metadata["compliance_tags"] = serde_json::to_value(&compliance_tags).unwrap_or_default();
+        enhanced_metadata["compliance_tags"] =
+            serde_json::to_value(&compliance_tags).unwrap_or_default();
         enhanced_metadata["audit_timestamp"] = serde_json::Value::String(Utc::now().to_rfc3339());
 
         let mut request = CreateAuditLogRequest {
@@ -325,23 +348,36 @@ impl AuditService {
         };
 
         // SECURITY: Implement hash chaining for tamper-proof audit trail
-        let previous_hash = self.audit_log_repository.get_last_entry_hash_with_tx(tx).await?;
+        let previous_hash = self
+            .audit_log_repository
+            .get_last_entry_hash_with_tx(tx)
+            .await?;
         let entry_data = self.create_entry_data(&request);
-        let entry_hash = self.calculate_entry_hash(previous_hash.as_deref(), &entry_data).await;
+        let entry_hash = self
+            .calculate_entry_hash(previous_hash.as_deref(), &entry_data)
+            .await;
         let signature = self.generate_entry_signature(&entry_hash)?;
-        
+
         // Update request with security fields
         request.previous_hash = previous_hash;
         request.entry_hash = entry_hash.clone();
         request.signature = signature;
 
-        let audit_log = self.audit_log_repository.create_secure_with_executor(request, tx).await?;
-        
-        debug!("Audit log created with hash chain in transaction: {} -> {}", 
-               audit_log.previous_hash.as_deref().unwrap_or("genesis"), 
-               audit_log.entry_hash);
-        
-        info!("✅ Secure audit event logged with transaction and tamper-proof features: {}", audit_log.id);
+        let audit_log = self
+            .audit_log_repository
+            .create_secure_with_executor(request, tx)
+            .await?;
+
+        debug!(
+            "Audit log created with hash chain in transaction: {} -> {}",
+            audit_log.previous_hash.as_deref().unwrap_or("genesis"),
+            audit_log.entry_hash
+        );
+
+        info!(
+            "✅ Secure audit event logged with transaction and tamper-proof features: {}",
+            audit_log.id
+        );
         Ok(audit_log)
     }
 
@@ -352,7 +388,9 @@ impl AuditService {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<AuditLog>, AppError> {
-        self.audit_log_repository.get_by_user_id(user_id, limit, offset).await
+        self.audit_log_repository
+            .get_by_user_id(user_id, limit, offset)
+            .await
     }
 
     /// Get audit logs for a specific entity
@@ -363,7 +401,9 @@ impl AuditService {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<AuditLog>, AppError> {
-        self.audit_log_repository.get_by_entity(entity_type, entity_id, limit, offset).await
+        self.audit_log_repository
+            .get_by_entity(entity_type, entity_id, limit, offset)
+            .await
     }
 
     /// Get filtered audit logs
@@ -373,7 +413,9 @@ impl AuditService {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<AuditLog>, AppError> {
-        self.audit_log_repository.get_filtered(filter, limit, offset).await
+        self.audit_log_repository
+            .get_filtered(filter, limit, offset)
+            .await
     }
 
     /// Count audit logs for a user
@@ -381,16 +423,21 @@ impl AuditService {
         self.audit_log_repository.count_by_user_id(user_id).await
     }
 
-
     /// Clean up old audit logs (for retention policies)
     pub async fn cleanup_old_audit_logs(&self, retention_days: i64) -> Result<u64, AppError> {
         let cutoff_date = Utc::now() - chrono::Duration::days(retention_days);
-        let deleted_count = self.audit_log_repository.delete_older_than(cutoff_date).await?;
-        
+        let deleted_count = self
+            .audit_log_repository
+            .delete_older_than(cutoff_date)
+            .await?;
+
         if deleted_count > 0 {
-            info!("Cleaned up {} old audit logs older than {} days", deleted_count, retention_days);
+            info!(
+                "Cleaned up {} old audit logs older than {} days",
+                deleted_count, retention_days
+            );
         }
-        
+
         Ok(deleted_count)
     }
 
@@ -417,7 +464,11 @@ impl AuditService {
         let event = AuditEvent::new("security_threat_detected", "security")
             .with_metadata(metadata)
             .with_performed_by("security_system")
-            .with_status(if action_taken.is_some() { "mitigated" } else { "detected" });
+            .with_status(if action_taken.is_some() {
+                "mitigated"
+            } else {
+                "detected"
+            });
 
         self.log_event(context, event).await
     }
@@ -441,26 +492,36 @@ impl AuditService {
             date_to: Some(end_date),
         };
 
-        let audit_logs = self.audit_log_repository.get_filtered(filter, limit, 0).await?;
-        
+        let audit_logs = self
+            .audit_log_repository
+            .get_filtered(filter, limit, 0)
+            .await?;
+
         // Filter logs by compliance tags
-        let relevant_logs: Vec<_> = audit_logs.into_iter()
+        let relevant_logs: Vec<_> = audit_logs
+            .into_iter()
             .filter(|log| {
-                log.metadata.as_ref()
+                log.metadata
+                    .as_ref()
                     .and_then(|m| m.get("compliance_tags"))
                     .and_then(|tags| tags.as_array())
-                    .map(|tags| tags.iter().any(|tag| 
-                        tag.as_str().map_or(false, |s| s.contains(compliance_standard))
-                    ))
+                    .map(|tags| {
+                        tags.iter().any(|tag| {
+                            tag.as_str()
+                                .map_or(false, |s| s.contains(compliance_standard))
+                        })
+                    })
                     .unwrap_or(false)
             })
             .collect();
 
         let total_events = relevant_logs.len();
-        let success_events = relevant_logs.iter()
+        let success_events = relevant_logs
+            .iter()
             .filter(|log| log.status == "completed")
             .count();
-        let failed_events = relevant_logs.iter()
+        let failed_events = relevant_logs
+            .iter()
             .filter(|log| log.status == "failed")
             .count();
 
@@ -474,10 +535,10 @@ impl AuditService {
                 "total_events": total_events,
                 "success_events": success_events,
                 "failed_events": failed_events,
-                "success_rate": if total_events > 0 { 
-                    success_events as f64 / total_events as f64 
-                } else { 
-                    0.0 
+                "success_rate": if total_events > 0 {
+                    success_events as f64 / total_events as f64
+                } else {
+                    0.0
                 }
             },
             "event_breakdown": self.count_events_by_type(&relevant_logs),
@@ -499,16 +560,17 @@ impl AuditService {
     /// Verify audit log chain integrity and cryptographic signatures
     pub async fn verify_audit_integrity(&self, audit_log_id: &Uuid) -> Result<bool, AppError> {
         let audit_log = self.audit_log_repository.get_by_id(audit_log_id).await?;
-        
+
         match audit_log {
             Some(log) => {
                 // Verify cryptographic signature
-                let signature_valid = self.verify_entry_signature(&log.entry_hash, &log.signature)?;
+                let signature_valid =
+                    self.verify_entry_signature(&log.entry_hash, &log.signature)?;
                 if !signature_valid {
                     warn!("Audit log {} has invalid signature", audit_log_id);
                     return Ok(false);
                 }
-                
+
                 // Verify hash chain integrity
                 let entry_data = format!(
                     "{}|{}|{}|{}|{}|{}|{}|{}|{}",
@@ -518,22 +580,27 @@ impl AuditService {
                     log.entity_id.as_deref().unwrap_or(""),
                     log.performed_by,
                     log.status,
-                    log.old_values.as_ref().map(|v| v.to_string()).unwrap_or_default(),
-                    log.new_values.as_ref().map(|v| v.to_string()).unwrap_or_default(),
+                    log.old_values
+                        .as_ref()
+                        .map(|v| v.to_string())
+                        .unwrap_or_default(),
+                    log.new_values
+                        .as_ref()
+                        .map(|v| v.to_string())
+                        .unwrap_or_default(),
                     log.created_at.to_rfc3339()
                 );
-                
-                let calculated_hash = self.calculate_entry_hash(
-                    log.previous_hash.as_deref(), 
-                    &entry_data
-                ).await;
-                
+
+                let calculated_hash = self
+                    .calculate_entry_hash(log.previous_hash.as_deref(), &entry_data)
+                    .await;
+
                 let hash_valid = calculated_hash == log.entry_hash;
                 if !hash_valid {
                     warn!("Audit log {} has invalid hash chain", audit_log_id);
                     return Ok(false);
                 }
-                
+
                 debug!("Audit log {} integrity verified successfully", audit_log_id);
                 Ok(true)
             }
@@ -543,38 +610,45 @@ impl AuditService {
             }
         }
     }
-    
+
     /// Verify entire audit chain integrity from genesis to latest entry
     pub async fn verify_full_audit_chain(&self, limit: Option<i64>) -> Result<bool, AppError> {
-        let audit_logs = self.audit_log_repository.get_all_ordered_by_creation(limit.unwrap_or(1000)).await?;
-        
+        let audit_logs = self
+            .audit_log_repository
+            .get_all_ordered_by_creation(limit.unwrap_or(1000))
+            .await?;
+
         if audit_logs.is_empty() {
             return Ok(true); // Empty chain is valid
         }
-        
+
         let mut previous_hash: Option<String> = None;
-        
+
         for log in &audit_logs {
             // Check if previous_hash matches what we expect
             if log.previous_hash != previous_hash {
-                warn!("Hash chain broken at log {}: expected previous_hash {:?}, found {:?}", 
-                      log.id, previous_hash, log.previous_hash);
+                warn!(
+                    "Hash chain broken at log {}: expected previous_hash {:?}, found {:?}",
+                    log.id, previous_hash, log.previous_hash
+                );
                 return Ok(false);
             }
-            
+
             // Verify this entry's integrity
             if !self.verify_audit_integrity(&log.id).await? {
                 return Ok(false);
             }
-            
+
             // Update previous_hash for next iteration
             previous_hash = Some(log.entry_hash.clone());
         }
-        
-        info!("Full audit chain integrity verified for {} entries", audit_logs.len());
+
+        info!(
+            "Full audit chain integrity verified for {} entries",
+            audit_logs.len()
+        );
         Ok(true)
     }
-    
 
     /// Log payment processing
     pub async fn log_payment_processed(
@@ -686,9 +760,15 @@ impl AuditService {
 
         let event = AuditEvent::new("spending_limit_updated", "spending_limit")
             .with_entity_id(&user_id.to_string())
-            .with_old_values(old_limit.map(|l| serde_json::json!({
-                "limit": l.to_string()
-            })).unwrap_or(serde_json::Value::Null))
+            .with_old_values(
+                old_limit
+                    .map(|l| {
+                        serde_json::json!({
+                            "limit": l.to_string()
+                        })
+                    })
+                    .unwrap_or(serde_json::Value::Null),
+            )
             .with_new_values(serde_json::json!({
                 "limit": new_limit.to_string()
             }))

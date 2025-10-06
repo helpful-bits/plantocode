@@ -42,6 +42,8 @@ export const FileBrowser = () => {
     canRedo,
     selectFiltered,
     deselectFiltered,
+    excludeFiltered,
+    unexcludeFiltered,
   } = useFileSelection(projectDirectory);
   
   const {
@@ -131,6 +133,30 @@ export const FileBrowser = () => {
               Deselect
             </Button>
           </div>
+
+          {/* Exclude/Unexclude All */}
+          <div className="flex items-center gap-1 ml-2 pl-2 border-l border-border/60">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={excludeFiltered}
+              disabled={files.length === 0}
+              title="Exclude all filtered/visible files"
+            >
+              <CheckSquare className="h-4 w-4 mr-1 text-destructive" />
+              Exclude
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={unexcludeFiltered}
+              disabled={files.filter(f => f.excluded).length === 0}
+              title="Unexclude all filtered/visible files"
+            >
+              <Square className="h-4 w-4 mr-1" />
+              Unexclude
+            </Button>
+          </div>
           
           {/* Undo/Redo buttons */}
           <div className="flex items-center gap-1 ml-2 pl-2 border-l border-border/60">
@@ -177,7 +203,7 @@ export const FileBrowser = () => {
           variant={findingFilesError ? "destructive" : "default"}
           size="sm"
           onClick={triggerFind}
-          disabled={!currentSession?.taskDescription?.trim() || findingFiles}
+          disabled={!currentSession?.taskDescription?.trim()}
           className={`flex-1 ${
             findingFilesError
               ? "bg-destructive/90 hover:bg-destructive border-destructive"

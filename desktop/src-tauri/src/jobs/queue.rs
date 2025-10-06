@@ -262,7 +262,9 @@ impl JobQueueProcessor {
         while let Some(msg) = self.rx.recv().await {
             // Periodically check for jobs requiring attention
             let now = std::time::SystemTime::now();
-            if now.duration_since(last_attention_job_check).unwrap_or_default()
+            if now
+                .duration_since(last_attention_job_check)
+                .unwrap_or_default()
                 >= attention_job_check_interval
             {
                 self.check_for_jobs_requiring_attention();

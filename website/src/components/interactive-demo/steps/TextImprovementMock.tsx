@@ -315,8 +315,8 @@ export function TextImprovementMock({ isInView }: TextImprovementMockProps) {
                      (enhancementState === 'completed' || enhancementState === 'wait') ? '72' : '72'}
                   </span>
                 </span>
-                <span className="text-[9px] text-muted-foreground truncate max-w-full" title="anthropic/claude-sonnet-4-20250514">
-                  anthropic/claude-sonnet-4-20250514
+                <span className="text-[9px] text-muted-foreground truncate max-w-full" title="anthropic/claude-sonnet-4-5-20250929">
+                  anthropic/claude-sonnet-4-5-20250929
                 </span>
               </div>
               <span className="text-[9px] text-muted-foreground flex-shrink-0 ml-1 self-end">

@@ -1,5 +1,6 @@
 // Re-export all command modules
 pub mod app_commands;
+pub mod audio_commands;
 pub mod auth0_commands;
 pub mod billing_commands;
 pub mod config_commands;
@@ -35,6 +36,7 @@ pub mod screen_recording_commands {
         Err("Screen recording is not supported on mobile".to_string())
     }
 }
+pub mod image_commands;
 pub mod logging_commands;
 pub mod terminal_commands;
 pub mod video_analysis_commands;
@@ -56,6 +58,9 @@ pub use regex_commands::{generate_regex_command, generate_regex_patterns_command
 
 // Re-exports from text commands module
 pub use text_commands::{generate_simple_text_command, improve_text_command};
+
+// Re-exports from audio commands module
+pub use audio_commands::transcribe_audio_command;
 
 // Re-exports from implementation plan commands module
 pub use implementation_plan_commands::{
@@ -196,17 +201,16 @@ pub use consent_commands::{
 
 // Re-exports from terminal commands module
 pub use terminal_commands::{
-    attach_terminal_output_command, check_terminal_dependencies_command,
-    clear_terminal_log_command, delete_terminal_log_command,
-    get_terminal_health_history, get_terminal_health_status,
-    get_terminal_prerequisites_status_command, get_terminal_session_status_command,
-    get_terminal_snapshot_command, kill_terminal_session_command, list_active_terminal_sessions_command, read_terminal_log_command,
-    read_terminal_log_len_command, read_terminal_log_since_command, read_terminal_log_tail_command,
-    recover_terminal_session_command, register_terminal_health_session, resize_terminal_session_command,
-    save_pasted_image_command, send_ctrl_c_to_terminal_command, start_terminal_session_command,
-    start_terminal_session_remote_command, detach_terminal_remote_client_command,
-    touch_session_by_job_id, trigger_terminal_recovery, unregister_terminal_health_session,
+    attach_terminal_output_command, clear_terminal_log_command,
+    get_active_terminal_sessions_command, get_terminal_metadata_command,
+    get_terminal_session_status_command, graceful_exit_terminal_command,
+    kill_terminal_session_command, list_terminal_sessions_command,
+    reconnect_terminal_session_command, resize_terminal_session_command,
+    restore_terminal_sessions_command, start_terminal_session_command,
     write_terminal_input_command,
 };
+
+// Re-exports from image commands module
+pub use image_commands::save_pasted_image_command;
 
 // All command functions will return AppResult<T> directly

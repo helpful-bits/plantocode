@@ -1,41 +1,43 @@
-/// Simplified cost resolver for server-side billing.
-/// 
-/// This service provides cost calculation using server-side model pricing and serves as the
-/// single source of truth for all cost calculations in the billing system.
-/// 
-/// It directly delegates to the model's calculate_total_cost method which handles all the 
-/// complexity of provider-specific pricing models. This design intentionally ignores
-/// provider-reported costs in favor of server-authoritative pricing to ensure billing consistency.
-
-use bigdecimal::{BigDecimal, Zero};
-use tracing::{info, warn};
 use crate::clients::usage_extractor::ProviderUsage;
 use crate::db::repositories::model_repository::ModelWithProvider;
+use crate::error::AppError;
 use crate::models::model_pricing::ModelPricing;
 use crate::utils::financial_validation::normalize_cost;
-use crate::error::AppError;
+/// Simplified cost resolver for server-side billing.
+///
+/// This service provides cost calculation using server-side model pricing and serves as the
+/// single source of truth for all cost calculations in the billing system.
+///
+/// It directly delegates to the model's calculate_total_cost method which handles all the
+/// complexity of provider-specific pricing models. This design intentionally ignores
+/// provider-reported costs in favor of server-authoritative pricing to ensure billing consistency.
+use bigdecimal::{BigDecimal, Zero};
+use tracing::{info, warn};
 
 /// Simple cost resolver for server-side calculations
 pub struct CostResolver;
 
 impl CostResolver {
     /// Resolve the final cost using server-authoritative pricing
-    /// 
+    ///
     /// This method serves as the single source of truth for cost calculation in the billing system.
-    /// It directly delegates to the model's calculate_total_cost method, which handles all 
+    /// It directly delegates to the model's calculate_total_cost method, which handles all
     /// provider-specific pricing logic based on the flexible JSON pricing schema.
-    /// 
+    ///
     /// Key design principles:
     /// - Server-authoritative pricing takes precedence over provider-reported costs
     /// - Provider-reported costs are logged for auditing purposes but never used for billing
     /// - All cost calculations must flow through this centralized resolution mechanism
     /// - This ensures billing consistency and prevents cost manipulation
-    pub fn resolve(usage: ProviderUsage, model: &ModelWithProvider) -> Result<BigDecimal, AppError> {
+    pub fn resolve(
+        usage: ProviderUsage,
+        model: &ModelWithProvider,
+    ) -> Result<BigDecimal, AppError> {
         // Delegate to the model's calculate_total_cost method - this is the single source of truth
         match model.calculate_total_cost(&usage) {
             Ok(cost) => {
                 let final_cost = normalize_cost(&cost);
-                
+
                 // Log detailed cost comparison for auditing
                 if let Some(ref provider_cost) = usage.cost {
                     let diff = &final_cost - provider_cost;
@@ -44,7 +46,7 @@ impl CostResolver {
                     } else {
                         BigDecimal::from(0)
                     };
-                    
+
                     info!(
                         "Cost audit - Model: {} | Provider: ${:.6} | Calculated: ${:.6} | Diff: ${:.6} ({:.2}%) | Tokens: {} input ({} cache_write, {} cache_read), {} output",
                         usage.model_id,
@@ -68,16 +70,13 @@ impl CostResolver {
                         usage.completion_tokens
                     );
                 }
-                
+
                 Ok(final_cost)
-            },
-            Err(e) => {
-                Err(AppError::Internal(format!(
-                    "Failed to calculate cost for model {}: {}",
-                    usage.model_id,
-                    e
-                )))
             }
+            Err(e) => Err(AppError::Internal(format!(
+                "Failed to calculate cost for model {}: {}",
+                usage.model_id, e
+            ))),
         }
     }
 }
@@ -88,9 +87,9 @@ mod tests {
     use crate::clients::usage_extractor::ProviderUsage;
     use crate::db::repositories::model_repository::ModelWithProvider;
     use bigdecimal::BigDecimal;
-    use std::str::FromStr;
     use chrono::Utc;
     use serde_json::json;
+    use std::str::FromStr;
 
     // Helper function to create a test model with new JSON pricing
     fn create_test_model() -> ModelWithProvider {

@@ -96,13 +96,21 @@ pub async fn reinitialize_api_clients(app_handle: &AppHandle, server_url: String
     let transcription_client_arc: Arc<dyn TranscriptionClient> = server_proxy_client_arc.clone();
 
     // Initialize BillingClient
-    let billing_client = BillingClient::new(server_url.clone(), token_manager.clone(), app_handle.clone());
+    let billing_client = BillingClient::new(
+        server_url.clone(),
+        token_manager.clone(),
+        app_handle.clone(),
+    );
     let billing_client_arc = Arc::new(billing_client);
 
     info!("BillingClient initialized");
 
     // Initialize ConsentClient
-    let consent_client = ConsentClient::new(server_url.clone(), token_manager.clone(), app_handle.clone());
+    let consent_client = ConsentClient::new(
+        server_url.clone(),
+        token_manager.clone(),
+        app_handle.clone(),
+    );
     let consent_client_arc = Arc::new(consent_client);
 
     info!("ConsentClient initialized");
@@ -232,9 +240,114 @@ pub async fn initialize_backup_service(app_handle: &AppHandle) -> AppResult<()> 
     Ok(())
 }
 
+/// Initialize the terminal manager
+pub async fn initialize_terminal_manager(app_handle: &AppHandle) -> AppResult<()> {
+    info!("Initializing terminal manager...");
+
+    // Fix PATH environment on non-Windows platforms before creating terminal manager
+    #[cfg(not(target_os = "windows"))]
+    {
+        info!("Applying PATH environment fix for macOS/Linux");
+        match fix_path_env::fix() {
+            Ok(_) => {
+                info!("PATH environment fixed successfully");
+            }
+            Err(e) => {
+                warn!(
+                    "Failed to fix PATH environment: {}. Terminal may not find all commands.",
+                    e
+                );
+                // Continue anyway - this is not a fatal error
+            }
+        }
+    }
+
+    if app_handle
+        .try_state::<std::sync::Arc<crate::services::TerminalManager>>()
+        .is_none()
+    {
+        let pool = app_handle.state::<sqlx::SqlitePool>().inner().clone();
+        let repo = std::sync::Arc::new(crate::db_utils::TerminalRepository::new(
+            std::sync::Arc::new(pool),
+        ));
+        let mgr = std::sync::Arc::new(crate::services::TerminalManager::new(
+            app_handle.clone(),
+            repo,
+        ));
+
+        // Restore any sessions from previous app runs
+        match mgr.restore_sessions().await {
+            Ok(restored_ids) => {
+                if !restored_ids.is_empty() {
+                    info!(
+                        "Restored {} terminal sessions on startup",
+                        restored_ids.len()
+                    );
+                }
+            }
+            Err(e) => {
+                error!("Failed to restore terminal sessions: {}", e);
+            }
+        }
+
+        app_handle.manage(mgr);
+        info!("Terminal manager initialized successfully");
+    } else {
+        info!("Terminal manager already initialized");
+    }
+
+    Ok(())
+}
+
 /// Initialize the connection manager with TLS support for mobile connectivity
 /// NOTE: Currently disabled due to missing TLS module implementation
 pub async fn initialize_connection_manager(_app_handle: &AppHandle) -> AppResult<()> {
     info!("Connection manager initialization skipped - TLS module not implemented");
+    Ok(())
+}
+
+pub async fn initialize_device_link_connection(
+    app_handle: &tauri::AppHandle,
+) -> crate::error::AppResult<()> {
+    use crate::auth::token_manager::TokenManager;
+    use crate::services::device_link_client::DeviceLinkClient;
+    use std::sync::Arc;
+
+    tracing::info!("Starting DeviceLinkClient connection...");
+
+    // Get token manager and check if we have a valid token
+    let token_manager = app_handle.state::<Arc<TokenManager>>();
+    if let Some(_token) = token_manager.get().await {
+        // Get settings repository to check device settings
+        let pool = app_handle.state::<sqlx::SqlitePool>().inner().clone();
+        let settings_repo =
+            crate::db_utils::settings_repository::SettingsRepository::new(Arc::new(pool));
+        let device_settings = settings_repo.get_device_settings().await?;
+
+        if device_settings.is_discoverable && device_settings.allow_remote_access {
+            // Get or create device link client and start it
+            let server_url = std::env::var("SERVER_URL")
+                .unwrap_or_else(|_| "https://api.vibemanager.app".to_string());
+
+            let mut client = DeviceLinkClient::new(app_handle.clone(), server_url);
+
+            // Start in background task
+            let app_handle_clone = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = client.start().await {
+                    tracing::warn!(error = ?e, "Failed to start DeviceLinkClient");
+                }
+            });
+
+            tracing::info!("DeviceLinkClient started successfully");
+        } else {
+            tracing::info!(
+                "Device not discoverable or remote access disabled, skipping DeviceLinkClient"
+            );
+        }
+    } else {
+        tracing::info!("No authentication token available, skipping DeviceLinkClient");
+    }
+
     Ok(())
 }

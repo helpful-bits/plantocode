@@ -10,6 +10,7 @@ interface TrackingEvent {
 }
 
 // Server-side Plausible analytics tracking (cookie-free, GDPR compliant)
+// Note: X Pixel tracking is handled client-side via XPixel component
 export async function POST(req: NextRequest) {
   try {
     // Extract headers for proper analytics attribution
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest) {
     // Fire and forget - don't wait for response
     plausibleFetch.catch(() => {});
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
       message: 'Event tracked with Plausible Analytics (cookie-free)'
     });
