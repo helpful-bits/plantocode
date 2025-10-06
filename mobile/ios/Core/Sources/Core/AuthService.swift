@@ -4,7 +4,11 @@ import Combine
 import AuthenticationServices
 import CryptoKit
 #if os(iOS)
+#if canImport(UIKit)
+#if canImport(UIKit)
 import UIKit
+#endif
+#endif
 #endif
 
 private struct LoginAttempt {
@@ -20,6 +24,9 @@ public final class AuthService: NSObject, ObservableObject {
   @Published public private(set) var isAuthenticated: Bool = false
   @Published public private(set) var currentUser: User? = nil
   @Published public private(set) var authError: String? = nil
+  @Published public private(set) var tokenExpiresAt: Date?
+  private var refreshTimer: Timer?
+  private let lastRefreshKey = "vm_last_refresh_at"
   private var loginAttempts: [String: LoginAttempt] = [:]
   private var authSession: ASWebAuthenticationSession?
 
@@ -33,8 +40,21 @@ public final class AuthService: NSObject, ObservableObject {
 
   // Check if we have a valid stored token
   private func checkStoredToken() async {
+    defer {
+      AppState.shared.markAuthBootstrapCompleted()
+    }
+
     do {
       if let token = try keychain.get("app_jwt") {
+        // Load persisted expiry
+        if let expStr = try? keychain.get("app_jwt_exp"),
+           let expDate = ISO8601DateFormatter().date(from: expStr) {
+          await MainActor.run {
+            self.tokenExpiresAt = expDate
+            self.scheduleRefreshTimer()
+          }
+        }
+
         // Validate token by fetching user info
         if let user = await fetchUserInfo(token: token) {
           await MainActor.run {
@@ -56,6 +76,17 @@ public final class AuthService: NSObject, ObservableObject {
     }
   }
 
+  private func scheduleRefreshTimer(threshold: TimeInterval = 300) {
+    refreshTimer?.invalidate()
+    guard let exp = tokenExpiresAt else { return }
+    let fireIn = max(exp.timeIntervalSinceNow - threshold, 5)
+    refreshTimer = Timer.scheduledTimer(withTimeInterval: fireIn, repeats: false) { [weak self] _ in
+      Task {
+        try? await self?.refreshAppJWTAuth0()
+      }
+    }
+  }
+
   // Start authentication flow using custom backend with PKCE
   public func login(providerHint: String? = nil) async throws {
     await MainActor.run {
@@ -68,7 +99,8 @@ public final class AuthService: NSObject, ObservableObject {
     let csrfToken = generateRandomToken()
 
     // Build auth URL with parameters matching desktop flow exactly
-    var components = URLComponents(string: "\(Config.serverURL)/auth/auth0/initiate-login")!
+    // Always use production server for authentication
+    var components = URLComponents(string: "\(Config.authServerURL)/auth/auth0/initiate-login")!
     var queryItems = [
       URLQueryItem(name: "pid", value: pollingId),
       URLQueryItem(name: "csrf_tauri", value: csrfToken),
@@ -146,7 +178,8 @@ public final class AuthService: NSObject, ObservableObject {
 
       do {
         // Check auth status using APIClient
-        let (data, httpResponse) = try await ServerAPIClient.shared.requestRaw(
+        // Use auth server for polling authentication status
+        let (data, httpResponse) = try await ServerAPIClient.auth.requestRaw(
           path: "auth0/poll-status?pid=\(pollingId)",
           method: .GET,
           body: Optional<String>.none,
@@ -267,7 +300,8 @@ public final class AuthService: NSObject, ObservableObject {
         deviceId: deviceId
       )
 
-      let authDataResponse: AuthDataResponse = try await ServerAPIClient.shared.request(
+      // Use auth server for finalizing login
+      let authDataResponse: AuthDataResponse = try await ServerAPIClient.auth.request(
         path: "auth0/finalize-login",
         method: .POST,
         body: finalizeRequest as (any Encodable),
@@ -278,12 +312,29 @@ public final class AuthService: NSObject, ObservableObject {
       // Store token in keychain
       try keychain.set(authDataResponse.token, key: "app_jwt")
 
+      // Calculate and store token expiry
+      let computedExpiry = Date().addingTimeInterval(24 * 3600)
+      try? keychain.set(ISO8601DateFormatter().string(from: computedExpiry), key: "app_jwt_exp")
+
       // Convert FrontendUser to User and update state
       let user = User(from: authDataResponse.user)
       await MainActor.run {
         self.authError = nil
         self.isAuthenticated = true
         self.currentUser = user
+        self.tokenExpiresAt = computedExpiry
+        self.scheduleRefreshTimer()
+        NotificationCenter.default.post(name: NSNotification.Name("auth-token-refreshed"), object: nil)
+      }
+
+      // Register push token after successful login
+      Task { await PushNotificationManager.shared.registerPushTokenIfAvailable() }
+
+      // Fire-and-forget device registration
+      Task { [weak self] in
+        guard let self = self else { return }
+        let deviceId = DeviceManager.shared.getOrCreateDeviceID()
+        try? await ServerAPIClient.shared.registerDevice(deviceId: deviceId)
       }
 
     } catch {
@@ -301,11 +352,13 @@ public final class AuthService: NSObject, ObservableObject {
   private func fetchUserInfo(token: String) async -> User? {
     do {
       // Create custom request with timeout for userinfo endpoint
+      // Use selected region server for user info
       var components = URLComponents(string: "\(Config.serverURL)/api/auth/userinfo")!
       var request = URLRequest(url: components.url!)
       request.httpMethod = "GET"
       request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-      request.setValue(DeviceManager.shared.getOrCreateDeviceID(), forHTTPHeaderField: "X-Client-ID") // Add X-Client-ID header
+      request.setValue(DeviceManager.shared.getOrCreateDeviceID(), forHTTPHeaderField: "X-Device-ID")
+      request.setValue(DeviceManager.shared.getOrCreateDeviceID(), forHTTPHeaderField: "X-Token-Binding")
       request.timeoutInterval = 10.0 // 10 second timeout
 
       let (data, response) = try await URLSession.shared.data(for: request)
@@ -349,13 +402,22 @@ public final class AuthService: NSObject, ObservableObject {
         method: .POST,
         body: Optional<String>.none,
         token: token,
-        includeDeviceId: true  // Include X-Client-ID header for token binding
+        includeDeviceId: true  // Include device-binding headers
       )
 
       // Update stored token
       try keychain.set(authDataResponse.token, key: "app_jwt")
+
+      // Parse or extract expiry from response (if available) or calculate from current time + 24h
+      let newExpiry = Date().addingTimeInterval(24 * 3600)
+      try? keychain.set(ISO8601DateFormatter().string(from: newExpiry), key: "app_jwt_exp")
+
       await MainActor.run {
         self.authError = nil
+        self.tokenExpiresAt = newExpiry
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: self.lastRefreshKey)
+        self.scheduleRefreshTimer()
+        NotificationCenter.default.post(name: NSNotification.Name("auth-token-refreshed"), object: nil)
       }
     } catch let apiError as APIError {
       switch apiError {
@@ -365,6 +427,9 @@ public final class AuthService: NSObject, ObservableObject {
           self.authError = "Session expired. Please sign in again."
           self.isAuthenticated = false
           self.currentUser = nil
+          self.refreshTimer?.invalidate()
+          self.refreshTimer = nil
+          NotificationCenter.default.post(name: NSNotification.Name("auth-logged-out"), object: nil)
         }
       default:
         await MainActor.run {
@@ -376,6 +441,13 @@ public final class AuthService: NSObject, ObservableObject {
   }
 
   public func logout() async {
+    // Update UI state on MainActor and post notification before clearing
+    await MainActor.run {
+      NotificationCenter.default.post(name: NSNotification.Name("auth-logged-out"), object: nil)
+      self.refreshTimer?.invalidate()
+      self.refreshTimer = nil
+    }
+
     // Retrieve token from keychain
     if let token = try? keychain.get("app_jwt") {
       // Call server-side logout
@@ -385,7 +457,7 @@ public final class AuthService: NSObject, ObservableObject {
           method: .POST,
           body: Optional<String>.none,
           token: token,
-          includeDeviceId: true  // Include X-Client-ID header for token binding
+          includeDeviceId: true  // Include device-binding headers
         )
       } catch {
         // Ignore response - proceed with local logout

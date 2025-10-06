@@ -1,7 +1,7 @@
-use uuid::Uuid;
-use sqlx::{PgPool, query, query_as};
-use chrono::{DateTime, Utc};
 use crate::error::AppError;
+use chrono::{DateTime, Utc};
+use sqlx::{PgPool, query, query_as};
+use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub struct RevokedToken {
@@ -21,10 +21,15 @@ impl RevokedTokenRepository {
     }
 
     /// Revoke a token by its JTI
-    pub async fn revoke(&self, jti: &str, user_id: &Uuid, expires_at: DateTime<Utc>) -> Result<(), AppError> {
+    pub async fn revoke(
+        &self,
+        jti: &str,
+        user_id: &Uuid,
+        expires_at: DateTime<Utc>,
+    ) -> Result<(), AppError> {
         let jti_uuid = Uuid::parse_str(jti)
             .map_err(|_| AppError::InvalidArgument("Invalid JTI format".to_string()))?;
-        
+
         query!(
             r#"
             INSERT INTO revoked_tokens (jti, user_id, revoked_at, expires_at)
@@ -46,7 +51,7 @@ impl RevokedTokenRepository {
     pub async fn is_revoked(&self, jti: &str) -> Result<bool, AppError> {
         let jti_uuid = Uuid::parse_str(jti)
             .map_err(|_| AppError::InvalidArgument("Invalid JTI format".to_string()))?;
-        
+
         let result = query!(
             r#"
             SELECT EXISTS(
@@ -79,7 +84,10 @@ impl RevokedTokenRepository {
     }
 
     /// Get all revoked tokens for a user
-    pub async fn get_user_revoked_tokens(&self, user_id: &Uuid) -> Result<Vec<RevokedToken>, AppError> {
+    pub async fn get_user_revoked_tokens(
+        &self,
+        user_id: &Uuid,
+    ) -> Result<Vec<RevokedToken>, AppError> {
         let tokens = query_as!(
             RevokedToken,
             r#"

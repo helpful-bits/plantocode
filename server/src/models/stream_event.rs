@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
-use crate::clients::open_router_client::OpenRouterStreamChunk;
 use super::error_details::ErrorDetails;
+use crate::clients::open_router_client::OpenRouterStreamChunk;
+use serde::{Deserialize, Serialize};
 
 /// Usage update information sent during streaming
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -27,10 +27,7 @@ pub enum StreamEvent {
     /// Stream has started
     StreamStarted { request_id: String },
     /// Stream was cancelled
-    StreamCancelled { 
-        request_id: String, 
-        reason: String 
-    },
+    StreamCancelled { request_id: String, reason: String },
     /// Detailed error information
     ErrorDetails {
         request_id: String,

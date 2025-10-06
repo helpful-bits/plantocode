@@ -1,11 +1,11 @@
-use std::sync::Arc;
-use uuid::Uuid;
-use dashmap::DashMap;
 use actix::Addr;
+use dashmap::DashMap;
 use serde_json::Value as JsonValue;
-use tracing::{info, warn, debug};
+use std::sync::Arc;
+use tracing::{debug, info, warn};
+use uuid::Uuid;
 
-use crate::services::device_link_ws::DeviceLinkWs;
+use crate::services::device_link_ws::{DeviceLinkWs, CloseConnection};
 
 /// Message types for device communication
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -29,6 +29,7 @@ pub struct DeviceConnection {
 
 /// Manages WebSocket connections for devices
 /// Uses a two-level map: user_id -> device_id -> connection
+#[derive(Clone)]
 pub struct DeviceConnectionManager {
     // user_id -> device_id -> connection
     connections: Arc<DashMap<Uuid, DashMap<String, DeviceConnection>>>,
@@ -42,6 +43,7 @@ impl DeviceConnectionManager {
     }
 
     /// Register a new device connection
+    /// If a connection already exists for this device, it will be gracefully closed
     pub fn register_connection(
         &self,
         user_id: Uuid,
@@ -49,6 +51,25 @@ impl DeviceConnectionManager {
         device_name: String,
         ws_addr: Addr<DeviceLinkWs>,
     ) {
+        // Check if there's an existing connection for this device
+        // If so, close it before registering the new one
+        {
+            let user_devices = self.connections.get(&user_id);
+            if let Some(user_devices) = user_devices {
+                if let Some(old_connection) = user_devices.get(&device_id) {
+                    warn!(
+                        user_id = %user_id,
+                        device_id = %device_id,
+                        old_connected_at = %old_connection.connected_at,
+                        "Closing existing connection for device before registering new one"
+                    );
+                    // Close the old WebSocket connection
+                    // The actor will clean itself up via stopped() hook
+                    old_connection.ws_addr.do_send(CloseConnection);
+                }
+            }
+        }
+
         let connection = DeviceConnection {
             device_id: device_id.clone(),
             user_id,
@@ -58,9 +79,14 @@ impl DeviceConnectionManager {
             last_seen: chrono::Utc::now(),
         };
 
-        // Get or create user connections map
-        let user_devices = self.connections.entry(user_id).or_insert_with(DashMap::new);
-        user_devices.insert(device_id.clone(), connection);
+        // Get or create user connections map and insert new connection
+        {
+            let user_devices = self
+                .connections
+                .entry(user_id)
+                .or_insert_with(DashMap::new);
+            user_devices.insert(device_id.clone(), connection);
+        }
 
         info!(
             user_id = %user_id,
@@ -71,7 +97,11 @@ impl DeviceConnectionManager {
 
         // Log connection statistics
         let user_count = self.connections.len();
-        let total_devices: usize = self.connections.iter().map(|entry| entry.value().len()).sum();
+        let total_devices: usize = self
+            .connections
+            .iter()
+            .map(|entry| entry.value().len())
+            .sum();
         debug!(
             user_count = user_count,
             total_devices = total_devices,
@@ -101,10 +131,21 @@ impl DeviceConnectionManager {
 
     /// Get a device connection
     pub fn get_connection(&self, user_id: &Uuid, device_id: &str) -> Option<DeviceConnection> {
-        self.connections
-            .get(user_id)?
-            .get(device_id)
-            .map(|entry| entry.value().clone())
+        let user_devices = self.connections.get(user_id)?;
+        let available_devices: Vec<String> = user_devices.iter().map(|e| e.key().clone()).collect();
+
+        let result = user_devices.get(device_id).map(|entry| entry.value().clone());
+
+        if result.is_none() {
+            warn!(
+                user_id = %user_id,
+                requested_device = %device_id,
+                available_devices = ?available_devices,
+                "Device not found in connection manager"
+            );
+        }
+
+        result
     }
 
     /// Get all devices for a user
@@ -127,19 +168,22 @@ impl DeviceConnectionManager {
         device_id: &str,
         message: DeviceMessage,
     ) -> Result<(), String> {
-        let connection = self.get_connection(user_id, device_id)
+        let connection = self
+            .get_connection(user_id, device_id)
             .ok_or_else(|| format!("Device {} not connected for user {}", device_id, user_id))?;
 
         // Send message via WebSocket actor
-        use actix::prelude::*;
         use crate::services::device_link_ws::RelayMessage;
+        use actix::prelude::*;
 
         let relay_msg = RelayMessage {
             message: serde_json::to_string(&message)
                 .map_err(|e| format!("Failed to serialize message: {}", e))?,
         };
 
-        connection.ws_addr.try_send(relay_msg)
+        connection
+            .ws_addr
+            .try_send(relay_msg)
             .map_err(|e| format!("Failed to send message to device: {}", e))?;
 
         debug!(
@@ -168,7 +212,10 @@ impl DeviceConnectionManager {
         let total_devices = devices.len();
         let mut success_count = 0;
         for device in devices {
-            match self.send_to_device(user_id, &device.device_id, message.clone()).await {
+            match self
+                .send_to_device(user_id, &device.device_id, message.clone())
+                .await
+            {
                 Ok(()) => success_count += 1,
                 Err(e) => {
                     warn!(
@@ -195,7 +242,11 @@ impl DeviceConnectionManager {
     /// Get connection statistics
     pub fn get_stats(&self) -> ConnectionStats {
         let user_count = self.connections.len();
-        let total_devices: usize = self.connections.iter().map(|entry| entry.value().len()).sum();
+        let total_devices: usize = self
+            .connections
+            .iter()
+            .map(|entry| entry.value().len())
+            .sum();
 
         let mut device_counts_per_user = Vec::new();
         for entry in self.connections.iter() {
@@ -282,19 +333,29 @@ impl DeviceConnectionManager {
     }
 
     /// Send raw JSON string to a specific device
-    pub fn send_raw_to_device(&self, user_id: &Uuid, device_id: &str, raw_json: &str) -> Result<(), String> {
-        let connection = self.get_connection(user_id, device_id)
-            .ok_or_else(|| format!("Device {} not connected for user {}", device_id, user_id))?;
+    pub fn send_raw_to_device(
+        &self,
+        user_id: &Uuid,
+        device_id: &str,
+        raw_json: &str,
+    ) -> Result<(), String> {
+        let connection = self
+            .get_connection(user_id, device_id)
+            .ok_or_else(|| {
+                format!("Device {} not connected for user {}", device_id, user_id)
+            })?;
 
         // Send raw JSON as text frame directly
-        use actix::prelude::*;
         use crate::services::device_link_ws::RelayMessage;
+        use actix::prelude::*;
 
         let relay_msg = RelayMessage {
             message: raw_json.to_string(),
         };
 
-        connection.ws_addr.try_send(relay_msg)
+        connection
+            .ws_addr
+            .try_send(relay_msg)
             .map_err(|e| format!("Failed to send raw message to device: {}", e))?;
 
         debug!(

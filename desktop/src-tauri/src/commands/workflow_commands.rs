@@ -15,7 +15,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager, State, command};
 
-
 // New response types for workflow commands
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -851,4 +850,3 @@ pub async fn get_file_finder_roots_for_session(
 
     Ok(None)
 }
-

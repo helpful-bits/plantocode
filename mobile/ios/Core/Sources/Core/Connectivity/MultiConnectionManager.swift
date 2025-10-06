@@ -1,68 +1,154 @@
 import Foundation
 import Combine
+import Security
 
 @MainActor
-public final class MultiConnectionManager {
+public final class MultiConnectionManager: ObservableObject {
     public static let shared = MultiConnectionManager()
     private var storage: [UUID: ServerRelayClient] = [:]
     public private(set) var activeDeviceId: UUID?
+    @Published public private(set) var connectionStates: [UUID: ConnectionState] = [:]
+    private let connectedDevicesKey = "vm_connected_devices"
+    private let activeDeviceKey = "ActiveDesktopDeviceId"
+    private var cancellables = Set<AnyCancellable>()
+    private var connectingTasks: [UUID: Task<Result<UUID, Error>, Never>] = [:]
 
-    private init() {}
+    private init() {
+        loadPersistedActiveDeviceId()
+
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("auth-token-refreshed"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self, let activeId = self.activeDeviceId else { return }
+            if self.connectionStates[activeId]?.isConnected == false {
+                Task { _ = await self.addConnection(for: activeId) }
+            }
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("auth-logged-out"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.removeAllConnections()
+        }
+    }
 
     public func addConnection(to device: RegisteredDevice, token: String?) async -> Result<UUID, Error> {
         // Delegate to addConnection(for:) and set activeDeviceId
-        let result = await addConnection(for: device.id)
+        let result = await addConnection(for: device.deviceId)
         if case .success(_) = result {
-            activeDeviceId = device.id
+            setActive(device.deviceId)
         }
         return result
     }
 
     /// Add connection using server relay for a specific device
     public func addConnection(for deviceId: UUID) async -> Result<UUID, Error> {
-        do {
-            // Get JWT token from AuthService
-            let token = try await AuthService.shared.getValidAccessToken()
-            guard let authToken = token else {
-                return .failure(MultiConnectionError.authenticationRequired)
+        // Strict prerequisite validation
+        if !VibeManagerCore.shared.isInitialized {
+            await MainActor.run {
+                connectionStates[deviceId] = .failed(MultiConnectionError.invalidConfiguration)
             }
+            return .failure(MultiConnectionError.invalidConfiguration)
+        }
 
-            // Get server URL from configuration
-            guard let serverURL = getServerURL() else {
+        let token = await AuthService.shared.getValidAccessToken()
+        if token == nil {
+            await MainActor.run {
+                connectionStates[deviceId] = .failed(MultiConnectionError.authenticationRequired)
+            }
+            return .failure(MultiConnectionError.authenticationRequired)
+        }
+
+        // If already connected, return success
+        if let existingClient = storage[deviceId] {
+            print("[MultiConnectionManager] Reusing existing connection for device: \(deviceId)")
+            activeDeviceId = deviceId
+            return .success(deviceId)
+        }
+
+        // If already connecting, wait for that task
+        if let existingTask = connectingTasks[deviceId] {
+            print("[MultiConnectionManager] Connection already in progress for device: \(deviceId)")
+            return await existingTask.value
+        }
+
+        // Create new connection task
+        let task = Task<Result<UUID, Error>, Never> { [weak self] in
+            guard let self = self else {
                 return .failure(MultiConnectionError.invalidConfiguration)
             }
 
-            // Check if we already have a connection for this device, reuse if available
-            if let existingClient = storage[deviceId] {
-                // Set as active device and return success
-                activeDeviceId = deviceId
-                return .success(deviceId)
+            defer {
+                Task { @MainActor in
+                    self.connectingTasks.removeValue(forKey: deviceId)
+                }
             }
 
-            let mobileDeviceId = DeviceManager.shared.getOrCreateDeviceID()
+            do {
+                print("[MultiConnectionManager] Adding connection for device: \(deviceId)")
 
-            // Create ServerRelayClient instance
-            let relayClient = ServerRelayClient(
-                serverURL: serverURL,
-                deviceId: mobileDeviceId
-            )
+                let token = try await AuthService.shared.getValidAccessToken()
+                guard let authToken = token else {
+                    print("[MultiConnectionManager] Authentication failed: no token available")
+                    return .failure(MultiConnectionError.authenticationRequired)
+                }
 
-            // Connect to relay
-            try await relayClient.connect(jwtToken: authToken).asyncValue()
+                guard let serverURL = self.getServerURL() else {
+                    print("[MultiConnectionManager] Invalid server configuration")
+                    return .failure(MultiConnectionError.invalidConfiguration)
+                }
 
-            // Store the connection
-            storage[deviceId] = relayClient
+                let mobileDeviceId = DeviceManager.shared.getOrCreateDeviceID()
 
-            // Set as active device
-            activeDeviceId = deviceId
+                print("[MultiConnectionManager] Creating relay client to: \(serverURL.absoluteString)")
+                let pinningDelegate = CertificatePinningManager.shared.createURLSessionDelegate(endpointType: .relay)
+                let relayClient = ServerRelayClient(
+                    serverURL: serverURL,
+                    deviceId: mobileDeviceId,
+                    sessionDelegate: pinningDelegate
+                )
 
-            // TODO: Publish connection state updates via NotificationCenter or Combine
+                print("[MultiConnectionManager] Connecting to relay...")
+                try await relayClient.connect(jwtToken: authToken).asyncValue()
+                print("[MultiConnectionManager] Relay connection established")
 
-            return .success(deviceId)
+                await MainActor.run {
+                    self.storage[deviceId] = relayClient
 
-        } catch {
-            return .failure(error)
+                    relayClient.$connectionState
+                        .sink { [weak self] state in
+                            guard let self = self else { return }
+                            Task { @MainActor in
+                                self.connectionStates[deviceId] = state
+                                if case .connected(_) = state {
+                                    self.persistConnectedDevice(deviceId)
+                                }
+                            }
+                        }
+                        .store(in: &self.cancellables)
+
+                    self.setActive(deviceId)
+                }
+
+                print("[MultiConnectionManager] Connection successful for device: \(deviceId)")
+                return .success(deviceId)
+
+            } catch {
+                print("[MultiConnectionManager] Connection failed: \(error.localizedDescription)")
+                await MainActor.run {
+                    self.connectionStates[deviceId] = .failed(error)
+                }
+                // Do NOT persist on failure
+                return .failure(error)
+            }
         }
+
+        connectingTasks[deviceId] = task
+        return await task.value
     }
 
     public func removeConnection(deviceId: UUID) {
@@ -72,9 +158,23 @@ public final class MultiConnectionManager {
             storage.removeValue(forKey: deviceId)
         }
 
+        // Clear active if it was the removed device
         if activeDeviceId == deviceId {
             activeDeviceId = nil
+            UserDefaults.standard.removeObject(forKey: activeDeviceKey)
         }
+    }
+
+    public func removeAllConnections() {
+        // Disconnect all relay connections
+        for (_, relayClient) in storage {
+            relayClient.disconnect()
+        }
+        storage.removeAll()
+        connectionStates.removeAll()
+        activeDeviceId = nil
+        UserDefaults.standard.removeObject(forKey: connectedDevicesKey)
+        UserDefaults.standard.removeObject(forKey: activeDeviceKey)
     }
 
 
@@ -89,6 +189,7 @@ public final class MultiConnectionManager {
 
     public func setActive(_ deviceId: UUID?) {
         activeDeviceId = deviceId
+        persistActiveDeviceId()
     }
 
     public func allConnections() -> [UUID] {
@@ -114,6 +215,49 @@ public final class MultiConnectionManager {
             return nil
         }
         return url
+    }
+
+    // MARK: - Connection Persistence
+
+    public func restoreConnections() async {
+        // Only restore if initialized and authenticated
+        if !VibeManagerCore.shared.isInitialized || AuthService.shared.isAuthenticated == false {
+            return
+        }
+
+        let deviceIds = UserDefaults.standard.array(forKey: connectedDevicesKey) as? [String] ?? []
+        for idStr in deviceIds {
+            guard let uuid = UUID(uuidString: idStr) else { continue }
+            let result = await addConnection(for: uuid)
+            // Remove from persisted list if connection fails permanently
+            if case .failure = result {
+                var updatedIds = UserDefaults.standard.array(forKey: connectedDevicesKey) as? [String] ?? []
+                updatedIds.removeAll { $0 == idStr }
+                UserDefaults.standard.set(updatedIds, forKey: connectedDevicesKey)
+            }
+        }
+    }
+
+    private func persistActiveDeviceId() {
+        if let id = activeDeviceId {
+            UserDefaults.standard.set(id.uuidString, forKey: activeDeviceKey)
+        }
+    }
+
+    private func loadPersistedActiveDeviceId() {
+        if let str = UserDefaults.standard.string(forKey: activeDeviceKey),
+           let id = UUID(uuidString: str) {
+            self.activeDeviceId = id
+        }
+    }
+
+    private func persistConnectedDevice(_ deviceId: UUID) {
+        var deviceIds = UserDefaults.standard.array(forKey: connectedDevicesKey) as? [String] ?? []
+        let idStr = deviceId.uuidString
+        if !deviceIds.contains(idStr) {
+            deviceIds.append(idStr)
+            UserDefaults.standard.set(deviceIds, forKey: connectedDevicesKey)
+        }
     }
 }
 
@@ -166,4 +310,5 @@ extension Publisher {
         }
     }
 }
+
 

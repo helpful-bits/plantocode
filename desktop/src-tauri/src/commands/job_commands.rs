@@ -125,11 +125,12 @@ pub async fn cancel_session_jobs_command(
 #[command]
 pub async fn get_all_visible_jobs_command(
     project_directory: Option<String>,
+    session_id: Option<String>,
     app_handle: AppHandle,
 ) -> AppResult<Vec<crate::models::BackgroundJob>> {
     info!(
-        "Fetching all visible jobs for project: {:?}",
-        project_directory
+        "Fetching all visible jobs for project: {:?}, session: {:?}",
+        project_directory, session_id
     );
 
     let repo = app_handle
@@ -141,11 +142,21 @@ pub async fn get_all_visible_jobs_command(
         // Generate project hash from directory
         let project_hash = crate::utils::hash_utils::generate_project_hash(&dir);
 
-        repo.get_all_visible_jobs_for_project(&project_hash)
-            .await
-            .map_err(|e| {
-                AppError::DatabaseError(format!("Failed to get all visible jobs: {}", e))
-            })?
+        if let Some(sess_id) = session_id {
+            // Filter by both project and session
+            repo.get_all_visible_jobs_for_session(&project_hash, &sess_id)
+                .await
+                .map_err(|e| {
+                    AppError::DatabaseError(format!("Failed to get all visible jobs: {}", e))
+                })?
+        } else {
+            // Filter by project only
+            repo.get_all_visible_jobs_for_project(&project_hash)
+                .await
+                .map_err(|e| {
+                    AppError::DatabaseError(format!("Failed to get all visible jobs: {}", e))
+                })?
+        }
     } else {
         // If no project directory specified, get all jobs (backwards compatibility)
         repo.get_all_visible_jobs().await.map_err(|e| {

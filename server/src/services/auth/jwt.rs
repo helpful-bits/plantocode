@@ -4,9 +4,9 @@ use crate::security::token_binding::hash_token_binding_value;
 use chrono::{Duration, Utc};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use log::{debug, error, info, trace};
-use uuid::Uuid;
-use std::sync::OnceLock;
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
+use uuid::Uuid;
 
 // Default JWT duration in days
 pub const DEFAULT_JWT_DURATION_DAYS: i64 = 30;
@@ -33,46 +33,57 @@ static JWT_DECODING_KEY: OnceLock<DecodingKey> = OnceLock::new();
 /// This should be called once at application startup
 pub fn init_jwt_keys(jwt_secret_str: &str) -> Result<(), AppError> {
     info!("Initializing JWT keys from configuration");
-    
+
     // Use the provided JWT secret
     let jwt_secret = jwt_secret_str.as_bytes();
-    
+
     // Set the encoding key
     let encoding_key = EncodingKey::from_secret(jwt_secret);
-    JWT_ENCODING_KEY.set(encoding_key)
+    JWT_ENCODING_KEY
+        .set(encoding_key)
         .map_err(|_| AppError::Internal("JWT_ENCODING_KEY was already initialized".to_string()))?;
 
     // Set the decoding key
     let decoding_key = DecodingKey::from_secret(jwt_secret);
-    JWT_DECODING_KEY.set(decoding_key)
+    JWT_DECODING_KEY
+        .set(decoding_key)
         .map_err(|_| AppError::Internal("JWT_DECODING_KEY was already initialized".to_string()))?;
-    
+
     info!("JWT keys initialized successfully");
     Ok(())
 }
 
 /// Get the JWT encoding key
 fn get_encoding_key() -> Result<EncodingKey, AppError> {
-    JWT_ENCODING_KEY.get()
+    JWT_ENCODING_KEY
+        .get()
         .cloned() // EncodingKey is Clone
         .ok_or_else(|| AppError::Configuration("JWT encoding key not initialized.".to_string()))
 }
 
 /// Get the JWT decoding key
 fn get_decoding_key() -> Result<DecodingKey, AppError> {
-    JWT_DECODING_KEY.get()
+    JWT_DECODING_KEY
+        .get()
         .cloned() // DecodingKey is Clone
         .ok_or_else(|| AppError::Configuration("JWT decoding key not initialized.".to_string()))
 }
 
 /// Generate a JWT token for a user
-pub fn generate_token(user_id: Uuid, email: &str, token_duration_days: i64) -> Result<String, AppError> {
+pub fn generate_token(
+    user_id: Uuid,
+    email: &str,
+    token_duration_days: i64,
+) -> Result<String, AppError> {
     let duration_days = token_duration_days;
 
     // Calculate timestamps
     let iat = Utc::now();
     let exp = iat
-        .checked_add_signed(Duration::try_days(duration_days).unwrap_or_else(|| Duration::days(DEFAULT_JWT_DURATION_DAYS)))
+        .checked_add_signed(
+            Duration::try_days(duration_days)
+                .unwrap_or_else(|| Duration::days(DEFAULT_JWT_DURATION_DAYS)),
+        )
         .ok_or_else(|| AppError::Internal("Failed to calculate JWT expiration time".to_string()))?;
 
     // Create claims
@@ -83,17 +94,18 @@ pub fn generate_token(user_id: Uuid, email: &str, token_duration_days: i64) -> R
         iss: Some(JWT_ISSUER.to_string()),
         email: email.to_string(),
         role: "user".to_string(), // Default role
-        auth0_sub: None, // No auth0_sub by default
-        tbh: None, // No token binding by default
+        auth0_sub: None,          // No auth0_sub by default
+        tbh: None,                // No token binding by default
         jti: Uuid::new_v4().to_string(),
         aud: None,
-        client_id: None,
         // device_id is used for device binding (compared to request header x-device-id in middleware). tbh is kept for potential future token-binding enforcement.
         device_id: None,
-        scope: None,
+        scope: Some("read write rpc".to_string()),
         session_id: None,
         ip_binding: None,
     };
+
+    debug!("Generating token with scopes: read write rpc for user {}", user_id);
 
     // Get the JWT signing key
     let encoding_key = get_encoding_key()?;
@@ -103,45 +115,60 @@ pub fn generate_token(user_id: Uuid, email: &str, token_duration_days: i64) -> R
 
     // Encode the token
     debug!("Generating JWT token for user {} (exp: {})", user_id, exp);
-    encode(&header, &claims, &encoding_key)
-        .map_err(|e| {
-            error!("Failed to generate JWT token: {}", e);
-            AppError::Internal(format!("Token generation failed: {}", e))
-        })
+    encode(&header, &claims, &encoding_key).map_err(|e| {
+        error!("Failed to generate JWT token: {}", e);
+        AppError::Internal(format!("Token generation failed: {}", e))
+    })
 }
 
 /// Verify a JWT token and extract the claims
 pub fn verify_token(token: &str) -> Result<Claims, AppError> {
     trace!("Verifying JWT token");
-    
+
     // Get the JWT verification key
     let decoding_key = get_decoding_key()?;
-    
+
     // Use HS256 algorithm for symmetric key
     let mut validation = Validation::new(Algorithm::HS256);
     validation.set_issuer(&[JWT_ISSUER]); // Trust only our issuer
 
     // Decode and validate the token
-    let token_data = decode::<Claims>(token, &decoding_key, &validation)
-        .map_err(|err| {
-            error!("JWT validation failed: {}", err);
-            match err.kind() {
-                jsonwebtoken::errors::ErrorKind::ExpiredSignature => {
-                    AppError::Auth("Token has expired".to_string())
-                },
-                jsonwebtoken::errors::ErrorKind::InvalidToken => AppError::Auth("Invalid token format".to_string()),
-                jsonwebtoken::errors::ErrorKind::InvalidSignature => AppError::Auth("Invalid token signature".to_string()),
-                jsonwebtoken::errors::ErrorKind::InvalidIssuer => AppError::Auth("Invalid token issuer".to_string()),
-                jsonwebtoken::errors::ErrorKind::InvalidAudience => AppError::Auth("Invalid token audience".to_string()),
-                jsonwebtoken::errors::ErrorKind::InvalidSubject => AppError::Auth("Invalid token subject".to_string()),
-                jsonwebtoken::errors::ErrorKind::ImmatureSignature => AppError::Auth("Token not yet valid (immature)".to_string()),
-                jsonwebtoken::errors::ErrorKind::MissingRequiredClaim(claim) => AppError::Auth(format!("Token missing required claim: {}", claim)),
-                _ => AppError::Auth(format!("Token validation failed: {:?}", err.kind())), // Generic auth error for other cases
+    let token_data = decode::<Claims>(token, &decoding_key, &validation).map_err(|err| {
+        error!("JWT validation failed: {}", err);
+        match err.kind() {
+            jsonwebtoken::errors::ErrorKind::ExpiredSignature => {
+                AppError::Auth("Token has expired".to_string())
             }
-        })?;
-    
+            jsonwebtoken::errors::ErrorKind::InvalidToken => {
+                AppError::Auth("Invalid token format".to_string())
+            }
+            jsonwebtoken::errors::ErrorKind::InvalidSignature => {
+                AppError::Auth("Invalid token signature".to_string())
+            }
+            jsonwebtoken::errors::ErrorKind::InvalidIssuer => {
+                AppError::Auth("Invalid token issuer".to_string())
+            }
+            jsonwebtoken::errors::ErrorKind::InvalidAudience => {
+                AppError::Auth("Invalid token audience".to_string())
+            }
+            jsonwebtoken::errors::ErrorKind::InvalidSubject => {
+                AppError::Auth("Invalid token subject".to_string())
+            }
+            jsonwebtoken::errors::ErrorKind::ImmatureSignature => {
+                AppError::Auth("Token not yet valid (immature)".to_string())
+            }
+            jsonwebtoken::errors::ErrorKind::MissingRequiredClaim(claim) => {
+                AppError::Auth(format!("Token missing required claim: {}", claim))
+            }
+            _ => AppError::Auth(format!("Token validation failed: {:?}", err.kind())), // Generic auth error for other cases
+        }
+    })?;
+
     // Return the claims
-    debug!("JWT token verified successfully for user {}", token_data.claims.sub);
+    debug!(
+        "JWT token verified successfully for user {}",
+        token_data.claims.sub
+    );
     Ok(token_data.claims)
 }
 
@@ -158,7 +185,9 @@ pub fn create_token(
 
     // Calculate timestamps
     let iat_dt = Utc::now();
-    let exp_dt = iat_dt + Duration::try_days(duration_days).unwrap_or_else(|| Duration::days(DEFAULT_JWT_DURATION_DAYS));
+    let exp_dt = iat_dt
+        + Duration::try_days(duration_days)
+            .unwrap_or_else(|| Duration::days(DEFAULT_JWT_DURATION_DAYS));
 
     let iat = iat_dt.timestamp() as usize;
     let exp = exp_dt.timestamp() as usize;
@@ -176,26 +205,26 @@ pub fn create_token(
         tbh: device_id.map(hash_token_binding_value),
         jti: Uuid::new_v4().to_string(),
         aud: None,
-        client_id: None,
         // device_id is used for device binding (compared to request header x-device-id in middleware). tbh is kept for potential future token-binding enforcement.
         device_id: device_id.map(|v| v.to_string()),
-        scope: None,
+        scope: Some("read write rpc".to_string()),
         session_id: None,
         ip_binding: None,
     };
+
+    debug!("Creating token with scopes: read write rpc for user {}", user_id);
 
     // Get the JWT signing key
     let encoding_key = get_encoding_key()?;
 
     // Use HS256 algorithm for symmetric key
     let header = Header::new(Algorithm::HS256);
-    
+
     // Encode the token
-    encode(&header, &claims, &encoding_key)
-        .map_err(|e| {
-            error!("Failed to create JWT token: {}", e);
-            AppError::Internal(format!("Token creation failed: {}", e))
-        })
+    encode(&header, &claims, &encoding_key).map_err(|e| {
+        error!("Failed to create JWT token: {}", e);
+        AppError::Internal(format!("Token creation failed: {}", e))
+    })
 }
 
 pub fn create_featurebase_sso_token(
@@ -221,9 +250,8 @@ pub fn create_featurebase_sso_token(
     let encoding_key = EncodingKey::from_secret(secret.as_bytes());
     let header = Header::new(Algorithm::HS256);
 
-    encode(&header, &claims, &encoding_key)
-        .map_err(|e| {
-            error!("Failed to create Featurebase SSO token: {}", e);
-            AppError::Internal(format!("Featurebase SSO token creation failed: {}", e))
-        })
+    encode(&header, &claims, &encoding_key).map_err(|e| {
+        error!("Failed to create Featurebase SSO token: {}", e);
+        AppError::Internal(format!("Featurebase SSO token creation failed: {}", e))
+    })
 }

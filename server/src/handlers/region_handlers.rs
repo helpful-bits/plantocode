@@ -1,14 +1,12 @@
-use actix_web::{web, HttpResponse, Result};
-use crate::db::repositories::server_region_repository::ServerRegionRepository;
 use crate::db::connection::DatabasePools;
+use crate::db::repositories::server_region_repository::ServerRegionRepository;
+use actix_web::{HttpResponse, Result, web};
 use std::sync::Arc;
 
 /// GET /config/regions - Get all server regions
-pub async fn get_regions_handler(
-    db_pools: web::Data<DatabasePools>,
-) -> Result<HttpResponse> {
+pub async fn get_regions_handler(db_pools: web::Data<DatabasePools>) -> Result<HttpResponse> {
     let repository = ServerRegionRepository::new(Arc::new(db_pools.system_pool.clone()));
-    
+
     match repository.get_all().await {
         Ok(regions) => Ok(HttpResponse::Ok().json(regions)),
         Err(e) => {

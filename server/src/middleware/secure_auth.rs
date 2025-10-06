@@ -1,21 +1,21 @@
-use actix_web::{dev::ServiceRequest, Error, HttpMessage};
-use actix_web_httpauth::{
-    extractors::bearer::BearerAuth,
-    middleware::HttpAuthentication,
-};
-use log::{debug, error, warn, info};
-use std::sync::{Arc, OnceLock, atomic::{AtomicBool, Ordering}};
-use std::collections::HashSet;
-use uuid::Uuid;
+use actix_web::{Error, HttpMessage, dev::ServiceRequest};
+use actix_web_httpauth::{extractors::bearer::BearerAuth, middleware::HttpAuthentication};
 use chrono::{DateTime, Utc};
+use log::{debug, error, info, warn};
+use std::collections::HashSet;
+use std::sync::{
+    Arc, OnceLock,
+    atomic::{AtomicBool, Ordering},
+};
+use uuid::Uuid;
 
+use crate::db::repositories::RevokedTokenRepository;
+use crate::db::repositories::user_repository::UserRepository;
 use crate::error::AppError;
 use crate::models::AuthenticatedUser;
 use crate::security::rls_session_manager::RLSSessionManager;
 use crate::security::token_binding::extract_token_binding_hash_from_service_request;
 use crate::services::auth::jwt;
-use crate::db::repositories::RevokedTokenRepository;
-use crate::db::repositories::user_repository::UserRepository;
 
 static RLS_MANAGER: OnceLock<Arc<RLSSessionManager>> = OnceLock::new();
 static REVOKED_TOKEN_REPO: OnceLock<Arc<RevokedTokenRepository>> = OnceLock::new();
@@ -45,7 +45,6 @@ fn set_user_repo(repo: Arc<UserRepository>) {
 fn get_user_repo() -> Option<Arc<UserRepository>> {
     USER_REPO.get().cloned()
 }
-
 
 /// Validates token expiry with grace period
 fn validate_token_expiry(claims: &crate::models::auth_jwt_claims::Claims) -> Result<(), AppError> {
@@ -78,16 +77,13 @@ fn validate_issuer(claims: &crate::models::auth_jwt_claims::Claims) -> Result<()
             let expected_issuers = vec![
                 "https://vibe-manager.us.auth0.com/",
                 "https://api.vibe-manager.com",
-                "vibe-manager"
+                "vibe-manager",
             ];
 
             if !expected_issuers.contains(&issuer.as_str()) {
-                return Err(AppError::Auth(format!(
-                    "Invalid issuer: {}",
-                    issuer
-                )));
+                return Err(AppError::Auth(format!("Invalid issuer: {}", issuer)));
             }
-        },
+        }
         None => {
             return Err(AppError::Auth("Missing issuer claim".to_string()));
         }
@@ -101,18 +97,12 @@ fn validate_issuer(claims: &crate::models::auth_jwt_claims::Claims) -> Result<()
 fn validate_audience(claims: &crate::models::auth_jwt_claims::Claims) -> Result<(), AppError> {
     match &claims.aud {
         Some(audience) => {
-            let expected_audiences = vec![
-                "vibe-manager-api",
-                "https://api.vibe-manager.com"
-            ];
+            let expected_audiences = vec!["vibe-manager-api", "https://api.vibe-manager.com"];
 
             if !expected_audiences.contains(&audience.as_str()) {
-                return Err(AppError::Auth(format!(
-                    "Invalid audience: {}",
-                    audience
-                )));
+                return Err(AppError::Auth(format!("Invalid audience: {}", audience)));
             }
-        },
+        }
         None => {
             warn!("Missing audience claim - allowing for backward compatibility");
         }
@@ -123,15 +113,16 @@ fn validate_audience(claims: &crate::models::auth_jwt_claims::Claims) -> Result<
 }
 
 /// Validates scopes
-fn validate_scopes(claims: &crate::models::auth_jwt_claims::Claims, required_scopes: &[&str]) -> Result<(), AppError> {
+fn validate_scopes(
+    claims: &crate::models::auth_jwt_claims::Claims,
+    required_scopes: &[&str],
+) -> Result<(), AppError> {
     if required_scopes.is_empty() {
         return Ok(());
     }
 
     let token_scopes = match &claims.scope {
-        Some(scope_str) => {
-            scope_str.split_whitespace().collect::<HashSet<_>>()
-        },
+        Some(scope_str) => scope_str.split_whitespace().collect::<HashSet<_>>(),
         None => {
             return Err(AppError::Auth("Missing scope claim".to_string()));
         }
@@ -151,35 +142,54 @@ fn validate_scopes(claims: &crate::models::auth_jwt_claims::Claims, required_sco
 }
 
 /// Validates device binding and token binding
-fn validate_device_binding(req: &ServiceRequest, claims: &crate::models::auth_jwt_claims::Claims) -> Result<(), AppError> {
-    let request_id = format!("auth_{}_{}", chrono::Utc::now().timestamp_millis(), uuid::Uuid::new_v4());
+fn validate_device_binding(
+    req: &ServiceRequest,
+    claims: &crate::models::auth_jwt_claims::Claims,
+) -> Result<(), AppError> {
+    let request_id = format!(
+        "auth_{}_{}",
+        chrono::Utc::now().timestamp_millis(),
+        uuid::Uuid::new_v4()
+    );
 
     // Device binding validation
-    let device_id_header = req.headers()
+    let device_id_header = req
+        .headers()
         .get("x-device-id")
         .and_then(|h| h.to_str().ok());
 
     match (&claims.device_id, device_id_header) {
         (Some(jwt_device_id), Some(header_device_id)) => {
             if jwt_device_id != header_device_id {
-                error!("Device ID mismatch for request_id: {} - header '{}' vs JWT '{}'",
-                       request_id, header_device_id, jwt_device_id);
+                error!(
+                    "Device ID mismatch for request_id: {} - header '{}' vs JWT '{}'",
+                    request_id, header_device_id, jwt_device_id
+                );
                 return Err(AppError::Auth(format!(
                     "Device ID mismatch: header '{}' vs JWT '{}'",
                     header_device_id, jwt_device_id
                 )));
             }
-            info!("Device binding validation successful for request_id: {} device_id: {}",
-                  request_id, jwt_device_id);
-        },
+            info!(
+                "Device binding validation successful for request_id: {} device_id: {}",
+                request_id, jwt_device_id
+            );
+        }
         (Some(jwt_device_id), None) => {
-            error!("Missing X-Device-ID header for device-bound token, request_id: {} device_id: {}",
-                   request_id, jwt_device_id);
-            return Err(AppError::Auth("Missing X-Device-ID header for device-bound token".to_string()));
-        },
+            error!(
+                "Missing X-Device-ID header for device-bound token, request_id: {} device_id: {}",
+                request_id, jwt_device_id
+            );
+            return Err(AppError::Auth(
+                "Missing X-Device-ID header for device-bound token".to_string(),
+            ));
+        }
         (None, _) => {
             // No device binding required
-            debug!("No device binding required for this token, request_id: {}", request_id);
+            debug!(
+                "No device binding required for this token, request_id: {}",
+                request_id
+            );
         }
     }
 
@@ -188,32 +198,51 @@ fn validate_device_binding(req: &ServiceRequest, claims: &crate::models::auth_jw
         match extract_token_binding_hash_from_service_request(req) {
             Ok(request_token_binding_hash) => {
                 if jwt_token_binding_hash != &request_token_binding_hash {
-                    error!("Token binding hash mismatch for request_id: {} device_id: {:?} - JWT hash: '{}' vs request hash: '{}'",
-                           request_id, claims.device_id, jwt_token_binding_hash, request_token_binding_hash);
-                    return Err(AppError::Auth("Token binding validation failed".to_string()));
+                    error!(
+                        "Token binding hash mismatch for request_id: {} device_id: {:?} - JWT hash: '{}' vs request hash: '{}'",
+                        request_id,
+                        claims.device_id,
+                        jwt_token_binding_hash,
+                        request_token_binding_hash
+                    );
+                    return Err(AppError::Auth(
+                        "Token binding validation failed".to_string(),
+                    ));
                 }
-                info!("Token binding validation successful for request_id: {} device_id: {:?}",
-                      request_id, claims.device_id);
-            },
+                info!(
+                    "Token binding validation successful for request_id: {} device_id: {:?}",
+                    request_id, claims.device_id
+                );
+            }
             Err(e) => {
-                // For backward compatibility: if JWT has tbh but client doesn't send X-Token-Binding,
-                // log a warning but allow the request to proceed for now
-                warn!("Token binding header missing but JWT contains tbh - allowing for backward compatibility. request_id: {} device_id: {:?} - error: {}",
-                      request_id, claims.device_id, e);
-                // TODO: In future versions, enforce this strictly
-                // return Err(AppError::Auth("Token binding validation failed".to_string()));
+                error!(
+                    "Token binding validation failed - rejecting request. request_id: {} device_id: {:?} - error: {}",
+                    request_id, claims.device_id, e
+                );
+                return Err(AppError::Auth(
+                    "Token binding validation failed".to_string(),
+                ));
             }
         }
     } else {
-        debug!("No token binding hash in JWT claims, skipping token binding validation for request_id: {}", request_id);
+        debug!(
+            "No token binding hash in JWT claims, skipping token binding validation for request_id: {}",
+            request_id
+        );
     }
 
-    debug!("Device and token binding validation successful for request_id: {}", request_id);
+    debug!(
+        "Device and token binding validation successful for request_id: {}",
+        request_id
+    );
     Ok(())
 }
 
 /// Validates IP binding
-fn validate_ip_binding(req: &ServiceRequest, claims: &crate::models::auth_jwt_claims::Claims) -> Result<(), AppError> {
+fn validate_ip_binding(
+    req: &ServiceRequest,
+    claims: &crate::models::auth_jwt_claims::Claims,
+) -> Result<(), AppError> {
     if let Some(bound_ip) = &claims.ip_binding {
         let client_ip = extract_client_ip(req);
 
@@ -253,17 +282,20 @@ fn extract_client_ip(req: &ServiceRequest) -> String {
     }
 }
 
-pub async fn validator(req: ServiceRequest, credentials: BearerAuth) -> Result<ServiceRequest, (Error, ServiceRequest)> {
+pub async fn validator(
+    req: ServiceRequest,
+    credentials: BearerAuth,
+) -> Result<ServiceRequest, (Error, ServiceRequest)> {
     let token = credentials.token();
     let path = req.path().to_string();
-    
+
     if req.method() == actix_web::http::Method::OPTIONS {
         debug!("Skipping authentication for OPTIONS request to: {}", path);
         return Ok(req);
     }
 
     debug!("Validating Bearer token for path: {}", path);
-    
+
     let verify_result = jwt::verify_token(token);
 
     match verify_result {
@@ -271,33 +303,51 @@ pub async fn validator(req: ServiceRequest, credentials: BearerAuth) -> Result<S
             // Comprehensive validation chain
             if let Err(e) = validate_token_expiry(&claims) {
                 error!("Token expiry validation failed for path {}: {}", path, e);
-                return Err((Error::from(actix_web::error::ErrorUnauthorized("Token expired")), req));
+                return Err((
+                    Error::from(actix_web::error::ErrorUnauthorized("Token expired")),
+                    req,
+                ));
             }
 
             if let Err(e) = validate_issuer(&claims) {
                 error!("Issuer validation failed for path {}: {}", path, e);
-                return Err((Error::from(actix_web::error::ErrorUnauthorized("Invalid issuer")), req));
+                return Err((
+                    Error::from(actix_web::error::ErrorUnauthorized("Invalid issuer")),
+                    req,
+                ));
             }
 
             if let Err(e) = validate_audience(&claims) {
                 error!("Audience validation failed for path {}: {}", path, e);
-                return Err((Error::from(actix_web::error::ErrorUnauthorized("Invalid audience")), req));
+                return Err((
+                    Error::from(actix_web::error::ErrorUnauthorized("Invalid audience")),
+                    req,
+                ));
             }
-
 
             // Device binding validation
             if let Err(e) = validate_device_binding(&req, &claims) {
                 error!("Device binding validation failed for path {}: {}", path, e);
-                return Err((Error::from(actix_web::error::ErrorUnauthorized("Device binding validation failed")), req));
+                return Err((
+                    Error::from(actix_web::error::ErrorUnauthorized(
+                        "Device binding validation failed",
+                    )),
+                    req,
+                ));
             }
 
             // IP binding validation
             if let Err(e) = validate_ip_binding(&req, &claims) {
                 error!("IP binding validation failed for path {}: {}", path, e);
-                return Err((Error::from(actix_web::error::ErrorUnauthorized("IP binding validation failed")), req));
+                return Err((
+                    Error::from(actix_web::error::ErrorUnauthorized(
+                        "IP binding validation failed",
+                    )),
+                    req,
+                ));
             }
 
-            // Basic scope validation (require 'read' for all endpoints)
+            // Required scopes: GET -> ["read"]; non-GET -> ["read","write"]; admin routes -> ["admin"]
             let required_scopes = if path.starts_with("/api/v1/admin") {
                 vec!["admin"]
             } else if req.method() == actix_web::http::Method::GET {
@@ -307,34 +357,55 @@ pub async fn validator(req: ServiceRequest, credentials: BearerAuth) -> Result<S
             };
 
             if let Err(e) = validate_scopes(&claims, &required_scopes) {
-                warn!("Scope validation failed for path {}: {} - allowing for backward compatibility", path, e);
-                // Don't fail here for backward compatibility, just log
+                log::error!("Authorization error: missing required scopes: {:?}, required={:?}", e, required_scopes);
+                return Err((
+                    Error::from(actix_web::error::ErrorUnauthorized("Missing required scope(s)")),
+                    req,
+                ));
             }
 
             let user_id = match Uuid::parse_str(&claims.sub) {
                 Ok(uuid) => uuid,
                 Err(_) => {
                     error!("Invalid user ID format in token: {}", claims.sub);
-                    return Err((Error::from(actix_web::error::ErrorUnauthorized("Invalid user ID format in token")), req));
+                    return Err((
+                        Error::from(actix_web::error::ErrorUnauthorized(
+                            "Invalid user ID format in token",
+                        )),
+                        req,
+                    ));
                 }
             };
 
             let user_role = claims.role.clone();
             let user_email = claims.email.clone();
-            
+
             // Check if token is revoked
             if let Some(revoked_token_repo) = get_revoked_token_repo() {
                 match revoked_token_repo.is_revoked(&claims.jti).await {
                     Ok(true) => {
-                        warn!("Revoked token access attempt for user {} with jti: {}", user_id, claims.jti);
-                        return Err((Error::from(actix_web::error::ErrorUnauthorized("Token has been revoked")), req));
-                    },
+                        warn!(
+                            "Revoked token access attempt for user {} with jti: {}",
+                            user_id, claims.jti
+                        );
+                        return Err((
+                            Error::from(actix_web::error::ErrorUnauthorized(
+                                "Token has been revoked",
+                            )),
+                            req,
+                        ));
+                    }
                     Ok(false) => {
                         debug!("Token jti {} is not revoked", claims.jti);
-                    },
+                    }
                     Err(e) => {
                         error!("Failed to check token revocation status: {}", e);
-                        return Err((Error::from(actix_web::error::ErrorInternalServerError("Failed to verify token status")), req));
+                        return Err((
+                            Error::from(actix_web::error::ErrorInternalServerError(
+                                "Failed to verify token status",
+                            )),
+                            req,
+                        ));
                     }
                 }
             }
@@ -347,7 +418,12 @@ pub async fn validator(req: ServiceRequest, credentials: BearerAuth) -> Result<S
                 Some(repo) => repo,
                 None => {
                     error!("User repository not initialized");
-                    return Err((Error::from(actix_web::error::ErrorInternalServerError("User repository not initialized")), req));
+                    return Err((
+                        Error::from(actix_web::error::ErrorInternalServerError(
+                            "User repository not initialized",
+                        )),
+                        req,
+                    ));
                 }
             };
 
@@ -355,108 +431,181 @@ pub async fn validator(req: ServiceRequest, credentials: BearerAuth) -> Result<S
                 if user_repo.get_by_id(&id).await.is_ok() {
                     id
                 } else if let Some(auth0_sub) = &claims.auth0_sub {
-                    match user_repo.find_or_create_by_auth0_details(auth0_sub, &claims.email, None).await {
+                    match user_repo
+                        .find_or_create_by_auth0_details(auth0_sub, &claims.email, None)
+                        .await
+                    {
                         Ok(user) => user.id,
                         Err(e) => {
                             error!("Failed to find/create user by auth0_sub: {}", e);
-                            return Err((Error::from(actix_web::error::ErrorInternalServerError("Failed to establish user context")), req));
+                            return Err((
+                                Error::from(actix_web::error::ErrorInternalServerError(
+                                    "Failed to establish user context",
+                                )),
+                                req,
+                            ));
                         }
                     }
                 } else {
                     match user_repo.get_by_email(&claims.email).await {
                         Ok(user) => user.id,
                         Err(_) => {
-                            match user_repo.create(&claims.email, None, None, None, Some(&claims.role)).await {
+                            match user_repo
+                                .create(&claims.email, None, None, None, Some(&claims.role))
+                                .await
+                            {
                                 Ok(user_id) => user_id,
                                 Err(e) => {
                                     error!("Failed to create user: {}", e);
-                                    return Err((Error::from(actix_web::error::ErrorInternalServerError("Failed to create user")), req));
+                                    return Err((
+                                        Error::from(actix_web::error::ErrorInternalServerError(
+                                            "Failed to create user",
+                                        )),
+                                        req,
+                                    ));
                                 }
                             }
                         }
                     }
                 }
             } else if let Some(auth0_sub) = &claims.auth0_sub {
-                match user_repo.find_or_create_by_auth0_details(auth0_sub, &claims.email, None).await {
+                match user_repo
+                    .find_or_create_by_auth0_details(auth0_sub, &claims.email, None)
+                    .await
+                {
                     Ok(user) => user.id,
                     Err(e) => {
                         error!("Failed to find/create user by auth0_sub: {}", e);
-                        return Err((Error::from(actix_web::error::ErrorInternalServerError("Failed to establish user context")), req));
+                        return Err((
+                            Error::from(actix_web::error::ErrorInternalServerError(
+                                "Failed to establish user context",
+                            )),
+                            req,
+                        ));
                     }
                 }
             } else {
                 match user_repo.get_by_email(&claims.email).await {
                     Ok(user) => user.id,
                     Err(_) => {
-                        match user_repo.create(&claims.email, None, None, None, Some(&claims.role)).await {
+                        match user_repo
+                            .create(&claims.email, None, None, None, Some(&claims.role))
+                            .await
+                        {
                             Ok(user_id) => user_id,
                             Err(e) => {
                                 error!("Failed to create user: {}", e);
-                                return Err((Error::from(actix_web::error::ErrorInternalServerError("Failed to create user")), req));
+                                return Err((
+                                    Error::from(actix_web::error::ErrorInternalServerError(
+                                        "Failed to create user",
+                                    )),
+                                    req,
+                                ));
                             }
                         }
                     }
                 }
             };
 
-            debug!("JWT valid for user {} (Role: {}) for route {}", user_id, user_role, path);
-            
+            debug!(
+                "JWT valid for user {} (Role: {}) for route {}",
+                user_id, user_role, path
+            );
+
             if let Some(rls_manager) = get_rls_manager() {
-                let request_id = format!("auth_{}_{}", chrono::Utc::now().timestamp_millis(), uuid::Uuid::new_v4());
-                
-                match rls_manager.get_connection_with_user_context(effective_user_id, Some(request_id.clone())).await {
+                let request_id = format!(
+                    "auth_{}_{}",
+                    chrono::Utc::now().timestamp_millis(),
+                    uuid::Uuid::new_v4()
+                );
+
+                match rls_manager
+                    .get_connection_with_user_context(effective_user_id, Some(request_id.clone()))
+                    .await
+                {
                     Ok(_conn) => {
-                        debug!("RLS Session Manager successfully configured user context for user {} on route {} (request: {})", 
-                               user_id, path, request_id);
-                    },
+                        debug!(
+                            "RLS Session Manager successfully configured user context for user {} on route {} (request: {})",
+                            user_id, path, request_id
+                        );
+                    }
                     Err(e) => {
-                        error!("CRITICAL RLS SETUP FAILURE: RLS Session Manager failed to establish user context for user {}. Path: {}. Request: {}. Error: {}", 
-                               user_id, path, request_id, e);
-                        error!("This failure prevents secure database access and indicates a critical security issue");
-                        return Err((Error::from(actix_web::error::ErrorInternalServerError(
-                            format!("Failed to establish secure user context: {}", e)
-                        )), req));
+                        error!(
+                            "CRITICAL RLS SETUP FAILURE: RLS Session Manager failed to establish user context for user {}. Path: {}. Request: {}. Error: {}",
+                            user_id, path, request_id, e
+                        );
+                        error!(
+                            "This failure prevents secure database access and indicates a critical security issue"
+                        );
+                        return Err((
+                            Error::from(actix_web::error::ErrorInternalServerError(format!(
+                                "Failed to establish secure user context: {}",
+                                e
+                            ))),
+                            req,
+                        ));
                     }
                 }
             }
-            
+
             let authenticated_user = AuthenticatedUser {
                 user_id: effective_user_id,
                 email: user_email,
                 role: user_role,
                 device_id: claims.device_id.clone(),
             };
-            
+
             req.extensions_mut().insert(authenticated_user);
-            
+
             Ok(req)
-        },
+        }
         Err(e) => {
             error!("JWT validation failed for route {}: {}", path, e);
             match e {
                 AppError::Auth(msg) => {
                     Err((Error::from(actix_web::error::ErrorUnauthorized(msg)), req))
-                },
-                _ => Err((Error::from(actix_web::error::ErrorInternalServerError("Internal authentication error")), req))
+                }
+                _ => Err((
+                    Error::from(actix_web::error::ErrorInternalServerError(
+                        "Internal authentication error",
+                    )),
+                    req,
+                )),
             }
         }
     }
 }
 
-pub fn auth_middleware(user_pool: sqlx::PgPool, system_pool: sqlx::PgPool) -> HttpAuthentication<actix_web_httpauth::extractors::bearer::BearerAuth, fn(ServiceRequest, BearerAuth) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<ServiceRequest, (Error, ServiceRequest)>>>>> {
-    if AUTH_INIT_LOGGED.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
-        debug!("Initializing auth middleware with RLS Session Manager and Revoked Token Repository");
+pub fn auth_middleware(
+    user_pool: sqlx::PgPool,
+    system_pool: sqlx::PgPool,
+) -> HttpAuthentication<
+    actix_web_httpauth::extractors::bearer::BearerAuth,
+    fn(
+        ServiceRequest,
+        BearerAuth,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<ServiceRequest, (Error, ServiceRequest)>>>,
+    >,
+> {
+    if AUTH_INIT_LOGGED
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_ok()
+    {
+        debug!(
+            "Initializing auth middleware with RLS Session Manager and Revoked Token Repository"
+        );
     }
     let rls_manager = Arc::new(RLSSessionManager::new(user_pool.clone()));
     rls_manager.start_cleanup_task();
     set_rls_manager(rls_manager);
-    
+
     // Use system pool for revoked tokens table access (requires elevated permissions)
     let revoked_token_repo = Arc::new(RevokedTokenRepository::new(system_pool.clone()));
     set_revoked_token_repo(revoked_token_repo);
-    
+
     let user_repo = Arc::new(UserRepository::new(system_pool.clone()));
     set_user_repo(user_repo);
-    
+
     HttpAuthentication::bearer(|req, creds| Box::pin(validator(req, creds)))
 }

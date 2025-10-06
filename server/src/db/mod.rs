@@ -1,4 +1,5 @@
 pub mod connection;
+pub mod pool_ext;
 pub mod repositories;
 
 // Re-export the connection module's functions for ease of use

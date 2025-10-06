@@ -1,9 +1,9 @@
-pub mod structs;
-pub mod streaming;
+pub mod client;
 pub mod polling;
+pub mod streaming;
+pub mod structs;
 pub mod transcription;
 pub mod utils;
-pub mod client;
 
-pub use structs::*;
 pub use client::OpenAIClient;
+pub use structs::*;

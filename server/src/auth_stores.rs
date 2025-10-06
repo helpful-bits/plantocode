@@ -1,6 +1,6 @@
-use std::sync::Arc;
-use chrono::{DateTime, Utc, Duration};
+use chrono::{DateTime, Duration, Utc};
 use dashmap::DashMap;
+use std::sync::Arc;
 
 // Define structures
 #[derive(Debug, Clone)]
@@ -25,7 +25,6 @@ pub struct Auth0StateStoreValue {
     pub created_at: DateTime<Utc>,
 }
 
-
 // Type aliases for our stores
 pub type PollingStore = Arc<DashMap<String, Auth0PendingCodeInfo>>;
 pub type Auth0StateStore = Arc<DashMap<String, Auth0StateStoreValue>>;
@@ -33,46 +32,53 @@ pub type Auth0StateStore = Arc<DashMap<String, Auth0StateStoreValue>>;
 // Utility module for store management
 pub mod store_utils {
     use super::*;
-    use std::time::Duration as StdDuration;
-    use tokio::time::interval;
-    use tokio::spawn;
     use log::info;
+    use std::time::Duration as StdDuration;
+    use tokio::spawn;
+    use tokio::time::interval;
 
     // Main function to start cleanup task
     pub fn start_cleanup_task(
-        polling_store: PollingStore, 
+        polling_store: PollingStore,
         auth0_state_store: Auth0StateStore,
         polling_expiry_mins: i64,
         auth0_state_expiry_mins: i64,
-        cleanup_interval_secs: u64
+        cleanup_interval_secs: u64,
     ) {
         // Spawn polling store cleanup task
         let ps = polling_store.clone();
         spawn(async move {
             start_polling_store_cleanup(ps, cleanup_interval_secs, polling_expiry_mins).await;
         });
-        
+
         // Spawn auth0 state store cleanup task
         let ass = auth0_state_store.clone();
         spawn(async move {
             start_auth0_state_cleanup(ass, cleanup_interval_secs, auth0_state_expiry_mins).await;
         });
-        
+
         info!("Started cleanup task for polling store and auth0 state store");
     }
 
     // Cleanup function for polling store
-    async fn start_polling_store_cleanup(store: PollingStore, interval_secs: u64, expiry_mins: i64) {
+    async fn start_polling_store_cleanup(
+        store: PollingStore,
+        interval_secs: u64,
+        expiry_mins: i64,
+    ) {
         let mut interval = interval(StdDuration::from_secs(interval_secs));
-        
-        info!("Starting polling store cleanup task (interval: {}s, expiry: {}m)", interval_secs, expiry_mins);
-        
+
+        info!(
+            "Starting polling store cleanup task (interval: {}s, expiry: {}m)",
+            interval_secs, expiry_mins
+        );
+
         loop {
             interval.tick().await;
             cleanup_polling_store(&store, expiry_mins);
         }
     }
-    
+
     // Remove expired entries from polling store
     fn cleanup_polling_store(store: &PollingStore, expiry_mins: i64) {
         let now = Utc::now();
@@ -87,7 +93,7 @@ pub mod store_utils {
                 }
             })
             .collect();
-        
+
         let count = expired_keys.len();
         if count > 0 {
             for key in expired_keys {
@@ -98,17 +104,24 @@ pub mod store_utils {
     }
 
     // Cleanup function for auth0 state store
-    async fn start_auth0_state_cleanup(store: Auth0StateStore, interval_secs: u64, expiry_mins: i64) {
+    async fn start_auth0_state_cleanup(
+        store: Auth0StateStore,
+        interval_secs: u64,
+        expiry_mins: i64,
+    ) {
         let mut interval = interval(StdDuration::from_secs(interval_secs));
-        
-        info!("Starting auth0 state store cleanup task (interval: {}s, expiry: {}m)", interval_secs, expiry_mins);
-        
+
+        info!(
+            "Starting auth0 state store cleanup task (interval: {}s, expiry: {}m)",
+            interval_secs, expiry_mins
+        );
+
         loop {
             interval.tick().await;
             cleanup_auth0_state_store(&store, expiry_mins);
         }
     }
-    
+
     // Remove expired entries from auth0 state store
     fn cleanup_auth0_state_store(store: &Auth0StateStore, expiry_mins: i64) {
         let now = Utc::now();
@@ -123,13 +136,16 @@ pub mod store_utils {
                 }
             })
             .collect();
-        
+
         let count = expired_keys.len();
         if count > 0 {
             for key in expired_keys {
                 store.remove(&key);
             }
-            info!("Cleaned up {} expired entries from auth0 state store", count);
+            info!(
+                "Cleaned up {} expired entries from auth0 state store",
+                count
+            );
         }
     }
 }

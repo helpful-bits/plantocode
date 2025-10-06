@@ -23,8 +23,6 @@ pub struct Claims {
     pub jti: String,
     /// Audience claim (intended recipient)
     pub aud: Option<String>,
-    /// Client ID
-    pub client_id: Option<String>,
     /// Device ID for device binding
     pub device_id: Option<String>,
     /// Scopes granted to the token

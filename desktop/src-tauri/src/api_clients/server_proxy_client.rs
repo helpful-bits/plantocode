@@ -11,8 +11,7 @@ use uuid;
 
 use super::client_trait::{ApiClient, ApiClientOptions, TranscriptionClient};
 use super::error_handling::{handle_api_error, map_server_proxy_error};
-use crate::auth::device_id_manager;
-use crate::auth::TokenManager;
+use crate::auth::{TokenManager, header_utils};
 use crate::constants::{APP_HTTP_REFERER, APP_X_TITLE, SERVER_API_URL};
 use crate::error::{AppError, AppResult};
 use crate::models::stream_event::StreamEvent;
@@ -69,20 +68,12 @@ impl ServerProxyClient {
     }
 
     /// Helper method to add auth headers with device ID to request builders
-    async fn with_auth_headers(
+    fn with_auth_headers(
         &self,
         builder: reqwest::RequestBuilder,
         auth_token: &str,
-    ) -> reqwest::RequestBuilder {
-        let builder = builder.header("Authorization", format!("Bearer {}", auth_token));
-        // Attach device id and token binding header if available
-        if let Ok(device_id) = device_id_manager::get_or_create(&self.app_handle) {
-            builder
-                .header("x-device-id", device_id.clone())
-                .header("X-Token-Binding", device_id)
-        } else {
-            builder
-        }
+    ) -> AppResult<reqwest::RequestBuilder> {
+        header_utils::apply_auth_headers(builder, auth_token, &self.app_handle)
     }
 
     /// Get runtime AI configuration from the server
@@ -95,7 +86,7 @@ impl ServerProxyClient {
         // Create the config endpoint URL - now using authenticated endpoint
         let config_url = format!("{}/api/config/desktop-runtime-config", self.server_url);
 
-        let req = self.with_auth_headers(self.http_client.get(&config_url), &auth_token).await;
+        let req = self.with_auth_headers(self.http_client.get(&config_url), &auth_token)?;
         let response = req
             .header("HTTP-Referer", APP_HTTP_REFERER)
             .header("X-Title", APP_X_TITLE)
@@ -156,7 +147,7 @@ impl ServerProxyClient {
         // Create the prompts endpoint URL - now using authenticated endpoint
         let prompts_url = format!("{}/api/system-prompts/defaults", self.server_url);
 
-        let req = self.with_auth_headers(self.http_client.get(&prompts_url), &auth_token).await;
+        let req = self.with_auth_headers(self.http_client.get(&prompts_url), &auth_token)?;
         let response = req
             .header("HTTP-Referer", APP_HTTP_REFERER)
             .header("X-Title", APP_X_TITLE)
@@ -219,7 +210,7 @@ impl ServerProxyClient {
             self.server_url, task_type
         );
 
-        let req = self.with_auth_headers(self.http_client.get(&prompt_url), &auth_token).await;
+        let req = self.with_auth_headers(self.http_client.get(&prompt_url), &auth_token)?;
         let response = req
             .header("HTTP-Referer", APP_HTTP_REFERER)
             .header("X-Title", APP_X_TITLE)
@@ -300,11 +291,13 @@ impl ServerProxyClient {
 
         let proxy_url = format!("{}/api/ai-proxy/{}", self.server_url, endpoint);
 
-        let mut request_builder = self.with_auth_headers(
-            self.http_client
-                .post(&proxy_url)
-                .header(header::CONTENT_TYPE, "application/json"),
-            &auth_token).await
+        let mut request_builder = self
+            .with_auth_headers(
+                self.http_client
+                    .post(&proxy_url)
+                    .header(header::CONTENT_TYPE, "application/json"),
+                &auth_token,
+            )?
             .header("HTTP-Referer", APP_HTTP_REFERER)
             .header("X-Title", APP_X_TITLE);
 
@@ -444,7 +437,8 @@ impl ServerProxyClient {
             self.http_client
                 .post(&proxy_url)
                 .header(header::CONTENT_TYPE, "application/json"),
-            &auth_token).await;
+            &auth_token,
+        )?;
         let response = req
             .header("HTTP-Referer", APP_HTTP_REFERER)
             .header("X-Title", APP_X_TITLE)
@@ -489,7 +483,8 @@ impl ServerProxyClient {
                     self.http_client
                         .post(&proxy_url)
                         .header(header::CONTENT_TYPE, "application/json"),
-                    &auth_token).await;
+                    &auth_token,
+                )?;
                 let retry_response = retry_req
                     .header("HTTP-Referer", APP_HTTP_REFERER)
                     .header("X-Title", APP_X_TITLE)
@@ -615,11 +610,13 @@ impl ServerProxyClient {
         );
 
         // Build the request but don't send it yet - EventSource will handle that
-        let request_builder = self.with_auth_headers(
-            self.http_client
-                .post(&proxy_url)
-                .header(header::CONTENT_TYPE, "application/json"),
-            &auth_token).await
+        let request_builder = self
+            .with_auth_headers(
+                self.http_client
+                    .post(&proxy_url)
+                    .header(header::CONTENT_TYPE, "application/json"),
+                &auth_token,
+            )?
             .header("HTTP-Referer", APP_HTTP_REFERER)
             .header("X-Title", APP_X_TITLE)
             .json(&request);
@@ -1001,7 +998,8 @@ impl ServerProxyClient {
             self.http_client
                 .post(&estimation_url)
                 .header("Content-Type", "application/json"),
-            &auth_token).await;
+            &auth_token,
+        )?;
         let response = req
             .header("HTTP-Referer", APP_HTTP_REFERER)
             .header("X-Title", APP_X_TITLE)
@@ -1054,7 +1052,8 @@ impl ServerProxyClient {
             self.http_client
                 .post(&estimation_url)
                 .header("Content-Type", "application/json"),
-            &auth_token).await;
+            &auth_token,
+        )?;
         let response = req
             .header("HTTP-Referer", APP_HTTP_REFERER)
             .header("X-Title", APP_X_TITLE)
@@ -1094,7 +1093,7 @@ impl ServerProxyClient {
         let auth_token = self.get_auth_token().await?;
         let url = format!("{}/api/featurebase/sso-token", self.server_url);
 
-        let req = self.with_auth_headers(self.http_client.get(&url), &auth_token).await;
+        let req = self.with_auth_headers(self.http_client.get(&url), &auth_token)?;
         let response = req
             .header("HTTP-Referer", APP_HTTP_REFERER)
             .header("X-Title", APP_X_TITLE)
@@ -1131,7 +1130,7 @@ impl ServerProxyClient {
         let auth_token = self.get_auth_token().await?;
         let url = format!("{}/api/auth/userinfo", self.server_url);
 
-        let req = self.with_auth_headers(self.http_client.get(&url), &auth_token).await;
+        let req = self.with_auth_headers(self.http_client.get(&url), &auth_token)?;
         let response = req
             .header("HTTP-Referer", APP_HTTP_REFERER)
             .header("X-Title", APP_X_TITLE)
@@ -1171,7 +1170,8 @@ impl ServerProxyClient {
             self.http_client
                 .post(&url)
                 .header(header::CONTENT_TYPE, "application/json"),
-            &auth_token).await;
+            &auth_token,
+        )?;
         let response = req
             .header("HTTP-Referer", APP_HTTP_REFERER)
             .header("X-Title", APP_X_TITLE)
@@ -1269,7 +1269,7 @@ impl ServerProxyClient {
                 .map_err(|e| AppError::InternalError(format!("Invalid mime type: {}", e)))?,
         );
 
-        let req = self.with_auth_headers(self.http_client.post(&analysis_url), &auth_token).await;
+        let req = self.with_auth_headers(self.http_client.post(&analysis_url), &auth_token)?;
         let response = req
             .header("HTTP-Referer", APP_HTTP_REFERER)
             .header("X-Title", APP_X_TITLE)
@@ -1341,7 +1341,7 @@ impl TranscriptionClient for ServerProxyClient {
             form = form.text("language", lang.to_string());
         }
 
-        let req = self.with_auth_headers(self.http_client.post(&transcription_url), &auth_token).await;
+        let req = self.with_auth_headers(self.http_client.post(&transcription_url), &auth_token)?;
         let response = req
             .header("HTTP-Referer", APP_HTTP_REFERER)
             .header("X-Title", APP_X_TITLE)
@@ -1429,16 +1429,16 @@ impl ApiClient for ServerProxyClient {
 
 impl ServerProxyClient {
     /// Send job completion notification to server
-    pub async fn send_job_completed_notification(&self, payload: serde_json::Value) -> AppResult<()> {
+    pub async fn send_job_completed_notification(
+        &self,
+        payload: serde_json::Value,
+    ) -> AppResult<()> {
         info!("Sending job completion notification to server");
 
         let auth_token = self.get_auth_token().await?;
         let notification_url = format!("{}/api/notifications/job-completed", self.server_url);
 
-        let req = self.with_auth_headers(
-            self.http_client.post(&notification_url),
-            &auth_token
-        ).await;
+        let req = self.with_auth_headers(self.http_client.post(&notification_url), &auth_token)?;
 
         let response = req
             .header("Content-Type", "application/json")
@@ -1475,10 +1475,7 @@ impl ServerProxyClient {
         let auth_token = self.get_auth_token().await?;
         let notification_url = format!("{}/api/notifications/job-failed", self.server_url);
 
-        let req = self.with_auth_headers(
-            self.http_client.post(&notification_url),
-            &auth_token
-        ).await;
+        let req = self.with_auth_headers(self.http_client.post(&notification_url), &auth_token)?;
 
         let response = req
             .header("Content-Type", "application/json")
@@ -1509,16 +1506,16 @@ impl ServerProxyClient {
     }
 
     /// Send job progress notification to server (silent notification)
-    pub async fn send_job_progress_notification(&self, payload: serde_json::Value) -> AppResult<()> {
+    pub async fn send_job_progress_notification(
+        &self,
+        payload: serde_json::Value,
+    ) -> AppResult<()> {
         debug!("Sending job progress notification to server");
 
         let auth_token = self.get_auth_token().await?;
         let notification_url = format!("{}/api/notifications/job-progress", self.server_url);
 
-        let req = self.with_auth_headers(
-            self.http_client.post(&notification_url),
-            &auth_token
-        ).await;
+        let req = self.with_auth_headers(self.http_client.post(&notification_url), &auth_token)?;
 
         let response = req
             .header("Content-Type", "application/json")

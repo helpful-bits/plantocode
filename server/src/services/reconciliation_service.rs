@@ -1,12 +1,12 @@
-use crate::error::AppError;
-use crate::db::repositories::{UserCreditRepository, CreditTransactionRepository, UserCredit};
 use crate::db::connection::DatabasePools;
+use crate::db::repositories::{CreditTransactionRepository, UserCredit, UserCreditRepository};
+use crate::error::AppError;
 use bigdecimal::BigDecimal;
-use uuid::Uuid;
 use chrono::{DateTime, Utc};
+use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use log::{info, warn, error, debug};
+use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub struct ReconciliationService {
@@ -19,9 +19,9 @@ pub struct ReconciliationService {
 #[serde(rename_all = "camelCase")]
 pub struct UserBalanceDiscrepancy {
     pub user_id: Uuid,
-    pub expected_balance: BigDecimal,    // Sum of all transactions
-    pub actual_balance: BigDecimal,      // Current balance in user_credits
-    pub discrepancy_amount: BigDecimal,  // actual - expected
+    pub expected_balance: BigDecimal,   // Sum of all transactions
+    pub actual_balance: BigDecimal,     // Current balance in user_credits
+    pub discrepancy_amount: BigDecimal, // actual - expected
     pub last_transaction_date: Option<DateTime<Utc>>,
     pub transaction_count: i64,
 }
@@ -47,18 +47,25 @@ pub struct ReconciliationSummary {
     pub system_level_discrepancy: BigDecimal,
 }
 
-
 impl ReconciliationService {
     pub fn new(db_pools: DatabasePools) -> Self {
-        Self {
-            user_credit_repository: Arc::new(UserCreditRepository::new(db_pools.user_pool.clone())),
-            credit_transaction_repository: Arc::new(CreditTransactionRepository::new(db_pools.user_pool.clone())),
+        let service = Self {
+            user_credit_repository: Arc::new(UserCreditRepository::new(
+                db_pools.system_pool.clone(),
+            )),
+            credit_transaction_repository: Arc::new(CreditTransactionRepository::new(
+                db_pools.system_pool.clone(),
+            )),
             db_pools,
-        }
+        };
+        log::info!("ReconciliationService configured to use system_pool for background operations");
+        service
     }
 
     /// Verify balance against transactions for all users
-    pub async fn verify_balance_against_transactions(&self) -> Result<Vec<UserBalanceDiscrepancy>, AppError> {
+    pub async fn verify_balance_against_transactions(
+        &self,
+    ) -> Result<Vec<UserBalanceDiscrepancy>, AppError> {
         info!("Starting balance verification against transaction history for all users");
 
         // Get all users who have either credits or transactions
@@ -76,7 +83,10 @@ impl ReconciliationService {
             all_user_ids.insert(*user_id);
         }
 
-        info!("Checking balance consistency for {} users", all_user_ids.len());
+        info!(
+            "Checking balance consistency for {} users",
+            all_user_ids.len()
+        );
 
         for user_id in all_user_ids {
             let actual_balance = user_balances
@@ -119,7 +129,10 @@ impl ReconciliationService {
         if discrepancies.is_empty() {
             info!("Balance verification completed successfully - no discrepancies found");
         } else {
-            warn!("Balance verification completed with {} discrepancies found", discrepancies.len());
+            warn!(
+                "Balance verification completed with {} discrepancies found",
+                discrepancies.len()
+            );
         }
 
         Ok(discrepancies)
@@ -134,7 +147,8 @@ impl ReconciliationService {
         let transaction_totals = self.get_all_user_transaction_totals().await?;
 
         // Calculate summary statistics
-        let total_users_checked = std::cmp::max(user_balances.len(), transaction_totals.len()) as i64;
+        let total_users_checked =
+            std::cmp::max(user_balances.len(), transaction_totals.len()) as i64;
         let users_with_discrepancies = discrepancies.len() as i64;
 
         let total_discrepancy_amount = discrepancies
@@ -148,9 +162,9 @@ impl ReconciliationService {
             .filter(|d| d != &BigDecimal::from(0));
 
         // Calculate system-level summary
-        let total_actual_balance = user_balances
-            .iter()
-            .fold(BigDecimal::from(0), |acc, b| acc + &b.balance + &b.free_credit_balance);
+        let total_actual_balance = user_balances.iter().fold(BigDecimal::from(0), |acc, b| {
+            acc + &b.balance + &b.free_credit_balance
+        });
 
         let total_expected_balance = transaction_totals
             .values()
@@ -185,8 +199,7 @@ impl ReconciliationService {
         if report.users_with_discrepancies > 0 {
             error!(
                 "FINANCIAL RECONCILIATION ALERT: {} users have balance discrepancies totaling {}",
-                report.users_with_discrepancies,
-                report.total_discrepancy_amount
+                report.users_with_discrepancies, report.total_discrepancy_amount
             );
         }
 
@@ -214,7 +227,10 @@ impl ReconciliationService {
     }
 
     /// Get transaction totals per user
-    async fn get_all_user_transaction_totals(&self) -> Result<std::collections::HashMap<Uuid, (BigDecimal, Option<DateTime<Utc>>, i64)>, AppError> {
+    async fn get_all_user_transaction_totals(
+        &self,
+    ) -> Result<std::collections::HashMap<Uuid, (BigDecimal, Option<DateTime<Utc>>, i64)>, AppError>
+    {
         let pool = self.credit_transaction_repository.get_pool();
 
         let results = sqlx::query!(
@@ -237,7 +253,7 @@ impl ReconciliationService {
             let total = row.transaction_total.unwrap_or_else(|| BigDecimal::from(0));
             let last_date = row.last_transaction_date;
             let count = row.transaction_count.unwrap_or(0);
-            
+
             transaction_totals.insert(row.user_id, (total, last_date, count));
         }
 
@@ -245,7 +261,10 @@ impl ReconciliationService {
     }
 
     /// Perform automated consistency checks for a specific user
-    pub async fn check_user_consistency(&self, user_id: &Uuid) -> Result<Option<UserBalanceDiscrepancy>, AppError> {
+    pub async fn check_user_consistency(
+        &self,
+        user_id: &Uuid,
+    ) -> Result<Option<UserBalanceDiscrepancy>, AppError> {
         debug!("Checking consistency for user: {}", user_id);
 
         // Get user's current balance
@@ -285,7 +304,10 @@ impl ReconciliationService {
     }
 
     /// Get transaction total for a specific user
-    async fn get_user_transaction_total(&self, user_id: &Uuid) -> Result<(BigDecimal, Option<DateTime<Utc>>, i64), AppError> {
+    async fn get_user_transaction_total(
+        &self,
+        user_id: &Uuid,
+    ) -> Result<(BigDecimal, Option<DateTime<Utc>>, i64), AppError> {
         let pool = self.credit_transaction_repository.get_pool();
 
         let result = sqlx::query!(
@@ -301,22 +323,18 @@ impl ReconciliationService {
         )
         .fetch_one(pool)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to fetch user transaction total: {}", e)))?;
+        .map_err(|e| {
+            AppError::Database(format!("Failed to fetch user transaction total: {}", e))
+        })?;
 
-        let total = result.transaction_total.unwrap_or_else(|| BigDecimal::from(0));
+        let total = result
+            .transaction_total
+            .unwrap_or_else(|| BigDecimal::from(0));
         let last_date = result.last_transaction_date;
         let count = result.transaction_count.unwrap_or(0);
 
         Ok((total, last_date, count))
     }
-
-
-
-
-
-
-
-
 
     /// Get a reference to the underlying database pools for external access
     pub fn get_db_pools(&self) -> &DatabasePools {

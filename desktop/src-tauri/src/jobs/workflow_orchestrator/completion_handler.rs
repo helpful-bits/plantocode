@@ -3,6 +3,7 @@ use crate::jobs::workflow_orchestrator::data_extraction;
 use crate::jobs::workflow_types::{WorkflowDefinition, WorkflowStage, WorkflowState};
 use crate::models::{JobStatus, TaskType};
 use log::{debug, error, info, warn};
+use serde_json::json;
 use std::sync::Arc;
 use tauri::Manager;
 
@@ -105,6 +106,9 @@ pub(super) async fn handle_stage_completion_internal(
         .find(|stage_job| stage_job.job_id == job_id)
         .map(|stage_job| stage_job.task_type.clone())
         .ok_or_else(|| AppError::JobError(format!("Stage job not found for job_id: {}", job_id)))?;
+
+    // Auto-apply is now centralized in Dispatcher to avoid double-application races
+    // Orchestrator only manages workflow state and stage data
 
     // Check if the regex file filter stage returned an empty result (no files found)
     if task_type == TaskType::RegexFileFilter {

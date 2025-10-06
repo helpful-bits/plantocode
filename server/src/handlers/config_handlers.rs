@@ -1,14 +1,13 @@
-use actix_web::{web, HttpResponse};
-use std::collections::{HashMap, BTreeMap};
+use actix_web::{HttpResponse, web};
+use bigdecimal::{BigDecimal, ToPrimitive};
+use std::collections::{BTreeMap, HashMap};
 use tracing::{info, instrument};
-use bigdecimal::{ToPrimitive, BigDecimal};
 
+use crate::db::{ModelRepository, SettingsRepository};
 use crate::error::AppError;
-use crate::models::runtime_config::{TaskSpecificModelConfig, AppState};
 use crate::models::AuthenticatedUser;
-use crate::db::{SettingsRepository, ModelRepository};
-use serde::{Serialize, Deserialize};
-
+use crate::models::runtime_config::{AppState, TaskSpecificModelConfig};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -65,20 +64,22 @@ pub async fn load_desktop_runtime_ai_config(
     model_repository: &ModelRepository,
 ) -> Result<DesktopRuntimeAIConfig, AppError> {
     info!("Loading desktop runtime AI configuration from database for caching");
-    
+
     // Get models with provider info directly from database
-    let models_with_providers = model_repository.get_all_with_providers().await
+    let models_with_providers = model_repository
+        .get_all_with_providers()
+        .await
         .map_err(|e| AppError::Internal(format!("Failed to fetch models from database: {}", e)))?;
-    
+
     // Group models by provider, prioritizing direct provider mappings over OpenRouter fallback mappings
     let mut provider_models: HashMap<String, ProviderWithModels> = HashMap::new();
     let mut model_assignments: HashMap<String, String> = HashMap::new(); // model_id -> preferred_provider_name
-    
+
     // First pass: identify preferred providers for each model (prioritize non-OpenRouter)
     for model in models_with_providers.iter() {
         let model_id = &model.id;
         let provider_name = &model.provider_name;
-        
+
         match model_assignments.get(model_id) {
             Some(existing_provider) => {
                 // If model is already assigned to a non-OpenRouter provider, keep it there
@@ -96,20 +97,20 @@ pub async fn load_desktop_runtime_ai_config(
             }
         }
     }
-    
+
     // Second pass: create models only for their preferred providers
     for model in models_with_providers.iter() {
         let model_id = &model.id;
         let provider_name = &model.provider_name;
-        
+
         // Only include this model if it's assigned to this provider
         if model_assignments.get(model_id) != Some(provider_name) {
             continue;
         }
-        
+
         let default_pricing = serde_json::Value::Object(serde_json::Map::new());
         let pricing_info = model.pricing_info.as_ref().unwrap_or(&default_pricing);
-        
+
         let desktop_model = DesktopModelInfo {
             id: model.id.clone(),
             name: model.name.clone(),
@@ -117,23 +118,28 @@ pub async fn load_desktop_runtime_ai_config(
             provider_name: model.provider_name.clone(),
             description: model.description.clone(),
             context_window: Some(model.context_window as u32),
-            price_input_per_million: pricing_info.get("input_per_million")
+            price_input_per_million: pricing_info
+                .get("input_per_million")
                 .and_then(|v| v.as_f64())
                 .map(|v| v.to_string())
                 .unwrap_or_else(|| "0".to_string()),
-            price_output_per_million: pricing_info.get("output_per_million")
+            price_output_per_million: pricing_info
+                .get("output_per_million")
                 .and_then(|v| v.as_f64())
                 .map(|v| v.to_string())
                 .unwrap_or_else(|| "0".to_string()),
-            price_cache_read: pricing_info.get("cache_read_per_million")
+            price_cache_read: pricing_info
+                .get("cache_read_per_million")
                 .and_then(|v| v.as_f64())
                 .map(|v| v.to_string()),
-            price_cache_write: pricing_info.get("cache_write_per_million")
+            price_cache_write: pricing_info
+                .get("cache_write_per_million")
                 .and_then(|v| v.as_f64())
-                .map(|v| v.to_string())
+                .map(|v| v.to_string()),
         };
-        
-        provider_models.entry(model.provider_name.clone())
+
+        provider_models
+            .entry(model.provider_name.clone())
             .or_insert_with(|| ProviderWithModels {
                 provider: ProviderInfo {
                     code: model.provider_code.clone(),
@@ -141,34 +147,43 @@ pub async fn load_desktop_runtime_ai_config(
                 },
                 models: Vec::new(),
             })
-            .models.push(desktop_model);
+            .models
+            .push(desktop_model);
     }
-    
+
     let mut providers: Vec<ProviderWithModels> = provider_models.into_values().collect();
-    
+
     // Sort providers by name to ensure consistent ordering in API responses
     providers.sort_by(|a, b| a.provider.name.cmp(&b.provider.name));
-    
+
     // Sort models within each provider for complete determinism
     for provider in &mut providers {
         provider.models.sort_by(|a, b| a.name.cmp(&b.name));
     }
-    
+
     // Get consolidated AI model settings directly from database
-    let task_configs = settings_repository.get_ai_model_settings().await
-        .map_err(|e| AppError::Internal(format!("Failed to get AI settings from database: {}", e)))?;
-    
+    let task_configs = settings_repository
+        .get_ai_model_settings()
+        .await
+        .map_err(|e| {
+            AppError::Internal(format!("Failed to get AI settings from database: {}", e))
+        })?;
+
     // Convert database types to response types
-    let tasks: BTreeMap<String, TaskSpecificModelConfig> = task_configs.tasks
+    let tasks: BTreeMap<String, TaskSpecificModelConfig> = task_configs
+        .tasks
         .into_iter()
         .map(|(key, db_config)| {
-            (key, TaskSpecificModelConfig {
-                model: db_config.model,
-                max_tokens: db_config.max_tokens,
-                temperature: db_config.temperature,
-                copy_buttons: db_config.copy_buttons,
-                allowed_models: db_config.allowed_models,
-            })
+            (
+                key,
+                TaskSpecificModelConfig {
+                    model: db_config.model,
+                    max_tokens: db_config.max_tokens,
+                    temperature: db_config.temperature,
+                    copy_buttons: db_config.copy_buttons,
+                    allowed_models: db_config.allowed_models,
+                },
+            )
         })
         .collect();
 
@@ -177,13 +192,16 @@ pub async fn load_desktop_runtime_ai_config(
         providers,
         max_concurrent_jobs: task_configs.max_concurrent_jobs,
     };
-    
-    info!("Loaded desktop runtime AI configuration with {} providers for caching", config.providers.len());
+
+    info!(
+        "Loaded desktop runtime AI configuration with {} providers for caching",
+        config.providers.len()
+    );
     Ok(config)
 }
 
 /// Handler for GET /api/config/desktop-runtime-config endpoint for desktop app
-/// 
+///
 /// **PERFORMANCE OPTIMIZED**: Uses cached config from AppState instead of database queries
 #[instrument(skip(app_state))]
 pub async fn get_desktop_runtime_ai_config(
@@ -203,15 +221,18 @@ pub async fn get_all_application_configurations_handler(
     app_state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
     info!("Fetching all application configurations");
-    
+
     // Use the settings repository from app state
     let settings_repo = &app_state.settings_repository;
-    
+
     // Fetch all configurations
     let configurations = settings_repo.get_all_application_configurations().await?;
-    
-    info!("Returning {} application configurations", configurations.len());
-    
+
+    info!(
+        "Returning {} application configurations",
+        configurations.len()
+    );
+
     Ok(HttpResponse::Ok().json(configurations))
 }
 
@@ -239,17 +260,17 @@ pub async fn get_billing_config(
     app_state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
     info!("Getting billing configuration");
-    
+
     let settings_repo = &app_state.settings_repository;
-    
+
     let free_credits_amount = settings_repo.get_free_credits_amount().await?;
     let free_credits_expiry_days = settings_repo.get_free_credits_expiry_days().await?;
-    
+
     let response = BillingConfigResponse {
         free_credits_amount: free_credits_amount.to_string(),
         free_credits_expiry_days,
     };
-    
+
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -260,38 +281,38 @@ pub async fn update_billing_config(
     request: web::Json<UpdateBillingConfigRequest>,
 ) -> Result<HttpResponse, AppError> {
     info!("Updating billing configuration");
-    
+
     let settings_repo = &app_state.settings_repository;
-    
+
     // Update free credits amount if provided
     if let Some(amount_str) = &request.free_credits_amount {
         let amount = BigDecimal::try_from(amount_str.parse::<f64>().map_err(|_| {
             AppError::InvalidArgument("Invalid free credits amount format".to_string())
         })?)
         .map_err(|_| AppError::InvalidArgument("Invalid free credits amount".to_string()))?;
-        
+
         settings_repo.set_free_credits_amount(&amount).await?;
     }
-    
+
     // Update free credits expiry days if provided
     if let Some(days) = request.free_credits_expiry_days {
         if days < 1 || days > 365 {
             return Err(AppError::InvalidArgument(
-                "Free credits expiry days must be between 1 and 365".to_string()
+                "Free credits expiry days must be between 1 and 365".to_string(),
             ));
         }
         settings_repo.set_free_credits_expiry_days(days).await?;
     }
-    
+
     // Return updated configuration
     let free_credits_amount = settings_repo.get_free_credits_amount().await?;
     let free_credits_expiry_days = settings_repo.get_free_credits_expiry_days().await?;
-    
+
     let response = BillingConfigResponse {
         free_credits_amount: free_credits_amount.to_string(),
         free_credits_expiry_days,
     };
-    
+
     info!("Billing configuration updated successfully");
     Ok(HttpResponse::Ok().json(response))
 }

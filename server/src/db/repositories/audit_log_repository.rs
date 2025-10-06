@@ -1,10 +1,10 @@
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use sqlx::{PgPool, Row, FromRow};
-use uuid::Uuid;
-use std::collections::HashMap;
-use sqlx::types::ipnetwork::IpNetwork;
 use log::warn;
+use serde::{Deserialize, Serialize};
+use sqlx::types::ipnetwork::IpNetwork;
+use sqlx::{FromRow, PgPool, Row};
+use std::collections::HashMap;
+use uuid::Uuid;
 
 use crate::error::AppError;
 
@@ -76,9 +76,11 @@ impl AuditLogRepository {
         Self { pool }
     }
 
-    
     /// Create a new secure audit log entry with hash chaining and cryptographic signatures
-    pub async fn create_secure(&self, request: CreateAuditLogRequest) -> Result<AuditLog, AppError> {
+    pub async fn create_secure(
+        &self,
+        request: CreateAuditLogRequest,
+    ) -> Result<AuditLog, AppError> {
         let audit_log = sqlx::query_as!(
             AuditLog,
             r#"
@@ -118,7 +120,6 @@ impl AuditLogRepository {
         Ok(audit_log)
     }
 
-    
     /// Create a new secure audit log entry with an existing transaction and tamper-proof features
     pub async fn create_secure_with_executor<'a>(
         &self,
@@ -247,7 +248,11 @@ impl AuditLogRepository {
 
         query.push_str(&conditions.join(""));
         query.push_str(" ORDER BY created_at DESC");
-        query.push_str(&format!(" LIMIT ${} OFFSET ${}", param_index, param_index + 1));
+        query.push_str(&format!(
+            " LIMIT ${} OFFSET ${}",
+            param_index,
+            param_index + 1
+        ));
 
         let mut query_builder = sqlx::query_as::<_, AuditLog>(&query);
 
@@ -331,7 +336,6 @@ impl AuditLogRepository {
         Ok(audit_logs)
     }
 
-
     /// Delete old audit logs (for cleanup/retention policies)
     pub async fn delete_older_than(&self, date: DateTime<Utc>) -> Result<u64, AppError> {
         let result = sqlx::query!("DELETE FROM audit_logs WHERE created_at < $1", date)
@@ -353,7 +357,7 @@ impl AuditLogRepository {
 
         Ok(result)
     }
-    
+
     /// Get the hash of the most recent audit log entry within a transaction
     pub async fn get_last_entry_hash_with_tx<'a>(
         &self,
@@ -364,11 +368,16 @@ impl AuditLogRepository {
         )
         .fetch_optional(&mut **tx)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to get last entry hash in transaction: {}", e)))?;
+        .map_err(|e| {
+            AppError::Database(format!(
+                "Failed to get last entry hash in transaction: {}",
+                e
+            ))
+        })?;
 
         Ok(result)
     }
-    
+
     /// Get audit log by ID for integrity verification
     pub async fn get_by_id(&self, id: &Uuid) -> Result<Option<AuditLog>, AppError> {
         let audit_log = sqlx::query_as!(
@@ -389,7 +398,7 @@ impl AuditLogRepository {
 
         Ok(audit_log)
     }
-    
+
     /// Get all audit logs ordered by creation time for chain validation
     pub async fn get_all_ordered_by_creation(&self, limit: i64) -> Result<Vec<AuditLog>, AppError> {
         let audit_logs = sqlx::query_as!(
@@ -420,7 +429,6 @@ impl AuditLogRepository {
 
 /// Convenience functions for common audit log scenarios
 impl AuditLogRepository {
-
     /// Log a payment-related action
     pub async fn log_payment_action(
         &self,
@@ -434,12 +442,18 @@ impl AuditLogRepository {
     ) -> Result<AuditLog, AppError> {
         let mut payment_metadata = serde_json::Map::new();
         if let Some(amt) = amount {
-            payment_metadata.insert("amount".to_string(), serde_json::Value::String(amt.to_string()));
+            payment_metadata.insert(
+                "amount".to_string(),
+                serde_json::Value::String(amt.to_string()),
+            );
         }
         if let Some(curr) = currency {
-            payment_metadata.insert("currency".to_string(), serde_json::Value::String(curr.to_string()));
+            payment_metadata.insert(
+                "currency".to_string(),
+                serde_json::Value::String(curr.to_string()),
+            );
         }
-        
+
         // Merge with provided metadata
         if let Some(meta) = metadata {
             if let serde_json::Value::Object(meta_map) = meta {

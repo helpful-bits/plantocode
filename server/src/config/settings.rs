@@ -1,7 +1,6 @@
-use std::env;
 use crate::error::AppError;
 use serde::{Deserialize, Serialize};
-
+use std::env;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AppSettings {
@@ -103,18 +102,20 @@ impl AppSettings {
         // App config
         let app_name = env::var("APP_NAME").unwrap_or_else(|_| "vibe-manager".to_string());
         let environment = env::var("ENVIRONMENT").unwrap_or_else(|_| "development".to_string());
-        
+
         // Database config
         let database_url = env::var("DATABASE_URL")
             .map_err(|_| AppError::Configuration("DATABASE_URL must be set".to_string()))?;
-        
+
         // Server config
         let server_host = env::var("SERVER_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
         let server_port = env::var("SERVER_PORT")
             .unwrap_or_else(|_| "8080".to_string())
             .parse::<u16>()
-            .map_err(|_| AppError::Configuration("SERVER_PORT must be a valid port number".to_string()))?;
-        
+            .map_err(|_| {
+                AppError::Configuration("SERVER_PORT must be a valid port number".to_string())
+            })?;
+
         // CORS origins
         let cors_origins = env::var("CORS_ORIGINS")
             .unwrap_or_else(|_| "*".to_string())
@@ -125,20 +126,26 @@ impl AppSettings {
         // Server URL
         let server_url = env::var("SERVER_URL")
             .unwrap_or_else(|_| format!("http://{}:{}", server_host, server_port));
-        
+
         // Auth0 callback URLs
-        let auth0_callback_url = env::var("SERVER_AUTH0_CALLBACK_URL")
-            .map_err(|_| AppError::Configuration("SERVER_AUTH0_CALLBACK_URL must be set".to_string()))?;
-        
-        let auth0_logged_out_url = env::var("SERVER_AUTH0_LOGGED_OUT_URL")
-            .map_err(|_| AppError::Configuration("SERVER_AUTH0_LOGGED_OUT_URL must be set".to_string()))?;
-        
+        let auth0_callback_url = env::var("SERVER_AUTH0_CALLBACK_URL").map_err(|_| {
+            AppError::Configuration("SERVER_AUTH0_CALLBACK_URL must be set".to_string())
+        })?;
+
+        let auth0_logged_out_url = env::var("SERVER_AUTH0_LOGGED_OUT_URL").map_err(|_| {
+            AppError::Configuration("SERVER_AUTH0_LOGGED_OUT_URL must be set".to_string())
+        })?;
+
         // Client request timeout
         let client_request_timeout_secs = env::var("SERVER_CLIENT_REQUEST_TIMEOUT_SECS")
             .unwrap_or_else(|_| "1800".to_string())
             .parse::<u64>()
-            .map_err(|_| AppError::Configuration("SERVER_CLIENT_REQUEST_TIMEOUT_SECS must be a valid number".to_string()))?;
-        
+            .map_err(|_| {
+                AppError::Configuration(
+                    "SERVER_CLIENT_REQUEST_TIMEOUT_SECS must be a valid number".to_string(),
+                )
+            })?;
+
         // API keys
         let openrouter_api_key = env::var("OPENROUTER_API_KEY").ok();
         let openai_api_key = env::var("OPENAI_API_KEY").ok();
@@ -147,133 +154,188 @@ impl AppSettings {
         let google_api_keys = env::var("GOOGLE_API_KEYS")
             .ok()
             .map(|keys_str| {
-                keys_str.split(',')
+                keys_str
+                    .split(',')
                     .map(|key| key.trim().to_string())
                     .filter(|key| !key.is_empty())
                     .collect::<Vec<String>>()
             })
             .filter(|keys| !keys.is_empty());
-        
+
         let auth0_domain = env::var("AUTH0_DOMAIN")
             .map_err(|_| AppError::Configuration("AUTH0_DOMAIN must be set".to_string()))?;
-        
+
         let auth0_api_audience = env::var("AUTH0_API_AUDIENCE")
             .map_err(|_| AppError::Configuration("AUTH0_API_AUDIENCE must be set".to_string()))?;
-        
+
         let auth0_server_client_id = env::var("AUTH0_SERVER_CLIENT_ID").ok();
         let auth0_server_client_secret = env::var("AUTH0_SERVER_CLIENT_SECRET").ok();
-        
+
         // Auth config - Critical security: No defaults allowed for sensitive values
-        let jwt_secret = env::var("JWT_SECRET")
-            .map_err(|_| AppError::Configuration("JWT_SECRET must be set for security - no defaults allowed".to_string()))?;
+        let jwt_secret = env::var("JWT_SECRET").map_err(|_| {
+            AppError::Configuration(
+                "JWT_SECRET must be set for security - no defaults allowed".to_string(),
+            )
+        })?;
 
         // Additional validation: ensure JWT_SECRET is strong enough
         if jwt_secret.len() < 32 {
-            return Err(AppError::Configuration("JWT_SECRET must be at least 32 characters long for security".to_string()));
+            return Err(AppError::Configuration(
+                "JWT_SECRET must be at least 32 characters long for security".to_string(),
+            ));
         }
-        
+
         let token_duration_days = env::var("JWT_ACCESS_TOKEN_DURATION_DAYS")
             .unwrap_or_else(|_| "1".to_string())
             .parse::<i64>()
-            .map_err(|_| AppError::Configuration("JWT_ACCESS_TOKEN_DURATION_DAYS must be a valid number".to_string()))?;
-        
-        let featurebase_sso_secret = env::var("FEATUREBASE_SSO_SECRET")
-            .map_err(|_| AppError::Configuration("FEATUREBASE_SSO_SECRET must be set for security - no defaults allowed".to_string()))?;
+            .map_err(|_| {
+                AppError::Configuration(
+                    "JWT_ACCESS_TOKEN_DURATION_DAYS must be a valid number".to_string(),
+                )
+            })?;
+
+        let featurebase_sso_secret = env::var("FEATUREBASE_SSO_SECRET").map_err(|_| {
+            AppError::Configuration(
+                "FEATUREBASE_SSO_SECRET must be set for security - no defaults allowed".to_string(),
+            )
+        })?;
 
         // Additional validation for featurebase SSO secret
         if featurebase_sso_secret.len() < 16 {
-            return Err(AppError::Configuration("FEATUREBASE_SSO_SECRET must be at least 16 characters long for security".to_string()));
+            return Err(AppError::Configuration(
+                "FEATUREBASE_SSO_SECRET must be at least 16 characters long for security"
+                    .to_string(),
+            ));
         }
 
-        let refresh_token_encryption_key = env::var("REFRESH_TOKEN_ENCRYPTION_KEY")
-            .map_err(|_| AppError::Configuration("REFRESH_TOKEN_ENCRYPTION_KEY must be set for security - no defaults allowed".to_string()))?;
+        let refresh_token_encryption_key =
+            env::var("REFRESH_TOKEN_ENCRYPTION_KEY").map_err(|_| {
+                AppError::Configuration(
+                    "REFRESH_TOKEN_ENCRYPTION_KEY must be set for security - no defaults allowed"
+                        .to_string(),
+                )
+            })?;
 
         // Additional validation for refresh token encryption key
         if refresh_token_encryption_key.len() < 32 {
-            return Err(AppError::Configuration("REFRESH_TOKEN_ENCRYPTION_KEY must be at least 32 characters long for security".to_string()));
+            return Err(AppError::Configuration(
+                "REFRESH_TOKEN_ENCRYPTION_KEY must be at least 32 characters long for security"
+                    .to_string(),
+            ));
         }
-        
+
         // Rate limiting
         let rate_limit_window_ms = env::var("RATE_LIMIT_WINDOW_MS")
             .unwrap_or_else(|_| "60000".to_string())
             .parse::<u64>()
-            .map_err(|_| AppError::Configuration("RATE_LIMIT_WINDOW_MS must be a valid number".to_string()))?;
-        
+            .map_err(|_| {
+                AppError::Configuration("RATE_LIMIT_WINDOW_MS must be a valid number".to_string())
+            })?;
+
         let rate_limit_max_requests = env::var("RATE_LIMIT_MAX_REQUESTS")
             .unwrap_or_else(|_| "60".to_string())
             .parse::<u64>()
-            .map_err(|_| AppError::Configuration("RATE_LIMIT_MAX_REQUESTS must be a valid number".to_string()))?;
-        
+            .map_err(|_| {
+                AppError::Configuration(
+                    "RATE_LIMIT_MAX_REQUESTS must be a valid number".to_string(),
+                )
+            })?;
+
         // Redis configuration (mandatory)
         let redis_url = env::var("REDIS_URL")
             .map_err(|_| AppError::Configuration("REDIS_URL must be set".to_string()))?;
-        
+
         let rate_limit_redis_key_prefix = env::var("RATE_LIMIT_REDIS_KEY_PREFIX").ok();
-        
+
         let rate_limit_cleanup_interval_secs = env::var("RATE_LIMIT_CLEANUP_INTERVAL_SECS")
             .ok()
             .and_then(|s| s.parse().ok());
-        
+
         // Account creation rate limiting
-        let account_creation_rate_limit_window_ms = env::var("ACCOUNT_CREATION_RATE_LIMIT_WINDOW_MS")
-            .unwrap_or_else(|_| "3600000".to_string())
-            .parse::<u64>()
-            .map_err(|_| AppError::Configuration("ACCOUNT_CREATION_RATE_LIMIT_WINDOW_MS must be a valid number".to_string()))?;
-        
-        let account_creation_rate_limit_max_requests = env::var("ACCOUNT_CREATION_RATE_LIMIT_MAX_REQUESTS")
-            .unwrap_or_else(|_| "5".to_string())
-            .parse::<u64>()
-            .map_err(|_| AppError::Configuration("ACCOUNT_CREATION_RATE_LIMIT_MAX_REQUESTS must be a valid number".to_string()))?;
-        
+        let account_creation_rate_limit_window_ms =
+            env::var("ACCOUNT_CREATION_RATE_LIMIT_WINDOW_MS")
+                .unwrap_or_else(|_| "3600000".to_string())
+                .parse::<u64>()
+                .map_err(|_| {
+                    AppError::Configuration(
+                        "ACCOUNT_CREATION_RATE_LIMIT_WINDOW_MS must be a valid number".to_string(),
+                    )
+                })?;
+
+        let account_creation_rate_limit_max_requests =
+            env::var("ACCOUNT_CREATION_RATE_LIMIT_MAX_REQUESTS")
+                .unwrap_or_else(|_| "5".to_string())
+                .parse::<u64>()
+                .map_err(|_| {
+                    AppError::Configuration(
+                        "ACCOUNT_CREATION_RATE_LIMIT_MAX_REQUESTS must be a valid number"
+                            .to_string(),
+                    )
+                })?;
+
         // Billing configuration is now in the database
 
         // Stripe configuration
         let stripe_secret_key = env::var("STRIPE_SECRET_KEY")
             .map_err(|_| AppError::Configuration("STRIPE_SECRET_KEY must be set".to_string()))?;
-            
-        let stripe_publishable_key = env::var("STRIPE_PUBLISHABLE_KEY")
-            .map_err(|_| AppError::Configuration("STRIPE_PUBLISHABLE_KEY must be set".to_string()))?;
-            
-        let stripe_webhook_secret = env::var("STRIPE_WEBHOOK_SECRET")
-            .map_err(|_| AppError::Configuration("STRIPE_WEBHOOK_SECRET must be set".to_string()))?;
-            
-        let stripe_success_url = env::var("STRIPE_CHECKOUT_SUCCESS_URL")
-            .map_err(|_| AppError::Configuration("STRIPE_CHECKOUT_SUCCESS_URL must be set".to_string()))?;
-            
-        let stripe_cancel_url = env::var("STRIPE_CHECKOUT_CANCEL_URL")
-            .map_err(|_| AppError::Configuration("STRIPE_CHECKOUT_CANCEL_URL must be set".to_string()))?;
-            
-        let stripe_portal_return_url = env::var("STRIPE_PORTAL_RETURN_URL")
-            .map_err(|_| AppError::Configuration("STRIPE_PORTAL_RETURN_URL must be set".to_string()))?;
-            
-        
+
+        let stripe_publishable_key = env::var("STRIPE_PUBLISHABLE_KEY").map_err(|_| {
+            AppError::Configuration("STRIPE_PUBLISHABLE_KEY must be set".to_string())
+        })?;
+
+        let stripe_webhook_secret = env::var("STRIPE_WEBHOOK_SECRET").map_err(|_| {
+            AppError::Configuration("STRIPE_WEBHOOK_SECRET must be set".to_string())
+        })?;
+
+        let stripe_success_url = env::var("STRIPE_CHECKOUT_SUCCESS_URL").map_err(|_| {
+            AppError::Configuration("STRIPE_CHECKOUT_SUCCESS_URL must be set".to_string())
+        })?;
+
+        let stripe_cancel_url = env::var("STRIPE_CHECKOUT_CANCEL_URL").map_err(|_| {
+            AppError::Configuration("STRIPE_CHECKOUT_CANCEL_URL must be set".to_string())
+        })?;
+
+        let stripe_portal_return_url = env::var("STRIPE_PORTAL_RETURN_URL").map_err(|_| {
+            AppError::Configuration("STRIPE_PORTAL_RETURN_URL must be set".to_string())
+        })?;
+
         // Auth Store configuration
         let polling_store_expiry_mins = env::var("POLLING_STORE_EXPIRY_MINS")
             .unwrap_or_else(|_| "30".to_string())
             .parse::<i64>()
-            .map_err(|_| AppError::Configuration("POLLING_STORE_EXPIRY_MINS must be a valid number".to_string()))?;
-            
+            .map_err(|_| {
+                AppError::Configuration(
+                    "POLLING_STORE_EXPIRY_MINS must be a valid number".to_string(),
+                )
+            })?;
+
         let auth0_state_store_expiry_mins = env::var("AUTH0_STATE_STORE_EXPIRY_MINS")
             .unwrap_or_else(|_| "30".to_string())
             .parse::<i64>()
-            .map_err(|_| AppError::Configuration("AUTH0_STATE_STORE_EXPIRY_MINS must be a valid number".to_string()))?;
-            
+            .map_err(|_| {
+                AppError::Configuration(
+                    "AUTH0_STATE_STORE_EXPIRY_MINS must be a valid number".to_string(),
+                )
+            })?;
+
         let auth_store_cleanup_interval_secs = env::var("AUTH_STORE_CLEANUP_INTERVAL_SECS")
             .unwrap_or_else(|_| "300".to_string())
             .parse::<u64>()
-            .map_err(|_| AppError::Configuration("AUTH_STORE_CLEANUP_INTERVAL_SECS must be a valid number".to_string()))?;
-        
+            .map_err(|_| {
+                AppError::Configuration(
+                    "AUTH_STORE_CLEANUP_INTERVAL_SECS must be a valid number".to_string(),
+                )
+            })?;
+
         let website_base_url = env::var("WEBSITE_BASE_URL")
             .map_err(|_| AppError::Configuration("WEBSITE_BASE_URL must be set".to_string()))?;
-        
+
         Ok(Self {
             app: AppConfig {
                 name: app_name,
                 environment,
             },
-            database: DatabaseConfig {
-                url: database_url,
-            },
+            database: DatabaseConfig { url: database_url },
             server: ServerConfig {
                 host: server_host,
                 port: server_port,
@@ -328,9 +390,7 @@ impl AppSettings {
                 auth0_state_store_expiry_mins,
                 cleanup_interval_secs: auth_store_cleanup_interval_secs,
             },
-            redis: RedisConfig {
-                url: redis_url,
-            },
+            redis: RedisConfig { url: redis_url },
             website_base_url,
         })
     }

@@ -63,6 +63,21 @@ export interface ImproveTextCommandArgs {
   projectDirectory?: string | null;
 }
 
+// Commands from audio_commands
+export interface TranscribeAudioCommandArgs {
+  audioData: number[];
+  durationMs: number;
+  mimeType: string;
+  filename: string;
+  language?: string | null;
+  prompt?: string | null;
+  temperature?: number | null;
+  model?: string | null;
+}
+
+export interface TranscriptionResponse {
+  text: string;
+}
 
 // Commands from session_commands
 export interface CreateSessionCommandArgs {
@@ -663,6 +678,7 @@ export type TauriInvoke = {
   "generate_regex_command": (args: GenerateRegexCommandArgs) => Promise<JobResult>;
   "improve_text_command": (args: ImproveTextCommandArgs) => Promise<JobResult>;
   "generate_simple_text_command": (args: GenerateSimpleTextCommandArgs) => Promise<{ text: string; duration_ms?: number }>;
+  "transcribe_audio_command": (args: TranscribeAudioCommandArgs) => Promise<TranscriptionResponse>;
   "get_key_value_command": (args: GetKeyValueCommandArgs) => Promise<string | null>;
   "set_key_value_command": (args: SetKeyValueCommandArgs) => Promise<void>;
   "get_workflow_setting_command": (args: GetWorkflowSettingCommandArgs) => Promise<string | null>;
@@ -759,28 +775,19 @@ export type TauriInvoke = {
   "accept_consent_command": (args: { docType: 'terms' | 'privacy'; region: 'eu' | 'us'; metadata?: Record<string, unknown> }) => Promise<void>;
   
   // Terminal commands
-  "read_terminal_log_command": (args: ReadTerminalLogCommandArgs) => Promise<string>;
-  "read_terminal_log_tail_command": (args: ReadTerminalLogTailCommandArgs) => Promise<string>;
-  "clear_terminal_log_command": (args: ClearTerminalLogCommandArgs) => Promise<void>;
-  "delete_terminal_log_command": (args: DeleteTerminalLogCommandArgs) => Promise<void>;
-  "start_terminal_session_command": (args: StartTerminalSessionCommandArgs) => Promise<void>;
-  "write_terminal_input_command": (args: WriteTerminalInputCommandArgs) => Promise<void>;
-  "save_pasted_image_command": (args: SavePastedImageCommandArgs) => Promise<string>;
-  "resize_terminal_session_command": (args: ResizeTerminalSessionCommandArgs) => Promise<void>;
-  "send_ctrl_c_to_terminal_command": (args: SendCtrlCToTerminalCommandArgs) => Promise<void>;
-  "kill_terminal_session_command": (args: KillTerminalSessionCommandArgs) => Promise<void>;
-  "attach_terminal_output_command": (args: { jobId: string; output: import("@tauri-apps/api/core").Channel<Uint8Array> }) => Promise<{ status: string; message?: string }>;
-  "get_terminal_prerequisites_status_command": () => Promise<{ serverSelected: boolean; userAuthenticated: boolean; apiClientsReady: boolean; message?: string }>;
-  "check_terminal_dependencies_command": () => Promise<{ availableCliTools: string[]; defaultShell: string }>;
-  "get_terminal_session_status_command": (args: { jobId: string }) => Promise<any>;
-  "list_active_terminal_sessions_command": () => Promise<Array<{ jobId: string; status: string; processId?: number; createdAt: number; lastOutputAt?: number; workingDirectory?: string; title?: string }>>;
-  "register_terminal_health_session": (args: { jobId: string }) => Promise<void>;
-  "unregister_terminal_health_session": (args: { jobId: string }) => Promise<void>;
-  "get_terminal_health_status": (args: { jobId: string }) => Promise<HealthCheckResult>;
-  "get_terminal_health_history": (args: { jobId: string }) => Promise<HealthHistoryEntry[]>;
-  "trigger_terminal_recovery": (args: { jobId: string; action: RecoveryAction }) => Promise<void>;
-  "touch_session_by_job_id": (args: { jobId: string }) => Promise<void>;
-  "get_performance_summary": () => Promise<any>;
+  "start_terminal_session_command": (args: { sessionId: string; options?: any; output: import("@tauri-apps/api/core").Channel<Uint8Array> }) => Promise<void>;
+  "attach_terminal_output_command": (args: { sessionId: string; output: import("@tauri-apps/api/core").Channel<Uint8Array> }) => Promise<void>;
+  "write_terminal_input_command": (args: { sessionId: string; data: number[] }) => Promise<void>;
+  "resize_terminal_session_command": (args: { sessionId: string; cols: number; rows: number }) => Promise<void>;
+  "kill_terminal_session_command": (args: { sessionId: string }) => Promise<void>;
+  "get_terminal_session_status_command": (args: { sessionId: string }) => Promise<any>;
+  "list_terminal_sessions_command": () => Promise<string[]>;
+  "restore_terminal_sessions_command": () => Promise<string[]>;
+  "get_active_terminal_sessions_command": () => Promise<string[]>;
+  "reconnect_terminal_session_command": (args: { sessionId: string; output: import("@tauri-apps/api/core").Channel<Uint8Array> }) => Promise<boolean>;
+
+  // Image commands
+  "save_pasted_image_command": (args: { sessionId: string; fileName?: string | null; mimeType?: string | null; data: number[] }) => Promise<string>;
 };
 
 // Billing-related types
@@ -1132,92 +1139,6 @@ export interface ListInvoicesResponse {
   hasMore: boolean;
 }
 
-// Commands from terminal_commands
-
-export interface ReadTerminalLogCommandArgs {
-  jobId: string;
-}
-
-export interface ReadTerminalLogTailCommandArgs {
-  jobId: string;
-  maxBytes?: number | null;
-}
-
-export interface ClearTerminalLogCommandArgs {
-  jobId: string;
-}
-
-export interface DeleteTerminalLogCommandArgs {
-  jobId: string;
-}
-
-export interface StartTerminalSessionCommandArgs {
-  jobId: string;
-  options: {
-    workingDirectory?: string | null;
-    environment?: Record<string, string> | null;
-    rows?: number | null;
-    cols?: number | null;
-  };
-  output: import("@tauri-apps/api/core").Channel<Uint8Array>;
-}
-
-export interface WriteTerminalInputCommandArgs {
-  jobId: string;
-  data: number[];
-}
-
-export interface SavePastedImageCommandArgs {
-  jobId: string;
-  fileName?: string | null;
-  mimeType?: string | null;
-  data: number[];
-}
-
-export interface ResizeTerminalSessionCommandArgs {
-  jobId: string;
-  cols: number;
-  rows: number;
-}
-
-export interface SendCtrlCToTerminalCommandArgs {
-  jobId: string;
-}
-
-export interface KillTerminalSessionCommandArgs {
-  jobId: string;
-}
-
-// Health monitoring types
-export type HealthStatus =
-  | { type: 'healthy' }
-  | { type: 'noOutput'; durationSecs: number }
-  | { type: 'processDead'; exitCode?: number }
-  | { type: 'agentRequiresAttention'; lastOutputSecs: number }
-  | { type: 'disconnected' }
-  | { type: 'persistenceLag'; pendingBytes: number };
-
-export type HealthSeverity = 'good' | 'warning' | 'critical';
-
-export type RecoveryAction = 'sendPrompt' | 'interrupt' | 'restart' | 'reattach' | 'flushPersistence' | 'none';
-
-export interface HealthCheckResult {
-  jobId: string;
-  status: HealthStatus;
-  lastCheck: number;
-  recoveryAttempts: number;
-  lastRecoveryAttempt?: number;
-  processAlive: boolean;
-  lastOutputAt?: number;
-  outputChannelActive: boolean;
-  persistenceQueueSize: number;
-}
-
-export interface HealthHistoryEntry {
-  timestamp: number;
-  status: HealthStatus;
-  recoveryAction?: RecoveryAction;
-}
 
 // Strongly typed invoke function
 export declare function invoke<T extends keyof TauriInvoke>(

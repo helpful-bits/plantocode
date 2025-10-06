@@ -1,6 +1,6 @@
+use crate::stripe_types::{Charge, Expandable};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use crate::stripe_types::{Charge, Expandable};
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct PaymentIntent {

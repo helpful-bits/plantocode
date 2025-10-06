@@ -175,7 +175,7 @@ public class KeychainManager {
         guard status == errSecSuccess else {
             if status == errSecItemNotFound {
                 throw KeychainError.itemNotFound
-            } else if status == errSecUserCancel {
+            } else if status == errSecUserCanceled {
                 throw KeychainError.operationCancelled
             } else if status == errSecAuthFailed {
                 throw KeychainError.authenticationFailed
@@ -462,5 +462,18 @@ extension KeychainManager {
         let key = try retrieveEncryptionKey(for: keyItem, prompt: prompt)
         let sealedBox = try AES.GCM.SealedBox(combined: encryptedData)
         return try AES.GCM.open(sealedBox, using: key)
+    }
+}
+
+// MARK: - Relay Session Storage
+extension KeychainManager.KeychainItem {
+    /// Relay session resume token storage per device
+    public static func relayResumeToken(deviceId: String) -> KeychainManager.KeychainItem {
+        return KeychainManager.KeychainItem(
+            service: "com.vibe-manager.relay",
+            account: "resume-\(deviceId)",
+            biometricPolicy: .none,
+            synchronizable: false
+        )
     }
 }

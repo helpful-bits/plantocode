@@ -16,7 +16,7 @@
 4) Configure Auth0 settings in `ios/App/Info.plist` (see Auth0 Configuration section below).
 
 5) Update the simulator or device run destination and press Run.
-   - Tap "Sign In", complete the Auth0 flow, and you should land on the TaskView screen.
+   - Tap "Sign In", complete the Auth0 flow, and you should land on the SessionWorkspaceView screen.
 
 For architectural context see `NORMALIZATION_NOTES.md`.
 

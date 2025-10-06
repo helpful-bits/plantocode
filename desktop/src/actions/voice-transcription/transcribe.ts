@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { AppError, ErrorType, mapStatusToErrorType, getErrorMessage, logError } from "@/utils/error-handling";
+import { AppError, ErrorType, getErrorMessage, logError } from "@/utils/error-handling";
 
 export async function transcribeAudioChunk(
   audioChunk: Blob,
@@ -32,88 +32,37 @@ export async function transcribeAudioChunk(
       throw new AppError("Prompt must be 1000 characters or less", ErrorType.VALIDATION_ERROR);
     }
 
-    const serverUrl = await invoke<string>('get_server_url');
-    const jwt = await invoke<string | null>('get_app_jwt');
-    const deviceId = await invoke<string>('get_device_id');
+    // Convert Blob to Uint8Array for Tauri
+    const arrayBuffer = await audioChunk.arrayBuffer();
+    const audioData = Array.from(new Uint8Array(arrayBuffer));
 
-    if (!jwt) {
-      const errorMsg = "Authentication required. Please log in to use voice transcription.";
-      await logError(new AppError(errorMsg, ErrorType.PERMISSION_ERROR), "Voice Transcription - Not Authenticated");
-      throw new AppError(errorMsg, ErrorType.PERMISSION_ERROR);
-    }
-
-    const formData = new FormData();
-    
+    // Extract file extension from MIME type
     const fileExtension = (mimeType.split('/')[1] || 'webm').split(';')[0];
     const filename = `audio.${fileExtension}`;
-    formData.append('file', audioChunk, filename);
-    
-    if (model) formData.append('model', model);
-    if (language) formData.append('language', language);
-    if (prompt) formData.append('prompt', prompt);
-    if (temperature !== undefined) formData.append('temperature', temperature.toString());
-    formData.append('duration_ms', durationMs.toString());
 
-    const response = await fetch(`${serverUrl}/api/audio/transcriptions`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${jwt}`,
-        'x-device-id': deviceId
-      },
-      body: formData
+    // Call the Tauri command instead of making a direct fetch
+    const result = await invoke<{ text: string }>('transcribe_audio_command', {
+      audioData,
+      durationMs,
+      mimeType,
+      filename,
+      language: language || null,
+      prompt: prompt || null,
+      temperature: temperature !== undefined ? temperature : null,
+      model: model || null,
     });
 
-    if (!response.ok) {
-      let errorType = mapStatusToErrorType(response.status);
-      let errorMessage = `HTTP error! status: ${response.status}`;
-      
-      try {
-        // Parse JSON from response body to get server-provided error message and type
-        const errorData = await response.json();
-        const serverMessage = errorData.error?.message || errorData.message;
-        if (serverMessage) {
-          errorMessage = serverMessage;
-        }
-        
-        // Check for server-provided error_type to get more accurate error classification
-        const serverErrorType = errorData.error_type || errorData.error?.type;
-        if (serverErrorType) {
-          // Map server error types to client ErrorType
-          if (serverErrorType === 'credit_insufficient' || serverErrorType === 'insufficient_credits') {
-            errorType = ErrorType.CREDIT_INSUFFICIENT;
-          } else if (serverErrorType === 'payment_failed') {
-            errorType = ErrorType.PAYMENT_FAILED;
-          } else if (serverErrorType === 'payment_required') {
-            errorType = ErrorType.PAYMENT_REQUIRED;
-          }
-          // Add more mappings as needed
-        }
-      } catch (parseError) {
-        // If parsing fails, fallback to HTTP status message
-        console.warn('Failed to parse error response:', parseError);
-      }
-      
-      throw new AppError(errorMessage, errorType, { statusCode: response.status });
-    }
-
-    const result = await response.json();
-    
     return {
       text: result.text || ""
     };
   } catch (error) {
     await logError(error, "transcribeAudioChunk", { hasPrompt: !!prompt, temperature });
-    
+
     // If it's already an AppError, re-throw it
     if (error instanceof AppError) {
       throw error;
     }
-    
-    // Handle network errors
-    if (error instanceof Error && (error.message.includes("NetworkError") || error.message.includes("fetch") || error.name === "TypeError")) {
-      throw new AppError("Network error: Unable to connect to transcription service. Please check your internet connection and try again.", ErrorType.NETWORK_ERROR, { cause: error });
-    }
-    
+
     // Handle other errors by converting to AppError
     const errorMessage = getErrorMessage(error, 'transcription');
     throw new AppError(errorMessage, ErrorType.API_ERROR, { cause: error instanceof Error ? error : undefined });

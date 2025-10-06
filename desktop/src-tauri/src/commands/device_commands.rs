@@ -1,6 +1,6 @@
-use tauri::{AppHandle, command};
 use crate::auth::device_id_manager;
 use crate::error::AppResult;
+use tauri::{AppHandle, command};
 
 /// Get the device ID
 #[command]

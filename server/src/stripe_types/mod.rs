@@ -17,9 +17,14 @@ pub mod setup_intent;
 
 // Re-export all types for convenience
 pub use billing_portal_session::BillingPortalSession;
-pub use charge::{Charge, BalanceTransaction};
-pub use checkout_session::{CheckoutSession, CheckoutSessionMode, CreateCheckoutSessionLineItems, PresentmentDetails};
-pub use customer::{Customer, CustomerAddress, CustomerInvoiceSettings, TaxId, TaxIdList, TaxIdVerification, ShippingInfo, TaxExemptStatus};
+pub use charge::{BalanceTransaction, Charge};
+pub use checkout_session::{
+    CheckoutSession, CheckoutSessionMode, CreateCheckoutSessionLineItems, PresentmentDetails,
+};
+pub use customer::{
+    Customer, CustomerAddress, CustomerInvoiceSettings, ShippingInfo, TaxExemptStatus, TaxId,
+    TaxIdList, TaxIdVerification,
+};
 pub use enums::*;
 pub use event::{Event, EventObject};
 pub use expandable::Expandable;

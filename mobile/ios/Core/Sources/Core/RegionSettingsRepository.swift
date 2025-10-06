@@ -106,10 +106,18 @@ public class RegionSettingsRepository {
     /// Gets all available regions
     /// - Returns: Array of tuples containing region names and their base URLs
     public func getAvailableRegions() -> [(region: String, baseURL: String)] {
+        #if DEBUG
+        return [
+            ("Local Development", "http://192.168.0.38:8080"),
+            ("United States", "https://api.us.vibemanager.app"),
+            ("European Union", "https://api.eu.vibemanager.app")
+        ]
+        #else
         return [
             ("United States", "https://api.us.vibemanager.app"),
             ("European Union", "https://api.eu.vibemanager.app")
         ]
+        #endif
     }
 
     /// Gets the base URL for a given region name
@@ -158,7 +166,13 @@ public class RegionSettingsRepository {
     }
 
     private func getDefaultRegion() -> (region: String, baseURL: String) {
+        #if DEBUG
+        // Using Mac's actual IP for both simulator and physical device testing
+        // Server runs on port 8080
+        return ("Local Development", "http://192.168.0.38:8080")
+        #else
         return ("United States", "https://api.us.vibemanager.app")
+        #endif
     }
 
     private func insertDefaultRegion(_ regionName: String, _ url: String) throws {

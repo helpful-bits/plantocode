@@ -62,15 +62,15 @@ pub fn model_requires_tools(model: &str, web_mode: bool) -> Option<Vec<OpenAIRes
     // Only allow web search for OpenAI models
     // Models may have provider prefixes like "openrouter/openai/gpt-4"
     let model_lower = model.to_lowercase();
-    let is_openai_model = model_lower.contains("openai/") ||
-                          model_lower.contains("/gpt-") ||
-                          model_lower.contains("/o1-") ||
-                          model_lower.contains("/o3-") ||
-                          model_lower.contains("/o4-") ||
-                          model_lower.starts_with("gpt-") ||
-                          model_lower.starts_with("o1-") ||
-                          model_lower.starts_with("o3-") ||
-                          model_lower.starts_with("o4-");
+    let is_openai_model = model_lower.contains("openai/")
+        || model_lower.contains("/gpt-")
+        || model_lower.contains("/o1-")
+        || model_lower.contains("/o3-")
+        || model_lower.contains("/o4-")
+        || model_lower.starts_with("gpt-")
+        || model_lower.starts_with("o1-")
+        || model_lower.starts_with("o3-")
+        || model_lower.starts_with("o4-");
 
     if model.contains("deep-research") || (web_mode && is_openai_model) {
         // Web search tool with location and context configuration
@@ -89,15 +89,15 @@ pub fn model_requires_tools(model: &str, web_mode: bool) -> Option<Vec<OpenAIRes
 pub fn model_requires_background(model: &str, web_mode: bool) -> bool {
     // Models may have provider prefixes like "openrouter/openai/gpt-4"
     let model_lower = model.to_lowercase();
-    let is_openai_model = model_lower.contains("openai/") ||
-                          model_lower.contains("/gpt-") ||
-                          model_lower.contains("/o1-") ||
-                          model_lower.contains("/o3-") ||
-                          model_lower.contains("/o4-") ||
-                          model_lower.starts_with("gpt-") ||
-                          model_lower.starts_with("o1-") ||
-                          model_lower.starts_with("o3-") ||
-                          model_lower.starts_with("o4-");
+    let is_openai_model = model_lower.contains("openai/")
+        || model_lower.contains("/gpt-")
+        || model_lower.contains("/o1-")
+        || model_lower.contains("/o3-")
+        || model_lower.contains("/o4-")
+        || model_lower.starts_with("gpt-")
+        || model_lower.starts_with("o1-")
+        || model_lower.starts_with("o3-")
+        || model_lower.starts_with("o4-");
 
     model.contains("deep-research") || (web_mode && is_openai_model)
 }
@@ -165,9 +165,9 @@ pub fn prepare_request_body(
             .filter(|msg| msg.role != "system" && msg.role != "developer")
             .cloned()
             .collect();
-        Some(serde_json::to_value(
-            convert_messages_to_responses_input(&non_system_messages),
-        )?)
+        Some(serde_json::to_value(convert_messages_to_responses_input(
+            &non_system_messages,
+        ))?)
     };
 
     let tools = model_requires_tools(&request.model, web_mode);
@@ -179,32 +179,26 @@ pub fn prepare_request_body(
     let resolved_model_id = request.model.clone();
 
     // Web search specific configurations
-    let (
-        text_format,
-        reasoning_config,
-        store_config,
-        tool_choice,
-        parallel_tool_calls,
-        truncation,
-    ) = if web_mode {
-        (
-            Some(OpenAIResponsesTextFormat {
-                format: OpenAIResponsesFormatType {
-                    format_type: "text".to_string(),
-                },
-            }),
-            Some(OpenAIResponsesReasoning {
-                effort: "medium".to_string(),
-                summary: "auto".to_string(),
-            }),
-            Some(false), // Store is set to false for web search
-            Some("auto".to_string()),
-            Some(true),
-            Some("disabled".to_string()),
-        )
-    } else {
-        (None, None, None, None, None, None)
-    };
+    let (text_format, reasoning_config, store_config, tool_choice, parallel_tool_calls, truncation) =
+        if web_mode {
+            (
+                Some(OpenAIResponsesTextFormat {
+                    format: OpenAIResponsesFormatType {
+                        format_type: "text".to_string(),
+                    },
+                }),
+                Some(OpenAIResponsesReasoning {
+                    effort: "medium".to_string(),
+                    summary: "auto".to_string(),
+                }),
+                Some(false), // Store is set to false for web search
+                Some("auto".to_string()),
+                Some(true),
+                Some("disabled".to_string()),
+            )
+        } else {
+            (None, None, None, None, None, None)
+        };
 
     // Ensure request uniqueness to prevent OpenAI response ID deduplication
     let unique_user_id = if background.unwrap_or(false) || web_mode {

@@ -3,7 +3,7 @@ import Core
 import Combine
 
 public struct ImplementationPlansView: View {
-    @StateObject private var plansService = DataServicesManager(baseURL: URL(string: Config.serverURL)!, deviceId: DeviceManager.shared.getOrCreateDeviceID()).plansService
+    @EnvironmentObject private var container: AppContainer
     @State private var selectedPlans: Set<String> = []
     @State private var mergeInstructions = ""
     @State private var isLoading = false
@@ -15,58 +15,21 @@ public struct ImplementationPlansView: View {
     public init() {}
 
     public var body: some View {
-        NavigationView {
-            VStack(spacing: 20) {
-                // Header with navigation
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Implementation Plans")
-                            .font(.largeTitle)
-                            .fontWeight(.bold)
-                            .foregroundColor(Color("CardForeground"))
-
-                        Spacer()
-
-                        // Plan count and navigation
-                        if !plans.isEmpty {
-                            HStack(spacing: 16) {
-                                Text("\(currentPlanIndex + 1) of \(plans.count)")
-                                    .font(.caption)
-                                    .foregroundColor(Color("MutedForeground"))
-
-                                HStack(spacing: 8) {
-                                    Button(action: previousPlan) {
-                                        Image(systemName: "chevron.left")
-                                            .font(.title2)
-                                            .foregroundColor(currentPlanIndex > 0 ? Color("Primary") : Color("MutedForeground"))
-                                    }
-                                    .disabled(currentPlanIndex <= 0)
-
-                                    Button(action: nextPlan) {
-                                        Image(systemName: "chevron.right")
-                                            .font(.title2)
-                                            .foregroundColor(currentPlanIndex < plans.count - 1 ? Color("Primary") : Color("MutedForeground"))
-                                    }
-                                    .disabled(currentPlanIndex >= plans.count - 1)
-                                }
-                            }
-                        }
-                    }
-
-                    Text("Manage and merge implementation plans")
-                        .font(.body)
-                        .foregroundColor(Color("MutedForeground"))
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(spacing: 20) {
+            // Header
+            AppHeaderBar(
+                title: "Plans",
+                subtitle: "Manage and merge implementation plans"
+            )
 
                 // Loading State
                 if isLoading {
                     HStack {
                         ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: Color("Primary")))
+                            .progressViewStyle(CircularProgressViewStyle(tint: Color.primary))
                             .scaleEffect(0.8)
                         Text("Loading plans...")
-                            .foregroundColor(Color("MutedForeground"))
+                            .foregroundColor(Color.mutedForeground)
                     }
                     .padding()
                 }
@@ -83,16 +46,16 @@ public struct ImplementationPlansView: View {
                         if !selectedPlans.isEmpty {
                             HStack {
                                 Text("\(selectedPlans.count) plan\(selectedPlans.count == 1 ? "" : "s") selected")
-                                    .font(.headline)
-                                    .foregroundColor(Color("Primary"))
+                                    .h4()
+                                    .foregroundColor(Color.primary)
 
                                 Spacer()
 
                                 Button("Clear Selection") {
                                     selectedPlans.removeAll()
                                 }
-                                .font(.caption)
-                                .foregroundColor(Color("MutedForeground"))
+                                .small()
+                                .foregroundColor(Color.mutedForeground)
                             }
                             .padding(.horizontal)
                         }
@@ -107,24 +70,24 @@ public struct ImplementationPlansView: View {
                                         // Session header with plan count
                                         HStack {
                                             Text("Task Group")
-                                                .font(.headline)
-                                                .foregroundColor(Color("CardForeground"))
+                                                .h4()
+                                                .foregroundColor(Color.cardForeground)
 
                                             Spacer()
 
                                             Text("\(sessionPlans.count) plan\(sessionPlans.count == 1 ? "" : "s")")
-                                                .font(.caption)
-                                                .foregroundColor(Color("MutedForeground"))
+                                                .small()
+                                                .foregroundColor(Color.mutedForeground)
                                                 .padding(.horizontal, 8)
                                                 .padding(.vertical, 4)
-                                                .background(Color("Muted").opacity(0.2))
+                                                .background(Color.muted.opacity(0.2))
                                                 .cornerRadius(4)
                                         }
                                         .padding(.horizontal)
 
                                         // Plans in this session
                                         ForEach(sessionPlans) { plan in
-                                            NavigationLink(destination: PlanDetailView(plan: plan, allPlans: plans)) {
+                                            NavigationLink(destination: PlanDetailView(plan: plan, allPlans: plans, plansService: container.plansService)) {
                                                 PlanCard(
                                                     plan: plan,
                                                     isSelected: selectedPlans.contains(plan.jobId),
@@ -156,18 +119,18 @@ public struct ImplementationPlansView: View {
 
                                 VStack(alignment: .leading, spacing: 12) {
                                     Text("Merge Instructions")
-                                        .font(.headline)
-                                        .foregroundColor(Color("CardForeground"))
+                                        .h4()
+                                        .foregroundColor(Color.cardForeground)
 
                                     TextField("Enter instructions for merging the selected plans...", text: $mergeInstructions, axis: .vertical)
                                         .lineLimit(3...6)
                                         .textFieldStyle(PlainTextFieldStyle())
                                         .padding(12)
-                                        .background(Color("Card"))
+                                        .background(Color.card)
                                         .cornerRadius(8)
                                         .overlay(
                                             RoundedRectangle(cornerRadius: 8)
-                                                .stroke(Color("Border"), lineWidth: 1)
+                                                .stroke(Color.border, lineWidth: 1)
                                         )
 
                                     HStack {
@@ -179,7 +142,7 @@ public struct ImplementationPlansView: View {
 
                                         if isMerging {
                                             ProgressView()
-                                                .progressViewStyle(CircularProgressViewStyle(tint: Color("Primary")))
+                                                .progressViewStyle(CircularProgressViewStyle(tint: Color.primary))
                                                 .scaleEffect(0.8)
                                         }
 
@@ -187,11 +150,11 @@ public struct ImplementationPlansView: View {
                                     }
                                 }
                                 .padding()
-                                .background(Color("Card").opacity(0.5))
+                                .background(Color.card.opacity(0.5))
                                 .cornerRadius(12)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12)
-                                        .stroke(Color("Primary").opacity(0.3), lineWidth: 1)
+                                        .stroke(Color.primary.opacity(0.3), lineWidth: 1)
                                 )
                             }
                             .padding(.horizontal)
@@ -204,16 +167,16 @@ public struct ImplementationPlansView: View {
                     VStack(spacing: 16) {
                         Image(systemName: "doc.text")
                             .font(.system(size: 48))
-                            .foregroundColor(Color("MutedForeground"))
+                            .foregroundColor(Color.mutedForeground)
 
                         VStack(spacing: 8) {
                             Text("No Implementation Plans")
-                                .font(.headline)
-                                .foregroundColor(Color("CardForeground"))
+                                .h4()
+                                .foregroundColor(Color.cardForeground)
 
                             Text("Implementation plans will appear here once you create some tasks.")
-                                .font(.body)
-                                .foregroundColor(Color("MutedForeground"))
+                                .paragraph()
+                                .foregroundColor(Color.mutedForeground)
                                 .multilineTextAlignment(.center)
                         }
 
@@ -228,13 +191,12 @@ public struct ImplementationPlansView: View {
                 Spacer()
             }
             .padding()
-        }
-        .navigationTitle("Plans")
         .refreshable {
             await refreshPlans()
         }
         .onAppear {
             loadPlans()
+            setupRealTimeUpdates()
         }
     }
 
@@ -251,7 +213,7 @@ public struct ImplementationPlansView: View {
             includeMetadataOnly: true
         )
 
-        plansService.listPlans(request: request)
+        container.plansService.listPlans(request: request)
             .receive(on: DispatchQueue.main)
             .sink(
                 receiveCompletion: { completion in
@@ -279,7 +241,7 @@ public struct ImplementationPlansView: View {
                 includeMetadataOnly: true
             )
 
-            plansService.listPlans(request: request)
+            container.plansService.listPlans(request: request)
                 .receive(on: DispatchQueue.main)
                 .sink(
                     receiveCompletion: { completion in
@@ -393,6 +355,33 @@ public struct ImplementationPlansView: View {
             plan.sessionId
         }
     }
+
+    private func setupRealTimeUpdates() {
+        container.plansService.$lastUpdateEvent
+            .compactMap { $0 }
+            .sink { event in
+                DispatchQueue.main.async {
+                    handleRealTimeUpdate(event: event)
+                }
+            }
+            .store(in: &cancellables)
+
+        container.plansService.$plans
+            .receive(on: DispatchQueue.main)
+            .sink { updatedPlans in
+                plans = updatedPlans
+            }
+            .store(in: &cancellables)
+    }
+
+    private func handleRealTimeUpdate(event: RelayEvent) {
+        switch event.eventType {
+        case "PlansUpdated", "PlanCreated", "PlanDeleted", "PlanModified":
+            loadPlans()
+        default:
+            break
+        }
+    }
 }
 
 private struct PlanCard: View {
@@ -410,15 +399,15 @@ private struct PlanCard: View {
                 }) {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                         .font(.title2)
-                        .foregroundColor(isSelected ? Color("Primary") : Color("MutedForeground"))
+                        .foregroundColor(isSelected ? Color.primary : Color.mutedForeground)
                 }
                 .buttonStyle(PlainButtonStyle())
 
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text(plan.title ?? "Untitled Plan")
-                            .font(.headline)
-                            .foregroundColor(Color("CardForeground"))
+                            .h4()
+                            .foregroundColor(Color.cardForeground)
                             .lineLimit(2)
 
                         Spacer()
@@ -429,36 +418,36 @@ private struct PlanCard: View {
 
                     HStack {
                         Text(plan.formattedDate)
-                            .font(.caption)
-                            .foregroundColor(Color("MutedForeground"))
+                            .small()
+                            .foregroundColor(Color.mutedForeground)
 
                         Spacer()
 
                         Text(plan.size)
-                            .font(.caption)
-                            .foregroundColor(Color("MutedForeground"))
+                            .small()
+                            .foregroundColor(Color.mutedForeground)
                     }
 
                     if let filePath = plan.filePath {
                         Text(filePath)
-                            .font(.caption2)
-                            .foregroundColor(Color("MutedForeground"))
+                            .small()
+                            .foregroundColor(Color.mutedForeground)
                             .lineLimit(1)
                     }
                 }
 
                 Image(systemName: "chevron.right")
                     .font(.caption)
-                    .foregroundColor(Color("MutedForeground"))
+                    .foregroundColor(Color.mutedForeground)
             }
             .padding(16)
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(isSelected ? Color("Primary").opacity(0.1) : Color("Card"))
+                    .fill(isSelected ? Color.primary.opacity(0.1) : Color.card)
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
                             .stroke(
-                                isSelected ? Color("Primary") : Color("Border"),
+                                isSelected ? Color.primary : Color.border,
                                 lineWidth: isSelected ? 2 : 1
                             )
                     )
@@ -473,8 +462,7 @@ private struct StatusBadge: View {
 
     var body: some View {
         Text(status.capitalized)
-            .font(.caption2)
-            .fontWeight(.medium)
+            .small()
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(statusColor.opacity(0.2))
@@ -485,42 +473,16 @@ private struct StatusBadge: View {
     private var statusColor: Color {
         switch status.lowercased() {
         case "completed":
-            return .green
+            return Color.success
         case "running", "processing":
-            return .blue
+            return Color.primary
         case "failed", "error":
-            return .red
+            return Color.destructive
         case "pending", "queued":
-            return .orange
+            return Color.warning
         default:
-            return .gray
+            return Color.muted
         }
-    }
-}
-
-private struct PrimaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .padding(.horizontal, 20)
-            .padding(.vertical, 10)
-            .background(Color("Primary"))
-            .foregroundColor(.white)
-            .cornerRadius(8)
-            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
-            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
-    }
-}
-
-private struct SecondaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .background(Color("Secondary"))
-            .foregroundColor(Color("SecondaryForeground"))
-            .cornerRadius(6)
-            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
-            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
     }
 }
 

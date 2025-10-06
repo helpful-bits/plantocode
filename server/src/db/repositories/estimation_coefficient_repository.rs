@@ -1,8 +1,8 @@
 use crate::error::AppError;
 use bigdecimal::{BigDecimal, ToPrimitive};
 use sqlx::PgPool;
-use std::sync::Arc;
 use std::cmp;
+use std::sync::Arc;
 use tracing::warn;
 
 #[derive(Debug, Clone)]
@@ -25,7 +25,10 @@ impl EstimationCoefficientRepository {
     }
 
     /// Get estimation coefficients for a model
-    pub async fn get_coefficients(&self, model_id: &str) -> Result<Option<EstimationCoefficient>, AppError> {
+    pub async fn get_coefficients(
+        &self,
+        model_id: &str,
+    ) -> Result<Option<EstimationCoefficient>, AppError> {
         let result = sqlx::query!(
             r#"
             SELECT 
@@ -42,7 +45,9 @@ impl EstimationCoefficientRepository {
         )
         .fetch_optional(self.pool.as_ref())
         .await
-        .map_err(|e| AppError::Database(format!("Failed to fetch estimation coefficients: {}", e)))?;
+        .map_err(|e| {
+            AppError::Database(format!("Failed to fetch estimation coefficients: {}", e))
+        })?;
 
         Ok(result.map(|row| EstimationCoefficient {
             model_id: row.model_id,
@@ -63,37 +68,32 @@ impl EstimationCoefficientRepository {
     ) -> Result<(i64, i64), AppError> {
         // Get coefficients for the model
         let coefficients = self.get_coefficients(model_id).await?;
-        
+
         match coefficients {
             Some(coef) => {
                 // Convert input_tokens to BigDecimal for calculation
                 let input_bd = BigDecimal::from(input_tokens);
-                
+
                 // Calculate estimated input tokens
-                let estimated_input_bd = &input_bd * &coef.input_multiplier + BigDecimal::from(coef.input_offset);
-                let estimated_input = estimated_input_bd
-                    .to_i64()
-                    .unwrap_or(input_tokens)
-                    .max(0); // Ensure non-negative
-                
+                let estimated_input_bd =
+                    &input_bd * &coef.input_multiplier + BigDecimal::from(coef.input_offset);
+                let estimated_input = estimated_input_bd.to_i64().unwrap_or(input_tokens).max(0); // Ensure non-negative
+
                 // Determine base output tokens with precedence
-                let base_output = max_output_tokens
-                    .or(coef.avg_output_tokens)
-                    .unwrap_or(2000) as i64;
-                
+                let base_output =
+                    max_output_tokens.or(coef.avg_output_tokens).unwrap_or(2000) as i64;
+
                 // Convert to BigDecimal for calculation
                 let base_output_bd = BigDecimal::from(base_output);
-                
+
                 // Calculate estimated output tokens
-                let estimated_output_bd = &base_output_bd * &coef.output_multiplier + BigDecimal::from(coef.output_offset);
-                let estimated_output = estimated_output_bd
-                    .to_i64()
-                    .unwrap_or(base_output)
-                    .max(0); // Ensure non-negative
-                
+                let estimated_output_bd = &base_output_bd * &coef.output_multiplier
+                    + BigDecimal::from(coef.output_offset);
+                let estimated_output = estimated_output_bd.to_i64().unwrap_or(base_output).max(0); // Ensure non-negative
+
                 // Apply safety cap of 4000 tokens
                 let capped_output = cmp::min(estimated_output, 4000);
-                
+
                 Ok((estimated_input, capped_output))
             }
             None => {

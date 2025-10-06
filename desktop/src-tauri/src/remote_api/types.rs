@@ -13,6 +13,7 @@ pub struct RpcResponse {
     pub correlation_id: String,
     pub result: Option<Value>,
     pub error: Option<String>,
+    pub is_final: bool,
 }
 
 #[derive(Debug, Clone)]

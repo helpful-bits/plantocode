@@ -1,6 +1,6 @@
-use actix_web::{dev::Payload, Error, FromRequest, HttpRequest, HttpMessage};
+use actix_web::{Error, FromRequest, HttpMessage, HttpRequest, dev::Payload};
 use serde::{Deserialize, Serialize};
-use std::future::{ready, Ready};
+use std::future::{Ready, ready};
 use uuid::Uuid;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -19,7 +19,9 @@ impl FromRequest for AuthenticatedUser {
         if let Some(user) = req.extensions().get::<AuthenticatedUser>() {
             ready(Ok(user.clone()))
         } else {
-            ready(Err(actix_web::error::ErrorUnauthorized("Not authenticated")))
+            ready(Err(actix_web::error::ErrorUnauthorized(
+                "Not authenticated",
+            )))
         }
     }
 }

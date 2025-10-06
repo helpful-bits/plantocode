@@ -1,7 +1,7 @@
 use crate::error::AppError;
 use bigdecimal::{BigDecimal, ToPrimitive};
 use redis::{AsyncCommands, Client, Script};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
@@ -14,8 +14,14 @@ pub struct PendingChargeManager {
 }
 
 impl PendingChargeManager {
-    pub fn new(connection_manager: std::sync::Arc<redis::aio::ConnectionManager>, default_ttl_ms: u64) -> Self {
-        Self { connection_manager, default_ttl_ms }
+    pub fn new(
+        connection_manager: std::sync::Arc<redis::aio::ConnectionManager>,
+        default_ttl_ms: u64,
+    ) -> Self {
+        Self {
+            connection_manager,
+            default_ttl_ms,
+        }
     }
 
     /// Converts BigDecimal to i64 micro-units (multiply by 1e6)
@@ -97,9 +103,7 @@ impl PendingChargeManager {
             .arg(ttl_secs)
             .invoke_async(&mut conn)
             .await
-            .map_err(|e| {
-                AppError::Internal(format!("Redis script execution error: {}", e))
-            })?;
+            .map_err(|e| AppError::Internal(format!("Redis script execution error: {}", e)))?;
 
         let success = result == 1;
 
@@ -138,13 +142,12 @@ impl PendingChargeManager {
         let _: () = conn
             .hdel(&user_key, request_id)
             .await
-            .map_err(|e| {
-                AppError::Internal(format!("Failed to remove reservation hash: {}", e))
-            })?;
+            .map_err(|e| AppError::Internal(format!("Failed to remove reservation hash: {}", e)))?;
 
-        let _: () = conn.del(&request_key).await.map_err(|e| {
-            AppError::Internal(format!("Failed to remove request sentinel: {}", e))
-        })?;
+        let _: () = conn
+            .del(&request_key)
+            .await
+            .map_err(|e| AppError::Internal(format!("Failed to remove request sentinel: {}", e)))?;
 
         debug!(
             user_id = user_id,
@@ -192,9 +195,7 @@ impl PendingChargeManager {
             .key(&user_key)
             .invoke_async(&mut conn)
             .await
-            .map_err(|e| {
-                AppError::Internal(format!("Redis script execution error: {}", e))
-            })?;
+            .map_err(|e| AppError::Internal(format!("Redis script execution error: {}", e)))?;
 
         let reserved_total = Self::from_micro_units(reserved_micro);
 
@@ -217,9 +218,10 @@ impl PendingChargeManager {
         let user_key = format!("billing:reserve:user:{}", user_id);
 
         // Get all hash fields
-        let hash_data: HashMap<String, String> = conn.hgetall(&user_key).await.map_err(|e| {
-            AppError::Internal(format!("Failed to get reservations hash: {}", e))
-        })?;
+        let hash_data: HashMap<String, String> = conn
+            .hgetall(&user_key)
+            .await
+            .map_err(|e| AppError::Internal(format!("Failed to get reservations hash: {}", e)))?;
 
         let mut active_reservations = HashMap::new();
 
@@ -257,9 +259,10 @@ impl PendingChargeManager {
     pub async fn health_check(&self) -> Result<(), AppError> {
         let mut conn = self.connection_manager.as_ref().clone();
 
-        let _: String = conn.ping().await.map_err(|e| {
-            AppError::Internal(format!("Redis ping failed: {}", e))
-        })?;
+        let _: String = conn
+            .ping()
+            .await
+            .map_err(|e| AppError::Internal(format!("Redis ping failed: {}", e)))?;
 
         Ok(())
     }

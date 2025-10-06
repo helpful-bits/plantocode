@@ -460,7 +460,8 @@ public struct AuthConstants {
 
     public struct HTTPHeaders {
         public static let authorization = "Authorization"
-        public static let clientId = "X-Client-ID"
+        public static let deviceId = "X-Device-ID"
+        public static let tokenBinding = "X-Token-Binding"
         public static let contentType = "Content-Type"
         public static let applicationJson = "application/json"
     }

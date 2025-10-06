@@ -355,7 +355,8 @@ export function ImplementationPlansPanel({
       
       const data = {
         IMPLEMENTATION_PLAN: parsedPlanContent,
-        STEP_CONTENT: selectedStepNumber ? getContentForStep(parsedPlanContent, selectedStepNumber) : ''
+        STEP_CONTENT: selectedStepNumber ? getContentForStep(parsedPlanContent, selectedStepNumber) : '',
+        TASK_DESCRIPTION: taskDescription || currentSession?.taskDescription || ''
       };
       const processedContent = replacePlaceholders(buttonConfig.content, data);
       
@@ -882,6 +883,7 @@ export function ImplementationPlansPanel({
           selectedStepNumber={selectedStepNumber}
           onStepSelect={setSelectedStepNumber}
           copyButtons={implementationPlanSettings || []}
+          taskDescription={taskDescription || currentSession?.taskDescription}
           // Navigation props
           currentIndex={currentPlanIndex}
           totalPlans={implementationPlans.length}
@@ -937,6 +939,7 @@ export function ImplementationPlansPanel({
             title={planTitle}
             projectDirectory={projectDirectory}
             copyButtons={implementationPlanSettings || []}
+            taskDescription={taskDescription || currentSession?.taskDescription}
             onSessionKilled={() => handleCloseTerminal(true)}
           />
         );

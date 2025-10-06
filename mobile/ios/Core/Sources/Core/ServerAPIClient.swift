@@ -19,12 +19,15 @@ public enum APIError: Error, LocalizedError {
 
 public final class ServerAPIClient {
     public static let shared = ServerAPIClient(baseURL: Config.serverURL)
+    public static let auth = ServerAPIClient(baseURL: Config.authServerURL)  // Dedicated client for auth
 
     private let baseURL: String
-    private let urlSession = URLSession.shared
+    private let urlSession: URLSession
 
     public init(baseURL: String) {
         self.baseURL = baseURL
+        let pinningDelegate = CertificatePinningManager.shared.createURLSessionDelegate(endpointType: .relay)
+        self.urlSession = URLSession(configuration: .default, delegate: pinningDelegate, delegateQueue: nil)
     }
 
     public func request<T: Decodable>(
@@ -68,15 +71,15 @@ public final class ServerAPIClient {
         if let token = token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             let deviceId = DeviceManager.shared.getOrCreateDeviceID()
-            request.setValue(deviceId, forHTTPHeaderField: "X-Client-ID")
             request.setValue(deviceId, forHTTPHeaderField: "X-Device-ID")
             request.setValue(deviceId, forHTTPHeaderField: "X-Token-Binding")
+            request.setValue("mobile", forHTTPHeaderField: "X-Client-Type")
         }
 
         if includeDeviceId && token == nil {
             let deviceId = DeviceManager.shared.getOrCreateDeviceID()
-            request.setValue(deviceId, forHTTPHeaderField: "X-Client-ID")
             request.setValue(deviceId, forHTTPHeaderField: "X-Device-ID")
+            request.setValue("mobile", forHTTPHeaderField: "X-Client-Type")
         }
 
         if let body = body {

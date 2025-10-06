@@ -68,4 +68,4 @@ export { ModelSelector } from "../app/components/settings/model-selector";
 export { AudioDeviceSelect } from "./audio-device-select";
 
 // Terminal components
-export { TerminalView } from "./TerminalView";
+export { default as TerminalView } from "./TerminalView";

@@ -25,13 +25,12 @@ public struct StatusAlertView: View {
 
       VStack(alignment: .leading, spacing: 4) {
         Text(title)
-          .font(.subheadline)
-          .fontWeight(.medium)
+          .h4()
           .foregroundColor(textColor)
 
         Text(message)
-          .font(.caption)
-          .foregroundColor(Color("MutedForeground"))
+          .small()
+          .foregroundColor(Color.mutedForeground)
       }
 
       Spacer(minLength: 0)
@@ -49,41 +48,39 @@ public struct StatusAlertView: View {
 
   private var iconColor: Color {
     switch variant {
-    case .destructive: return Color("Destructive")
-    case .warning: return Color("Warning")
-    case .info: return Color("Info")
+    case .destructive: return Color.destructive
+    case .warning: return Color.warning
+    case .info: return Color.info
     }
   }
 
   private var textColor: Color {
     switch variant {
-    case .destructive: return Color("DestructiveForeground")
-    case .warning: return Color("WarningForeground")
-    case .info: return Color("InfoForeground")
+    case .destructive: return Color.destructiveForeground
+    case .warning: return Color.warningForeground
+    case .info: return Color.infoForeground
     }
   }
 
   private var backgroundColor: Color {
     switch variant {
     case .destructive:
-      return Color("Destructive").opacity(0.1)
+      return Color.destructive.opacity(0.1)
     case .warning:
-      // Match desktop: warning-background
-      return Color("Warning").opacity(0.1)
+      return Color.warningBackground
     case .info:
-      // Match desktop: info-background
-      return Color("Info").opacity(0.1)
+      return Color.infoBackground
     }
   }
 
   private var borderColor: Color {
     switch variant {
     case .destructive:
-      return Color("Destructive").opacity(0.3)
+      return Color.destructive.opacity(0.3)
     case .warning:
-      return Color("Warning").opacity(0.3)
+      return Color.warningBorder
     case .info:
-      return Color("Info").opacity(0.3)
+      return Color.infoBorder
     }
   }
 

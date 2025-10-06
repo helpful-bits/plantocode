@@ -81,9 +81,10 @@ pub async fn wait_until_complete(
         }
 
         // Debug: log the raw response before parsing
-        let response_text = response.text().await.map_err(|e| {
-            AppError::Internal(format!("Failed to read polling response: {}", e))
-        })?;
+        let response_text = response
+            .text()
+            .await
+            .map_err(|e| AppError::Internal(format!("Failed to read polling response: {}", e)))?;
 
         let responses_response: OpenAIResponsesResponse = serde_json::from_str(&response_text)
             .map_err(|e| {
@@ -128,13 +129,8 @@ pub async fn wait_until_complete(
                     );
 
                     // Try to cancel the stuck request
-                    let cancel_url =
-                        format!("{}/responses/{}/cancel", base_url, response_id);
-                    let _ = client
-                        .post(&cancel_url)
-                        .bearer_auth(api_key)
-                        .send()
-                        .await;
+                    let cancel_url = format!("{}/responses/{}/cancel", base_url, response_id);
+                    let _ = client.post(&cancel_url).bearer_auth(api_key).send().await;
 
                     return Err(AppError::External(format!(
                         "Web search request appears stuck (queued for {} minutes). This may be due to:\n\n\
@@ -151,9 +147,8 @@ pub async fn wait_until_complete(
                 let max_delay: f64 = 5.0;
                 let jitter: f64 = 0.5;
 
-                let delay = (base_delay
-                    * backoff_factor.powi((retry_count / 10).min(5) as i32))
-                .min(max_delay)
+                let delay = (base_delay * backoff_factor.powi((retry_count / 10).min(5) as i32))
+                    .min(max_delay)
                     + (rand::random::<f64>() * jitter);
 
                 sleep(Duration::from_secs_f64(delay)).await;

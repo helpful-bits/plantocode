@@ -1,7 +1,7 @@
-use crate::remote_api::types::{RpcRequest, RpcResponse};
 use crate::error::AppResult;
 use crate::remote_api::router;
-use log::{error, debug};
+use crate::remote_api::types::{RpcRequest, RpcResponse};
+use log::{debug, error};
 use serde_json::Value;
 use tauri::AppHandle;
 
@@ -15,13 +15,18 @@ pub async fn dispatch_remote_command(
     request: RpcRequest,
     user_context: &crate::remote_api::types::UserContext,
 ) -> RpcResponse {
-    debug!("Dispatching remote command: method={}, correlation_id={}",
-           request.method, request.correlation_id);
+    debug!(
+        "Dispatching remote command: method={}, correlation_id={}",
+        request.method, request.correlation_id
+    );
 
     // Route the request through the existing router
     let response = router::dispatch(app_handle, request, user_context).await;
 
-    debug!("Command dispatched successfully: correlation_id={}", response.correlation_id);
+    debug!(
+        "Command dispatched successfully: correlation_id={}",
+        response.correlation_id
+    );
     response
 }
 
@@ -29,35 +34,36 @@ pub async fn dispatch_remote_command(
 ///
 /// This helper function converts the standard AppResult type used by
 /// Tauri commands into the RpcResponse format expected by remote clients.
-pub fn serialize_app_result<T>(
-    correlation_id: String,
-    result: AppResult<T>,
-) -> RpcResponse
+pub fn serialize_app_result<T>(correlation_id: String, result: AppResult<T>) -> RpcResponse
 where
     T: serde::Serialize,
 {
     match result {
-        Ok(value) => {
-            match serde_json::to_value(value) {
-                Ok(json_value) => RpcResponse {
+        Ok(value) => match serde_json::to_value(value) {
+            Ok(json_value) => RpcResponse {
+                correlation_id,
+                result: Some(json_value),
+                error: None,
+                is_final: true,
+            },
+            Err(serialization_error) => {
+                error!(
+                    "Failed to serialize command result: {}",
+                    serialization_error
+                );
+                RpcResponse {
                     correlation_id,
-                    result: Some(json_value),
-                    error: None,
-                },
-                Err(serialization_error) => {
-                    error!("Failed to serialize command result: {}", serialization_error);
-                    RpcResponse {
-                        correlation_id,
-                        result: None,
-                        error: Some(format!("Serialization error: {}", serialization_error)),
-                    }
+                    result: None,
+                    error: Some(format!("Serialization error: {}", serialization_error)),
+                    is_final: true,
                 }
             }
-        }
+        },
         Err(app_error) => RpcResponse {
             correlation_id,
             result: None,
             error: Some(app_error.to_string()),
+            is_final: true,
         },
     }
 }
@@ -68,6 +74,7 @@ pub fn serialize_success_result(correlation_id: String) -> RpcResponse {
         correlation_id,
         result: Some(serde_json::json!({"success": true})),
         error: None,
+        is_final: true,
     }
 }
 
@@ -77,6 +84,7 @@ pub fn serialize_error_result(correlation_id: String, error: String) -> RpcRespo
         correlation_id,
         result: None,
         error: Some(error),
+        is_final: true,
     }
 }
 

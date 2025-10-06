@@ -1,6 +1,9 @@
 use crate::error::AppError;
 use base64::Engine;
-use reqwest::{Client, multipart::{Form, Part}};
+use reqwest::{
+    Client,
+    multipart::{Form, Part},
+};
 use tracing::{debug, info, instrument};
 
 use super::structs::OpenAITranscriptionResponse;
@@ -125,9 +128,7 @@ pub async fn transcribe_audio(
         .multipart(form)
         .send()
         .await
-        .map_err(|e| {
-            AppError::External(format!("OpenAI transcription request failed: {}", e))
-        })?;
+        .map_err(|e| AppError::External(format!("OpenAI transcription request failed: {}", e)))?;
 
     if !response.status().is_success() {
         let status = response.status();
@@ -178,9 +179,7 @@ pub async fn transcribe_from_data_uri(
     // Decode base64 to bytes
     let audio_data = base64::engine::general_purpose::STANDARD
         .decode(b64)
-        .map_err(|e| {
-            AppError::Validation(format!("Failed to decode base64 audio data: {}", e))
-        })?;
+        .map_err(|e| AppError::Validation(format!("Failed to decode base64 audio data: {}", e)))?;
 
     // Use the main transcription method
     transcribe_audio(

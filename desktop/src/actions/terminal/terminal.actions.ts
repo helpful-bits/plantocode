@@ -1,85 +1,42 @@
-import { invoke } from "@/utils/tauri-invoke-wrapper";
-import { Channel } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 
-export async function startTerminalSession(
-  jobId: string,
-  options: {
-    workingDirectory?: string;
-    environment?: Record<string, string>;
-    rows?: number;
-    cols?: number;
-  },
-  channel?: Channel<Uint8Array>
-): Promise<void> {
-  return invoke("start_terminal_session_command", {
-    jobId,
-    options,
-    output: channel,
-  });
+export async function startTerminalSession(sessionId: string, options?: { workingDirectory?: string; cols?: number; rows?: number }, output?: any) {
+  return invoke("start_terminal_session_command", { sessionId, options, output });
 }
 
-export async function attachTerminalOutput(
-  jobId: string,
-  channel: Channel<Uint8Array>
-): Promise<void> {
-  return invoke("attach_terminal_output_command", {
-    jobId,
-    output: channel,
-  });
+export async function attachTerminalOutput(sessionId: string, output: any) {
+  return invoke("attach_terminal_output_command", { sessionId, output });
 }
 
-export async function writeTerminalInput(
-  jobId: string,
-  bytes: Uint8Array
-): Promise<void> {
-  return invoke("write_terminal_input_command", {
-    jobId,
-    data: Array.from(bytes),
-  });
+export async function writeTerminalInput(sessionId: string, data: Uint8Array | number[] | string) {
+  const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data;
+  return invoke("write_terminal_input_command", { sessionId, data: Array.from(bytes as Uint8Array) });
 }
 
-export async function resizeTerminal(
-  jobId: string,
-  cols: number,
-  rows: number
-): Promise<void> {
-  return invoke("resize_terminal_session_command", {
-    jobId,
-    cols,
-    rows,
-  });
+export async function resizeTerminal(sessionId: string, cols: number, rows: number) {
+  return invoke("resize_terminal_session_command", { sessionId, cols, rows });
 }
 
-export async function killTerminal(jobId: string): Promise<void> {
-  return invoke("kill_terminal_session_command", {
-    jobId,
-  });
+export async function killTerminal(sessionId: string) {
+  return invoke("kill_terminal_session_command", { sessionId });
 }
 
-export async function readTerminalLogTail(
-  jobId: string,
-  maxBytes?: number
-): Promise<string> {
-  return invoke("read_terminal_log_tail_command", {
-    jobId,
-    maxBytes,
-  });
+export async function getTerminalStatus(sessionId: string) {
+  return invoke("get_terminal_session_status_command", { sessionId });
 }
 
-export async function readTerminalLogLen(jobId: string): Promise<number> {
-  return invoke("read_terminal_log_len_command", {
-    jobId,
-  });
+export async function listTerminalSessions(): Promise<string[]> {
+  return invoke("list_terminal_sessions_command");
 }
 
-export async function readTerminalLogSince(
-  jobId: string,
-  fromOffset: number,
-  maxBytes?: number
-): Promise<{ chunk: string; totalLen: number }> {
-  return invoke("read_terminal_log_since_command", {
-    jobId,
-    fromOffset,
-    maxBytes,
-  });
+export async function restoreTerminalSessions(): Promise<string[]> {
+  return invoke("restore_terminal_sessions_command");
+}
+
+export async function getActiveTerminalSessions(): Promise<string[]> {
+  return invoke("get_active_terminal_sessions_command");
+}
+
+export async function reconnectTerminalSession(sessionId: string, output: any): Promise<boolean> {
+  return invoke("reconnect_terminal_session_command", { sessionId, output });
 }

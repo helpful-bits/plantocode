@@ -5,84 +5,81 @@ import AVFoundation
 
 public struct RemoteTerminalView: View {
     let jobId: String
-    @StateObject private var terminalService = DataServicesManager(baseURL: URL(string: Config.serverURL)!, deviceId: DeviceManager.shared.getOrCreateDeviceID()).terminalService
+    @EnvironmentObject private var container: AppContainer
     @Environment(\.dismiss) private var dismiss
 
     @State private var terminalSession: TerminalSession?
     @State private var terminalOutput: [TerminalOutput] = []
     @State private var inputText = ""
+    @State private var commandHistory: [String] = []
+    @State private var historyIndex = -1
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var isSessionActive = false
-    @State private var isRecording = false
-    @State private var isTranscribing = false
-    @State private var isEnhancing = false
-    @State private var audioRecorder: AVAudioRecorder?
-    @StateObject private var serverFeatureService = DataServicesManager(baseURL: URL(string: Config.serverURL)!, deviceId: DeviceManager.shared.getOrCreateDeviceID()).serverFeatureService
+    @State private var currentSessionId: String?
+    @StateObject private var voiceDictationService = VoiceDictationService.shared
+    @StateObject private var textEnhancementService = TextEnhancementService.shared
 
     @State private var scrollToBottom = false
 
-    private let outputBufferLimit = 1000 // Limit output lines to prevent memory issues
+    private let outputBufferLimit = 1000
 
     public init(jobId: String) {
         self.jobId = jobId
     }
 
     public var body: some View {
-        NavigationView {
-            VStack(spacing: 0) {
-                // Terminal Header
-                terminalHeader()
+        VStack(spacing: 0) {
+            terminalHeader()
 
-                // Terminal Output
-                terminalOutputView()
+            terminalOutputView()
 
-                // Input Section
-                if isSessionActive {
-                    terminalInputView()
-                }
+            if isSessionActive {
+                terminalInputView()
             }
-            .background(Color.black)
-            .navigationTitle("Terminal")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Close") {
+        }
+        .background(Color.background)
+        .navigationTitle("Terminal")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                HStack(spacing: 12) {
+                    if isSessionActive {
+                        Button("Ctrl+C") {
+                            sendCtrlC()
+                        }
+                        .small()
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.destructive)
+                        .foregroundColor(Color.foreground)
+                        .cornerRadius(4)
+
+                        Button("Kill") {
+                            killSession()
+                        }
+                        .small()
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.warning)
+                        .foregroundColor(Color.foreground)
+                        .cornerRadius(4)
+                    }
+
+                    Button("Done") {
                         dismiss()
                     }
-                    .foregroundColor(.white)
-                }
-
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    HStack(spacing: 12) {
-                        if isSessionActive {
-                            Button("Ctrl+C") {
-                                sendCtrlC()
-                            }
-                            .font(.caption)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.red)
-                            .foregroundColor(.white)
-                            .cornerRadius(4)
-
-                            Button("Kill") {
-                                killSession()
-                            }
-                            .font(.caption)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.orange)
-                            .foregroundColor(.white)
-                            .cornerRadius(4)
-                        }
-                    }
+                    .small()
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.primary)
+                    .foregroundColor(Color.foreground)
+                    .cornerRadius(4)
                 }
             }
         }
         .onAppear {
             startTerminalSession()
-            setupAudioSession()
         }
         .onDisappear {
             cleanupSession()
@@ -95,29 +92,29 @@ public struct RemoteTerminalView: View {
             if isLoading {
                 HStack(spacing: 8) {
                     ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .green))
+                        .progressViewStyle(CircularProgressViewStyle(tint: Color.success))
                         .scaleEffect(0.8)
                     Text("Starting session...")
-                        .font(.caption)
-                        .foregroundColor(.green)
+                        .small()
+                        .foregroundColor(Color.success)
                 }
             } else if isSessionActive {
                 HStack(spacing: 8) {
                     Circle()
-                        .fill(Color.green)
+                        .fill(Color.success)
                         .frame(width: 8, height: 8)
                     Text("Session Active")
-                        .font(.caption)
-                        .foregroundColor(.green)
+                        .small()
+                        .foregroundColor(Color.success)
                 }
             } else {
                 HStack(spacing: 8) {
                     Circle()
-                        .fill(Color.red)
+                        .fill(Color.destructive)
                         .frame(width: 8, height: 8)
                     Text("Session Inactive")
-                        .font(.caption)
-                        .foregroundColor(.red)
+                        .small()
+                        .foregroundColor(Color.destructive)
                 }
             }
 
@@ -125,13 +122,13 @@ public struct RemoteTerminalView: View {
 
             if let session = terminalSession {
                 Text("Job: \(session.jobId)")
-                    .font(.caption)
-                    .foregroundColor(.gray)
+                    .small()
+                    .foregroundColor(Color.muted)
             }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color.black.opacity(0.8))
+        .background(Color.background.opacity(0.8))
     }
 
     @ViewBuilder
@@ -147,19 +144,17 @@ public struct RemoteTerminalView: View {
                     if let errorMessage = errorMessage {
                         Text("Error: \(errorMessage)")
                             .font(.system(.caption, design: .monospaced))
-                            .foregroundColor(.red)
+                            .foregroundColor(Color.destructive)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 4)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .background(Color.black)
+            .background(Color.codeBackground)
             .onAppear {
-                // ScrollProxy is already available in scope
             }
             .onChange(of: terminalOutput.count) { _ in
-                // Auto-scroll to bottom when new output arrives
                 withAnimation(.easeOut(duration: 0.1)) {
                     scrollProxy.scrollTo(terminalOutput.count - 1, anchor: .bottom)
                 }
@@ -170,66 +165,80 @@ public struct RemoteTerminalView: View {
     @ViewBuilder
     private func terminalInputView() -> some View {
         VStack(spacing: 8) {
-            // Command input row
             HStack(spacing: 8) {
                 Text("$")
                     .font(.system(.body, design: .monospaced))
-                    .foregroundColor(.green)
+                    .foregroundColor(Color.success)
 
-                TextField("Enter command...", text: $inputText)
-                    .font(.system(.body, design: .monospaced))
-                    .textFieldStyle(PlainTextFieldStyle())
-                    .foregroundColor(.white)
-                    .submitLabel(.send)
-                    .onSubmit {
-                        sendCommand()
-                    }
+                if #available(iOS 17.0, *) {
+                    TextField("Enter command...", text: $inputText)
+                        .font(.system(.body, design: .monospaced))
+                        .textFieldStyle(PlainTextFieldStyle())
+                        .foregroundColor(Color.foreground)
+                        .submitLabel(.send)
+                        .onSubmit {
+                            sendCommand()
+                        }
+                        .onKeyPress(.upArrow) {
+                            navigateHistory(direction: .up)
+                            return .handled
+                        }
+                        .onKeyPress(.downArrow) {
+                            navigateHistory(direction: .down)
+                            return .handled
+                        }
+                } else {
+                    TextField("Enter command...", text: $inputText)
+                        .font(.system(.body, design: .monospaced))
+                        .textFieldStyle(PlainTextFieldStyle())
+                        .foregroundColor(Color.foreground)
+                        .submitLabel(.send)
+                        .onSubmit {
+                            sendCommand()
+                        }
+                }
 
                 Button("Send") {
                     sendCommand()
                 }
-                .font(.caption)
+                .small()
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
-                .background(Color.blue)
-                .foregroundColor(.white)
+                .background(Color.primary)
+                .foregroundColor(Color.foreground)
                 .cornerRadius(6)
                 .disabled(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
 
-            // Voice and enhancement controls
             HStack(spacing: 12) {
-                // Microphone Button
                 Button(action: toggleRecording) {
                     HStack(spacing: 6) {
-                        Image(systemName: isRecording ? "mic.fill" : "mic")
-                            .foregroundColor(isRecording ? .red : .primary)
-                        Text(isRecording ? "Stop" : "Record")
+                        Image(systemName: voiceDictationService.isRecording ? "mic.fill" : "mic")
+                            .foregroundColor(voiceDictationService.isRecording ? Color.destructive : Color.primary)
+                        Text(voiceDictationService.isRecording ? "Stop" : "Mic")
                     }
-                    .font(.caption)
+                    .small()
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(isRecording ? Color.red.opacity(0.1) : Color.gray.opacity(0.2))
-                    .foregroundColor(isRecording ? .red : .white)
+                    .background(voiceDictationService.isRecording ? Color.destructive.opacity(0.1) : Color.muted.opacity(0.2))
+                    .foregroundColor(voiceDictationService.isRecording ? Color.destructive : Color.foreground)
                     .cornerRadius(6)
                 }
-                .disabled(isTranscribing)
 
-                // Enhance Button
                 Button("Enhance") {
                     enhanceText()
                 }
-                .font(.caption)
+                .small()
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
-                .background(Color.green.opacity(0.2))
-                .foregroundColor(.green)
+                .background(Color.success.opacity(0.2))
+                .foregroundColor(Color.success)
                 .cornerRadius(6)
-                .disabled(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isEnhancing)
+                .disabled(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || textEnhancementService.isEnhancing)
 
-                if isEnhancing || isTranscribing {
+                if textEnhancementService.isEnhancing {
                     ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        .progressViewStyle(CircularProgressViewStyle(tint: Color.foreground))
                         .scaleEffect(0.7)
                 }
 
@@ -238,7 +247,8 @@ public struct RemoteTerminalView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color.black.opacity(0.9))
+        .background(Color.background.opacity(0.9))
+        .ignoresSafeArea(.keyboard)
     }
 
     private func startTerminalSession() {
@@ -247,19 +257,24 @@ public struct RemoteTerminalView: View {
 
         Task {
             do {
-                let session = try await terminalService.startSession(jobId: jobId)
-                await MainActor.run {
-                    terminalSession = session
-                    isSessionActive = true
-                    isLoading = false
+                for try await output in container.terminalService.openSession() {
+                    await MainActor.run {
+                        isLoading = false
+                        isSessionActive = true
+
+                        if let sessionId = parseSessionId(from: output) {
+                            currentSessionId = sessionId
+                        }
+
+                        let terminalOutput = TerminalOutput(
+                            sessionId: currentSessionId ?? "unknown",
+                            data: output,
+                            timestamp: Date(),
+                            outputType: .stdout
+                        )
+                        addTerminalOutput(terminalOutput)
+                    }
                 }
-
-                // Subscribe to output stream
-                subscribeToOutput()
-
-                // Load existing log
-                await loadExistingLog()
-
             } catch {
                 await MainActor.run {
                     errorMessage = error.localizedDescription
@@ -269,31 +284,10 @@ public struct RemoteTerminalView: View {
         }
     }
 
-    private func subscribeToOutput() {
-        terminalService.getOutputStream(for: jobId)
-            .receive(on: DispatchQueue.main)
-            .sink { output in
-                addTerminalOutput(output)
-            }
-            .store(in: &cancellables)
-    }
-
-    private func loadExistingLog() async {
-        do {
-            let existingOutput = try await terminalService.getLog(jobId: jobId)
-            await MainActor.run {
-                terminalOutput = Array(existingOutput.suffix(outputBufferLimit))
-            }
-        } catch {
-            // Log loading is optional, don't show error for this
-            print("Failed to load existing terminal log: \(error)")
-        }
-    }
 
     private func addTerminalOutput(_ output: TerminalOutput) {
         terminalOutput.append(output)
 
-        // Limit buffer size
         if terminalOutput.count > outputBufferLimit {
             terminalOutput.removeFirst(terminalOutput.count - outputBufferLimit)
         }
@@ -301,21 +295,34 @@ public struct RemoteTerminalView: View {
 
     private func sendCommand() {
         let command = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !command.isEmpty else { return }
+        guard !command.isEmpty, let sessionId = currentSessionId else { return }
 
-        // Add command to output as echo
+        if !commandHistory.contains(command) {
+            commandHistory.append(command)
+        }
+        historyIndex = -1
+
         let echoOutput = TerminalOutput(
-            sessionId: terminalSession?.id ?? "",
+            sessionId: sessionId,
             data: "$ \(command)\n",
             timestamp: Date(),
             outputType: .system
         )
         addTerminalOutput(echoOutput)
 
-        // Send command to terminal
         Task {
             do {
-                try await terminalService.write(jobId: jobId, data: command + "\n")
+                for try await output in container.terminalService.write(sessionId: sessionId, input: command + "\n") {
+                    await MainActor.run {
+                        let terminalOutput = TerminalOutput(
+                            sessionId: sessionId,
+                            data: output,
+                            timestamp: Date(),
+                            outputType: .stdout
+                        )
+                        addTerminalOutput(terminalOutput)
+                    }
+                }
                 await MainActor.run {
                     inputText = ""
                 }
@@ -328,9 +335,21 @@ public struct RemoteTerminalView: View {
     }
 
     private func sendCtrlC() {
+        guard let sessionId = currentSessionId else { return }
+
         Task {
             do {
-                try await terminalService.sendCtrlC(jobId: jobId)
+                for try await output in container.terminalService.write(sessionId: sessionId, input: "\u{03}") {
+                    await MainActor.run {
+                        let terminalOutput = TerminalOutput(
+                            sessionId: sessionId,
+                            data: output,
+                            timestamp: Date(),
+                            outputType: .system
+                        )
+                        addTerminalOutput(terminalOutput)
+                    }
+                }
             } catch {
                 await MainActor.run {
                     errorMessage = error.localizedDescription
@@ -340,13 +359,16 @@ public struct RemoteTerminalView: View {
     }
 
     private func killSession() {
+        guard let sessionId = currentSessionId else { return }
+
         Task {
             do {
-                try await terminalService.kill(jobId: jobId)
+                try await container.terminalService.close(sessionId: sessionId)
                 await MainActor.run {
                     isSessionActive = false
+                    currentSessionId = nil
                     let killOutput = TerminalOutput(
-                        sessionId: terminalSession?.id ?? "",
+                        sessionId: sessionId,
                         data: "\n[Session terminated]\n",
                         timestamp: Date(),
                         outputType: .system
@@ -365,10 +387,8 @@ public struct RemoteTerminalView: View {
         cancellables.removeAll()
     }
 
-    // MARK: - Voice Input Methods
-
     private func toggleRecording() {
-        if isRecording {
+        if voiceDictationService.isRecording {
             stopRecording()
         } else {
             startRecording()
@@ -376,118 +396,87 @@ public struct RemoteTerminalView: View {
     }
 
     private func startRecording() {
-        guard !isRecording else { return }
-
-        // Request microphone permission
-        AVAudioSession.sharedInstance().requestRecordPermission { granted in
-            DispatchQueue.main.async {
-                if granted {
-                    self.beginRecording()
-                } else {
-                    self.errorMessage = "Microphone permission is required for voice input"
-                }
-            }
-        }
-    }
-
-    private func beginRecording() {
-        let audioFilename = getDocumentsDirectory().appendingPathComponent("terminal_recording.wav")
-
-        let settings = [
-            AVFormatIDKey: Int(kAudioFormatLinearPCM),
-            AVSampleRateKey: 44100,
-            AVNumberOfChannelsKey: 1,
-            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
-        ]
-
-        do {
-            audioRecorder = try AVAudioRecorder(url: audioFilename, settings: settings)
-            audioRecorder?.record()
-            isRecording = true
-            errorMessage = nil
-        } catch {
-            errorMessage = "Failed to start recording: \(error.localizedDescription)"
-        }
-    }
-
-    private func stopRecording() {
-        guard isRecording else { return }
-
-        audioRecorder?.stop()
-        isRecording = false
-
-        // Transcribe the recorded audio
-        transcribeRecording()
-    }
-
-    private func transcribeRecording() {
-        let audioFilename = getDocumentsDirectory().appendingPathComponent("terminal_recording.wav")
-
-        guard let audioData = try? Data(contentsOf: audioFilename) else {
-            errorMessage = "Failed to read recorded audio"
-            return
-        }
-
-        isTranscribing = true
-        errorMessage = nil
-
         Task {
             do {
-                let response = try await serverFeatureService.transcribeAudio(audioData)
-                await MainActor.run {
-                    isTranscribing = false
-                    if !response.text.isEmpty {
+                try await voiceDictationService.startRecording()
+
+                for try await transcribedText in voiceDictationService.transcribe() {
+                    await MainActor.run {
                         if inputText.isEmpty {
-                            inputText = response.text
+                            inputText = transcribedText
                         } else {
-                            inputText += " " + response.text
+                            inputText += " " + transcribedText
                         }
                     }
                 }
             } catch {
                 await MainActor.run {
-                    isTranscribing = false
-                    errorMessage = "Transcription failed: \(error.localizedDescription)"
+                    errorMessage = error.localizedDescription
                 }
             }
         }
+    }
+
+    private func stopRecording() {
+        voiceDictationService.stopRecording()
     }
 
     private func enhanceText() {
         let textToEnhance = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !textToEnhance.isEmpty else { return }
 
-        isEnhancing = true
-        errorMessage = nil
-
         Task {
             do {
-                let response = try await serverFeatureService.enhanceText(textToEnhance)
+                let enhancedText = try await textEnhancementService.enhance(text: textToEnhance, context: "terminal_command")
                 await MainActor.run {
-                    isEnhancing = false
-                    inputText = response.enhancedText
+                    inputText = enhancedText
                 }
             } catch {
                 await MainActor.run {
-                    isEnhancing = false
                     errorMessage = "Text enhancement failed: \(error.localizedDescription)"
                 }
             }
         }
     }
 
-    private func setupAudioSession() {
-        do {
-            try AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: .default)
-            try AVAudioSession.sharedInstance().setActive(true)
-        } catch {
-            print("Failed to setup audio session: \(error)")
+    private enum HistoryDirection {
+        case up, down
+    }
+
+    private func navigateHistory(direction: HistoryDirection) {
+        guard !commandHistory.isEmpty else { return }
+
+        switch direction {
+        case .up:
+            if historyIndex == -1 {
+                historyIndex = commandHistory.count - 1
+            } else if historyIndex > 0 {
+                historyIndex -= 1
+            }
+        case .down:
+            if historyIndex == -1 {
+                return
+            } else if historyIndex < commandHistory.count - 1 {
+                historyIndex += 1
+            } else {
+                historyIndex = -1
+                inputText = ""
+                return
+            }
+        }
+
+        if historyIndex >= 0 && historyIndex < commandHistory.count {
+            inputText = commandHistory[historyIndex]
         }
     }
 
-    private func getDocumentsDirectory() -> URL {
-        let paths = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
-        return paths[0]
+    private func parseSessionId(from output: String) -> String? {
+        if let data = output.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
+           let sessionId = json["sessionId"] as? String {
+            return sessionId
+        }
+        return nil
     }
 
     @State private var cancellables = Set<AnyCancellable>()
@@ -511,11 +500,11 @@ private struct TerminalOutputRow: View {
     private var outputColor: Color {
         switch output.outputType {
         case .stdout:
-            return .white
+            return Color.codeForeground
         case .stderr:
-            return .red
+            return Color.destructive
         case .system:
-            return .green
+            return Color.success
         }
     }
 }

@@ -894,3 +894,24 @@ pub struct FileSelectionHistoryEntryWithTimestamp {
     pub force_excluded_files: Vec<String>,
     pub created_at: i64,
 }
+
+/// Device settings for controlling remote access and discoverability
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceSettings {
+    pub is_discoverable: bool,
+    pub allow_remote_access: bool,
+    pub require_approval: bool,
+    pub session_timeout_minutes: i32,
+}
+
+impl Default for DeviceSettings {
+    fn default() -> Self {
+        Self {
+            is_discoverable: false,
+            allow_remote_access: false,
+            require_approval: true,
+            session_timeout_minutes: 30,
+        }
+    }
+}

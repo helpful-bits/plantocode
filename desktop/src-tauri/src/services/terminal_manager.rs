@@ -1,1728 +1,765 @@
-use crate::auth::token_manager::TokenManager;
-use crate::db_utils::background_job_repository::BackgroundJobRepository;
-use crate::db_utils::settings_repository::SettingsRepository;
-use crate::db_utils::terminal_sessions_repository::TerminalSessionsRepository;
-use crate::error::AppError;
-use crate::services::terminal_health_monitor::{TerminalHealthMonitor, HealthStatus, RecoveryAction};
-use crate::{AppState, RuntimeConfig};
+use crate::db_utils::terminal_repository::RestorableSession;
+use crate::error::{AppError, AppResult};
 use dashmap::DashMap;
-use log::{debug, error, info, warn};
-use portable_pty::{Child, ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::io::Read;
-use std::io::Write;
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Duration;
-use tauri::async_runtime::JoinHandle;
-use tauri::{AppHandle, Emitter, Manager, ipc::Channel};
-use tokio::sync::{broadcast, mpsc};
-use tokio::time;
-use std::time::Instant;
-use std::collections::HashSet;
-use which;
-use base64;
-use std::collections::VecDeque;
+use portable_pty::{CommandBuilder, PtySize, native_pty_system};
+use serde_json::json;
+use std::{
+    collections::HashMap,
+    io::{Read, Write},
+    sync::{Arc, Mutex},
+    time::{SystemTime, UNIX_EPOCH},
+};
+use tauri::ipc::Channel;
+use tauri::{AppHandle, Emitter, Manager};
 
-// Global cached augmented PATH
-static CACHED_AUGMENTED_PATH: OnceLock<String> = OnceLock::new();
+const MAX_BUFFER_SIZE: usize = 1_048_576;
 
-struct ByteRing {
-    cap: usize,
-    total: usize,
-    q: VecDeque<Vec<u8>>,
-}
-impl ByteRing {
-    fn new(cap: usize) -> Self { Self { cap, total: 0, q: VecDeque::new() } }
-    fn push(&mut self, chunk: Vec<u8>) {
-        if chunk.is_empty() { return; }
-        self.total += chunk.len();
-        self.q.push_back(chunk);
-        while self.total > self.cap {
-            if let Some(front) = self.q.pop_front() {
-                self.total = self.total.saturating_sub(front.len());
-            } else { break; }
-        }
-    }
-    fn snapshot(&self) -> Vec<u8> {
-        let mut out = Vec::with_capacity(self.total.min(self.cap));
-        for c in &self.q { out.extend_from_slice(c); }
-        out
-    }
-}
-
-async fn persistence_worker(
-    job_id: String,
-    mut log_rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
-    repo: Arc<TerminalSessionsRepository>,
-    settings_repo: Arc<SettingsRepository>,
-) {
-    let mut queue_size = 0usize;
-
-    while let Some(data) = log_rx.recv().await {
-        queue_size += 1;
-
-        // Warn if persistence queue grows too large
-        if queue_size > 10 {
-            warn!(
-                "Persistence queue for job {} has {} items, potential bottleneck",
-                job_id, queue_size
-            );
-        }
-
-        let log_string = String::from_utf8_lossy(&data).to_string();
-
-        // Check for prompt markers that need immediate flush
-        let has_prompt_marker = log_string.chars().any(|c| matches!(c, '$' | '#' | '>' | '%'));
-
-        // Read settings for persistence configuration
-        let persistence_enabled = settings_repo
-            .get_value("terminal.persistence.enabled")
-            .await
-            .unwrap_or(Some("true".to_string()))
-            .unwrap_or("true".to_string()) == "true";
-
-        if persistence_enabled {
-            let max_log_bytes_str = settings_repo
-                .get_value("terminal.persistence.max_log_bytes")
-                .await
-                .unwrap_or(Some("5242880".to_string()))
-                .unwrap_or("5242880".to_string());
-
-            let max_log_bytes = max_log_bytes_str
-                .parse::<i32>()
-                .unwrap_or(5242880)
-                .clamp(131072, 33554432);
-
-            if let Err(e) = repo.append_output_log_with_limit(&job_id, &log_string, max_log_bytes).await {
-                warn!(
-                    "Failed to persist terminal output for job {}: {}",
-                    job_id, e
-                );
-            } else if has_prompt_marker {
-                // Force immediate database flush for prompt markers
-                debug!("Forced flush for prompt marker in job {}", job_id);
-            }
-        }
-
-        queue_size = queue_size.saturating_sub(1);
-    }
-
-    // Channel closed, do final synchronous flush
-    info!("terminal[{}] persistence worker exiting (finalized)", job_id);
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TerminalSessionOptions {
-    pub working_directory: Option<String>,
-    pub environment: Option<HashMap<String, String>>,
-    pub rows: Option<u16>,
-    pub cols: Option<u16>,
-}
-
-#[derive(Debug, Clone, Copy)]
-enum SessionStatus {
-    Running = 0,
-    Completed = 1,
-    Failed = 2,
-    AgentRequiresAttention = 3,
+pub struct TerminalManager {
+    app: AppHandle,
+    repo: Arc<crate::db_utils::TerminalRepository>,
+    sessions: DashMap<String, Arc<SessionHandle>>,
 }
 
 struct SessionHandle {
-    master: Arc<Mutex<Box<dyn MasterPty + Send>>>,
-    input_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
-    writer_task: tauri::async_runtime::JoinHandle<()>,
-    ring: Arc<Mutex<ByteRing>>,
-    child: Arc<Mutex<Box<dyn Child + Send>>>,
-    process_controller: Arc<Mutex<Box<dyn ChildKiller + Send + Sync>>>,
-    status: Arc<AtomicU8>,
-    exit_code: Arc<Mutex<Option<i32>>>,
-    pub output_sender: Arc<broadcast::Sender<Vec<u8>>>,
-    pub _child_wait_task: tauri::async_runtime::JoinHandle<()>,
-    pub remote_clients: Arc<Mutex<HashSet<String>>>, // Track remote client IDs
-}
-
-pub struct TerminalManager {
-    sessions: Arc<DashMap<String, Arc<SessionHandle>>>,
-    app: AppHandle,
-    health_monitor: Arc<TerminalHealthMonitor>,
+    buffer: Mutex<Vec<u8>>,
+    subscribers: Mutex<Vec<Channel<Vec<u8>>>>,
+    writer: Mutex<Option<Box<dyn std::io::Write + Send>>>,
+    resizer: Mutex<Option<Box<dyn portable_pty::MasterPty>>>,
+    child_stopper: Mutex<Option<Box<dyn portable_pty::Child + Send>>>,
+    started_at: i64,
+    working_dir: Option<String>,
+    status: Mutex<&'static str>,
+    exit_code: Mutex<Option<i32>>,
+    // Add flush tracking fields:
+    last_flushed_len: Mutex<usize>,
+    last_flush_at: Mutex<i64>,
 }
 
 impl TerminalManager {
-    pub fn new(app: AppHandle) -> Self {
-        let health_monitor = Arc::new(TerminalHealthMonitor::new(app.clone()));
-
-        let manager = Self {
-            sessions: Arc::new(DashMap::new()),
-            app: app.clone(),
-            health_monitor,
-        };
-
-        {
-            let repo = app.state::<Arc<TerminalSessionsRepository>>().inner().clone();
-            tauri::async_runtime::spawn(async move {
-                if let Ok(stale_sessions) = repo.list_active_sessions().await {
-                    if !stale_sessions.is_empty() {
-                        info!(
-                            "Reconciling {} stale terminal sessions after startup",
-                            stale_sessions.len()
-                        );
-                    }
-                    for session in stale_sessions {
-                        let job_id = session.job_id.clone();
-
-                        if let Err(e) = repo
-                            .append_output_log_with_limit(
-                                &job_id,
-                                "\r\n\x1b[33m[Previous terminal session ended when the desktop app closed]\x1b[0m\r\n",
-                                5_242_880,
-                            )
-                            .await
-                        {
-                            warn!(
-                                "Failed to append shutdown note for terminal session {}: {}",
-                                job_id, e
-                            );
-                        }
-
-                        if let Err(e) = repo
-                            .update_session_status_by_job_id(&job_id, "completed", session.exit_code)
-                            .await
-                        {
-                            warn!("Failed to mark terminal session {} as completed: {}", job_id, e);
-                        }
-                    }
-                }
-            });
+    pub fn new(app: AppHandle, repo: Arc<crate::db_utils::TerminalRepository>) -> Self {
+        Self {
+            app,
+            repo,
+            sessions: DashMap::new(),
         }
-
-        manager
     }
 
     pub async fn start_session(
         &self,
-        job_id: &str,
-        options: Option<TerminalSessionOptions>,
-        output_channel: Channel<Vec<u8>>,
-        window: tauri::Window,
-    ) -> Result<(), AppError> {
-        // Check if session already exists and reattach if running
-        if let Some(_session_handle) = self.sessions.get(job_id) {
-            // Attach the new client instead of returning early
-            if let Err(e) = self.attach_client(job_id, output_channel, &self.app).await {
-                log::error!("attach_client failed for {}: {}", job_id, e);
-                return Err(e);
-            }
-            return Ok(());
-        }
+        session_id: String,
+        working_dir: Option<String>,
+        cols: Option<u16>,
+        rows: Option<u16>,
+        output: Channel<Vec<u8>>,
+    ) -> AppResult<()> {
+        let now = now_secs();
+        self.repo
+            .ensure_session(&session_id, now, working_dir.clone())
+            .await?;
 
-        info!("Starting terminal session for job_id: {}", job_id);
+        let pty = native_pty_system();
+        let pair = pty
+            .openpty(PtySize {
+                rows: rows.unwrap_or(24),
+                cols: cols.unwrap_or(80),
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|e| AppError::ExternalServiceError(format!("Failed to open pty: {}", e)))?;
 
-        // 1. Check TokenManager for auth token
-        let token_manager = self.app.state::<Arc<TokenManager>>();
-        let auth_token = token_manager.get().await;
-        if auth_token.is_none() {
-            return Err(AppError::AuthError(
-                "Authentication required to use the terminal. Please log in.".to_string(),
-            ));
-        }
-
-        // 2. Check for server region selection
-        let app_state = self.app.state::<AppState>();
-        let server_url = {
-            let server_url_guard = app_state.settings.server_url.lock().map_err(|e| {
-                AppError::TerminalError(format!("Failed to acquire server URL lock: {}", e))
-            })?;
-            server_url_guard.clone()
-        };
-        if server_url.is_none() {
-            return Err(AppError::TerminalError(
-                "Please select a server region before using the terminal.".to_string(),
-            ));
-        }
-
-        // Create native PTY system
-        let pty_system = native_pty_system();
-
-        // Set PTY size from options or use defaults
-        let rows = options.as_ref().and_then(|o| o.rows).unwrap_or(24);
-        let cols = options.as_ref().and_then(|o| o.cols).unwrap_or(80);
-        let pty_size = PtySize {
-            rows,
-            cols,
-            pixel_width: 0,
-            pixel_height: 0,
-        };
-
-        // Create PTY pair
-        let pty_pair = pty_system
-            .openpty(pty_size)
-            .map_err(|e| format!("Failed to create PTY: {}", e))?;
-
-        // Build environment variables - preserve all parent env for parity
-        let mut env_vars = HashMap::new();
-
-        // Clone all environment variables from parent process
-        for (key, value) in std::env::vars() {
-            env_vars.insert(key, value);
-        }
-
-        // Override/ensure terminal-specific environment for native parity
-        env_vars.insert("TERM".to_string(), "xterm-256color".to_string());
-        env_vars.insert("COLORTERM".to_string(), "truecolor".to_string());
-        env_vars.insert("TERM_PROGRAM".to_string(), "VibeTerminal".to_string());
-        env_vars.insert(
-            "TERM_PROGRAM_VERSION".to_string(),
-            env!("CARGO_PKG_VERSION").to_string(),
-        );
-
-        #[cfg(not(target_os = "windows"))]
-        {
-            // macOS/Linux: Ensure UTF-8 locale like Terminal.app
-            let needs_utf8_locale = env_vars
-                .get("LANG")
-                .map(|l| !l.contains("UTF-8") && !l.contains("utf8"))
-                .unwrap_or(true);
-
-            if needs_utf8_locale {
-                env_vars.insert("LANG".to_string(), "en_US.UTF-8".to_string());
-                env_vars.insert("LC_CTYPE".to_string(), "UTF-8".to_string());
-            }
-        }
-
-        // Apply custom environment from options (overrides)
-        if let Some(opts) = &options {
-            if let Some(custom_env) = &opts.environment {
-                for (key, value) in custom_env {
-                    env_vars.insert(key.clone(), value.clone());
-                }
-            }
-        }
-
-        // Set working directory - use home directory as default
-        let default_dir = std::env::var("HOME")
-            .or_else(|_| std::env::var("USERPROFILE"))
-            .unwrap_or_else(|_| ".".to_string());
-        let working_dir = options
-            .as_ref()
-            .and_then(|opts| opts.working_directory.as_ref())
-            .unwrap_or(&default_dir);
-
-        debug!("Terminal working directory: {}", working_dir);
-
-        // 3. Augment PATH explicitly
-        let current_path = std::env::var("PATH").unwrap_or_default();
-        let augmented_path = self.augment_path(&current_path);
-        debug!("Augmented PATH: {}", augmented_path);
-        env_vars.insert("PATH".to_string(), augmented_path.clone());
-
-        // Get settings repository for terminal preferences
-        let settings_repo = self.app.state::<Arc<SettingsRepository>>().inner().clone();
-
-        // Read terminal settings
+        // Get terminal settings
+        let settings_repo = self
+            .app
+            .state::<std::sync::Arc<crate::db_utils::SettingsRepository>>();
         let preferred_cli = settings_repo
             .get_value("terminal.preferred_cli")
             .await
-            .unwrap_or(None);
+            .ok()
+            .flatten();
+        let additional_args = settings_repo
+            .get_value("terminal.additional_args")
+            .await
+            .ok()
+            .flatten();
         let custom_command = settings_repo
             .get_value("terminal.custom_command")
             .await
-            .unwrap_or(None);
-        let additional_args: String = settings_repo
-            .get_value("terminal.additional_args")
-            .await
-            .unwrap_or(None)
-            .unwrap_or_default();
+            .ok()
+            .flatten();
 
-        // Determine default shell
-        let default_shell = {
-            #[cfg(target_os = "windows")]
-            {
-                which::which("pwsh.exe")
-                    .map(|_| "pwsh.exe".to_string())
-                    .or_else(|_| {
-                        which::which("powershell.exe").map(|_| "powershell.exe".to_string())
-                    })
-                    .unwrap_or_else(|_| "cmd.exe".to_string())
+        // Determine the command to run with OS-aware shell detection
+        let mut cmd = if cfg!(windows) {
+            // Windows: prefer PowerShell with -NoLogo, fallback to cmd.exe
+            let shell = if which::which("powershell.exe").is_ok() {
+                "powershell.exe"
+            } else {
+                "cmd.exe"
+            };
+            let mut c = CommandBuilder::new(shell);
+            if shell == "powershell.exe" {
+                c.arg("-NoLogo");
             }
-            #[cfg(not(target_os = "windows"))]
-            {
-                std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string())
-            }
-        };
-
-        // Always use default shell and set is_shell = true
-        let command = default_shell;
-        let is_shell = true;
-
-        debug!("Using command: {} (is_shell: {})", command, is_shell);
-        info!(
-            "Terminal: Starting command '{}' for job {}",
-            command, job_id
-        );
-
-        // Build command - implement native terminal behavior
-        let mut cmd = CommandBuilder::new(&command);
-        cmd.cwd(working_dir);
-
-        if is_shell {
-            // Apply shell-specific flags
-            #[cfg(target_os = "windows")]
-            {
-                if command.contains("pwsh") || command.contains("powershell") {
-                    cmd.args(&["-NoProfile", "-NoLogo"]);
-                }
-            }
-            #[cfg(not(target_os = "windows"))]
-            {
-                // Use simpler args - some shells hang with both -l and -i
-                if command.ends_with("bash") {
-                    cmd.arg("-i");
-                } else if command.ends_with("zsh") {
-                    cmd.arg("-i");
-                } else if command.ends_with("fish") {
-                    cmd.arg("-i");
-                } else {
-                    cmd.arg("-i");
-                }
-            }
+            c
+        } else if cfg!(target_os = "macos") {
+            // macOS: prefer $SHELL env var, fallback to /bin/zsh
+            let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+            CommandBuilder::new(shell)
         } else {
-            // For non-shell CLI tools, apply additional args
-            if !additional_args.is_empty() {
-                let args: Vec<&str> = additional_args.split_whitespace().collect();
-                for arg in args {
-                    cmd.arg(arg);
-                }
-            }
-        }
-
-        // Apply environment variables
-        for (key, value) in env_vars {
-            cmd.env(key, value);
-        }
-
-        // Spawn the child process in the PTY
-        let child = match pty_pair.slave.spawn_command(cmd) {
-            Ok(child) => child,
-            Err(e) => {
-                let error_msg = format!("Failed to spawn {} process in PTY for job_id={}: {}", command, job_id, e);
-                self.mark_session_failed_and_emit(job_id, &window).await;
-                return Err(AppError::TerminalError(error_msg));
-            }
+            // Linux: prefer $SHELL env var, fallback to /bin/bash
+            let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
+            CommandBuilder::new(shell)
         };
-        // CRITICAL: Drop slave immediately after spawn so child has exclusive access
-        drop(pty_pair.slave);
 
-        let process_id = child.process_id();
-        debug!("Spawned {} process with PID: {:?}", command, process_id);
+        if let Some(ref dir) = working_dir {
+            cmd.cwd(dir);
+        }
 
-        // Create bounded writer channel
-        let (input_tx, mut input_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(256);
-
-        // Take the writer once
-        let mut writer = pty_pair.master.take_writer()
-            .map_err(|e| AppError::TerminalError(format!("Failed to get PTY writer for job_id={}: {}", job_id, e)))?;
-
-        // Create ring buffer for restoration
-        let ring = Arc::new(Mutex::new(ByteRing::new(8 * 1024 * 1024)));
-        let ring_for_reader = ring.clone();
-
-        // Spawn writer task
-        let job_id_for_writer = job_id.to_string();
-        let writer_task = tauri::async_runtime::spawn(async move {
-            while let Some(data) = input_rx.recv().await {
-                // Chunk into 4096 byte slices for writes
-                for chunk in data.chunks(4096) {
-                    if let Err(e) = writer.write_all(chunk) {
-                        warn!("Write error for job {}: {}", job_id_for_writer, e);
-                        break;
-                    }
-                }
-                if let Err(e) = writer.flush() {
-                    warn!("Flush error for job {}: {}", job_id_for_writer, e);
-                    break;
-                }
-            }
-            drop(writer); // Explicit drop for clarity
-            debug!("Writer task exiting for job {}", job_id_for_writer);
-        });
-
-        // Get reader for PTY master
-        let reader = pty_pair
-            .master
-            .try_clone_reader()
-            .map_err(|e| AppError::TerminalError(format!("Failed to get PTY reader for job_id={}: {}", job_id, e)))?;
-
-        // Get process controller handle
-        let process_controller = child.clone_killer();
-
-        // Track whether this is the first time we're launching the session
-        let mut should_auto_launch_cli = false;
-
-        // Create/update DB session
-        let repo = self
-            .app
-            .state::<Arc<TerminalSessionsRepository>>()
-            .inner()
-            .clone();
-
-        // Check if a session already exists for this job and reuse or create
-        let session_id = match repo.get_session_by_job_id(job_id).await {
-            Ok(Some(mut existing_session)) => {
-                // For completed/failed sessions, we keep the session record but need a fresh PTY
-                // The session history is preserved, but we start a new terminal process
-                let had_prior_output = !existing_session.output_log.trim().is_empty();
-
-                info!("Reusing existing terminal session for job {} (was: {})", job_id, existing_session.status);
-
-                // Update the session to running status with new process info
-                existing_session.status = "running".to_string();
-                existing_session.process_pid = process_id.map(|pid| pid as i64);
-                existing_session.updated_at = chrono::Utc::now().timestamp();
-                existing_session.last_output_at = Some(chrono::Utc::now().timestamp());
-                existing_session.exit_code = None; // Clear any previous exit code
-
-                // Update working directory if provided
-                if let Some(ref opts) = options {
-                    if let Some(ref wd) = opts.working_directory {
-                        existing_session.working_directory = Some(wd.clone());
-                    }
-                    if let Some(ref env) = opts.environment {
-                        existing_session.environment_vars = serde_json::to_string(env).ok();
-                    }
-                }
-
-                // Append a separator to the output log for the new session
-                if !existing_session.output_log.is_empty() {
-                    existing_session.output_log.push_str("\r\n\x1b[36m=== New Terminal Session ===\x1b[0m\r\n");
-                }
-
-                if !had_prior_output {
-                    should_auto_launch_cli = true;
-                }
-
-                // Update the existing session
-                repo.update_session(&existing_session)
-                    .await
-                    .map_err(|e| format!("Failed to update terminal session in DB for job_id={}: {}", job_id, e))?;
-
-                existing_session.id
-            }
-            Ok(None) => {
-                // No existing session, create a new one
-                info!("Creating new terminal session for job {}", job_id);
-
-                let new_session = crate::db_utils::terminal_sessions_repository::TerminalSession {
-                    id: format!("session_{}", uuid::Uuid::new_v4()),
-                    job_id: job_id.to_string(),
-                    status: "running".to_string(),
-                    process_pid: process_id.map(|pid| pid as i64),
-                    created_at: chrono::Utc::now().timestamp(),
-                    updated_at: chrono::Utc::now().timestamp(),
-                    last_output_at: Some(chrono::Utc::now().timestamp()),
-                    exit_code: None,
-                    working_directory: options
-                        .as_ref()
-                        .and_then(|opts| opts.working_directory.clone()),
-                    environment_vars: options
-                        .as_ref()
-                        .and_then(|opts| opts.environment.as_ref())
-                        .and_then(|env| serde_json::to_string(env).ok()),
-                    title: None,
-                    output_log: String::new(),
+        // If a CLI tool is configured, prepare to launch it after shell starts
+        let mut init_command = None;
+        if let Some(cli) = preferred_cli.as_deref() {
+            if cli != "none" && !cli.is_empty() {
+                let cli_cmd = match cli {
+                    "claude" => Some("claude"),
+                    "cursor" => Some("cursor"),
+                    "codex" => Some("codex"),
+                    "gemini" => Some("gemini"),
+                    "custom" => custom_command.as_deref(),
+                    _ => None,
                 };
 
-                let mut session_id = new_session.id.clone();
-
-                // Create the new session - handle UNIQUE constraint violation
-                match repo.create_session(&new_session).await {
-                    Ok(_) => {
-                        should_auto_launch_cli = true;
-                    },
-                    Err(e) => {
-                        let error_msg = e.to_string();
-                        if error_msg.contains("UNIQUE constraint failed") {
-                            // Session already exists, try to fetch it again
-                            info!("Session already exists for job {}, attempting to reuse it", job_id);
-                            match repo.get_session_by_job_id(job_id).await {
-                                Ok(Some(existing)) => {
-                                    // Use the existing session
-                                    session_id = existing.id.clone();
-                                    let had_prior_output = !existing.output_log.trim().is_empty();
-
-                                    // Update it to running status (exit_code is None for running sessions)
-                                    repo.update_session_status_by_job_id(job_id, "running", None)
-                                        .await
-                                        .map_err(|e| format!("Failed to update existing session status for job_id={}: {}", job_id, e))?;
-
-                                    if !had_prior_output {
-                                        should_auto_launch_cli = true;
-                                    }
-                                },
-                                Ok(None) => {
-                                    return Err(AppError::TerminalError(format!(
-                                        "Failed to create terminal session due to UNIQUE constraint, but session not found for job_id={}",
-                                        job_id
-                                    )));
-                                },
-                                Err(e) => {
-                                    return Err(AppError::TerminalError(format!(
-                                        "Failed to fetch existing session after UNIQUE constraint error for job_id={}: {}",
-                                        job_id, e
-                                    )));
-                                }
-                            }
+                if let Some(cmd_str) = cli_cmd {
+                    // Build the full command with additional args
+                    let full_cmd = if let Some(args) = additional_args.as_deref() {
+                        if !args.is_empty() {
+                            format!("{} {}", cmd_str, args)
                         } else {
-                            return Err(AppError::TerminalError(format!(
-                                "Failed to create terminal session in DB for job_id={}: {}",
-                                job_id, e
-                            )));
+                            cmd_str.to_string()
                         }
-                    }
-                }
-
-                session_id
-            }
-            Err(e) => {
-                return Err(AppError::TerminalError(format!(
-                    "Failed to check for existing session for job_id={}: {}",
-                    job_id, e
-                )));
-            }
-        };
-
-        // Create broadcast channel for output distribution
-        let (tx, _rx) = broadcast::channel(1024);
-        let output_sender = Arc::new(tx);
-
-        // Create tokio mpsc channel for persistence
-        let (log_tx, log_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(1000);
-
-        // Spawn persistence worker
-        let job_id_for_worker = job_id.to_string();
-        let repo_for_worker = repo.clone();
-        tauri::async_runtime::spawn(async move {
-            persistence_worker(job_id_for_worker, log_rx, repo_for_worker, settings_repo.clone()).await;
-        });
-
-        // Create shared state for the session
-        let status = Arc::new(AtomicU8::new(SessionStatus::Running as u8));
-        let exit_code = Arc::new(Mutex::new(None));
-
-        // Clone required data for reader task
-        let app_handle = self.app.clone();
-        let app_handle_for_reader = app_handle.clone();
-        let job_id_clone = job_id.to_string();
-        let repo_clone = repo.clone();
-        let status_clone = status.clone();
-        let exit_code_clone = exit_code.clone();
-        let sessions_map = self.sessions.clone();
-        let child_arc: Arc<Mutex<Box<dyn Child + Send>>> = Arc::new(Mutex::new(child));
-        let child_arc_clone = child_arc.clone();
-
-        // Clone required data for reader thread
-        let output_sender_clone = output_sender.clone();
-        let health_monitor = self.health_monitor.clone();
-
-        // EMIT TERMINAL-READY after PTY and tasks are ready
-        self.app.emit("terminal-ready", &job_id)
-            .map_err(|e| AppError::TauriError(format!("Failed to emit terminal-ready: {}", e)))?;
-
-        // Spawn PTY reader that writes to broadcast channel
-        let mut reader = reader;
-        std::thread::spawn(move || {
-            // 4KiB read buffer for performance
-            let mut buf = vec![0u8; 4096];
-            let mut write_through_cache = Vec::new();
-            let mut last_flush = Instant::now();
-            let mut bytes_processed = 0usize;
-
-            loop {
-                match reader.read(&mut buf) {
-                    Ok(0) => {
-                        // EOF - do final flush of any buffered output
-                        if !write_through_cache.is_empty() {
-                            if let Err(_) = log_tx.try_send(write_through_cache.clone()) {
-                                warn!("Failed to send final cached data for job {}", job_id_clone);
-                            }
-                            write_through_cache.clear();
-                        }
-                        break;
-                    },
-                    Ok(n) => {
-                        let data = buf[..n].to_vec();
-                        bytes_processed += n;
-
-                        // Store in ring buffer for restoration
-                        if let Ok(mut ring) = ring_for_reader.lock() {
-                            ring.push(data.clone());
-                        }
-
-                        // Send to broadcast channel (hot path)
-                        let _ = output_sender_clone.send(data.clone());
-
-                        // Update health monitor with output activity
-                        health_monitor.update_output_time(&job_id_clone);
-
-                        // Add to write-through cache
-                        write_through_cache.extend_from_slice(&data);
-
-                        // Check for critical output (prompts, errors) or size/time threshold
-                        let data_str = String::from_utf8_lossy(&data);
-                        let has_prompt_marker = data_str.chars().any(|c| matches!(c, '$' | '#' | '>' | '%'));
-                        let has_error_marker = data_str.to_lowercase().contains("error") || data_str.contains("failed");
-                        let has_newline = data.contains(&b'\n');
-                        let cache_too_large = write_through_cache.len() >= 4096; // 4KB threshold
-                        let time_elapsed = last_flush.elapsed() >= std::time::Duration::from_millis(250);
-
-                        if has_prompt_marker || has_error_marker || has_newline || cache_too_large || time_elapsed {
-                            // Send cached data to persistence worker
-                            if let Err(_) = log_tx.try_send(write_through_cache.clone()) {
-                                warn!("Failed to persist output for job {}", job_id_clone);
-                            }
-                            write_through_cache.clear();
-                            last_flush = Instant::now();
-
-                            if has_prompt_marker {
-                                debug!("Flush triggered by prompt marker for job {}", job_id_clone);
-                            }
-                        }
-                    }
-                    Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-                    Err(e) => {
-                        warn!("pty read error: {}", e);
-                        // Flush any remaining cached data before exiting
-                        if !write_through_cache.is_empty() {
-                            if let Err(_) = log_tx.try_send(write_through_cache) {
-                                warn!("Failed to send final error cached data for job {}", job_id_clone);
-                            }
-                        }
-                        break;
-                    }
-                }
-            }
-
-            info!("terminal[{}] final flush and reader shutdown", job_id_clone);
-            info!("PTY reader for job {} processed {} bytes total", job_id_clone, bytes_processed);
-        });
-
-        let child_for_wait = child_arc.clone();
-        let app_for_wait = app_handle.clone();
-        let job_for_wait = job_id.to_string();
-        let repo_for_wait = repo.clone();
-        let status_for_wait = status.clone();
-        let exit_code_for_wait = exit_code.clone();
-        let sessions_for_wait = self.sessions.clone();
-        let health_monitor_for_wait = self.health_monitor.clone();
-        let child_wait_task = tauri::async_runtime::spawn(async move {
-            let exit_status = tauri::async_runtime::spawn_blocking(move || {
-                let mut lock = child_for_wait.lock().unwrap();
-                lock.wait()
-            })
-            .await
-            .unwrap_or_else(|e| {
-                error!("Failed to wait for child: {}", e);
-                Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "wait failed",
-                ))
-            });
-
-            match exit_status {
-                Ok(status) => {
-                    let code = if status.success() { Some(0) } else { Some(1) };
-                    info!(
-                        "Process for job {} exited with status: {:?}",
-                        job_for_wait, status
-                    );
-
-                    let new_status = if status.success() {
-                        SessionStatus::Completed
                     } else {
-                        SessionStatus::Failed
+                        cmd_str.to_string()
                     };
-                    status_for_wait.store(new_status as u8, Ordering::Relaxed);
-                    *exit_code_for_wait.lock().unwrap() = code;
-
-                    let db_status = match new_status {
-                        SessionStatus::Completed => "completed",
-                        SessionStatus::Failed => "failed",
-                        _ => "completed",
-                    };
-
-                    if let Ok(Some(mut db_session)) =
-                        repo_for_wait.get_session_by_job_id(&job_for_wait).await
-                    {
-                        db_session.status = db_status.to_string();
-                        db_session.exit_code = code.map(|c| c as i64);
-                        db_session.updated_at = chrono::Utc::now().timestamp();
-                        let _ = repo_for_wait.update_session(&db_session).await;
-                    }
-
-                    let payload = serde_json::json!({
-                        "jobId": job_for_wait,
-                        "code": code
-                    });
-
-                    let app_clone = app_for_wait.clone();
-                    let _ = app_for_wait.run_on_main_thread(move || {
-                        let _ = app_clone.emit("terminal-exit", payload);
-                    });
-
-                    // Wait before removing from memory, but session is already marked as completed/failed in DB
-                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-                    sessions_for_wait.remove(&job_for_wait);
-                    health_monitor_for_wait.unregister_session(&job_for_wait);
-                    info!("Removed terminal session {} from memory after completion", job_for_wait);
-                }
-                Err(e) => {
-                    error!("Error waiting for child {}: {}", job_for_wait, e);
-                    status_for_wait.store(SessionStatus::Failed as u8, Ordering::Relaxed);
-                    sessions_for_wait.remove(&job_for_wait);
-                    health_monitor_for_wait.unregister_session(&job_for_wait);
+                    init_command = Some(full_cmd);
                 }
             }
+        }
+
+        // Set environment variables for full color support
+        if !cfg!(windows) {
+            cmd.env("TERM", "xterm-256color"); // Standard 256-color support
+            cmd.env("COLORTERM", "truecolor"); // Indicates 24-bit truecolor support
+            cmd.env("FORCE_COLOR", "1"); // Forces color output for many tools
+        }
+
+        let child = pair.slave.spawn_command(cmd).map_err(|e| {
+            AppError::ExternalServiceError(format!("Failed to spawn command: {}", e))
+        })?;
+
+        // Store the process ID for potential cleanup
+        let process_id = child.process_id();
+        if let Some(pid) = process_id {
+            self.repo
+                .update_process_pid(&session_id, pid as i64, now)
+                .await?;
+        }
+        drop(pair.slave);
+
+        let mut reader = pair.master.try_clone_reader().map_err(|e| {
+            AppError::ExternalServiceError(format!("Failed to clone reader: {}", e))
+        })?;
+        let writer = pair
+            .master
+            .take_writer()
+            .map_err(|e| AppError::ExternalServiceError(format!("Failed to take writer: {}", e)))?;
+
+        let handle = Arc::new(SessionHandle {
+            buffer: Mutex::new(Vec::new()),
+            subscribers: Mutex::new(vec![output]),
+            writer: Mutex::new(Some(writer)),
+            resizer: Mutex::new(Some(pair.master)),
+            child_stopper: Mutex::new(Some(child)),
+            started_at: now,
+            working_dir,
+            status: Mutex::new("running"),
+            exit_code: Mutex::new(None),
+            last_flushed_len: Mutex::new(0),
+            last_flush_at: Mutex::new(now),
         });
 
-        // Store session handle in DashMap
-        let session_handle = Arc::new(SessionHandle {
-            master: Arc::new(Mutex::new(pty_pair.master)),
-            input_tx,
-            writer_task,
-            ring,
-            child: child_arc,
-            process_controller: Arc::new(Mutex::new(process_controller)),
-            status,
-            exit_code,
-            output_sender: output_sender.clone(),
-            _child_wait_task: child_wait_task,
-            remote_clients: Arc::new(Mutex::new(HashSet::new())),
-        });
+        self.sessions.insert(session_id.clone(), handle.clone());
 
-        self.sessions
-            .insert(job_id.to_string(), session_handle.clone());
-
-        // Register session with health monitor
-        self.health_monitor.register_session(job_id);
-
-        // Auto-launch CLI tool for implementation plan terminals
-        let is_implementation_plan = self.check_if_implementation_plan(job_id).await;
-
-        if is_implementation_plan && should_auto_launch_cli {
-            info!("Terminal session for implementation plan detected: {}", job_id);
-
-            // Check if a CLI tool is configured
-            if let Some(cli_name) = preferred_cli.clone() {
-                if which::which(&cli_name).is_ok() {
-                    info!("Auto-launching CLI tool '{}' for implementation plan", cli_name);
-
-                    // Build the command - just launch the CLI tool without arguments
-                    // Most CLI tools (claude-code, cursor, etc.) don't need the plan ID as argument
-                    let mut cli_command = cli_name.clone();
-
-                    // Add any additional args if configured
-                    if !additional_args.is_empty() {
-                        cli_command.push(' ');
-                        cli_command.push_str(&additional_args);
-                    }
-
-                    // Add newline to execute
-                    cli_command.push('\n');
-
-                    let session_clone = session_handle.clone();
-                    let job_id_for_log = job_id.to_string();
-                    tokio::spawn(async move {
-                        // Wait for shell to initialize
-                        tokio::time::sleep(tokio::time::Duration::from_millis(400)).await;
-
-                        // Send the command via channel
-                        if let Err(e) = session_clone.input_tx.send(cli_command.as_bytes().to_vec()).await {
-                            warn!("Failed to send CLI command for plan {}: {}", job_id_for_log, e);
-                        }
-                    });
-                } else {
-                    warn!("Configured CLI tool '{}' not found in PATH", cli_name);
+        // Send the init command to the terminal if configured
+        if let Some(init_cmd) = init_command {
+            // Wait a moment for the shell to start, then send the command
+            let handle_for_init = handle.clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                if let Some(writer) = handle_for_init.writer.lock().unwrap().as_mut() {
+                    let command_with_newline = format!("{}\n", init_cmd);
+                    let _ = writer.write_all(command_with_newline.as_bytes());
+                    let _ = writer.flush();
                 }
-            } else if let Some(custom_cmd) = custom_command.clone() {
-                // Use custom command if no preferred CLI but custom command is set
-                info!("Auto-executing custom command for implementation plan");
-
-                let mut command = custom_cmd.replace("{PLAN_ID}", job_id);
-                command.push('\n');
-
-                let session_clone = session_handle.clone();
-                let job_id_for_log = job_id.to_string();
-                tokio::spawn(async move {
-                    // Wait for shell to initialize
-                    tokio::time::sleep(tokio::time::Duration::from_millis(400)).await;
-
-                    if let Err(e) = session_clone.input_tx.send(command.as_bytes().to_vec()).await {
-                        warn!("Failed to send custom command for plan {}: {}", job_id_for_log, e);
-                    }
-                });
-            } else {
-                debug!("No CLI tool configured for implementation plan terminal");
-            }
-        }
-
-        // Attach client to the broadcast channel without emitting terminal-ready (already emitted above)
-        if let Err(e) = self.attach_client_internal(job_id, output_channel, &self.app, false).await {
-            error!("Failed to attach client for job {}: {:?}", job_id, e);
-        }
-
-        info!(
-            "Successfully started PTY terminal session for job {}",
-            job_id
-        );
-        Ok(())
-    }
-
-    pub fn get_client_count(&self, job_id: &str) -> u64 {
-        self.sessions.get(job_id)
-            .map(|h| h.output_sender.receiver_count() as u64)
-            .unwrap_or(0)
-    }
-
-    pub async fn attach_client(
-        &self,
-        job_id: &str,
-        output: Channel<Vec<u8>>,
-        app_handle: &AppHandle,
-    ) -> Result<(), AppError> {
-        self.attach_client_internal(job_id, output, app_handle, true).await
-    }
-
-    async fn attach_client_internal(
-        &self,
-        job_id: &str,
-        output: Channel<Vec<u8>>,
-        app_handle: &AppHandle,
-        emit_ready: bool,
-    ) -> Result<(), AppError> {
-        let session = self.sessions.get(job_id)
-            .ok_or_else(|| AppError::NotFoundError(format!("Terminal session not found for job {}", job_id)))?;
-
-        // Create bounded channel for per-client queue
-        let (client_tx, mut client_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(200);
-
-        // Subscribe to broadcast
-        let mut broadcast_rx = session.output_sender.subscribe();
-
-        // EMIT TERMINAL-READY IMMEDIATELY after subscription (if requested)
-        if emit_ready {
-            app_handle.emit("terminal-ready", &job_id)
-                .map_err(|e| AppError::TauriError(format!("Failed to emit terminal-ready: {}", e)))?;
-        }
-
-        // Then send ring snapshot
-        let snapshot = if let Ok(ring) = session.ring.lock() {
-            ring.snapshot()
-        } else {
-            Vec::new()
-        };
-        if !snapshot.is_empty() {
-            // Send snapshot in 64KB chunks
-            for chunk in snapshot.chunks(65536) {
-                if let Err(e) = output.send(chunk.to_vec()) {
-                    warn!("Failed to send ring buffer snapshot chunk to client for job {}: {}", job_id, e);
-                    return Err(AppError::TerminalError(format!("Failed to send initial snapshot: {}", e)));
-                }
-            }
-        }
-
-        // Task A: Forward from broadcast to client queue
-        let job_id_sub = job_id.to_string();
-        let _subscriber_task = tauri::async_runtime::spawn(async move {
-            loop {
-                match broadcast_rx.recv().await {
-                    Ok(data) => {
-                        // Try to send, drop if full to prevent backpressure
-                        if let Err(e) = client_tx.try_send(data) {
-                            if matches!(e, tokio::sync::mpsc::error::TrySendError::Full(_)) {
-                                warn!("Client queue full for job {}, dropping data", job_id_sub);
-                            } else {
-                                // Channel closed, exit task cleanly
-                                break;
-                            }
-                        }
-                    }
-                    Err(broadcast::error::RecvError::Lagged(n)) => {
-                        warn!("Client for job {} lagged by {} messages", job_id_sub, n);
-                        continue;
-                    }
-                    Err(_) => break, // Channel closed
-                }
-            }
-            debug!("Subscriber task exiting for job {}", job_id_sub);
-        });
-
-        // Task B: Coalesce and send to Tauri channel
-        let job_id_send = job_id.to_string();
-        let _sender_task = tauri::async_runtime::spawn(async move {
-            let mut buffer = Vec::with_capacity(4096);
-            let mut last_send = std::time::Instant::now();
-
-            loop {
-                // Wait for data with timeout
-                match tokio::time::timeout(Duration::from_millis(10), client_rx.recv()).await {
-                    Ok(Some(data)) => {
-                        buffer.extend_from_slice(&data);
-
-                        // Send if buffer is large enough or enough time passed
-                        if buffer.len() >= 4096 || last_send.elapsed() >= Duration::from_millis(16) {
-                            if let Err(e) = output.send(buffer.clone()) {
-                                warn!("Failed to send to client channel for job {}: {}", job_id_send, e);
-                                break;
-                            }
-                            buffer.clear();
-                            last_send = std::time::Instant::now();
-                        }
-                    }
-                    Ok(None) => {
-                        // Channel closed, send remaining buffer
-                        if !buffer.is_empty() {
-                            let _ = output.send(buffer);
-                        }
-                        break;
-                    }
-                    Err(_) => {
-                        // Timeout, send buffer if not empty
-                        if !buffer.is_empty() {
-                            if let Err(e) = output.send(buffer.clone()) {
-                                warn!("Failed to send to client channel for job {}: {}", job_id_send, e);
-                                break;
-                            }
-                            buffer.clear();
-                            last_send = std::time::Instant::now();
-                        }
-                    }
-                }
-            }
-            debug!("Sender task exiting for job {}", job_id_send);
-        });
-
-        // Store tasks for cleanup (if you track them)
-        // For now, just let them run to completion
-
-        Ok(())
-    }
-
-    pub async fn attach_output(
-        &self,
-        job_id: &str,
-        output_channel: Channel<Vec<u8>>,
-        window: tauri::Window,
-    ) -> Result<(), AppError> {
-        // Check if session exists in memory
-        if let Some(session_handle) = self.sessions.get(job_id) {
-            let status = session_handle.status.load(Ordering::Relaxed);
-            if status == SessionStatus::Running as u8 {
-                info!("Attaching to running terminal session for job {}", job_id);
-                return self.attach_client(job_id, output_channel, &self.app).await;
-            } else {
-                info!("Terminal session {} exists but is not running (status: {})", job_id, status);
-            }
-        }
-
-        // Session not in memory, check database for historical session
-        let repo = self
-            .app
-            .state::<Arc<TerminalSessionsRepository>>()
-            .inner()
-            .clone();
-
-        if let Ok(Some(db_session)) = repo.get_session_by_job_id(job_id).await {
-            info!("Found historical terminal session for job {} with status: {}", job_id, db_session.status);
-
-            // Send the historical output log
-            let history = repo.get_output_log(job_id).await.map_err(|e| {
-                AppError::DatabaseError(format!(
-                    "Failed to get output log for job {}: {}",
-                    job_id, e
-                ))
-            })?;
-
-            if !history.is_empty() {
-                let _ = output_channel.send(history.into_bytes());
-            }
-
-            // Emit terminal-ready and return immediately
-            let app_clone = self.app.clone();
-            let job_for_ready = job_id.to_string();
-            let _ = self.app.run_on_main_thread(move || {
-                let _ = app_clone.emit(
-                    "terminal-ready",
-                    serde_json::json!({ "jobId": job_for_ready }),
-                );
             });
-
-            return Ok(());
-        }
-
-        Err(AppError::TerminalError(format!(
-            "Terminal session not found for job_id={}",
-            job_id
-        )))
-    }
-
-    pub async fn write_input(&self, job_id: &str, data: Vec<u8>) -> Result<(), AppError> {
-        // Early return if data is empty
-        if data.is_empty() {
-            return Ok(());
-        }
-
-        // Check data size limit
-        if data.len() > 1_048_576 {
-            info!("Large input detected for job {} with size {} bytes", job_id, data.len());
-        }
-
-        if let Some(session_handle) = self.sessions.get(job_id) {
-            // Check if session is still running
-            let status = session_handle.status.load(Ordering::Relaxed);
-            if status != SessionStatus::Running as u8 {
-                debug!("Ignoring write to non-running session {} (status: {})", job_id, status);
-                return Ok(()); // Silently ignore writes to ended sessions
-            }
-
-            // Send via channel for serialized writes
-            if data.len() > 8192 {
-                // Split large writes
-                for chunk in data.chunks(8192) {
-                    if let Err(e) = session_handle.input_tx.send(chunk.to_vec()).await {
-                        return Err(AppError::TerminalError(format!("Failed to send input: {}", e)));
-                    }
-                }
-            } else {
-                if let Err(e) = session_handle.input_tx.send(data).await {
-                    return Err(AppError::TerminalError(format!("Failed to send input: {}", e)));
-                }
-            }
-
-            Ok(())
-        } else {
-            // Session not found - likely ended, silently ignore
-            debug!("Terminal session {} not found for write, likely already ended", job_id);
-            Ok(())
-        }
-    }
-
-    pub async fn send_ctrl_c(&self, job_id: &str) -> Result<(), AppError> {
-        // Send Ctrl+C character (ETX) as bytes
-        self.write_input(job_id, vec![0x03]).await
-    }
-
-    pub async fn resize_session(&self, job_id: &str, cols: u16, rows: u16) -> Result<(), AppError> {
-        if let Some(session_handle) = self.sessions.get(job_id) {
-            // Only resize if the session is still running
-            let status = session_handle.status.load(Ordering::Relaxed);
-            if status != SessionStatus::Running as u8 {
-                debug!("Skipping resize for non-running session {} (status: {})", job_id, status);
-                return Ok(());
-            }
-
-            let pty_size = PtySize {
-                rows,
-                cols,
-                pixel_width: 0,
-                pixel_height: 0,
-            };
-
-            session_handle
-                .master
-                .lock()
-                .map_err(|e| AppError::TerminalError(format!("Failed to acquire master lock for job {}: {}", job_id, e)))?
-                .resize(pty_size)
-                .map_err(|e| AppError::TerminalError(format!("Failed to resize PTY for job {}: {}", job_id, e)))?;
-
-            info!("Resized PTY for job {} to {}x{}", job_id, cols, rows);
-            Ok(())
-        } else {
-            // Session not found - it may have ended already, just return OK
-            debug!("Terminal session {} not found for resize, likely already ended", job_id);
-            Ok(())
-        }
-    }
-
-    pub async fn kill_session(&self, job_id: &str) -> Result<(), AppError> {
-        if let Some(session_handle) = self.sessions.get(job_id) {
-            info!("Killing terminal session for job {}", job_id);
-
-            // Try to kill the process, but don't fail if it's already dead
-            let kill_result = session_handle
-                .process_controller
-                .lock()
-                .map_err(|e| {
-                    AppError::TerminalError(format!(
-                        "Failed to acquire process controller lock for job {}: {}",
-                        job_id, e
-                    ))
-                })?
-                .kill();
-
-            // Log the kill result but continue regardless
-            match kill_result {
-                Ok(_) => {
-                    info!("Successfully sent kill signal to terminal process for job {}", job_id);
-                }
-                Err(e) => {
-                    // Check if error is because process doesn't exist (common case)
-                    let error_str = e.to_string();
-                    if error_str.contains("os error 3") || error_str.contains("No such process") {
-                        info!("Terminal process for job {} was already terminated", job_id);
-                    } else {
-                        // Log unexpected errors but don't fail - we still want to clean up
-                        warn!("Failed to kill terminal process for job {}: {}", job_id, e);
-                    }
-                }
-            }
-
-            // Update DB status to completed
-            let repo = self
-                .app
-                .state::<Arc<TerminalSessionsRepository>>()
-                .inner()
-                .clone();
-
-            if let Ok(Some(mut db_session)) = repo.get_session_by_job_id(job_id).await {
-                db_session.status = "completed".to_string();
-                db_session.updated_at = chrono::Utc::now().timestamp();
-
-                if let Err(e) = repo.update_session(&db_session).await {
-                    error!(
-                        "Failed to update session status after kill for job {}: {}",
-                        job_id, e
-                    );
-                }
-            }
-
-            // Remove from map
-            self.sessions.remove(job_id);
-
-            // Unregister from health monitor
-            self.health_monitor.unregister_session(job_id);
-
-            info!("Successfully killed terminal session for job {}", job_id);
-            Ok(())
-        } else {
-            Err(AppError::TerminalError(format!("Terminal session not found for job_id={}", job_id)))
-        }
-    }
-
-    pub async fn get_status(&self, job_id: &str) -> serde_json::Value {
-        if let Some(session_handle) = self.sessions.get(job_id) {
-            let status_code = session_handle.status.load(Ordering::Relaxed);
-            let exit_code = session_handle
-                .exit_code
-                .lock()
-                .map(|guard| *guard)
-                .unwrap_or(None);
-
-            let status_str = match status_code {
-                x if x == SessionStatus::Running as u8 => "running",
-                x if x == SessionStatus::Completed as u8 => "completed",
-                x if x == SessionStatus::Failed as u8 => "failed",
-                x if x == SessionStatus::AgentRequiresAttention as u8 => "agent_requires_attention",
-                _ => "unknown",
-            };
-
-            serde_json::json!({
-                "status": status_str,
-                "exitCode": exit_code
-            })
-        } else {
-            // Check database for historical sessions
-            let repo = self
-                .app
-                .state::<Arc<TerminalSessionsRepository>>()
-                .inner()
-                .clone();
-
-            if let Ok(Some(db_session)) = repo.get_session_by_job_id(job_id).await {
-                serde_json::json!({
-                    "status": db_session.status,
-                    "exitCode": db_session.exit_code
-                })
-            } else {
-                serde_json::json!({
-                    "status": "idle",
-                    "exitCode": null
-                })
-            }
-        }
-    }
-
-    // Helper method to mark session as failed and emit terminal-exit event
-    async fn mark_session_failed_and_emit(&self, job_id: &str, window: &tauri::Window) {
-        // Update database session to failed status
-        let repo = self
-            .app
-            .state::<Arc<TerminalSessionsRepository>>()
-            .inner()
-            .clone();
-
-        if let Ok(Some(mut db_session)) = repo.get_session_by_job_id(job_id).await {
-            db_session.status = "failed".to_string();
-            db_session.exit_code = Some(1); // Exit code 1 for failure
-            db_session.updated_at = chrono::Utc::now().timestamp();
-
-            if let Err(e) = repo.update_session(&db_session).await {
-                error!(
-                    "Failed to update session status to failed for job {}: {}",
-                    job_id, e
-                );
-            }
         }
 
         let app = self.app.clone();
-        let payload = serde_json::json!({
-            "jobId": job_id,
-            "code": 1
-        });
-        let app_clone = app.clone();
-        let _ = app.run_on_main_thread(move || {
-            let _ = app_clone.emit("terminal-exit", payload);
-        });
-    }
+        let repo = self.repo.clone();
+        let sid = session_id.clone();
 
-    // Helper method to check if a job is an implementation plan
-    async fn check_if_implementation_plan(&self, job_id: &str) -> bool {
-        // Try to get the BackgroundJobRepository from app state
-        let repo = match self.app.try_state::<Arc<BackgroundJobRepository>>() {
-            Some(repo) => repo.inner().clone(),
-            None => {
-                debug!("BackgroundJobRepository not available, assuming not an implementation plan");
-                return false;
-            }
-        };
+        // Create channel for forwarding chunks from blocking reader to async processor
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Option<Vec<u8>>>();
 
-        // Fetch the job from the database
-        match repo.get_job_by_id(job_id).await {
-            Ok(Some(job)) => {
-                // Check if the task_type is implementation_plan or implementation_plan_merge
-                let is_plan = job.task_type == "implementation_plan" ||
-                             job.task_type == "implementation_plan_merge";
-
-                if is_plan {
-                    debug!("Job {} is an implementation plan (type: {})", job_id, job.task_type);
-                } else {
-                    debug!("Job {} is not an implementation plan (type: {})", job_id, job.task_type);
-                }
-
-                is_plan
-            }
-            Ok(None) => {
-                debug!("Job {} not found in database", job_id);
-                false
-            }
-            Err(e) => {
-                warn!("Failed to fetch job {} from database: {}", job_id, e);
-                false
-            }
-        }
-    }
-
-    // Helper method to augment PATH with common CLI locations (cached)
-    fn augment_path(&self, current_path: &str) -> String {
-        // Return cached value if available
-        if let Some(cached) = CACHED_AUGMENTED_PATH.get() {
-            return cached.clone();
-        }
-
-        // Calculate augmented path once
-        let additional_paths = if cfg!(target_os = "windows") {
-            vec![
-                format!(
-                    "{}\\AppData\\Roaming\\npm",
-                    std::env::var("USERPROFILE").unwrap_or_default()
-                ),
-                "C:\\Program Files\\nodejs".to_string(),
-            ]
-        } else {
-            let mut paths = vec![
-                "/usr/local/bin".to_string(),
-                "/opt/homebrew/bin".to_string(),
-                format!(
-                    "{}/.npm-global/bin",
-                    std::env::var("HOME").unwrap_or_default()
-                ),
-                format!("{}/.yarn/bin", std::env::var("HOME").unwrap_or_default()),
-                format!("{}/.cargo/bin", std::env::var("HOME").unwrap_or_default()),
-            ];
-
-            let home = std::env::var("HOME").unwrap_or_default();
-
-            // Add required NVM and local bin paths if they exist
-            let nvm_current_bin = format!("{}/.nvm/versions/node/current/bin", home);
-            if std::path::Path::new(&nvm_current_bin).exists() {
-                paths.push(nvm_current_bin);
-            }
-
-            let local_bin = format!("{}/.local/bin", home);
-            if std::path::Path::new(&local_bin).exists() {
-                paths.push(local_bin);
-            }
-
-            paths
-        };
-
-        let path_separator = if cfg!(target_os = "windows") {
-            ";"
-        } else {
-            ":"
-        };
-
-        let mut paths: Vec<String> = current_path
-            .split(path_separator)
-            .map(|s| s.to_string())
-            .collect();
-
-        for additional_path in additional_paths {
-            if !paths.contains(&additional_path) {
-                paths.push(additional_path);
-            }
-        }
-
-        let augmented = paths.join(path_separator);
-
-        // Cache the result for future calls
-        let _ = CACHED_AUGMENTED_PATH.set(augmented.clone());
-
-        augmented
-    }
-
-    /// Start a terminal session internally without UI channel
-    /// This is used for remote sessions that don't need a UI channel
-    pub async fn start_session_internal(
-        &self,
-        job_id: &str,
-        options: Option<TerminalSessionOptions>,
-    ) -> Result<(), AppError> {
-        // Create a dummy channel for compatibility
-        let channel = tauri::ipc::Channel::new(move |_response| {
-            // Handle response if needed
-            Ok(())
-        });
-
-        // Create a dummy window (this should be refactored to not require a window)
-        let webview_window = self.app.get_webview_window("main")
-            .ok_or_else(|| AppError::TerminalError("No main window available".to_string()))?;
-        let window = webview_window.as_ref().window();
-
-        self.start_session(job_id, options, channel, window).await
-    }
-
-    /// Attach a remote client to receive terminal output
-    pub async fn attach_remote_client(&self, job_id: &str, client_id: String) -> Result<(), AppError> {
-        if let Some(session_handle) = self.sessions.get(job_id) {
-            // Add client to the remote clients list
-            {
-                let mut remote_clients = session_handle.remote_clients.lock()
-                    .map_err(|e| AppError::TerminalError(format!("Failed to lock remote clients: {}", e)))?;
-                remote_clients.insert(client_id.clone());
-            }
-
-            // Send historical output first
-            let repo = self.app.state::<Arc<TerminalSessionsRepository>>().inner().clone();
-            let history = repo.get_output_log(job_id).await
-                .map_err(|e| AppError::DatabaseError(format!("Failed to get output log: {}", e)))?;
-
-            if !history.is_empty() {
-                // Emit historical output
-                let _ = self.app.emit("terminal:output", serde_json::json!({
-                    "clientId": client_id,
-                    "jobId": job_id,
-                    "data": base64::encode(history.as_bytes())
-                }));
-            }
-
-            // Subscribe to live output
-            let mut rx = session_handle.output_sender.subscribe();
-            let app_handle = self.app.clone();
-            let job_id_clone = job_id.to_string();
-            let client_id_clone = client_id.clone();
-            let remote_clients = session_handle.remote_clients.clone();
-
-            tokio::spawn(async move {
-                loop {
-                    match rx.recv().await {
-                        Ok(bytes) => {
-                            // Check if client is still attached
-                            {
-                                let clients = remote_clients.lock().unwrap();
-                                if !clients.contains(&client_id_clone) {
-                                    break; // Client detached
-                                }
-                            }
-
-                            // Emit output to remote client
-                            let _ = app_handle.emit("terminal:output", serde_json::json!({
-                                "clientId": client_id_clone,
-                                "jobId": job_id_clone,
-                                "data": base64::encode(&bytes)
-                            }));
+        // Spawn blocking reader relay that owns the reader
+        tokio::task::spawn_blocking(move || {
+            let mut buf = [0u8; 4096];
+            loop {
+                match reader.read(&mut buf) {
+                    Ok(0) => {
+                        // EOF - send done signal
+                        let _ = tx.send(None);
+                        break;
+                    }
+                    Ok(n) => {
+                        let chunk = buf[..n].to_vec();
+                        if tx.send(Some(chunk)).is_err() {
+                            // Receiver dropped, exit
+                            break;
                         }
-                        Err(broadcast::error::RecvError::Lagged(_)) => {
-                            continue;
-                        }
-                        Err(_) => break,
+                    }
+                    Err(_) => {
+                        // Error - send done signal
+                        let _ = tx.send(None);
+                        break;
                     }
                 }
-            });
-
-            info!("Attached remote client {} to terminal session {}", client_id, job_id);
-            Ok(())
-        } else {
-            Err(AppError::TerminalError(format!("Terminal session not found for job_id={}", job_id)))
-        }
-    }
-
-    /// Detach a remote client from terminal output
-    pub async fn detach_remote_client(&self, job_id: &str, client_id: &str) -> Result<(), AppError> {
-        if let Some(session_handle) = self.sessions.get(job_id) {
-            let mut remote_clients = session_handle.remote_clients.lock()
-                .map_err(|e| AppError::TerminalError(format!("Failed to lock remote clients: {}", e)))?;
-            remote_clients.remove(client_id);
-            info!("Detached remote client {} from terminal session {}", client_id, job_id);
-            Ok(())
-        } else {
-            Err(AppError::TerminalError(format!("Terminal session not found for job_id={}", job_id)))
-        }
-    }
-
-    /// List all active terminal sessions with their last output line
-    pub async fn list_active_terminal_sessions(&self) -> Result<Vec<serde_json::Value>, AppError> {
-        let mut active_sessions = Vec::new();
-
-        // Get active sessions from memory
-        for entry in self.sessions.iter() {
-            let (job_id, session_handle) = entry.pair();
-            let status = session_handle.status.load(Ordering::Relaxed);
-
-            if status == SessionStatus::Running as u8 {
-                // Get last output line from database
-                let repo = self.app.state::<Arc<TerminalSessionsRepository>>().inner().clone();
-                let output_log = repo.get_output_log(job_id).await
-                    .unwrap_or_default();
-
-                let last_output_line = output_log
-                    .lines()
-                    .last()
-                    .unwrap_or("[No output yet]")
-                    .trim()
-                    .to_string();
-
-                // Limit line length for UI display
-                let display_line = if last_output_line.len() > 100 {
-                    format!("{}...", &last_output_line[..97])
-                } else {
-                    last_output_line
-                };
-
-                active_sessions.push(serde_json::json!({
-                    "jobId": job_id,
-                    "status": "running",
-                    "lastOutputLine": display_line,
-                    "isInMemory": true
-                }));
             }
-        }
+        });
 
-        // Also check database for any "running" sessions not in memory
-        let repo = self.app.state::<Arc<TerminalSessionsRepository>>().inner().clone();
-        if let Ok(db_sessions) = repo.list_active_sessions().await {
-            for db_session in db_sessions {
-                // Skip if already in memory
-                if self.sessions.contains_key(&db_session.job_id) {
-                    continue;
+        // Spawn async task to process chunks from channel
+        tauri::async_runtime::spawn(async move {
+            while let Some(chunk_opt) = rx.recv().await {
+                match chunk_opt {
+                    Some(chunk) => {
+                        // Update buffer with capped size
+                        {
+                            let mut b = handle.buffer.lock().unwrap();
+                            b.extend_from_slice(&chunk);
+
+                            // Cap buffer size
+                            if b.len() > MAX_BUFFER_SIZE {
+                                let overflow = b.len() - MAX_BUFFER_SIZE;
+                                b.drain(0..overflow);
+
+                                // Update last_flushed_len to account for drained bytes
+                                let mut last_flushed = handle.last_flushed_len.lock().unwrap();
+                                *last_flushed = last_flushed.saturating_sub(overflow);
+                            }
+                        }
+
+                        // Notify subscribers
+                        let subs = handle.subscribers.lock().unwrap().clone();
+                        for s in subs {
+                            let _ = s.send(chunk.clone());
+                        }
+
+                        // Emit device-link-event for terminal output
+                        app.emit(
+                            "device-link-event",
+                            json!({
+                                "type": "terminal.output",
+                                "payload": {
+                                    "sessionId": sid,
+                                    "data": String::from_utf8_lossy(&chunk),
+                                    "timestamp": now_secs(),
+                                    "type": "stdout"
+                                }
+                            }),
+                        )
+                        .ok();
+
+                        // Incremental flush logic
+                        let should_flush = {
+                            let buffer = handle.buffer.lock().unwrap();
+                            let last_flushed = handle.last_flushed_len.lock().unwrap();
+                            let last_flush_time = handle.last_flush_at.lock().unwrap();
+
+                            let pending_len = buffer.len() - *last_flushed;
+                            let now = now_secs();
+                            let time_since_flush = now - *last_flush_time;
+
+                            // Check if we should flush
+                            if pending_len >= 4096 || (pending_len > 0 && time_since_flush >= 1) {
+                                Some((*last_flushed, buffer.len(), now))
+                            } else {
+                                None
+                            }
+                        };
+
+                        if let Some((start, end, now)) = should_flush {
+                            // Extract chunk to flush
+                            let chunk_to_flush = {
+                                let buffer = handle.buffer.lock().unwrap();
+                                buffer[start..end].to_vec()
+                            };
+
+                            // Perform the async operation
+                            if let Err(e) = repo.append_output(&sid, &chunk_to_flush, now).await {
+                                eprintln!("Failed to append output: {}", e);
+                            }
+
+                            // Update tracking after successful flush
+                            {
+                                let mut last_flushed = handle.last_flushed_len.lock().unwrap();
+                                let mut last_flush_time = handle.last_flush_at.lock().unwrap();
+                                *last_flushed = end;
+                                *last_flush_time = now;
+                            }
+                        }
+                    }
+                    None => {
+                        // Done signal received, exit loop
+                        break;
+                    }
                 }
-
-                let output_log = repo.get_output_log(&db_session.job_id).await
-                    .unwrap_or_default();
-
-                let last_output_line = output_log
-                    .lines()
-                    .last()
-                    .unwrap_or("[No output captured]")
-                    .trim()
-                    .to_string();
-
-                let display_line = if last_output_line.len() > 100 {
-                    format!("{}...", &last_output_line[..97])
-                } else {
-                    last_output_line
-                };
-
-                active_sessions.push(serde_json::json!({
-                    "jobId": db_session.job_id,
-                    "status": db_session.status,
-                    "lastOutputLine": display_line,
-                    "isInMemory": false
-                }));
             }
-        }
 
-        Ok(active_sessions)
-    }
+            let exit_code = if let Some(mut child) = handle.child_stopper.lock().unwrap().take() {
+                match child.wait() {
+                    Ok(status) => status.exit_code() as i32,
+                    Err(_) => -1,
+                }
+            } else {
+                handle.exit_code.lock().unwrap().unwrap_or(0)
+            };
 
-    // Health monitoring methods
+            *handle.status.lock().unwrap() = "stopped";
+            *handle.exit_code.lock().unwrap() = Some(exit_code);
 
-    /// Check the health of a terminal session
-    pub async fn health_check(&self, job_id: &str) -> Result<HealthStatus, AppError> {
-        if let Some(session_handle) = self.sessions.get(job_id) {
-            // Check if child process is alive
-            let process_alive = {
-                let mut child_guard = session_handle.child.lock()
-                    .map_err(|e| AppError::TerminalError(format!("Failed to lock child: {}", e)))?;
+            // Emit device-link-event for terminal exit
+            app.emit(
+                "device-link-event",
+                json!({
+                    "type": "terminal.exit",
+                    "payload": {
+                        "sessionId": sid,
+                        "code": exit_code,
+                        "timestamp": now_secs()
+                    }
+                }),
+            )
+            .ok();
 
-                // Use try_wait to check if process is still running without blocking
-                match child_guard.try_wait() {
-                    Ok(Some(_)) => false, // Process has exited
-                    Ok(None) => true,     // Process is still running
-                    Err(_) => false,      // Error checking process, assume dead
+            // Flush any remaining bytes before saving session result
+            let final_chunk = {
+                let buffer = handle.buffer.lock().unwrap();
+                let last_flushed = handle.last_flushed_len.lock().unwrap();
+
+                if buffer.len() > *last_flushed {
+                    Some(buffer[*last_flushed..].to_vec())
+                } else {
+                    None
                 }
             };
 
-            if !process_alive {
-                let exit_code = session_handle.exit_code.lock().unwrap().clone();
-                return Ok(HealthStatus::ProcessDead { exit_code });
-            }
-
-            // Check session status
-            let status = session_handle.status.load(Ordering::Relaxed);
-            if status != SessionStatus::Running as u8 {
-                let exit_code = session_handle.exit_code.lock().unwrap().clone();
-                return Ok(HealthStatus::ProcessDead { exit_code });
-            }
-
-            // Check output channel activity
-            let output_active = session_handle.output_sender.receiver_count() > 0;
-            if !output_active {
-                return Ok(HealthStatus::Disconnected);
-            }
-
-            // If we get here, session appears healthy
-            Ok(HealthStatus::Healthy)
-        } else {
-            Err(AppError::TerminalError(format!("Terminal session not found for job_id={}", job_id)))
-        }
-    }
-
-    /// Perform automatic recovery on a terminal session
-    pub async fn auto_recover(&self, job_id: &str, health_status: HealthStatus) -> Result<(), AppError> {
-        let recovery_action = RecoveryAction::for_health_status(health_status);
-
-        match recovery_action {
-            RecoveryAction::SendPrompt => {
-                info!("Performing send prompt recovery for session {}", job_id);
-
-                // Send Enter key to trigger prompt
-                self.write_input(job_id, b"\r".to_vec()).await?;
-
-                // Wait a moment then send probe command
-                tokio::time::sleep(Duration::from_millis(500)).await;
-
-                self.write_input(job_id, b"echo 'health-check-alive'\r".to_vec()).await?;
-            }
-
-            RecoveryAction::Interrupt => {
-                info!("Performing interrupt recovery for session {}", job_id);
-
-                // Send Ctrl+C to interrupt any command requiring attention
-                self.send_ctrl_c(job_id).await
-                    .map_err(|e| AppError::TerminalError(format!("Failed to send Ctrl+C: {}", e)))?;
-
-                // Wait to see if process becomes responsive
-                tokio::time::sleep(Duration::from_secs(2)).await;
-
-                // Check if still requires attention and kill if needed
-                let still_requires_attention = matches!(self.health_check(job_id).await?, HealthStatus::ProcessDead { .. });
-                if still_requires_attention {
-                    warn!("Session {} still requires attention after interrupt, killing", job_id);
-                    self.kill_session(job_id).await?;
+            if let Some(chunk) = final_chunk {
+                let now = now_secs();
+                if let Err(e) = repo.append_output(&sid, &chunk, now).await {
+                    eprintln!("Failed to append final output: {}", e);
                 }
             }
 
-            RecoveryAction::Restart => {
-                warn!("Performing restart recovery for session {}", job_id);
-
-                // Kill the current session
-                if let Err(e) = self.kill_session(job_id).await {
-                    warn!("Failed to kill session {} during restart: {}", job_id, e);
-                }
-
-                // Note: Full restart would require recreating the session with original parameters
-                // This would need to be handled at a higher level
-            }
-
-            RecoveryAction::Reattach => {
-                info!("Performing reattach recovery for session {}", job_id);
-
-                // Recreate output channels - this is complex and would require
-                // access to the original channel parameters
-                warn!("Reattach recovery for session {} requires manual intervention", job_id);
-            }
-
-            RecoveryAction::FlushPersistence => {
-                info!("Performing persistence flush for session {}", job_id);
-
-                // Force persistence flush - this would require coordination with
-                // the persistence worker
-                warn!("Persistence flush for session {} - monitoring queue", job_id);
-            }
-
-            RecoveryAction::None => {
-                // No recovery action needed
-            }
-        }
+            let final_log = String::from_utf8_lossy(&handle.buffer.lock().unwrap()).to_string();
+            let ended = now_secs();
+            let _ = repo
+                .save_session_result(
+                    &sid,
+                    ended,
+                    Some(exit_code as i64),
+                    Some(final_log),
+                    handle.working_dir.clone(),
+                )
+                .await;
+            let _ = app.emit(
+                "terminal-exit",
+                serde_json::json!({ "sessionId": sid, "exitCode": exit_code }),
+            );
+        });
 
         Ok(())
     }
 
-    /// Get health monitor instance for external access
-    pub fn get_health_monitor(&self) -> Arc<TerminalHealthMonitor> {
-        self.health_monitor.clone()
+    pub fn attach(&self, session_id: &str, output: Channel<Vec<u8>>) -> AppResult<()> {
+        if let Some(h) = self.sessions.get(session_id) {
+            let snapshot = h.buffer.lock().unwrap().clone();
+            let _ = output.send(snapshot);
+            h.subscribers.lock().unwrap().push(output);
+        }
+        Ok(())
     }
 
-    pub fn get_snapshot(&self, job_id: &str) -> Option<Vec<u8>> {
-        self.sessions.get(job_id).and_then(|session| {
-            session.ring.lock().ok().map(|ring| ring.snapshot())
-        })
+    pub fn write_input(&self, session_id: &str, data: Vec<u8>) -> AppResult<()> {
+        if let Some(h) = self.sessions.get(session_id) {
+            if let Some(writer) = h.writer.lock().unwrap().as_mut() {
+                writer.write_all(&data).map_err(|e| {
+                    AppError::ExternalServiceError(format!("Failed to write to terminal: {}", e))
+                })?;
+                writer.flush().map_err(|e| {
+                    AppError::ExternalServiceError(format!(
+                        "Failed to flush terminal writer: {}",
+                        e
+                    ))
+                })?;
+            }
+        }
+        Ok(())
     }
 
-    /// Validate session health during operations
-    async fn validate_session_health(&self, job_id: &str) -> Result<(), AppError> {
-        match self.health_check(job_id).await {
-            Ok(HealthStatus::Healthy) => Ok(()),
-            Ok(health_status) => {
-                warn!("Session {} health issue detected: {:?}", job_id, health_status);
+    pub fn resize(&self, session_id: &str, cols: u16, rows: u16) -> AppResult<()> {
+        if let Some(h) = self.sessions.get(session_id) {
+            if let Some(pty) = h.resizer.lock().unwrap().as_mut() {
+                pty.resize(PtySize {
+                    rows,
+                    cols,
+                    pixel_width: 0,
+                    pixel_height: 0,
+                })
+                .map_err(|e| {
+                    AppError::ExternalServiceError(format!("Failed to resize terminal: {}", e))
+                })?;
+            }
+        }
+        Ok(())
+    }
 
-                // Attempt auto-recovery for non-critical issues
-                if health_status.requires_recovery() && health_status.severity() != crate::services::terminal_health_monitor::HealthSeverity::Critical {
-                    if let Err(e) = self.auto_recover(job_id, health_status).await {
-                        warn!("Auto-recovery failed for session {}: {}", job_id, e);
+    pub fn kill(&self, session_id: &str) -> AppResult<()> {
+        if let Some(h) = self.sessions.get(session_id) {
+            // Drop writer/resizer so no further input is sent to the PTY after kill
+            h.writer.lock().unwrap().take();
+            h.resizer.lock().unwrap().take();
+
+            {
+                let mut child_guard = h.child_stopper.lock().unwrap();
+                if let Some(child) = child_guard.as_mut() {
+                    child.kill().map_err(|e| {
+                        AppError::ExternalServiceError(format!(
+                            "Failed to kill terminal process: {}",
+                            e
+                        ))
+                    })?;
+                }
+            }
+
+            // Mark the session as stopped immediately; final exit bookkeeping
+            // (exit code, DB persistence) is handled by the async reader task.
+            *h.status.lock().unwrap() = "stopped";
+        }
+        Ok(())
+    }
+
+    pub fn status(&self, session_id: &str) -> serde_json::Value {
+        if let Some(h) = self.sessions.get(session_id) {
+            // Determine accurate status based on session state
+            let status = {
+                let writer_exists = h.writer.lock().unwrap().is_some();
+                let resizer_exists = h.resizer.lock().unwrap().is_some();
+                let current_status = *h.status.lock().unwrap();
+
+                // If session exists but has no writer/resizer, it's a restored read-only session
+                if !writer_exists && !resizer_exists && current_status != "stopped" {
+                    "restored"
+                } else if writer_exists || resizer_exists {
+                    "running"
+                } else {
+                    current_status
+                }
+            };
+
+            serde_json::json!({
+                "status": status,
+                "exitCode": *h.exit_code.lock().unwrap()
+            })
+        } else {
+            serde_json::json!({"status": "stopped"})
+        }
+    }
+
+    pub fn get_active_sessions(&self) -> Vec<String> {
+        // Returns list of ALL session IDs currently in memory
+        // This includes running, restored, completed, and starting sessions
+        self.sessions
+            .iter()
+            .map(|entry| entry.key().clone())
+            .collect()
+    }
+
+    pub fn get_session_working_directory(&self, session_id: &str) -> Option<String> {
+        self.sessions
+            .get(session_id)
+            .and_then(|handle| handle.working_dir.clone())
+    }
+
+    pub fn reconnect_to_session(
+        &self,
+        session_id: &str,
+        output: Channel<Vec<u8>>,
+    ) -> AppResult<bool> {
+        // Try to reconnect to an existing session (used for page reloads)
+        if let Some(h) = self.sessions.get(session_id) {
+            // Send the current buffer snapshot to catch up
+            let snapshot = h.buffer.lock().unwrap().clone();
+            let _ = output.send(snapshot);
+
+            // Add the new subscriber
+            h.subscribers.lock().unwrap().push(output);
+
+            // Return true to indicate successful reconnection
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    pub async fn cleanup_all_sessions(&self) -> AppResult<()> {
+        let now = now_secs();
+        let session_ids: Vec<String> = self
+            .sessions
+            .iter()
+            .map(|entry| entry.key().clone())
+            .collect();
+
+        for session_id in session_ids {
+            if let Some(handle) = self.sessions.get(&session_id) {
+                // Flush any remaining bytes before cleanup
+                let cleanup_chunk = {
+                    let buffer = handle.buffer.lock().unwrap();
+                    let last_flushed = handle.last_flushed_len.lock().unwrap();
+
+                    if buffer.len() > *last_flushed {
+                        Some(buffer[*last_flushed..].to_vec())
+                    } else {
+                        None
+                    }
+                };
+
+                if let Some(chunk) = cleanup_chunk {
+                    if let Err(e) = self.repo.append_output(&session_id, &chunk, now).await {
+                        eprintln!("Failed to append cleanup output: {}", e);
                     }
                 }
 
-                Ok(()) // Don't fail the operation, just log the issue
-            }
-            Err(e) => {
-                debug!("Health check failed for session {}: {}", job_id, e);
-                Ok(()) // Session might not be registered yet
-            }
-        }
-    }
+                // Prevent any additional IO on the PTY while we shut it down
+                handle.writer.lock().unwrap().take();
+                handle.resizer.lock().unwrap().take();
 
-    async fn emit_terminal_ready(&self, job_id: &str) -> Result<(), AppError> {
-        let app_clone = self.app.clone();
-        let job_for_ready = job_id.to_string();
-        let _ = self.app.run_on_main_thread(move || {
-            let _ = app_clone.emit(
-                "terminal-ready",
-                serde_json::json!({ "jobId": job_for_ready }),
-            );
-        });
+                // Attempt a graceful kill before we wait; if the process already
+                // exited this will no-op.
+                {
+                    let mut child_guard = handle.child_stopper.lock().unwrap();
+                    if let Some(child) = child_guard.as_mut() {
+                        if let Err(e) = child.kill() {
+                            eprintln!("Failed to signal terminal kill during app shutdown: {}", e);
+                        }
+                    }
+                }
+
+                // Save final state with max data preservation
+                let final_log = String::from_utf8_lossy(&handle.buffer.lock().unwrap()).to_string();
+                let exit_code = *handle.exit_code.lock().unwrap();
+
+                // Finish reaping the PTY child process (if it is still running)
+                if let Some(child) = handle.child_stopper.lock().unwrap().take() {
+                    // Store child handle for potential force kill
+                    let mut child_handle = Some(child);
+
+                    // Give process 2 seconds to terminate gracefully
+                    let wait_result = tokio::time::timeout(
+                        std::time::Duration::from_secs(2),
+                        tokio::task::spawn_blocking(move || {
+                            let mut c = child_handle.take().unwrap();
+                            let result = c.wait();
+                            (result, c)
+                        }),
+                    )
+                    .await;
+
+                    match wait_result {
+                        Ok(Ok((Ok(status), _))) => {
+                            // Process terminated gracefully
+                            let final_exit_code = status.exit_code() as i32;
+                            *handle.exit_code.lock().unwrap() = Some(final_exit_code);
+                            *handle.status.lock().unwrap() = "stopped";
+                            self.repo
+                                .save_session_result(
+                                    &session_id,
+                                    now,
+                                    Some(final_exit_code as i64),
+                                    Some(final_log.clone()),
+                                    handle.working_dir.clone(),
+                                )
+                                .await?;
+                        }
+                        Ok(Ok((Err(_), mut child))) => {
+                            // Wait failed but we have the child handle - force kill
+                            let _ = child.kill();
+                            // Save with current exit code or -1 for forced termination
+                            let recorded_exit = exit_code.unwrap_or(-1);
+                            *handle.exit_code.lock().unwrap() = Some(recorded_exit);
+                            *handle.status.lock().unwrap() = "stopped";
+                            self.repo
+                                .save_session_result(
+                                    &session_id,
+                                    now,
+                                    Some(recorded_exit as i64),
+                                    Some(final_log.clone()),
+                                    handle.working_dir.clone(),
+                                )
+                                .await?;
+                        }
+                        Err(_) => {
+                            // Timeout - child is still in blocking task, already being cleaned up
+                            let recorded_exit = exit_code.unwrap_or(-1);
+                            *handle.exit_code.lock().unwrap() = Some(recorded_exit);
+                            *handle.status.lock().unwrap() = "stopped";
+                            self.repo
+                                .save_session_result(
+                                    &session_id,
+                                    now,
+                                    Some(recorded_exit as i64),
+                                    Some(final_log.clone()),
+                                    handle.working_dir.clone(),
+                                )
+                                .await?;
+                        }
+                        Ok(Err(_)) => {
+                            // spawn_blocking failed
+                            let recorded_exit = exit_code.unwrap_or(-1);
+                            *handle.exit_code.lock().unwrap() = Some(recorded_exit);
+                            *handle.status.lock().unwrap() = "stopped";
+                            self.repo
+                                .save_session_result(
+                                    &session_id,
+                                    now,
+                                    Some(recorded_exit as i64),
+                                    Some(final_log.clone()),
+                                    handle.working_dir.clone(),
+                                )
+                                .await?;
+                        }
+                    }
+                } else {
+                    // Process already terminated, just save the data
+                    let recorded_exit = exit_code.unwrap_or(0);
+                    *handle.exit_code.lock().unwrap() = Some(recorded_exit);
+                    *handle.status.lock().unwrap() = "stopped";
+                    self.repo
+                        .save_session_result(
+                            &session_id,
+                            now,
+                            Some(recorded_exit as i64),
+                            Some(final_log),
+                            handle.working_dir.clone(),
+                        )
+                        .await?;
+                }
+            }
+
+            // Remove from active sessions
+            self.sessions.remove(&session_id);
+        }
+
         Ok(())
     }
+
+    pub async fn restore_sessions(&self) -> AppResult<Vec<String>> {
+        let restorable_sessions = self.repo.get_restorable_sessions().await?;
+        let mut restored_session_ids = Vec::new();
+
+        for session in restorable_sessions {
+            // Create a read-only terminal session that displays the preserved output
+            let handle = Arc::new(SessionHandle {
+                buffer: Mutex::new(session.output_log.unwrap_or_default().into_bytes()),
+                subscribers: Mutex::new(Vec::new()),
+                writer: Mutex::new(None),        // Read-only - no writer
+                resizer: Mutex::new(None),       // No PTY for restored sessions
+                child_stopper: Mutex::new(None), // No process for restored sessions
+                started_at: session.created_at,
+                working_dir: session.working_directory,
+                status: Mutex::new(if session.ended_at.is_some() {
+                    "completed"
+                } else {
+                    "restored"
+                }),
+                exit_code: Mutex::new(session.exit_code.map(|c| c as i32)),
+                last_flushed_len: Mutex::new(0),
+                last_flush_at: Mutex::new(session.created_at),
+            });
+
+            self.sessions.insert(session.session_id.clone(), handle);
+            self.repo
+                .mark_session_as_restored(&session.session_id)
+                .await?;
+            restored_session_ids.push(session.session_id);
+        }
+
+        if !restored_session_ids.is_empty() {
+            log::info!(
+                "Restored {} terminal sessions: {:?}",
+                restored_session_ids.len(),
+                restored_session_ids
+            );
+        }
+
+        Ok(restored_session_ids)
+    }
+
+    pub async fn clear_log(&self, session_id: &str, clear_db: bool) -> AppResult<()> {
+        if let Some(h) = self.sessions.get(session_id) {
+            h.buffer.lock().unwrap().clear();
+            *h.last_flushed_len.lock().unwrap() = 0;
+
+            if clear_db {
+                self.repo.clear_output_log(session_id).await?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn get_metadata(&self, session_id: &str) -> Option<serde_json::Value> {
+        self.sessions.get(session_id).map(|h| {
+            serde_json::json!({
+                "sessionId": session_id,
+                "workingDirectory": h.working_dir,
+                "startedAt": h.started_at,
+                "status": *h.status.lock().unwrap(),
+                "exitCode": *h.exit_code.lock().unwrap()
+            })
+        })
+    }
+
+    pub fn graceful_exit(&self, session_id: &str) -> AppResult<()> {
+        if let Some(h) = self.sessions.get(session_id) {
+            if let Some(writer) = h.writer.lock().unwrap().as_mut() {
+                // Send Ctrl+D (EOF) on Unix or "exit\n" on Windows
+                if cfg!(windows) {
+                    writer.write_all(b"exit\r\n").map_err(|e| {
+                        AppError::ExternalServiceError(format!("Failed to write exit: {}", e))
+                    })?;
+                } else {
+                    writer.write_all(&[0x04]).map_err(|e| {
+                        AppError::ExternalServiceError(format!("Failed to write exit: {}", e))
+                    })?;
+                }
+                writer.flush().map_err(|e| {
+                    AppError::ExternalServiceError(format!("Failed to flush: {}", e))
+                })?;
+            }
+        }
+        Ok(())
+    }
+}
+
+fn now_secs() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64
 }

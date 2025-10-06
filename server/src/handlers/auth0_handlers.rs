@@ -1,16 +1,18 @@
-use actix_web::{web, HttpResponse, Result, HttpRequest};
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-use crate::auth_stores::{PollingStore, Auth0StateStore, Auth0PendingCodeInfo, Auth0StateStoreValue};
-use crate::services::auth::oauth::Auth0OAuthService;
-use crate::services::billing_service::BillingService;
+use crate::auth_stores::{
+    Auth0PendingCodeInfo, Auth0StateStore, Auth0StateStoreValue, PollingStore,
+};
 use crate::error::AppError;
 use crate::models::AuthenticatedUser;
-use crate::security::encryption;
-use log::{info, error, warn, debug};
-use chrono::Utc;
 use crate::models::runtime_config::AppState;
+use crate::security::encryption;
+use crate::services::auth::oauth::Auth0OAuthService;
+use crate::services::billing_service::BillingService;
+use actix_web::{HttpRequest, HttpResponse, Result, web};
+use chrono::Utc;
+use log::{debug, error, info, warn};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use uuid::Uuid;
 
 #[derive(Deserialize)]
 pub struct InitiateLoginQuery {
@@ -57,9 +59,9 @@ pub async fn initiate_auth0_login(
     app_state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
     let auth0_server_state = Uuid::new_v4().to_string();
-    
+
     let auth0_domain = &app_state.settings.api_keys.auth0_domain;
-    
+
     auth0_state_store.insert(
         auth0_server_state.clone(),
         Auth0StateStoreValue {
@@ -69,7 +71,7 @@ pub async fn initiate_auth0_login(
             created_at: Utc::now(),
         },
     );
-    
+
     let mut auth0_authorize_url = format!(
         "https://{}/authorize?response_type=code&client_id={}&redirect_uri={}&scope={}&audience={}&state={}&code_challenge={}&code_challenge_method={}",
         auth0_domain,
@@ -81,15 +83,15 @@ pub async fn initiate_auth0_login(
         query.challenge,
         query.challenge_method
     );
-    
+
     if let Some(conn) = &query.connection {
         use url::form_urlencoded;
         let encoded_conn = form_urlencoded::byte_serialize(conn.as_bytes()).collect::<String>();
         auth0_authorize_url.push_str(&format!("&connection={}", encoded_conn));
     }
-    
+
     info!("Initiating Auth0 login for polling ID: {}", query.pid);
-    
+
     Ok(HttpResponse::Found()
         .append_header(("Location", auth0_authorize_url))
         .finish())
@@ -105,10 +107,12 @@ pub async fn handle_auth0_callback(
         Some((_, value)) => value,
         None => {
             warn!("No state value found for Auth0 state: {}", query.state);
-            return Err(AppError::Unauthorized("Invalid state or expired session".to_string()));
+            return Err(AppError::Unauthorized(
+                "Invalid state or expired session".to_string(),
+            ));
         }
     };
-    
+
     polling_store.insert(
         state_value.polling_id.clone(),
         Auth0PendingCodeInfo {
@@ -117,11 +121,14 @@ pub async fn handle_auth0_callback(
             created_at: Utc::now(),
         },
     );
-    
+
     let redirect_url = format!("{}/auth/callback", &app_state.settings.website_base_url);
-    
-    info!("Auth0 callback processed for polling ID: {}", state_value.polling_id);
-    
+
+    info!(
+        "Auth0 callback processed for polling ID: {}",
+        state_value.polling_id
+    );
+
     Ok(HttpResponse::Found()
         .append_header(("Location", redirect_url))
         .finish())
@@ -138,7 +145,7 @@ pub async fn poll_auth_status(
             tauri_csrf_token: code_info.tauri_csrf_token,
         }));
     }
-    
+
     Ok(HttpResponse::NoContent().finish())
 }
 
@@ -149,41 +156,66 @@ pub async fn finalize_auth0_login(
     req: HttpRequest,
 ) -> Result<HttpResponse, AppError> {
     // Validate the access token first
-    let _access_token_claims = auth_service.validate_auth0_access_token(&token_request.auth0_id_token).await?;
+    let _access_token_claims = auth_service
+        .validate_auth0_access_token(&token_request.auth0_id_token)
+        .await?;
 
     // Get user info from Auth0 userinfo endpoint using the access token
-    let user_info = auth_service.get_user_info_from_access_token(&token_request.auth0_id_token).await?;
+    let user_info = auth_service
+        .get_user_info_from_access_token(&token_request.auth0_id_token)
+        .await?;
 
-    let auth_response = auth_service.process_auth0_login(
-        user_info,
-        token_request.auth0_refresh_token.clone(),
-        token_request.device_id.clone(),
-    ).await?;
-    
-    info!("Auth0 login finalized for user: {}", auth_response.user.email);
-    
+    let auth_response = auth_service
+        .process_auth0_login(
+            user_info,
+            token_request.auth0_refresh_token.clone(),
+            token_request.device_id.clone(),
+        )
+        .await?;
+
+    info!(
+        "Auth0 login finalized for user: {}",
+        auth_response.user.email
+    );
+
     // Grant initial signup credits if this is a new user
     // Parse the user ID from the response
     if let Ok(user_id) = Uuid::parse_str(&auth_response.user.id) {
         // Use the credit service from billing service to grant credits
-        match billing_service.get_credit_service().grant_initial_signup_credits(&user_id).await {
+        match billing_service
+            .get_credit_service()
+            .grant_initial_signup_credits(&user_id)
+            .await
+        {
             Ok(granted) => {
                 if granted {
-                    info!("Successfully granted signup credits to new user: {}", auth_response.user.email);
+                    info!(
+                        "Successfully granted signup credits to new user: {}",
+                        auth_response.user.email
+                    );
                 } else {
-                    debug!("User {} already has signup credits", auth_response.user.email);
+                    debug!(
+                        "User {} already has signup credits",
+                        auth_response.user.email
+                    );
                 }
-            },
+            }
             Err(e) => {
                 // Log the error but don't fail the login
-                error!("Failed to grant signup credits to user {}: {}", auth_response.user.email, e);
+                error!(
+                    "Failed to grant signup credits to user {}: {}",
+                    auth_response.user.email, e
+                );
                 // Continue with login even if credit granting fails
             }
         }
     } else {
-        error!("Failed to parse user ID for credit granting: {}", auth_response.user.id);
+        error!(
+            "Failed to parse user ID for credit granting: {}",
+            auth_response.user.id
+        );
     }
-    
+
     Ok(HttpResponse::Ok().json(auth_response))
 }
 
@@ -195,36 +227,53 @@ pub async fn refresh_app_token_auth0(
     req: HttpRequest,
 ) -> Result<HttpResponse, AppError> {
     let app_user_id = user.user_id;
-    
+
     let encrypted_refresh_token = match user_repo.get_auth0_refresh_token(&app_user_id).await? {
         Some(token) => token,
-        None => return Err(AppError::NotFound("No Auth0 refresh token found for this user".to_string())),
+        None => {
+            return Err(AppError::NotFound(
+                "No Auth0 refresh token found for this user".to_string(),
+            ));
+        }
     };
-    
+
     let encryption_key = hex::decode(&app_state.settings.auth.refresh_token_encryption_key)
-        .map_err(|_| AppError::Configuration("Invalid refresh token encryption key format".to_string()))?;
+        .map_err(|_| {
+            AppError::Configuration("Invalid refresh token encryption key format".to_string())
+        })?;
     let refresh_token = encryption::decrypt(&encrypted_refresh_token, &encryption_key)?;
-    let new_tokens = auth_service.exchange_auth0_refresh_token(&refresh_token).await?;
-    
+    let new_tokens = auth_service
+        .exchange_auth0_refresh_token(&refresh_token)
+        .await?;
+
     if let Some(new_refresh_token) = &new_tokens.refresh_token {
         let encrypted_new_token = encryption::encrypt(new_refresh_token, &encryption_key)?;
-        if let Err(e) = user_repo.store_auth0_refresh_token(&app_user_id, &encrypted_new_token).await {
+        if let Err(e) = user_repo
+            .store_auth0_refresh_token(&app_user_id, &encrypted_new_token)
+            .await
+        {
             error!("Failed to update Auth0 refresh token: {}", e);
         }
     }
-    
+
     // For refresh token flow, we can use the access token to get user info
-    let _access_token_claims = auth_service.validate_auth0_access_token(&new_tokens.access_token).await?;
-    let user_info = auth_service.get_user_info_from_access_token(&new_tokens.access_token).await?;
+    let _access_token_claims = auth_service
+        .validate_auth0_access_token(&new_tokens.access_token)
+        .await?;
+    let user_info = auth_service
+        .get_user_info_from_access_token(&new_tokens.access_token)
+        .await?;
 
     // Extract device_id from header
-    let device_id_from_header = req.headers().get("x-device-id").and_then(|v| v.to_str().ok()).map(|s| s.to_string());
+    let device_id_from_header = req
+        .headers()
+        .get("x-device-id")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
 
-    let auth_response = auth_service.process_auth0_login(
-        user_info,
-        new_tokens.refresh_token,
-        device_id_from_header,
-    ).await?;
-    
+    let auth_response = auth_service
+        .process_auth0_login(user_info, new_tokens.refresh_token, device_id_from_header)
+        .await?;
+
     Ok(HttpResponse::Ok().json(auth_response))
 }

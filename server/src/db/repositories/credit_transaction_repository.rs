@@ -1,10 +1,10 @@
-use sqlx::PgPool;
-use uuid::Uuid;
+use crate::error::AppError;
+use bigdecimal::BigDecimal;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
-use bigdecimal::BigDecimal;
-use crate::error::AppError;
+use sqlx::PgPool;
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -48,11 +48,10 @@ impl CreditTransactionRepository {
         &self.pool
     }
 
-
     pub async fn create_transaction_with_executor(
         &self,
         transaction: &CreditTransaction,
-        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<CreditTransaction, AppError> {
         let result = sqlx::query_as!(
             CreditTransaction,
@@ -85,14 +84,13 @@ impl CreditTransactionRepository {
         Ok(result)
     }
 
-
     pub async fn get_history_with_executor(
         &self,
         user_id: &Uuid,
         limit: i64,
         offset: i64,
         search: Option<&str>,
-        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<Vec<CreditTransaction>, AppError> {
         let search_param = search.map(|s| format!("%{}%", s));
         let results = sqlx::query_as!(
@@ -113,18 +111,19 @@ impl CreditTransactionRepository {
         )
         .fetch_all(&mut **executor)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to get credit transaction history: {}", e)))?;
+        .map_err(|e| {
+            AppError::Database(format!("Failed to get credit transaction history: {}", e))
+        })?;
 
         Ok(results)
     }
-
 
     pub async fn get_transactions_by_type_with_executor(
         &self,
         user_id: &Uuid,
         transaction_type: &str,
         limit: i64,
-        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<Vec<CreditTransaction>, AppError> {
         let results = sqlx::query_as!(
             CreditTransaction,
@@ -143,16 +142,17 @@ impl CreditTransactionRepository {
         )
         .fetch_all(&mut **executor)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to get credit transactions by type: {}", e)))?;
+        .map_err(|e| {
+            AppError::Database(format!("Failed to get credit transactions by type: {}", e))
+        })?;
 
         Ok(results)
     }
 
-
     pub async fn get_transaction_stats_with_executor(
         &self,
         user_id: &Uuid,
-        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<CreditTransactionStats, AppError> {
         let result = sqlx::query!(
             r#"
@@ -172,7 +172,9 @@ impl CreditTransactionRepository {
         .map_err(|e| AppError::Database(format!("Failed to get credit transaction stats: {}", e)))?;
 
         Ok(CreditTransactionStats {
-            total_purchased: result.total_purchased.unwrap_or_else(|| BigDecimal::from(0)),
+            total_purchased: result
+                .total_purchased
+                .unwrap_or_else(|| BigDecimal::from(0)),
             total_consumed: result.total_consumed.unwrap_or_else(|| BigDecimal::from(0)),
             total_refunded: result.total_refunded.unwrap_or_else(|| BigDecimal::from(0)),
             net_balance: result.net_balance.unwrap_or_else(|| BigDecimal::from(0)),
@@ -180,12 +182,11 @@ impl CreditTransactionRepository {
         })
     }
 
-
     pub async fn get_transaction_by_id_with_executor(
         &self,
         transaction_id: &Uuid,
         user_id: &Uuid,
-        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<Option<CreditTransaction>, AppError> {
         let result = sqlx::query_as!(
             CreditTransaction,
@@ -201,7 +202,9 @@ impl CreditTransactionRepository {
         )
         .fetch_optional(&mut **executor)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to get credit transaction by ID: {}", e)))?;
+        .map_err(|e| {
+            AppError::Database(format!("Failed to get credit transaction by ID: {}", e))
+        })?;
 
         Ok(result)
     }
@@ -230,7 +233,9 @@ impl CreditTransactionRepository {
         )
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to get credit transaction history: {}", e)))?;
+        .map_err(|e| {
+            AppError::Database(format!("Failed to get credit transaction history: {}", e))
+        })?;
 
         Ok(results)
     }
@@ -258,7 +263,9 @@ impl CreditTransactionRepository {
         .map_err(|e| AppError::Database(format!("Failed to get credit transaction stats: {}", e)))?;
 
         Ok(CreditTransactionStats {
-            total_purchased: result.total_purchased.unwrap_or_else(|| BigDecimal::from(0)),
+            total_purchased: result
+                .total_purchased
+                .unwrap_or_else(|| BigDecimal::from(0)),
             total_consumed: result.total_consumed.unwrap_or_else(|| BigDecimal::from(0)),
             total_refunded: result.total_refunded.unwrap_or_else(|| BigDecimal::from(0)),
             net_balance: result.net_balance.unwrap_or_else(|| BigDecimal::from(0)),
@@ -284,7 +291,10 @@ impl CreditTransactionRepository {
     }
 
     /// Get transactions by Stripe charge ID
-    pub async fn get_transactions_by_stripe_charge(&self, stripe_charge_id: &str) -> Result<Vec<CreditTransaction>, AppError> {
+    pub async fn get_transactions_by_stripe_charge(
+        &self,
+        stripe_charge_id: &str,
+    ) -> Result<Vec<CreditTransaction>, AppError> {
         let results = sqlx::query_as!(
             CreditTransaction,
             r#"
@@ -299,17 +309,21 @@ impl CreditTransactionRepository {
         )
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to get credit transactions by Stripe charge: {}", e)))?;
+        .map_err(|e| {
+            AppError::Database(format!(
+                "Failed to get credit transactions by Stripe charge: {}",
+                e
+            ))
+        })?;
 
         Ok(results)
     }
-
 
     pub async fn get_transactions_by_api_usage_with_executor(
         &self,
         api_usage_id: &Uuid,
         user_id: &Uuid,
-        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<Vec<CreditTransaction>, AppError> {
         let results = sqlx::query_as!(
             CreditTransaction,
@@ -326,11 +340,15 @@ impl CreditTransactionRepository {
         )
         .fetch_all(&mut **executor)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to get credit transactions by API usage: {}", e)))?;
+        .map_err(|e| {
+            AppError::Database(format!(
+                "Failed to get credit transactions by API usage: {}",
+                e
+            ))
+        })?;
 
         Ok(results)
     }
-
 
     /// Create an expiry transaction when free credits expire
     pub async fn create_expiry_transaction_with_executor(
@@ -339,7 +357,7 @@ impl CreditTransactionRepository {
         expired_amount: &BigDecimal,
         combined_balance_after: &BigDecimal,
         description: Option<String>,
-        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<CreditTransaction, AppError> {
         let transaction = CreditTransaction {
             id: Uuid::new_v4(),
@@ -360,7 +378,8 @@ impl CreditTransactionRepository {
             balance_after: combined_balance_after.clone(),
         };
 
-        self.create_transaction_with_executor(&transaction, tx).await
+        self.create_transaction_with_executor(&transaction, tx)
+            .await
     }
 
     /// Create a consumption transaction (helper method for API usage)
@@ -389,13 +408,14 @@ impl CreditTransactionRepository {
             balance_after: balance_after.clone(),
         };
 
-        self.create_transaction_with_executor(&transaction, executor).await
+        self.create_transaction_with_executor(&transaction, executor)
+            .await
     }
 
     pub async fn has_purchase_transaction_with_executor(
         &self,
         user_id: &Uuid,
-        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<bool, AppError> {
         let result = sqlx::query!(
             r#"

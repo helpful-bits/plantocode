@@ -9,6 +9,7 @@ public struct CodeEditor: UIViewRepresentable {
     public let theme: CodeEditorTheme
     public let showLineNumbers: Bool
     public let enableLineWrapping: Bool
+    public let onSave: ((String) -> Void)?
 
     public init(
         text: Binding<String>,
@@ -16,7 +17,8 @@ public struct CodeEditor: UIViewRepresentable {
         language: CodeLanguage = .markdown,
         theme: CodeEditorTheme = .system,
         showLineNumbers: Bool = true,
-        enableLineWrapping: Bool = true
+        enableLineWrapping: Bool = true,
+        onSave: ((String) -> Void)? = nil
     ) {
         self._text = text
         self.isReadonly = isReadonly
@@ -24,6 +26,7 @@ public struct CodeEditor: UIViewRepresentable {
         self.theme = theme
         self.showLineNumbers = showLineNumbers
         self.enableLineWrapping = enableLineWrapping
+        self.onSave = onSave
     }
 
     public func makeUIView(context: Context) -> CodeEditorView {
@@ -36,6 +39,7 @@ public struct CodeEditor: UIViewRepresentable {
             enableLineWrapping: enableLineWrapping
         )
         editorView.textDelegate = context.coordinator
+        editorView.onSave = onSave
         return editorView
     }
 
@@ -75,8 +79,10 @@ public class CodeEditorView: UIView {
     private var theme: CodeEditorTheme = .system
     private var showLineNumbers = true
     private var enableLineWrapping = true
+    private var keyCommandsCache: [UIKeyCommand] = []
 
     public weak var textDelegate: UITextViewDelegate?
+    public var onSave: ((String) -> Void)?
 
     public override init(frame: CGRect) {
         super.init(frame: frame)
@@ -123,6 +129,9 @@ public class CodeEditorView: UIView {
             name: UITextView.textDidChangeNotification,
             object: textView
         )
+
+        // Add keyboard shortcuts
+        setupKeyboardShortcuts()
     }
 
     private func setupConstraints() {
@@ -185,17 +194,23 @@ public class CodeEditorView: UIView {
     private func applyTheme() {
         switch theme {
         case .light:
-            backgroundColor = .systemBackground
-            textView.textColor = .label
-            lineNumberView.backgroundColor = .systemGray6
+            backgroundColor = UIColor(Color.codeBackground)
+            textView.textColor = UIColor(Color.codeForeground)
+            lineNumberView.backgroundColor = UIColor(Color.codeBackground)
+            layer.borderColor = UIColor(Color.codeBorder).cgColor
+            layer.borderWidth = 1
         case .dark:
-            backgroundColor = .systemBackground
-            textView.textColor = .label
-            lineNumberView.backgroundColor = .systemGray6
+            backgroundColor = UIColor(Color.codeBackground)
+            textView.textColor = UIColor(Color.codeForeground)
+            lineNumberView.backgroundColor = UIColor(Color.codeBackground)
+            layer.borderColor = UIColor(Color.codeBorder).cgColor
+            layer.borderWidth = 1
         case .system:
-            backgroundColor = .systemBackground
-            textView.textColor = .label
-            lineNumberView.backgroundColor = .systemGray6
+            backgroundColor = UIColor(Color.codeBackground)
+            textView.textColor = UIColor(Color.codeForeground)
+            lineNumberView.backgroundColor = UIColor(Color.codeBackground)
+            layer.borderColor = UIColor(Color.codeBorder).cgColor
+            layer.borderWidth = 1
         }
     }
 
@@ -374,6 +389,28 @@ public class CodeEditorView: UIView {
 
     private func updateLineNumbers() {
         lineNumberView.updateLineNumbers(for: textView)
+    }
+
+    private func setupKeyboardShortcuts() {
+        if #available(iOS 13.4, *) {
+            let saveCommand = UIKeyCommand(
+                title: "Save",
+                action: #selector(savePressed),
+                input: "s",
+                modifierFlags: .command,
+                discoverabilityTitle: "Save Document"
+            )
+            self.keyCommandsCache = [saveCommand]
+            _ = self.becomeFirstResponder()
+        }
+    }
+
+    public override var canBecomeFirstResponder: Bool { true }
+
+    public override var keyCommands: [UIKeyCommand]? { return keyCommandsCache }
+
+    @objc private func savePressed() {
+        onSave?(textView.text)
     }
 
     deinit {

@@ -727,13 +727,17 @@ pub async fn search_files_command(
         let options = DirectoryTreeOptions::default();
 
         // Get directory tree and extract file paths from it
-        let _tree_output = generate_directory_tree(&project_path, options).await
+        let _tree_output = generate_directory_tree(&project_path, options)
+            .await
             .map_err(|e| AppError::FileSystemError(e.to_string()))?;
 
         // For now, let's use a simpler approach - walk the directory manually
         let mut paths: Vec<std::path::PathBuf> = Vec::new();
 
-        fn walk_dir_recursive(dir: &std::path::Path, paths: &mut Vec<std::path::PathBuf>) -> Result<(), std::io::Error> {
+        fn walk_dir_recursive(
+            dir: &std::path::Path,
+            paths: &mut Vec<std::path::PathBuf>,
+        ) -> Result<(), std::io::Error> {
             for entry in std::fs::read_dir(dir)? {
                 let entry = entry?;
                 let path = entry.path();
@@ -747,7 +751,8 @@ pub async fn search_files_command(
                             && dir_name != "node_modules"
                             && dir_name != "target"
                             && dir_name != "dist"
-                            && dir_name != "build" {
+                            && dir_name != "build"
+                        {
                             walk_dir_recursive(&path, paths)?;
                         }
                     }
@@ -760,8 +765,9 @@ pub async fn search_files_command(
             let project_path = project_path.clone();
             move || {
                 let mut paths = Vec::new();
-                walk_dir_recursive(&project_path, &mut paths)
-                    .map_err(|e| AppError::FileSystemError(format!("Directory traversal failed: {}", e)))?;
+                walk_dir_recursive(&project_path, &mut paths).map_err(|e| {
+                    AppError::FileSystemError(format!("Directory traversal failed: {}", e))
+                })?;
                 Ok::<Vec<std::path::PathBuf>, AppError>(paths)
             }
         })
@@ -786,8 +792,11 @@ pub async fn search_files_command(
             .to_string();
 
         // Check if filename matches query
-        let filename_matches = file_name.to_lowercase().contains(&query_lower) ||
-            relative_path.to_string_lossy().to_lowercase().contains(&query_lower);
+        let filename_matches = file_name.to_lowercase().contains(&query_lower)
+            || relative_path
+                .to_string_lossy()
+                .to_lowercase()
+                .contains(&query_lower);
 
         let mut content_matches = false;
         let mut content_snippet = None;
@@ -866,6 +875,7 @@ pub async fn search_files_command(
         files: matching_files,
     };
 
-    Ok(serde_json::to_value(response)
-        .map_err(|e| AppError::SerializationError(format!("Failed to serialize response: {}", e)))?)
+    Ok(serde_json::to_value(response).map_err(|e| {
+        AppError::SerializationError(format!("Failed to serialize response: {}", e))
+    })?)
 }

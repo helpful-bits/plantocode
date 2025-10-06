@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
-use tokio::sync::broadcast;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tokio::sync::broadcast;
 
 /// Event bus for handling internal application events
 #[derive(Debug, Clone)]

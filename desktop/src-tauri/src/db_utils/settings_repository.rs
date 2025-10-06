@@ -1,7 +1,8 @@
 use crate::error::{AppError, AppResult};
-use crate::models::{ProjectSystemPrompt, Settings};
+use crate::models::{DeviceSettings, ProjectSystemPrompt, Settings};
 use crate::services::BackupConfig;
 use crate::utils::get_timestamp;
+use serde::{Deserialize, Serialize};
 use sqlx::{Row, SqlitePool, sqlite::SqliteRow};
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
@@ -383,5 +384,157 @@ impl SettingsRepository {
             .map_err(|e| AppError::DatabaseError(format!("Failed to check custom system prompt: {}", e)))?;
 
         Ok(count > 0)
+    }
+
+    /// Get a setting from the app_settings table
+    pub async fn get_setting(&self, key: &str) -> AppResult<Option<String>> {
+        let row = sqlx::query("SELECT value FROM app_settings WHERE key = $1")
+            .bind(key)
+            .fetch_optional(&*self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to fetch app setting: {}", e)))?;
+
+        match row {
+            Some(row) => {
+                let value: String = row.try_get::<'_, String, _>("value")?;
+                Ok(Some(value))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Set a setting in the app_settings table
+    pub async fn set_setting(&self, key: &str, value: &str) -> AppResult<()> {
+        let now = get_timestamp();
+
+        sqlx::query(
+            r#"
+            INSERT INTO app_settings (key, value, created_at, updated_at)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = excluded.updated_at
+            "#,
+        )
+        .bind(key)
+        .bind(value)
+        .bind(now)
+        .bind(now)
+        .execute(&*self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to set app setting: {}", e)))?;
+
+        Ok(())
+    }
+
+    /// Get all settings from the app_settings table
+    pub async fn get_all_settings(&self) -> AppResult<std::collections::HashMap<String, String>> {
+        let rows = sqlx::query("SELECT key, value FROM app_settings")
+            .fetch_all(&*self.pool)
+            .await
+            .map_err(|e| {
+                AppError::DatabaseError(format!("Failed to fetch all app settings: {}", e))
+            })?;
+
+        let mut settings = std::collections::HashMap::new();
+        for row in rows {
+            let key: String = row.try_get("key")?;
+            let value: String = row.try_get("value")?;
+            settings.insert(key, value);
+        }
+
+        Ok(settings)
+    }
+
+    /// Delete a setting from the app_settings table
+    pub async fn delete_setting(&self, key: &str) -> AppResult<()> {
+        sqlx::query("DELETE FROM app_settings WHERE key = $1")
+            .bind(key)
+            .execute(&*self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to delete app setting: {}", e)))?;
+
+        Ok(())
+    }
+
+    /// Helper method to get a boolean setting
+    pub async fn get_bool_setting(&self, key: &str) -> AppResult<Option<bool>> {
+        match self.get_setting(key).await? {
+            Some(value) => match value.as_str() {
+                "true" => Ok(Some(true)),
+                "false" => Ok(Some(false)),
+                _ => Ok(None),
+            },
+            None => Ok(None),
+        }
+    }
+
+    /// Helper method to get an integer setting
+    pub async fn get_int_setting(&self, key: &str) -> AppResult<Option<i32>> {
+        match self.get_setting(key).await? {
+            Some(value) => match value.parse::<i32>() {
+                Ok(int_val) => Ok(Some(int_val)),
+                Err(_) => Ok(None),
+            },
+            None => Ok(None),
+        }
+    }
+
+    /// Helper method to get a string setting
+    pub async fn get_string_setting(&self, key: &str) -> AppResult<Option<String>> {
+        self.get_setting(key).await
+    }
+
+    /// Get device settings
+    pub async fn get_device_settings(&self) -> AppResult<DeviceSettings> {
+        let is_discoverable = self
+            .get_bool_setting("device_is_discoverable")
+            .await?
+            .unwrap_or(false);
+        let allow_remote_access = self
+            .get_bool_setting("device_allow_remote_access")
+            .await?
+            .unwrap_or(false);
+        let require_approval = self
+            .get_bool_setting("device_require_approval")
+            .await?
+            .unwrap_or(true);
+        let session_timeout_minutes = self
+            .get_int_setting("device_session_timeout_minutes")
+            .await?
+            .unwrap_or(30);
+
+        Ok(DeviceSettings {
+            is_discoverable,
+            allow_remote_access,
+            require_approval,
+            session_timeout_minutes,
+        })
+    }
+
+    /// Update device settings
+    pub async fn update_device_settings(&self, settings: &DeviceSettings) -> AppResult<()> {
+        self.set_setting(
+            "device_is_discoverable",
+            &settings.is_discoverable.to_string(),
+        )
+        .await?;
+        self.set_setting(
+            "device_allow_remote_access",
+            &settings.allow_remote_access.to_string(),
+        )
+        .await?;
+        self.set_setting(
+            "device_require_approval",
+            &settings.require_approval.to_string(),
+        )
+        .await?;
+        self.set_setting(
+            "device_session_timeout_minutes",
+            &settings.session_timeout_minutes.to_string(),
+        )
+        .await?;
+
+        Ok(())
     }
 }

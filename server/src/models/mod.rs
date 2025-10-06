@@ -17,4 +17,4 @@ pub use model_pricing::*;
 pub use region::*;
 pub use runtime_config::*;
 pub use stream_event::*;
-pub use usage_metadata::{UsageMetadata, TokenModalityDetail};
+pub use usage_metadata::{TokenModalityDetail, UsageMetadata};

@@ -1,6 +1,7 @@
 'use client';
 
 import { track } from '@/lib/track';
+import { trackXEvent } from '@/components/analytics/XPixel';
 import { usePlatformDetection } from './usePlatformDetection';
 
 interface UseDownloadOptions {
@@ -19,7 +20,7 @@ export function useDownload({ location }: UseDownloadOptions): UseDownloadReturn
       event.preventDefault();
     }
 
-    // Track the download click event
+    // Track with Plausible (server-side, cookie-free)
     track({
       event: 'download_click',
       props: {
@@ -28,6 +29,15 @@ export function useDownload({ location }: UseDownloadOptions): UseDownloadReturn
         version: 'latest',
       },
     });
+
+    // Track with X Pixel (client-side, if loaded)
+    const xPixelId = process.env.NEXT_PUBLIC_X_PIXEL_ID;
+    const xEventId = process.env.NEXT_PUBLIC_X_DOWNLOAD_EVENT_ID;
+    if (xPixelId && xEventId) {
+      trackXEvent(`tw-${xPixelId}-${xEventId}`, {
+        conversion_id: `download-${Date.now()}`,
+      });
+    }
 
     // Redirect to appropriate endpoint based on platform
     if (platform === 'mac') {

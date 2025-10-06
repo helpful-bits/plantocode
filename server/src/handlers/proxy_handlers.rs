@@ -1,9 +1,9 @@
+use crate::clients::anthropic_client::{AnthropicChatRequest, AnthropicContent, AnthropicMessage};
+use crate::clients::openai::structs::{OpenAIChatRequest, OpenAIMessage};
 use crate::clients::usage_extractor::ProviderUsage;
 use crate::clients::{
     AnthropicClient, GoogleClient, OpenAIClient, OpenRouterClient, UsageExtractor, XaiClient,
 };
-use crate::clients::anthropic_client::{AnthropicChatRequest, AnthropicMessage, AnthropicContent};
-use crate::clients::openai::structs::{OpenAIChatRequest, OpenAIMessage};
 use crate::config::settings::AppSettings;
 use crate::db::repositories::api_usage_repository::ApiUsageEntryDto;
 use crate::db::repositories::model_repository::{ModelRepository, ModelWithProvider};
@@ -13,11 +13,11 @@ use crate::models::model_pricing::ModelPricing;
 use crate::services::billing_service::BillingService;
 use crate::services::model_mapping_service::ModelWithMapping;
 use crate::services::request_tracker::RequestTracker;
+use crate::utils::multipart_utils::process_video_analysis_multipart;
 use crate::utils::transcription_validation::{
     RequestValidationContext, mime_type_to_extension, validate_server_audio_file,
     validate_server_language, validate_server_prompt, validate_server_temperature,
 };
-use crate::utils::multipart_utils::process_video_analysis_multipart;
 use actix_web::{HttpRequest, HttpResponse, web};
 use bigdecimal::{BigDecimal, FromPrimitive};
 use chrono;
@@ -36,11 +36,11 @@ use std::pin::Pin;
 use tokio_util::sync::CancellationToken;
 
 use crate::handlers::provider_transformers::{
-    GoogleStreamTransformer, OpenAIStreamTransformer,
-    OpenRouterStreamTransformer, XaiStreamTransformer,
+    GoogleStreamTransformer, OpenAIStreamTransformer, OpenRouterStreamTransformer,
+    XaiStreamTransformer,
 };
-use crate::streaming::stream_handler::ModernStreamHandler;
 use crate::models::error_details::{ErrorDetails, ProviderErrorInfo};
+use crate::streaming::stream_handler::ModernStreamHandler;
 use actix_web_lab::sse;
 use std::time::Duration;
 
@@ -66,9 +66,15 @@ pub fn extract_error_details(error: &AppError, provider: &str) -> ErrorDetails {
             // Try to extract provider-specific error details
             if msg.contains("context_length_exceeded") || msg.contains("context length") {
                 ("context_length_exceeded", msg.clone())
-            } else if msg.contains("status 429") || msg.contains("rate_limit") || msg.contains("rate limit") {
+            } else if msg.contains("status 429")
+                || msg.contains("rate_limit")
+                || msg.contains("rate limit")
+            {
                 ("rate_limit_exceeded", msg.clone())
-            } else if msg.contains("status 401") || msg.contains("authentication") || msg.contains("unauthorized") {
+            } else if msg.contains("status 401")
+                || msg.contains("authentication")
+                || msg.contains("unauthorized")
+            {
                 ("authentication_failed", msg.clone())
             } else if msg.contains("status 403") || msg.contains("forbidden") {
                 ("permission_denied", msg.clone())
@@ -114,54 +120,73 @@ pub fn extract_error_details(error: &AppError, provider: &str) -> ErrorDetails {
         AppError::InvalidArgument(msg) => ("invalid_argument", msg.clone()),
         _ => ("unknown_error", error.to_string()),
     };
-    
+
     let mut error_details = ErrorDetails::new(code, message.clone());
-    
+
     // Extract provider error info if available
     if let AppError::External(msg) = error {
         // More robust status code extraction using regex
-        let status_code = if let Some(captures) = regex::Regex::new(r"status (\d{3})").ok()
-            .and_then(|re| re.captures(msg)) {
-            captures.get(1).and_then(|m| m.as_str().parse().ok()).unwrap_or(0)
+        let status_code = if let Some(captures) = regex::Regex::new(r"status (\d{3})")
+            .ok()
+            .and_then(|re| re.captures(msg))
+        {
+            captures
+                .get(1)
+                .and_then(|m| m.as_str().parse().ok())
+                .unwrap_or(0)
         } else {
             // Fallback to pattern matching
-            if msg.contains("400") { 400 }
-            else if msg.contains("401") { 401 }
-            else if msg.contains("403") { 403 }
-            else if msg.contains("429") { 429 }
-            else if msg.contains("500") { 500 }
-            else if msg.contains("502") { 502 }
-            else if msg.contains("503") { 503 }
-            else { 0 }
+            if msg.contains("400") {
+                400
+            } else if msg.contains("401") {
+                401
+            } else if msg.contains("403") {
+                403
+            } else if msg.contains("429") {
+                429
+            } else if msg.contains("500") {
+                500
+            } else if msg.contains("502") {
+                502
+            } else if msg.contains("503") {
+                503
+            } else {
+                0
+            }
         };
-        
+
         // Try to extract JSON error body from the message
         // Look for JSON anywhere in the message, not just at the start
         if let Some(json_start) = msg.find('{') {
             if let Some(json_end) = msg.rfind('}') {
                 let json_str = &msg[json_start..=json_end];
-                
+
                 // Provider-specific error parsing
                 match provider {
                     "openai" | "xai" => {
-                        if let Some(provider_error) = ProviderErrorInfo::from_openai_error(status_code, json_str) {
+                        if let Some(provider_error) =
+                            ProviderErrorInfo::from_openai_error(status_code, json_str)
+                        {
                             error_details = error_details.with_provider_error(provider_error);
                         }
                     }
                     "anthropic" => {
                         // Anthropic has a similar error format to OpenAI
-                        if let Ok(error_json) = serde_json::from_str::<serde_json::Value>(json_str) {
+                        if let Ok(error_json) = serde_json::from_str::<serde_json::Value>(json_str)
+                        {
                             if let Some(error) = error_json.get("error") {
-                                let error_type = error.get("type")
+                                let error_type = error
+                                    .get("type")
                                     .and_then(|t| t.as_str())
                                     .unwrap_or("unknown")
                                     .to_string();
-                                
-                                let details = error.get("message")
+
+                                let details = error
+                                    .get("message")
                                     .and_then(|m| m.as_str())
                                     .unwrap_or(json_str)
                                     .to_string();
-                                
+
                                 let provider_error = ProviderErrorInfo {
                                     provider: provider.to_string(),
                                     status_code,
@@ -175,18 +200,21 @@ pub fn extract_error_details(error: &AppError, provider: &str) -> ErrorDetails {
                     }
                     "google" => {
                         // Google has a different error format
-                        if let Ok(error_json) = serde_json::from_str::<serde_json::Value>(json_str) {
+                        if let Ok(error_json) = serde_json::from_str::<serde_json::Value>(json_str)
+                        {
                             if let Some(error) = error_json.get("error") {
-                                let error_type = error.get("status")
+                                let error_type = error
+                                    .get("status")
                                     .and_then(|s| s.as_str())
                                     .unwrap_or("UNKNOWN")
                                     .to_string();
-                                
-                                let details = error.get("message")
+
+                                let details = error
+                                    .get("message")
                                     .and_then(|m| m.as_str())
                                     .unwrap_or(json_str)
                                     .to_string();
-                                
+
                                 let provider_error = ProviderErrorInfo {
                                     provider: provider.to_string(),
                                     status_code,
@@ -200,7 +228,8 @@ pub fn extract_error_details(error: &AppError, provider: &str) -> ErrorDetails {
                     }
                     _ => {
                         // Generic provider error handling
-                        let provider_error = ProviderErrorInfo::from_provider_error(provider, status_code, json_str);
+                        let provider_error =
+                            ProviderErrorInfo::from_provider_error(provider, status_code, json_str);
                         error_details = error_details.with_provider_error(provider_error);
                     }
                 }
@@ -217,26 +246,26 @@ pub fn extract_error_details(error: &AppError, provider: &str) -> ErrorDetails {
             error_details = error_details.with_provider_error(provider_error);
         }
     }
-    
+
     error_details
 }
 
 /// Calculate input tokens from request payload using accurate tiktoken-rs estimation
-/// 
+///
 /// This function provides accurate token estimation for upfront billing.
 /// It uses the same tiktoken-rs library as the desktop client to ensure consistency.
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `payload` - The LLM completion request
 /// * `model_id` - The model ID to use for tokenization
-/// 
+///
 /// # Returns
-/// 
+///
 /// Accurate token count as i32
 fn calculate_input_tokens(payload: &LlmCompletionRequest, model_id: &str) -> i32 {
     use crate::utils::token_estimator::estimate_tokens_for_messages;
-    
+
     // Use accurate tiktoken-rs estimation for upfront billing
     // This ensures consistency with desktop client estimates
     estimate_tokens_for_messages(&payload.messages, model_id) as i32
@@ -256,7 +285,7 @@ fn create_standardized_usage_response(
         "cache_write_tokens": usage.cache_write_tokens,
         "cache_read_tokens": usage.cache_read_tokens
     });
-    
+
     Ok(response)
 }
 
@@ -327,26 +356,26 @@ pub async fn llm_chat_completion_handler(
         model_with_provider.provider_code, model_with_provider.name
     );
 
-
     // Calculate estimated input tokens for initial charge
     let base_input_tokens = calculate_input_tokens(&payload, &model_with_provider.id);
-    
+
     // Get estimation coefficients from database for better accuracy
-    let estimation_repo = crate::db::repositories::EstimationCoefficientRepository::new(
-        model_repository.get_pool()
-    );
-    
+    let estimation_repo =
+        crate::db::repositories::EstimationCoefficientRepository::new(model_repository.get_pool());
+
     let (estimated_input_tokens, estimated_output_tokens) = estimation_repo
         .calculate_estimated_tokens(
             &model_with_provider.id,
             base_input_tokens as i64,
-            payload.max_tokens.map(|v| v as i32)
+            payload.max_tokens.map(|v| v as i32),
         )
         .await?;
-    
-    info!("Estimated tokens (preliminary - subject to provider adjustments) - input: {} (base: {}), output: {}", 
-          estimated_input_tokens, base_input_tokens, estimated_output_tokens);
-    
+
+    info!(
+        "Estimated tokens (preliminary - subject to provider adjustments) - input: {} (base: {}), output: {}",
+        estimated_input_tokens, base_input_tokens, estimated_output_tokens
+    );
+
     // Create API usage entry for initial charge
     let api_usage_entry = ApiUsageEntryDto {
         user_id,
@@ -379,8 +408,7 @@ pub async fn llm_chat_completion_handler(
         .task_type
         .as_ref()
         .map(|task_type| {
-            task_type == "web_search_execution" ||
-            task_type == "implementation_plan_with_web"
+            task_type == "web_search_execution" || task_type == "implementation_plan_with_web"
         })
         .unwrap_or(false);
 
@@ -730,7 +758,7 @@ async fn handle_openai_streaming_request(
 
     // Create cancellation token for streaming requests
     let cancellation_token = tokio_util::sync::CancellationToken::new();
-    
+
     // Update request tracker with cancellation token
     request_tracker
         .track_request_with_cancellation(
@@ -741,10 +769,10 @@ async fn handle_openai_streaming_request(
             cancellation_token.clone(),
         )
         .await;
-    
+
     // Instantiate OpenAI stream transformer
     let transformer = Box::new(OpenAIStreamTransformer::new(&model.id));
-    
+
     // Create the modern stream handler
     let modern_handler = ModernStreamHandler::new(
         provider_stream,
@@ -755,11 +783,11 @@ async fn handle_openai_streaming_request(
         request_id,
         cancellation_token,
     );
-    
+
     // Convert to SSE stream and return as HttpResponse
     use actix_web::Responder;
     let sse_stream = modern_handler.into_sse_stream();
-    
+
     // Create a dummy request to get HttpResponse from Responder
     let req = actix_web::test::TestRequest::default().to_http_request();
     Ok(sse_stream.respond_to(&req))
@@ -862,7 +890,7 @@ async fn handle_xai_streaming_request(
 
     // Create cancellation token for streaming requests
     let cancellation_token = tokio_util::sync::CancellationToken::new();
-    
+
     // Update request tracker with cancellation token
     request_tracker
         .track_request_with_cancellation(
@@ -873,10 +901,10 @@ async fn handle_xai_streaming_request(
             cancellation_token.clone(),
         )
         .await;
-    
+
     // Instantiate XAI stream transformer
     let transformer = Box::new(XaiStreamTransformer::new(&model.id));
-    
+
     // Create the modern stream handler
     let modern_handler = ModernStreamHandler::new(
         provider_stream,
@@ -887,11 +915,11 @@ async fn handle_xai_streaming_request(
         request_id,
         cancellation_token,
     );
-    
+
     // Convert to SSE stream and return as HttpResponse
     use actix_web::Responder;
     let sse_stream = modern_handler.into_sse_stream();
-    
+
     // Create a dummy request to get HttpResponse from Responder
     let req = actix_web::test::TestRequest::default().to_http_request();
     Ok(sse_stream.respond_to(&req))
@@ -975,7 +1003,6 @@ async fn handle_anthropic_request(
 
     Ok(HttpResponse::Ok().json(openrouter_response))
 }
-
 
 /// Handle Google non-streaming request
 async fn handle_google_request(
@@ -1112,10 +1139,10 @@ async fn handle_google_streaming_request(
 ) -> Result<HttpResponse, AppError> {
     let original_model_id = payload["model"].as_str().unwrap_or_default().to_string();
     let payload_clone = payload.clone();
-    
+
     // Create cancellation token for streaming requests
     let cancellation_token = CancellationToken::new();
-    
+
     // Track request with cancellation token to support stream cancellation
     request_tracker
         .track_request_with_cancellation(
@@ -1126,7 +1153,7 @@ async fn handle_google_streaming_request(
             cancellation_token.clone(),
         )
         .await;
-    
+
     // Instantiate Google client
     let client = GoogleClient::new(app_settings)?;
     let request = client.convert_to_chat_request_with_capabilities(
@@ -1197,7 +1224,7 @@ async fn handle_google_streaming_request(
 
     // Instantiate Google stream transformer
     let transformer = Box::new(GoogleStreamTransformer::new(&model_with_provider.id));
-    
+
     // Create the modern stream handler
     let modern_handler = ModernStreamHandler::new(
         provider_stream,
@@ -1208,11 +1235,11 @@ async fn handle_google_streaming_request(
         request_id,
         cancellation_token,
     );
-    
+
     // Convert to SSE stream and return as HttpResponse
     use actix_web::Responder;
     let sse_stream = modern_handler.into_sse_stream();
-    
+
     // Create a dummy request to get HttpResponse from Responder
     let req = actix_web::test::TestRequest::default().to_http_request();
     Ok(sse_stream.respond_to(&req))
@@ -1285,7 +1312,7 @@ async fn handle_openrouter_streaming_request(
 
     // Create cancellation token for streaming requests
     let cancellation_token = CancellationToken::new();
-    
+
     // Update request tracker with cancellation token
     request_tracker
         .track_request_with_cancellation(
@@ -1296,10 +1323,10 @@ async fn handle_openrouter_streaming_request(
             cancellation_token.clone(),
         )
         .await;
-    
+
     // Instantiate OpenRouter stream transformer
     let transformer = Box::new(OpenRouterStreamTransformer::new(&model.id));
-    
+
     // Create the modern stream handler
     let modern_handler = ModernStreamHandler::new(
         provider_stream,
@@ -1310,11 +1337,11 @@ async fn handle_openrouter_streaming_request(
         request_id,
         cancellation_token,
     );
-    
+
     // Convert to SSE stream and return as HttpResponse
     use actix_web::Responder;
     let sse_stream = modern_handler.into_sse_stream();
-    
+
     // Create a dummy request to get HttpResponse from Responder
     let req = actix_web::test::TestRequest::default().to_http_request();
     Ok(sse_stream.respond_to(&req))
@@ -1338,7 +1365,8 @@ pub async fn transcription_handler(
     let user_id = user.user_id;
     info!("Processing transcription request for user: {}", user_id);
 
-    let multipart_data = crate::utils::multipart_utils::process_transcription_multipart(payload).await?;
+    let multipart_data =
+        crate::utils::multipart_utils::process_transcription_multipart(payload).await?;
 
     let model = multipart_data.model;
     let file_data = multipart_data.audio_data;
@@ -1359,10 +1387,10 @@ pub async fn transcription_handler(
         .get_credit_service()
         .get_user_balance(&user_id)
         .await?;
-    
+
     // Calculate total available credits (paid + free credits)
     let total_available = &balance.balance + &balance.free_credit_balance;
-    
+
     if total_available <= BigDecimal::from(0) {
         return Err(AppError::CreditInsufficient(
             "No credits available".to_string(),
@@ -1378,17 +1406,19 @@ pub async fn transcription_handler(
 
     // Create validation context
     // Extract client IP from request headers (X-Forwarded-For or connection info)
-    let client_ip = req.connection_info()
+    let client_ip = req
+        .connection_info()
         .realip_remote_addr()
         .unwrap_or("unknown")
         .to_string();
-    
+
     // Extract user agent from headers
-    let user_agent = req.headers()
+    let user_agent = req
+        .headers()
         .get("User-Agent")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
-    
+
     let validation_context = RequestValidationContext {
         user_id: user_id.to_string(),
         client_ip,
@@ -1438,9 +1468,12 @@ pub async fn transcription_handler(
 
     // Calculate estimated token count based on audio duration (10 tokens per second)
     let tokens_input = (duration_ms / 1000) * 10;
-    
+
     // Calculate tokens in transcribed text using token estimator
-    let tokens_output = crate::utils::token_estimator::estimate_tokens(&transcription_text, &model_with_provider.id) as i32;
+    let tokens_output = crate::utils::token_estimator::estimate_tokens(
+        &transcription_text,
+        &model_with_provider.id,
+    ) as i32;
 
     // Create provider usage for billing
     let usage = ProviderUsage::new(
@@ -1448,11 +1481,12 @@ pub async fn transcription_handler(
         tokens_output,
         0,
         0,
-        model_with_provider.id.clone()
+        model_with_provider.id.clone(),
     );
 
     // Calculate cost using model pricing
-    let final_cost = model_with_provider.calculate_total_cost(&usage)
+    let final_cost = model_with_provider
+        .calculate_total_cost(&usage)
         .map_err(|e| AppError::Internal(format!("Cost calculation failed: {}", e)))?;
 
     // Create API usage entry
@@ -1473,7 +1507,9 @@ pub async fn transcription_handler(
     };
 
     // Charge for API usage
-    billing_service.charge_for_api_usage(api_usage_entry, final_cost).await?;
+    billing_service
+        .charge_for_api_usage(api_usage_entry, final_cost)
+        .await?;
 
     let response = TranscriptionResponse {
         text: transcription_text,
@@ -1491,53 +1527,65 @@ pub async fn video_analysis_handler(
     user: web::ReqData<AuthenticatedUser>,
 ) -> Result<HttpResponse, AppError> {
     // Parse multipart payload
-    let (video_file, prompt, model, temperature, system_prompt, duration_ms, framerate, request_id) = 
+    let (video_file, prompt, model, temperature, system_prompt, duration_ms, framerate, request_id) =
         process_video_analysis_multipart(payload).await?;
-    
+
     // Parse provider from model string
     let (provider, model_id) = if model.contains('/') {
         let parts: Vec<&str> = model.split('/').collect();
         if parts.len() != 2 {
-            return Err(AppError::BadRequest("Invalid model format. Expected: provider/model".to_string()));
+            return Err(AppError::BadRequest(
+                "Invalid model format. Expected: provider/model".to_string(),
+            ));
         }
         (parts[0], parts[1])
     } else {
-        return Err(AppError::BadRequest("Invalid model format. Expected: provider/model".to_string()));
+        return Err(AppError::BadRequest(
+            "Invalid model format. Expected: provider/model".to_string(),
+        ));
     };
-    
+
     // Check if provider is supported
     if provider != "google" {
-        return Err(AppError::BadRequest(format!("Provider '{}' is not supported for video analysis. Only 'google' is supported.", provider)));
+        return Err(AppError::BadRequest(format!(
+            "Provider '{}' is not supported for video analysis. Only 'google' is supported.",
+            provider
+        )));
     }
-    
+
     // Create charge context for billing
-    let charge_context = format!("Video analysis for user {} using model {}", user.user_id, model);
-    
+    let charge_context = format!(
+        "Video analysis for user {} using model {}",
+        user.user_id, model
+    );
+
     // Look up model to get pricing information
-    let model_info = model_repository.find_by_id_with_provider(&model)
+    let model_info = model_repository
+        .find_by_id_with_provider(&model)
         .await?
         .ok_or_else(|| AppError::BadRequest(format!("Model '{}' not found", model)))?;
-    
+
     // Calculate estimated tokens based on video duration (300 tokens per second)
     let estimated_tokens = (duration_ms / 1000) * 300;
-    
+
     // Create a ProviderUsage for cost calculation
     let estimated_usage = ProviderUsage::new(
         estimated_tokens as i32,
         1000, // Estimated output tokens
         0,
         0,
-        model.clone()
+        model.clone(),
     );
-    
+
     // Calculate estimated cost using the model's pricing
-    let estimated_cost = model_info.calculate_total_cost(&estimated_usage)
+    let estimated_cost = model_info
+        .calculate_total_cost(&estimated_usage)
         .map_err(|e| AppError::Internal(format!("Failed to calculate estimated cost: {}", e)))?;
-    
+
     // Create API usage entry for initial charge
     // For video analysis, always generate a new request_id to avoid conflicts on retries
     let final_request_id = uuid::Uuid::new_v4().to_string();
-    
+
     let initial_entry = ApiUsageEntryDto {
         user_id: user.user_id,
         service_name: model.clone(),
@@ -1555,22 +1603,24 @@ pub async fn video_analysis_handler(
         })),
         provider_reported_cost: Some(estimated_cost.clone()),
     };
-    
+
     // Initialize charge with billing service
     billing_service.initiate_api_charge(initial_entry).await?;
-    
+
     // Get Google API key from settings
-    let api_key = settings.api_keys.google_api_keys
+    let api_key = settings
+        .api_keys
+        .google_api_keys
         .as_ref()
         .and_then(|keys| keys.first())
         .ok_or_else(|| AppError::Configuration("Google API key not configured".to_string()))?;
-    
+
     // Create Google client
     let google_client = GoogleClient::new(&settings)?;
-    
+
     // Get video file path
     let video_path = video_file.path();
-    
+
     // Determine MIME type from file extension
     let mime_type = match video_path.extension().and_then(|ext| ext.to_str()) {
         Some("mp4") => "video/mp4",
@@ -1580,74 +1630,89 @@ pub async fn video_analysis_handler(
         Some("mkv") => "video/x-matroska",
         _ => "video/mp4", // Default fallback
     };
-    
+
     // Define size threshold for inline upload (19MB for safety margin)
     const INLINE_SIZE_LIMIT: usize = 19 * 1024 * 1024;
-    
+
     // Get file size
     let file_metadata = std::fs::metadata(&video_path)
         .map_err(|e| AppError::Internal(format!("Failed to get file metadata: {}", e)))?;
     let file_size = file_metadata.len() as usize;
-    
+
     // Extract model ID without provider prefix if present
     let clean_model_id = if model.contains('/') {
         model.split('/').nth(1).unwrap_or(&model)
     } else {
         &model
     };
-    
+
     // Process the video and ensure cleanup happens regardless of success/failure
     let process_result = async {
         // Choose upload method based on file size
         if file_size < INLINE_SIZE_LIMIT {
             // Small file: use inline upload with specified FPS
-            tracing::info!("Using inline upload for video ({} MB) with {} FPS", file_size / (1024 * 1024), framerate);
-            
+            tracing::info!(
+                "Using inline upload for video ({} MB) with {} FPS",
+                file_size / (1024 * 1024),
+                framerate
+            );
+
             // Read video file bytes
             let video_bytes = std::fs::read(&video_path)
                 .map_err(|e| AppError::Internal(format!("Failed to read video file: {}", e)))?;
-            
+
             // Use inline upload method with user-specified FPS
-            google_client.generate_multimodal_content_inline(
-                clean_model_id,
-                &video_bytes,
-                mime_type,
-                framerate, // User-specified FPS
-                &prompt,
-                system_prompt,
-                temperature,
-                api_key
-            ).await
+            google_client
+                .generate_multimodal_content_inline(
+                    clean_model_id,
+                    &video_bytes,
+                    mime_type,
+                    framerate, // User-specified FPS
+                    &prompt,
+                    system_prompt,
+                    temperature,
+                    api_key,
+                )
+                .await
         } else {
             // Large file: use File API upload with specified FPS
-            tracing::info!("Using File API upload for video ({} MB) with {} FPS", file_size / (1024 * 1024), framerate);
-            
+            tracing::info!(
+                "Using File API upload for video ({} MB) with {} FPS",
+                file_size / (1024 * 1024),
+                framerate
+            );
+
             // Upload video file to Google
-            let (file_uri, _) = google_client.upload_file(video_path, mime_type, api_key).await?;
-            
+            let (file_uri, _) = google_client
+                .upload_file(video_path, mime_type, api_key)
+                .await?;
+
             // Generate content with multimodal API with user-specified FPS
-            google_client.generate_multimodal_content_with_fps(
-                clean_model_id,
-                &file_uri,
-                mime_type,
-                framerate, // User-specified FPS
-                &prompt,
-                system_prompt,
-                temperature,
-                api_key
-            ).await
+            google_client
+                .generate_multimodal_content_with_fps(
+                    clean_model_id,
+                    &file_uri,
+                    mime_type,
+                    framerate, // User-specified FPS
+                    &prompt,
+                    system_prompt,
+                    temperature,
+                    api_key,
+                )
+                .await
         }
-    }.await;
-    
+    }
+    .await;
+
     // Delete the temporary video file now that processing is complete (or failed)
     // Using drop() triggers NamedTempFile's destructor which deletes the file
     let video_path_for_log = video_file.path().to_path_buf();
     drop(video_file);
     tracing::debug!("Deleted temporary video file: {:?}", video_path_for_log);
-    
+
     // Check if processing succeeded
     let response = process_result?;
-    
+
     // Extract usage metadata
     let usage = if let Some(usage_metadata) = &response.usage_metadata {
         // Log Google usage metadata details for video analysis
@@ -1662,13 +1727,13 @@ pub async fn video_analysis_handler(
                 }
             }
         }
-        
+
         ProviderUsage::new(
             usage_metadata.prompt_token_count,
             usage_metadata.candidates_token_count.unwrap_or(0),
             0,
             usage_metadata.cached_content_token_count.unwrap_or(0),
-            model.clone()
+            model.clone(),
         )
     } else {
         // Fallback if no usage metadata
@@ -1677,10 +1742,10 @@ pub async fn video_analysis_handler(
             1000, // Estimated output tokens
             0,
             0,
-            model.clone()
+            model.clone(),
         )
     };
-    
+
     // Finalize charge with actual usage
     let final_metadata = json!({
         "task": "video_analysis",
@@ -1690,22 +1755,25 @@ pub async fn video_analysis_handler(
         "file_size_mb": file_size / (1024 * 1024),
         "original_request_id": request_id
     });
-    
-    billing_service.finalize_api_charge_with_metadata(
-        &final_request_id,
-        &user.user_id,
-        usage.clone(),
-        Some(final_metadata)
-    ).await?;
-    
+
+    billing_service
+        .finalize_api_charge_with_metadata(
+            &final_request_id,
+            &user.user_id,
+            usage.clone(),
+            Some(final_metadata),
+        )
+        .await?;
+
     // Extract analysis text from response
-    let analysis_text = response.candidates
+    let analysis_text = response
+        .candidates
         .first()
         .and_then(|candidate| candidate.content.parts.as_ref())
         .and_then(|parts| parts.first())
         .map(|part| part.text.clone())
         .unwrap_or_else(|| "No analysis generated".to_string());
-    
+
     // Return response
     Ok(HttpResponse::Ok().json(json!({
         "analysis": analysis_text,
@@ -1723,7 +1791,7 @@ pub async fn video_analysis_handler(
 pub struct TextEnhancementRequest {
     pub text: String,
     pub enhancement_type: Option<String>, // "improve", "grammar", "clarity", "professional", etc.
-    pub context: Option<String>, // Additional context for enhancement
+    pub context: Option<String>,          // Additional context for enhancement
 }
 
 /// Response structure for text enhancement
@@ -1767,17 +1835,28 @@ pub async fn text_enhancement_handler(
     }
 
     if payload.text.len() > 50000 {
-        return Err(AppError::BadRequest("Text too long (max 50,000 characters)".to_string()));
+        return Err(AppError::BadRequest(
+            "Text too long (max 50,000 characters)".to_string(),
+        ));
     }
 
     // Get the text enhancement model - prefer Claude for text tasks
-    let models = model_repository.get_all_with_providers().await
+    let models = model_repository
+        .get_all_with_providers()
+        .await
         .map_err(|e| AppError::Database(format!("Failed to fetch models: {}", e)))?;
 
-    let model = models.iter()
+    let model = models
+        .iter()
         .find(|m| m.provider_code == "anthropic" && m.id.contains("claude-3-haiku"))
-        .or_else(|| models.iter().find(|m| m.provider_code == "openai" && m.id.contains("gpt-4o-mini")))
-        .ok_or_else(|| AppError::Configuration("No suitable model found for text enhancement".to_string()))?;
+        .or_else(|| {
+            models
+                .iter()
+                .find(|m| m.provider_code == "openai" && m.id.contains("gpt-4o-mini"))
+        })
+        .ok_or_else(|| {
+            AppError::Configuration("No suitable model found for text enhancement".to_string())
+        })?;
 
     info!(
         request_id = %request_id,
@@ -1789,12 +1868,24 @@ pub async fn text_enhancement_handler(
     // Create enhancement prompt based on type
     let enhancement_type = payload.enhancement_type.as_deref().unwrap_or("improve");
     let system_prompt = match enhancement_type {
-        "grammar" => "You are a grammar expert. Fix grammatical errors and improve sentence structure while preserving the original meaning and tone.",
-        "clarity" => "You are a clarity expert. Rewrite the text to be clearer and more concise while preserving all important information.",
-        "professional" => "You are a professional writing expert. Transform the text into a more professional tone suitable for business communication.",
-        "concise" => "You are a conciseness expert. Make the text more concise while preserving all key information and meaning.",
-        "expand" => "You are a writing expert. Expand on the text to provide more detail and context while maintaining the original message.",
-        _ => "You are a writing expert. Improve the text for better clarity, grammar, and flow while preserving the original meaning and tone."
+        "grammar" => {
+            "You are a grammar expert. Fix grammatical errors and improve sentence structure while preserving the original meaning and tone."
+        }
+        "clarity" => {
+            "You are a clarity expert. Rewrite the text to be clearer and more concise while preserving all important information."
+        }
+        "professional" => {
+            "You are a professional writing expert. Transform the text into a more professional tone suitable for business communication."
+        }
+        "concise" => {
+            "You are a conciseness expert. Make the text more concise while preserving all key information and meaning."
+        }
+        "expand" => {
+            "You are a writing expert. Expand on the text to provide more detail and context while maintaining the original message."
+        }
+        _ => {
+            "You are a writing expert. Improve the text for better clarity, grammar, and flow while preserving the original meaning and tone."
+        }
     };
 
     let user_prompt = match &payload.context {
@@ -1839,13 +1930,20 @@ pub async fn text_enhancement_handler(
     // Make the API call based on provider
     match model.provider_code.as_str() {
         "anthropic" => {
-            return Err(AppError::External("Text enhancement not implemented for Anthropic".to_string()));
+            return Err(AppError::External(
+                "Text enhancement not implemented for Anthropic".to_string(),
+            ));
         }
         "openai" => {
-            return Err(AppError::External("Text enhancement not implemented for OpenAI".to_string()));
+            return Err(AppError::External(
+                "Text enhancement not implemented for OpenAI".to_string(),
+            ));
         }
         _ => {
-            return Err(AppError::Configuration(format!("Unsupported provider for text enhancement: {}", model.provider_code)));
+            return Err(AppError::Configuration(format!(
+                "Unsupported provider for text enhancement: {}",
+                model.provider_code
+            )));
         }
     }
 }

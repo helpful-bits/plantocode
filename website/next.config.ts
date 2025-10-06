@@ -102,6 +102,27 @@ const nextConfig: NextConfig = {
   // Redirects to eliminate chains shown in Google Search Console
   async redirects() {
     return [
+      // Redirect old plan-mode related pages to the main plan-mode page
+      {
+        source: '/docs/codex-cli-plan-mode',
+        destination: '/plan-mode',
+        permanent: true,
+      },
+      {
+        source: '/docs/cursor-plan-mode',
+        destination: '/plan-mode',
+        permanent: true,
+      },
+      {
+        source: '/docs/claude-code-plan-mode',
+        destination: '/plan-mode',
+        permanent: true,
+      },
+      {
+        source: '/features/plan-editor',
+        destination: '/plan-mode',
+        permanent: true,
+      },
       // Fix HTTP to HTTPS redirect chains
       {
         source: '/:path*',

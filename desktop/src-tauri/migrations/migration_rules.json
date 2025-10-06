@@ -64,22 +64,22 @@
       "priority": 50
     },
     {
-      "id": "add_terminal_sessions",
+      "id": "add_app_settings",
       "from_version": "*",
-      "to_version": ">=1.0.17",
-      "migration_file": "migrations/features/terminal_sessions.sql",
-      "description": "Add terminal sessions table for Claude CLI integration",
-      "required": true,
-      "priority": 25
+      "to_version": ">=1.0.0",
+      "migration_file": "migrations/features/app_settings.sql",
+      "description": "Add application settings table for global configuration",
+      "required": false,
+      "priority": 30
     },
     {
-      "id": "terminal_sessions_rebuild",
-      "from_version": ">=1.0.17",
-      "to_version": ">=1.0.18",
-      "migration_file": "migrations/features/005_terminal_sessions_rebuild.sql",
-      "description": "Rebuild terminal sessions table with superset statuses and NOT NULL output_log",
+      "id": "terminal_sessions_upgrade",
+      "from_version": ">=1.0.0, <1.0.22",
+      "to_version": ">=1.0.22",
+      "migration_file": "migrations/features/terminal_sessions_upgrade.sql",
+      "description": "Upgrade terminal_sessions table with new columns for session persistence and enhanced status tracking",
       "required": true,
-      "priority": 26
+      "priority": 5
     }
   ]
 }

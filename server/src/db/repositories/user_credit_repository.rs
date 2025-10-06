@@ -1,10 +1,11 @@
-use sqlx::PgPool;
-use uuid::Uuid;
+use crate::db::pool_ext::AcquireRetry;
+use crate::db::repositories::CreditTransactionRepository;
+use crate::error::AppError;
+use bigdecimal::BigDecimal;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use bigdecimal::BigDecimal;
-use crate::error::AppError;
-use crate::db::repositories::CreditTransactionRepository;
+use sqlx::PgPool;
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,10 +37,12 @@ impl UserCreditRepository {
 
     /// Get the current credit balance for a user
     pub async fn get_balance(&self, user_id: &Uuid) -> Result<Option<UserCredit>, AppError> {
-        let mut tx = self.pool.begin().await
+        let mut tx = AcquireRetry::begin_with_retry(&self.pool, 3, 100)
+            .await
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
         let result = self.get_balance_with_executor(user_id, &mut tx).await?;
-        tx.commit().await
+        tx.commit()
+            .await
             .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
         Ok(result)
     }
@@ -47,7 +50,7 @@ impl UserCreditRepository {
     pub async fn get_balance_with_executor(
         &self,
         user_id: &Uuid,
-        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<Option<UserCredit>, AppError> {
         let result = sqlx::query_as!(
             UserCredit,
@@ -69,7 +72,7 @@ impl UserCreditRepository {
     pub async fn get_balance_for_update_with_executor(
         &self,
         user_id: &Uuid,
-        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<Option<UserCredit>, AppError> {
         let result = sqlx::query_as!(
             UserCredit,
@@ -90,11 +93,19 @@ impl UserCreditRepository {
     }
 
     /// Update the credit balance for a user
-    pub async fn update_balance(&self, user_id: &Uuid, new_balance: &BigDecimal) -> Result<UserCredit, AppError> {
-        let mut tx = self.pool.begin().await
+    pub async fn update_balance(
+        &self,
+        user_id: &Uuid,
+        new_balance: &BigDecimal,
+    ) -> Result<UserCredit, AppError> {
+        let mut tx = AcquireRetry::begin_with_retry(&self.pool, 3, 100)
+            .await
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
-        let result = self.update_balance_with_executor(user_id, new_balance, &mut tx).await?;
-        tx.commit().await
+        let result = self
+            .update_balance_with_executor(user_id, new_balance, &mut tx)
+            .await?;
+        tx.commit()
+            .await
             .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
         Ok(result)
     }
@@ -103,7 +114,7 @@ impl UserCreditRepository {
         &self,
         user_id: &Uuid,
         new_balance: &BigDecimal,
-        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<UserCredit, AppError> {
         let result = sqlx::query_as!(
             UserCredit,
@@ -125,11 +136,19 @@ impl UserCreditRepository {
     }
 
     /// Atomically increment or decrement the credit balance
-    pub async fn increment_balance(&self, user_id: &Uuid, amount_change: &BigDecimal) -> Result<UserCredit, AppError> {
-        let mut tx = self.pool.begin().await
+    pub async fn increment_balance(
+        &self,
+        user_id: &Uuid,
+        amount_change: &BigDecimal,
+    ) -> Result<UserCredit, AppError> {
+        let mut tx = AcquireRetry::begin_with_retry(&self.pool, 3, 100)
+            .await
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
-        let result = self.increment_balance_with_executor(user_id, amount_change, &mut tx).await?;
-        tx.commit().await
+        let result = self
+            .increment_balance_with_executor(user_id, amount_change, &mut tx)
+            .await?;
+        tx.commit()
+            .await
             .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
         Ok(result)
     }
@@ -138,7 +157,7 @@ impl UserCreditRepository {
         &self,
         user_id: &Uuid,
         amount_change: &BigDecimal,
-        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<UserCredit, AppError> {
         let result = sqlx::query_as!(
             UserCredit,
@@ -154,20 +173,31 @@ impl UserCreditRepository {
         )
         .fetch_optional(&mut **executor)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to increment user credit balance: {}", e)))?;
+        .map_err(|e| {
+            AppError::Database(format!("Failed to increment user credit balance: {}", e))
+        })?;
 
         match result {
             Some(user_credit) => Ok(user_credit),
-            None => Err(AppError::CreditInsufficient("Insufficient credits for this operation".to_string())),
+            None => Err(AppError::CreditInsufficient(
+                "Insufficient credits for this operation".to_string(),
+            )),
         }
     }
 
     /// Ensure a balance record exists for a user, creating one if it doesn't exist
-    pub async fn ensure_balance_record_exists(&self, user_id: &Uuid) -> Result<UserCredit, AppError> {
-        let mut tx = self.pool.begin().await
+    pub async fn ensure_balance_record_exists(
+        &self,
+        user_id: &Uuid,
+    ) -> Result<UserCredit, AppError> {
+        let mut tx = AcquireRetry::begin_with_retry(&self.pool, 3, 100)
+            .await
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
-        let result = self.ensure_balance_record_exists_with_executor(user_id, &mut tx).await?;
-        tx.commit().await
+        let result = self
+            .ensure_balance_record_exists_with_executor(user_id, &mut tx)
+            .await?;
+        tx.commit()
+            .await
             .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
         Ok(result)
     }
@@ -175,7 +205,7 @@ impl UserCreditRepository {
     pub async fn ensure_balance_record_exists_with_executor(
         &self,
         user_id: &Uuid,
-        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<UserCredit, AppError> {
         // First try to insert, ignore if already exists
         sqlx::query!(
@@ -210,7 +240,10 @@ impl UserCreditRepository {
     }
 
     /// Get balance for multiple users (admin function)
-    pub async fn get_balances_for_users(&self, user_ids: &[Uuid]) -> Result<Vec<UserCredit>, AppError> {
+    pub async fn get_balances_for_users(
+        &self,
+        user_ids: &[Uuid],
+    ) -> Result<Vec<UserCredit>, AppError> {
         let result = sqlx::query_as!(
             UserCredit,
             r#"
@@ -230,7 +263,11 @@ impl UserCreditRepository {
     }
 
     /// Check if user has sufficient credits for a given amount (including active free credits)
-    pub async fn has_sufficient_credits(&self, user_id: &Uuid, required_amount: &BigDecimal) -> Result<bool, AppError> {
+    pub async fn has_sufficient_credits(
+        &self,
+        user_id: &Uuid,
+        required_amount: &BigDecimal,
+    ) -> Result<bool, AppError> {
         let balance = self.get_balance(user_id).await?;
 
         match balance {
@@ -239,7 +276,8 @@ impl UserCreditRepository {
                 let active_free = if user_credit.free_credit_balance > BigDecimal::from(0)
                     && !user_credit.free_credits_expired
                     && user_credit.free_credits_expires_at.is_some()
-                    && user_credit.free_credits_expires_at.unwrap() > Utc::now() {
+                    && user_credit.free_credits_expires_at.unwrap() > Utc::now()
+                {
                     user_credit.free_credit_balance.clone()
                 } else {
                     BigDecimal::from(0)
@@ -247,7 +285,7 @@ impl UserCreditRepository {
 
                 let total_available = &user_credit.balance + &active_free;
                 Ok(&total_available >= required_amount)
-            },
+            }
             None => Ok(false), // No credit record means no credits
         }
     }
@@ -256,7 +294,7 @@ impl UserCreditRepository {
         &self,
         user_id: &Uuid,
         required_amount: &BigDecimal,
-        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<bool, AppError> {
         let balance = self.get_balance_with_executor(user_id, executor).await?;
 
@@ -266,7 +304,8 @@ impl UserCreditRepository {
                 let active_free = if user_credit.free_credit_balance > BigDecimal::from(0)
                     && !user_credit.free_credits_expired
                     && user_credit.free_credits_expires_at.is_some()
-                    && user_credit.free_credits_expires_at.unwrap() > Utc::now() {
+                    && user_credit.free_credits_expires_at.unwrap() > Utc::now()
+                {
                     user_credit.free_credit_balance.clone()
                 } else {
                     BigDecimal::from(0)
@@ -274,14 +313,15 @@ impl UserCreditRepository {
 
                 let total_available = &user_credit.balance + &active_free;
                 Ok(&total_available >= required_amount)
-            },
+            }
             None => Ok(false), // No credit record means no credits
         }
     }
 
     /// Expire free credits for all users where expiry date has passed
     pub async fn expire_free_credits(&self) -> Result<u64, AppError> {
-        let mut tx = self.pool.begin().await
+        let mut tx = AcquireRetry::begin_with_retry(&self.pool, 3, 100)
+            .await
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
 
         // Select users with expired free credits that haven't been processed yet
@@ -317,13 +357,15 @@ impl UserCreditRepository {
                         .unwrap_or_else(|| "unknown time".to_string())
                 );
 
-                credit_transaction_repo.create_expiry_transaction_with_executor(
-                    &user.user_id,
-                    &expired_amount,
-                    &combined_balance_after,
-                    Some(description),
-                    &mut tx
-                ).await?;
+                credit_transaction_repo
+                    .create_expiry_transaction_with_executor(
+                        &user.user_id,
+                        &expired_amount,
+                        &combined_balance_after,
+                        Some(description),
+                        &mut tx,
+                    )
+                    .await?;
 
                 // Update user credits to mark as expired
                 sqlx::query!(
@@ -344,27 +386,30 @@ impl UserCreditRepository {
             }
         }
 
-        tx.commit().await
+        tx.commit()
+            .await
             .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
 
         Ok(processed_count)
     }
-    
+
     /// Deduct credits with priority: free credits first, then paid balance
     pub async fn deduct_credits_with_priority(
         &self,
         user_id: &Uuid,
         amount: &BigDecimal,
-        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<(UserCredit, BigDecimal, BigDecimal), AppError> {
         // Get current balance
-        let current = self.get_balance_with_executor(user_id, executor).await?
+        let current = self
+            .get_balance_with_executor(user_id, executor)
+            .await?
             .ok_or_else(|| AppError::NotFound("User credit record not found".to_string()))?;
-        
+
         let mut remaining_to_deduct = amount.clone();
         let mut from_free = BigDecimal::from(0);
         let mut from_paid = BigDecimal::from(0);
-        
+
         // First, deduct from free credits if available and not expired
         if current.free_credit_balance > BigDecimal::from(0) && !current.free_credits_expired {
             if let Some(expires_at) = current.free_credits_expires_at {
@@ -382,7 +427,7 @@ impl UserCreditRepository {
                 }
             }
         }
-        
+
         // Then deduct remaining from paid balance
         if remaining_to_deduct > BigDecimal::from(0) {
             if current.balance >= remaining_to_deduct {
@@ -392,7 +437,11 @@ impl UserCreditRepository {
                 let free_credit_status = if current.free_credit_balance > BigDecimal::from(0) {
                     if let Some(expires_at) = current.free_credits_expires_at {
                         if expires_at <= Utc::now() {
-                            format!("{} (expired on {})", current.free_credit_balance, expires_at.format("%Y-%m-%d"))
+                            format!(
+                                "{} (expired on {})",
+                                current.free_credit_balance,
+                                expires_at.format("%Y-%m-%d")
+                            )
                         } else if current.free_credits_expired {
                             format!("{} (expired)", current.free_credit_balance)
                         } else {
@@ -404,18 +453,18 @@ impl UserCreditRepository {
                 } else {
                     "0".to_string()
                 };
-                
-                return Err(AppError::CreditInsufficient(
-                    format!("Insufficient credits. Required: {}, Available: {} (paid) + {} (free)", 
-                            amount, current.balance, free_credit_status)
-                ));
+
+                return Err(AppError::CreditInsufficient(format!(
+                    "Insufficient credits. Required: {}, Available: {} (paid) + {} (free)",
+                    amount, current.balance, free_credit_status
+                )));
             }
         }
-        
+
         // Update balances
         let new_free_balance = &current.free_credit_balance - &from_free;
         let new_paid_balance = &current.balance - &from_paid;
-        
+
         let updated = sqlx::query_as!(
             UserCredit,
             r#"
@@ -434,7 +483,7 @@ impl UserCreditRepository {
         .fetch_one(&mut **executor)
         .await
         .map_err(|e| AppError::Database(format!("Failed to update user credit balance: {}", e)))?;
-        
+
         Ok((updated, from_free, from_paid))
     }
 
@@ -443,16 +492,18 @@ impl UserCreditRepository {
         &self,
         user_id: &Uuid,
         amount: &BigDecimal,
-        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<UserCredit, AppError> {
         // Get current balance
-        let current = self.get_balance_with_executor(user_id, executor).await?
+        let current = self
+            .get_balance_with_executor(user_id, executor)
+            .await?
             .ok_or_else(|| AppError::NotFound("User credit record not found".to_string()))?;
-        
+
         let mut remaining_to_refund = amount.clone();
         let mut to_free = BigDecimal::from(0);
         let mut to_paid = BigDecimal::from(0);
-        
+
         // First, try to restore to free credits if they had free credits originally
         // and haven't exceeded the original limit (typically $2.00)
         if let Some(expires_at) = current.free_credits_expires_at {
@@ -460,7 +511,7 @@ impl UserCreditRepository {
                 // Assume original free credit limit was $2.00 (could be made configurable)
                 let free_credit_limit = BigDecimal::from(2);
                 let available_free_space = &free_credit_limit - &current.free_credit_balance;
-                
+
                 if available_free_space > BigDecimal::from(0) {
                     // Can restore some to free credits
                     if remaining_to_refund <= available_free_space {
@@ -475,16 +526,16 @@ impl UserCreditRepository {
                 }
             }
         }
-        
+
         // Remaining amount goes to paid balance
         if remaining_to_refund > BigDecimal::from(0) {
             to_paid = remaining_to_refund;
         }
-        
+
         // Update balances
         let new_free_balance = &current.free_credit_balance + &to_free;
         let new_paid_balance = &current.balance + &to_paid;
-        
+
         let updated = sqlx::query_as!(
             UserCredit,
             r#"
@@ -503,7 +554,7 @@ impl UserCreditRepository {
         .fetch_one(&mut **executor)
         .await
         .map_err(|e| AppError::Database(format!("Failed to refund user credits: {}", e)))?;
-        
+
         Ok(updated)
     }
 }

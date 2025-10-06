@@ -10,6 +10,8 @@ import { ClientProviders } from '@/components/providers/ClientProviders';
 import { Footer } from '@/components/landing/Footer';
 import { CSSFix } from '@/components/system/CSSFix';
 import { cdnUrl } from '@/lib/cdn';
+import { XPixel } from '@/components/analytics/XPixel';
+import { CookieConsent } from '@/components/analytics/CookieConsent';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://www.vibemanager.app'),
@@ -179,6 +181,12 @@ export default function RootLayout({
         <ClientProviders>
           {children}
           <Footer />
+          {/* Cookie Consent Banner - GDPR Compliant */}
+          <CookieConsent />
+          {/* X Pixel - Loads ONLY after consent */}
+          {process.env.NEXT_PUBLIC_X_PIXEL_ID && (
+            <XPixel pixelId={process.env.NEXT_PUBLIC_X_PIXEL_ID} />
+          )}
         </ClientProviders>
         <StructuredData data={websiteJsonLd} />
         <StructuredData data={organizationJsonLd} />

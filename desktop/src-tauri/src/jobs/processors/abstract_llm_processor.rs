@@ -128,7 +128,7 @@ impl LlmTaskRunner {
         api_options.task_type = Some(
             self.custom_task_type
                 .clone()
-                .unwrap_or_else(|| self.job.task_type.to_string())
+                .unwrap_or_else(|| self.job.task_type.to_string()),
         );
 
         // Execute the LLM call
@@ -232,7 +232,7 @@ impl LlmTaskRunner {
         api_options.task_type = Some(
             self.custom_task_type
                 .clone()
-                .unwrap_or_else(|| self.job.task_type.to_string())
+                .unwrap_or_else(|| self.job.task_type.to_string()),
         );
 
         // Log full prompt to file for debugging

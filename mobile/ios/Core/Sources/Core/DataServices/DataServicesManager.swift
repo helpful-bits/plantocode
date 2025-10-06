@@ -14,6 +14,8 @@ public class DataServicesManager: ObservableObject {
     public let sqliteService: SQLiteDataService
     public let terminalService: TerminalDataService
     public let serverFeatureService: ServerFeatureService
+    public let sessionService: SessionDataService
+    public let speechTextServices: SpeechTextServices
 
     // MARK: - Connection Management
     @Published public var connectionStatus: ConnectionStatus = .disconnected
@@ -42,6 +44,8 @@ public class DataServicesManager: ObservableObject {
         self.taskWebSocketClient = WebSocketClient(serverURL: webSocketURL, sessionDelegate: wsDelegate)
 
         // Initialize services
+        self.sessionService = SessionDataService()
+        _ = self.sessionService.ensureSession()
         self.jobsService = JobsDataService(
             desktopAPIClient: desktopAPIClient,
             apiClient: apiClient,
@@ -66,6 +70,7 @@ public class DataServicesManager: ObservableObject {
         )
         self.terminalService = TerminalDataService()
         self.serverFeatureService = ServerFeatureService()
+        self.speechTextServices = SpeechTextServices()
 
         setupConnectionMonitoring()
     }
@@ -192,7 +197,6 @@ public class DataServicesManager: ObservableObject {
     // MARK: - Private Methods
 
     private func setupConnectionMonitoring() {
-        // Monitor connection every 30 seconds
         Timer.publish(every: 30, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in
@@ -202,6 +206,66 @@ public class DataServicesManager: ObservableObject {
                     .store(in: &self.cancellables)
             }
             .store(in: &cancellables)
+
+        MultiConnectionManager.shared.$connectionStates
+            .sink { [weak self] states in
+                guard let self = self else { return }
+                let isConnected = states.values.contains { state in
+                    if case .connected = state {
+                        return true
+                    }
+                    return false
+                }
+                self.handleConnectionStateChange(connected: isConnected)
+            }
+            .store(in: &cancellables)
+
+        subscribeToRelayEvents()
+    }
+
+    private func subscribeToRelayEvents() {
+        guard let deviceId = activeDesktopDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+            return
+        }
+
+        relayClient.events
+            .sink { [weak self] event in
+                guard let self = self else { return }
+                let eventType = event.eventType
+
+                let sessionEvents = [
+                    "session-created",
+                    "session-updated",
+                    "session-deleted",
+                    "session-files-updated",
+                    "session-history-synced",
+                    "session:auto-files-applied"
+                ]
+
+                if sessionEvents.contains(eventType) {
+                    Task { @MainActor in
+                        if let project = self.currentProject {
+                            try? await self.sessionService.fetchSessions(projectDirectory: project.directory)
+                        }
+                    }
+                }
+            }
+            .store(in: &cancellables)
+    }
+
+    private func handleConnectionStateChange(connected: Bool) {
+        if connected {
+            Task { [weak self] in
+                guard let self = self else { return }
+
+                await self.sessionService.processOfflineQueue()
+
+                if let project = self.currentProject {
+                    try? await self.sessionService.fetchSessions(projectDirectory: project.directory)
+                }
+            }
+        }
     }
 
     private func preloadProjectData(_ project: ProjectInfo) {

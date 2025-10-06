@@ -41,8 +41,17 @@
 	<string>1</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Vibe Manager needs access to your local network to discover and connect to your desktop devices.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_http._tcp</string>
+		<string>_ws._tcp</string>
+	</array>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>This app uses the microphone to enable voice dictation for creating task descriptions and entering terminal commands.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Vibe Manager uses speech recognition to transcribe your voice for tasks and commands.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
@@ -65,5 +74,9 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>WS_EVENTS_PATH</key>
+	<string>/ws/events</string>
+	<key>WS_DEVICE_LINK_PATH</key>
+	<string>/ws/device-link</string>
 </dict>
 </plist>

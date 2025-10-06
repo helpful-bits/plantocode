@@ -1,8 +1,8 @@
-use actix_web::{web, HttpResponse, Result};
 use crate::config::settings::AppSettings;
 use crate::db::repositories::user_repository::UserRepository;
 use crate::models::AuthenticatedUser;
 use crate::services::auth::jwt::create_featurebase_sso_token;
+use actix_web::{HttpResponse, Result, web};
 use serde_json::json;
 use std::sync::Arc;
 
@@ -12,13 +12,13 @@ pub async fn get_sso_token(
     app_settings: web::Data<AppSettings>,
 ) -> Result<HttpResponse> {
     let user_data = user.into_inner();
-    
+
     // if user_data.role == "admin" {
     //     return Ok(HttpResponse::Forbidden().json(json!({
     //         "error": "Admin users must use native login to Featurebase"
     //     })));
     // }
-    
+
     let user_details = match user_repo.get_by_id(&user_data.user_id).await {
         Ok(user) => user,
         Err(_) => {

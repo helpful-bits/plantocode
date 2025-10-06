@@ -1,5 +1,5 @@
 //! Vibe Manager Server Library
-//! 
+//!
 //! This library exports the core modules used by both the server binary
 //! and utility binaries like the migration runner.
 
@@ -19,6 +19,6 @@ pub mod stripe_types;
 pub mod utils;
 
 // Re-export commonly used types for convenience
-pub use error::AppError;
 pub use config::AppSettings;
+pub use error::AppError;
 pub use models::runtime_config::AppState;

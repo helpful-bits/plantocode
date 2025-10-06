@@ -2,7 +2,8 @@ import Foundation
 import Combine
 
 /// Service for accessing file system data from desktop
-public class FilesDataService: ObservableObject {
+@MainActor
+public final class FilesDataService: ObservableObject {
 
     // MARK: - Published Properties
     @Published public var files: [FileInfo] = []
@@ -14,16 +15,50 @@ public class FilesDataService: ObservableObject {
     private let apiClient: APIClientProtocol
     private let cacheManager: CacheManager
     private var cancellables = Set<AnyCancellable>()
+    private let serverRelayClient: ServerRelayClient?
 
     // MARK: - Initialization
     public init(apiClient: APIClientProtocol = APIClient.shared, cacheManager: CacheManager = CacheManager.shared) {
         self.apiClient = apiClient
         self.cacheManager = cacheManager
+        self.serverRelayClient = nil
+    }
+
+    public init(apiClient: APIClientProtocol = APIClient.shared, cacheManager: CacheManager = CacheManager.shared, serverRelayClient: ServerRelayClient) {
+        self.apiClient = apiClient
+        self.cacheManager = cacheManager
+        self.serverRelayClient = serverRelayClient
     }
 
     // MARK: - Public Methods
 
     /// Search files with various filters and patterns
+    public func searchFiles(query: String, maxResults: Int = 50, includeContent: Bool = false, projectDirectory: String) async throws -> [FileInfo] {
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+            throw DataServiceError.invalidState("Not connected to desktop")
+        }
+
+        for try await response in CommandRouter.filesSearch(
+            projectDirectory: projectDirectory,
+            query: query,
+            includeContent: includeContent,
+            maxResults: maxResults
+        ) {
+            if let result = response.result?.value as? [String: Any],
+               let files = result["files"] as? [[String: Any]] {
+                return files.compactMap { dict in
+                    FileInfo(from: dict)
+                }
+            }
+            if let error = response.error {
+                throw DataServiceError.serverError(error.message)
+            }
+        }
+        return []
+    }
+
+    /// Search files with various filters and patterns (legacy publisher version)
     public func searchFiles(request: FileSearchRequest) -> AnyPublisher<FileSearchResponse, DataServiceError> {
         isLoading = true
         error = nil
@@ -202,6 +237,109 @@ public class FilesDataService: ObservableObject {
         return listDirectory(request: request)
     }
 
+
+    /// Convenience overload with default project directory
+    public func searchFilesWithDefaultProject(query: String, maxResults: Int = 50, includeContent: Bool = false) async throws -> [FileInfo] {
+        let defaultProjectDirectory = "/path/to/project"
+        return try await searchFiles(
+            query: query,
+            maxResults: maxResults,
+            includeContent: includeContent,
+            projectDirectory: defaultProjectDirectory
+        )
+    }
+
+    /// Start file finder workflow using RPC call
+    public func startFileFinderWorkflow(sessionId: String) -> AsyncThrowingStream<Any, Error> {
+        guard let relayClient = serverRelayClient else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: DataServiceError.connectionError("No relay client available"))
+            }
+        }
+
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: DataServiceError.connectionError("No active device connection"))
+            }
+        }
+
+        return AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    let request = RpcRequest(
+                        method: "workflows.startFileFinder",
+                        params: [
+                            "sessionId": AnyCodable(sessionId)
+                        ]
+                    )
+
+                    for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
+                        if let error = response.error {
+                            continuation.finish(throwing: DataServiceError.serverError("RPC Error: \(error.message)"))
+                            return
+                        }
+
+                        if let result = response.result?.value {
+                            continuation.yield(result)
+                            if response.isFinal {
+                                continuation.finish()
+                                return
+                            }
+                        }
+                    }
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
+    /// Start web search workflow using RPC call
+    public func startWebSearchWorkflow(sessionId: String, query: String) -> AsyncThrowingStream<Any, Error> {
+        guard let relayClient = serverRelayClient else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: DataServiceError.connectionError("No relay client available"))
+            }
+        }
+
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: DataServiceError.connectionError("No active device connection"))
+            }
+        }
+
+        return AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    let request = RpcRequest(
+                        method: "workflows.startWebSearch",
+                        params: [
+                            "sessionId": AnyCodable(sessionId),
+                            "query": AnyCodable(query)
+                        ]
+                    )
+
+                    for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
+                        if let error = response.error {
+                            continuation.finish(throwing: DataServiceError.serverError("RPC Error: \(error.message)"))
+                            return
+                        }
+
+                        if let result = response.result?.value {
+                            continuation.yield(result)
+                            if response.isFinal {
+                                continuation.finish()
+                                return
+                            }
+                        }
+                    }
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
     // MARK: - Cache Management
 
     public func invalidateCache() {
@@ -293,6 +431,28 @@ public struct FileSearchResponse: Codable {
 }
 
 public struct FileInfo: Codable, Identifiable {
+    init?(from dict: [String: Any]) {
+        guard let path = dict["path"] as? String,
+              let name = dict["name"] as? String else {
+            return nil
+        }
+        self.id = path
+        self.path = path
+        self.relativePath = dict["relativePath"] as? String ?? path
+        self.name = name
+        self.size = (dict["size"] as? UInt64) ?? 0
+        self.modifiedAt = (dict["modifiedAt"] as? Int64) ?? 0
+        self.createdAt = dict["createdAt"] as? Int64
+        self.fileType = (dict["fileType"] as? String) ?? "file"
+        self.fileExtension = dict["fileExtension"] as? String
+        self.isDirectory = (dict["isDirectory"] as? Bool) ?? false
+        self.isHidden = (dict["isHidden"] as? Bool) ?? false
+        self.isBinary = dict["isBinary"] as? Bool
+        self.permissions = FilePermissions(readable: true, writable: true, executable: false)
+        self.contentPreview = dict["contentPreview"] as? String
+        self.matchInfo = nil
+    }
+
     public let id: String
     public let path: String
     public let relativePath: String

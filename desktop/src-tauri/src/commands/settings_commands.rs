@@ -2,6 +2,7 @@ use crate::api_clients::ServerProxyClient;
 use crate::auth::TokenManager;
 use crate::db_utils::SettingsRepository;
 use crate::error::{AppError, AppResult};
+use crate::models::DeviceSettings;
 use crate::models::RuntimeAIConfig;
 use crate::models::{DefaultSystemPrompt, ProjectSystemPrompt, TaskType};
 use crate::services::config_cache_service::ConfigCache;
@@ -759,4 +760,43 @@ pub async fn get_server_default_system_prompts_command(app_handle: AppHandle) ->
             )))
         }
     }
+}
+
+#[tauri::command]
+pub async fn get_device_settings(app_handle: AppHandle) -> AppResult<DeviceSettings> {
+    let settings_repo = app_handle
+        .state::<Arc<SettingsRepository>>()
+        .inner()
+        .clone();
+    settings_repo.get_device_settings().await
+}
+
+#[tauri::command]
+pub async fn update_device_settings(
+    app_handle: AppHandle,
+    settings: DeviceSettings,
+) -> AppResult<()> {
+    let settings_repo = app_handle
+        .state::<Arc<SettingsRepository>>()
+        .inner()
+        .clone();
+    settings_repo.update_device_settings(&settings).await
+}
+
+#[tauri::command]
+pub async fn get_app_setting(app_handle: AppHandle, key: String) -> AppResult<Option<String>> {
+    let settings_repo = app_handle
+        .state::<Arc<SettingsRepository>>()
+        .inner()
+        .clone();
+    settings_repo.get_setting(&key).await
+}
+
+#[tauri::command]
+pub async fn set_app_setting(app_handle: AppHandle, key: String, value: String) -> AppResult<()> {
+    let settings_repo = app_handle
+        .state::<Arc<SettingsRepository>>()
+        .inner()
+        .clone();
+    settings_repo.set_setting(&key, &value).await
 }

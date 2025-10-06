@@ -1,9 +1,9 @@
-use uuid::Uuid;
-use sqlx::{PgPool, query, query_as};
-use chrono::{DateTime, Utc};
-use bigdecimal::BigDecimal;
 use crate::error::AppError;
+use bigdecimal::BigDecimal;
+use chrono::{DateTime, Utc};
+use sqlx::{PgPool, query, query_as};
 use std::sync::Arc;
+use uuid::Uuid;
 
 // Customer billing model - simplified for credit-based billing
 #[derive(Debug, Clone)]
@@ -40,14 +40,16 @@ impl CustomerBillingRepository {
         user_id: &Uuid,
         stripe_customer_id: Option<&str>,
     ) -> Result<Uuid, AppError> {
-        let mut tx = self.db_pool.begin().await
+        let mut tx = self
+            .db_pool
+            .begin()
+            .await
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
-        let result = self.create_with_executor(
-            user_id,
-            stripe_customer_id,
-            &mut tx,
-        ).await?;
-        tx.commit().await
+        let result = self
+            .create_with_executor(user_id, stripe_customer_id, &mut tx)
+            .await?;
+        tx.commit()
+            .await
             .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
         Ok(result)
     }
@@ -58,10 +60,9 @@ impl CustomerBillingRepository {
         user_id: &Uuid,
         stripe_customer_id: Option<&str>,
         executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    ) -> Result<Uuid, AppError>
-    {
+    ) -> Result<Uuid, AppError> {
         let id = Uuid::new_v4();
-        
+
         query!(
             r#"
             INSERT INTO customer_billing 
@@ -75,7 +76,9 @@ impl CustomerBillingRepository {
         )
         .execute(&mut **executor)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to create customer billing record: {}", e)))?;
+        .map_err(|e| {
+            AppError::Database(format!("Failed to create customer billing record: {}", e))
+        })?;
 
         Ok(id)
     }
@@ -95,13 +98,19 @@ impl CustomerBillingRepository {
         )
         .fetch_optional(&self.db_pool)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to fetch customer billing record: {}", e)))?;
+        .map_err(|e| {
+            AppError::Database(format!("Failed to fetch customer billing record: {}", e))
+        })?;
 
         Ok(record)
     }
 
     // Get customer billing by ID with custom executor
-    pub async fn get_by_id_with_executor(&self, id: &Uuid, executor: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<Option<CustomerBilling>, AppError> {
+    pub async fn get_by_id_with_executor(
+        &self,
+        id: &Uuid,
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<Option<CustomerBilling>, AppError> {
         let record = query_as!(
             CustomerBilling,
             r#"
@@ -115,32 +124,44 @@ impl CustomerBillingRepository {
         )
         .fetch_optional(&mut **executor)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to fetch customer billing record: {}", e)))?;
+        .map_err(|e| {
+            AppError::Database(format!("Failed to fetch customer billing record: {}", e))
+        })?;
 
         Ok(record)
     }
 
     // Get customer billing by user ID
-    pub async fn get_by_user_id(&self, user_id: &Uuid) -> Result<Option<CustomerBilling>, AppError> {
-        let mut tx = self.db_pool.begin().await
+    pub async fn get_by_user_id(
+        &self,
+        user_id: &Uuid,
+    ) -> Result<Option<CustomerBilling>, AppError> {
+        let mut tx = self
+            .db_pool
+            .begin()
+            .await
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
-        
+
         // Set user context for RLS
         sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
             .bind(user_id.to_string())
             .execute(&mut *tx)
             .await
             .map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
-            
+
         let result = self.get_by_user_id_with_executor(user_id, &mut tx).await?;
-        tx.commit().await
+        tx.commit()
+            .await
             .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
         Ok(result)
     }
 
     // Get customer billing by user ID with custom executor
-    pub async fn get_by_user_id_with_executor(&self, user_id: &Uuid, executor: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<Option<CustomerBilling>, AppError>
-    {
+    pub async fn get_by_user_id_with_executor(
+        &self,
+        user_id: &Uuid,
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<Option<CustomerBilling>, AppError> {
         let record = query_as!(
             CustomerBilling,
             r#"
@@ -156,7 +177,12 @@ impl CustomerBillingRepository {
         )
         .fetch_optional(&mut **executor)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to fetch user customer billing record: {}", e)))?;
+        .map_err(|e| {
+            AppError::Database(format!(
+                "Failed to fetch user customer billing record: {}",
+                e
+            ))
+        })?;
 
         Ok(record)
     }
@@ -215,7 +241,9 @@ impl CustomerBillingRepository {
         .map_err(|e| AppError::Database(format!("Failed to set stripe customer id: {}", e)))?;
 
         if result.rows_affected() == 0 {
-            return Err(AppError::NotFound("Customer billing record not found to update stripe customer id".to_string()));
+            return Err(AppError::NotFound(
+                "Customer billing record not found to update stripe customer id".to_string(),
+            ));
         }
 
         Ok(())

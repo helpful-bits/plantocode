@@ -1,5 +1,4 @@
-use crate::auth::device_id_manager;
-use crate::auth::token_manager::TokenManager;
+use crate::auth::{header_utils, token_manager::TokenManager};
 use crate::error::AppError;
 use log::{debug, error, info};
 use reqwest::Client;
@@ -22,7 +21,11 @@ pub struct ConsentClient {
 
 impl ConsentClient {
     /// Create a new ConsentClient instance
-    pub fn new(base_url: String, token_manager: Arc<TokenManager>, app_handle: tauri::AppHandle) -> Self {
+    pub fn new(
+        base_url: String,
+        token_manager: Arc<TokenManager>,
+        app_handle: tauri::AppHandle,
+    ) -> Self {
         let http = crate::api_clients::client_factory::create_http_client();
         Self {
             http,
@@ -56,10 +59,8 @@ impl ConsentClient {
             }
         };
 
-        let device_id = device_id_manager::get_or_create(&self.app_handle)?;
-        request_builder = request_builder
-            .header("Authorization", format!("Bearer {}", token))
-            .header("x-device-id", device_id);
+        request_builder =
+            header_utils::apply_auth_headers(request_builder, &token, &self.app_handle)?;
 
         if let Some(body_data) = body {
             request_builder = request_builder
@@ -111,10 +112,8 @@ impl ConsentClient {
             }
         };
 
-        let device_id = device_id_manager::get_or_create(&self.app_handle)?;
-        request_builder = request_builder
-            .header("Authorization", format!("Bearer {}", token))
-            .header("x-device-id", device_id);
+        request_builder =
+            header_utils::apply_auth_headers(request_builder, &token, &self.app_handle)?;
 
         if let Some(body_data) = body {
             request_builder = request_builder

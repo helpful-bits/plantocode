@@ -107,6 +107,15 @@ pub async fn initialize_database_light(app_handle: &AppHandle) -> Result<(), App
     app_handle.manage(db.clone());
     let pool_arc = Arc::new(db);
 
+    // Wire TerminalRepository if not already managed
+    if app_handle
+        .try_state::<std::sync::Arc<crate::db_utils::TerminalRepository>>()
+        .is_none()
+    {
+        let repo = crate::db_utils::TerminalRepository::new(pool_arc.clone());
+        app_handle.manage(std::sync::Arc::new(repo));
+    }
+
     // Ensure error_logs exists (assumes consolidated schema handles this)
     if let Err(e) = sqlx::query(
         r#"
@@ -197,14 +206,6 @@ pub async fn wire_core_job_repositories(app_handle: &AppHandle) -> Result<(), Ap
         let background_job_repo_arc = Arc::new(background_job_repo);
         app_handle.manage(background_job_repo_arc);
         info!("BackgroundJobRepository wired (early)");
-    }
-
-    // Wire TerminalSessionsRepository if not already managed
-    if app_handle.try_state::<Arc<crate::db_utils::terminal_sessions_repository::TerminalSessionsRepository>>().is_none() {
-        let terminal_sessions_repo = crate::db_utils::terminal_sessions_repository::TerminalSessionsRepository::new_with_app_handle(app_handle.clone(), pool_arc.clone());
-        let terminal_sessions_repo_arc = Arc::new(terminal_sessions_repo);
-        app_handle.manage(terminal_sessions_repo_arc);
-        info!("TerminalSessionsRepository wired (early)");
     }
 
     Ok(())
@@ -321,13 +322,16 @@ pub async fn run_deferred_db_tasks(
         info!("Deferred DB: BackgroundJobRepository skipped (already managed)");
     }
 
-    if app_handle.try_state::<Arc<crate::db_utils::terminal_sessions_repository::TerminalSessionsRepository>>().is_none() {
-        let terminal_sessions_repo = crate::db_utils::terminal_sessions_repository::TerminalSessionsRepository::new_with_app_handle(app_handle.clone(), pool_arc.clone());
-        let terminal_sessions_repo_arc = Arc::new(terminal_sessions_repo);
-        app_handle.manage(terminal_sessions_repo_arc.clone());
-        info!("Deferred DB: TerminalSessionsRepository wired.");
+    if app_handle
+        .try_state::<Arc<crate::db_utils::TerminalRepository>>()
+        .is_none()
+    {
+        let terminal_repo = crate::db_utils::TerminalRepository::new(pool_arc.clone());
+        let terminal_repo_arc = Arc::new(terminal_repo);
+        app_handle.manage(terminal_repo_arc.clone());
+        info!("Deferred DB: TerminalRepository wired.");
     } else {
-        info!("Deferred DB: TerminalSessionsRepository skipped (already managed)");
+        info!("Deferred DB: TerminalRepository skipped (already managed)");
     }
 
     Ok(())

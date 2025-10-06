@@ -4,9 +4,22 @@ import Core
 public struct DeviceSelectionView: View {
     @ObservedObject private var deviceDiscovery = DeviceDiscoveryService.shared
     @ObservedObject private var appState = AppState.shared
+    @StateObject private var multiConnectionManager = MultiConnectionManager.shared
     @State private var isConnecting = false
     @State private var errorMessage: String?
     @State private var selectedDeviceId: UUID?
+    @State private var showingRegionSelector = false
+
+    private var filteredDevices: [RegisteredDevice] {
+        let filtered = deviceDiscovery.devices.filter {
+            let isDesktop = $0.deviceType.lowercased() == "desktop"
+            let isAvailable = $0.status.isAvailable
+            print("[DeviceSelection] Device: \($0.deviceName) - Type: \($0.deviceType) (isDesktop: \(isDesktop)), Status: \($0.status) (isAvailable: \(isAvailable))")
+            return isDesktop && isAvailable
+        }
+        print("[DeviceSelection] Filtered devices: \(filtered.count) of \(deviceDiscovery.devices.count)")
+        return filtered
+    }
 
     public init() {}
 
@@ -15,9 +28,9 @@ public struct DeviceSelectionView: View {
             // Match login view gradient
             LinearGradient(
                 colors: [
-                    Color("Background"),
-                    Color("Background").opacity(0.95),
-                    Color("Card")
+                    Color.background,
+                    Color.background.opacity(0.95),
+                    Color.card
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -30,13 +43,12 @@ public struct DeviceSelectionView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Select Desktop Device")
-                            .font(.largeTitle)
-                            .fontWeight(.bold)
-                            .foregroundColor(Color("CardForeground"))
+                            .h1()
+                            .foregroundColor(Color.cardForeground)
 
                         Text("Choose a desktop device to connect to")
-                            .font(.body)
-                            .foregroundColor(Color("MutedForeground"))
+                            .paragraph()
+                            .foregroundColor(Color.mutedForeground)
                     }
 
                     if let errorMessage = errorMessage {
@@ -50,29 +62,29 @@ public struct DeviceSelectionView: View {
                     if deviceDiscovery.isLoading {
                         HStack {
                             ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: Color("MutedForeground")))
+                                .progressViewStyle(CircularProgressViewStyle(tint: Color.mutedForeground))
                                 .scaleEffect(0.8)
                             Text("Discovering devices...")
-                                .font(.body)
-                                .foregroundColor(Color("MutedForeground"))
+                                .paragraph()
+                                .foregroundColor(Color.mutedForeground)
                         }
                         .padding(.vertical)
                     }
 
-                    if deviceDiscovery.devices.isEmpty && !deviceDiscovery.isLoading {
+                    if filteredDevices.isEmpty && !deviceDiscovery.isLoading {
                         VStack(spacing: 16) {
                             Image(systemName: "desktopcomputer.trianglebadge.exclamationmark")
                                 .font(.system(size: 48))
-                                .foregroundColor(Color("MutedForeground"))
+                                .foregroundColor(Color.mutedForeground)
 
                             VStack(spacing: 8) {
                                 Text("No Devices Found")
-                                    .font(.headline)
-                                    .foregroundColor(Color("CardForeground"))
+                                    .h4()
+                                    .foregroundColor(Color.cardForeground)
 
-                                Text("Make sure at least one Vibe Manager desktop app is running and signed in with the same account.")
-                                    .font(.body)
-                                    .foregroundColor(Color("MutedForeground"))
+                                Text("Open the Vibe Manager desktop app, sign in with the same account, and enable 'Allow Remote Access' and 'Discoverable' in Settings.")
+                                    .paragraph()
+                                    .foregroundColor(Color.mutedForeground)
                                     .multilineTextAlignment(.center)
                             }
 
@@ -84,9 +96,9 @@ public struct DeviceSelectionView: View {
                         .padding(.vertical)
                     }
 
-                    if !deviceDiscovery.devices.isEmpty {
+                    if !filteredDevices.isEmpty {
                         VStack(spacing: 12) {
-                            ForEach(deviceDiscovery.devices) { device in
+                            ForEach(filteredDevices) { device in
                                 DeviceRow(
                                     device: device,
                                     isSelected: selectedDeviceId == device.deviceId,
@@ -96,37 +108,35 @@ public struct DeviceSelectionView: View {
                                 }
                             }
                         }
-                    }
 
-                    HStack {
-                        Button("Refresh") {
-                            refreshDevices()
+                        HStack {
+                            Button("Refresh") {
+                                refreshDevices()
+                            }
+                            .buttonStyle(SecondaryButtonStyle())
+                            .disabled(deviceDiscovery.isLoading || isConnecting)
+
+                            Spacer()
+
+                            Text("\(filteredDevices.count) device\(filteredDevices.count == 1 ? "" : "s") found")
+                                .small()
+                                .foregroundColor(Color.mutedForeground)
                         }
-                        .buttonStyle(SecondaryButtonStyle())
-                        .disabled(deviceDiscovery.isLoading || isConnecting)
-
-                        Spacer()
-
-                        if !deviceDiscovery.devices.isEmpty {
-                            Text("\(deviceDiscovery.devices.count) device\(deviceDiscovery.devices.count == 1 ? "" : "s") found")
-                                .font(.caption)
-                                .foregroundColor(Color("MutedForeground"))
-                        }
+                        .padding(.top, 8)
                     }
-                    .padding(.top, 8)
                 }
                 .padding(24)
                 .background(
-                    Color("Background")
+                    Color.background
                         .opacity(0.95)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 20)
-                        .stroke(Color("Border").opacity(0.6), lineWidth: 1)
+                        .stroke(Color.border.opacity(0.6), lineWidth: 1)
                 )
                 .cornerRadius(20)
-                .shadow(color: Color.black.opacity(0.05), radius: 3, x: 0, y: 1)
-                .shadow(color: Color.black.opacity(0.03), radius: 2, x: 0, y: 1)
+                .shadow(color: Color.background.opacity(0.05), radius: 3, x: 0, y: 1)
+                .shadow(color: Color.background.opacity(0.03), radius: 2, x: 0, y: 1)
                 .frame(maxWidth: 520)
 
                 Spacer()
@@ -135,12 +145,36 @@ public struct DeviceSelectionView: View {
         }
         .onAppear {
             Task {
-                await deviceDiscovery.refreshDevices()
+                // Only restore/refresh if initialized and authenticated
+                if VibeManagerCore.shared.isInitialized && AuthService.shared.isAuthenticated {
+                    await multiConnectionManager.restoreConnections()
+                    await deviceDiscovery.refreshDevices()
+                } else {
+                    print("[DeviceSelection] Skipping device operations: not initialized or authenticated")
+                }
             }
+        }
+        .navigationTitle("Select Device")
+        .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Change Region") {
+                    showingRegionSelector = true
+                }
+            }
+        }
+        .sheet(isPresented: $showingRegionSelector) {
+            ServerSelectionView()
         }
     }
 
     private func refreshDevices() {
+        if isConnecting, let deviceId = selectedDeviceId {
+            print("[DeviceSelection] Refresh requested while connecting; cancelling pending connection")
+            MultiConnectionManager.shared.removeConnection(deviceId: deviceId)
+            selectedDeviceId = nil
+            isConnecting = false
+        }
         Task {
             await deviceDiscovery.refreshDevices()
         }
@@ -149,6 +183,20 @@ public struct DeviceSelectionView: View {
     private func connectToDevice(_ device: RegisteredDevice) {
         guard !isConnecting else { return }
 
+        // Validate prerequisites before attempting connection
+        if !VibeManagerCore.shared.isInitialized {
+            errorMessage = "Initialization required. Please restart the app."
+            isConnecting = false
+            return
+        }
+
+        if AuthService.shared.isAuthenticated == false {
+            errorMessage = "Please sign in before connecting."
+            isConnecting = false
+            return
+        }
+
+        print("[DeviceSelection] Initiating connection to device: \(device.deviceName) (\(device.deviceId))")
         selectedDeviceId = device.deviceId
         isConnecting = true
         errorMessage = nil
@@ -159,14 +207,28 @@ public struct DeviceSelectionView: View {
 
                 switch result {
                 case .success:
-                    // Connection successful, proceed to main UI
+                    print("[DeviceSelection] Connection successful, navigating to main app")
+                    // Note: AuthFlowCoordinator advances to workspace based on connection state; this view does not perform hard navigation.
                     await MainActor.run {
                         appState.selectedDeviceId = device.deviceId
                         appState.navigateToMainApp()
                     }
                 case .failure(let error):
+                    print("[DeviceSelection] Connection failed: \(error.localizedDescription)")
                     await MainActor.run {
-                        errorMessage = error.localizedDescription
+                        // Map specific errors to user-friendly messages
+                        if let multiError = error as? MultiConnectionError {
+                            switch multiError {
+                            case .authenticationRequired:
+                                errorMessage = "Please sign in before connecting."
+                            case .invalidConfiguration:
+                                errorMessage = "Initialization required. Please restart the app."
+                            default:
+                                errorMessage = error.localizedDescription
+                            }
+                        } else {
+                            errorMessage = error.localizedDescription
+                        }
                         isConnecting = false
                         selectedDeviceId = nil
                     }
@@ -181,23 +243,31 @@ private struct DeviceRow: View {
     let isSelected: Bool
     let isConnecting: Bool
     let onTap: () -> Void
+    @StateObject private var multiConnectionManager = MultiConnectionManager.shared
 
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 16) {
+                // Connection indicator
+                if let state = multiConnectionManager.connectionStates[device.deviceId] {
+                    Circle()
+                        .fill(connectionIndicatorColor(for: state))
+                        .frame(width: 8, height: 8)
+                }
+
                 // Device icon
                 VStack {
                     Image(systemName: deviceIcon)
                         .font(.system(size: 24))
-                        .foregroundColor(device.status.isAvailable ? Color("Primary") : Color("MutedForeground"))
+                        .foregroundColor(device.status.isAvailable ? Color.primary : Color.mutedForeground)
                 }
                 .frame(width: 40)
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
                         Text(device.deviceName)
-                            .font(.headline)
-                            .foregroundColor(Color("CardForeground"))
+                            .h4()
+                            .foregroundColor(Color.cardForeground)
 
                         Spacer()
 
@@ -207,26 +277,26 @@ private struct DeviceRow: View {
                                 .fill(statusColor)
                                 .frame(width: 8, height: 8)
                             Text(device.status.displayName)
-                                .font(.caption)
-                                .foregroundColor(Color("MutedForeground"))
+                                .small()
+                                .foregroundColor(Color.mutedForeground)
                         }
                     }
 
                     HStack {
                         Text("\(device.platform) • \(device.appVersion)")
-                            .font(.caption)
-                            .foregroundColor(Color("MutedForeground"))
+                            .small()
+                            .foregroundColor(Color.mutedForeground)
 
                         Spacer()
 
                         if let health = device.health {
                             HStack(spacing: 4) {
                                 Image(systemName: healthIcon(health.healthStatus))
-                                    .font(.caption2)
+                                    .small()
                                     .foregroundColor(healthColor(health.healthStatus))
                                 Text(String(format: "%.0f%%", health.healthScore))
-                                    .font(.caption2)
-                                    .foregroundColor(Color("MutedForeground"))
+                                    .small()
+                                    .foregroundColor(Color.mutedForeground)
                             }
                         }
                     }
@@ -234,27 +304,27 @@ private struct DeviceRow: View {
 
                 if isConnecting {
                     ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: Color("Primary")))
+                        .progressViewStyle(CircularProgressViewStyle(tint: Color.primary))
                         .scaleEffect(0.8)
                 } else if isSelected {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(Color("Primary"))
+                        .h3()
+                        .foregroundColor(Color.primary)
                 } else {
                     Image(systemName: "arrow.right.circle")
-                        .font(.title2)
-                        .foregroundColor(Color("MutedForeground"))
+                        .h3()
+                        .foregroundColor(Color.mutedForeground)
                         .opacity(device.status.isAvailable ? 1.0 : 0.5)
                 }
             }
             .padding(16)
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(isSelected ? Color("Primary").opacity(0.1) : Color("Card"))
+                    .fill(isSelected ? Color.primary.opacity(0.1) : Color.card)
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
                             .stroke(
-                                isSelected ? Color("Primary") : Color("Border"),
+                                isSelected ? Color.primary : Color.border,
                                 lineWidth: isSelected ? 2 : 1
                             )
                     )
@@ -280,11 +350,11 @@ private struct DeviceRow: View {
     private var statusColor: Color {
         switch device.status {
         case .online:
-            return .green
+            return Color.success
         case .away:
-            return .orange
+            return Color.warning
         case .offline:
-            return .gray
+            return Color.muted
         }
     }
 
@@ -304,41 +374,23 @@ private struct DeviceRow: View {
     private func healthColor(_ status: HealthStatus) -> Color {
         switch status {
         case .excellent:
-            return .green
+            return Color.success
         case .good:
-            return .blue
+            return Color.primary
         case .fair:
-            return .orange
+            return Color.warning
         case .poor:
-            return .red
+            return Color.destructive
         }
     }
-}
 
-// Button Styles
-private struct PrimaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .padding(.horizontal, 24)
-            .padding(.vertical, 12)
-            .background(Color("Primary"))
-            .foregroundColor(.white)
-            .cornerRadius(8)
-            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
-            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
-    }
-}
-
-private struct SecondaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .background(Color("Secondary"))
-            .foregroundColor(Color("SecondaryForeground"))
-            .cornerRadius(6)
-            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
-            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
+    private func connectionIndicatorColor(for state: ConnectionState) -> Color {
+        switch state {
+        case .connected: return Color.success
+        case .connecting, .reconnecting: return Color.warning
+        case .disconnected, .failed: return Color.destructive
+        default: return Color.muted
+        }
     }
 }
 

@@ -5,18 +5,18 @@ public struct LoginView: View {
   @ObservedObject private var appState = AppState.shared
   @State private var errorMessage: String?
   @State private var loadingProvider: String?
+  @State private var showingRegionSelector = false
   private let columns = [GridItem(.flexible()), GridItem(.flexible())]
 
   public init() {}
 
   public var body: some View {
     ZStack {
-      // Match desktop gradient: from-background via-background/95 to-card
       LinearGradient(
         colors: [
-          Color("Background"),
-          Color("Background").opacity(0.95),
-          Color("Card")
+          Color.background,
+          Color.background.opacity(0.95),
+          Color.card
         ],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
@@ -28,13 +28,10 @@ public struct LoginView: View {
 
         VStack(alignment: .leading, spacing: 20) {
           Text("Vibe Manager")
-            .font(.largeTitle)
-            .fontWeight(.bold)
-            .foregroundColor(Color("CardForeground"))
+            .h1()
 
           Text("Sign in with your preferred provider")
-            .font(.body)
-            .foregroundColor(Color("MutedForeground"))
+            .paragraph()
 
           if let err = errorMessage ?? appState.authError {
             StatusAlertView(variant: .destructive, title: "Error", message: err)
@@ -86,35 +83,48 @@ public struct LoginView: View {
 
           HStack(spacing: 8) {
             Text("By signing in you agree to our")
-              .font(.caption)
-              .foregroundColor(Color("MutedForeground"))
-            Link("Terms of Service", destination: URL(string: "https://vibemanager.app/terms")!)
-              .font(.caption)
+              .small()
+            if let termsURL = URL(string: "https://vibemanager.app/terms") {
+              Link("Terms of Service", destination: termsURL)
+                .small()
+            }
             Text("and")
-              .font(.caption)
-              .foregroundColor(Color("MutedForeground"))
-            Link("Privacy Policy", destination: URL(string: "https://vibemanager.app/privacy")!)
-              .font(.caption)
+              .small()
+            if let privacyURL = URL(string: "https://vibemanager.app/privacy") {
+              Link("Privacy Policy", destination: privacyURL)
+                .small()
+            }
           }
           .padding(.top, 8)
         }
         .padding(24)
         .background(
-          Color("Background")
+          Color.background
             .opacity(0.95)
         )
         .overlay(
           RoundedRectangle(cornerRadius: 20)
-            .stroke(Color("Border").opacity(0.6), lineWidth: 1)
+            .stroke(Color.border.opacity(0.6), lineWidth: 1)
         )
         .cornerRadius(20)
-        .shadow(color: Color.black.opacity(0.05), radius: 3, x: 0, y: 1)
-        .shadow(color: Color.black.opacity(0.03), radius: 2, x: 0, y: 1)
+        .shadow(color: Color.background.opacity(0.05), radius: 3, x: 0, y: 1)
+        .shadow(color: Color.background.opacity(0.03), radius: 2, x: 0, y: 1)
         .frame(maxWidth: 520)
 
         Spacer()
       }
       .padding(.horizontal, 16)
+    }
+    .navigationTitle("Sign In")
+    .toolbar {
+      ToolbarItem(placement: .navigationBarTrailing) {
+        Button("Change Region") {
+          showingRegionSelector = true
+        }
+      }
+    }
+    .sheet(isPresented: $showingRegionSelector) {
+      ServerSelectionView()
     }
   }
 
@@ -143,7 +153,7 @@ private struct ProviderButton: View {
 
   var body: some View {
     Button(action: action) {
-      HStack {
+      HStack(spacing: 12) {
         if isLoading {
           ProgressView()
             .progressViewStyle(CircularProgressViewStyle(tint: .white))
@@ -152,14 +162,15 @@ private struct ProviderButton: View {
           icon.foregroundStyle(.white)
         }
         Text(name)
-          .fontWeight(.semibold)
+          .paragraph()
         Spacer()
       }
-      .foregroundStyle(.white)
-      .padding(.horizontal, 14)
       .frame(height: 44)
-      .background(RoundedRectangle(cornerRadius: 10).fill(backgroundColor))
     }
+    .buttonStyle(CompactButtonStyle(
+      backgroundColor: backgroundColor,
+      foregroundColor: .white
+    ))
     .disabled(isLoading)
   }
 }

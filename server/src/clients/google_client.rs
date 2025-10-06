@@ -1,23 +1,23 @@
+use crate::clients::usage_extractor::{ProviderUsage, UsageExtractor};
+use crate::config::settings::AppSettings;
 use crate::error::AppError;
+use crate::models::UsageMetadata;
+use crate::services::model_mapping_service::ModelWithMapping;
 use actix_web::web;
+use base64::{Engine as _, engine::general_purpose};
 use futures_util::{Stream, StreamExt, TryStreamExt};
 use reqwest::{Client, header::HeaderMap};
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use serde_with::skip_serializing_none;
-use serde_json::{json, Value};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use tokio::sync::Mutex;
-use crate::config::settings::AppSettings;
-use crate::clients::usage_extractor::{UsageExtractor, ProviderUsage};
-use crate::models::UsageMetadata;
-use crate::services::model_mapping_service::ModelWithMapping;
-use tracing::{debug, info, error, instrument};
-use base64::{engine::general_purpose, Engine as _};
+use tracing::{debug, error, info, instrument};
 
 // Base URL for Google AI API
 const GOOGLE_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
@@ -208,15 +208,24 @@ pub struct GoogleClient {
 
 impl GoogleClient {
     pub fn new(app_settings: &AppSettings) -> Result<Self, crate::error::AppError> {
-        let api_keys = app_settings.api_keys.google_api_keys.clone()
-            .ok_or_else(|| crate::error::AppError::Configuration("Google API keys must be configured".to_string()))?;
-        
+        let api_keys = app_settings
+            .api_keys
+            .google_api_keys
+            .clone()
+            .ok_or_else(|| {
+                crate::error::AppError::Configuration(
+                    "Google API keys must be configured".to_string(),
+                )
+            })?;
+
         if api_keys.is_empty() {
-            return Err(crate::error::AppError::Configuration("Google API keys list cannot be empty".to_string()));
+            return Err(crate::error::AppError::Configuration(
+                "Google API keys list cannot be empty".to_string(),
+            ));
         }
-        
+
         let client = crate::utils::http_client::new_api_client();
-        
+
         Ok(Self {
             client,
             api_keys,
@@ -248,40 +257,57 @@ impl GoogleClient {
     fn is_retryable_error(&self, e: &AppError) -> bool {
         match e {
             AppError::External(msg) => {
-                msg.contains("status 401") ||
-                msg.contains("status 403") ||
-                msg.contains("status 429") ||
-                msg.contains("status 5") ||
-                msg.contains("network error") ||
-                msg.contains("timeout") ||
-                msg.contains("connection")
-            },
+                msg.contains("status 401")
+                    || msg.contains("status 403")
+                    || msg.contains("status 429")
+                    || msg.contains("status 5")
+                    || msg.contains("network error")
+                    || msg.contains("timeout")
+                    || msg.contains("connection")
+            }
             _ => false,
         }
     }
 
     // Chat Completions
     #[instrument(skip(self, request, model), fields(model = %model.resolved_model_id))]
-    pub async fn chat_completion(&self, request: GoogleChatRequest, model: &ModelWithMapping, user_id: &str) -> Result<(GoogleChatResponse, HeaderMap, i32, i32, i32, i32), AppError> {
+    pub async fn chat_completion(
+        &self,
+        request: GoogleChatRequest,
+        model: &ModelWithMapping,
+        user_id: &str,
+    ) -> Result<(GoogleChatResponse, HeaderMap, i32, i32, i32, i32), AppError> {
         let request_id = self.get_next_request_id().await;
-        
+
         // Use the resolved model ID from the mapping service
         let clean_model_id = &model.resolved_model_id;
-        
+
         let num_keys = self.api_keys.len();
         let sticky_index = self.get_sticky_key_index(user_id);
         let mut last_error = None;
-        
-        debug!("Using sticky key index {} for user {}", sticky_index, user_id);
-        
+
+        debug!(
+            "Using sticky key index {} for user {}",
+            sticky_index, user_id
+        );
+
         for i in 0..num_keys {
             let key_index = (sticky_index + i) % num_keys;
             let api_key = &self.api_keys[key_index];
-            let url = format!("{}/models/{}:generateContent", self.base_url, clean_model_id);
-            
-            debug!("Attempting Google API request with key {} (attempt {} of {})", key_index + 1, i + 1, num_keys);
-            
-            let response_result = self.client
+            let url = format!(
+                "{}/models/{}:generateContent",
+                self.base_url, clean_model_id
+            );
+
+            debug!(
+                "Attempting Google API request with key {} (attempt {} of {})",
+                key_index + 1,
+                i + 1,
+                num_keys
+            );
+
+            let response_result = self
+                .client
                 .post(&url)
                 .header("x-goog-api-key", api_key)
                 .header("Content-Type", "application/json")
@@ -289,13 +315,17 @@ impl GoogleClient {
                 .json(&request)
                 .send()
                 .await;
-            
+
             let response = match response_result {
                 Ok(resp) => resp,
                 Err(e) => {
-                    let app_error = AppError::External(format!("Google request failed: {}", e.to_string()));
+                    let app_error =
+                        AppError::External(format!("Google request failed: {}", e.to_string()));
                     if self.is_retryable_error(&app_error) {
-                        debug!("Request failed with retryable error, trying next key: {}", e);
+                        debug!(
+                            "Request failed with retryable error, trying next key: {}",
+                            e
+                        );
                         last_error = Some(app_error);
                         continue;
                     } else {
@@ -303,82 +333,130 @@ impl GoogleClient {
                     }
                 }
             };
-            
+
             let status = response.status();
             let headers = response.headers().clone();
-            
+
             if !status.is_success() {
-                let error_text = response.text().await
+                let error_text = response
+                    .text()
+                    .await
                     .unwrap_or_else(|_| "Failed to get error response".to_string());
                 let app_error = AppError::External(format!(
                     "Google request failed with status {}: {}",
                     status, error_text
                 ));
-                
+
                 if self.is_retryable_error(&app_error) {
-                    debug!("Request failed with retryable status {}, trying next key", status);
+                    debug!(
+                        "Request failed with retryable status {}, trying next key",
+                        status
+                    );
                     last_error = Some(app_error);
                     continue;
                 } else {
                     return Err(app_error);
                 }
             }
-            
-            let response_text = response.text().await
-                .map_err(|e| AppError::Internal(format!("Failed to get response text: {}", e.to_string())))?;
-            
-            let result = serde_json::from_str::<GoogleChatResponse>(&response_text)
-                .map_err(|e| {
-                    error!("Google deserialization failed: {} | Response: {}", e.to_string(), response_text);
+
+            let response_text = response.text().await.map_err(|e| {
+                AppError::Internal(format!("Failed to get response text: {}", e.to_string()))
+            })?;
+
+            let result =
+                serde_json::from_str::<GoogleChatResponse>(&response_text).map_err(|e| {
+                    error!(
+                        "Google deserialization failed: {} | Response: {}",
+                        e.to_string(),
+                        response_text
+                    );
                     AppError::Internal(format!("Google deserialization failed: {}", e.to_string()))
                 })?;
-            
+
             // Check if response has usable content - if not, trigger fallback
             if let Some(first_candidate) = result.candidates.first() {
-                if first_candidate.content.parts.is_none() || 
-                   first_candidate.content.parts.as_ref().map_or(true, |parts| parts.is_empty()) {
-                    let finish_reason = first_candidate.finish_reason.as_deref().unwrap_or("unknown");
-                    return Err(AppError::External(format!("Google API returned response without content parts (finish_reason: {})", finish_reason)));
+                if first_candidate.content.parts.is_none()
+                    || first_candidate
+                        .content
+                        .parts
+                        .as_ref()
+                        .map_or(true, |parts| parts.is_empty())
+                {
+                    let finish_reason = first_candidate
+                        .finish_reason
+                        .as_deref()
+                        .unwrap_or("unknown");
+                    return Err(AppError::External(format!(
+                        "Google API returned response without content parts (finish_reason: {})",
+                        finish_reason
+                    )));
                 }
             }
-            
-            info!("Google API request successful for model: {} with key {}", clean_model_id, key_index + 1);
+
+            info!(
+                "Google API request successful for model: {} with key {}",
+                clean_model_id,
+                key_index + 1
+            );
             debug!("Response candidates count: {}", result.candidates.len());
-            
-            let (input_tokens, cache_write_tokens, cache_read_tokens, output_tokens) = if let Some(usage) = &result.usage_metadata {
-                // Google's prompt_token_count is already the total input tokens
-                (usage.prompt_token_count, 0, usage.cached_content_token_count.unwrap_or(0), usage.candidates_token_count.unwrap_or(0))
-            } else {
-                (0, 0, 0, 0)
-            };
-                
-            return Ok((result, headers, input_tokens, cache_write_tokens, cache_read_tokens, output_tokens));
+
+            let (input_tokens, cache_write_tokens, cache_read_tokens, output_tokens) =
+                if let Some(usage) = &result.usage_metadata {
+                    // Google's prompt_token_count is already the total input tokens
+                    (
+                        usage.prompt_token_count,
+                        0,
+                        usage.cached_content_token_count.unwrap_or(0),
+                        usage.candidates_token_count.unwrap_or(0),
+                    )
+                } else {
+                    (0, 0, 0, 0)
+                };
+
+            return Ok((
+                result,
+                headers,
+                input_tokens,
+                cache_write_tokens,
+                cache_read_tokens,
+                output_tokens,
+            ));
         }
-        
+
         // If we get here, all keys failed
-        Err(last_error.unwrap_or_else(|| AppError::External("All Google API keys failed".to_string())))
+        Err(last_error
+            .unwrap_or_else(|| AppError::External("All Google API keys failed".to_string())))
     }
 
     // Streaming Chat Completions for actix-web compatibility
     #[instrument(skip(self, request, model), fields(model = %model.resolved_model_id, user_id = %user_id))]
     pub async fn stream_chat_completion(
-        &self, 
+        &self,
         request: GoogleChatRequest,
         model: &ModelWithMapping,
-        user_id: String
-    ) -> Result<(HeaderMap, Pin<Box<dyn Stream<Item = Result<web::Bytes, AppError>> + Send + 'static>>), AppError> {
+        user_id: String,
+    ) -> Result<
+        (
+            HeaderMap,
+            Pin<Box<dyn Stream<Item = Result<web::Bytes, AppError>> + Send + 'static>>,
+        ),
+        AppError,
+    > {
         // Get the sticky key index for this user
         let num_keys = self.api_keys.len();
         let sticky_index = self.get_sticky_key_index(&user_id);
-        debug!("Using sticky key index {} for streaming user {}", sticky_index, user_id);
-        
+        debug!(
+            "Using sticky key index {} for streaming user {}",
+            sticky_index, user_id
+        );
+
         // Clone necessary parts for 'static lifetime
         let client = self.client.clone();
         let api_keys = self.api_keys.clone();
         let base_url = self.base_url.clone();
         let request_id_counter = self.request_id_counter.clone();
         let resolved_model_id = model.resolved_model_id.clone();
-        
+
         // Create the stream in an async move block to ensure 'static lifetime
         let result = async move {
             let request_id = {
@@ -389,14 +467,17 @@ impl GoogleClient {
             // Use the resolved model ID from the mapping service
             let clean_model_id = &resolved_model_id;
             let mut last_error = None;
-            
+
             for i in 0..num_keys {
                 let key_index = (sticky_index + i) % num_keys;
                 let api_key = &api_keys[key_index];
-                let url = format!("{}/models/{}:streamGenerateContent?alt=sse", base_url, clean_model_id);
-                
+                let url = format!(
+                    "{}/models/{}:streamGenerateContent?alt=sse",
+                    base_url, clean_model_id
+                );
+
                 let request = request.clone();
-                
+
                 let response_result = client
                     .post(&url)
                     .header("x-goog-api-key", api_key)
@@ -405,20 +486,25 @@ impl GoogleClient {
                     .json(&request)
                     .send()
                     .await;
-                
+
                 let response = match response_result {
                     Ok(resp) => resp,
                     Err(e) => {
-                        let app_error = AppError::External(format!("Google request failed: {}", e.to_string()));
+                        let app_error =
+                            AppError::External(format!("Google request failed: {}", e.to_string()));
                         let is_retryable = match &app_error {
                             AppError::External(msg) => {
-                                msg.contains("status 401") || msg.contains("status 403") || 
-                                msg.contains("status 429") || msg.contains("status 5") ||
-                                msg.contains("network error") || msg.contains("timeout") || msg.contains("connection")
-                            },
+                                msg.contains("status 401")
+                                    || msg.contains("status 403")
+                                    || msg.contains("status 429")
+                                    || msg.contains("status 5")
+                                    || msg.contains("network error")
+                                    || msg.contains("timeout")
+                                    || msg.contains("connection")
+                            }
                             _ => false,
                         };
-                        
+
                         if is_retryable {
                             last_error = Some(app_error);
                             continue;
@@ -427,27 +513,33 @@ impl GoogleClient {
                         }
                     }
                 };
-                
+
                 let status = response.status();
                 let headers = response.headers().clone();
-                
+
                 if !status.is_success() {
-                    let error_text = response.text().await
+                    let error_text = response
+                        .text()
+                        .await
                         .unwrap_or_else(|_| "Failed to get error response".to_string());
                     let app_error = AppError::External(format!(
                         "Google streaming request failed with status {}: {}",
                         status, error_text
                     ));
-                    
+
                     let is_retryable = match &app_error {
                         AppError::External(msg) => {
-                            msg.contains("status 401") || msg.contains("status 403") || 
-                            msg.contains("status 429") || msg.contains("status 5") ||
-                            msg.contains("network error") || msg.contains("timeout") || msg.contains("connection")
-                        },
+                            msg.contains("status 401")
+                                || msg.contains("status 403")
+                                || msg.contains("status 429")
+                                || msg.contains("status 5")
+                                || msg.contains("network error")
+                                || msg.contains("timeout")
+                                || msg.contains("connection")
+                        }
                         _ => false,
                     };
-                    
+
                     if is_retryable {
                         last_error = Some(app_error);
                         continue;
@@ -455,39 +547,48 @@ impl GoogleClient {
                         return Err(app_error);
                     }
                 }
-                
-                let stream = response.bytes_stream()
-                    .map(|result| {
-                        match result {
-                            Ok(bytes) => Ok(web::Bytes::from(bytes)),
-                            Err(e) => Err(AppError::External(format!("Google network error: {}", e.to_string()))),
-                        }
-                    });
-                    
-                let boxed_stream: Pin<Box<dyn Stream<Item = Result<web::Bytes, AppError>> + Send + 'static>> = Box::pin(stream);
+
+                let stream = response.bytes_stream().map(|result| match result {
+                    Ok(bytes) => Ok(web::Bytes::from(bytes)),
+                    Err(e) => Err(AppError::External(format!(
+                        "Google network error: {}",
+                        e.to_string()
+                    ))),
+                });
+
+                let boxed_stream: Pin<
+                    Box<dyn Stream<Item = Result<web::Bytes, AppError>> + Send + 'static>,
+                > = Box::pin(stream);
                 return Ok((headers, boxed_stream));
             }
-            
+
             // If we get here, all keys failed
-            Err(last_error.unwrap_or_else(|| AppError::External("All Google API keys failed".to_string())))
-        }.await?;
-        
+            Err(last_error
+                .unwrap_or_else(|| AppError::External("All Google API keys failed".to_string())))
+        }
+        .await?;
+
         Ok(result)
     }
-    
-    
+
     // Convert a generic JSON Value into a GoogleChatRequest
     pub fn convert_to_chat_request(&self, payload: Value) -> Result<GoogleChatRequest, AppError> {
         self.convert_to_chat_request_with_capabilities(payload, None)
     }
 
     // Convert a generic JSON Value into a GoogleChatRequest with model capabilities
-    pub fn convert_to_chat_request_with_capabilities(&self, payload: Value, model_capabilities: Option<&serde_json::Value>) -> Result<GoogleChatRequest, AppError> {
+    pub fn convert_to_chat_request_with_capabilities(
+        &self,
+        payload: Value,
+        model_capabilities: Option<&serde_json::Value>,
+    ) -> Result<GoogleChatRequest, AppError> {
         // First, try to extract the messages array from the generic payload
         let messages = payload
             .get("messages")
             .and_then(|m| m.as_array())
-            .ok_or_else(|| AppError::BadRequest("Request must contain 'messages' array".to_string()))?;
+            .ok_or_else(|| {
+                AppError::BadRequest("Request must contain 'messages' array".to_string())
+            })?;
 
         let mut contents = Vec::new();
         let mut system_instruction: Option<GoogleSystemInstruction> = None;
@@ -497,11 +598,13 @@ impl GoogleClient {
             let role = message
                 .get("role")
                 .and_then(|r| r.as_str())
-                .ok_or_else(|| AppError::BadRequest("Each message must have a 'role' field".to_string()))?;
+                .ok_or_else(|| {
+                    AppError::BadRequest("Each message must have a 'role' field".to_string())
+                })?;
 
-            let content = message
-                .get("content")
-                .ok_or_else(|| AppError::BadRequest("Each message must have a 'content' field".to_string()))?;
+            let content = message.get("content").ok_or_else(|| {
+                AppError::BadRequest("Each message must have a 'content' field".to_string())
+            })?;
 
             // Handle different content formats
             let parts = self.parse_message_content(content)?;
@@ -535,13 +638,17 @@ impl GoogleClient {
 
         // Validate that we have at least one content item
         if contents.is_empty() {
-            return Err(AppError::BadRequest("Request must contain at least one message".to_string()));
+            return Err(AppError::BadRequest(
+                "Request must contain at least one message".to_string(),
+            ));
         }
 
         // Google API requires conversation to start with user message
         if let Some(first_content) = contents.first() {
             if first_content.role != "user" {
-                return Err(AppError::BadRequest("Conversation must start with a user message for Google API".to_string()));
+                return Err(AppError::BadRequest(
+                    "Conversation must start with a user message for Google API".to_string(),
+                ));
             }
         }
 
@@ -551,21 +658,26 @@ impl GoogleClient {
             if content.role == last_role {
                 // Found consecutive messages with same role, this might cause issues
                 // For now, we'll allow it but log a warning
-                debug!("Warning: Found consecutive {} messages, Google API prefers alternating user/model messages", content.role);
+                debug!(
+                    "Warning: Found consecutive {} messages, Google API prefers alternating user/model messages",
+                    content.role
+                );
             }
             last_role = &content.role;
         }
 
         // Extract generation config from payload if present
         let mut generation_config = if let Some(config_value) = payload.get("generationConfig") {
-            serde_json::from_value(config_value.clone()).unwrap_or_else(|_| GoogleGenerationConfig {
-                temperature: None,
-                top_p: None,
-                top_k: None,
-                max_output_tokens: None,
-                candidate_count: None,
-                stop_sequences: None,
-                thinking_config: None,
+            serde_json::from_value(config_value.clone()).unwrap_or_else(|_| {
+                GoogleGenerationConfig {
+                    temperature: None,
+                    top_p: None,
+                    top_k: None,
+                    max_output_tokens: None,
+                    candidate_count: None,
+                    stop_sequences: None,
+                    thinking_config: None,
+                }
             })
         } else {
             // Create generation config from common parameters
@@ -615,19 +727,22 @@ impl GoogleClient {
             stream: None,
         };
 
-        debug!("Converted to Google request with {} contents and system instruction: {}", 
-               google_request.contents.len(), 
-               google_request.system_instruction.is_some());
-        
+        debug!(
+            "Converted to Google request with {} contents and system instruction: {}",
+            google_request.contents.len(),
+            google_request.system_instruction.is_some()
+        );
+
         Ok(google_request)
     }
 
     // Helper method to parse message content into GooglePart vector
     fn parse_message_content(&self, content: &Value) -> Result<Vec<GooglePart>, AppError> {
         match content {
-            Value::String(text) => {
-                Ok(vec![GooglePart { text: Some(text.clone()), ..Default::default() }])
-            },
+            Value::String(text) => Ok(vec![GooglePart {
+                text: Some(text.clone()),
+                ..Default::default()
+            }]),
             Value::Array(parts_array) => {
                 let mut google_parts = Vec::new();
                 for part in parts_array {
@@ -640,16 +755,20 @@ impl GoogleClient {
                                         ..Default::default()
                                     });
                                 }
-                            },
+                            }
                             "image_url" => {
                                 // Handle image content if needed
-                                if let Some(image_url) = part.get("image_url").and_then(|u| u.get("url")).and_then(|url| url.as_str()) {
+                                if let Some(image_url) = part
+                                    .get("image_url")
+                                    .and_then(|u| u.get("url"))
+                                    .and_then(|url| url.as_str())
+                                {
                                     // Convert base64 image to inline data format
                                     if image_url.starts_with("data:") {
                                         if let Some(comma_pos) = image_url.find(',') {
                                             let header = &image_url[..comma_pos];
                                             let data = &image_url[comma_pos + 1..];
-                                            
+
                                             // Extract MIME type from data URI
                                             let mime_type = if header.contains("image/jpeg") {
                                                 "image/jpeg"
@@ -671,7 +790,7 @@ impl GoogleClient {
                                         }
                                     }
                                 }
-                            },
+                            }
                             _ => {
                                 // Skip unsupported content types
                             }
@@ -679,58 +798,71 @@ impl GoogleClient {
                     }
                 }
                 Ok(google_parts)
-            },
-            _ => {
-                Err(AppError::BadRequest("Content must be a string or array".to_string()))
             }
+            _ => Err(AppError::BadRequest(
+                "Content must be a string or array".to_string(),
+            )),
         }
     }
-    
-    
+
     /// Extract usage from parsed JSON (handles Google response format)
-    fn extract_usage_from_json(&self, json_value: &serde_json::Value, model_id: &str) -> Option<ProviderUsage> {
+    fn extract_usage_from_json(
+        &self,
+        json_value: &serde_json::Value,
+        model_id: &str,
+    ) -> Option<ProviderUsage> {
         let usage_metadata = json_value.get("usageMetadata")?;
-        
+
         // Handle Google format: {"promptTokenCount", "candidatesTokenCount", "cachedContentTokenCount"}
         // promptTokenCount is the total input, and cachedContentTokenCount is the cache read portion
-        let prompt_token_count = match usage_metadata.get("promptTokenCount").and_then(|v| v.as_i64()) {
+        let prompt_token_count = match usage_metadata
+            .get("promptTokenCount")
+            .and_then(|v| v.as_i64())
+        {
             Some(tokens) => tokens as i32,
             None => {
                 tracing::warn!("Missing or invalid promptTokenCount in Google response");
                 return None;
             }
         };
-        
-        let candidates_token_count = match usage_metadata.get("candidatesTokenCount").and_then(|v| v.as_i64()) {
+
+        let candidates_token_count = match usage_metadata
+            .get("candidatesTokenCount")
+            .and_then(|v| v.as_i64())
+        {
             Some(tokens) => tokens as i32,
             None => {
                 tracing::warn!("Missing or invalid candidatesTokenCount in Google response");
                 return None;
             }
         };
-        
+
         // Extract cached tokens count
-        let cached_content_token_count = usage_metadata.get("cachedContentTokenCount")
+        let cached_content_token_count = usage_metadata
+            .get("cachedContentTokenCount")
             .and_then(|v| v.as_i64())
             .unwrap_or(0) as i32;
-        
+
         let mut usage = ProviderUsage::new(
-            prompt_token_count,  // Total input tokens (already includes cached)
+            prompt_token_count, // Total input tokens (already includes cached)
             candidates_token_count,
             0, // cache_write_tokens should be 0
             cached_content_token_count,
-            model_id.to_string()
+            model_id.to_string(),
         );
-        
+
         // Extract prompt_tokens_details for modality breakdown
-        if let Some(prompt_details) = usage_metadata.get("promptTokensDetails").and_then(|v| v.as_array()) {
+        if let Some(prompt_details) = usage_metadata
+            .get("promptTokensDetails")
+            .and_then(|v| v.as_array())
+        {
             let mut video_tokens: Option<i32> = None;
             let mut text_tokens_input: Option<i32> = None;
-            
+
             for detail in prompt_details {
                 if let (Some(modality), Some(token_count)) = (
                     detail.get("modality").and_then(|m| m.as_str()),
-                    detail.get("tokenCount").and_then(|t| t.as_i64())
+                    detail.get("tokenCount").and_then(|t| t.as_i64()),
                 ) {
                     match modality {
                         "VIDEO" => video_tokens = Some(token_count as i32),
@@ -739,64 +871,78 @@ impl GoogleClient {
                     }
                 }
             }
-            
+
             // Create metadata with modality information
             let mut metadata = UsageMetadata::default();
             metadata.video_tokens = video_tokens;
             metadata.text_tokens_input = text_tokens_input;
             usage.metadata = Some(metadata);
         }
-        
+
         usage.validate().ok()?;
-        
+
         Some(usage)
     }
 
     /// Upload a file to Google's File API using resumable upload
-    pub async fn upload_file(&self, video_path: &Path, mime_type: &str, api_key: &str) -> Result<(String, String), AppError> {
+    pub async fn upload_file(
+        &self,
+        video_path: &Path,
+        mime_type: &str,
+        api_key: &str,
+    ) -> Result<(String, String), AppError> {
         use tokio::fs;
-        
+
         // Read file bytes
         let file_data = fs::read(video_path)
             .await
             .map_err(|e| AppError::Internal(format!("Failed to read file: {}", e)))?;
-        
-        let display_name = video_path.file_name()
+
+        let display_name = video_path
+            .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or("video.mp4");
-        
+
         // Step 1: Create resumable upload session
-        let upload_url = format!("https://generativelanguage.googleapis.com/upload/v1beta/files?key={}", api_key);
-        
+        let upload_url = format!(
+            "https://generativelanguage.googleapis.com/upload/v1beta/files?key={}",
+            api_key
+        );
+
         let init_body = json!({
             "file": {
                 "display_name": display_name
             }
         });
-        
-        let init_response = self.client
+
+        let init_response = self
+            .client
             .post(&upload_url)
             .header("X-Goog-Upload-Protocol", "resumable")
             .header("X-Goog-Upload-Command", "start")
-            .header("X-Goog-Upload-Header-Content-Length", file_data.len().to_string())
+            .header(
+                "X-Goog-Upload-Header-Content-Length",
+                file_data.len().to_string(),
+            )
             .header("X-Goog-Upload-Header-Content-Type", mime_type)
             .header("Content-Type", "application/json")
             .json(&init_body)
             .send()
             .await
             .map_err(|e| AppError::External(format!("Failed to initiate upload: {}", e)))?;
-        
+
         let init_status = init_response.status();
         if !init_status.is_success() {
-            let error_text = init_response.text().await
+            let error_text = init_response
+                .text()
+                .await
                 .unwrap_or_else(|_| "Failed to get error response".to_string());
             return Err(AppError::External(format!(
-                "Upload initiation failed with status {}: {}", 
-                init_status, 
-                error_text
+                "Upload initiation failed with status {}: {}",
+                init_status, error_text
             )));
         }
-        
+
         // Get upload URL from response header
         let upload_session_url = init_response
             .headers()
@@ -804,9 +950,10 @@ impl GoogleClient {
             .ok_or_else(|| AppError::External("Missing X-Goog-Upload-URL header".to_string()))?
             .to_str()
             .map_err(|e| AppError::External(format!("Invalid upload URL header: {}", e)))?;
-        
+
         // Step 2: Upload file data
-        let upload_response = self.client
+        let upload_response = self
+            .client
             .post(upload_session_url)
             .header("Content-Length", file_data.len().to_string())
             .header("X-Goog-Upload-Offset", "0")
@@ -815,63 +962,68 @@ impl GoogleClient {
             .send()
             .await
             .map_err(|e| AppError::External(format!("Failed to upload file data: {}", e)))?;
-        
+
         let upload_status = upload_response.status();
         if !upload_status.is_success() {
-            let error_text = upload_response.text().await
+            let error_text = upload_response
+                .text()
+                .await
                 .unwrap_or_else(|_| "Failed to get error response".to_string());
             return Err(AppError::External(format!(
-                "File upload failed with status {}: {}", 
-                upload_status, 
-                error_text
+                "File upload failed with status {}: {}",
+                upload_status, error_text
             )));
         }
-        
+
         // Parse response to get file URI
-        let upload_result: serde_json::Value = upload_response.json().await
+        let upload_result: serde_json::Value = upload_response
+            .json()
+            .await
             .map_err(|e| AppError::External(format!("Failed to parse upload response: {}", e)))?;
-        
+
         let file_uri = upload_result["file"]["uri"]
             .as_str()
             .ok_or_else(|| AppError::External("Missing file.uri in upload response".to_string()))?;
-        
+
         info!("Successfully uploaded file to Google: {}", file_uri);
-        
+
         // Wait for file to become active
         self.wait_for_file_active(&file_uri, api_key).await?;
-        
+
         Ok((file_uri.to_string(), mime_type.to_string()))
     }
-    
+
     /// Wait for uploaded file to become active (Google needs time to process it)
     async fn wait_for_file_active(&self, file_uri: &str, api_key: &str) -> Result<(), AppError> {
-        use tokio::time::{sleep, Duration};
-        
+        use tokio::time::{Duration, sleep};
+
         let max_attempts = 30; // Max 30 seconds wait
         let mut attempts = 0;
-        
+
         while attempts < max_attempts {
             // Check file status
             let status_url = format!("{}?key={}", file_uri, api_key);
-            
-            let response = self.client
-                .get(&status_url)
-                .send()
-                .await
-                .map_err(|e| AppError::External(format!("Failed to check file status: {}", e)))?;
-                
+
+            let response =
+                self.client.get(&status_url).send().await.map_err(|e| {
+                    AppError::External(format!("Failed to check file status: {}", e))
+                })?;
+
             if !response.status().is_success() {
-                let error_text = response.text().await
+                let error_text = response
+                    .text()
+                    .await
                     .unwrap_or_else(|_| "Failed to get error response".to_string());
                 return Err(AppError::External(format!(
-                    "Failed to check file status: {}", 
+                    "Failed to check file status: {}",
                     error_text
                 )));
             }
-            
-            let file_info: serde_json::Value = response.json().await
-                .map_err(|e| AppError::External(format!("Failed to parse file status response: {}", e)))?;
-                
+
+            let file_info: serde_json::Value = response.json().await.map_err(|e| {
+                AppError::External(format!("Failed to parse file status response: {}", e))
+            })?;
+
             // Check if file is active
             if let Some(state) = file_info.get("state").and_then(|s| s.as_str()) {
                 info!("File state: {}", state);
@@ -882,15 +1034,20 @@ impl GoogleClient {
                     return Err(AppError::External("File processing failed".to_string()));
                 }
             }
-            
+
             attempts += 1;
             if attempts < max_attempts {
-                debug!("Waiting for file to become active... (attempt {}/{})", attempts, max_attempts);
+                debug!(
+                    "Waiting for file to become active... (attempt {}/{})",
+                    attempts, max_attempts
+                );
                 sleep(Duration::from_secs(1)).await;
             }
         }
-        
-        Err(AppError::External("File processing timed out - file did not become active within 30 seconds".to_string()))
+
+        Err(AppError::External(
+            "File processing timed out - file did not become active within 30 seconds".to_string(),
+        ))
     }
 
     /// Generate content from multimodal inputs (video + text)
@@ -902,7 +1059,7 @@ impl GoogleClient {
         prompt: &str,
         system_prompt: Option<String>,
         temperature: f32,
-        api_key: &str
+        api_key: &str,
     ) -> Result<GoogleChatResponse, AppError> {
         // NOTE on Video Frame Rate and Processing:
         // The Gemini API processes videos by sampling them at a fixed rate (approximately 1 frame per second),
@@ -912,29 +1069,30 @@ impl GoogleClient {
         // potentially large files, which does not support this parameter. Therefore, we cannot control the FPS sent to Gemini.
         // Create system instruction if provided
         let system_instruction = system_prompt.map(|prompt| GoogleSystemInstruction {
-            parts: vec![GooglePart { text: Some(prompt), ..Default::default() }],
+            parts: vec![GooglePart {
+                text: Some(prompt),
+                ..Default::default()
+            }],
         });
-        
+
         // Create contents with file data and text prompt
-        let contents = vec![
-            GoogleContent {
-                role: "user".to_string(),
-                parts: vec![
-                    GooglePart {
-                        file_data: Some(GoogleFileData {
-                            mime_type: mime_type.to_string(),
-                            file_uri: file_uri.to_string(),
-                        }),
-                        ..Default::default()
-                    },
-                    GooglePart {
-                        text: Some(prompt.to_string()),
-                        ..Default::default()
-                    },
-                ],
-            },
-        ];
-        
+        let contents = vec![GoogleContent {
+            role: "user".to_string(),
+            parts: vec![
+                GooglePart {
+                    file_data: Some(GoogleFileData {
+                        mime_type: mime_type.to_string(),
+                        file_uri: file_uri.to_string(),
+                    }),
+                    ..Default::default()
+                },
+                GooglePart {
+                    text: Some(prompt.to_string()),
+                    ..Default::default()
+                },
+            ],
+        }];
+
         // Create generation config
         let generation_config = Some(GoogleGenerationConfig {
             temperature: Some(temperature),
@@ -945,7 +1103,7 @@ impl GoogleClient {
             stop_sequences: None,
             thinking_config: None,
         });
-        
+
         // Create request
         let request = GoogleChatRequest {
             contents,
@@ -954,7 +1112,7 @@ impl GoogleClient {
             safety_settings: None,
             stream: None,
         };
-        
+
         // Use the shared helper to execute the request
         self.execute_generate_content(model, request, api_key).await
     }
@@ -969,7 +1127,7 @@ impl GoogleClient {
         prompt: &str,
         system_prompt: Option<String>,
         temperature: f32,
-        api_key: &str
+        api_key: &str,
     ) -> Result<GoogleChatResponse, AppError> {
         // Create the file part with video metadata including FPS
         let file_part = GooglePart {
@@ -977,30 +1135,31 @@ impl GoogleClient {
                 file_uri: file_uri.to_string(),
                 mime_type: mime_type.to_string(),
             }),
-            video_metadata: Some(GoogleVideoMetadata {
-                fps: Some(fps),
-            }),
+            video_metadata: Some(GoogleVideoMetadata { fps: Some(fps) }),
             ..Default::default()
         };
-        
+
         let text_part = GooglePart {
             text: Some(prompt.to_string()),
             ..Default::default()
         };
-        
+
         // Create user content
         let user_content = GoogleContent {
             role: "user".to_string(),
             parts: vec![file_part, text_part],
         };
-        
+
         let contents = vec![user_content];
-        
+
         // Create system instruction if provided
         let system_instruction = system_prompt.map(|prompt| GoogleSystemInstruction {
-            parts: vec![GooglePart { text: Some(prompt), ..Default::default() }],
+            parts: vec![GooglePart {
+                text: Some(prompt),
+                ..Default::default()
+            }],
         });
-        
+
         // Create generation config
         let generation_config = Some(GoogleGenerationConfig {
             temperature: Some(temperature),
@@ -1011,7 +1170,7 @@ impl GoogleClient {
             stop_sequences: None,
             thinking_config: None,
         });
-        
+
         let request = GoogleChatRequest {
             contents,
             system_instruction,
@@ -1019,7 +1178,7 @@ impl GoogleClient {
             safety_settings: None,
             stream: None,
         };
-        
+
         // Use the shared helper to execute the request
         self.execute_generate_content(model, request, api_key).await
     }
@@ -1029,11 +1188,12 @@ impl GoogleClient {
         &self,
         model: &str,
         request_payload: GoogleChatRequest,
-        api_key: &str
+        api_key: &str,
     ) -> Result<GoogleChatResponse, AppError> {
         let url = format!("{}/models/{}:generateContent", self.base_url, model);
-        
-        let response = self.client
+
+        let response = self
+            .client
             .post(&url)
             .header("x-goog-api-key", api_key)
             .header("Content-Type", "application/json")
@@ -1041,27 +1201,33 @@ impl GoogleClient {
             .send()
             .await
             .map_err(|e| AppError::External(format!("Google request failed: {}", e)))?;
-        
+
         let status = response.status();
-        
+
         if !status.is_success() {
-            let error_text = response.text().await
+            let error_text = response
+                .text()
+                .await
                 .unwrap_or_else(|_| "Failed to get error response".to_string());
             return Err(AppError::External(format!(
                 "Google request failed with status {}: {}",
                 status, error_text
             )));
         }
-        
-        let response_text = response.text().await
+
+        let response_text = response
+            .text()
+            .await
             .map_err(|e| AppError::Internal(format!("Failed to get response text: {}", e)))?;
-        
-        let result = serde_json::from_str::<GoogleChatResponse>(&response_text)
-            .map_err(|e| {
-                error!("Google deserialization failed: {} | Response: {}", e, response_text);
-                AppError::Internal(format!("Google deserialization failed: {}", e))
-            })?;
-        
+
+        let result = serde_json::from_str::<GoogleChatResponse>(&response_text).map_err(|e| {
+            error!(
+                "Google deserialization failed: {} | Response: {}",
+                e, response_text
+            );
+            AppError::Internal(format!("Google deserialization failed: {}", e))
+        })?;
+
         Ok(result)
     }
 
@@ -1075,7 +1241,7 @@ impl GoogleClient {
         prompt_text: &str,
         system_prompt: Option<String>,
         temperature: f32,
-        api_key: &str
+        api_key: &str,
     ) -> Result<GoogleChatResponse, AppError> {
         let encoded_video = general_purpose::STANDARD.encode(video_data);
 
@@ -1084,9 +1250,7 @@ impl GoogleClient {
                 mime_type: mime_type.to_string(),
                 data: encoded_video,
             }),
-            video_metadata: Some(GoogleVideoMetadata {
-                fps: Some(fps),
-            }),
+            video_metadata: Some(GoogleVideoMetadata { fps: Some(fps) }),
             ..Default::default()
         };
 
@@ -1097,7 +1261,10 @@ impl GoogleClient {
 
         // Create system instruction if provided
         let system_instruction = system_prompt.map(|prompt| GoogleSystemInstruction {
-            parts: vec![GooglePart { text: Some(prompt), ..Default::default() }],
+            parts: vec![GooglePart {
+                text: Some(prompt),
+                ..Default::default()
+            }],
         });
 
         // Create generation config
@@ -1122,7 +1289,8 @@ impl GoogleClient {
             stream: None,
         };
 
-        self.execute_generate_content(model, request_payload, api_key).await
+        self.execute_generate_content(model, request_payload, api_key)
+            .await
     }
 }
 
@@ -1133,19 +1301,24 @@ impl UsageExtractor for GoogleClient {
 
     /// Extract usage information from Google HTTP response body (non-streaming JSON format)
     /// Supports usageMetadata: {promptTokenCount, candidatesTokenCount, cachedContentTokenCount}
-    async fn extract_from_response_body(&self, body: &[u8], model_id: &str) -> Result<ProviderUsage, AppError> {
+    async fn extract_from_response_body(
+        &self,
+        body: &[u8],
+        model_id: &str,
+    ) -> Result<ProviderUsage, AppError> {
         let body_str = std::str::from_utf8(body)
             .map_err(|e| AppError::InvalidArgument(format!("Invalid UTF-8: {}", e)))?;
-        
+
         // Handle regular JSON response
         let json_value: serde_json::Value = serde_json::from_str(body_str)
             .map_err(|e| AppError::External(format!("Failed to parse JSON: {}", e)))?;
-        
+
         // Extract usage from parsed JSON
         self.extract_usage_from_json(&json_value, model_id)
-            .ok_or_else(|| AppError::External("Failed to extract usage from Google response".to_string()))
+            .ok_or_else(|| {
+                AppError::External("Failed to extract usage from Google response".to_string())
+            })
     }
-    
 }
 
 impl Clone for GoogleClient {

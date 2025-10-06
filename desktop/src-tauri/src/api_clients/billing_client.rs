@@ -1,6 +1,5 @@
 use crate::api_clients::error_handling::handle_api_error;
-use crate::auth::device_id_manager;
-use crate::auth::token_manager::TokenManager;
+use crate::auth::{header_utils, token_manager::TokenManager};
 use crate::commands::billing_commands::{
     BillingDashboardData, BillingPortalResponse, CreditBalanceResponse, CreditHistoryResponse,
     CreditStats, CustomerBillingInfo, DetailedUsageRecord, DetailedUsageResponse, FeeTierConfig,
@@ -84,7 +83,11 @@ pub struct BillingClient {
 
 impl BillingClient {
     /// Create a new BillingClient instance
-    pub fn new(server_url: String, token_manager: Arc<TokenManager>, app_handle: tauri::AppHandle) -> Self {
+    pub fn new(
+        server_url: String,
+        token_manager: Arc<TokenManager>,
+        app_handle: tauri::AppHandle,
+    ) -> Self {
         let http_client = crate::api_clients::client_factory::create_http_client();
         Self {
             http_client,
@@ -129,10 +132,8 @@ impl BillingClient {
             }
         };
 
-        let device_id = device_id_manager::get_or_create(&self.app_handle)?;
-        request_builder = request_builder
-            .header("Authorization", format!("Bearer {}", token))
-            .header("x-device-id", device_id);
+        request_builder =
+            header_utils::apply_auth_headers(request_builder, &token, &self.app_handle)?;
 
         if let Some(body_data) = body {
             request_builder = request_builder

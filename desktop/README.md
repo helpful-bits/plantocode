@@ -2,6 +2,22 @@
 
 This is the desktop version of Vibe Manager, built using Tauri.
 
+## Terminal Restoration
+
+The desktop app features robust terminal restoration that preserves all output when minimizing or switching windows. The system uses a DB-authoritative persistence model with UI rehydration:
+
+- **Lossless Persistence**: All terminal output is persisted to SQLite using blocking sends to prevent data loss
+- **DB Delta Catch-up**: On window restore/focus, the app fetches missed output from the database
+- **Smart UI Suspension**: Terminal rendering is suspended when hidden to reduce CPU usage
+- **Automatic Reflow**: Terminal content is reflowed and repainted after window restoration
+
+To enable development trace logs for terminal restoration debugging:
+```bash
+NODE_ENV=development npm run dev
+```
+
+For testing terminal restoration, run: `./test-terminal-restoration.sh`
+
 ## Architecture
 
 The desktop app consists of:

@@ -1,5 +1,5 @@
-use actix_web::{web, HttpResponse, Result};
-use log::{info, error};
+use actix_web::{HttpResponse, Result, web};
+use log::{error, info};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -33,8 +33,12 @@ struct DefaultSystemPromptResponse {
     pub updated_at: i64,
 }
 
-impl From<crate::db::repositories::system_prompts_repository::DefaultSystemPrompt> for DefaultSystemPromptResponse {
-    fn from(prompt: crate::db::repositories::system_prompts_repository::DefaultSystemPrompt) -> Self {
+impl From<crate::db::repositories::system_prompts_repository::DefaultSystemPrompt>
+    for DefaultSystemPromptResponse
+{
+    fn from(
+        prompt: crate::db::repositories::system_prompts_repository::DefaultSystemPrompt,
+    ) -> Self {
         Self {
             id: prompt.id,
             task_type: prompt.task_type,
@@ -55,7 +59,10 @@ pub async fn get_default_system_prompts(
 
     match prompts_repo.get_all_default_prompts().await {
         Ok(prompts) => {
-            info!("Successfully retrieved {} default system prompts", prompts.len());
+            info!(
+                "Successfully retrieved {} default system prompts",
+                prompts.len()
+            );
             // Transform to camelCase format for frontend compatibility
             let response_prompts: Vec<DefaultSystemPromptResponse> = prompts
                 .into_iter()
@@ -65,7 +72,10 @@ pub async fn get_default_system_prompts(
         }
         Err(e) => {
             error!("Failed to fetch default system prompts: {}", e);
-            Err(AppError::Database(format!("Failed to fetch default system prompts: {}", e)))
+            Err(AppError::Database(format!(
+                "Failed to fetch default system prompts: {}",
+                e
+            )))
         }
     }
 }
@@ -76,25 +86,43 @@ pub async fn get_default_system_prompt_by_task_type(
     prompts_repo: web::Data<Arc<SystemPromptsRepository>>,
 ) -> Result<HttpResponse, AppError> {
     let task_type = path.into_inner();
-    info!("Fetching default system prompt for task type: {}", task_type);
+    info!(
+        "Fetching default system prompt for task type: {}",
+        task_type
+    );
 
-    match prompts_repo.get_default_prompt_by_task_type(&task_type).await {
+    match prompts_repo
+        .get_default_prompt_by_task_type(&task_type)
+        .await
+    {
         Ok(Some(prompt)) => {
-            info!("Successfully retrieved default system prompt for task type: {}", task_type);
+            info!(
+                "Successfully retrieved default system prompt for task type: {}",
+                task_type
+            );
             // Transform to camelCase format for frontend compatibility
             let response_prompt = DefaultSystemPromptResponse::from(prompt);
             Ok(HttpResponse::Ok().json(response_prompt))
         }
         Ok(None) => {
-            info!("No default system prompt found for task type: {}", task_type);
+            info!(
+                "No default system prompt found for task type: {}",
+                task_type
+            );
             Ok(HttpResponse::NotFound().json(serde_json::json!({
                 "error": "not_found",
                 "message": format!("No default system prompt found for task type: {}", task_type)
             })))
         }
         Err(e) => {
-            error!("Failed to fetch default system prompt for task type {}: {}", task_type, e);
-            Err(AppError::Database(format!("Failed to fetch default system prompt: {}", e)))
+            error!(
+                "Failed to fetch default system prompt for task type {}: {}",
+                task_type, e
+            );
+            Err(AppError::Database(format!(
+                "Failed to fetch default system prompt: {}",
+                e
+            )))
         }
     }
 }

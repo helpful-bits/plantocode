@@ -1,48 +1,80 @@
 import SwiftUI
 import Core
 
+/*
+ AuthFlowCoordinator routes:
+
+ First-time: loading → regionSelection → login → deviceSelection → workspace
+ Returning (valid token): loading (restore connections) → workspace OR deviceSelection
+ Logout: → login (region preserved)
+ Region change: next route derives from region/auth state
+
+ Coordinator drives screen transitions; feature views avoid hard navigation.
+*/
+
 public struct AuthFlowCoordinator: View {
   @ObservedObject private var appState = AppState.shared
-  @State private var isChecking = true
+  @StateObject private var multiConnectionManager = MultiConnectionManager.shared
+
+  private enum FlowRoute {
+    case loading, regionSelection, login, deviceSelection, workspace
+  }
+  @State private var route: FlowRoute = .loading
 
   public init() {}
 
   public var body: some View {
     Group {
-      if isChecking {
-        ProgressView("Loading…")
-          .transition(.opacity.animation(.easeInOut))
-      } else if appState.activeRegion == nil {
-        ServerSelectionView()
-          .transition(.opacity.animation(.easeInOut))
-      } else if !appState.isAuthenticated {
+      switch route {
+      case .loading:
+        ProgressView()
+      case .regionSelection:
+        ServerSelectionView(isModal: false)
+      case .login:
         LoginView()
-          .transition(.opacity.animation(.easeInOut))
-      } else if appState.selectedDeviceId == nil && !appState.isInMainApp {
+      case .deviceSelection:
         DeviceSelectionView()
-          .transition(.opacity.animation(.easeInOut))
-      } else {
-        TaskView()
-          .transition(.opacity.animation(.easeInOut))
+      case .workspace:
+        SessionWorkspaceView(autoPresentDeviceSelection: false)
       }
     }
+    .transition(.opacity)
+    .animation(.easeInOut(duration: 0.2), value: route)
     .onAppear {
-      Task {
-        await checkInitialState()
+      Task { await bootstrapAndRoute() }
+    }
+    .onChange(of: appState.hasSelectedRegionOnce) { _ in withAnimation { updateRoute() } }
+    .onChange(of: appState.isAuthenticated) { _ in withAnimation { updateRoute() } }
+    .onChange(of: multiConnectionManager.activeDeviceId) { _ in withAnimation { updateRoute() } }
+    .onChange(of: multiConnectionManager.connectionStates) { _ in withAnimation { updateRoute() } }
+    .onChange(of: appState.activeRegion) { newRegion in
+      if newRegion != nil {
+        withAnimation { updateRoute() }
       }
     }
   }
 
-  private func checkInitialState() async {
-    // Check if region is already selected
-    if await appState.getActiveRegion() == nil {
-      withAnimation { isChecking = false }
-      return
+  @MainActor
+  private func bootstrapAndRoute() async {
+    withAnimation { route = .loading }
+    while appState.authBootstrapCompleted == false {
+      try? await Task.sleep(nanoseconds: 100_000_000)
     }
+    await multiConnectionManager.restoreConnections()
+    withAnimation { updateRoute() }
+  }
 
-    // If authenticated but no device selected, stay on device selection
-    // If already in main app, stay there
-    withAnimation { isChecking = false }
+  @MainActor
+  private func updateRoute() {
+    guard appState.hasSelectedRegionOnce else { route = .regionSelection; return }
+    guard appState.isAuthenticated else { route = .login; return }
+    if let id = multiConnectionManager.activeDeviceId,
+       let state = multiConnectionManager.connectionStates[id],
+       state.isConnected {
+      route = .workspace
+    } else {
+      route = .deviceSelection
+    }
   }
 }
 

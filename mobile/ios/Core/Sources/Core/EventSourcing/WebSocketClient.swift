@@ -3,7 +3,9 @@ import Foundation
 import Combine
 import OSLog
 import Network
+#if canImport(UIKit)
 import UIKit
+#endif
 
 // MARK: - Task Description Types
 
@@ -62,6 +64,9 @@ public class WebSocketClient: NSObject, ObservableObject {
     private var connectedAt: Date?
     private var metrics = ConnectionQualityMetrics()
 
+    // Auto-connect control
+    public var autoConnect = false
+
     // Network monitoring
     private let networkMonitor = NWPathMonitor()
     private let networkQueue = DispatchQueue(label: "NetworkMonitor")
@@ -116,7 +121,8 @@ public class WebSocketClient: NSObject, ObservableObject {
         config.timeoutIntervalForRequest = 30
         config.timeoutIntervalForResource = 0
 
-        self.urlSession = URLSession(configuration: config, delegate: sessionDelegate, delegateQueue: nil)
+        let delegate = sessionDelegate ?? CertificatePinningManager.shared.createURLSessionDelegate(endpointType: .relay)
+        self.urlSession = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
 
         super.init()
 
@@ -156,7 +162,8 @@ public class WebSocketClient: NSObject, ObservableObject {
         config.timeoutIntervalForResource = 0
 
         urlSession.invalidateAndCancel()
-        urlSession = URLSession(configuration: config, delegate: sessionDelegate, delegateQueue: nil)
+        let delegate = sessionDelegate ?? CertificatePinningManager.shared.createURLSessionDelegate(endpointType: .relay)
+        urlSession = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
     }
 
     /// Disconnect from the WebSocket endpoint
@@ -259,21 +266,28 @@ public class WebSocketClient: NSObject, ObservableObject {
     // MARK: - Private Methods
 
     private func establishConnection() {
-        var request = URLRequest(url: serverURL)
-        request.setValue("websocket", forHTTPHeaderField: "Upgrade")
-        request.setValue("Upgrade", forHTTPHeaderField: "Connection")
-        request.setValue("13", forHTTPHeaderField: "Sec-WebSocket-Version")
+        // Use Config.deviceLinkWebSocketURL for the WebSocket URL
+        let wsURL = Config.deviceLinkWebSocketURL
+        var request = URLRequest(url: wsURL)
 
-        webSocketTask = urlSession.webSocketTask(with: request)
-        webSocketTask?.resume()
+        // Set handshake headers
+        Task {
+            let token = await AuthService.shared.getValidAccessToken() ?? ""
+            let deviceId = DeviceManager.shared.getOrCreateDeviceID()
 
-        // Send authentication message immediately after connection
-        sendAuthenticationMessage()
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.setValue(deviceId, forHTTPHeaderField: "X-Device-ID")
+            request.setValue(deviceId, forHTTPHeaderField: "X-Token-Binding")
+            request.setValue("mobile", forHTTPHeaderField: "X-Client-Type")
 
-        startReceiving()
-        startHeartbeat()
+            webSocketTask = urlSession.webSocketTask(with: request)
+            webSocketTask?.resume()
 
-        logger.debug("WebSocket connection initiated to: \(self.serverURL)")
+            startReceiving()
+            startHeartbeat()
+
+            logger.debug("Connecting device-link WebSocket: \(wsURL)")
+        }
     }
 
     private func startReceiving() {
@@ -359,7 +373,7 @@ public class WebSocketClient: NSObject, ObservableObject {
     }
 
     private func handleConnectedMessage(_ message: ConnectedMessage) {
-        logger.info("WebSocket connection confirmed: \(message.sessionId)")
+        logger.info("WebSocket upgrade success (device-link): \(message.sessionId)")
 
         DispatchQueue.main.async {
             let connectionResult = ConnectionHandshake(sessionId: message.sessionId, clientId: message.deviceId, transport: "websocket")

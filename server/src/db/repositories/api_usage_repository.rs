@@ -1,15 +1,15 @@
-use uuid::Uuid;
-use sqlx::{PgPool, query, query_as, Row, FromRow};
+use crate::db::pool_ext::AcquireRetry;
+use crate::error::AppError;
 use bigdecimal::BigDecimal;
 use chrono::{DateTime, Utc};
-use crate::error::AppError;
-use std::str::FromStr;
 use log::debug;
-use serde_json::json;
 use serde::Serialize;
-use tokio::sync::OnceCell;
+use serde_json::json;
+use sqlx::{FromRow, PgPool, Row, query, query_as};
+use std::str::FromStr;
 use std::sync::Arc;
-
+use tokio::sync::OnceCell;
+use uuid::Uuid;
 
 #[derive(Debug)]
 pub struct ApiUsageReport {
@@ -88,12 +88,17 @@ impl ApiUsageRepository {
     pub fn new(db_pool: PgPool) -> Self {
         Self { db_pool }
     }
-    
+
     // Removed get_model_pricing and get_models_pricing methods
     // They are no longer needed as pricing is obtained directly from model repository
 
     /// Records API usage for billing purposes with executor
-    pub async fn record_usage_with_executor(&self, entry: ApiUsageEntryDto, cost: BigDecimal, executor: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<ApiUsageRecord, AppError> {
+    pub async fn record_usage_with_executor(
+        &self,
+        entry: ApiUsageEntryDto,
+        cost: BigDecimal,
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<ApiUsageRecord, AppError> {
         let metadata_to_store = match entry.metadata {
             Some(serde_json::Value::Object(ref map)) if map.is_empty() => None,
             other => other,
@@ -172,23 +177,41 @@ impl ApiUsageRepository {
         )
         .execute(&mut **executor)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to update API usage with metadata: {}", e)))?;
-        
+        .map_err(|e| {
+            AppError::Database(format!("Failed to update API usage with metadata: {}", e))
+        })?;
+
         if rows_updated.rows_affected() == 0 {
-            return Err(AppError::NotFound(format!("No API usage record found for request_id: {}", request_id)));
+            return Err(AppError::NotFound(format!(
+                "No API usage record found for request_id: {}",
+                request_id
+            )));
         }
-        
-        debug!("Updated API usage record for request {} with metadata: tokens_input={}, tokens_output={}, cache_write_tokens={}, cache_read_tokens={}, cost={}, metadata_present={}", 
-               request_id, tokens_input, tokens_output, cache_write_tokens, cache_read_tokens, final_cost, metadata.is_some());
-        
+
+        debug!(
+            "Updated API usage record for request {} with metadata: tokens_input={}, tokens_output={}, cache_write_tokens={}, cache_read_tokens={}, cost={}, metadata_present={}",
+            request_id,
+            tokens_input,
+            tokens_output,
+            cache_write_tokens,
+            cache_read_tokens,
+            final_cost,
+            metadata.is_some()
+        );
+
         Ok(())
     }
 
-
     /// Records API usage for billing purposes (private - use record_usage_with_executor in transactions)
-    async fn _record_usage(&self, entry: ApiUsageEntryDto, cost: BigDecimal) -> Result<ApiUsageRecord, AppError> {
+    async fn _record_usage(
+        &self,
+        entry: ApiUsageEntryDto,
+        cost: BigDecimal,
+    ) -> Result<ApiUsageRecord, AppError> {
         let mut tx = self.db_pool.begin().await.map_err(AppError::from)?;
-        let record = self.record_usage_with_executor(entry, cost, &mut tx).await?;
+        let record = self
+            .record_usage_with_executor(entry, cost, &mut tx)
+            .await?;
         tx.commit().await.map_err(AppError::from)?;
         Ok(record)
     }
@@ -200,19 +223,21 @@ impl ApiUsageRepository {
         start_date: chrono::DateTime<chrono::Utc>,
         end_date: chrono::DateTime<chrono::Utc>,
     ) -> Result<(i64, i64, BigDecimal), AppError> {
-        let mut tx = self.db_pool.begin().await.map_err(AppError::from)?;
-        
+        let mut tx = AcquireRetry::begin_with_retry(&self.db_pool, 3, 100)
+            .await
+            .map_err(AppError::from)?;
+
         let result = sqlx::query(
             r#"
-            SELECT 
+            SELECT
                 COALESCE(SUM(tokens_input), 0) as total_input,
-                COALESCE(SUM(tokens_output), 0) as total_output, 
+                COALESCE(SUM(tokens_output), 0) as total_output,
                 COALESCE(SUM(cache_write_tokens), 0) as total_cache_write,
                 COALESCE(SUM(cache_read_tokens), 0) as total_cache_read,
                 COALESCE(SUM(cost), 0) as total_cost
             FROM api_usage
             WHERE user_id = $1 AND timestamp BETWEEN $2 AND $3
-            "#
+            "#,
         )
         .bind(user_id)
         .bind(start_date)
@@ -220,7 +245,7 @@ impl ApiUsageRepository {
         .fetch_one(&mut *tx)
         .await
         .map_err(|e| AppError::Database(format!("Failed to get user usage: {}", e)))?;
-        
+
         tx.commit().await.map_err(AppError::from)?;
 
         let total_input: i64 = result.get("total_input");
@@ -229,7 +254,7 @@ impl ApiUsageRepository {
 
         Ok((total_input, total_output, total_cost))
     }
-    
+
     /// Gets usage data for a specific time period
     pub async fn get_usage_for_period(
         &self,
@@ -237,11 +262,13 @@ impl ApiUsageRepository {
         start_date: Option<DateTime<Utc>>,
         end_date: Option<DateTime<Utc>>,
     ) -> Result<ApiUsageReport, AppError> {
-        let mut tx = self.db_pool.begin().await.map_err(AppError::from)?;
-        
+        let mut tx = AcquireRetry::begin_with_retry(&self.db_pool, 3, 100)
+            .await
+            .map_err(AppError::from)?;
+
         let result = sqlx::query(
             r#"
-            SELECT 
+            SELECT
                 COALESCE(SUM(tokens_input), 0) as tokens_input,
                 COALESCE(SUM(tokens_output), 0) as tokens_output,
                 COALESCE(SUM(cache_write_tokens), 0) as cache_write_tokens,
@@ -251,7 +278,7 @@ impl ApiUsageRepository {
             WHERE user_id = $1
               AND ($2::timestamptz IS NULL OR timestamp >= $2)
               AND ($3::timestamptz IS NULL OR timestamp <= $3)
-            "#
+            "#,
         )
         .bind(user_id)
         .bind(start_date)
@@ -259,7 +286,7 @@ impl ApiUsageRepository {
         .fetch_one(&mut *tx)
         .await
         .map_err(|e| AppError::Database(format!("Failed to get usage for period: {}", e)))?;
-        
+
         tx.commit().await.map_err(AppError::from)?;
 
         Ok(ApiUsageReport {
@@ -276,8 +303,12 @@ impl ApiUsageRepository {
         start_date: DateTime<Utc>,
         end_date: DateTime<Utc>,
     ) -> Result<Vec<DetailedUsageRecord>, AppError> {
-        let mut tx = self.db_pool.begin().await.map_err(AppError::from)?;
-        let result = self.get_detailed_usage(user_id, start_date, end_date, &mut tx).await?;
+        let mut tx = AcquireRetry::begin_with_retry(&self.db_pool, 3, 100)
+            .await
+            .map_err(AppError::from)?;
+        let result = self
+            .get_detailed_usage(user_id, start_date, end_date, &mut tx)
+            .await?;
         tx.commit().await.map_err(AppError::from)?;
         Ok(result)
     }
@@ -291,11 +322,17 @@ impl ApiUsageRepository {
     ) -> Result<DetailedUsageResponse, AppError> {
         // Use the new efficient processing service instead of complex SQL
         use crate::services::usage_processing_service::UsageProcessingService;
-        
+
         // We need system pool for models table access - get it from the handler
         // For now, we'll pass the same pool for both until we can get system pool access
-        let processing_service = UsageProcessingService::new(Arc::new(self.db_pool.clone()), Arc::new(self.db_pool.clone())).await?;
-        processing_service.get_detailed_usage(user_id, start_date, end_date).await
+        let processing_service = UsageProcessingService::new(
+            Arc::new(self.db_pool.clone()),
+            Arc::new(self.db_pool.clone()),
+        )
+        .await?;
+        processing_service
+            .get_detailed_usage(user_id, start_date, end_date)
+            .await
     }
 
     /// Gets detailed usage data with pre-calculated summary totals using system pool for models
@@ -308,9 +345,15 @@ impl ApiUsageRepository {
     ) -> Result<DetailedUsageResponse, AppError> {
         // Use the new efficient processing service instead of complex SQL
         use crate::services::usage_processing_service::UsageProcessingService;
-        
-        let processing_service = UsageProcessingService::new(Arc::new(self.db_pool.clone()), Arc::new(system_pool.clone())).await?;
-        processing_service.get_detailed_usage(user_id, start_date, end_date).await
+
+        let processing_service = UsageProcessingService::new(
+            Arc::new(self.db_pool.clone()),
+            Arc::new(system_pool.clone()),
+        )
+        .await?;
+        processing_service
+            .get_detailed_usage(user_id, start_date, end_date)
+            .await
     }
 
     /// Gets detailed usage data with model and provider information
@@ -358,18 +401,21 @@ impl ApiUsageRepository {
         .fetch_all(&mut **executor)
         .await
         .map_err(|e| AppError::Database(format!("Failed to get detailed usage: {}", e)))?;
-        
-        let results = rows.into_iter().map(|row| DetailedUsageRecord {
-            service_name: row.service_name.unwrap_or_default(),
-            model_display_name: row.model_display_name.unwrap_or_default(),
-            provider_code: row.provider_code.unwrap_or_default(),
-            total_cost: row.total_cost.unwrap_or(0.0),
-            total_requests: row.total_requests.unwrap_or(0),
-            total_input_tokens: row.total_input_tokens.unwrap_or(0),
-            total_output_tokens: row.total_output_tokens.unwrap_or(0),
-            total_cached_tokens: row.total_cached_tokens.unwrap_or(0),
-            total_duration_ms: row.total_duration_ms.unwrap_or(0),
-        }).collect();
+
+        let results = rows
+            .into_iter()
+            .map(|row| DetailedUsageRecord {
+                service_name: row.service_name.unwrap_or_default(),
+                model_display_name: row.model_display_name.unwrap_or_default(),
+                provider_code: row.provider_code.unwrap_or_default(),
+                total_cost: row.total_cost.unwrap_or(0.0),
+                total_requests: row.total_requests.unwrap_or(0),
+                total_input_tokens: row.total_input_tokens.unwrap_or(0),
+                total_output_tokens: row.total_output_tokens.unwrap_or(0),
+                total_cached_tokens: row.total_cached_tokens.unwrap_or(0),
+                total_duration_ms: row.total_duration_ms.unwrap_or(0),
+            })
+            .collect();
 
         Ok(results)
     }
@@ -382,10 +428,10 @@ impl ApiUsageRepository {
         service_filter: Option<&str>,
     ) -> Result<Vec<sqlx::postgres::PgRow>, AppError> {
         let (query_sql, bind_values) = self.build_debug_query(limit, user_filter, service_filter);
-        
+
         let mut query = sqlx::query(&query_sql);
-        
-        // Bind values in order  
+
+        // Bind values in order
         for value in bind_values {
             match value {
                 DebugBindValue::Uuid(v) => query = query.bind(v),
@@ -393,10 +439,12 @@ impl ApiUsageRepository {
                 DebugBindValue::I64(v) => query = query.bind(v),
             }
         }
-        
-        let rows = query.fetch_all(&self.db_pool).await
+
+        let rows = query
+            .fetch_all(&self.db_pool)
+            .await
             .map_err(|e| AppError::Database(format!("Failed to fetch usage debug data: {}", e)))?;
-        
+
         Ok(rows)
     }
 
@@ -410,29 +458,29 @@ impl ApiUsageRepository {
         let mut bind_values = Vec::new();
         let mut where_clauses = Vec::new();
         let mut bind_index = 1;
-        
+
         // Build WHERE clause
         if let Some(user_id) = user_filter {
             where_clauses.push(format!("user_id = ${}", bind_index));
             bind_values.push(DebugBindValue::Uuid(user_id));
             bind_index += 1;
         }
-        
+
         if let Some(service_name) = service_filter {
             where_clauses.push(format!("service_name ILIKE ${}", bind_index));
             bind_values.push(DebugBindValue::String(format!("%{}%", service_name)));
             bind_index += 1;
         }
-        
+
         let where_clause = if where_clauses.is_empty() {
             "".to_string()
         } else {
             format!("WHERE {}", where_clauses.join(" AND "))
         };
-        
+
         bind_values.push(DebugBindValue::I64(limit));
         let limit_bind = format!("${}", bind_index);
-        
+
         let query = format!(
             r#"
             WITH usage_records AS (
@@ -488,13 +536,11 @@ impl ApiUsageRepository {
             CROSS JOIN debug_summary ds
             ORDER BY ur.timestamp DESC
             "#,
-            where_clause,
-            limit_bind
+            where_clause, limit_bind
         );
-        
+
         (query, bind_values)
     }
-
 }
 
 #[derive(Debug)]

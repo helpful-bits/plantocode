@@ -528,10 +528,7 @@ private class JailbreakDetector {
     }
 
     private func checkFork() -> Bool {
-        let pid = fork()
-        if pid >= 0 {
-            return true
-        }
+        // fork() is unavailable on iOS; treat as not jailbroken.
         return false
     }
 

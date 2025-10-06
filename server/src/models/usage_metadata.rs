@@ -6,11 +6,11 @@ pub struct UsageMetadata {
     // Reasoning tokens (for o1, DeepSeek, etc.)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_tokens: Option<i64>,
-    
+
     // Google's version of reasoning tokens
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thoughts_tokens: Option<i64>,
-    
+
     // Multimodal tokens
     #[serde(skip_serializing_if = "Option::is_none")]
     pub audio_tokens_input: Option<i64>,
@@ -26,29 +26,29 @@ pub struct UsageMetadata {
     pub text_tokens_input: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text_tokens_output: Option<i64>,
-    
+
     // Cache tokens details
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cache_creation_input_tokens: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cache_read_input_tokens: Option<i64>,
-    
+
     // Prediction tokens (for speculative decoding)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub accepted_prediction_tokens: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rejected_prediction_tokens: Option<i64>,
-    
+
     // Provider cost details
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_byok: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub upstream_inference_cost: Option<f64>,
-    
+
     // Token modalities (Google)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_tokens_details: Option<Vec<TokenModalityDetail>>,
-    
+
     // System info
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_version: Option<String>,
@@ -58,7 +58,7 @@ pub struct UsageMetadata {
     pub response_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
-    
+
     // Raw provider-specific data for future fields
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider_specific: Option<serde_json::Value>,
