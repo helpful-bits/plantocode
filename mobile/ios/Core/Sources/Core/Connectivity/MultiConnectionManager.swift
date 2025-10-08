@@ -201,6 +201,18 @@ public final class MultiConnectionManager: ObservableObject {
         Array(storage.keys)
     }
 
+    /// Check if the active device is connected
+    public var isActiveDeviceConnected: Bool {
+        guard let activeId = activeDeviceId,
+              let state = connectionStates[activeId] else {
+            return false
+        }
+        if case .connected(_) = state {
+            return true
+        }
+        return false
+    }
+
     // MARK: - Private Helper Methods
 
     private func getAuthToken() async -> String? {
@@ -287,7 +299,7 @@ public enum MultiConnectionError: Error, LocalizedError {
 
 extension Publisher {
     /// Convert Publisher to async/await
-    func asyncValue() async throws -> Output {
+    public func asyncValue() async throws -> Output {
         try await withCheckedThrowingContinuation { continuation in
             var cancellable: AnyCancellable?
             cancellable = self

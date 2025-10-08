@@ -195,3 +195,33 @@ pub fn graceful_exit_terminal_command(app: AppHandle, session_id: String) -> Res
     let mgr = app.state::<std::sync::Arc<crate::services::TerminalManager>>();
     mgr.graceful_exit(&session_id).map_err(|e| e.to_string())
 }
+
+#[command]
+pub async fn get_available_shells_command(_app_handle: AppHandle) -> Result<Vec<String>, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let candidates = vec!["pwsh.exe", "powershell.exe", "cmd.exe"];
+        let mut found = Vec::new();
+        for c in candidates {
+            if which::which(c).is_ok() {
+                found.push(c.to_string());
+            }
+        }
+        found.sort();
+        found.dedup();
+        Ok(found)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let candidates = vec!["/bin/zsh", "/bin/bash", "/usr/local/bin/fish", "/opt/homebrew/bin/fish"];
+        let mut found = Vec::new();
+        for c in candidates {
+            if std::path::Path::new(c).exists() {
+                found.push(c.to_string());
+            }
+        }
+        found.sort();
+        found.dedup();
+        Ok(found)
+    }
+}

@@ -14,12 +14,12 @@ public enum Theme {
     public enum Colors {
         public static let background = DynamicColorPair(
             light: Color(red: 1.0, green: 1.0, blue: 1.0),
-            dark: Color(red: 0.17, green: 0.20, blue: 0.26)
+            dark: Color(red: 0.025, green: 0.079, blue: 0.086)
         )
 
         public static let card = DynamicColorPair(
-            light: Color(red: 0.99, green: 0.99, blue: 0.99),
-            dark: Color(red: 0.22, green: 0.25, blue: 0.32)
+            light: Color(red: 0.987, green: 0.987, blue: 0.987),
+            dark: Color(red: 0.059, green: 0.115, blue: 0.122)
         )
 
         public static let foreground = DynamicColorPair(
@@ -43,28 +43,28 @@ public enum Theme {
         )
 
         public static let primary = DynamicColorPair(
-            light: Color(red: 0.15, green: 0.49, blue: 0.55),
-            dark: Color(red: 0.36, green: 0.70, blue: 0.74)
+            light: Color(red: 0.000, green: 0.473, blue: 0.474),
+            dark: Color(red: 0.299, green: 0.622, blue: 0.620)
         )
 
         public static let primaryForeground = DynamicColorPair(
             light: Color(red: 0.98, green: 0.98, blue: 0.98),
-            dark: Color(red: 0.07, green: 0.08, blue: 0.12)
+            dark: Color(red: 0.008, green: 0.047, blue: 0.053)
         )
 
         public static let secondary = DynamicColorPair(
             light: Color(red: 0.97, green: 0.97, blue: 0.97),
-            dark: Color(red: 0.18, green: 0.21, blue: 0.28)
+            dark: Color(red: 0.114, green: 0.172, blue: 0.179)
         )
 
         public static let muted = DynamicColorPair(
             light: Color(red: 0.98, green: 0.98, blue: 0.98),
-            dark: Color(red: 0.15, green: 0.17, blue: 0.24)
+            dark: Color(red: 0.077, green: 0.134, blue: 0.141)
         )
 
         public static let accent = DynamicColorPair(
             light: Color(red: 0.94, green: 0.98, blue: 0.98),
-            dark: Color(red: 0.20, green: 0.28, blue: 0.32)
+            dark: Color(red: 0.105, green: 0.198, blue: 0.198)
         )
 
         public static let accentForeground = DynamicColorPair(
@@ -74,62 +74,62 @@ public enum Theme {
 
         public static let destructive = DynamicColorPair(
             light: Color(red: 0.73, green: 0.21, blue: 0.21),
-            dark: Color(red: 0.82, green: 0.30, blue: 0.30)
+            dark: Color(red: 0.903, green: 0.168, blue: 0.205)
         )
 
         public static let destructiveForeground = DynamicColorPair(
             light: Color(red: 0.97, green: 0.96, blue: 0.96),
-            dark: Color(red: 0.90, green: 0.88, blue: 0.88)
+            dark: Color(red: 0.898, green: 0.882, blue: 0.882)
         )
 
         public static let warning = DynamicColorPair(
             light: Color(red: 0.84, green: 0.58, blue: 0.29),
-            dark: Color(red: 0.84, green: 0.61, blue: 0.35)
+            dark: Color(red: 0.800, green: 0.471, blue: 0.000)
         )
 
         public static let warningForeground = DynamicColorPair(
             light: Color(red: 0.18, green: 0.13, blue: 0.08),
-            dark: Color(red: 0.95, green: 0.93, blue: 0.91)
+            dark: Color(red: 0.949, green: 0.933, blue: 0.914)
         )
 
         public static let info = DynamicColorPair(
-            light: Color(red: 0.33, green: 0.51, blue: 0.85),
-            dark: Color(red: 0.41, green: 0.55, blue: 0.82)
+            light: Color(red: 0.14, green: 0.56, blue: 0.75),
+            dark: Color(red: 0.000, green: 0.563, blue: 0.696)
         )
 
         public static let infoForeground = DynamicColorPair(
-            light: Color(red: 0.11, green: 0.14, blue: 0.23),
-            dark: Color(red: 0.92, green: 0.94, blue: 0.97)
+            light: Color(red: 0.08, green: 0.16, blue: 0.22),
+            dark: Color(red: 0.933, green: 0.945, blue: 0.957)
         )
 
         public static let success = DynamicColorPair(
             light: Color(red: 0.30, green: 0.69, blue: 0.31),
-            dark: Color(red: 0.22, green: 0.51, blue: 0.36)
+            dark: Color(red: 0.215, green: 0.380, blue: 0.222)
         )
 
         public static let successForeground = DynamicColorPair(
             light: Color(red: 0.11, green: 0.21, blue: 0.11),
-            dark: Color(red: 0.86, green: 0.88, blue: 0.86)
+            dark: Color(red: 0.863, green: 0.882, blue: 0.867)
         )
 
         public static let border = DynamicColorPair(
             light: Color(red: 0.92, green: 0.92, blue: 0.92),
-            dark: Color(red: 0.22, green: 0.25, blue: 0.34)
+            dark: Color(red: 0.172, green: 0.232, blue: 0.239)
         )
 
         public static let input = DynamicColorPair(
             light: Color(red: 0.985, green: 0.985, blue: 0.985),
-            dark: Color(red: 0.16, green: 0.19, blue: 0.26)
+            dark: Color(red: 0.096, green: 0.153, blue: 0.160)
         )
 
         public static let ring = DynamicColorPair(
-            light: Color(red: 0.15, green: 0.49, blue: 0.55),
-            dark: Color(red: 0.36, green: 0.70, blue: 0.74)
+            light: Color(red: 0.000, green: 0.473, blue: 0.474),
+            dark: Color(red: 0.299, green: 0.622, blue: 0.620)
         )
 
         public static let popover = DynamicColorPair(
             light: Color(red: 1.0, green: 1.0, blue: 1.0),
-            dark: Color(red: 0.13, green: 0.15, blue: 0.20)
+            dark: Color(red: 0.041, green: 0.097, blue: 0.104)
         )
 
         public static let popoverForeground = DynamicColorPair(
@@ -138,43 +138,43 @@ public enum Theme {
         )
 
         public static let warningBackground = DynamicColorPair(
-            light: Color(red: 0.95, green: 0.92, blue: 0.87),
-            dark: Color(red: 0.13, green: 0.12, blue: 0.10)
+            light: Color(red: 0.98, green: 0.96, blue: 0.91),
+            dark: Color(red: 0.175, green: 0.036, blue: 0.000)
         )
 
         public static let warningBorder = DynamicColorPair(
-            light: Color(red: 0.82, green: 0.70, blue: 0.50),
-            dark: Color(red: 0.35, green: 0.32, blue: 0.25)
+            light: Color(red: 0.90, green: 0.82, blue: 0.66),
+            dark: Color(red: 0.445, green: 0.208, blue: 0.000)
         )
 
         public static let infoBackground = DynamicColorPair(
-            light: Color(red: 0.93, green: 0.95, blue: 0.98),
-            dark: Color(red: 0.11, green: 0.13, blue: 0.17)
+            light: Color(red: 0.92, green: 0.97, blue: 0.99),
+            dark: Color(red: 0.000, green: 0.106, blue: 0.159)
         )
 
         public static let infoBorder = DynamicColorPair(
-            light: Color(red: 0.70, green: 0.78, blue: 0.92),
-            dark: Color(red: 0.28, green: 0.33, blue: 0.42)
+            light: Color(red: 0.69, green: 0.84, blue: 0.92),
+            dark: Color(red: 0.000, green: 0.317, blue: 0.397)
         )
 
         public static let successBackground = DynamicColorPair(
             light: Color(red: 0.92, green: 0.96, blue: 0.92),
-            dark: Color(red: 0.09, green: 0.12, blue: 0.10)
+            dark: Color(red: 0.010, green: 0.069, blue: 0.013)
         )
 
         public static let successBorder = DynamicColorPair(
             light: Color(red: 0.65, green: 0.82, blue: 0.66),
-            dark: Color(red: 0.22, green: 0.32, blue: 0.24)
+            dark: Color(red: 0.096, green: 0.210, blue: 0.102)
         )
 
         public static let borderModal = DynamicColorPair(
             light: Color(red: 0.88, green: 0.88, blue: 0.88),
-            dark: Color(red: 0.19, green: 0.23, blue: 0.30)
+            dark: Color(red: 0.008, green: 0.210, blue: 0.210)
         )
 
         public static let codeBackground = DynamicColorPair(
             light: Color(red: 0.06, green: 0.09, blue: 0.16),
-            dark: Color(red: 0.12, green: 0.15, blue: 0.22)
+            dark: Color(red: 0.001, green: 0.029, blue: 0.035)
         )
 
         public static let codeForeground = DynamicColorPair(
@@ -184,12 +184,12 @@ public enum Theme {
 
         public static let codeBorder = DynamicColorPair(
             light: Color(red: 0.20, green: 0.24, blue: 0.32),
-            dark: Color(red: 0.34, green: 0.39, blue: 0.48)
+            dark: Color(red: 0.172, green: 0.232, blue: 0.239)
         )
 
         public static let inlineCodeBackground = DynamicColorPair(
             light: Color(red: 0.96, green: 0.96, blue: 0.96),
-            dark: Color(red: 0.18, green: 0.21, blue: 0.28)
+            dark: Color(red: 0.077, green: 0.134, blue: 0.141)
         )
 
         public static let inlineCodeForeground = DynamicColorPair(

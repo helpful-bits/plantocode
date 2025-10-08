@@ -13,7 +13,7 @@ use futures::future::join_all;
 use log::info;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tauri::{AppHandle, Manager, command};
+use tauri::{AppHandle, Emitter, Manager, command};
 use uuid::Uuid;
 
 /// Request payload for the implementation plan generation command
@@ -123,6 +123,18 @@ pub async fn create_implementation_plan_command(
         &app_handle,
     )
     .await?;
+
+    app_handle.emit(
+        "device-link-event",
+        serde_json::json!({
+            "type": "PlanCreated",
+            "payload": {
+                "jobId": job_id,
+                "sessionId": args.session_id,
+                "projectDirectory": args.project_directory
+            }
+        })
+    ).ok();
 
     info!("Created implementation plan job: {}", job_id);
 
@@ -654,6 +666,14 @@ pub async fn update_implementation_plan_content_command(
         .await
         .map_err(|e| AppError::DatabaseError(format!("Failed to update job response: {}", e)))?;
 
+    app_handle.emit(
+        "device-link-event",
+        serde_json::json!({
+            "type": "PlanModified",
+            "payload": { "jobId": job_id }
+        })
+    ).ok();
+
     info!(
         "Successfully updated implementation plan content for job: {}",
         job_id
@@ -755,6 +775,18 @@ pub async fn create_merged_implementation_plan_command(
         &app_handle,
     )
     .await?;
+
+    app_handle.emit(
+        "device-link-event",
+        serde_json::json!({
+            "type": "PlanCreated",
+            "payload": {
+                "jobId": job_id,
+                "sessionId": session_id,
+                "projectDirectory": session.project_directory
+            }
+        })
+    ).ok();
 
     info!("Created merged implementation plan job: {}", job_id);
 

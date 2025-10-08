@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import OSLog
+import SwiftUI
 
 /// Service for syncing task descriptions with conflict resolution and real-time updates
 @MainActor
@@ -14,8 +15,6 @@ public class TaskSyncDataService: ObservableObject {
     @Published public var error: DataServiceError?
 
     // MARK: - Private Properties
-    private let desktopServerAPIClient: DesktopServerAPIClient
-    private let webSocketClient: WebSocketClient
     private let cacheManager: CacheManager
     private let apiClient: APIClientProtocol
     private let deviceId: String
@@ -29,22 +28,17 @@ public class TaskSyncDataService: ObservableObject {
 
     // MARK: - Initialization
     public init(
-        desktopServerAPIClient: DesktopServerAPIClient,
-        webSocketClient: WebSocketClient,
         deviceId: String,
         cacheManager: CacheManager = CacheManager.shared,
         apiClient: APIClientProtocol = APIClient.shared,
         debounceInterval: TimeInterval = 0.5
     ) {
-        self.desktopServerAPIClient = desktopServerAPIClient
-        self.webSocketClient = webSocketClient
         self.deviceId = deviceId
         self.cacheManager = cacheManager
         self.apiClient = apiClient
         self.debounceInterval = debounceInterval
 
         setupAutoSync()
-        setupWebSocketSubscriptions()
         setupDebouncedUpdates()
     }
 
@@ -313,16 +307,6 @@ public class TaskSyncDataService: ObservableObject {
 
     // MARK: - Private Methods
 
-    private func setupWebSocketSubscriptions() {
-        // Subscribe to task updates from WebSocket
-        webSocketClient.taskUpdates
-            .sink { [weak self] taskDescription in
-                Task { @MainActor in
-                    self?.handleRealTimeTaskUpdate(taskDescription)
-                }
-            }
-            .store(in: &cancellables)
-    }
 
     private func setupDebouncedUpdates() {
         // Setup debounced task updates
@@ -359,33 +343,8 @@ public class TaskSyncDataService: ObservableObject {
     private func performTaskUpdate(taskId: String, content: String, expectedVersion: UInt32?) async {
         logger.info("Performing debounced task update for \(taskId)")
 
-        do {
-            let response: UpdateTaskResponse = try await desktopServerAPIClient.executeCommand(
-                command: "update_task_description_api",
-                payload: UpdateTaskRequest(
-                    taskId: taskId,
-                    content: content,
-                    deviceId: deviceId,
-                    expectedVersion: expectedVersion
-                )
-            )
-
-            await MainActor.run {
-                if response.conflictDetected {
-                    self.logger.warning("Task update conflict detected for \(taskId)")
-                    self.error = DataServiceError.conflictDetected(taskId: taskId, serverTask: response.task)
-                } else if response.updated {
-                    self.logger.info("Task \(taskId) updated successfully via debounced update")
-                    // Note: Don't update local task here since real-time WebSocket will handle it
-                }
-            }
-
-        } catch {
-            logger.error("Failed to update task \(taskId): \(error.localizedDescription)")
-            await MainActor.run {
-                self.error = DataServiceError.networkError(error)
-            }
-        }
+        // This method is kept for compatibility but is no longer actively used
+        // Task updates are now handled through relay-only sync in startTaskDescriptionSync
     }
 
     private func setupAutoSync() {
@@ -458,6 +417,87 @@ public class TaskSyncDataService: ObservableObject {
     private func invalidateCache() {
         cacheManager.invalidatePattern("active_tasks_")
         cacheManager.invalidatePattern("task_history_")
+    }
+
+    // MARK: - Task Description Sync
+
+    private var taskDescriptionSyncTasks: [String: Task<Void, Never>] = [:]
+    private var lastSyncedHashes: [String: String] = [:]
+
+    /// Start relay-only sync for a session's task description with fast debounced persistence
+    public func startTaskDescriptionSync(
+        sessionId: String,
+        textBinding: Binding<String>,
+        pollIntervalSeconds: Double = 4.0
+    ) {
+        // Cancel existing sync for this session
+        stopTaskDescriptionSync(sessionId: sessionId)
+
+        // Relay-only sync: debounced persistence
+        let syncTask = Task { @MainActor in
+            var lastPushedText = textBinding.wrappedValue
+            var lastPersistTime: Date?
+            lastSyncedHashes[sessionId] = hashString(lastPushedText)
+
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(0.3 * 1_000_000_000)) // Check every 300ms
+
+                let currentText = textBinding.wrappedValue
+                let currentHash = hashString(currentText)
+                let now = Date()
+
+                // Only process if text has actually changed
+                if currentHash != lastSyncedHashes[sessionId] && currentText != lastPushedText {
+
+                    // Debounced persistence (300ms)
+                    let shouldPersist = lastPersistTime == nil ||
+                                       now.timeIntervalSince(lastPersistTime!) >= 0.3
+
+                    if shouldPersist {
+                        lastPushedText = currentText
+                        lastSyncedHashes[sessionId] = currentHash
+                        lastPersistTime = now
+
+                        // Persist to desktop via CommandRouter
+                        do {
+                            for try await response in CommandRouter.sessionUpdateTaskDescription(
+                                sessionId: sessionId,
+                                taskDescription: currentText
+                            ) {
+                                if let error = response.error {
+                                    logger.error("[TaskSync] Failed to persist: \(error.message)")
+                                }
+                                break
+                            }
+                        } catch {
+                            logger.error("[TaskSync] Persist error: \(error.localizedDescription)")
+                        }
+                    }
+                }
+            }
+        }
+
+        taskDescriptionSyncTasks[sessionId] = syncTask
+    }
+
+    /// Stop relay sync for a session
+    public func stopTaskDescriptionSync(sessionId: String) {
+        if let task = taskDescriptionSyncTasks[sessionId] {
+            task.cancel()
+            taskDescriptionSyncTasks.removeValue(forKey: sessionId)
+        }
+
+        lastSyncedHashes.removeValue(forKey: sessionId)
+    }
+
+    /// Update the last synced hash when receiving remote updates (prevents echo)
+    public func updateLastSyncedText(sessionId: String, text: String) {
+        lastSyncedHashes[sessionId] = hashString(text)
+    }
+
+    private func hashString(_ string: String) -> String {
+        // Simple hash using built-in hash function
+        return String(string.hashValue)
     }
 }
 

@@ -74,6 +74,7 @@ export function Header() {
         { href: '/features/file-discovery', label: 'File Discovery', icon: FileSearch, description: 'AI-powered intelligent file selection' },
         { href: '/features/deep-research', label: 'Deep Research', icon: Search, description: 'Web search and information synthesis' },
         { href: '/features/plan-mode', label: 'Plan Editor', icon: Code2, description: 'Full Monaco editor for AI plans' },
+        { href: '/plan-mode', label: 'Plan Mode Guides', icon: Terminal, description: 'Codex, Claude, and Cursor workflows' },
         { href: '/features/merge-instructions', label: 'Merge Instructions', icon: GitMerge, description: 'Control how plans merge' },
         { href: '/features/copy-buttons', label: 'Copy Buttons', icon: Copy, description: 'Configurable workflow automation' },
         { href: '/features/text-improvement', label: 'Text Improvement', icon: Sparkles, description: 'Inline rewriting across Monaco and task inputs' },

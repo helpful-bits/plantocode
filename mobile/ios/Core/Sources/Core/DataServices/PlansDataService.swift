@@ -1,9 +1,23 @@
 import Foundation
 import Combine
+import OSLog
+
+public struct PromptResponse: Codable {
+    public let systemPrompt: String
+    public let userPrompt: String
+    public let combinedPrompt: String
+
+    public init(systemPrompt: String, userPrompt: String, combinedPrompt: String) {
+        self.systemPrompt = systemPrompt
+        self.userPrompt = userPrompt
+        self.combinedPrompt = combinedPrompt
+    }
+}
 
 /// Service for accessing implementation plans data from desktop
 @MainActor
 public class PlansDataService: ObservableObject {
+    private let logger = Logger(subsystem: "VibeManager", category: "PlansDataService")
 
     // MARK: - Published Properties
     @Published public var plans: [PlanSummary] = []
@@ -11,25 +25,50 @@ public class PlansDataService: ObservableObject {
     @Published public var error: DataServiceError?
 
     // MARK: - Private Properties
-    private let desktopAPIClient: DesktopAPIClient
     private let apiClient: APIClientProtocol
     private let cacheManager: CacheManager
     private var cancellables = Set<AnyCancellable>()
+    private var relayEventsCancellable: AnyCancellable?
 
     // Real-time data publisher
     @Published public private(set) var lastUpdateEvent: RelayEvent?
 
     // MARK: - Initialization
     public init(
-        desktopAPIClient: DesktopAPIClient,
         apiClient: APIClientProtocol = APIClient.shared,
         cacheManager: CacheManager = CacheManager.shared
     ) {
-        self.desktopAPIClient = desktopAPIClient
         self.apiClient = apiClient
         self.cacheManager = cacheManager
 
         setupRelayEventSubscription()
+
+        MultiConnectionManager.shared.$connectionStates
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.rebindRelayEvents()
+            }
+            .store(in: &cancellables)
+    }
+
+    private func rebindRelayEvents() {
+        relayEventsCancellable?.cancel()
+
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let client = MultiConnectionManager.shared.relayConnection(for: deviceId),
+              MultiConnectionManager.shared.isActiveDeviceConnected else {
+            return
+        }
+
+        relayEventsCancellable = client.eventsPublisher
+            .filter { event in
+                event.eventType.hasPrefix("job:") ||
+                event.eventType == "PlanCreated" ||
+                event.eventType == "PlanModified"
+            }
+            .sink { [weak self] event in
+                self?.lastUpdateEvent = event
+            }
     }
 
     // MARK: - Public Methods
@@ -50,33 +89,9 @@ public class PlansDataService: ObservableObject {
                 .eraseToAnyPublisher()
         }
 
-        // Try DesktopAPIClient first, fallback to RPC if unavailable
-        if let _ = MultiConnectionManager.shared.activeDeviceId,
-           let _ = MultiConnectionManager.shared.relayConnection(for: MultiConnectionManager.shared.activeDeviceId!) {
-            return desktopAPIClient.invoke(
-                command: "list_plans_api",
-                payload: request
-            )
-            .map { [weak self] (response: PlanListResponse) in
-                self?.plans = response.plans
-                self?.cacheManager.set(response, forKey: cacheKey, ttl: 600) // 10 min cache
-                return response
-            }
-            .handleEvents(
-                receiveOutput: { [weak self] _ in self?.isLoading = false },
-                receiveCompletion: { [weak self] completion in
-                    self?.isLoading = false
-                    if case .failure(let error) = completion {
-                        self?.error = DataServiceError.networkError(error)
-                    }
-                }
-            )
-            .mapError { DataServiceError.networkError($0) }
-            .eraseToAnyPublisher()
-        } else {
-            // Use RPC fallback
-            return listPlansViaRPC(request: request, cacheKey: cacheKey)
-        }
+        // Relay-first: directly use RPC-via-relay
+        logger.debug("Plans RPC path selected")
+        return listPlansViaRPC(request: request, cacheKey: cacheKey)
     }
 
     /// Get plan content with chunking support
@@ -89,23 +104,9 @@ public class PlansDataService: ObservableObject {
                 .eraseToAnyPublisher()
         }
 
-        // Try DesktopAPIClient first, fallback to RPC if unavailable
-        if let _ = MultiConnectionManager.shared.activeDeviceId,
-           let _ = MultiConnectionManager.shared.relayConnection(for: MultiConnectionManager.shared.activeDeviceId!) {
-            return desktopAPIClient.invoke(
-                command: "get_plan_content_api",
-                payload: request
-            )
-            .map { [weak self] (response: PlanContentResponse) in
-                self?.cacheManager.set(response, forKey: cacheKey, ttl: 1800) // 30 min cache
-                return response
-            }
-            .mapError { DataServiceError.networkError($0) }
-            .eraseToAnyPublisher()
-        } else {
-            // Use RPC fallback
-            return getPlanContentViaRPC(request: request, cacheKey: cacheKey)
-        }
+        // Relay-first: directly use RPC-via-relay
+        logger.debug("Plan content RPC path selected")
+        return getPlanContentViaRPC(request: request, cacheKey: cacheKey)
     }
 
     /// Get all chunks of a plan
@@ -219,13 +220,8 @@ public class PlansDataService: ObservableObject {
 
     /// Get detailed plan information using RPC call for mobile remote access
     public func getPlanDetails(jobId: String) -> AnyPublisher<PlanDetails, DataServiceError> {
-        // First try the regular API call for direct connections
-        if let _ = MultiConnectionManager.shared.activeDeviceId,
-           let _ = MultiConnectionManager.shared.relayConnection(for: MultiConnectionManager.shared.activeDeviceId!) {
-            return getPlanDetailsViaAPI(jobId: jobId)
-        }
-
-        // Use RPC call via relay for remote connections
+        // Relay-first: directly use RPC-via-relay
+        logger.debug("Plan details RPC path selected")
         return getPlanDetailsViaRPC(jobId: jobId)
     }
 
@@ -348,6 +344,57 @@ public class PlansDataService: ObservableObject {
         }
     }
 
+    /// Get implementation plan prompt for viewing
+    public func getPlanPrompt(
+        sessionId: String,
+        taskDescription: String,
+        projectDirectory: String,
+        relevantFiles: [String]
+    ) async throws -> PromptResponse {
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+            throw DataServiceError.connectionError("No active device connection")
+        }
+
+        let request = RpcRequest(
+            method: "actions.getImplementationPlanPrompt",
+            params: [
+                "sessionId": AnyCodable(sessionId),
+                "taskDescription": AnyCodable(taskDescription),
+                "projectDirectory": AnyCodable(projectDirectory),
+                "relevantFiles": AnyCodable(relevantFiles)
+            ]
+        )
+
+        var result: PromptResponse?
+        for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
+            if let error = response.error {
+                throw DataServiceError.serverError("RPC Error: \(error.message)")
+            }
+
+            if let resultData = response.result?.value as? [String: Any],
+               let promptDict = resultData["prompt"] as? [String: Any],
+               let systemPrompt = promptDict["systemPrompt"] as? String,
+               let userPrompt = promptDict["userPrompt"] as? String,
+               let combinedPrompt = promptDict["combinedPrompt"] as? String {
+                result = PromptResponse(
+                    systemPrompt: systemPrompt,
+                    userPrompt: userPrompt,
+                    combinedPrompt: combinedPrompt
+                )
+                if response.isFinal {
+                    break
+                }
+            }
+        }
+
+        guard let finalResult = result else {
+            throw DataServiceError.invalidResponse("No prompt data received")
+        }
+
+        return finalResult
+    }
+
     /// Create plan from task using RPC call
     public func createPlanFromTask(taskId: String, options: [String: Any] = [:]) -> AsyncThrowingStream<Any, Error> {
         guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
@@ -464,29 +511,6 @@ public class PlansDataService: ObservableObject {
         }
     }
 
-    private func getPlanDetailsViaAPI(jobId: String) -> AnyPublisher<PlanDetails, DataServiceError> {
-        let request = PlanContentRequest(jobId: jobId, chunkSize: nil, chunkIndex: nil, includeDiff: true)
-
-        return getPlanContent(request: request)
-            .map { response in
-                PlanDetails(
-                    jobId: jobId,
-                    title: response.metadata.title,
-                    content: response.content,
-                    filePath: response.metadata.filePath,
-                    createdAt: Date(timeIntervalSince1970: TimeInterval(response.metadata.createdAt)),
-                    updatedAt: response.metadata.updatedAt.map { Date(timeIntervalSince1970: TimeInterval($0)) },
-                    sizeBytes: response.metadata.sizeBytes,
-                    wordCount: response.metadata.wordCount,
-                    lineCount: response.metadata.lineCount,
-                    estimatedReadTimeMinutes: response.metadata.estimatedReadTimeMinutes,
-                    isChunked: response.isChunked,
-                    chunkInfo: response.chunkInfo
-                )
-            }
-            .eraseToAnyPublisher()
-    }
-
     private func getPlanDetailsViaRPC(jobId: String) -> AnyPublisher<PlanDetails, DataServiceError> {
         guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
               let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
@@ -539,28 +563,33 @@ public class PlansDataService: ObservableObject {
     }
 
     private func listPlansViaRPC(request: PlanListRequest, cacheKey: String) -> AnyPublisher<PlanListResponse, DataServiceError> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
-            return Fail(error: DataServiceError.connectionError("No active device connection"))
-                .eraseToAnyPublisher()
-        }
-
-        let rpcRequest = RpcRequest(
-            method: "job.list",
-            params: [
-                "projectDirectory": AnyCodable(request.projectDirectory),
-                "filter": AnyCodable("implementation_plan")
-            ]
-        )
-
         return Future<PlanListResponse, DataServiceError> { [weak self] promise in
             Task {
                 do {
+                    guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+                          let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+                        promise(.failure(.connectionError("No active device connection")))
+                        return
+                    }
+
+                    var params: [String: AnyCodable] = [:]
+                    if let projectDirectory = request.projectDirectory {
+                        params["projectDirectory"] = AnyCodable(projectDirectory)
+                    }
+                    if let sid = request.sessionId {
+                        params["sessionId"] = AnyCodable(sid)
+                    }
+
+                    let rpcRequest = RpcRequest(
+                        method: "plans.list",
+                        params: params
+                    )
+
                     var jobsData: [String: Any]?
 
                     for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: rpcRequest) {
                         if let error = response.error {
-                            promise(.failure(.serverError("RPC Error: \(error)")))
+                            promise(.failure(.serverError("RPC Error: \(error.message)")))
                             return
                         }
 
@@ -573,36 +602,72 @@ public class PlansDataService: ObservableObject {
                     }
 
                     guard let data = jobsData,
-                          let jobs = data["jobs"] as? [[String: Any]] else {
-                        promise(.failure(.invalidResponse("No jobs data received")))
+                          let plans = data["plans"] as? [[String: Any]] else {
+                        promise(.failure(.invalidResponse("No plans data received")))
                         return
                     }
 
-                    let plans = jobs.compactMap { jobData -> PlanSummary? in
-                        guard let jobId = jobData["id"] as? String,
-                              let status = jobData["status"] as? String,
-                              let sessionId = jobData["session_id"] as? String,
-                              let createdAt = jobData["created_at"] as? Int64 else {
+                    var plansArray = plans.compactMap { item -> PlanSummary? in
+                        // Required core fields - camelCase only
+                        guard
+                            let id = item["id"] as? String,
+                            let status = item["status"] as? String,
+                            let sessionId = item["sessionId"] as? String,
+                            let createdAtSec = Self.epochSeconds(from: item["createdAt"])
+                        else {
                             return nil
                         }
 
+                        // Optional top-level fields - camelCase only
+                        let updatedAtSec = Self.epochSeconds(from: item["updatedAt"])
+                        let filePath = item["filePath"] as? String
+                        let sizeBytes = Self.uint(from: item["sizeBytes"])
+                        let title = item["title"] as? String
+
+                        // Optional nested executionStatus - camelCase only
+                        var executionStatus: PlanExecutionStatus? = nil
+                        if let es = item["executionStatus"] as? [String: Any] {
+                            let isExecuting = Self.bool(from: es["isExecuting"]) ?? false
+                            let progress = Self.float(from: es["progressPercentage"])
+                            let currentStep = es["currentStep"] as? String
+                            let stepsCompleted = Self.uint(from: es["stepsCompleted"]) ?? 0
+                            let totalSteps = Self.uint(from: es["totalSteps"]) ?? 0
+                            let startedAtSec = Self.epochSeconds(from: es["startedAt"])
+                            let etaSec = Self.epochSeconds(from: es["estimatedCompletion"])
+
+                            executionStatus = PlanExecutionStatus(
+                                isExecuting: isExecuting,
+                                progressPercentage: progress,
+                                currentStep: currentStep,
+                                stepsCompleted: stepsCompleted,
+                                totalSteps: totalSteps,
+                                startedAt: startedAtSec,
+                                estimatedCompletion: etaSec
+                            )
+                        }
+
                         return PlanSummary(
-                            id: jobId,
-                            jobId: jobId,
-                            title: jobData["title"] as? String,
-                            filePath: jobData["file_path"] as? String,
-                            createdAt: createdAt,
-                            updatedAt: jobData["updated_at"] as? Int64,
-                            sizeBytes: jobData["size_bytes"] as? UInt,
+                            id: id,
+                            jobId: id,
+                            title: title,
+                            filePath: filePath,
+                            createdAt: createdAtSec,
+                            updatedAt: updatedAtSec,
+                            sizeBytes: sizeBytes,
                             status: status,
                             sessionId: sessionId,
-                            executionStatus: nil
+                            executionStatus: executionStatus
                         )
                     }
 
+                    // Defensive client-side filter
+                    if let sid = request.sessionId {
+                        plansArray = plansArray.filter { $0.sessionId == sid }
+                    }
+
                     let response = PlanListResponse(
-                        plans: plans,
-                        totalCount: UInt32(plans.count),
+                        plans: plansArray,
+                        totalCount: UInt32(plansArray.count),
                         page: request.page ?? 0,
                         pageSize: request.pageSize ?? 20,
                         hasMore: false
@@ -664,24 +729,39 @@ public class PlansDataService: ObservableObject {
                         }
                     }
 
-                    guard let data = planData,
-                          let planContent = data["plan"] as? [String: Any],
-                          let content = planContent["content"] as? String else {
+                    guard let data = planData else {
                         promise(.failure(.invalidResponse("No plan content received")))
                         return
                     }
 
-                    let metadata = planContent["metadata"] as? [String: Any] ?? [:]
+                    let planNode = data["plan"] as? [String: Any]
+                    guard let content = planNode?["content"] as? String else {
+                        promise(.failure(.invalidResponse("No plan content received")))
+                        return
+                    }
+
+                    let metadata = planNode?["metadata"] as? [String: Any] ?? [:]
+
+                    let createdAtSec = Self.epochSeconds(from: metadata["createdAt"]) ?? 0
+                    let updatedAtSec = Self.epochSeconds(from: metadata["updatedAt"])
+                    let sizeBytes = Self.uint(from: metadata["sizeBytes"]) ?? UInt(content.utf8.count)
+                    let filePath = metadata["filePath"] as? String
+                    let title = metadata["title"] as? String
+                    let wordCount = Self.uint(from: metadata["wordCount"])
+                    let lineCount = Self.uint(from: metadata["lineCount"])
+                    let estimatedReadTimeMinutes = Self.uint(from: metadata["estimatedReadTimeMinutes"]).map { UInt32($0) }
+                    let complexityScore = Self.float(from: metadata["complexityScore"])
+
                     let planMetadata = PlanMetadata(
-                        title: metadata["title"] as? String,
-                        filePath: metadata["filePath"] as? String,
-                        createdAt: metadata["createdAt"] as? Int64 ?? 0,
-                        updatedAt: metadata["updatedAt"] as? Int64,
-                        sizeBytes: metadata["sizeBytes"] as? UInt ?? UInt(content.utf8.count),
-                        wordCount: metadata["wordCount"] as? UInt,
-                        lineCount: metadata["lineCount"] as? UInt,
-                        estimatedReadTimeMinutes: metadata["estimatedReadTimeMinutes"] as? UInt32,
-                        complexityScore: metadata["complexityScore"] as? Float
+                        title: title,
+                        filePath: filePath,
+                        createdAt: createdAtSec,
+                        updatedAt: updatedAtSec,
+                        sizeBytes: sizeBytes,
+                        wordCount: wordCount,
+                        lineCount: lineCount,
+                        estimatedReadTimeMinutes: estimatedReadTimeMinutes,
+                        complexityScore: complexityScore
                     )
 
                     let response = PlanContentResponse(
@@ -712,8 +792,16 @@ public class PlansDataService: ObservableObject {
 
         let metadata = data["metadata"] as? [String: Any] ?? [:]
 
-        let createdAt = (metadata["createdAt"] as? Double).map { Date(timeIntervalSince1970: $0) } ?? Date()
-        let updatedAt = (metadata["updatedAt"] as? Double).map { Date(timeIntervalSince1970: $0) }
+        let createdAtSec = Self.epochSeconds(from: metadata["createdAt"]) ?? 0
+        let updatedAtSec = Self.epochSeconds(from: metadata["updatedAt"])
+        let createdAt = Date(timeIntervalSince1970: TimeInterval(createdAtSec))
+        let updatedAt = updatedAtSec.map { Date(timeIntervalSince1970: TimeInterval($0)) }
+
+        let sizeBytes = Self.uint(from: metadata["sizeBytes"]) ?? UInt(content.utf8.count)
+        let wordCount = Self.uint(from: metadata["wordCount"])
+        let lineCount = Self.uint(from: metadata["lineCount"])
+        let estimatedReadTimeMinutes = Self.uint(from: metadata["estimatedReadTimeMinutes"]).map { UInt32($0) }
+        let isChunked = Self.bool(from: data["isChunked"]) ?? false
 
         return PlanDetails(
             jobId: jobId,
@@ -722,11 +810,11 @@ public class PlansDataService: ObservableObject {
             filePath: metadata["filePath"] as? String,
             createdAt: createdAt,
             updatedAt: updatedAt,
-            sizeBytes: metadata["sizeBytes"] as? UInt ?? UInt(content.utf8.count),
-            wordCount: metadata["wordCount"] as? UInt,
-            lineCount: metadata["lineCount"] as? UInt,
-            estimatedReadTimeMinutes: metadata["estimatedReadTimeMinutes"] as? UInt32,
-            isChunked: data["isChunked"] as? Bool ?? false,
+            sizeBytes: sizeBytes,
+            wordCount: wordCount,
+            lineCount: lineCount,
+            estimatedReadTimeMinutes: estimatedReadTimeMinutes,
+            isChunked: isChunked,
             chunkInfo: nil // Would need to parse chunk info if present
         )
     }
@@ -754,30 +842,6 @@ public class PlansDataService: ObservableObject {
             .store(in: &cancellables)
     }
 
-    /// Map DesktopAPIError to DataServiceError
-    private func mapDesktopAPIError(_ error: DesktopAPIError) -> DataServiceError {
-        switch error {
-        case .notConnected:
-            return DataServiceError.connectionError("Not connected to desktop")
-        case .networkError(let networkError):
-            return DataServiceError.networkError(networkError)
-        case .timeout:
-            return DataServiceError.timeout
-        case .serverError(let code, let message):
-            return DataServiceError.serverError("\(code): \(message)")
-        case .encodingError(let encodingError):
-            return DataServiceError.networkError(encodingError)
-        case .decodingError(let decodingError):
-            return DataServiceError.networkError(decodingError)
-        case .invalidResponse:
-            return DataServiceError.invalidResponse("Invalid server response")
-        case .disconnected:
-            return DataServiceError.connectionError("Disconnected from desktop")
-        case .invalidURL, .invalidState:
-            return DataServiceError.invalidResponse(error.localizedDescription)
-        }
-    }
-
     /// Setup subscription to relay events for real-time synchronization
     private func setupRelayEventSubscription() {
         guard let activeDeviceId = MultiConnectionManager.shared.activeDeviceId,
@@ -787,16 +851,34 @@ public class PlansDataService: ObservableObject {
 
         relayClient.events
             .filter { event in
-                ["PlansUpdated", "PlanCreated", "PlanDeleted", "PlanModified"].contains(event.eventType)
+                [
+                    "PlansUpdated", "PlanCreated", "PlanDeleted", "PlanModified",
+                    "job:created", "job:deleted", "job:status-changed", "job:response-appended",
+                    "job:stream-progress", "job:finalized", "job:tokens-updated", "job:cost-updated",
+                    "job:error-details", "job:metadata-updated"
+                ].contains(event.eventType)
             }
             .sink { [weak self] event in
                 guard let self = self else { return }
 
                 self.lastUpdateEvent = event
+                self.invalidateCache()
 
+                // Try to extract projectDirectory from event data and preload
+                if let projectDirectory = event.data["projectDirectory"]?.value as? String {
+                    self.preloadPlans(for: projectDirectory)
+                } else if event.eventType.hasPrefix("job:") {
+                    // For job events without explicit projectDirectory, just invalidate
+                    // The next UI-driven fetch will reload
+                }
+
+                // Handle specific event types
                 switch event.eventType {
                 case "PlansUpdated", "PlanCreated", "PlanDeleted", "PlanModified":
                     self.handlePlanDataChange(event: event)
+                case let eventType where eventType.hasPrefix("job:"):
+                    // Job events already handled by cache invalidation above
+                    break
                 default:
                     break
                 }
@@ -814,10 +896,87 @@ public class PlansDataService: ObservableObject {
     }
 }
 
+// MARK: - Numeric Coercion Helpers
+private extension PlansDataService {
+    static func int64(from any: Any?) -> Int64? {
+        switch any {
+        case let n as NSNumber:
+            return n.int64Value
+        case let s as String:
+            if let d = Double(s) { return Int64(d) }
+            return Int64(s)
+        case let i as Int:
+            return Int64(i)
+        case let d as Double:
+            return Int64(d)
+        default:
+            return nil
+        }
+    }
+
+    static func uint(from any: Any?) -> UInt? {
+        switch any {
+        case let n as NSNumber:
+            let v = n.int64Value
+            return v >= 0 ? UInt(v) : nil
+        case let s as String:
+            if let d = Double(s) {
+                return d >= 0 ? UInt(d) : nil
+            }
+            if let i = Int64(s), i >= 0 { return UInt(i) }
+            return nil
+        case let i as Int:
+            return i >= 0 ? UInt(i) : nil
+        case let d as Double:
+            return d >= 0 ? UInt(d) : nil
+        default:
+            return nil
+        }
+    }
+
+    static func float(from any: Any?) -> Float? {
+        switch any {
+        case let n as NSNumber:
+            return n.floatValue
+        case let s as String:
+            return Float(s)
+        case let f as Float:
+            return f
+        case let d as Double:
+            return Float(d)
+        case let i as Int:
+            return Float(i)
+        default:
+            return nil
+        }
+    }
+
+    static func bool(from any: Any?) -> Bool? {
+        switch any {
+        case let b as Bool:
+            return b
+        case let n as NSNumber:
+            return n.boolValue
+        default:
+            return nil
+        }
+    }
+
+    // Canonical unit: seconds; tolerate accidental ms by threshold
+    static func epochSeconds(from any: Any?) -> Int64? {
+        guard let raw = int64(from: any) else { return nil }
+        if raw >= 1_000_000_000_000 { // ms threshold
+            return raw / 1000
+        }
+        return raw
+    }
+}
+
 // MARK: - Supporting Types
 
 public struct PlanListRequest: Codable {
     public let projectDirectory: String?
+    public let sessionId: String?
     public let dateFrom: Int64?
     public let dateTo: Int64?
     public let page: UInt32?
@@ -828,6 +987,7 @@ public struct PlanListRequest: Codable {
 
     public init(
         projectDirectory: String? = nil,
+        sessionId: String? = nil,
         dateFrom: Int64? = nil,
         dateTo: Int64? = nil,
         page: UInt32? = 0,
@@ -837,6 +997,7 @@ public struct PlanListRequest: Codable {
         includeMetadataOnly: Bool? = true
     ) {
         self.projectDirectory = projectDirectory
+        self.sessionId = sessionId
         self.dateFrom = dateFrom
         self.dateTo = dateTo
         self.page = page
@@ -849,6 +1010,7 @@ public struct PlanListRequest: Codable {
     var cacheKey: String {
         let components = [
             projectDirectory ?? "nil",
+            sessionId ?? "nil",
             String(page ?? 0),
             String(pageSize ?? 20),
             sortBy?.rawValue ?? "createdAt"

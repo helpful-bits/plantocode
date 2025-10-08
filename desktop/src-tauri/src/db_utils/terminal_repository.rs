@@ -212,6 +212,29 @@ impl TerminalRepository {
         .await?;
         Ok(())
     }
+
+    pub async fn get_output_log(&self, session_id: &str) -> AppResult<Option<(String, Option<i64>)>> {
+        let row = sqlx::query(
+            r#"
+            SELECT output_log, last_output_at
+            FROM terminal_sessions
+            WHERE session_id = ?1
+            LIMIT 1
+            "#,
+        )
+        .bind(session_id)
+        .fetch_optional(&*self.pool)
+        .await?;
+
+        match row {
+            Some(row) => {
+                let output_log: String = row.try_get("output_log")?;
+                let last_output_at: Option<i64> = row.try_get("last_output_at").ok();
+                Ok(Some((output_log, last_output_at)))
+            }
+            None => Ok(None)
+        }
+    }
 }
 
 #[derive(Debug)]

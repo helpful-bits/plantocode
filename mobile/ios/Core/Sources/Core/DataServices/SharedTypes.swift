@@ -16,13 +16,14 @@ public enum JobStatus: String, Codable, CaseIterable {
     case completed
     case failed
     case canceled
+    case unknown
 
     public var isActive: Bool {
         switch self {
         case .idle, .created, .queued, .acknowledgedByWorker, .preparing,
              .preparingInput, .generatingStream, .processingStream, .running:
             return true
-        case .completedByTag, .completed, .failed, .canceled:
+        case .completedByTag, .completed, .failed, .canceled, .unknown:
             return false
         }
     }
@@ -42,6 +43,7 @@ public enum JobStatus: String, Codable, CaseIterable {
         case .completed: return "Completed"
         case .failed: return "Failed"
         case .canceled: return "Canceled"
+        case .unknown: return "Unknown"
         }
     }
 
@@ -54,6 +56,7 @@ public enum JobStatus: String, Codable, CaseIterable {
         case .completed, .completedByTag: return "green"
         case .failed: return "red"
         case .canceled: return "yellow"
+        case .unknown: return "gray"
         }
     }
 }
@@ -64,10 +67,10 @@ public struct BackgroundJob: Codable, Identifiable {
     public let taskType: String
     public var status: String
     public let prompt: String
-    public let response: String?
+    public var response: String?
     public let errorMessage: String?
     public let tokensUsed: Int32?
-    public let actualCost: Double?
+    public var actualCost: Double?
     public let createdAt: Int64
     public var updatedAt: Int64?
 

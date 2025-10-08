@@ -31,141 +31,6 @@ public class TerminalDataService: ObservableObject {
 
     // MARK: - Terminal Session Management
 
-    /// Open a new terminal session with command and working directory
-    public func openSession(command: String? = nil, cwd: String? = nil) -> AsyncThrowingStream<String, Error> {
-        guard let deviceId = connectionManager.activeDeviceId,
-              let relayClient = connectionManager.relayConnection(for: deviceId) else {
-            return AsyncThrowingStream { continuation in
-                continuation.finish(throwing: DataServiceError.connectionError("No active device connection"))
-            }
-        }
-
-        return AsyncThrowingStream { continuation in
-            Task {
-                do {
-                    let request = RpcRequest(
-                        method: "terminal.open",
-                        params: [
-                            "command": AnyCodable(command),
-                            "cwd": AnyCodable(cwd)
-                        ]
-                    )
-
-                    for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
-                        if let error = response.error {
-                            continuation.finish(throwing: DataServiceError.serverError("RPC Error \(error.code): \(error.message)"))
-                            return
-                        }
-
-                        if let result = response.result?.value as? [String: Any],
-                           let output = result["output"] as? String {
-                            continuation.yield(output)
-                        }
-
-                        if response.isFinal {
-                            continuation.finish()
-                            return
-                        }
-                    }
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-        }
-    }
-
-    /// Write input to a terminal session
-    public func write(sessionId: String, input: String) -> AsyncThrowingStream<String, Error> {
-        guard let deviceId = connectionManager.activeDeviceId,
-              let relayClient = connectionManager.relayConnection(for: deviceId) else {
-            return AsyncThrowingStream { continuation in
-                continuation.finish(throwing: DataServiceError.connectionError("No active device connection"))
-            }
-        }
-
-        return AsyncThrowingStream { continuation in
-            Task {
-                do {
-                    let request = RpcRequest(
-                        method: "terminal.write",
-                        params: [
-                            "sessionId": AnyCodable(sessionId),
-                            "input": AnyCodable(input)
-                        ]
-                    )
-
-                    for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
-                        if let error = response.error {
-                            continuation.finish(throwing: DataServiceError.serverError("RPC Error \(error.code): \(error.message)"))
-                            return
-                        }
-
-                        if let result = response.result?.value as? [String: Any],
-                           let output = result["output"] as? String {
-                            continuation.yield(output)
-                        }
-
-                        if response.isFinal {
-                            continuation.finish()
-                            return
-                        }
-                    }
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-        }
-    }
-
-    /// Close a terminal session
-    public func close(sessionId: String) async throws {
-        guard let deviceId = connectionManager.activeDeviceId,
-              let relayClient = connectionManager.relayConnection(for: deviceId) else {
-            throw DataServiceError.connectionError("No active device connection")
-        }
-
-        let request = RpcRequest(
-            method: "terminal.close",
-            params: [
-                "sessionId": AnyCodable(sessionId)
-            ]
-        )
-
-        for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
-            if let error = response.error {
-                throw DataServiceError.serverError("RPC Error \(error.code): \(error.message)")
-            }
-            if response.isFinal {
-                break
-            }
-        }
-    }
-
-    /// Execute a command with streaming output (convenience method)
-    public func execute(command: String, cwd: String? = nil) -> AsyncThrowingStream<String, Error> {
-        AsyncThrowingStream { continuation in
-            Task {
-                do {
-                    var sessionId: String?
-
-                    for try await output in openSession(command: command, cwd: cwd) {
-                        if sessionId == nil, let result = parseSessionId(from: output) {
-                            sessionId = result
-                        }
-                        continuation.yield(output)
-                    }
-
-                    if let sid = sessionId {
-                        try await close(sessionId: sid)
-                    }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-        }
-    }
-
     /// Start a new terminal session for the given job
     public func startSession(jobId: String) async throws -> TerminalSession {
         guard let deviceId = connectionManager.activeDeviceId,
@@ -241,28 +106,9 @@ public class TerminalDataService: ObservableObject {
     }
 
 
-    /// Write via relay with base64 encoding
     private func writeViaRelay(session: TerminalSession, data: String) async throws {
-        guard let relayClient = connectionManager.relayConnection(for: session.deviceId) else {
-            throw DataServiceError.invalidState("No relay connection for session")
-        }
-
-        // Base64-encode the input data
-        guard let dataBytes = data.data(using: .utf8) else {
-            throw DataServiceError.invalidState("Failed to encode data as UTF-8")
-        }
-        let base64EncodedData = dataBytes.base64EncodedString()
-
-        let request = RpcRequest(
-            method: "terminal.write",
-            params: [
-                "sessionId": AnyCodable(session.id),
-                "data": AnyCodable(base64EncodedData)
-            ]
-        )
-
         do {
-            for try await response in relayClient.invoke(targetDeviceId: session.deviceId.uuidString, request: request) {
+            for try await response in CommandRouter.terminalWrite(sessionId: session.id, text: data) {
                 if let error = response.error {
                     throw DataServiceError.serverError("RPC Error \(error.code): \(error.message)")
                 }
@@ -278,22 +124,12 @@ public class TerminalDataService: ObservableObject {
 
     /// Resize terminal window
     public func resize(jobId: String, cols: Int, rows: Int) async throws {
-        guard let session = activeSessions.values.first(where: { $0.jobId == jobId && $0.isActive }),
-              let relayClient = connectionManager.relayConnection(for: session.deviceId) else {
+        guard let session = activeSessions.values.first(where: { $0.jobId == jobId && $0.isActive }) else {
             throw DataServiceError.invalidState("No active session for job \(jobId)")
         }
 
-        let request = RpcRequest(
-            method: "terminal.resize",
-            params: [
-                "sessionId": AnyCodable(session.id),
-                "cols": AnyCodable(cols),
-                "rows": AnyCodable(rows)
-            ]
-        )
-
         do {
-            for try await response in relayClient.invoke(targetDeviceId: session.deviceId.uuidString, request: request) {
+            for try await response in CommandRouter.terminalResize(sessionId: session.id, cols: cols, rows: rows) {
                 if let error = response.error {
                     throw DataServiceError.serverError("RPC Error \(error.code): \(error.message)")
                 }
@@ -309,20 +145,12 @@ public class TerminalDataService: ObservableObject {
 
     /// Kill a terminal session
     public func kill(jobId: String) async throws {
-        guard let session = activeSessions.values.first(where: { $0.jobId == jobId }),
-              let relayClient = connectionManager.relayConnection(for: session.deviceId) else {
+        guard let session = activeSessions.values.first(where: { $0.jobId == jobId }) else {
             throw DataServiceError.invalidState("No active session for job \(jobId)")
         }
 
-        let request = RpcRequest(
-            method: "terminal.kill",
-            params: [
-                "sessionId": AnyCodable(session.id)
-            ]
-        )
-
         do {
-            for try await response in relayClient.invoke(targetDeviceId: session.deviceId.uuidString, request: request) {
+            for try await response in CommandRouter.terminalKill(sessionId: session.id) {
                 if let error = response.error {
                     throw DataServiceError.serverError("RPC Error \(error.code): \(error.message)")
                 }
@@ -334,12 +162,13 @@ public class TerminalDataService: ObservableObject {
             // Update session state
             activeSessions[session.id]?.isActive = false
 
-            // Clean up subscriptions
+            logger.info("Terminal session killed: \(session.id)")
+
+            // Clean up subscriptions and publishers
             eventSubscriptions[session.id]?.cancel()
             eventSubscriptions.removeValue(forKey: session.id)
             outputPublishers.removeValue(forKey: session.id)
-
-            logger.info("Terminal session killed: \(session.id)")
+            activeSessions.removeValue(forKey: session.id)
 
         } catch {
             lastError = error as? DataServiceError ?? DataServiceError.networkError(error)
@@ -374,30 +203,19 @@ public class TerminalDataService: ObservableObject {
 
     /// Detach via relay
     private func detachViaRelay(session: TerminalSession) async throws {
-        guard let relayClient = connectionManager.relayConnection(for: session.deviceId) else {
-            throw DataServiceError.invalidState("No relay connection for session")
-        }
-
-        let request = RpcRequest(
-            method: "terminal.detach",
-            params: [
-                "jobId": AnyCodable(session.jobId),
-                "clientId": AnyCodable(UIDevice.current.identifierForVendor?.uuidString ?? "unknown")
-            ]
-        )
-
         do {
-            for try await response in relayClient.invoke(targetDeviceId: session.deviceId.uuidString, request: request) {
+            for try await response in CommandRouter.terminalDetach(sessionId: session.id) {
                 if let error = response.error {
-                    throw DataServiceError.serverError("RPC Error \(error.code): \(error.message)")
+                    // Log but don't throw for detach errors - it's a cleanup operation
+                    logger.warning("Terminal detach error (non-fatal): \(error)")
                 }
                 if response.isFinal {
                     break
                 }
             }
         } catch {
-            lastError = error as? DataServiceError ?? DataServiceError.networkError(error)
-            throw error
+            // Don't propagate detach errors - log and continue
+            logger.warning("Terminal detach failed (non-fatal): \(error)")
         }
     }
 
@@ -418,30 +236,24 @@ public class TerminalDataService: ObservableObject {
 
     /// Get terminal log for a job (historical output)
     public func getLog(jobId: String) async throws -> [TerminalOutput] {
-        guard let session = activeSessions.values.first(where: { $0.jobId == jobId }),
-              let relayClient = connectionManager.relayConnection(for: session.deviceId) else {
+        guard let session = activeSessions.values.first(where: { $0.jobId == jobId }) else {
             throw DataServiceError.invalidState("No active session for job \(jobId)")
         }
-
-        let request = RpcRequest(
-            method: "terminal.getLog",
-            params: [
-                "sessionId": AnyCodable(session.id),
-                "maxLines": AnyCodable(1000)
-            ]
-        )
 
         do {
             var logEntries: [[String: Any]]?
 
-            for try await response in relayClient.invoke(targetDeviceId: session.deviceId.uuidString, request: request) {
+            for try await response in CommandRouter.terminalGetLog(sessionId: session.id, maxLines: 1000) {
                 if let error = response.error {
                     throw DataServiceError.serverError("RPC Error \(error.code): \(error.message)")
                 }
 
-                if let result = response.result?.value as? [String: Any],
-                   let entries = result["entries"] as? [[String: Any]] {
-                    logEntries = entries
+                if let result = response.result?.value as? [String: Any] {
+                    if let entries = result["log"] as? [[String: Any]] {
+                        logEntries = entries
+                    } else if let entries = result["entries"] as? [[String: Any]] {
+                        logEntries = entries
+                    }
                     if response.isFinal {
                         break
                     }
@@ -449,13 +261,30 @@ public class TerminalDataService: ObservableObject {
             }
 
             guard let entries = logEntries else {
-                throw DataServiceError.invalidResponse("Invalid log response")
+                return []
             }
 
             return entries.compactMap { entry in
-                parseTerminalOutput(from: entry, sessionId: session.id)
-            }
+                guard let data = entry["data"] as? String else { return nil }
 
+                let content: String
+                if let decodedData = Data(base64Encoded: data),
+                   let decodedString = String(data: decodedData, encoding: .utf8) {
+                    content = decodedString
+                } else {
+                    content = data
+                }
+
+                let timestamp = entry["timestamp"] as? TimeInterval ?? Date().timeIntervalSince1970
+                let type = (entry["type"] as? String) ?? "stdout"
+
+                return TerminalOutput(
+                    sessionId: session.id,
+                    data: content,
+                    timestamp: Date(timeIntervalSince1970: timestamp),
+                    outputType: type == "stderr" ? .stderr : .stdout
+                )
+            }
         } catch {
             lastError = error as? DataServiceError ?? DataServiceError.networkError(error)
             throw error
@@ -474,15 +303,13 @@ public class TerminalDataService: ObservableObject {
             return
         }
 
-        // Create output publisher for this session
         let outputSubject = PassthroughSubject<TerminalOutput, Never>()
         outputPublishers[sessionId] = outputSubject
 
-        // Subscribe to events from the relay client
-        let subscription = relayClient.events
+        // Subscribe to terminal.output events
+        let outputSubscription = relayClient.events
             .filter { event in
-                event.eventType == "terminal.output" &&
-                (event.data["sessionId"]?.value as? String) == sessionId
+                event.eventType == "terminal.output"
             }
             .compactMap { event in
                 self.parseTerminalOutput(from: event.data.mapValues { $0.value }, sessionId: sessionId)
@@ -491,30 +318,58 @@ public class TerminalDataService: ObservableObject {
                 outputSubject.send(output)
             }
 
-        eventSubscriptions[sessionId] = subscription
+        // Subscribe to terminal.exit events
+        let exitSubscription = relayClient.events
+            .filter { event in
+                event.eventType == "terminal.exit"
+            }
+            .compactMap { event -> TerminalOutput? in
+                let dict = event.data.mapValues { $0.value }
+                guard let sid = dict["sessionId"] as? String, sid == sessionId else { return nil }
+                let code = dict["code"] as? Int
+                let line = code != nil ? "[Session exited (code \(code!))]" : "[Session exited]"
+                self.activeSessions[sid]?.isActive = false
+                return TerminalOutput(sessionId: sid, data: line, timestamp: Date(), outputType: .system)
+            }
+            .sink { output in
+                outputSubject.send(output)
+            }
+
+        // Store both subscriptions
+        let combinedSubscription = AnyCancellable {
+            outputSubscription.cancel()
+            exitSubscription.cancel()
+        }
+        eventSubscriptions[sessionId] = combinedSubscription
     }
 
     private func parseTerminalOutput(from event: [String: Any], sessionId: String) -> TerminalOutput? {
-        guard
-            let payload = event["data"] as? [String: Any],
-            let sid = payload["sessionId"] as? String, sid == sessionId,
-            let outputData = payload["data"] as? String,
-            let ts = payload["timestamp"] as? Double,
-            let typeStr = payload["type"] as? String
-        else { return nil }
-
-        let type: TerminalOutputType = TerminalOutputType(rawValue: typeStr) ?? .stdout
-        return TerminalOutput(sessionId: sid, data: outputData, timestamp: Date(timeIntervalSince1970: ts), outputType: type)
-    }
-
-    private func parseSessionId(from output: String) -> String? {
-        if let data = output.data(using: .utf8),
-           let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
-           let sessionId = json["sessionId"] as? String {
-            return sessionId
+        guard let sid = event["sessionId"] as? String, sid == sessionId else {
+            return nil
         }
-        return nil
+
+        // Decode base64 data
+        guard let dataB64 = event["data"] as? String else { return nil }
+        let decodedData: String
+        if let decodedBytes = Data(base64Encoded: dataB64),
+           let decoded = String(data: decodedBytes, encoding: .utf8) {
+            decodedData = decoded
+        } else {
+            decodedData = dataB64
+        }
+
+        let ts = event["timestamp"] as? Double ?? Date().timeIntervalSince1970
+        let typeStr = event["type"] as? String ?? "stdout"
+        let type: TerminalOutputType = TerminalOutputType(rawValue: typeStr) ?? .stdout
+
+        return TerminalOutput(
+            sessionId: sid,
+            data: decodedData,
+            timestamp: Date(timeIntervalSince1970: ts),
+            outputType: type
+        )
     }
+
 }
 
 // MARK: - Supporting Types
@@ -578,7 +433,7 @@ struct TerminalDetachPayload: Codable {
 // MARK: - Publisher Extensions
 
 extension AnyPublisher {
-    func async() async throws -> Output {
+    public func async() async throws -> Output {
         try await withCheckedThrowingContinuation { continuation in
             var cancellable: AnyCancellable?
             cancellable = self

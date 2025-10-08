@@ -11,16 +11,19 @@ public struct RemoteTerminalView: View {
     @State private var terminalSession: TerminalSession?
     @State private var terminalOutput: [TerminalOutput] = []
     @State private var inputText = ""
+    @State private var commandSelectedRange: NSRange = NSRange(location: 0, length: 0)
     @State private var commandHistory: [String] = []
     @State private var historyIndex = -1
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var isSessionActive = false
-    @State private var currentSessionId: String?
     @StateObject private var voiceDictationService = VoiceDictationService.shared
     @StateObject private var textEnhancementService = TextEnhancementService.shared
+    @StateObject private var settingsService = SettingsDataService()
 
-    @State private var scrollToBottom = false
+    @State private var outputCancellable: AnyCancellable?
+    @State private var transcriptionModel: String?
+    @State private var transcriptionTemperature: Double?
 
     private let outputBufferLimit = 1000
 
@@ -48,33 +51,24 @@ public struct RemoteTerminalView: View {
                         Button("Ctrl+C") {
                             sendCtrlC()
                         }
-                        .small()
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.destructive)
-                        .foregroundColor(Color.foreground)
-                        .cornerRadius(4)
+                        .buttonStyle(CompactDestructiveButtonStyle())
+                        .accessibilityLabel("Send Ctrl+C")
+                        .accessibilityHint("Sends interrupt signal to the running process")
 
                         Button("Kill") {
                             killSession()
                         }
-                        .small()
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.warning)
-                        .foregroundColor(Color.foreground)
-                        .cornerRadius(4)
+                        .buttonStyle(CompactDestructiveButtonStyle())
+                        .accessibilityLabel("Kill Process")
+                        .accessibilityHint("Terminates the current process")
                     }
 
                     Button("Done") {
                         dismiss()
                     }
-                    .small()
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.primary)
-                    .foregroundColor(Color.foreground)
-                    .cornerRadius(4)
+                    .buttonStyle(ToolbarButtonStyle())
+                    .accessibilityLabel("Done")
+                    .accessibilityHint("Closes the terminal view")
                 }
             }
         }
@@ -83,6 +77,20 @@ public struct RemoteTerminalView: View {
         }
         .onDisappear {
             cleanupSession()
+        }
+        .task {
+            // Fetch voice transcription settings when view appears
+            do {
+                if let projectDir = container.sessionService.currentSession?.projectDirectory {
+                    try await settingsService.fetchProjectTaskModelSettings(projectDirectory: projectDir)
+                    if let settings = settingsService.projectTaskSettings["voiceTranscription"] {
+                        transcriptionModel = settings.model
+                        transcriptionTemperature = settings.temperature
+                    }
+                }
+            } catch {
+                print("Failed to fetch transcription settings: \(error)")
+            }
         }
     }
 
@@ -170,70 +178,40 @@ public struct RemoteTerminalView: View {
                     .font(.system(.body, design: .monospaced))
                     .foregroundColor(Color.success)
 
-                if #available(iOS 17.0, *) {
-                    TextField("Enter command...", text: $inputText)
-                        .font(.system(.body, design: .monospaced))
-                        .textFieldStyle(PlainTextFieldStyle())
-                        .foregroundColor(Color.foreground)
-                        .submitLabel(.send)
-                        .onSubmit {
-                            sendCommand()
-                        }
-                        .onKeyPress(.upArrow) {
-                            navigateHistory(direction: .up)
-                            return .handled
-                        }
-                        .onKeyPress(.downArrow) {
-                            navigateHistory(direction: .down)
-                            return .handled
-                        }
-                } else {
-                    TextField("Enter command...", text: $inputText)
-                        .font(.system(.body, design: .monospaced))
-                        .textFieldStyle(PlainTextFieldStyle())
-                        .foregroundColor(Color.foreground)
-                        .submitLabel(.send)
-                        .onSubmit {
-                            sendCommand()
-                        }
-                }
+                SelectableTextView(
+                    text: $inputText,
+                    selectedRange: $commandSelectedRange,
+                    placeholder: "Enter command...",
+                    onInteraction: {},
+                    singleLine: true,
+                    onSubmit: sendCommand,
+                    onUpArrow: { navigateHistory(direction: .up) },
+                    onDownArrow: { navigateHistory(direction: .down) }
+                )
+                .frame(height: 36)
 
                 Button("Send") {
                     sendCommand()
                 }
-                .small()
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(Color.primary)
-                .foregroundColor(Color.foreground)
-                .cornerRadius(6)
+                .buttonStyle(CompactPrimaryButtonStyle())
                 .disabled(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityLabel("Send")
+                .accessibilityHint("Sends the typed command to the terminal")
             }
 
             HStack(spacing: 12) {
                 Button(action: toggleRecording) {
                     HStack(spacing: 6) {
                         Image(systemName: voiceDictationService.isRecording ? "mic.fill" : "mic")
-                            .foregroundColor(voiceDictationService.isRecording ? Color.destructive : Color.primary)
                         Text(voiceDictationService.isRecording ? "Stop" : "Mic")
                     }
-                    .small()
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(voiceDictationService.isRecording ? Color.destructive.opacity(0.1) : Color.muted.opacity(0.2))
-                    .foregroundColor(voiceDictationService.isRecording ? Color.destructive : Color.foreground)
-                    .cornerRadius(6)
                 }
+                .buttonStyle(RecordingButtonStyle(isRecording: voiceDictationService.isRecording))
 
                 Button("Enhance") {
                     enhanceText()
                 }
-                .small()
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color.success.opacity(0.2))
-                .foregroundColor(Color.success)
-                .cornerRadius(6)
+                .buttonStyle(CompactSuccessButtonStyle())
                 .disabled(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || textEnhancementService.isEnhancing)
 
                 if textEnhancementService.isEnhancing {
@@ -257,27 +235,24 @@ public struct RemoteTerminalView: View {
 
         Task {
             do {
-                for try await output in container.terminalService.openSession() {
-                    await MainActor.run {
-                        isLoading = false
-                        isSessionActive = true
+                let session = try await container.terminalService.startSession(jobId: jobId)
+                await MainActor.run {
+                    terminalSession = session
+                    isSessionActive = true
+                    isLoading = false
 
-                        if let sessionId = parseSessionId(from: output) {
-                            currentSessionId = sessionId
+                    // Subscribe to output once
+                    outputCancellable = container.terminalService
+                        .getOutputStream(for: jobId)
+                        .receive(on: DispatchQueue.main)
+                        .sink { output in
+                            addTerminalOutput(output)
                         }
-
-                        let terminalOutput = TerminalOutput(
-                            sessionId: currentSessionId ?? "unknown",
-                            data: output,
-                            timestamp: Date(),
-                            outputType: .stdout
-                        )
-                        addTerminalOutput(terminalOutput)
-                    }
                 }
             } catch {
                 await MainActor.run {
                     errorMessage = error.localizedDescription
+                    isSessionActive = false
                     isLoading = false
                 }
             }
@@ -295,36 +270,30 @@ public struct RemoteTerminalView: View {
 
     private func sendCommand() {
         let command = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !command.isEmpty, let sessionId = currentSessionId else { return }
+        guard !command.isEmpty else { return }
 
         if !commandHistory.contains(command) {
             commandHistory.append(command)
         }
         historyIndex = -1
 
-        let echoOutput = TerminalOutput(
-            sessionId: sessionId,
-            data: "$ \(command)\n",
-            timestamp: Date(),
-            outputType: .system
-        )
-        addTerminalOutput(echoOutput)
+        // Optional: local echo
+        if let session = terminalSession {
+            let echoOutput = TerminalOutput(
+                sessionId: session.id,
+                data: "$ \(command)\n",
+                timestamp: Date(),
+                outputType: .system
+            )
+            addTerminalOutput(echoOutput)
+        }
 
         Task {
             do {
-                for try await output in container.terminalService.write(sessionId: sessionId, input: command + "\n") {
-                    await MainActor.run {
-                        let terminalOutput = TerminalOutput(
-                            sessionId: sessionId,
-                            data: output,
-                            timestamp: Date(),
-                            outputType: .stdout
-                        )
-                        addTerminalOutput(terminalOutput)
-                    }
-                }
+                try await container.terminalService.write(jobId: jobId, data: command + "\n")
                 await MainActor.run {
                     inputText = ""
+                    commandSelectedRange = NSRange(location: 0, length: 0)
                 }
             } catch {
                 await MainActor.run {
@@ -335,21 +304,9 @@ public struct RemoteTerminalView: View {
     }
 
     private func sendCtrlC() {
-        guard let sessionId = currentSessionId else { return }
-
         Task {
             do {
-                for try await output in container.terminalService.write(sessionId: sessionId, input: "\u{03}") {
-                    await MainActor.run {
-                        let terminalOutput = TerminalOutput(
-                            sessionId: sessionId,
-                            data: output,
-                            timestamp: Date(),
-                            outputType: .system
-                        )
-                        addTerminalOutput(terminalOutput)
-                    }
-                }
+                try await container.terminalService.write(jobId: jobId, data: "\u{03}")
             } catch {
                 await MainActor.run {
                     errorMessage = error.localizedDescription
@@ -359,16 +316,13 @@ public struct RemoteTerminalView: View {
     }
 
     private func killSession() {
-        guard let sessionId = currentSessionId else { return }
-
         Task {
             do {
-                try await container.terminalService.close(sessionId: sessionId)
+                try await container.terminalService.kill(jobId: jobId)
                 await MainActor.run {
                     isSessionActive = false
-                    currentSessionId = nil
                     let killOutput = TerminalOutput(
-                        sessionId: sessionId,
+                        sessionId: terminalSession?.id ?? "",
                         data: "\n[Session terminated]\n",
                         timestamp: Date(),
                         outputType: .system
@@ -384,7 +338,45 @@ public struct RemoteTerminalView: View {
     }
 
     private func cleanupSession() {
+        outputCancellable?.cancel()
+        outputCancellable = nil
+
+        Task {
+            try? await container.terminalService.detach(jobId: jobId)
+        }
+
         cancellables.removeAll()
+    }
+
+    private func applyInsertionOrReplacement(_ text: String) {
+        let nsString = inputText as NSString
+        let textLength = nsString.length
+
+        let validRange: NSRange
+        if commandSelectedRange.location == NSNotFound || commandSelectedRange.location > textLength {
+            validRange = NSRange(location: textLength, length: 0)
+        } else if commandSelectedRange.location + commandSelectedRange.length > textLength {
+            validRange = NSRange(location: commandSelectedRange.location, length: textLength - commandSelectedRange.location)
+        } else {
+            validRange = commandSelectedRange
+        }
+
+        let beforeRange = nsString.substring(to: validRange.location)
+        let afterRange = nsString.substring(from: validRange.location + validRange.length)
+
+        let needsSpaceBefore = !beforeRange.isEmpty && !beforeRange.hasSuffix(" ") && !beforeRange.hasSuffix("\n")
+        let needsSpaceAfter = !afterRange.isEmpty && !afterRange.hasPrefix(" ") && !afterRange.hasPrefix("\n")
+
+        let prefix = needsSpaceBefore ? " " : ""
+        let suffix = needsSpaceAfter ? " " : ""
+
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let insertionText = prefix + trimmedText + suffix
+
+        inputText = beforeRange + insertionText + afterRange
+
+        let newLocation = (beforeRange as NSString).length + (insertionText as NSString).length
+        commandSelectedRange = NSRange(location: newLocation, length: 0)
     }
 
     private func toggleRecording() {
@@ -399,16 +391,6 @@ public struct RemoteTerminalView: View {
         Task {
             do {
                 try await voiceDictationService.startRecording()
-
-                for try await transcribedText in voiceDictationService.transcribe() {
-                    await MainActor.run {
-                        if inputText.isEmpty {
-                            inputText = transcribedText
-                        } else {
-                            inputText += " " + transcribedText
-                        }
-                    }
-                }
             } catch {
                 await MainActor.run {
                     errorMessage = error.localizedDescription
@@ -419,17 +401,75 @@ public struct RemoteTerminalView: View {
 
     private func stopRecording() {
         voiceDictationService.stopRecording()
-    }
-
-    private func enhanceText() {
-        let textToEnhance = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !textToEnhance.isEmpty else { return }
 
         Task {
             do {
-                let enhancedText = try await textEnhancementService.enhance(text: textToEnhance, context: "terminal_command")
+                // Wait for file writes to complete
+                try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+
+                // Transcribe the recording
+                for try await transcribedText in voiceDictationService.transcribe(
+                    model: transcriptionModel,
+                    language: nil, // Terminal doesn't have language picker, use server default
+                    prompt: nil,
+                    temperature: transcriptionTemperature
+                ) {
+                    await MainActor.run {
+                        applyInsertionOrReplacement(transcribedText)
+                    }
+                }
+            } catch {
                 await MainActor.run {
-                    inputText = enhancedText
+                    errorMessage = "Transcription failed: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    private func enhanceText() {
+        let nsString = inputText as NSString
+        let textLength = nsString.length
+
+        let textToEnhance: String
+        let isPartialEnhancement: Bool
+
+        if commandSelectedRange.length > 0 && commandSelectedRange.location != NSNotFound && commandSelectedRange.location < textLength {
+            let validLength = min(commandSelectedRange.length, textLength - commandSelectedRange.location)
+            let validRange = NSRange(location: commandSelectedRange.location, length: validLength)
+            textToEnhance = nsString.substring(with: validRange)
+            isPartialEnhancement = true
+        } else {
+            textToEnhance = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+            isPartialEnhancement = false
+        }
+
+        guard !textToEnhance.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+
+        Task {
+            do {
+                let sessionId = container.sessionService.currentSession?.id ?? "unknown"
+                let projectDirectory = container.sessionService.currentSession?.projectDirectory
+
+                let enhancedText = try await textEnhancementService.enhance(
+                    text: textToEnhance,
+                    context: "terminal_command",
+                    sessionId: sessionId,
+                    projectDirectory: projectDirectory
+                )
+
+                await MainActor.run {
+                    if isPartialEnhancement {
+                        let beforeSelection = nsString.substring(to: commandSelectedRange.location)
+                        let afterSelection = nsString.substring(from: commandSelectedRange.location + commandSelectedRange.length)
+
+                        inputText = beforeSelection + enhancedText + afterSelection
+
+                        let newLocation = (beforeSelection as NSString).length + (enhancedText as NSString).length
+                        commandSelectedRange = NSRange(location: newLocation, length: 0)
+                    } else {
+                        inputText = enhancedText
+                        commandSelectedRange = NSRange(location: (enhancedText as NSString).length, length: 0)
+                    }
                 }
             } catch {
                 await MainActor.run {
@@ -468,15 +508,6 @@ public struct RemoteTerminalView: View {
         if historyIndex >= 0 && historyIndex < commandHistory.count {
             inputText = commandHistory[historyIndex]
         }
-    }
-
-    private func parseSessionId(from output: String) -> String? {
-        if let data = output.data(using: .utf8),
-           let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
-           let sessionId = json["sessionId"] as? String {
-            return sessionId
-        }
-        return nil
     }
 
     @State private var cancellables = Set<AnyCancellable>()

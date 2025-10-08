@@ -25,7 +25,7 @@ public struct AccountView: View {
           await appState.signOut()
         }
       }
-      .buttonStyle(SecondaryButtonStyle())
+      .buttonStyle(DestructiveButtonStyle())
 
       Spacer()
     }

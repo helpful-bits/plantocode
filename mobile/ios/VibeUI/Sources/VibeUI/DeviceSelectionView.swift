@@ -92,6 +92,8 @@ public struct DeviceSelectionView: View {
                                 refreshDevices()
                             }
                             .buttonStyle(PrimaryButtonStyle())
+                            .accessibilityLabel("Refresh")
+                            .accessibilityHint("Searches for available devices")
                         }
                         .padding(.vertical)
                     }
@@ -115,6 +117,8 @@ public struct DeviceSelectionView: View {
                             }
                             .buttonStyle(SecondaryButtonStyle())
                             .disabled(deviceDiscovery.isLoading || isConnecting)
+                            .accessibilityLabel("Refresh")
+                            .accessibilityHint("Searches for available devices")
 
                             Spacer()
 
@@ -155,16 +159,19 @@ public struct DeviceSelectionView: View {
             }
         }
         .navigationTitle("Select Device")
-        .navigationBarTitleDisplayMode(.large)
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("Change Region") {
                     showingRegionSelector = true
                 }
+                .buttonStyle(ToolbarButtonStyle())
             }
         }
         .sheet(isPresented: $showingRegionSelector) {
-            ServerSelectionView()
+            NavigationStack {
+                ServerSelectionView(isModal: true)
+            }
         }
     }
 
@@ -258,7 +265,7 @@ private struct DeviceRow: View {
                 // Device icon
                 VStack {
                     Image(systemName: deviceIcon)
-                        .font(.system(size: 24))
+                        .font(.system(size: 48))
                         .foregroundColor(device.status.isAvailable ? Color.primary : Color.mutedForeground)
                 }
                 .frame(width: 40)
@@ -332,6 +339,9 @@ private struct DeviceRow: View {
         }
         .disabled(!device.status.isAvailable || isConnecting)
         .buttonStyle(PlainButtonStyle())
+        .accessibilityLabel("\(device.deviceName), \(device.platform), \(device.status.displayName)")
+        .accessibilityHint("Connects to this device")
+        .accessibilityValue(isSelected ? "Selected" : (isConnecting ? "Connecting" : ""))
     }
 
     private var deviceIcon: String {
@@ -354,7 +364,7 @@ private struct DeviceRow: View {
         case .away:
             return Color.warning
         case .offline:
-            return Color.muted
+            return Color.mutedForeground
         }
     }
 
@@ -389,7 +399,7 @@ private struct DeviceRow: View {
         case .connected: return Color.success
         case .connecting, .reconnecting: return Color.warning
         case .disconnected, .failed: return Color.destructive
-        default: return Color.muted
+        default: return Color.mutedForeground
         }
     }
 }

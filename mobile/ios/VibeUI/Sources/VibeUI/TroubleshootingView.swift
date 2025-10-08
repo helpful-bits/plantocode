@@ -10,7 +10,7 @@ public struct TroubleshootingView: View {
   public init() {}
 
   public var body: some View {
-    NavigationView {
+    NavigationStack {
       VStack {
         List {
           Section("Connection Issues") {
@@ -43,16 +43,19 @@ public struct TroubleshootingView: View {
             Button("Open Device Selection") {
               showDeviceSelection = true
             }
+            .buttonStyle(SecondaryButtonStyle())
 
             Button("Change Region") {
               showRegion = true
             }
+            .buttonStyle(SecondaryButtonStyle())
 
             Button("Sign Out", role: .destructive) {
               Task {
                 await appState.signOut()
               }
             }
+            .buttonStyle(DestructiveButtonStyle())
           }
         }
       }
@@ -63,6 +66,7 @@ public struct TroubleshootingView: View {
           Button("Done") {
             dismiss()
           }
+          .buttonStyle(ToolbarButtonStyle())
         }
       }
       .sheet(isPresented: $showDeviceSelection) {

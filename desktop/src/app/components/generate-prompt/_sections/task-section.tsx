@@ -55,14 +55,27 @@ const TaskSection = React.memo(function TaskSection({
   } = taskActions;
   
   // Optimized session update - only update session state, no redundant processing
-  const handleTaskChange = useCallback((value: string) => {
-    // Update session state and mark as modified for persistence
+  const handleTaskChange = useCallback(async (value: string) => {
+    // Update local session state and mark as modified for persistence
     sessionActions.updateCurrentSessionFields({ taskDescription: value });
     sessionActions.setSessionModified(true);
-    
+
     // Single interaction notification without additional debouncing
     coreActions.handleInteraction();
-  }, [sessionActions, coreActions]);
+
+    // Call backend to emit relay events for mobile sync
+    // This is already debounced by the task-description component (100 milliseconds)
+    if (sessionState.currentSession?.id) {
+      const { updateSessionFieldsAction } = await import("@/actions");
+      try {
+        await updateSessionFieldsAction(sessionState.currentSession.id, {
+          taskDescription: value,
+        });
+      } catch (error) {
+        console.error("Failed to sync task description to backend:", error);
+      }
+    }
+  }, [sessionActions, coreActions, sessionState.currentSession?.id]);
 
 
   // Calculate if refine task should be shown based on estimated tokens

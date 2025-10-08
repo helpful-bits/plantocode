@@ -234,7 +234,7 @@ impl Handler<RelayMessage> for DeviceLinkWs {
     type Result = ();
 
     fn handle(&mut self, msg: RelayMessage, ctx: &mut Self::Context) {
-        info!(
+        debug!(
             connection_id = %self.connection_id,
             user_id = ?self.user_id,
             device_id = ?self.device_id,
@@ -243,7 +243,7 @@ impl Handler<RelayMessage> for DeviceLinkWs {
         );
         ctx.text(msg.message.clone());
 
-        info!(
+        debug!(
             connection_id = %self.connection_id,
             user_id = ?self.user_id,
             device_id = ?self.device_id,
@@ -1032,17 +1032,27 @@ impl Handler<HandleEventMessage> for DeviceLinkWs {
             ctx.spawn(
                 async move {
                     match connection_manager
-                        .broadcast_to_user(&user_id, event_message)
+                        .broadcast_to_user_excluding(&user_id, event_message, source_device_id.as_deref())
                         .await
                     {
                         Ok(count) => {
-                            info!(
-                                source_device = ?source_device_id,
-                                user_id = %user_id,
-                                event_type = %event_type,
-                                devices_reached = count,
-                                "Event broadcasted to user devices"
-                            );
+                            if event_type == "job:response-appended" {
+                                debug!(
+                                    source_device = ?source_device_id,
+                                    user_id = %user_id,
+                                    event_type = %event_type,
+                                    devices_reached = count,
+                                    "Event broadcasted to user devices"
+                                );
+                            } else {
+                                info!(
+                                    source_device = ?source_device_id,
+                                    user_id = %user_id,
+                                    event_type = %event_type,
+                                    devices_reached = count,
+                                    "Event broadcasted to user devices"
+                                );
+                            }
                         }
                         Err(e) => {
                             warn!(

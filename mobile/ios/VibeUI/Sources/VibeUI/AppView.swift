@@ -17,6 +17,7 @@ public struct AppView: View {
     NavigationStack {
       AuthFlowCoordinator()
     }
+    .ignoresSafeArea(.keyboard, edges: .bottom)
     .environmentObject(container)
     .onAppear {
       if !VibeManagerCore.shared.isInitialized {

@@ -14,6 +14,19 @@ public final class SessionDataService: ObservableObject {
         self.currentSessionId = "mobile-session-\(UUID().uuidString)"
     }
 
+    private func normalizeEpochSeconds(_ any: Any?) -> Int64 {
+        switch any {
+        case let v as Int64: return v > 1_000_000_000_000 ? v / 1000 : v
+        case let v as Int:   let i = Int64(v); return i > 1_000_000_000_000 ? i / 1000 : i
+        case let v as Double: let i = Int64(v); return i > 1_000_000_000_000 ? i / 1000 : i
+        default: return 0
+        }
+    }
+
+    private func ts(from dict: [String: Any], camel: String, snake: String) -> Int64 {
+        return normalizeEpochSeconds(dict[camel] ?? dict[snake])
+    }
+
     @discardableResult
     public func ensureSession() -> String {
         if let id = currentSessionId { return id }
@@ -63,11 +76,12 @@ public final class SessionDataService: ObservableObject {
                     let sessionList = items.compactMap { dict -> Session? in
                         guard let id = dict["id"] as? String,
                               let name = dict["name"] as? String,
-                              let projectDirectory = dict["projectDirectory"] as? String,
-                              let createdAt = dict["createdAt"] as? Int64,
-                              let updatedAt = dict["updatedAt"] as? Int64 else {
+                              let projectDirectory = dict["projectDirectory"] as? String else {
                             return nil
                         }
+
+                        let createdAt = ts(from: dict, camel: "createdAt", snake: "created_at")
+                        let updatedAt = ts(from: dict, camel: "updatedAt", snake: "updated_at")
 
                         return Session(
                             id: id,
@@ -140,9 +154,10 @@ public final class SessionDataService: ObservableObject {
 
                     if let id = sessionDict["id"] as? String,
                        let name = sessionDict["name"] as? String,
-                       let projectDirectory = sessionDict["projectDirectory"] as? String,
-                       let createdAt = sessionDict["createdAt"] as? Int64,
-                       let updatedAt = sessionDict["updatedAt"] as? Int64 {
+                       let projectDirectory = sessionDict["projectDirectory"] as? String {
+
+                        let createdAt = ts(from: sessionDict, camel: "createdAt", snake: "created_at")
+                        let updatedAt = ts(from: sessionDict, camel: "updatedAt", snake: "updated_at")
 
                         let session = Session(
                             id: id,
@@ -202,9 +217,10 @@ public final class SessionDataService: ObservableObject {
 
                     if let id = sessionDict["id"] as? String,
                        let name = sessionDict["name"] as? String,
-                       let projectDirectory = sessionDict["projectDirectory"] as? String,
-                       let createdAt = sessionDict["createdAt"] as? Int64,
-                       let updatedAt = sessionDict["updatedAt"] as? Int64 {
+                       let projectDirectory = sessionDict["projectDirectory"] as? String {
+
+                        let createdAt = ts(from: sessionDict, camel: "createdAt", snake: "created_at")
+                        let updatedAt = ts(from: sessionDict, camel: "updatedAt", snake: "updated_at")
 
                         let session = Session(
                             id: id,
@@ -265,9 +281,10 @@ public final class SessionDataService: ObservableObject {
 
                     if let id = sessionDict["id"] as? String,
                        let name = sessionDict["name"] as? String,
-                       let projectDirectory = sessionDict["projectDirectory"] as? String,
-                       let createdAt = sessionDict["createdAt"] as? Int64,
-                       let updatedAt = sessionDict["updatedAt"] as? Int64 {
+                       let projectDirectory = sessionDict["projectDirectory"] as? String {
+
+                        let createdAt = ts(from: sessionDict, camel: "createdAt", snake: "created_at")
+                        let updatedAt = ts(from: sessionDict, camel: "updatedAt", snake: "updated_at")
 
                         let session = Session(
                             id: id,
@@ -380,9 +397,10 @@ public final class SessionDataService: ObservableObject {
 
                     if let id = sessionDict["id"] as? String,
                        let name = sessionDict["name"] as? String,
-                       let projectDirectory = sessionDict["projectDirectory"] as? String,
-                       let createdAt = sessionDict["createdAt"] as? Int64,
-                       let updatedAt = sessionDict["updatedAt"] as? Int64 {
+                       let projectDirectory = sessionDict["projectDirectory"] as? String {
+
+                        let createdAt = ts(from: sessionDict, camel: "createdAt", snake: "created_at")
+                        let updatedAt = ts(from: sessionDict, camel: "updatedAt", snake: "updated_at")
 
                         let session = Session(
                             id: id,
@@ -522,9 +540,10 @@ public final class SessionDataService: ObservableObject {
 
                     if let id = sessionDict["id"] as? String,
                        let name = sessionDict["name"] as? String,
-                       let projectDirectory = sessionDict["projectDirectory"] as? String,
-                       let createdAt = sessionDict["createdAt"] as? Int64,
-                       let updatedAt = sessionDict["updatedAt"] as? Int64 {
+                       let projectDirectory = sessionDict["projectDirectory"] as? String {
+
+                        let createdAt = ts(from: sessionDict, camel: "createdAt", snake: "created_at")
+                        let updatedAt = ts(from: sessionDict, camel: "updatedAt", snake: "updated_at")
 
                         let session = Session(
                             id: id,
@@ -709,7 +728,9 @@ public final class SessionDataService: ObservableObject {
         error = nil
 
         do {
-            let stream = CommandRouter.textEnhance(text: content, context: "task description")
+            // Get project directory from current session
+            let projectDirectory = currentSession?.projectDirectory
+            let stream = CommandRouter.textEnhance(text: content, sessionId: sessionId, projectDirectory: projectDirectory)
 
             for try await response in stream {
                 if let error = response.error {
@@ -745,4 +766,74 @@ public final class SessionDataService: ObservableObject {
     public func processOfflineQueue() async {
         await offlineQueue.processPending(with: self)
     }
+
+    public func updateSessionFilesInMemory(
+        sessionId: String,
+        includedFiles: [String],
+        forceExcludedFiles: [String]
+    ) {
+        guard let cs = self.currentSession, cs.id == sessionId else {
+            return
+        }
+
+        // Create new Session instance with updated file lists
+        let updatedSession = Session(
+            id: cs.id,
+            name: cs.name,
+            projectDirectory: cs.projectDirectory,
+            taskDescription: cs.taskDescription,
+            createdAt: cs.createdAt,
+            updatedAt: cs.updatedAt,
+            includedFiles: includedFiles,
+            forceExcludedFiles: forceExcludedFiles
+        )
+        self.currentSession = updatedSession
+
+        if let index = self.sessions.firstIndex(where: { $0.id == sessionId }) {
+            self.sessions[index] = updatedSession
+        }
+    }
+
+    public func broadcastActiveSessionChanged(sessionId: String, projectDirectory: String) async throws {
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else { return }
+        try await relayClient.sendEvent(eventType: "active-session-changed", data: [
+            "sessionId": sessionId,
+            "projectDirectory": projectDirectory
+        ])
+    }
+
+    public func loadSessionById(sessionId: String, projectDirectory: String) async throws {
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else { return }
+        let request = RpcRequest(method: "session.get", params: ["sessionId": AnyCodable(sessionId)])
+        var resolvedSession: Session? = nil
+        for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
+            if let result = response.result?.value as? [String: Any],
+               let sessionDict = result["session"] as? [String: Any] {
+                if let id = sessionDict["id"] as? String,
+                   let name = sessionDict["name"] as? String,
+                   let projDir = sessionDict["projectDirectory"] as? String {
+                    let createdAt = ts(from: sessionDict, camel: "createdAt", snake: "created_at")
+                    let updatedAt = ts(from: sessionDict, camel: "updatedAt", snake: "updated_at")
+                    let s = Session(
+                        id: id,
+                        name: name,
+                        projectDirectory: projDir,
+                        taskDescription: sessionDict["taskDescription"] as? String,
+                        createdAt: createdAt,
+                        updatedAt: updatedAt,
+                        includedFiles: sessionDict["includedFiles"] as? [String] ?? [],
+                        forceExcludedFiles: sessionDict["forceExcludedFiles"] as? [String] ?? []
+                    )
+                    resolvedSession = s
+                }
+            }
+            if response.isFinal { break }
+        }
+        if let s = resolvedSession {
+            await MainActor.run { self.currentSession = s }
+        }
+    }
+
 }

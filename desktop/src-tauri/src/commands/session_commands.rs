@@ -356,53 +356,27 @@ pub async fn update_session_fields_command(
     // Save the updated session
     repo.update_session(&updated_session).await?;
 
-    // If task description changed, append to history and emit events
+    // Always emit session-updated for any field change
+    let session_json = serde_json::to_value(&updated_session)
+        .map_err(|e| format!("json err: {e}"))?;
+    crate::events::session_events::emit_session_updated(&app_handle, &session_id, &session_json)?;
+
+    // Keep history-synced for backward compatibility if task description changed
     if task_description_changed {
         if let Some(ref new_desc) = updated_session.task_description {
-            // Append to history
-            let _ = repo
-                .append_task_description_history(&session_id, new_desc)
-                .await;
-
-            // Emit session-history-synced event
-            let _ = app_handle.emit(
-                "session-history-synced",
-                serde_json::json!({
+            let _ = repo.append_task_description_history(&session_id, new_desc).await;
+            let _ = app_handle.emit("session-history-synced", serde_json::json!({
+                "sessionId": &session_id,
+                "taskDescription": new_desc
+            }));
+            let _ = app_handle.emit("device-link-event", serde_json::json!({
+                "type": "session-history-synced",
+                "payload": {
                     "sessionId": &session_id,
                     "taskDescription": new_desc
-                }),
-            );
-
-            // Emit device-link event
-            let _ = app_handle.emit(
-                "device-link-event",
-                serde_json::json!({
-                    "type": "session-history-synced",
-                    "payload": {
-                        "sessionId": &session_id,
-                        "taskDescription": new_desc
-                    }
-                }),
-            );
-        }
-    } else {
-        // Emit general session-updated event
-        let _ = app_handle.emit(
-            "session-updated",
-            serde_json::json!({
-                "sessionId": &session_id
-            }),
-        );
-
-        let _ = app_handle.emit(
-            "device-link-event",
-            serde_json::json!({
-                "type": "session-updated",
-                "payload": {
-                    "sessionId": &session_id
                 }
-            }),
-        );
+            }));
+        }
     }
 
     Ok(updated_session)
@@ -653,6 +627,39 @@ pub async fn update_session_files_command(
     );
 
     Ok(updated_session)
+}
+
+#[tauri::command]
+pub async fn broadcast_file_browser_state_command(
+    app_handle: tauri::AppHandle,
+    session_id: String,
+    project_directory: String,
+    search_term: Option<String>,
+    sort_by: Option<String>,
+    sort_order: Option<String>,
+    filter_mode: Option<String>,
+) -> Result<(), String> {
+    use serde_json::json;
+
+    let payload = json!({
+        "sessionId": session_id,
+        "projectDirectory": project_directory,
+        "searchTerm": search_term,
+        "sortBy": sort_by,
+        "sortOrder": sort_order,
+        "filterMode": filter_mode
+    });
+
+    app_handle.emit("session-file-browser-state-updated", payload.clone())
+        .map_err(|e| format!("emit failed: {e}"))?;
+
+    // NOTE: DeviceLinkClient forwards only when key is 'payload' (not 'data'). Keep consistent for relay.
+    app_handle.emit("device-link-event", json!({
+        "type": "session-file-browser-state-updated",
+        "payload": payload
+    })).map_err(|e| format!("device-link emit failed: {e}"))?;
+
+    Ok(())
 }
 
 /// Get file relationships (import dependencies) for session files
@@ -911,3 +918,23 @@ pub async fn get_session_contents_command(
         "jobsCount": jobs.len(),
     }))
 }
+
+#[tauri::command]
+pub async fn broadcast_active_session_changed_command(
+    app_handle: tauri::AppHandle,
+    project_directory: String,
+    session_id: Option<String>
+) -> Result<(), String> {
+    use serde_json::json;
+    let payload = json!({
+        "type": "active-session-changed",
+        "payload": {
+            "projectDirectory": project_directory,
+            "sessionId": session_id
+        },
+        "relayOrigin": "local"
+    });
+    app_handle.emit("device-link-event", payload).map_err(|e| format!("emit failed: {e}"))?;
+    Ok(())
+}
+

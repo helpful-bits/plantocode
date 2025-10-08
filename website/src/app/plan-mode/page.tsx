@@ -12,23 +12,22 @@ import { Code2, Terminal, GitMerge, Search, Zap } from 'lucide-react';
 import type { SoftwareApplication } from 'schema-dts';
 
 export const metadata: Metadata = {
-  title: 'Plan Mode for Codex CLI, Claude Code & Cursor - Vibe Manager',
-  description: 'Add plan mode to Codex CLI, Claude Code, Cursor. AI architect merges plans from GPT-5, Claude, Gemini with your guidance. Review before execution. Desktop app with integrated terminal.',
+  title: 'Architectural Planning for Codex CLI, Claude Code & Cursor - Vibe Manager',
+  description: 'Pre-planning workflow for Codex CLI, Claude Code, Cursor. Discover files, run models multiple times to surface complementary details, merge with your guidance. Review before CLI execution.',
   keywords: [
-    'codex cli plan mode',
-    'codex plan mode',
-    'codex planning mode',
-    'claude code plan mode',
-    'cursor plan mode',
-    'openai codex cli plan mode',
-    'plan mode in codex',
-    'plan mode in cursor',
+    'codex cli planning workflow',
+    'codex cli architectural planning',
+    'claude code planning workflow',
+    'cursor planning workflow',
+    'claude code plan mode complement',
+    'openai codex cli approval modes',
+    'codex cli read-only mode',
+    'cursor composer planning',
+    'cursor agent mode workflow',
     'claude code cli planning',
-    'codex cli planning mode',
-    'cursor custom modes',
-    'openai codex cli approvals mode',
-    'codex cli approval modes',
-    'claude code router alternative',
+    'ai architectural planning',
+    'multi-model plan synthesis',
+    'file discovery for cli tools',
     'vibe manager'
   ],
 };
@@ -79,7 +78,7 @@ export default function HirePage() {
     },
     {
       capability: 'AI architect merges plans with your guidance',
-      details: 'Tell it what you like/dislike. AI follows your merge instructions, synthesizes best insights, creates superior approach',
+      details: 'Guide the merge with your architectural requirements. AI consolidates complementary details from multiple runs into one comprehensive plan',
       link: '/features/plan-editor'
     },
     {
@@ -102,12 +101,12 @@ export default function HirePage() {
     },
     {
       step: 'Generate Plans',
-      description: 'Pick the best model per job with token guardrails',
+      description: 'Run models multiple times (3x GPT-5, 2x Gemini) with token guardrails',
       icon: <Code2 className="w-5 h-5" />
     },
     {
       step: 'AI Merges + You Guide',
-      description: 'Provide merge instructions, AI synthesizes superior approach',
+      description: 'Provide merge instructions, AI consolidates complementary details from multiple runs',
       icon: <GitMerge className="w-5 h-5" />
     },
     {
@@ -132,6 +131,27 @@ export default function HirePage() {
     },
   ];
 
+  const integrationPaths = [
+    {
+      name: 'Codex CLI planning workflow',
+      description: 'Map every dependency, merge multi-model plans, then execute with Codex approval modes for safe iteration.',
+      href: '/plan-mode/codex',
+      icon: <Terminal className="w-5 h-5 text-primary" />
+    },
+    {
+      name: 'Claude Code planning workflow',
+      description: 'Enhance Claude Code\'s native Plan Mode with multi-model synthesis, file discovery, and merge instructions.',
+      href: '/plan-mode/claude-code',
+      icon: <GitMerge className="w-5 h-5 text-primary" />
+    },
+    {
+      name: 'Cursor planning workflow',
+      description: 'Give Cursor Composer and Agent mode full architectural context with WSL-friendly execution guardrails.',
+      href: '/plan-mode/cursor',
+      icon: <Code2 className="w-5 h-5 text-primary" />
+    },
+  ];
+
   return (
     <>
       <StructuredData data={softwareApplicationJsonLd} />
@@ -149,7 +169,7 @@ export default function HirePage() {
                   <span>For developers who review before they run</span>
                 </div>
                 <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-6 bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent">
-                  Plan mode for Codex CLI, Claude Code & Cursor
+                  Architectural Planning for Codex CLI, Claude Code & Cursor
                 </h1>
                 <p className="text-lg sm:text-xl md:text-2xl text-foreground/80 max-w-3xl mx-auto leading-relaxed mb-6">
                   You can't possibly remember to mention every webhook, cache, background job,
@@ -170,6 +190,27 @@ export default function HirePage() {
                 <p className="text-sm text-foreground/60 mt-4">
                   $5 free credits • Pay-as-you-go • Works with any AI coding tool
                 </p>
+              </div>
+
+              {/* Choose your IDE */}
+              <div className="mb-16">
+                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">Choose your CLI planning workflow</h2>
+                <div className="grid md:grid-cols-3 gap-6">
+                  {integrationPaths.map((item, i) => (
+                    <GlassCard key={i} className="p-6 h-full" highlighted>
+                      <div className="flex items-start gap-3 mb-3">
+                        <div className="mt-1">{item.icon}</div>
+                        <div>
+                          <h3 className="font-semibold text-lg">{item.name}</h3>
+                        </div>
+                      </div>
+                      <p className="text-sm text-foreground/70 leading-relaxed mb-4">{item.description}</p>
+                      <LinkWithArrow href={item.href} className="text-sm">
+                        Open the {item.name} guide
+                      </LinkWithArrow>
+                    </GlassCard>
+                  ))}
+                </div>
               </div>
 
               {/* Real circumstances */}

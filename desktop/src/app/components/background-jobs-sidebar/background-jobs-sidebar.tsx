@@ -34,10 +34,10 @@ export const BackgroundJobsSidebar = () => {
   const { updateCurrentSessionFields, applyFileSelectionUpdate } = useSessionActionsContext();
   const { showNotification } = useNotification();
   const { getAttentionCount } = useTerminalSessions();
-  
+
   // View state management
   const [view, setView] = useState<'jobs' | 'monitoring'>('jobs');
-  
+
   // System prompt cache for web search execution
   const [webSearchSystemPrompt, setWebSearchSystemPrompt] = useState<string>('');
   const [isLoadingSystemPrompt, setIsLoadingSystemPrompt] = useState(false);

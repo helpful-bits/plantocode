@@ -105,7 +105,7 @@ export default function MergeInstructionsPage() {
                       <div>
                         <h3 className="text-xl font-bold mb-3">Multi-Model Plan Generation</h3>
                         <p className="text-foreground/80 mb-4">
-                          Generate diverse implementation approaches using different models and configurations.
+                          Run GPT-5 and Gemini multiple times. Each run tackles large context differently, surfacing complementary implementation details.
                         </p>
                         <ul className="space-y-2 text-foreground/70">
                           <li className="flex items-start gap-2">
