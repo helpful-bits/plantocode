@@ -126,8 +126,9 @@ pub use settings_commands::{
 
 // Re-exports from session commands module
 pub use session_commands::{
-    clear_all_project_sessions_command, create_session_command, delete_session_command,
-    get_file_selection_history_command, get_session_command, get_sessions_for_project_command,
+    broadcast_active_session_changed_command, clear_all_project_sessions_command,
+    create_session_command, delete_session_command, get_file_selection_history_command,
+    get_session_command, get_sessions_for_project_command,
     get_task_description_history_command, rename_session_command,
     sync_file_selection_history_command, sync_task_description_history_command,
     update_session_command, update_session_fields_command,

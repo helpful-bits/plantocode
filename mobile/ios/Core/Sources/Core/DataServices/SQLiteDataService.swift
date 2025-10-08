@@ -11,18 +11,15 @@ public class SQLiteDataService: ObservableObject {
     @Published public var executionStats: [QueryExecutionStats] = []
 
     // MARK: - Private Properties
-    private let desktopAPIClient: DesktopAPIClient
     private let apiClient: APIClientProtocol
     private let cacheManager: CacheManager
     private var cancellables = Set<AnyCancellable>()
 
     // MARK: - Initialization
     public init(
-        desktopAPIClient: DesktopAPIClient,
         apiClient: APIClientProtocol = APIClient.shared,
         cacheManager: CacheManager = CacheManager.shared
     ) {
-        self.desktopAPIClient = desktopAPIClient
         self.apiClient = apiClient
         self.cacheManager = cacheManager
         loadTemplates()
@@ -32,60 +29,8 @@ public class SQLiteDataService: ObservableObject {
 
     /// Execute a parameterized query template
     public func executeQuery(request: SQLiteQueryRequest) -> AnyPublisher<SQLiteQueryResponse, DataServiceError> {
-        isLoading = true
-        error = nil
-
-        // Validate query first
-        let validateRequest = ValidateQueryRequest(
-            templateName: request.templateName,
-            parameters: request.parameters
-        )
-
-        return validateQuery(request: validateRequest)
-            .flatMap { [weak self] validation -> AnyPublisher<SQLiteQueryResponse, DataServiceError> in
-                guard let self = self else {
-                    return Fail(error: DataServiceError.invalidState("Service deallocated"))
-                        .eraseToAnyPublisher()
-                }
-
-                if !validation.isValid {
-                    let errorMessage = validation.errors.map(\.message).joined(separator: "; ")
-                    return Fail(error: DataServiceError.invalidRequest("Query validation failed: \(errorMessage)"))
-                        .eraseToAnyPublisher()
-                }
-
-                // Check cache for identical queries
-                let cacheKey = "query_\(request.cacheKey)"
-                if let cached: SQLiteQueryResponse = self.cacheManager.get(key: cacheKey) {
-                    self.isLoading = false
-                    return Just(cached)
-                        .setFailureType(to: DataServiceError.self)
-                        .eraseToAnyPublisher()
-                }
-
-                return self.desktopAPIClient.invoke(
-                    command: "sqlite_query_api",
-                    payload: request
-                )
-                .map { (response: SQLiteQueryResponse) in
-                    // Cache results for 5 minutes
-                    self.cacheManager.set(response, forKey: cacheKey, ttl: 300)
-                    return response
-                }
-                .mapError { (error: DesktopAPIError) -> DataServiceError in
-                    return DataServiceError.networkError(error)
-                }
-                .eraseToAnyPublisher()
-            }
-            .handleEvents(
-                receiveOutput: { [weak self] (response: SQLiteQueryResponse) in self?.isLoading = false },
-                receiveCompletion: { [weak self] (completion: Combine.Subscribers.Completion<DataServiceError>) in
-                    self?.isLoading = false
-                    if case .failure(let error) = completion {
-                        self?.error = error
-                    }
-                }
-            )
+        // Desktop API client removed - this functionality is no longer available
+        return Fail(error: DataServiceError.invalidState("SQLite query via desktop API is no longer supported"))
             .eraseToAnyPublisher()
     }
 
@@ -394,29 +339,6 @@ public class SQLiteDataService: ObservableObject {
         )
     }
 
-    /// Map DesktopAPIError to DataServiceError
-    private func mapDesktopAPIError(_ error: DesktopAPIError) -> DataServiceError {
-        switch error {
-        case .notConnected:
-            return DataServiceError.connectionError("Not connected to desktop")
-        case .networkError(let networkError):
-            return DataServiceError.networkError(networkError)
-        case .timeout:
-            return DataServiceError.timeout
-        case .serverError(let code, let message):
-            return DataServiceError.serverError("\(code): \(message)")
-        case .encodingError(let encodingError):
-            return DataServiceError.networkError(encodingError)
-        case .decodingError(let decodingError):
-            return DataServiceError.networkError(decodingError)
-        case .invalidResponse:
-            return DataServiceError.invalidResponse("Invalid server response")
-        case .disconnected:
-            return DataServiceError.connectionError("Disconnected from desktop")
-        case .invalidURL, .invalidState:
-            return DataServiceError.invalidResponse(error.localizedDescription)
-        }
-    }
 }
 
 // MARK: - Supporting Types

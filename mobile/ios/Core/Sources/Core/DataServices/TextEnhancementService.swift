@@ -11,7 +11,7 @@ public final class TextEnhancementService: ObservableObject {
 
     private init() {}
 
-    public func enhance(text: String, context: String? = nil) async throws -> String {
+    public func enhance(text: String, sessionId: String, projectDirectory: String?, context: String? = nil) async throws -> String {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw TextEnhancementError.emptyText
         }
@@ -20,7 +20,35 @@ public final class TextEnhancementService: ObservableObject {
         defer { isEnhancing = false }
 
         do {
-            let response = try await serverFeatureService.enhanceText(text)
+            let response = try await serverFeatureService.enhanceText(text, sessionId: sessionId, projectDirectory: projectDirectory)
+            return response.enhancedText
+        } catch {
+            throw TextEnhancementError.enhancementFailed(error)
+        }
+    }
+
+    /// Session-aware enhancement using relay-first approach
+    public func enhance(
+        text: String,
+        context: String? = nil,
+        sessionId: String,
+        projectDirectory: String?,
+        timeoutSeconds: Double = 120
+    ) async throws -> String {
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw TextEnhancementError.emptyText
+        }
+
+        isEnhancing = true
+        defer { isEnhancing = false }
+
+        do {
+            let response = try await serverFeatureService.enhanceText(
+                text,
+                sessionId: sessionId,
+                projectDirectory: projectDirectory,
+                timeoutSeconds: timeoutSeconds
+            )
             return response.enhancedText
         } catch {
             throw TextEnhancementError.enhancementFailed(error)

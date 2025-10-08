@@ -22,7 +22,8 @@ public struct SessionSelectionView: View {
     }
 
     public var body: some View {
-        VStack(spacing: 0) {
+        NavigationStack {
+            VStack(spacing: 0) {
                 // Header with search and new button
                 VStack(spacing: 12) {
                     // Search Bar
@@ -43,40 +44,43 @@ public struct SessionSelectionView: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .background(Color.card)
-                    .cornerRadius(8)
+                    .cornerRadius(Theme.Radii.base)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: Theme.Radii.base)
                             .stroke(Color.border, lineWidth: 1)
                     )
 
                     // Action buttons
                     HStack(spacing: 12) {
                         Button(action: { loadSessions() }) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "arrow.clockwise")
-                                    .small()
+                            HStack(spacing: 8) {
+                                if isLoading {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: Color.primaryForeground))
+                                        .scaleEffect(0.8)
+                                } else {
+                                    Image(systemName: "arrow.clockwise")
+                                }
                                 Text("Refresh")
-                                    .small()
                             }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(SecondaryButtonStyle())
                         .disabled(isLoading)
+                        .accessibilityLabel("Refresh")
+                        .accessibilityHint("Reloads the list of sessions")
 
                         Spacer()
 
                         Button(action: { showingNewSessionForm = true }) {
-                            HStack(spacing: 6) {
+                            HStack(spacing: 8) {
                                 Image(systemName: "plus.circle")
-                                    .small()
                                 Text("New Session")
-                                    .small()
                             }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(PrimaryButtonStyle())
+                        .disabled(isLoading)
+                        .accessibilityLabel("New Session")
+                        .accessibilityHint("Creates a new work session")
                     }
                 }
                 .padding()
@@ -107,7 +111,7 @@ public struct SessionSelectionView: View {
                         Button("Try Again") {
                             loadSessions()
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(SecondaryButtonStyle())
                         .padding(.top)
                         Spacer()
                     }
@@ -120,11 +124,18 @@ public struct SessionSelectionView: View {
                             ForEach(filteredSessions) { session in
                                 SessionSelectionCard(session: session) {
                                     onSessionSelected(session)
+                                    Task {
+                                        try? await VibeManagerCore.shared.dataServices?.sessionService.broadcastActiveSessionChanged(
+                                            sessionId: session.id,
+                                            projectDirectory: session.projectDirectory
+                                        )
+                                    }
                                 }
                             }
                         }
                         .padding()
                     }
+                    .scrollDismissesKeyboard(.immediately)
                 }
                 // Empty State
                 else {
@@ -152,7 +163,7 @@ public struct SessionSelectionView: View {
                             Button("Create Session") {
                                 showingNewSessionForm = true
                             }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(PrimaryButtonStyle())
                             .padding(.top)
                         }
 
@@ -161,31 +172,40 @@ public struct SessionSelectionView: View {
                     .padding()
                 }
             }
-            .background(Color.background)
-            .navigationTitle("Select Session")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        dismiss()
+                .background(Color.background)
+                .ignoresSafeArea(.keyboard, edges: .bottom)
+                .navigationTitle("Select Session")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Done") {
+                            dismiss()
+                        }
+                        .buttonStyle(ToolbarButtonStyle())
                     }
                 }
-            }
-            .sheet(isPresented: $showingNewSessionForm) {
+                .sheet(isPresented: $showingNewSessionForm) {
                 NewSessionFormView(
                     projectDirectory: projectDirectory,
                     onSessionCreated: { session in
                         showingNewSessionForm = false
                         sessions.insert(session, at: 0)
                         onSessionSelected(session)
+                        Task {
+                            try? await VibeManagerCore.shared.dataServices?.sessionService.broadcastActiveSessionChanged(
+                                sessionId: session.id,
+                                projectDirectory: session.projectDirectory
+                            )
+                        }
                     },
                     onCancel: {
                         showingNewSessionForm = false
                     }
                 )
             }
-        .onAppear {
-            loadSessions()
+            .onAppear {
+                loadSessions()
+            }
         }
     }
 
@@ -286,15 +306,17 @@ struct SessionSelectionCard: View {
             }
             .padding(16)
             .background(
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: Theme.Radii.base)
                     .fill(Color.card)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 12)
+                        RoundedRectangle(cornerRadius: Theme.Radii.base)
                             .stroke(Color.border, lineWidth: 1)
                     )
             )
         }
         .buttonStyle(PlainButtonStyle())
+        .accessibilityLabel("\(session.name), project \(projectName)")
+        .accessibilityHint("Opens this session")
     }
 
     private var projectName: String {
@@ -321,7 +343,7 @@ struct NewSessionFormView: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack(spacing: 20) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Session Name")
@@ -333,9 +355,9 @@ struct NewSessionFormView: View {
                         .padding(.horizontal, 12)
                         .padding(.vertical, 10)
                         .background(Color.card)
-                        .cornerRadius(8)
+                        .cornerRadius(Theme.Radii.base)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 8)
+                            RoundedRectangle(cornerRadius: Theme.Radii.base)
                                 .stroke(Color.border, lineWidth: 1)
                         )
                 }
@@ -352,24 +374,27 @@ struct NewSessionFormView: View {
                                 .scaleEffect(0.8)
                             Text("Creating...")
                         }
+                        .frame(maxWidth: .infinity)
                     } else {
                         Text("Create Session")
+                            .frame(maxWidth: .infinity)
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(PrimaryButtonStyle())
                 .disabled(sessionName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isCreating)
-                .frame(maxWidth: .infinity)
 
                 Spacer()
             }
             .padding()
             .background(Color.background)
+            .ignoresSafeArea(.keyboard, edges: .bottom)
             .navigationTitle("New Session")
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarItems(
                 trailing: Button("Cancel") {
                     onCancel()
                 }
+                .buttonStyle(ToolbarButtonStyle())
                 .disabled(isCreating)
             )
         }

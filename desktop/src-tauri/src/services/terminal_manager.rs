@@ -1,5 +1,6 @@
 use crate::db_utils::terminal_repository::RestorableSession;
 use crate::error::{AppError, AppResult};
+use base64::Engine;
 use dashmap::DashMap;
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 use serde_json::json;
@@ -754,6 +755,66 @@ impl TerminalManager {
             }
         }
         Ok(())
+    }
+
+    pub fn get_buffer_snapshot(&self, session_id: &str, max_bytes: Option<usize>) -> Option<Vec<u8>> {
+        self.sessions.get(session_id).and_then(|session| {
+            let buffer = session.buffer.lock().ok()?;
+            let bytes = if let Some(max) = max_bytes {
+                if buffer.len() > max {
+                    buffer[buffer.len() - max..].to_vec()
+                } else {
+                    buffer.clone()
+                }
+            } else {
+                buffer.clone()
+            };
+            Some(bytes)
+        })
+    }
+
+    pub async fn get_log_snapshot_entries(&self, session_id: &str, max_bytes: Option<usize>) -> serde_json::Value {
+        // Try DB first
+        if let Ok(Some((text, ts_opt))) = self.repo.get_output_log(session_id).await {
+            let bytes = if let Some(max) = max_bytes {
+                let text_bytes = text.into_bytes();
+                if text_bytes.len() > max {
+                    text_bytes[text_bytes.len() - max..].to_vec()
+                } else {
+                    text_bytes
+                }
+            } else {
+                text.into_bytes()
+            };
+
+            let data_b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+            let timestamp = ts_opt.unwrap_or_else(now_secs);
+
+            return json!({
+                "entries": [{
+                    "sessionId": session_id,
+                    "data": data_b64,
+                    "timestamp": timestamp,
+                    "type": "stdout"
+                }]
+            });
+        }
+
+        // Fallback to in-memory
+        if let Some(bytes) = self.get_buffer_snapshot(session_id, max_bytes) {
+            let data_b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+            return json!({
+                "entries": [{
+                    "sessionId": session_id,
+                    "data": data_b64,
+                    "timestamp": now_secs(),
+                    "type": "stdout"
+                }]
+            });
+        }
+
+        // No data available
+        json!({ "entries": [] })
     }
 }
 

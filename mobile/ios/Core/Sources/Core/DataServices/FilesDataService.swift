@@ -1,33 +1,42 @@
 import Foundation
 import Combine
+import OSLog
 
 /// Service for accessing file system data from desktop
 @MainActor
 public final class FilesDataService: ObservableObject {
+    private let logger = Logger(subsystem: "VibeManager", category: "FilesDataService")
 
     // MARK: - Published Properties
     @Published public var files: [FileInfo] = []
     @Published public var isLoading = false
     @Published public var error: DataServiceError?
     @Published public var searchResults: [FileInfo] = []
+    @Published public var currentSearchTerm: String = ""
+    @Published public var currentSortBy: String = "name"
+    @Published public var currentSortOrder: String = "asc"
+    @Published public var currentFilterMode: String = "all"
 
     // MARK: - Private Properties
     private let apiClient: APIClientProtocol
     private let cacheManager: CacheManager
     private var cancellables = Set<AnyCancellable>()
     private let serverRelayClient: ServerRelayClient?
+    private var isApplyingRemoteState = false
 
     // MARK: - Initialization
     public init(apiClient: APIClientProtocol = APIClient.shared, cacheManager: CacheManager = CacheManager.shared) {
         self.apiClient = apiClient
         self.cacheManager = cacheManager
         self.serverRelayClient = nil
+        setupStateChangeBroadcasting()
     }
 
     public init(apiClient: APIClientProtocol = APIClient.shared, cacheManager: CacheManager = CacheManager.shared, serverRelayClient: ServerRelayClient) {
         self.apiClient = apiClient
         self.cacheManager = cacheManager
         self.serverRelayClient = serverRelayClient
+        setupStateChangeBroadcasting()
     }
 
     // MARK: - Public Methods
@@ -45,12 +54,25 @@ public final class FilesDataService: ObservableObject {
             includeContent: includeContent,
             maxResults: maxResults
         ) {
-            if let result = response.result?.value as? [String: Any],
-               let files = result["files"] as? [[String: Any]] {
-                return files.compactMap { dict in
-                    FileInfo(from: dict)
+            if let result = response.result?.value as? [String: Any] {
+                // Desktop returns { "files": [...], "total_count": 123 }
+                // Handle both NSArray and Swift Array
+                if let filesArray = result["files"] as? NSArray {
+                    let fileInfos = filesArray.compactMap { fileObj -> FileInfo? in
+                        guard let dict = fileObj as? [String: Any] else {
+                            return nil
+                        }
+                        return FileInfo(from: dict)
+                    }
+                    return fileInfos
+                } else if let files = result["files"] as? [[String: Any]] {
+                    let fileInfos = files.compactMap { dict in
+                        FileInfo(from: dict)
+                    }
+                    return fileInfos
                 }
             }
+
             if let error = response.error {
                 throw DataServiceError.serverError(error.message)
             }
@@ -58,45 +80,6 @@ public final class FilesDataService: ObservableObject {
         return []
     }
 
-    /// Search files with various filters and patterns (legacy publisher version)
-    public func searchFiles(request: FileSearchRequest) -> AnyPublisher<FileSearchResponse, DataServiceError> {
-        isLoading = true
-        error = nil
-
-        let cacheKey = "files_search_\(request.cacheKey)"
-
-        // Try cache first for recent searches
-        if let cached: FileSearchResponse = cacheManager.get(key: cacheKey) {
-            isLoading = false
-            searchResults = cached.files
-            return Just(cached)
-                .setFailureType(to: DataServiceError.self)
-                .eraseToAnyPublisher()
-        }
-
-        return apiClient.request(
-            endpoint: .searchFiles,
-            method: .POST,
-            body: request
-        )
-        .decode(type: FileSearchResponse.self, decoder: JSONDecoder.apiDecoder)
-        .map { [weak self] response in
-            self?.searchResults = response.files
-            self?.cacheManager.set(response, forKey: cacheKey, ttl: 180) // 3 min cache
-            return response
-        }
-        .handleEvents(
-            receiveOutput: { [weak self] _ in self?.isLoading = false },
-            receiveCompletion: { [weak self] completion in
-                self?.isLoading = false
-                if case .failure(let error) = completion {
-                    self?.error = DataServiceError.networkError(error)
-                }
-            }
-        )
-        .mapError { DataServiceError.networkError($0) }
-        .eraseToAnyPublisher()
-    }
 
     /// Get file content with preview support
     public func getFileContent(request: FileContentRequest) -> AnyPublisher<FileContentResponse, DataServiceError> {
@@ -173,42 +156,33 @@ public final class FilesDataService: ObservableObject {
     // MARK: - Convenience Methods
 
     /// Quick search by file name
-    public func searchByFileName(_ fileName: String, in projectDirectory: String) -> AnyPublisher<[FileInfo], DataServiceError> {
-        let request = FileSearchRequest(
-            projectDirectory: projectDirectory,
-            fileNamePattern: fileName,
-            maxResults: 100
+    public func searchByFileName(_ fileName: String, in projectDirectory: String) async throws -> [FileInfo] {
+        return try await searchFiles(
+            query: fileName,
+            maxResults: 100,
+            includeContent: false,
+            projectDirectory: projectDirectory
         )
-
-        return searchFiles(request: request)
-            .map(\.files)
-            .eraseToAnyPublisher()
     }
 
     /// Search for files by extension
-    public func searchByExtension(_ extension: String, in projectDirectory: String) -> AnyPublisher<[FileInfo], DataServiceError> {
-        let request = FileSearchRequest(
-            projectDirectory: projectDirectory,
-            fileTypes: [`extension`],
-            maxResults: 200
+    public func searchByExtension(_ extension: String, in projectDirectory: String) async throws -> [FileInfo] {
+        return try await searchFiles(
+            query: "*.\(`extension`)",
+            maxResults: 200,
+            includeContent: false,
+            projectDirectory: projectDirectory
         )
-
-        return searchFiles(request: request)
-            .map(\.files)
-            .eraseToAnyPublisher()
     }
 
     /// Search file contents with regex
-    public func searchContent(_ pattern: String, in projectDirectory: String) -> AnyPublisher<[FileInfo], DataServiceError> {
-        let request = FileSearchRequest(
-            projectDirectory: projectDirectory,
-            contentPattern: pattern,
-            maxResults: 100
+    public func searchContent(_ pattern: String, in projectDirectory: String) async throws -> [FileInfo] {
+        return try await searchFiles(
+            query: pattern,
+            maxResults: 100,
+            includeContent: true,
+            projectDirectory: projectDirectory
         )
-
-        return searchFiles(request: request)
-            .map(\.files)
-            .eraseToAnyPublisher()
     }
 
     /// Get file preview (first N lines)
@@ -340,6 +314,100 @@ public final class FilesDataService: ObservableObject {
         }
     }
 
+    public func applyRemoteBrowserState(
+        sessionId: String,
+        searchTerm: String?,
+        sortBy: String?,
+        sortOrder: String?,
+        filterMode: String?
+    ) {
+        isApplyingRemoteState = true
+
+        if let v = searchTerm, v != currentSearchTerm {
+            currentSearchTerm = v
+        }
+        if let v = sortBy, v != currentSortBy {
+            currentSortBy = v
+        }
+        if let v = sortOrder, v != currentSortOrder {
+            currentSortOrder = v
+        }
+        if let v = filterMode, v != self.currentFilterMode {
+            self.currentFilterMode = v
+        }
+
+        // Trigger search with updated state
+        performSearch(query: currentSearchTerm)
+
+        DispatchQueue.main.async {
+            self.isApplyingRemoteState = false
+        }
+    }
+
+    // MARK: - State Broadcasting
+
+    private func setupStateChangeBroadcasting() {
+        $currentSearchTerm
+            .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in self?.broadcastStateChangeAndSearch() }
+            .store(in: &cancellables)
+
+        $currentSortBy
+            .dropFirst()
+            .sink { [weak self] _ in self?.broadcastStateChangeAndSearch() }
+            .store(in: &cancellables)
+
+        $currentSortOrder
+            .dropFirst()
+            .sink { [weak self] _ in self?.broadcastStateChangeAndSearch() }
+            .store(in: &cancellables)
+
+        $currentFilterMode
+            .dropFirst()
+            .sink { [weak self] _ in self?.broadcastStateChangeAndSearch() }
+            .store(in: &cancellables)
+    }
+
+    private func broadcastStateChangeAndSearch() {
+        guard !isApplyingRemoteState else { return }
+
+        // Kick off a fetch for local UX parity
+        self.performSearch(query: self.currentSearchTerm)
+
+        guard let session = VibeManagerCore.shared.dataServices?.sessionService.currentSession else { return }
+
+        Task {
+            try? await CommandRouter.sessionUpdateFileBrowserState(
+                sessionId: session.id,
+                projectDirectory: session.projectDirectory,
+                searchTerm: self.currentSearchTerm.isEmpty ? nil : self.currentSearchTerm,
+                sortBy: self.currentSortBy,
+                sortOrder: self.currentSortOrder,
+                filterMode: self.currentFilterMode
+            )
+        }
+    }
+
+    public func performSearch(query: String) {
+        // Trigger file search with current query
+        Task {
+            do {
+                guard let project = VibeManagerCore.shared.dataServices?.currentProject else { return }
+                let results = try await searchFiles(
+                    query: query,
+                    maxResults: 1000,
+                    includeContent: false,
+                    projectDirectory: project.directory
+                )
+                await MainActor.run {
+                    self.files = results
+                }
+            } catch {
+                logger.error("Search failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
     // MARK: - Cache Management
 
     public func invalidateCache() {
@@ -349,20 +417,21 @@ public final class FilesDataService: ObservableObject {
     }
 
     public func preloadProjectFiles(projectDirectory: String) {
-        let request = FileSearchRequest(
-            projectDirectory: projectDirectory,
-            excludePatterns: ["node_modules/**", ".git/**", "target/**"],
-            maxResults: 500
-        )
-
-        searchFiles(request: request)
-            .sink(
-                receiveCompletion: { _ in },
-                receiveValue: { [weak self] response in
-                    self?.files = response.files
+        Task {
+            do {
+                let results = try await searchFiles(
+                    query: "",
+                    maxResults: 500,
+                    includeContent: false,
+                    projectDirectory: projectDirectory
+                )
+                await MainActor.run {
+                    self.files = results
                 }
-            )
-            .store(in: &cancellables)
+            } catch {
+                logger.error("Failed to preload project files: \(error.localizedDescription)")
+            }
+        }
     }
 }
 
@@ -430,8 +499,8 @@ public struct FileSearchResponse: Codable {
     public let searchTimeMs: UInt64
 }
 
-public struct FileInfo: Codable, Identifiable {
-    init?(from dict: [String: Any]) {
+public struct FileInfo: Codable, Identifiable, Equatable {
+    public init?(from dict: [String: Any]) {
         guard let path = dict["path"] as? String,
               let name = dict["name"] as? String else {
             return nil
@@ -514,13 +583,13 @@ public struct FileInfo: Codable, Identifiable {
     }
 }
 
-public struct FilePermissions: Codable {
+public struct FilePermissions: Codable, Equatable {
     public let readable: Bool
     public let writable: Bool
     public let executable: Bool
 }
 
-public struct MatchInfo: Codable {
+public struct MatchInfo: Codable, Equatable {
     public let matchType: MatchType
     public let matchCount: UInt32
     public let lineMatches: [LineMatch]?
@@ -533,7 +602,7 @@ public enum MatchType: String, Codable {
     case both
 }
 
-public struct LineMatch: Codable {
+public struct LineMatch: Codable, Equatable {
     public let lineNumber: UInt32
     public let lineContent: String
     public let matchStart: UInt32

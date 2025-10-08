@@ -29,6 +29,11 @@ public final class AppState: ObservableObject {
     }
   }
   @Published public private(set) var authBootstrapCompleted: Bool = false
+  @Published public var selectedProjectDirectory: String? {
+    didSet {
+      UserDefaults.standard.set(selectedProjectDirectory, forKey: "ActiveProjectDirectory")
+    }
+  }
 
   // MARK: - Debug toggles for validation
   @Published public var isEventsWebSocketEnabled: Bool = false
@@ -60,6 +65,9 @@ public final class AppState: ObservableObject {
 
     // Load hasSelectedRegionOnce from UserDefaults
     self.hasSelectedRegionOnce = UserDefaults.standard.bool(forKey: "hasSelectedRegionOnce")
+
+    // Load selectedProjectDirectory from UserDefaults
+    self.selectedProjectDirectory = UserDefaults.standard.string(forKey: "ActiveProjectDirectory")
 
     authService.$isAuthenticated
       .receive(on: DispatchQueue.main)
@@ -173,6 +181,10 @@ public final class AppState: ObservableObject {
         self.authBootstrapCompleted = true
       }
     }
+  }
+
+  public func setSelectedProjectDirectory(_ path: String?) {
+    self.selectedProjectDirectory = path
   }
 
   // URL handling is no longer needed with Auth0.swift 2.13+

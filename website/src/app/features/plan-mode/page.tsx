@@ -34,6 +34,27 @@ export const metadata: Metadata = {
 };
 
 export default function ImplementationPlansPage() {
+  const planModeGuides = [
+    {
+      name: 'Codex CLI planning workflow',
+      description: 'Pre-plan Codex runs with file discovery, multi-model merges, and approval modes.',
+      href: '/plan-mode/codex',
+      icon: <Terminal className="w-5 h-5 text-primary" />,
+    },
+    {
+      name: 'Claude Code planning workflow',
+      description: 'Enhance Claude Code\'s native Plan Mode with multi-model synthesis and file discovery.',
+      href: '/plan-mode/claude-code',
+      icon: <Layers className="w-5 h-5 text-primary" />,
+    },
+    {
+      name: 'Cursor plan workflow',
+      description: 'Give Cursor Composer full architectural awareness, including WSL-safe execution.',
+      href: '/plan-mode/cursor',
+      icon: <Code2 className="w-5 h-5 text-primary" />,
+    },
+  ];
+
   return (
     <React.Fragment>
       <div className="fixed inset-0 -z-20" style={{ background: 'var(--background-gradient)' }} />
@@ -358,7 +379,7 @@ export default function ImplementationPlansPage() {
                       <div>
                         <h3 className="font-semibold mb-2">Multi-Model Generation</h3>
                         <p className="text-foreground/80">
-                          Generate multiple plans with different models. Real-time streaming with progress tracking.
+                          Run models multiple times (3x GPT-5, 2x Gemini). Each run surfaces complementary implementation details. Real-time streaming with progress tracking.
                         </p>
                       </div>
                     </div>
@@ -405,6 +426,25 @@ export default function ImplementationPlansPage() {
                       </div>
                     </div>
                   </GlassCard>
+                </div>
+              </div>
+
+              {/* Plan Mode Guides */}
+              <div className="mb-16">
+                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">Guides for your IDE plan mode</h2>
+                <div className="grid md:grid-cols-3 gap-6">
+                  {planModeGuides.map((guide, index) => (
+                    <GlassCard key={index} className="p-6 h-full" highlighted>
+                      <div className="flex items-start gap-3 mb-3">
+                        <div className="mt-1">{guide.icon}</div>
+                        <h3 className="text-lg font-semibold">{guide.name}</h3>
+                      </div>
+                      <p className="text-sm text-foreground/70 leading-relaxed mb-4">{guide.description}</p>
+                      <LinkWithArrow href={guide.href} className="text-sm">
+                        Open the {guide.name} guide
+                      </LinkWithArrow>
+                    </GlassCard>
+                  ))}
                 </div>
               </div>
 

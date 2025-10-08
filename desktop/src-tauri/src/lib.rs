@@ -30,6 +30,12 @@ use crate::utils::FileLockManager;
 use dotenvy::dotenv;
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
+use crate::events::job_events::{
+    JOB_CREATED, JOB_DELETED, JOB_STATUS_CHANGED, JOB_STREAM_PROGRESS,
+    JOB_TOKENS_UPDATED, JOB_COST_UPDATED, JOB_RESPONSE_APPENDED,
+    JOB_ERROR_DETAILS, JOB_FINALIZED, JOB_METADATA_UPDATED
+};
 use std::collections::HashMap;
 use std::sync::{
     Arc, Mutex,
@@ -205,25 +211,6 @@ pub fn run() {
                     }
                     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                 }
-            });
-
-            // Register global event listeners for job and terminal events
-            let app_handle_for_job_events = app.handle().clone();
-            app.listen("job-status-changed", move |event| {
-                // Forward job events via DeviceLinkClient
-                let payload = event.payload().to_string();
-                let app_handle = app_handle_for_job_events.clone();
-                tauri::async_runtime::spawn(async move {
-                    // This would be sent via DeviceLinkClient if it was available as a global service
-                    // For now, we'll emit a generic event that DeviceLinkClient can listen to
-                    let _ = app_handle.emit(
-                        "device-link-event",
-                        serde_json::json!({
-                            "type": "job-status-changed",
-                            "payload": payload
-                        }),
-                    );
-                });
             });
 
             let app_handle_for_terminal_events = app.handle().clone();
@@ -446,6 +433,9 @@ pub fn run() {
             commands::session_commands::sync_task_description_history_command,
             commands::session_commands::get_file_selection_history_command,
             commands::session_commands::sync_file_selection_history_command,
+            commands::session_commands::update_session_files_command,
+            commands::session_commands::broadcast_file_browser_state_command,
+            commands::session_commands::broadcast_active_session_changed_command,
             commands::setup_commands::trigger_initial_keychain_access,
             commands::setup_commands::get_storage_mode,
             commands::setup_commands::check_existing_keychain_access,

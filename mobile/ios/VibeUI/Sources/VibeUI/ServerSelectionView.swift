@@ -13,16 +13,18 @@ public struct ServerSelectionView: View {
   }
 
   public var body: some View {
+    let gradient = LinearGradient(
+      colors: [
+        Color.background,
+        Color.background.opacity(0.95),
+        Color.card
+      ],
+      startPoint: .topLeading,
+      endPoint: .bottomTrailing
+    )
+
     ZStack {
-        LinearGradient(
-          colors: [
-            Color.background,
-            Color.background.opacity(0.95),
-            Color.card
-          ],
-          startPoint: .topLeading,
-          endPoint: .bottomTrailing
-        )
+        gradient
         .ignoresSafeArea()
 
         VStack {
@@ -54,7 +56,13 @@ public struct ServerSelectionView: View {
                     }
                   }
                 }
-                .buttonStyle(SelectableCardButtonStyle(isSelected: selected?.id == region.id))
+                .padding(16)
+                .background(selected?.id == region.id ? Color.primary.opacity(0.1) : Color.card)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(selected?.id == region.id ? Color.primary : Color.border, lineWidth: 1)
+                )
+                .cornerRadius(8)
               }
             }
 
@@ -67,7 +75,7 @@ public struct ServerSelectionView: View {
               Text("Continue")
                 .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(PrimaryButtonStyle())
             .disabled(selected == nil)
           }
           .padding(24)
@@ -96,6 +104,7 @@ public struct ServerSelectionView: View {
             Button("Done") {
               dismiss()
             }
+            .buttonStyle(ToolbarButtonStyle())
           }
         }
       }

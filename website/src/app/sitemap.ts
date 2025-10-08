@@ -149,6 +149,24 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'weekly',
       priority: 0.85,
     },
+    {
+      url: `${baseUrl}/plan-mode/codex`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.82,
+    },
+    {
+      url: `${baseUrl}/plan-mode/claude-code`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.82,
+    },
+    {
+      url: `${baseUrl}/plan-mode/cursor`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.82,
+    },
     // Legal pages
     {
       url: `${baseUrl}/legal`,

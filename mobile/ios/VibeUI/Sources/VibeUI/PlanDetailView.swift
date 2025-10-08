@@ -2,11 +2,12 @@ import SwiftUI
 import Core
 import Combine
 
-/// Enhanced Plan Detail View with "Use" buttons for copying plan content
+/// Plan Detail View with "Use" buttons for copying plan content
 public struct PlanDetailView: View {
     let plan: PlanSummary
     let allPlans: [PlanSummary]
     let plansService: PlansDataService
+    @EnvironmentObject private var container: AppContainer
 
     @State private var content: String = ""
     @State private var isLoading = false
@@ -20,6 +21,10 @@ public struct PlanDetailView: View {
     @State private var selectedStepNumber: String?
     @State private var showingStepSelector = false
     @State private var copiedButtonId: String?
+    @State private var showingPrompt = false
+    @State private var promptData: PromptResponse?
+    @State private var isLoadingPrompt = false
+    @State private var promptErrorMessage: String?
 
     @StateObject private var copyButtonManager = CopyButtonManager.shared
     @State private var cancellables = Set<AnyCancellable>()
@@ -42,16 +47,14 @@ public struct PlanDetailView: View {
                     HStack(spacing: 16) {
                         Button(action: previousPlan) {
                             Image(systemName: "chevron.left")
-                                .font(.title3)
                         }
-                        .foregroundColor(canGoPrevious ? Color.primary : Color.mutedForeground)
+                        .buttonStyle(IconButtonStyle(size: 32))
                         .disabled(!canGoPrevious)
 
                         Button(action: nextPlan) {
                             Image(systemName: "chevron.right")
-                                .font(.title3)
                         }
-                        .foregroundColor(canGoNext ? Color.primary : Color.mutedForeground)
+                        .buttonStyle(IconButtonStyle(size: 32))
                         .disabled(!canGoNext)
                     }
                 )
@@ -69,11 +72,27 @@ public struct PlanDetailView: View {
         .navigationTitle("Plan Details")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showingTerminal) {
-            RemoteTerminalView(jobId: currentPlan.jobId)
+            NavigationStack {
+                RemoteTerminalView(jobId: currentPlan.jobId)
+            }
         }
         .sheet(isPresented: $showingShareSheet) {
             ShareSheet(activityItems: [shareContent])
         }
+        .sheet(isPresented: $showingPrompt) {
+            if let data = promptData {
+                PromptDetailView(promptData: data)
+            }
+        }
+        .alert("Prompt Error", isPresented: .constant(promptErrorMessage != nil), actions: {
+            Button("OK", role: .cancel) {
+                promptErrorMessage = nil
+            }
+        }, message: {
+            if let error = promptErrorMessage {
+                Text(error)
+            }
+        })
         .sheet(isPresented: $showingStepSelector) {
             StepSelectorSheet(
                 steps: parsedSteps,
@@ -86,6 +105,7 @@ public struct PlanDetailView: View {
         }
         .onAppear {
             loadPlanContent()
+            setupRealTimeUpdates()
         }
     }
 
@@ -109,27 +129,24 @@ public struct PlanDetailView: View {
     @ViewBuilder
     private func errorView(message: String) -> some View {
         VStack(spacing: 16) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 48))
-                .foregroundColor(Color.destructive)
+            Spacer()
 
-            Text("Error Loading Plan")
-                .h4()
-                .foregroundColor(Color.cardForeground)
-
-            Text(message)
-                .paragraph()
-                .foregroundColor(Color.mutedForeground)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
+            StatusAlertView(
+                variant: .destructive,
+                title: "Error Loading Plan",
+                message: message
+            )
+            .padding()
 
             Button("Retry") {
                 loadPlanContent()
             }
             .buttonStyle(PrimaryButtonStyle())
+
+            Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.background)
+        .background(Color.appBackground)
     }
 
     // MARK: - Content View
@@ -158,6 +175,19 @@ public struct PlanDetailView: View {
                             .progressViewStyle(CircularProgressViewStyle(tint: Color.primary))
                             .scaleEffect(0.8)
                     }
+
+                    Button {
+                        Task { await loadPrompt() }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "doc.text.magnifyingglass")
+                                .font(.caption)
+                            Text("View Prompt")
+                                .small()
+                        }
+                    }
+                    .buttonStyle(SecondaryButtonStyle())
+                    .disabled(isLoadingPrompt)
 
                     Button("Save") {
                         savePlan()
@@ -190,7 +220,7 @@ public struct PlanDetailView: View {
                 }
 
                 // Code editor
-                CodeEditor(text: $content, language: .markdown)
+                CodeEditor(text: $content, language: .xml)
                     .background(Color.card)
             }
         }
@@ -226,12 +256,8 @@ public struct PlanDetailView: View {
                             Image(systemName: "chevron.down")
                                 .small()
                         }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.secondary)
-                        .foregroundColor(Color.secondaryForeground)
-                        .cornerRadius(4)
                     }
+                    .buttonStyle(UtilityButtonStyle())
                 }
             }
 
@@ -430,6 +456,102 @@ public struct PlanDetailView: View {
             }
         }
     }
+
+    private func loadPrompt() async {
+        await MainActor.run {
+            isLoadingPrompt = true
+            promptErrorMessage = nil
+        }
+
+        do {
+            let job = try await container.jobsService.getJob(jobId: currentPlan.jobId).asyncValue()
+
+            guard let jobDict = job as? [String: Any],
+                  let sessionId = jobDict["sessionId"] as? String,
+                  let prompt = jobDict["prompt"] as? String else {
+                throw DataServiceError.invalidResponse("Missing job data")
+            }
+
+            let session = try await container.sessionService.getSession(id: sessionId)
+
+            guard let sessionDict = session as? [String: Any],
+                  let projectDirectory = sessionDict["projectDirectory"] as? String else {
+                throw DataServiceError.invalidResponse("Missing session data")
+            }
+
+            let relevantFiles = (sessionDict["includedFiles"] as? [String]) ?? []
+
+            let result = try await container.plansService.getPlanPrompt(
+                sessionId: sessionId,
+                taskDescription: prompt,
+                projectDirectory: projectDirectory,
+                relevantFiles: relevantFiles
+            )
+
+            await MainActor.run {
+                promptData = result
+                showingPrompt = true
+                isLoadingPrompt = false
+            }
+        } catch {
+            await MainActor.run {
+                promptErrorMessage = error.localizedDescription
+                isLoadingPrompt = false
+            }
+        }
+    }
+
+    private func setupRealTimeUpdates() {
+        container.plansService.$lastUpdateEvent
+            .compactMap { $0 }
+            .filter { event in
+                event.eventType.hasPrefix("job:")
+            }
+            .sink { event in
+                if event.eventType == "PlanModified",
+                   let planJobId = event.data["jobId"]?.value as? String,
+                   planJobId == self.currentPlan.jobId {
+                    DispatchQueue.main.async {
+                        self.loadPlanContent()
+                    }
+                    return
+                }
+
+                // Extract jobId from event payload
+                guard let eventJobId = event.data["jobId"]?.value as? String,
+                      eventJobId == self.currentPlan.jobId else {
+                    return
+                }
+
+                DispatchQueue.main.async {
+                    switch event.eventType {
+                    case "job:response-appended":
+                        // Try to append chunk if available
+                        if let chunk = event.data["chunk"]?.value as? String {
+                            self.content += chunk
+                        } else {
+                            // No chunk available, reload full content
+                            self.loadPlanContent()
+                        }
+
+                    case "job:status-changed":
+                        // Check if status is completed
+                        if let status = event.data["status"]?.value as? String,
+                           status == "completed" {
+                            self.loadPlanContent()
+                        }
+
+                    case "job:finalized":
+                        // Always reload on finalized
+                        self.loadPlanContent()
+
+                    default:
+                        break
+                    }
+                }
+            }
+            .store(in: &cancellables)
+    }
 }
 
 // MARK: - Use Button Component
@@ -469,6 +591,9 @@ struct UseButton: View {
             .cornerRadius(8)
         }
         .buttonStyle(PlainButtonStyle())
+        .accessibilityLabel("Copy: \(button.label)")
+        .accessibilityHint("Copies tailored content to clipboard and opens share options")
+        .accessibilityValue(isCopied ? "Copied" : "")
     }
 }
 
@@ -481,7 +606,7 @@ struct StepSelectorSheet: View {
     @Environment(\.presentationMode) var presentationMode
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 // All steps option
                 Button(action: {
@@ -498,6 +623,9 @@ struct StepSelectorSheet: View {
                         }
                     }
                 }
+                .accessibilityLabel("All Steps")
+                .accessibilityHint("Selects all steps in the plan")
+                .accessibilityValue(selectedStep == nil ? "Selected" : "")
 
                 // Individual steps
                 ForEach(steps, id: \.number) { step in
@@ -521,6 +649,9 @@ struct StepSelectorSheet: View {
                             }
                         }
                     }
+                    .accessibilityLabel("Step \(step.number): \(step.title)")
+                    .accessibilityHint("Selects this step for copying")
+                    .accessibilityValue(selectedStep == step.number ? "Selected" : "")
                 }
             }
             .navigationTitle("Select Step")

@@ -105,17 +105,32 @@ const nextConfig: NextConfig = {
       // Redirect old plan-mode related pages to the main plan-mode page
       {
         source: '/docs/codex-cli-plan-mode',
-        destination: '/plan-mode',
+        destination: '/plan-mode/codex',
         permanent: true,
       },
       {
         source: '/docs/cursor-plan-mode',
-        destination: '/plan-mode',
+        destination: '/plan-mode/cursor',
         permanent: true,
       },
       {
         source: '/docs/claude-code-plan-mode',
-        destination: '/plan-mode',
+        destination: '/plan-mode/claude-code',
+        permanent: true,
+      },
+      {
+        source: '/codex-plan-mode',
+        destination: '/plan-mode/codex',
+        permanent: true,
+      },
+      {
+        source: '/claude-plan-mode',
+        destination: '/plan-mode/claude-code',
+        permanent: true,
+      },
+      {
+        source: '/cursor-plan-mode',
+        destination: '/plan-mode/cursor',
         permanent: true,
       },
       {

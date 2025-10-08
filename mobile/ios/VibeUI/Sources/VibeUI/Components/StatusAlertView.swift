@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 
 public enum StatusVariant {
   case destructive
@@ -20,67 +21,66 @@ public struct StatusAlertView: View {
   public var body: some View {
     HStack(alignment: .top, spacing: 12) {
       Image(systemName: iconName)
+        .font(.system(size: 16, weight: .semibold))
         .foregroundColor(iconColor)
-        .font(.system(size: 16))
 
       VStack(alignment: .leading, spacing: 4) {
         Text(title)
-          .h4()
+          .font(.subheadline)
+          .fontWeight(.semibold)
           .foregroundColor(textColor)
 
         Text(message)
-          .small()
-          .foregroundColor(Color.mutedForeground)
+          .font(.caption)
+          .foregroundColor(Color.appMutedForeground)
       }
 
       Spacer(minLength: 0)
     }
     .padding(12)
-    .background(
-      RoundedRectangle(cornerRadius: 8)
-        .fill(backgroundColor)
-    )
+    .background(backgroundColor)
+    .cornerRadius(AppColors.radius)
     .overlay(
-      RoundedRectangle(cornerRadius: 8)
+      RoundedRectangle(cornerRadius: AppColors.radius)
         .stroke(borderColor, lineWidth: 1)
     )
   }
 
   private var iconColor: Color {
     switch variant {
-    case .destructive: return Color.destructive
-    case .warning: return Color.warning
-    case .info: return Color.info
+    case .destructive: return Color.appDestructive
+    case .warning: return Color.appWarning
+    case .info: return Color.appInfo
     }
   }
 
   private var textColor: Color {
     switch variant {
-    case .destructive: return Color.destructiveForeground
-    case .warning: return Color.warningForeground
-    case .info: return Color.infoForeground
+    case .destructive: return Color.appDestructiveForeground
+    case .warning: return Color.appWarningForeground
+    case .info: return Color.appInfoForeground
     }
   }
 
   private var backgroundColor: Color {
     switch variant {
     case .destructive:
-      return Color.destructive.opacity(0.1)
+      return Color.appDestructive.opacity(0.1)
     case .warning:
-      return Color.warningBackground
+      return Color.appWarningBackground
     case .info:
-      return Color.infoBackground
+      return Color.appInfoBackground
     }
   }
 
   private var borderColor: Color {
     switch variant {
     case .destructive:
-      return Color.destructive.opacity(0.3)
+      return Color.appDestructive.opacity(0.3)
     case .warning:
-      return Color.warningBorder
+      return Color.appWarningBorder
     case .info:
-      return Color.infoBorder
+      return Color.appInfoBorder
     }
   }
 

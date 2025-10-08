@@ -68,6 +68,24 @@ pub async fn delete_background_job_command(job_id: String, app_handle: AppHandle
         },
     );
 
+    // Emit PlanDeleted event if this was an implementation plan
+    let task_type = repo.get_job_by_id(&job_id)
+        .await
+        .ok()
+        .flatten()
+        .map(|j| j.task_type)
+        .unwrap_or_default();
+
+    if task_type == "implementation_plan" || task_type == "implementation_plan_merge" {
+        app_handle.emit(
+            "device-link-event",
+            serde_json::json!({
+                "type": "PlanDeleted",
+                "payload": { "jobId": job_id }
+            })
+        ).ok();
+    }
+
     Ok(())
 }
 

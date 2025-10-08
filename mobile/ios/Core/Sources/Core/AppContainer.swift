@@ -41,6 +41,10 @@ public final class AppContainer: ObservableObject {
         manager.speechTextServices
     }
 
+    public var settingsService: SettingsDataService {
+        manager.settingsService
+    }
+
     @Published public var connectionStatus: ConnectionStatus = .disconnected
     @Published public var currentProject: ProjectInfo?
 
@@ -64,18 +68,6 @@ public final class AppContainer: ObservableObject {
 
     public func testConnection() -> AnyPublisher<Bool, Never> {
         manager.testConnection()
-    }
-
-    public func connectDesktop(jwtToken: String) -> AnyPublisher<Void, DesktopAPIError> {
-        manager.connectDesktop(jwtToken: jwtToken)
-    }
-
-    public func disconnectDesktop() {
-        manager.disconnectDesktop()
-    }
-
-    public func connectTaskStream() {
-        manager.connectTaskStream()
     }
 
     public func getAllSyncStatuses() -> AnyPublisher<ServicesSyncStatus, DataServiceError> {

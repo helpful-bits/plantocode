@@ -69,14 +69,15 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
       // Get task context for video analysis state
       const { state: taskState, actions: taskActions } = useTaskContext();
       const { isAnalyzingVideo } = taskState;
+
       // Keep ref parameter
       // Local state for responsive input handling
       const [internalValue, setInternalValue] = useState(value);
       const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-      
+
       // Create an internal ref for the textarea element
       const internalTextareaRef = useRef<HTMLTextAreaElement>(null);
-      
+
       const { isRecording, stopRecording } = useScreenRecording();
       const [showVideoDialog, setShowVideoDialog] = useState(false);
       
@@ -93,7 +94,7 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
           }
           debounceTimeoutRef.current = setTimeout(() => {
             onChange(newValue);
-          }, 1000); // Longer debounce to prevent lag during active typing, with immediate flush on blur
+          }, 100); // Fast debounce for Google Docs-like sync
         },
         [onChange]
       );
@@ -416,10 +417,10 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
                   clearTimeout(debounceTimeoutRef.current);
                   debounceTimeoutRef.current = null;
                 }
-                
+
                 // Always propagate current internal value to parent to ensure sync
                 onChange(internalValue);
-                
+
                 // Defer onBlur call to next event loop tick to prevent race conditions
                 if (onBlur) {
                   setTimeout(() => {

@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import OSLog
 
 
 /// Central manager for all data services
@@ -16,6 +17,7 @@ public class DataServicesManager: ObservableObject {
     public let serverFeatureService: ServerFeatureService
     public let sessionService: SessionDataService
     public let speechTextServices: SpeechTextServices
+    public let settingsService: SettingsDataService
 
     // MARK: - Connection Management
     @Published public var connectionStatus: ConnectionStatus = .disconnected
@@ -24,12 +26,14 @@ public class DataServicesManager: ObservableObject {
 
     // MARK: - Private Properties
     private let apiClient: APIClient
-    private let desktopAPIClient: DesktopAPIClient
-    private let desktopServerAPIClient: DesktopServerAPIClient
-    private let taskWebSocketClient: WebSocketClient
     private let cacheManager: CacheManager
     private let deviceId: String
     private var cancellables = Set<AnyCancellable>()
+    private var relayEventsCancellable: AnyCancellable?
+    private let logger = Logger(subsystem: "VibeManager", category: "DataServicesManager")
+    private var sessionRefetchTask: Task<Void, Never>?
+    private var sessionRefetchDebounceTime: TimeInterval = 1.0
+    private var isApplyingRemoteActiveSession = false
 
     // MARK: - Initialization
     public init(baseURL: URL, deviceId: String) {
@@ -37,53 +41,37 @@ public class DataServicesManager: ObservableObject {
         self.apiClient = APIClient(baseURL: baseURL)
         self.cacheManager = CacheManager.shared
 
-        let webSocketURL = DataServicesManager.makeWebSocketURL(from: baseURL)
-        self.desktopAPIClient = DesktopAPIClient(serverURL: webSocketURL)
-        self.desktopServerAPIClient = DesktopServerAPIClient(desktopAPIClient: desktopAPIClient)
-        let wsDelegate = CertificatePinningManager.shared.createURLSessionDelegate(endpointType: .relay)
-        self.taskWebSocketClient = WebSocketClient(serverURL: webSocketURL, sessionDelegate: wsDelegate)
-
         // Initialize services
         self.sessionService = SessionDataService()
         _ = self.sessionService.ensureSession()
         self.jobsService = JobsDataService(
-            desktopAPIClient: desktopAPIClient,
             apiClient: apiClient,
             cacheManager: cacheManager
         )
         self.plansService = PlansDataService(
-            desktopAPIClient: desktopAPIClient,
             apiClient: apiClient,
             cacheManager: cacheManager
         )
         self.filesService = FilesDataService(apiClient: apiClient, cacheManager: cacheManager)
         self.taskSyncService = TaskSyncDataService(
-            desktopServerAPIClient: desktopServerAPIClient,
-            webSocketClient: taskWebSocketClient,
             deviceId: deviceId,
             cacheManager: cacheManager,
             apiClient: apiClient
         )
         self.sqliteService = SQLiteDataService(
-            desktopAPIClient: desktopAPIClient,
+            apiClient: apiClient,
             cacheManager: cacheManager
         )
         self.terminalService = TerminalDataService()
         self.serverFeatureService = ServerFeatureService()
         self.speechTextServices = SpeechTextServices()
+        self.settingsService = SettingsDataService()
 
         setupConnectionMonitoring()
+        setupSessionBroadcasting()
     }
 
     // MARK: - Public Methods
-
-    /// Get current active desktop clients via MultiConnectionManager
-    public var activeDesktopClients: (api: DesktopAPIClient, ws: WebSocketClient, server: DesktopServerAPIClient)? {
-        guard let deviceId = activeDesktopDeviceId else { return nil }
-        // Note: MultiConnectionManager returns ServerRelayClient, not the tuple we need
-        // This property might need to be reworked based on the new architecture
-        return nil
-    }
 
     /// Set the current project and preload relevant data
     @MainActor
@@ -123,27 +111,6 @@ public class DataServicesManager: ObservableObject {
                 }
             })
             .eraseToAnyPublisher()
-    }
-
-    /// Establish the authenticated desktop WebSocket connection.
-    public func connectDesktop(jwtToken: String) -> AnyPublisher<Void, DesktopAPIError> {
-        return desktopAPIClient
-            .connect(jwtToken: jwtToken)
-            .handleEvents(receiveOutput: { [weak self] in
-                self?.connectTaskStream()
-            })
-            .eraseToAnyPublisher()
-    }
-
-    /// Disconnect desktop bridge and associated real-time channels.
-    public func disconnectDesktop() {
-        desktopAPIClient.disconnect()
-        taskWebSocketClient.disconnect()
-    }
-
-    /// Connect the task synchronization WebSocket channel.
-    public func connectTaskStream() {
-        taskWebSocketClient.connect()
     }
 
     /// Get sync status across all services
@@ -196,6 +163,33 @@ public class DataServicesManager: ObservableObject {
 
     // MARK: - Private Methods
 
+    /// Debounced session refetch to avoid excessive API calls
+    private func debouncedSessionRefetch() {
+        // Cancel any existing pending refetch
+        sessionRefetchTask?.cancel()
+
+        // Schedule a new refetch after the debounce time
+        sessionRefetchTask = Task { @MainActor [weak self] in
+            guard let self = self else { return }
+
+            // Wait for debounce period
+            try? await Task.sleep(nanoseconds: UInt64(self.sessionRefetchDebounceTime * 1_000_000_000))
+
+            // Check if task was cancelled
+            guard !Task.isCancelled else { return }
+
+            // Perform the refetch
+            if let project = self.currentProject {
+                do {
+                    try await self.sessionService.fetchSessions(projectDirectory: project.directory)
+                    self.logger.debug("Debounced session refetch completed for project: \(project.directory)")
+                } catch {
+                    self.logger.error("Failed to refetch sessions: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
     private func setupConnectionMonitoring() {
         Timer.publish(every: 30, on: .main, in: .common)
             .autoconnect()
@@ -217,67 +211,153 @@ public class DataServicesManager: ObservableObject {
                     return false
                 }
                 self.handleConnectionStateChange(connected: isConnected)
+
+                // Re-subscribe to relay events when connection state changes
+                self.subscribeToRelayEvents()
             }
             .store(in: &cancellables)
 
         subscribeToRelayEvents()
     }
 
-    private func subscribeToRelayEvents() {
-        guard let deviceId = activeDesktopDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
-            return
-        }
-
-        relayClient.events
-            .sink { [weak self] event in
-                guard let self = self else { return }
-                let eventType = event.eventType
-
-                let sessionEvents = [
-                    "session-created",
-                    "session-updated",
-                    "session-deleted",
-                    "session-files-updated",
-                    "session-history-synced",
-                    "session:auto-files-applied"
-                ]
-
-                if sessionEvents.contains(eventType) {
-                    Task { @MainActor in
-                        if let project = self.currentProject {
-                            try? await self.sessionService.fetchSessions(projectDirectory: project.directory)
-                        }
-                    }
+    private func setupSessionBroadcasting() {
+        sessionService.$currentSession
+            .dropFirst()
+            .sink { [weak self] session in
+                guard let self = self,
+                      self.isApplyingRemoteActiveSession == false,
+                      let s = session else { return }
+                Task {
+                    try? await self.sessionService.broadcastActiveSessionChanged(
+                        sessionId: s.id,
+                        projectDirectory: s.projectDirectory
+                    )
                 }
             }
             .store(in: &cancellables)
     }
 
+    private func subscribeToRelayEvents() {
+        // Cancel previous subscription
+        relayEventsCancellable?.cancel()
+
+        // Get active device and relay client
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+            return
+        }
+
+        // Subscribe to relay events with proper AnyCodable decoding
+        relayEventsCancellable = relayClient.events
+            .sink { [weak self] event in
+                guard let self = self else { return }
+                let eventType = event.eventType
+                let dict = event.data.mapValues { $0.value }
+
+                switch eventType {
+                case "session-file-browser-state-updated":
+                    if let sid = dict["sessionId"] as? String {
+                        self.filesService.applyRemoteBrowserState(
+                            sessionId: sid,
+                            searchTerm: dict["searchTerm"] as? String,
+                            sortBy: dict["sortBy"] as? String,
+                            sortOrder: dict["sortOrder"] as? String,
+                            filterMode: dict["filterMode"] as? String
+                        )
+                    }
+
+                case "session-files-updated":
+                    if let sessionId = dict["sessionId"] as? String,
+                       let includedFiles = dict["includedFiles"] as? [String],
+                       let forceExcludedFiles = dict["forceExcludedFiles"] as? [String] {
+                        self.sessionService.updateSessionFilesInMemory(
+                            sessionId: sessionId,
+                            includedFiles: includedFiles,
+                            forceExcludedFiles: forceExcludedFiles
+                        )
+                    }
+
+                case "session-history-synced":
+                    if let sessionId = dict["sessionId"] as? String,
+                       let taskDescription = dict["taskDescription"] as? String,
+                       let currentSession = self.sessionService.currentSession,
+                       currentSession.id == sessionId {
+                        let updatedSession = Session(
+                            id: currentSession.id,
+                            name: currentSession.name,
+                            projectDirectory: currentSession.projectDirectory,
+                            taskDescription: taskDescription,
+                            createdAt: currentSession.createdAt,
+                            updatedAt: currentSession.updatedAt,
+                            includedFiles: currentSession.includedFiles,
+                            forceExcludedFiles: currentSession.forceExcludedFiles
+                        )
+                        self.sessionService.currentSession = updatedSession
+                    }
+
+                case "session-updated":
+                    if let sessionData = dict["session"] as? [String: Any],
+                       let sessionId = sessionData["id"] as? String,
+                       let currentSession = self.sessionService.currentSession,
+                       currentSession.id == sessionId {
+                        let updatedSession = Session(
+                            id: currentSession.id,
+                            name: currentSession.name,
+                            projectDirectory: currentSession.projectDirectory,
+                            taskDescription: sessionData["taskDescription"] as? String ?? currentSession.taskDescription,
+                            createdAt: currentSession.createdAt,
+                            updatedAt: sessionData["updatedAt"] as? Int64 ?? currentSession.updatedAt,
+                            includedFiles: sessionData["includedFiles"] as? [String] ?? currentSession.includedFiles,
+                            forceExcludedFiles: sessionData["forceExcludedFiles"] as? [String] ?? currentSession.forceExcludedFiles
+                        )
+                        self.sessionService.currentSession = updatedSession
+                    }
+
+                case "active-session-changed":
+                    if let sessionId = dict["sessionId"] as? String,
+                       let projectDir = dict["projectDirectory"] as? String {
+                        if self.sessionService.currentSession?.id == sessionId { return }
+                        self.isApplyingRemoteActiveSession = true
+                        Task {
+                            defer { self.isApplyingRemoteActiveSession = false }
+                            try? await self.sessionService.loadSessionById(sessionId: sessionId, projectDirectory: projectDir)
+                        }
+                    }
+
+                default:
+                    if eventType.hasPrefix("job:") {
+                        self.jobsService.applyRelayEvent(event)
+                    }
+                }
+
+                // Debounced refetch for session events
+                let sessionEvents = [
+                    "session-created", "session-updated", "session-deleted",
+                    "session-files-updated", "session-history-synced",
+                    "session:auto-files-applied", "session-file-browser-state-updated"
+                ]
+                if sessionEvents.contains(eventType) {
+                    Task { @MainActor in
+                        self.debouncedSessionRefetch()
+                    }
+                }
+            }
+    }
+
     private func handleConnectionStateChange(connected: Bool) {
         if connected {
-            Task { [weak self] in
+            Task { @MainActor [weak self] in
                 guard let self = self else { return }
 
                 await self.sessionService.processOfflineQueue()
 
-                if let project = self.currentProject {
-                    try? await self.sessionService.fetchSessions(projectDirectory: project.directory)
-                }
+                // Use debounced refetch to avoid excessive API calls
+                self.debouncedSessionRefetch()
             }
         }
     }
 
     private func preloadProjectData(_ project: ProjectInfo) {
-        // Preload jobs
-        let jobRequest = JobListRequest(
-            projectDirectory: project.directory,
-            pageSize: 20
-        )
-        jobsService.listJobs(request: jobRequest)
-            .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
-            .store(in: &cancellables)
-
         // Preload plans
         plansService.preloadPlans(for: project.directory)
 
@@ -339,25 +419,6 @@ public class DataServicesManager: ObservableObject {
         }
 
         return fileURL
-    }
-}
-
-private extension DataServicesManager {
-    static func makeWebSocketURL(from baseURL: URL) -> URL {
-        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
-            return baseURL
-        }
-        if components.scheme == "https" {
-            components.scheme = "wss"
-        } else if components.scheme == "http" {
-            components.scheme = "ws"
-        }
-
-        if components.path.isEmpty || components.path == "/" {
-            components.path = "/ws"
-        }
-
-        return components.url ?? baseURL
     }
 }
 

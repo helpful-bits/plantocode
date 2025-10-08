@@ -80,16 +80,7 @@ async fn run_deferred_initialization(app_handle: &AppHandle) -> Result<(), AppEr
         }
     });
 
-    // Initialize terminal manager
-    if let Err(e) = services::initialize_terminal_manager(app_handle).await {
-        warn!(
-            "Terminal manager initialization failed (non-critical): {}",
-            e
-        );
-        // Don't fail startup for this
-    } else {
-        info!("Terminal manager initialized successfully");
-    }
+    // Terminal manager is now initialized in critical phase (skipped here)
 
     // Sync early in-memory values to DB if not already present
     // This should happen after deferred DB tasks complete and repos are available
@@ -170,6 +161,17 @@ pub async fn run_critical_initialization(app_handle: &AppHandle) -> Result<(), A
         return Err(e);
     }
     info!("Job system started (critical phase)");
+
+    // Initialize terminal manager (moved to critical path to avoid state access panic)
+    if let Err(e) = services::initialize_terminal_manager(app_handle).await {
+        warn!(
+            "Terminal manager initialization failed (non-critical): {}",
+            e
+        );
+        // Don't fail startup for this
+    } else {
+        info!("Terminal manager initialized successfully (critical phase)");
+    }
 
     info!("Critical initialization phase completed successfully");
     Ok(())

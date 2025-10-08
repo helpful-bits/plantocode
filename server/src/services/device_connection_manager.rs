@@ -239,6 +239,42 @@ impl DeviceConnectionManager {
         Ok(success_count)
     }
 
+    pub async fn broadcast_to_user_excluding(
+        &self,
+        user_id: &uuid::Uuid,
+        message: DeviceMessage,
+        exclude_device_id: Option<&str>,
+    ) -> Result<usize, String> {
+        let devices = self.get_user_devices(user_id);
+
+        if devices.is_empty() {
+            return Ok(0);
+        }
+
+        let mut success_count = 0usize;
+        for device in &devices {
+            if let Some(exclude) = exclude_device_id {
+                if device.device_id == exclude {
+                    continue;
+                }
+            }
+
+            if self.send_to_device(user_id, &device.device_id, message.clone()).await.is_ok() {
+                success_count += 1;
+            }
+        }
+
+        info!(
+            user_id = %user_id,
+            message_type = %message.message_type,
+            success_count = success_count,
+            total_devices = devices.len(),
+            "Broadcast message to user devices"
+        );
+
+        Ok(success_count)
+    }
+
     /// Get connection statistics
     pub fn get_stats(&self) -> ConnectionStats {
         let user_count = self.connections.len();

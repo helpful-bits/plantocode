@@ -29,6 +29,11 @@ public class ServerRelayClient: NSObject, ObservableObject {
     private var eventPublisher = PassthroughSubject<RelayEvent, Never>()
     private var registrationPromise: ((Result<Void, ServerRelayError>) -> Void)?
 
+    /// Public accessor for the events publisher
+    public var eventsPublisher: AnyPublisher<RelayEvent, Never> {
+        eventPublisher.eraseToAnyPublisher()
+    }
+
     // Connection management
     private var heartbeatTimer: Timer?
     private var reconnectionTimer: Timer?
@@ -179,10 +184,12 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
         // Fail all pending RPC calls
         rpcQueue.async(execute: {
-            for (_, subject) in self.pendingRPCCalls {
+            let subjects = Array(self.pendingRPCCalls.values)
+            self.pendingRPCCalls.removeAll()
+
+            for subject in subjects {
                 subject.send(completion: .failure(.disconnected))
             }
-            self.pendingRPCCalls.removeAll()
         })
     }
 
@@ -243,7 +250,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
                 "message_type": "rpc",
                 "payload": [
                     "method": request.method,
-                    "params": request.params.mapValues { $0.value },
+                    "params": request.params.mapValues { $0.jsonValue },
                     "id": request.id
                 ]
             ]
@@ -260,6 +267,63 @@ public class ServerRelayClient: NSObject, ObservableObject {
     }
 
     // MARK: - Private Methods
+
+    /// Encodes an object to a JSON string for WebSocket transmission.
+    /// Sanitizes the object to ensure JSON compatibility and prevents serialization crashes.
+    /// - Parameter object: The object to encode
+    /// - Returns: A JSON string representation
+    /// - Throws: ServerRelayError.encodingError if encoding fails
+    private func encodeForWebSocket(_ object: Any) throws -> String {
+        // Step 1: Sanitize the object
+        let sanitized = JSONSanitizer.sanitize(object)
+
+        // Step 2: Validate JSON compatibility
+        guard JSONSanitizer.isValidJSONObject(sanitized) else {
+            let keys: [String]
+            let types: [String]
+
+            if let dict = sanitized as? [String: Any] {
+                keys = Array(dict.keys)
+                types = dict.map { key, value in "\(key): \(type(of: value))" }
+            } else {
+                keys = []
+                types = ["root: \(type(of: sanitized))"]
+            }
+
+            throw ServerRelayError.encodingError(
+                NSError(
+                    domain: "ServerRelayClient.Encoding",
+                    code: -1,
+                    userInfo: [
+                        "keys": keys,
+                        "types": types
+                    ]
+                )
+            )
+        }
+
+        // Step 3: Serialize to JSON data
+        let jsonData = try JSONSerialization.data(withJSONObject: sanitized)
+
+        // Step 4: Convert to UTF-8 string
+        guard let jsonString = String(data: jsonData, encoding: .utf8) else {
+            throw ServerRelayError.encodingError(
+                NSError(
+                    domain: "ServerRelayClient.Encoding",
+                    code: -1,
+                    userInfo: [NSLocalizedDescriptionKey: "Failed to convert JSON data to UTF-8 string"]
+                )
+            )
+        }
+
+        // Step 5: Debug logging (DEBUG mode only)
+        #if DEBUG
+        let preview = jsonString.count > 200 ? String(jsonString.prefix(200)) + "…" : jsonString
+        print("[ServerRelayClient] Encoded JSON: \(preview)")
+        #endif
+
+        return jsonString
+    }
 
     // Send registration message on open
     private func sendRegistration() {
@@ -291,12 +355,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
         }
 
         do {
-            let jsonData = try JSONSerialization.data(withJSONObject: registrationData)
-            guard let jsonString = String(data: jsonData, encoding: .utf8) else {
-                registrationPromise?(.failure(.encodingError(NSError(domain: "ServerRelayClient", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to encode registration data"]))))
-                registrationPromise = nil
-                return
-            }
+            let jsonString = try encodeForWebSocket(registrationData)
 
             // Use webSocketTask.send(.string(json)) exclusively (no .data frames)
             webSocketTask?.send(.string(jsonString)) { [weak self] error in
@@ -320,13 +379,21 @@ public class ServerRelayClient: NSObject, ObservableObject {
             throw ServerRelayError.notConnected
         }
 
-        let jsonData = try JSONSerialization.data(withJSONObject: messageData)
-        guard let jsonString = String(data: jsonData, encoding: .utf8) else {
-            throw ServerRelayError.encodingError(NSError(domain: "ServerRelayClient", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to encode message"]))
-        }
+        let jsonString = try encodeForWebSocket(messageData)
 
         // Use webSocketTask.send(.string(json)) exclusively (no .data frames)
         try await webSocketTask.send(.string(jsonString))
+    }
+
+    // Relay event publisher for ephemeral cross-device signals
+    /// Publish an ephemeral event to all connected devices via relay
+    public func sendEvent(eventType: String, data: [String: Any]) async throws {
+        let envelope: [String: Any] = [
+            "type": "event",
+            "event_type": eventType,
+            "payload": data
+        ]
+        try await self.sendMessage(envelope)
     }
 
     private func startReceivingMessages() {
@@ -391,6 +458,11 @@ public class ServerRelayClient: NSObject, ObservableObject {
             case "error":
                 handleErrorMessage(json)
             default:
+                // Check for DeviceMessage format
+                if let messageType = json["message_type"] as? String {
+                    handleDeviceMessageEvent(json)
+                    return
+                }
                 logger.debug("Received unknown message type: \(messageType)")
             }
         } catch {
@@ -563,6 +635,15 @@ public class ServerRelayClient: NSObject, ObservableObject {
             return
         }
 
+        // Parse is_final, default to true if not present
+        let isFinal = (responseDict["is_final"] as? Bool) ?? true
+
+        // Log structured relay response
+        let payloadString = (try? JSONSerialization.data(withJSONObject: responseDict))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? ""
+        let payloadPreview = payloadString.count > 200 ? String(payloadString.prefix(200)) + "…" : payloadString
+        logger.info("Relay response: type=relay_response id=\(correlationId, privacy: .public) isFinal=\(isFinal) payload=\(payloadPreview, privacy: .public)")
+
         rpcQueue.async {
             guard let responseSubject = self.pendingRPCCalls[correlationId] else {
                 self.logger.warning("Received relay response for unknown call: \(correlationId)")
@@ -574,9 +655,6 @@ public class ServerRelayClient: NSObject, ObservableObject {
             let rpcError: RpcError? = errorMsg.map {
                 RpcError(code: -1, message: $0)
             }
-
-            // Parse is_final, default to true if not present
-            let isFinal = (responseDict["is_final"] as? Bool) ?? true
 
             // Create RpcResponse
             let rpcResponse = RpcResponse(
@@ -619,6 +697,22 @@ public class ServerRelayClient: NSObject, ObservableObject {
         )
 
         logger.info("Publishing relay event: \(eventType) from device: \(sourceDeviceId ?? "unknown")")
+        eventPublisher.send(relayEvent)
+    }
+
+    private func handleDeviceMessageEvent(_ json: [String: Any]) {
+        let eventType = json["message_type"] as? String ?? "unknown"
+        let payload = json["payload"] as? [String: Any] ?? [:]
+        let sourceDeviceId = json["sourceDeviceId"] as? String
+
+        let relayEvent = RelayEvent(
+            eventType: eventType,
+            data: payload.mapValues { AnyCodable(any: $0) },
+            timestamp: Date(),
+            sourceDeviceId: sourceDeviceId
+        )
+
+        logger.info("Publishing device message event: \(eventType) from device: \(sourceDeviceId ?? "unknown")")
         eventPublisher.send(relayEvent)
     }
 
@@ -700,7 +794,12 @@ public class ServerRelayClient: NSObject, ObservableObject {
         ]
 
         Task {
-            try? await sendMessage(heartbeatPayload)
+            do {
+                let jsonString = try encodeForWebSocket(heartbeatPayload)
+                try await webSocketTask?.send(.string(jsonString))
+            } catch {
+                logger.error("Failed to send heartbeat: \(error)")
+            }
         }
     }
 
@@ -835,15 +934,23 @@ public struct RpcResponse: Codable {
     }
 }
 
-public struct RpcError: Codable {
+public struct RpcError: Codable, CustomStringConvertible {
     public let code: Int
     public let message: String
     public let data: AnyCodable?
-    
+
     public init(code: Int, message: String, data: Any? = nil) {
         self.code = code
         self.message = message
         self.data = data.map { AnyCodable(any: $0) }
+    }
+
+    public var description: String {
+        if let data = data {
+            return "RpcError(code: \(code), message: \(message), data: \(data))"
+        } else {
+            return "RpcError(code: \(code), message: \(message))"
+        }
     }
 }
 
@@ -951,6 +1058,13 @@ public struct RelaySessionMeta: Codable {
         self.sessionId = sessionId
         self.resumeToken = resumeToken
         self.expiresAtISO = expiresAtISO
+    }
+}
+
+// Extension for RpcResponse to provide convenient access to result dictionary
+public extension RpcResponse {
+    var resultDict: [String: Any]? {
+        return result?.value as? [String: Any]
     }
 }
 

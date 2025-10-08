@@ -25,3 +25,13 @@ pub fn emit_session_auto_files_applied(app: &AppHandle, payload: SessionAutoFile
         }),
     );
 }
+
+pub fn emit_session_updated(app: &AppHandle, session_id: &str, session_obj: &serde_json::Value) -> Result<(), String> {
+    app.emit("session-updated", serde_json::json!({ "sessionId": session_id, "session": session_obj }))
+        .map_err(|e| format!("local emit failed: {e}"))?;
+    app.emit("device-link-event", serde_json::json!({
+        "type": "session-updated",
+        "payload": { "sessionId": session_id, "session": session_obj }
+    })).map_err(|e| format!("relay emit failed: {e}"))?;
+    Ok(())
+}

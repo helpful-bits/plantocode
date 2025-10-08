@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { DocsArticle } from '@/components/docs/DocsArticle';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
+import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { StructuredData } from '@/components/seo/StructuredData';
 
 export const metadata: Metadata = {
@@ -106,6 +107,17 @@ export default function ImplementationPlansDocPage() {
               platform to try the workflow end to end.
             </p>
             <PlatformDownloadSection location="docs_implementation_plans" />
+            <div className="mt-6 flex flex-col sm:flex-row gap-4 text-sm text-muted-foreground">
+              <LinkWithArrow href="/plan-mode/codex">
+                See Codex plan mode workflow
+              </LinkWithArrow>
+              <LinkWithArrow href="/plan-mode/claude-code">
+                See Claude plan mode workflow
+              </LinkWithArrow>
+              <LinkWithArrow href="/plan-mode/cursor">
+                See Cursor plan mode workflow
+              </LinkWithArrow>
+            </div>
           </GlassCard>
         </div>
       </DocsArticle>
