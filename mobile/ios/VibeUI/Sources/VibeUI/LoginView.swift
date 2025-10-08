@@ -44,41 +44,69 @@ public struct LoginView: View {
           Divider().padding(.vertical, 4)
 
           LazyVGrid(columns: columns, spacing: 12) {
-            ProviderButton(
-              name: "Google",
-              providerHint: "google-oauth2",
-              backgroundColor: Color(red: 0.259, green: 0.522, blue: 0.957),
-              icon: Image(systemName: "g.circle.fill"),
-              isLoading: loadingProvider == "google-oauth2",
-              action: { handleSignIn("google-oauth2") }
-            )
+            Button(action: { handleSignIn("google-oauth2") }) {
+              HStack(spacing: 12) {
+                if loadingProvider == "google-oauth2" {
+                  ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    .scaleEffect(0.8)
+                } else {
+                  Image(systemName: "g.circle.fill")
+                }
+                Text("Google")
+                Spacer()
+              }
+            }
+            .buttonStyle(SocialLoginButtonStyle(provider: .google))
+            .disabled(loadingProvider == "google-oauth2")
 
-            ProviderButton(
-              name: "GitHub",
-              providerHint: "github",
-              backgroundColor: Color(red: 0.141, green: 0.161, blue: 0.184),
-              icon: Image(systemName: "chevron.left.forwardslash.chevron.right"),
-              isLoading: loadingProvider == "github",
-              action: { handleSignIn("github") }
-            )
+            Button(action: { handleSignIn("github") }) {
+              HStack(spacing: 12) {
+                if loadingProvider == "github" {
+                  ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    .scaleEffect(0.8)
+                } else {
+                  Image(systemName: "chevron.left.forwardslash.chevron.right")
+                }
+                Text("GitHub")
+                Spacer()
+              }
+            }
+            .buttonStyle(SocialLoginButtonStyle(provider: .github))
+            .disabled(loadingProvider == "github")
 
-            ProviderButton(
-              name: "Microsoft",
-              providerHint: "windowslive",
-              backgroundColor: Color(red: 0.0, green: 0.643, blue: 0.937),
-              icon: Image(systemName: "square.grid.2x2.fill"),
-              isLoading: loadingProvider == "windowslive",
-              action: { handleSignIn("windowslive") }
-            )
+            Button(action: { handleSignIn("windowslive") }) {
+              HStack(spacing: 12) {
+                if loadingProvider == "windowslive" {
+                  ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    .scaleEffect(0.8)
+                } else {
+                  Image(systemName: "square.grid.2x2.fill")
+                }
+                Text("Microsoft")
+                Spacer()
+              }
+            }
+            .buttonStyle(SocialLoginButtonStyle(provider: .microsoft))
+            .disabled(loadingProvider == "windowslive")
 
-            ProviderButton(
-              name: "Apple",
-              providerHint: "apple",
-              backgroundColor: Color(red: 0.02, green: 0.027, blue: 0.031),
-              icon: Image(systemName: "apple.logo"),
-              isLoading: loadingProvider == "apple",
-              action: { handleSignIn("apple") }
-            )
+            Button(action: { handleSignIn("apple") }) {
+              HStack(spacing: 12) {
+                if loadingProvider == "apple" {
+                  ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    .scaleEffect(0.8)
+                } else {
+                  Image(systemName: "apple.logo")
+                }
+                Text("Apple")
+                Spacer()
+              }
+            }
+            .buttonStyle(SocialLoginButtonStyle(provider: .apple))
+            .disabled(loadingProvider == "apple")
           }
 
           HStack(spacing: 8) {
@@ -139,38 +167,5 @@ public struct LoginView: View {
       }
       loadingProvider = nil
     }
-  }
-}
-
-
-private struct ProviderButton: View {
-  let name: String
-  let providerHint: String
-  let backgroundColor: Color
-  let icon: Image
-  let isLoading: Bool
-  let action: () -> Void
-
-  var body: some View {
-    Button(action: action) {
-      HStack(spacing: 12) {
-        if isLoading {
-          ProgressView()
-            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-            .scaleEffect(0.8)
-        } else {
-          icon.foregroundStyle(.white)
-        }
-        Text(name)
-          .paragraph()
-        Spacer()
-      }
-      .frame(height: 44)
-    }
-    .buttonStyle(CompactButtonStyle(
-      backgroundColor: backgroundColor,
-      foregroundColor: .white
-    ))
-    .disabled(isLoading)
   }
 }

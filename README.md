@@ -155,6 +155,83 @@ Vibe Manager uses a server-proxy architecture for all AI model access:
 5. Usage data and costs are tracked in the server's database for billing purposes
 6. Models, pricing, and usage data are stored in dedicated database tables
 
+## Remote Control Surface
+
+This section documents the RPC methods and events available for remote control via DeviceLink.
+
+### RPCs (Remote Procedure Calls)
+
+The following RPC methods are available for controlling implementation plans remotely:
+
+#### Plan Management
+- `actions.createImplementationPlan` - Create a new implementation plan from a task description
+- `actions.mergePlans` - Merge multiple implementation plans into one
+- `plans.save` - Save changes to an implementation plan
+- `plans.get` - Retrieve an implementation plan by ID (alias: `actions.readImplementationPlan`)
+- `plans.list` - List all implementation plans (includes both `implementation_plan` and `implementation_plan_merge` types)
+
+### Events
+
+The following events are emitted and relayed via `device-link-event`:
+
+#### Job Events (canonical names with `:` separator)
+- `job:created` - Fired when a new job is created
+- `job:deleted` - Fired when a job is deleted
+- `job:status-changed` - Fired when job status changes
+- `job:response-appended` - Fired when content is streamed/appended to job response
+- `job:stream-progress` - Fired during streaming progress updates
+- `job:finalized` - Fired when job is finalized
+- `job:tokens-updated` - Fired when token counts are updated
+- `job:cost-updated` - Fired when cost estimates are updated
+- `job:error-details` - Fired when error details are available
+- `job:metadata-updated` - Fired when job metadata changes
+
+#### Plan-Specific Events
+- `PlanCreated` - Emitted when a plan is created (includes `jobId`, `sessionId`, `projectDirectory`)
+- `PlanModified` - Emitted when plan content is saved/updated (includes `jobId`)
+- `PlanDeleted` - Emitted when a plan is deleted (includes `jobId`)
+
+### DeviceLink Relay
+
+All events are forwarded through the DeviceLink relay using the `device-link-event` wrapper:
+```json
+{
+  "type": "event-name",
+  "payload": { /* event data */ }
+}
+```
+
+This enables real-time synchronization between desktop and mobile clients.
+
 ## License
 
 Proprietary - All rights reserved
+
+## Mobile Parity Reference
+
+When porting features from desktop to mobile iOS, consult these desktop implementation files:
+
+### Theme and Core UI Tokens
+- `desktop/src/app/globals.css` - Colors (OKLCH), radii, animations
+- `desktop/src/ui/button.tsx` - Button variants and sizes
+- `desktop/src/ui/card.tsx` - Card spacing and borders
+
+### Files Feature
+- `desktop/src/app/components/generate-prompt/file-browser.tsx` - File browser layout
+- `desktop/src/app/components/generate-prompt/_components/file-item.tsx` - File item rendering
+- `desktop/src/app/components/generate-prompt/_hooks/use-file-selection.ts` - File selection logic
+
+### Plans Feature
+- `desktop/src/app/components/implementation-plans-panel/implementation-plans-panel.tsx` - Plans panel
+- `desktop/src/app/components/implementation-plans-panel/_components/*.tsx` - Cards, modals
+
+### Text Improvement
+- `desktop/src/contexts/text-improvement/TextImprovementProvider.tsx` - Text improvement context
+- `desktop/src/contexts/text-improvement/TextImprovementPopover.tsx` - Sparkles popover
+
+### Jobs Monitoring
+- `desktop/src/app/components/background-jobs-sidebar/*` - Job list, details, status badges
+
+### External Folders/Scoping
+- `desktop/src/app/components/generate-prompt/_components/external-folders-manager.tsx` - Folders UI
+- `desktop/src-tauri/src/jobs/workflow_orchestrator/query_service.rs` - Root directories query

@@ -312,6 +312,113 @@ export function SessionProvider({ children }: SessionProviderProps) {
     };
   }, [sessionStateHook.currentSession?.id, sessionStateHook.currentSession?.forceExcludedFiles, sessionActions]);
 
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+
+    const setupListener = async () => {
+      try {
+        unlisten = await listen<{
+          sessionId: string;
+          includedFiles: string[];
+          forceExcludedFiles: string[];
+        }>("session-files-updated", (e) => {
+          const p = e.payload;
+
+          if (!sessionStateHook.currentSession?.id || p.sessionId !== sessionStateHook.currentSession.id) {
+            return;
+          }
+
+          sessionActions.updateCurrentSessionFields({
+            includedFiles: p.includedFiles,
+            forceExcludedFiles: p.forceExcludedFiles,
+          });
+        });
+      } catch (err) {
+        console.error("Failed to setup session-files-updated listener:", err);
+      }
+    };
+
+    setupListener();
+
+    return () => {
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, [sessionStateHook.currentSession?.id, sessionActions]);
+
+  // Listen for task description updates from mobile/remote
+  useEffect(() => {
+    let unlistenHistory: (() => void) | null = null;
+
+    const setupHistoryListener = async () => {
+      try {
+        unlistenHistory = await listen<{
+          sessionId: string;
+          taskDescription: string;
+        }>("session-history-synced", (e) => {
+          const p = e.payload;
+
+          // Update task description for matching session
+          if (sessionStateHook.currentSession?.id === p.sessionId) {
+            sessionActions.updateCurrentSessionFields({
+              taskDescription: p.taskDescription,
+            });
+          }
+        });
+      } catch (err) {
+        console.error("Failed to setup session-history-synced listener:", err);
+      }
+    };
+
+    setupHistoryListener();
+
+    return () => {
+      if (unlistenHistory) {
+        unlistenHistory();
+      }
+    };
+  }, [sessionStateHook.currentSession?.id, sessionActions]);
+
+  // Step 4: Listen for remote active-session changes
+  useEffect(() => {
+    let unlistenFns: Array<() => void> = [];
+
+    const handlePayload = async (payload: any) => {
+      // device-link-event form: { type, payload, relayOrigin }
+      const type = payload?.type ?? "active-session-changed";
+      const relayOrigin = payload?.relayOrigin;
+      const data = payload?.payload ?? payload;
+
+      if (type !== "active-session-changed") return;
+      if (relayOrigin && relayOrigin !== "remote") return;
+
+      const { sessionId, projectDirectory: eventProjectDirectory } = data || {};
+      if (!eventProjectDirectory || eventProjectDirectory !== projectDirectory) return;
+      if (sessionId === (sessionStateHook.currentSession?.id ?? null)) return;
+
+      const { setActiveSessionAction } = await import("@/actions/session/active.actions");
+      await setActiveSessionAction(projectDirectory, sessionId ?? null, { broadcast: false });
+
+      if (sessionId) {
+        await sessionLoader.loadSessionById(sessionId);
+      }
+    };
+
+    listen("device-link-event", (e) => handlePayload((e as any).payload))
+      .then((un) => unlistenFns.push(un))
+      .catch((err) => console.error("Failed to listen to device-link-event:", err));
+
+    listen("active-session-changed", (e) => handlePayload((e as any).payload))
+      .then((un) => unlistenFns.push(un))
+      .catch((err) => console.error("Failed to listen to active-session-changed:", err));
+
+    return () => {
+      unlistenFns.forEach((u) => u());
+    };
+  }, [projectDirectory, sessionStateHook.currentSession?.id, sessionLoader]);
+
+
   return (
     <SessionStateContext.Provider value={stateContextValue}>
       <SessionActionsContext.Provider value={actionsContextValue}>

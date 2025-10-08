@@ -2,6 +2,117 @@
   "category": "workflows",
   "pages": [
     {
+      "slug": "codex-cli-plan-mode",
+      "workflow": "plan-mode",
+      "tool_integration": "codex-cli",
+      "headline": "Codex CLI Planning Workflow with Architecture Guardrails",
+      "subhead": "Pre-plan with file discovery and multi-model synthesis, then execute in Codex CLI with approval modes.",
+      "meta_title": "Codex CLI Planning Workflow - Vibe Manager",
+      "meta_description": "Map every dependency, merge multi-model plans, and run Codex CLI with Read-Only or Auto approval modes using Vibe Manager's planning workflow.",
+      "primary_cta": "Open Codex Planning Guide",
+      "publish": true,
+      "priority": 1,
+      "pain_points": [
+        {
+          "problem": "Codex only executes the files you mention",
+          "solution": "File discovery uncovers hidden dependencies, queues, and configs"
+        },
+        {
+          "problem": "Single-model plans miss edge cases",
+          "solution": "Merge GPT-5, Claude, and Codex plans with attribution"
+        },
+        {
+          "problem": "No persistent execution trail",
+          "solution": "Integrated terminal keeps searchable logs and approvals"
+        }
+      ],
+      "workflow_steps": [
+        "Run file discovery to map every impacted file",
+        "Generate plans with Codex plus supporting models",
+        "Use merge instructions to craft a final blueprint",
+        "Execute in Vibe's terminal or paste into Codex plan mode"
+      ],
+      "key_features": [
+        "SoftwareApplication + HowTo structured data for Codex users",
+        "Direct link to /plan-mode/codex deep dive",
+        "Persistent PTY sessions with health monitoring"
+      ]
+    },
+    {
+      "slug": "claude-code-plan-mode",
+      "workflow": "plan-mode",
+      "tool_integration": "claude-code",
+      "headline": "Enhance Claude Code's Native Plan Mode",
+      "subhead": "Add multi-model synthesis and file discovery to Claude Code's built-in Plan Mode (Shift+Tab).",
+      "meta_title": "Enhance Claude Code Plan Mode - Vibe Manager",
+      "meta_description": "Complement Claude Code's native Plan Mode with file discovery, multi-model synthesis, and merge instructions for superior architectural planning.",
+      "primary_cta": "Open Claude Planning Guide",
+      "publish": true,
+      "priority": 1,
+      "pain_points": [
+        {
+          "problem": "Claude Code Plan Mode uses only Claude Sonnet",
+          "solution": "Vibe Manager adds multi-model synthesis with GPT-5 and Gemini perspectives"
+        },
+        {
+          "problem": "File context preparation is manual",
+          "solution": "File discovery automatically maps architectural dependencies and scope"
+        },
+        {
+          "problem": "Terminal history isn't structured for audits",
+          "solution": "Persistent terminal logs with approvals and health monitoring"
+        }
+      ],
+      "workflow_steps": [
+        "Discover architecture with multi-stage file discovery",
+        "Stream plans from Claude Sonnet, GPT-5, and Gemini",
+        "Merge with instructions to synthesize superior architectural plan",
+        "Use with Claude Code Plan Mode (Shift+Tab) or execute in Vibe terminal"
+      ],
+      "key_features": [
+        "Multi-model synthesis enhances native Plan Mode",
+        "Source attribution inside merged plans",
+        "macOS and Windows support with persistent logging"
+      ]
+    },
+    {
+      "slug": "cursor-plan-mode",
+      "workflow": "plan-mode",
+      "tool_integration": "cursor",
+      "headline": "Planning Workflow for Cursor Composer & Agent",
+      "subhead": "Add architectural pre-planning to Cursor Agent mode with file discovery and multi-model synthesis.",
+      "meta_title": "Cursor Planning Workflow - Vibe Manager",
+      "meta_description": "Give Cursor Agent mode complete architectural context. Pre-plan with file discovery, merge multi-model insights, execute with WSL-friendly guardrails.",
+      "primary_cta": "Open Cursor Planning Guide",
+      "publish": true,
+      "priority": 1,
+      "pain_points": [
+        {
+          "problem": "Cursor Agent mode plans internally without separate review phase",
+          "solution": "Vibe Manager adds pre-planning layer with file discovery and reviewable context"
+        },
+        {
+          "problem": "Agent mode focuses on visible code, misses architectural dependencies",
+          "solution": "File discovery maps entire blast radius across services before execution"
+        },
+        {
+          "problem": "Terminal integration lacks structured audit logs",
+          "solution": "Persistent terminal with approvals records every macOS, Windows, or WSL session"
+        }
+      ],
+      "workflow_steps": [
+        "Run file discovery to map architectural scope",
+        "Generate plans from GPT-5, Claude, and Gemini",
+        "Merge and synthesize with architectural context",
+        "Feed to Cursor Agent/Composer or execute in Vibe terminal"
+      ],
+      "key_features": [
+        "WSL-aware terminal execution",
+        "Pre-planning complements Cursor Agent mode",
+        "Multi-model architectural synthesis"
+      ]
+    },
+    {
       "slug": "large-refactors/claude-code/macos",
       "workflow": "large-refactors",
       "tool_integration": "claude-code",

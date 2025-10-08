@@ -20,9 +20,13 @@ public class ServerFeatureService: ObservableObject {
 
     // MARK: - Text Enhancement
 
-    /// Enhance text using server-side LLM capabilities
-    /// First tries RPC "actions.refineTaskDescription" via relay, then falls back to HTTP POST
-    public func enhanceText(_ text: String) async throws -> TextEnhancementResponse {
+    /// Enhance text using relay-first approach: call text.enhance, poll job.get until complete
+    public func enhanceText(
+        _ text: String,
+        sessionId: String,
+        projectDirectory: String?,
+        timeoutSeconds: Double = 120
+    ) async throws -> TextEnhancementResponse {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw DataServiceError.invalidRequest("Text cannot be empty")
         }
@@ -30,43 +34,84 @@ public class ServerFeatureService: ObservableObject {
         isLoading = true
         defer { isLoading = false }
 
-        // First try RPC via relay if we have an active desktop connection
+        let startTime = Date()
+
+        // Relay-first: try via CommandRouter if connected
         if let deviceId = await MultiConnectionManager.shared.activeDeviceId,
-           let relayClient = await MultiConnectionManager.shared.relayConnection(for: deviceId) {
+           await MultiConnectionManager.shared.relayConnection(for: deviceId) != nil {
 
             do {
-                let rpcRequest = RpcRequest(
-                    method: "actions.refineTaskDescription",
-                    params: ["text": text],
-                    id: UUID().uuidString
-                )
-
-                // Try RPC call via relay
-                for try await rpcResponse in relayClient.invoke(
-                    targetDeviceId: deviceId.uuidString,
-                    request: rpcRequest,
-                    timeout: 30.0
+                // Step 1: Call text.enhance to create job
+                var jobId: String?
+                for try await response in CommandRouter.textEnhance(
+                    text: text,
+                    sessionId: sessionId,
+                    projectDirectory: projectDirectory
                 ) {
-                    if let result = rpcResponse.result?.value as? [String: Any],
-                       let enhancedText = result["enhancedText"] as? String {
+                    if let result = response.result?.value as? [String: Any],
+                       let id = result["jobId"] as? String {
+                        jobId = id
+                        break
+                    }
+                    if let error = response.error {
+                        print("text.enhance RPC failed: \(error.message)")
+                        break
+                    }
+                }
+
+                guard let jobId = jobId else {
+                    throw DataServiceError.serverError("Failed to get jobId from text.enhance")
+                }
+
+                // Step 2: Poll job.get until completed/failed/canceled or timeout
+                let pollInterval: TimeInterval = 0.8
+                var elapsedTime: TimeInterval = 0
+
+                while elapsedTime < timeoutSeconds {
+                    try await Task.sleep(nanoseconds: UInt64(pollInterval * 1_000_000_000))
+                    elapsedTime = Date().timeIntervalSince(startTime)
+
+                    var jobData: [String: Any]?
+                    for try await response in CommandRouter.jobGet(jobId: jobId) {
+                        if let result = response.result?.value as? [String: Any],
+                           let job = result["job"] as? [String: Any] {
+                            jobData = job
+                            break
+                        }
+                    }
+
+                    guard let job = jobData else { continue }
+                    guard let status = job["status"] as? String else { continue }
+
+                    if status == "completed" {
+                        // Extract enhanced text from job response
+                        let enhancedText = job["response"] as? String ?? text
+                        let processingTime = Int(elapsedTime * 1000)
 
                         return TextEnhancementResponse(
                             originalText: text,
                             enhancedText: enhancedText,
-                            improvements: result["improvements"] as? [String] ?? [],
-                            processingTimeMs: result["processingTimeMs"] as? Int ?? 0
+                            improvements: [],
+                            processingTimeMs: processingTime
                         )
+                    } else if status == "failed" || status == "canceled" {
+                        let errorMsg = job["error"] as? String ?? "Job \(status)"
+                        throw DataServiceError.serverError(errorMsg)
                     }
-
-                    if let error = rpcResponse.error {
-                        // RPC failed, continue to fallback
-                        print("RPC enhancement failed: \(error.message)")
-                        break
-                    }
+                    // else: status is "pending" or "processing", continue polling
                 }
+
+                // NOTE: DataServiceError.timeout does not accept a String parameter in the current enum definition
+                // Using the existing .timeout case instead of .timeout(String)
+                throw DataServiceError.timeout
+
+            } catch is CancellationError {
+                // NOTE: DataServiceError.cancelled does not exist in the current enum definition
+                // Using .serverError as a workaround for cancellation
+                throw DataServiceError.serverError("Request cancelled")
             } catch {
-                // RPC failed, continue to fallback
-                print("RPC relay enhancement failed: \(error.localizedDescription)")
+                print("Relay enhancement failed: \(error.localizedDescription), falling back to HTTP")
+                // Fall through to HTTP fallback
             }
         }
 
@@ -96,20 +141,35 @@ public class ServerFeatureService: ObservableObject {
 
     // MARK: - Audio Transcription
 
-    /// Transcribe audio data using server-side speech-to-text
-    public func transcribeAudio(_ audioData: Data, mimeType: String = "audio/wav") async throws -> TranscriptionResponse {
+    /// Transcribe audio data using server HTTP endpoint (desktop doesn't support RPC transcription)
+    public func transcribeAudio(
+        _ audioData: Data,
+        durationMs: Int64,
+        model: String? = nil,
+        language: String? = nil,
+        prompt: String? = nil,
+        temperature: Double? = nil
+    ) async throws -> TranscriptionResponse {
         guard !audioData.isEmpty else {
             throw DataServiceError.invalidRequest("Audio data cannot be empty")
+        }
+
+        guard durationMs > 0 else {
+            throw DataServiceError.invalidRequest("Duration must be greater than 0")
         }
 
         isLoading = true
         defer { isLoading = false }
 
         do {
-            // For multipart upload, we need to create the request manually
-            let response = try await uploadAudioForTranscription(audioData, mimeType: mimeType)
-            return response
-
+            return try await uploadAudioForTranscription(
+                audioData,
+                durationMs: durationMs,
+                model: model,
+                language: language,
+                prompt: prompt,
+                temperature: temperature
+            )
         } catch {
             let serviceError = mapToDataServiceError(error)
             lastError = serviceError
@@ -119,35 +179,60 @@ public class ServerFeatureService: ObservableObject {
 
     // MARK: - Private Methods
 
-    private func uploadAudioForTranscription(_ audioData: Data, mimeType: String) async throws -> TranscriptionResponse {
-        // Create multipart form data request
+    private func uploadAudioForTranscription(
+        _ audioData: Data,
+        durationMs: Int64,
+        model: String?,
+        language: String?,
+        prompt: String?,
+        temperature: Double?
+    ) async throws -> TranscriptionResponse {
         let boundary = UUID().uuidString
         let contentType = "multipart/form-data; boundary=\(boundary)"
 
         var bodyData = Data()
 
-        // Add audio file part
-        bodyData.append("--\(boundary)\r\n".data(using: .utf8)!)
-        bodyData.append("Content-Disposition: form-data; name=\"audio\"; filename=\"audio.wav\"\r\n".data(using: .utf8)!)
-        bodyData.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
+        // Field: file (server expects this name)
+        bodyData.append("--\(boundary)\r\n")
+        bodyData.append("Content-Disposition: form-data; name=\"file\"; filename=\"audio.wav\"\r\n")
+        bodyData.append("Content-Type: audio/wav\r\n\r\n")
         bodyData.append(audioData)
-        bodyData.append("\r\n".data(using: .utf8)!)
+        bodyData.append("\r\n")
 
-        // Add options part
-        bodyData.append("--\(boundary)\r\n".data(using: .utf8)!)
-        bodyData.append("Content-Disposition: form-data; name=\"options\"\r\n".data(using: .utf8)!)
-        bodyData.append("Content-Type: application/json\r\n\r\n".data(using: .utf8)!)
+        // Field: model (use provided model or default to whisper-1 like desktop app)
+        bodyData.append("--\(boundary)\r\n")
+        bodyData.append("Content-Disposition: form-data; name=\"model\"\r\n\r\n")
+        bodyData.append((model ?? "whisper-1") + "\r\n")
 
-        let options = TranscriptionOptions()
-        let optionsData = try JSONEncoder().encode(options)
-        bodyData.append(optionsData)
-        bodyData.append("\r\n".data(using: .utf8)!)
+        // Field: duration_ms (required by server)
+        bodyData.append("--\(boundary)\r\n")
+        bodyData.append("Content-Disposition: form-data; name=\"duration_ms\"\r\n\r\n")
+        bodyData.append("\(durationMs)\r\n")
 
-        // Close boundary
-        bodyData.append("--\(boundary)--\r\n".data(using: .utf8)!)
+        // Field: language (optional)
+        if let language = language {
+            bodyData.append("--\(boundary)\r\n")
+            bodyData.append("Content-Disposition: form-data; name=\"language\"\r\n\r\n")
+            bodyData.append(language + "\r\n")
+        }
 
-        // Create URL request
-        let baseURL = serverAPIClient.baseURL ?? Config.serverURL
+        // Field: prompt (optional)
+        if let prompt = prompt {
+            bodyData.append("--\(boundary)\r\n")
+            bodyData.append("Content-Disposition: form-data; name=\"prompt\"\r\n\r\n")
+            bodyData.append(prompt + "\r\n")
+        }
+
+        // Field: temperature (optional)
+        if let temperature = temperature {
+            bodyData.append("--\(boundary)\r\n")
+            bodyData.append("Content-Disposition: form-data; name=\"temperature\"\r\n\r\n")
+            bodyData.append("\(temperature)\r\n")
+        }
+
+        bodyData.append("--\(boundary)--\r\n")
+
+        let baseURL = Config.serverURL
         guard let url = URL(string: "\(baseURL)/api/audio/transcriptions") else {
             throw DataServiceError.invalidRequest("Invalid transcription URL")
         }
@@ -166,7 +251,6 @@ public class ServerFeatureService: ObservableObject {
 
         request.httpBody = bodyData
 
-        // Perform request
         let (responseData, httpResponse) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = httpResponse as? HTTPURLResponse else {
@@ -177,11 +261,7 @@ public class ServerFeatureService: ObservableObject {
             throw DataServiceError.serverError("HTTP \(httpResponse.statusCode)")
         }
 
-        do {
-            return try JSONDecoder().decode(TranscriptionResponse.self, from: responseData)
-        } catch {
-            throw DataServiceError.invalidResponse("Failed to decode transcription response")
-        }
+        return try JSONDecoder().decode(TranscriptionResponse.self, from: responseData)
     }
 
     private func getCurrentAuthToken() async -> String? {

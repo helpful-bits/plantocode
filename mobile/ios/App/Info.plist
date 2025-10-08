@@ -49,7 +49,7 @@
 		<string>_ws._tcp</string>
 	</array>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>This app uses the microphone to enable voice dictation for creating task descriptions and entering terminal commands.</string>
+	<string>We need microphone access to capture your voice for dictation.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Vibe Manager uses speech recognition to transcribe your voice for tasks and commands.</string>
 	<key>UIBackgroundModes</key>

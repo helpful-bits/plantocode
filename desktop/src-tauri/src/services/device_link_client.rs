@@ -6,8 +6,9 @@ use crate::remote_api::types::{RpcRequest, RpcResponse, UserContext};
 use futures_util::{SinkExt, StreamExt};
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tauri::{AppHandle, Emitter, Listener, Manager};
 use tokio::sync::mpsc;
 use tokio_tungstenite::{
@@ -15,6 +16,20 @@ use tokio_tungstenite::{
     tungstenite::{Message, client::IntoClientRequest},
 };
 use url::Url;
+
+// Rate limiting for warnings
+static LAST_WARN_MS: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Deserialize)]
+struct RelayEnvelope {
+    #[serde(alias = "type", alias = "message_type")]
+    pub kind: String,
+    pub payload: serde_json::Value,
+    #[serde(default)]
+    pub target_device_id: Option<String>,
+    #[serde(default)]
+    pub timestamp: Option<String>,
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -72,6 +87,7 @@ pub struct DeviceLinkClient {
     app_handle: AppHandle,
     server_url: String,
     sender: Option<mpsc::UnboundedSender<DeviceLinkMessage>>,
+    event_listener_id: std::sync::Mutex<Option<tauri::EventId>>,
 }
 
 impl DeviceLinkClient {
@@ -80,6 +96,7 @@ impl DeviceLinkClient {
             app_handle,
             server_url,
             sender: None,
+            event_listener_id: std::sync::Mutex::new(None),
         }
     }
 
@@ -170,12 +187,25 @@ impl DeviceLinkClient {
         let (tx, mut rx) = mpsc::unbounded_channel::<DeviceLinkMessage>();
         self.sender = Some(tx.clone());
 
+        // Unlisten any previous listener to prevent leaks
+        if let Ok(mut listener_guard) = self.event_listener_id.lock() {
+            if let Some(id) = listener_guard.take() {
+                self.app_handle.unlisten(id);
+            }
+        }
+
         // Set up event listener for device-link-event emissions
         let tx_for_events = tx.clone();
         let app_handle_for_events = self.app_handle.clone();
-        app_handle_for_events.listen("device-link-event", move |event| {
+        let listener_id = app_handle_for_events.listen("device-link-event", move |event| {
             let payload = event.payload();
             if let Ok(event_data) = serde_json::from_str::<Value>(payload) {
+                if let Some(relay_origin) = event_data.get("relayOrigin").and_then(|v| v.as_str()) {
+                    if relay_origin == "remote" {
+                        return;
+                    }
+                }
+
                 if let (Some(event_type), Some(event_payload)) = (
                     event_data.get("type").and_then(|v| v.as_str()),
                     event_data.get("payload"),
@@ -193,6 +223,11 @@ impl DeviceLinkClient {
                 }
             }
         });
+
+        // Store the listener ID
+        if let Ok(mut listener_guard) = self.event_listener_id.lock() {
+            *listener_guard = Some(listener_id);
+        }
 
         // Get hostname for device name
         let hostname = std::env::var("HOSTNAME")
@@ -245,20 +280,72 @@ impl DeviceLinkClient {
         let receiver_handle = tokio::spawn(async move {
             while let Some(msg) = ws_receiver.next().await {
                 match msg {
-                    Ok(Message::Text(text)) => match serde_json::from_str::<ServerMessage>(&text) {
-                        Ok(server_msg) => {
-                            if let Err(e) = Self::handle_server_message(
-                                &app_handle,
-                                server_msg,
-                                &tx_for_receiver,
-                            )
-                            .await
-                            {
-                                error!("Failed to handle server message: {}", e);
+                    Ok(Message::Text(text)) => {
+                        // Try parsing as RelayEnvelope first (handles both "type" and "message_type")
+                        if let Ok(env) = serde_json::from_str::<RelayEnvelope>(&text) {
+                            // Route based on event type
+                            if env.kind.starts_with("job:") {
+                                // Forward job events to local event bus
+                                if let Err(e) = app_handle.emit("device-link-event", json!({
+                                    "type": env.kind,
+                                    "payload": env.payload,
+                                    "relayOrigin": "remote"
+                                })) {
+                                    error!("Failed to emit job event: {}", e);
+                                }
+                            } else if ["session-updated", "session-files-updated", "session-file-browser-state-updated",
+                                       "session-history-synced"]
+                                       .contains(&env.kind.as_str()) {
+                                if let Err(e) = app_handle.emit("device-link-event", json!({
+                                    "type": env.kind,
+                                    "payload": env.payload,
+                                    "relayOrigin": "remote"
+                                })) {
+                                    error!("Failed to emit session event: {}", e);
+                                }
+                            } else if env.kind == "active-session-changed" {
+                                // Emit device-link-event with relayOrigin marker
+                                if let Err(e) = app_handle.emit("device-link-event", json!({
+                                    "type": "active-session-changed",
+                                    "payload": env.payload,
+                                    "relayOrigin": "remote"
+                                })) {
+                                    error!("Failed to emit active-session-changed device-link-event: {}", e);
+                                }
+                                // Emit canonical active-session-changed event
+                                if let Err(e) = app_handle.emit("active-session-changed", env.payload) {
+                                    error!("Failed to emit active-session-changed event: {}", e);
+                                }
                             }
+                            // Continue to next message
+                            continue;
                         }
-                        Err(e) => {
-                            warn!("Failed to parse server message: {} - Raw: {}", e, text);
+
+                        // Fall back to ServerMessage parsing for connection management messages
+                        match serde_json::from_str::<ServerMessage>(&text) {
+                            Ok(server_msg) => {
+                                if let Err(e) = Self::handle_server_message(
+                                    &app_handle,
+                                    server_msg,
+                                    &tx_for_receiver,
+                                )
+                                .await
+                                {
+                                    error!("Failed to handle server message: {}", e);
+                                }
+                            }
+                            Err(e) => {
+                                // Rate-limited warning
+                                let now = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap()
+                                    .as_millis() as u64;
+                                let last = LAST_WARN_MS.load(Ordering::Relaxed);
+                                if now - last > 200 {
+                                    warn!("Failed to parse server message: {} - Raw: {}", e, &text[..text.len().min(200)]);
+                                    LAST_WARN_MS.store(now, Ordering::Relaxed);
+                                }
+                            }
                         }
                     },
                     Ok(Message::Close(_)) => {
@@ -345,14 +432,9 @@ impl DeviceLinkClient {
                 info!(
                     "Successfully registered with device link server; session_id={:?} resume_token_present={} expires_at={:?}",
                     session_id,
-                    resume_token
-                        .as_ref()
-                        .map(|token| !token.is_empty())
-                        .unwrap_or(false),
+                    resume_token.as_ref().map(|token| !token.is_empty()).unwrap_or(false),
                     expires_at
                 );
-
-                // Emit an event so the UI (or other listeners) can persist resume credentials if needed.
                 let payload = serde_json::json!({
                     "status": "registered",
                     "session_id": session_id,
@@ -363,18 +445,10 @@ impl DeviceLinkClient {
                 if let Err(e) = app_handle.emit("device-link-status", payload) {
                     warn!("Failed to emit device link status event: {}", e);
                 }
-
                 Ok(())
             }
-            ServerMessage::Resumed {
-                session_id,
-                expires_at,
-            } => {
-                info!(
-                    "Resumed device link session; session_id={} expires_at={:?}",
-                    session_id, expires_at
-                );
-
+            ServerMessage::Resumed { session_id, expires_at } => {
+                info!("Resumed device link session; session_id={} expires_at={:?}", session_id, expires_at);
                 let payload = serde_json::json!({
                     "status": "resumed",
                     "session_id": session_id,
@@ -384,7 +458,6 @@ impl DeviceLinkClient {
                 if let Err(e) = app_handle.emit("device-link-status", payload) {
                     warn!("Failed to emit device link status event: {}", e);
                 }
-
                 Ok(())
             }
             ServerMessage::Error { message } => {
@@ -392,42 +465,21 @@ impl DeviceLinkClient {
                 Err(AppError::NetworkError(format!("Server error: {}", message)))
             }
             ServerMessage::Relay { client_id, request } => {
-                debug!(
-                    "Received relay request from client {}: method={}",
-                    client_id, request.method
-                );
-
-                // Create user context (this could be enhanced with actual user info from the server)
+                debug!("Received relay request from client {}: method={}", client_id, request.method);
                 let user_context = UserContext {
-                    user_id: "remote_user".to_string(), // This should come from the authenticated session
-                    device_id: device_id_manager::get_or_create(app_handle)
-                        .unwrap_or_else(|_| "unknown".to_string()),
-                    permissions: vec!["rpc".to_string()], // This should come from user's actual permissions
+                    user_id: "remote_user".to_string(),
+                    device_id: device_id_manager::get_or_create(app_handle).unwrap_or_else(|_| "unknown".to_string()),
+                    permissions: vec!["rpc".to_string()],
                 };
-
-                // Dispatch the command
-                let response = desktop_command_handler::dispatch_remote_command(
-                    app_handle,
-                    request,
-                    &user_context,
-                )
-                .await;
-
-                // Send response back via WebSocket
-                let relay_response = DeviceLinkMessage::RelayResponse {
-                    client_id,
-                    response,
-                };
-
+                let response = desktop_command_handler::dispatch_remote_command(app_handle, request, &user_context).await;
+                let relay_response = DeviceLinkMessage::RelayResponse { client_id, response };
                 if let Err(e) = tx.send(relay_response) {
                     error!("Failed to send relay response: {}", e);
                 }
-
                 Ok(())
             }
             ServerMessage::Ping => {
                 debug!("Received ping from server");
-                // Pongs are handled automatically by the WebSocket layer
                 Ok(())
             }
             ServerMessage::Pong => {
@@ -544,10 +596,16 @@ impl DeviceLinkClient {
 
     pub async fn shutdown(&mut self) {
         tracing::info!("Shutting down DeviceLinkClient");
+
+        if let Ok(mut listener_guard) = self.event_listener_id.lock() {
+            if let Some(id) = listener_guard.take() {
+                self.app_handle.unlisten(id);
+            }
+        }
+
         if let Some(sender) = self.sender.take() {
             drop(sender);
         }
-        // WebSocket task will terminate when sender is dropped
     }
 
     pub fn connection_state(&self) -> bool {

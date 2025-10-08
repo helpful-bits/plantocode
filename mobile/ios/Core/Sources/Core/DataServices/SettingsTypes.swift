@@ -1,0 +1,65 @@
+import Foundation
+
+public struct ProviderInfo: Codable, Equatable {
+    public let code: String
+    public let name: String
+
+    public init(code: String, name: String) {
+        self.code = code
+        self.name = name
+    }
+}
+
+public struct ModelInfo: Codable, Equatable {
+    public let id: String
+    public let name: String
+    public let provider: String
+    public let providerName: String
+    public let description: String?
+    public let contextWindow: Int?
+    public let priceInputPerMillion: String
+    public let priceOutputPerMillion: String
+    public let priceCacheRead: String?
+    public let priceCacheWrite: String?
+
+    public init(id: String, name: String, provider: String, providerName: String, description: String?, contextWindow: Int?, priceInputPerMillion: String, priceOutputPerMillion: String, priceCacheRead: String?, priceCacheWrite: String?) {
+        self.id = id
+        self.name = name
+        self.provider = provider
+        self.providerName = providerName
+        self.description = description
+        self.contextWindow = contextWindow
+        self.priceInputPerMillion = priceInputPerMillion
+        self.priceOutputPerMillion = priceOutputPerMillion
+        self.priceCacheRead = priceCacheRead
+        self.priceCacheWrite = priceCacheWrite
+    }
+}
+
+public struct ProviderWithModels: Codable, Equatable {
+    public let provider: ProviderInfo
+    public let models: [ModelInfo]
+
+    public init(provider: ProviderInfo, models: [ModelInfo]) {
+        self.provider = provider
+        self.models = models
+    }
+}
+
+public struct TaskModelSettings: Codable, Equatable {
+    public var model: String
+    public var temperature: Double
+    public var maxTokens: Int
+    public var copyButtons: [CopyButton]?
+    public var allowedModels: [String]?
+
+    public init(model: String, temperature: Double, maxTokens: Int, copyButtons: [CopyButton]? = nil, allowedModels: [String]? = nil) {
+        self.model = model
+        self.temperature = temperature
+        self.maxTokens = maxTokens
+        self.copyButtons = copyButtons
+        self.allowedModels = allowedModels
+    }
+}
+
+public typealias ProjectTaskSettings = [String: TaskModelSettings]

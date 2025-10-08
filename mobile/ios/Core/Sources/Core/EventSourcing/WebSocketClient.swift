@@ -30,6 +30,41 @@ public struct TaskDescriptionUpdatePayload: Codable {
     public let updatedAt: Int64
 }
 
+// MARK: - Supporting Types for WebSocket
+
+public struct ReconnectionConfig {
+    public let maxRetries: Int
+    public let baseDelay: TimeInterval
+    public let maxDelay: TimeInterval
+
+    public init(maxRetries: Int = 5, baseDelay: TimeInterval = 1.0, maxDelay: TimeInterval = 30.0) {
+        self.maxRetries = maxRetries
+        self.baseDelay = baseDelay
+        self.maxDelay = maxDelay
+    }
+
+    public var maxReconnectAttempts: Int {
+        return maxRetries
+    }
+
+    public func getReconnectDelay(attempt: Int) -> TimeInterval {
+        let exponentialDelay = baseDelay * pow(2.0, Double(attempt - 1))
+        return min(exponentialDelay, maxDelay)
+    }
+}
+
+public struct EventFilters: Codable {
+    public let eventTypes: [String]?
+    public let sessionIds: [String]?
+    public let projectDirectories: [String]?
+
+    public init(eventTypes: [String]? = nil, sessionIds: [String]? = nil, projectDirectories: [String]? = nil) {
+        self.eventTypes = eventTypes
+        self.sessionIds = sessionIds
+        self.projectDirectories = projectDirectories
+    }
+}
+
 /// WebSocket client for bidirectional real-time communication
 public class WebSocketClient: NSObject, ObservableObject {
     private let logger = Logger(subsystem: "VibeManager", category: "WebSocket")
@@ -385,27 +420,37 @@ public class WebSocketClient: NSObject, ObservableObject {
     }
 
     private func handleEventMessage(_ message: EventMessage) {
+        // Log event with structured information
+        let eventType = message.event.eventType
+        let sequence = message.event.sequence
+        let dataKeys = (message.event.data.value as? [String: Any])?.keys.joined(separator: ",") ?? ""
+        logger.info("Event: type=\(eventType, privacy: .public) seq=\(sequence) keys=\(dataKeys, privacy: .public)")
+
         DispatchQueue.main.async {
             self.eventSubject.send(message.event)
 
             // Handle specific event types
             if message.event.eventType == "TaskDescriptionUpdated",
-               let payloadData = try? JSONSerialization.data(withJSONObject: message.event.data.value),
-               let taskUpdate = try? JSONDecoder().decode(TaskDescriptionUpdatePayload.self, from: payloadData) {
+               let payloadData = try? JSONSerialization.data(withJSONObject: message.event.data.value) {
+                do {
+                    let taskUpdate = try JSONDecoder().decode(TaskDescriptionUpdatePayload.self, from: payloadData)
 
-                let taskDescription = TaskDescription(
-                    id: taskUpdate.taskId,
-                    sessionId: taskUpdate.sessionId,
-                    content: taskUpdate.content,
-                    createdAt: 0, // Not provided in update payload
-                    updatedAt: taskUpdate.updatedAt,
-                    createdBy: taskUpdate.deviceId,
-                    version: taskUpdate.version,
-                    isActive: true,
-                    checksum: ""  // Would need to calculate or receive from server
-                )
+                    let taskDescription = TaskDescription(
+                        id: taskUpdate.taskId,
+                        sessionId: taskUpdate.sessionId,
+                        content: taskUpdate.content,
+                        createdAt: 0, // Not provided in update payload
+                        updatedAt: taskUpdate.updatedAt,
+                        createdBy: taskUpdate.deviceId,
+                        version: taskUpdate.version,
+                        isActive: true,
+                        checksum: ""  // Would need to calculate or receive from server
+                    )
 
-                self.taskUpdatesSubject.send(taskDescription)
+                    self.taskUpdatesSubject.send(taskDescription)
+                } catch {
+                    self.logger.error("Failed to decode TaskDescriptionUpdatePayload: \(error.localizedDescription)")
+                }
             }
         }
 
@@ -422,7 +467,18 @@ public class WebSocketClient: NSObject, ObservableObject {
     }
 
     private func handleEventBatchMessage(_ message: EventBatchMessage) {
+        // Log batch event with structured information
+        let batchSize = message.events.count
+        let batchSeq = message.batchSeq
+        let eventTypes = message.events.map { $0.eventType }.joined(separator: ",")
+        logger.info("EventBatch: batchId=\(message.batchId, privacy: .public) seq=\(batchSeq) size=\(batchSize) types=\(eventTypes, privacy: .public)")
+
         for event in message.events {
+            let eventType = event.eventType
+            let sequence = event.sequence
+            let dataKeys = (event.data.value as? [String: Any])?.keys.joined(separator: ",") ?? ""
+            logger.info("Event: type=\(eventType, privacy: .public) seq=\(sequence) keys=\(dataKeys, privacy: .public)")
+
             DispatchQueue.main.async {
                 self.eventSubject.send(event)
             }

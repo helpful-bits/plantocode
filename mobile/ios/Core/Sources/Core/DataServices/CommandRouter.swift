@@ -1,5 +1,6 @@
 import Foundation
 import Core
+import OSLog
 
 @MainActor
 public struct CommandRouter {
@@ -84,9 +85,65 @@ public struct CommandRouter {
         return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
     }
 
-    public static func terminalOpen(
-        command: String,
-        cwd: String
+// MARK: - Terminal Control
+
+    public static func terminalStart(
+        jobId: String? = nil,
+        shell: String? = nil,
+        workingDirectory: String? = nil
+    ) -> AsyncThrowingStream<RpcResponse, Error> {
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: ServerRelayError.notConnected)
+            }
+        }
+
+        var params: [String: Any] = [:]
+        if let jobId = jobId {
+            params["jobId"] = jobId
+        }
+        if let shell = shell {
+            params["shell"] = shell
+        }
+        if let workingDirectory = workingDirectory {
+            params["workingDirectory"] = workingDirectory
+        }
+
+        let request = RpcRequest(
+            method: "terminal.start",
+            params: params
+        )
+
+        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+    }
+
+    public static func terminalGetLog(
+        sessionId: String,
+        maxLines: Int? = nil
+    ) -> AsyncThrowingStream<RpcResponse, Error> {
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: ServerRelayError.notConnected)
+            }
+        }
+
+        var params: [String: Any] = ["sessionId": sessionId]
+        if let maxLines = maxLines {
+            params["maxLines"] = maxLines
+        }
+
+        let request = RpcRequest(
+            method: "terminal.getLog",
+            params: params
+        )
+
+        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+    }
+
+    public static func terminalDetach(
+        sessionId: String
     ) -> AsyncThrowingStream<RpcResponse, Error> {
         guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
               let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
@@ -96,19 +153,16 @@ public struct CommandRouter {
         }
 
         let request = RpcRequest(
-            method: "terminal.open",
-            params: [
-                "command": command,
-                "cwd": cwd
-            ]
+            method: "terminal.detach",
+            params: ["sessionId": sessionId]
         )
 
         return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
     }
 
-    public static func terminalWrite(
+    public static func terminalWriteData(
         sessionId: String,
-        input: String
+        base64Data: String
     ) -> AsyncThrowingStream<RpcResponse, Error> {
         guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
               let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
@@ -121,14 +175,14 @@ public struct CommandRouter {
             method: "terminal.write",
             params: [
                 "sessionId": sessionId,
-                "input": input
+                "data": base64Data
             ]
         )
 
         return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
     }
 
-    public static func terminalClose(
+    public static func terminalKill(
         sessionId: String
     ) -> AsyncThrowingStream<RpcResponse, Error> {
         guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
@@ -139,7 +193,7 @@ public struct CommandRouter {
         }
 
         let request = RpcRequest(
-            method: "terminal.close",
+            method: "terminal.kill",
             params: [
                 "sessionId": sessionId
             ]
@@ -148,9 +202,10 @@ public struct CommandRouter {
         return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
     }
 
-    public static func terminalExecute(
-        command: String,
-        cwd: String
+    public static func terminalResize(
+        sessionId: String,
+        cols: Int,
+        rows: Int
     ) -> AsyncThrowingStream<RpcResponse, Error> {
         guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
               let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
@@ -160,10 +215,34 @@ public struct CommandRouter {
         }
 
         let request = RpcRequest(
-            method: "terminal.execute",
+            method: "terminal.resize",
             params: [
-                "command": command,
-                "cwd": cwd
+                "sessionId": sessionId,
+                "cols": cols,
+                "rows": rows
+            ]
+        )
+
+        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+    }
+
+    public static func terminalWrite(
+        sessionId: String,
+        text: String
+    ) -> AsyncThrowingStream<RpcResponse, Error> {
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: ServerRelayError.notConnected)
+            }
+        }
+
+        let base64 = text.data(using: .utf8)?.base64EncodedString() ?? ""
+        let request = RpcRequest(
+            method: "terminal.write",
+            params: [
+                "sessionId": sessionId,
+                "data": base64
             ]
         )
 
@@ -320,7 +399,8 @@ public struct CommandRouter {
 
     public static func textEnhance(
         text: String,
-        context: String
+        sessionId: String,
+        projectDirectory: String?
     ) -> AsyncThrowingStream<RpcResponse, Error> {
         guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
               let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
@@ -329,12 +409,18 @@ public struct CommandRouter {
             }
         }
 
+        var params: [String: Any] = [
+            "text": text,
+            "sessionId": sessionId
+        ]
+
+        if let projectDirectory = projectDirectory {
+            params["projectDirectory"] = projectDirectory
+        }
+
         let request = RpcRequest(
             method: "text.enhance",
-            params: [
-                "text": text,
-                "context": context
-            ]
+            params: params
         )
 
         return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
@@ -427,6 +513,28 @@ public struct CommandRouter {
             params: [
                 "sessionId": id,
                 "updateData": updates
+            ]
+        )
+
+        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+    }
+
+    public static func sessionUpdateTaskDescription(
+        sessionId: String,
+        taskDescription: String
+    ) -> AsyncThrowingStream<RpcResponse, Error> {
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: ServerRelayError.notConnected)
+            }
+        }
+
+        let request = RpcRequest(
+            method: "session.updateTaskDescription",
+            params: [
+                "sessionId": sessionId,
+                "taskDescription": taskDescription
             ]
         )
 
@@ -645,6 +753,210 @@ public struct CommandRouter {
 
         let request = RpcRequest(
             method: "files.getMetadata",
+            params: params
+        )
+
+        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+    }
+
+    public static func jobGet(
+        jobId: String
+    ) -> AsyncThrowingStream<RpcResponse, Error> {
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: ServerRelayError.notConnected)
+            }
+        }
+
+        let request = RpcRequest(
+            method: "job.get",
+            params: [
+                "jobId": jobId
+            ]
+        )
+
+        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+    }
+
+    public static func jobList(
+        projectDirectory: String? = nil,
+        sessionId: String? = nil,
+        statusFilter: [String]? = nil,
+        taskTypeFilter: String? = nil,
+        page: Int? = nil,
+        pageSize: Int? = nil,
+        filter: String? = nil
+    ) -> AsyncThrowingStream<RpcResponse, Error> {
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: ServerRelayError.notConnected)
+            }
+        }
+
+        var params: [String: Any] = [:]
+
+        if let projectDirectory = projectDirectory {
+            params["projectDirectory"] = projectDirectory
+        }
+        if let sessionId = sessionId {
+            params["sessionId"] = sessionId
+        }
+        if let statusFilter = statusFilter {
+            params["statusFilter"] = statusFilter
+        }
+        if let taskTypeFilter = taskTypeFilter {
+            params["taskTypeFilter"] = taskTypeFilter
+        }
+        if let page = page {
+            params["page"] = page
+        }
+        if let pageSize = pageSize {
+            params["pageSize"] = pageSize
+        }
+        if let filter = filter {
+            params["filter"] = filter
+        }
+
+        let request = RpcRequest(
+            method: "job.list",
+            params: params
+        )
+
+        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+    }
+
+    // MARK: - Settings
+
+    public static func settingsGetProvidersWithModels() -> AsyncThrowingStream<RpcResponse, Error> {
+        invoke("settings.getProvidersWithModels", [:])
+    }
+
+    public static func settingsGetDefaultTaskModelSettings() -> AsyncThrowingStream<RpcResponse, Error> {
+        invoke("settings.getDefaultTaskModelSettings", [:])
+    }
+
+    public static func settingsGetProjectTaskModelSettings(projectDirectory: String) -> AsyncThrowingStream<RpcResponse, Error> {
+        invoke("settings.getProjectTaskModelSettings", ["projectDirectory": projectDirectory])
+    }
+
+    public static func settingsSetProjectTaskSetting(projectDirectory: String, taskKey: String, settingKey: String, value: Any) -> AsyncThrowingStream<RpcResponse, Error> {
+        invoke("settings.setProjectTaskSetting", [
+            "projectDirectory": projectDirectory,
+            "taskKey": taskKey,
+            "settingKey": settingKey,
+            "value": value
+        ])
+    }
+
+    public static func settingsResetProjectTaskSetting(projectDirectory: String, taskKey: String, settingKey: String) -> AsyncThrowingStream<RpcResponse, Error> {
+        invoke("settings.resetProjectTaskSetting", [
+            "projectDirectory": projectDirectory,
+            "taskKey": taskKey,
+            "settingKey": settingKey
+        ])
+    }
+
+    public static func settingsGetAppSetting(key: String) -> AsyncThrowingStream<RpcResponse, Error> {
+        invoke("settings.getAppSetting", ["key": key])
+    }
+
+    public static func settingsSetAppSetting(key: String, value: String) -> AsyncThrowingStream<RpcResponse, Error> {
+        invoke("settings.setAppSetting", ["key": key, "value": value])
+    }
+
+    // MARK: - System Prompts
+
+    public static func systemPromptsGetProject(projectDirectory: String, taskType: String) -> AsyncThrowingStream<RpcResponse, Error> {
+        invoke("systemPrompts.getProject", ["projectDirectory": projectDirectory, "taskType": taskType])
+    }
+
+    public static func systemPromptsSetProject(projectDirectory: String, taskType: String, systemPrompt: String) -> AsyncThrowingStream<RpcResponse, Error> {
+        invoke("systemPrompts.setProject", ["projectDirectory": projectDirectory, "taskType": taskType, "systemPrompt": systemPrompt])
+    }
+
+    public static func systemPromptsResetProject(projectDirectory: String, taskType: String) -> AsyncThrowingStream<RpcResponse, Error> {
+        invoke("systemPrompts.resetProject", ["projectDirectory": projectDirectory, "taskType": taskType])
+    }
+
+    public static func systemPromptsGetDefault(taskType: String) -> AsyncThrowingStream<RpcResponse, Error> {
+        invoke("systemPrompts.getDefault", ["taskType": taskType])
+    }
+
+    public static func systemPromptsIsProjectCustomized(projectDirectory: String, taskType: String) -> AsyncThrowingStream<RpcResponse, Error> {
+        invoke("systemPrompts.isProjectCustomized", ["projectDirectory": projectDirectory, "taskType": taskType])
+    }
+
+    // MARK: - Terminal
+
+    public static func terminalGetAvailableShells() -> AsyncThrowingStream<RpcResponse, Error> {
+        invoke("terminal.getAvailableShells", [:])
+    }
+
+    public static func terminalGetDefaultShell() -> AsyncThrowingStream<RpcResponse, Error> {
+        invoke("terminal.getDefaultShell", [:])
+    }
+
+    public static func terminalSetDefaultShell(_ defaultShell: String) -> AsyncThrowingStream<RpcResponse, Error> {
+        invoke("terminal.setDefaultShell", ["defaultShell": defaultShell])
+    }
+
+    // MARK: - Config
+
+    public static func configRefreshRuntimeAIConfig() -> AsyncThrowingStream<RpcResponse, Error> {
+        invoke("config.refreshRuntimeAIConfig", [:])
+    }
+
+    // MARK: - Helper
+
+    private static func invoke(_ method: String, _ params: [String: Any]) -> AsyncThrowingStream<RpcResponse, Error> {
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: ServerRelayError.notConnected)
+            }
+        }
+
+        let request = RpcRequest(method: method, params: params)
+        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+    }
+
+    public static func sessionUpdateFileBrowserState(
+        sessionId: String,
+        projectDirectory: String,
+        searchTerm: String?,
+        sortBy: String?,
+        sortOrder: String?,
+        filterMode: String?
+    ) -> AsyncThrowingStream<RpcResponse, Error> {
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: ServerRelayError.notConnected)
+            }
+        }
+
+        var params: [String: Any] = [
+            "sessionId": sessionId,
+            "projectDirectory": projectDirectory
+        ]
+
+        if let searchTerm = searchTerm {
+            params["searchTerm"] = searchTerm
+        }
+        if let sortBy = sortBy {
+            params["sortBy"] = sortBy
+        }
+        if let sortOrder = sortOrder {
+            params["sortOrder"] = sortOrder
+        }
+        if let filterMode = filterMode {
+            params["filterMode"] = filterMode
+        }
+
+        let request = RpcRequest(
+            method: "session.updateFileBrowserState",
             params: params
         )
 

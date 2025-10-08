@@ -68,9 +68,10 @@ public struct AuthFlowCoordinator: View {
   private func updateRoute() {
     guard appState.hasSelectedRegionOnce else { route = .regionSelection; return }
     guard appState.isAuthenticated else { route = .login; return }
-    if let id = multiConnectionManager.activeDeviceId,
-       let state = multiConnectionManager.connectionStates[id],
-       state.isConnected {
+
+    // If we have an active device, stay in workspace even if temporarily disconnected
+    // The workspace view will handle showing connection status
+    if multiConnectionManager.activeDeviceId != nil {
       route = .workspace
     } else {
       route = .deviceSelection

@@ -1,8 +1,11 @@
 import Foundation
 import Combine
+import OSLog
 
 /// Service for accessing background jobs data from desktop
+@MainActor
 public class JobsDataService: ObservableObject {
+    private let logger = Logger(subsystem: "VibeManager", category: "JobsDataService")
 
     // MARK: - Published Properties
     @Published public var jobs: [BackgroundJob] = []
@@ -11,22 +14,27 @@ public class JobsDataService: ObservableObject {
     @Published public var syncStatus: JobSyncStatus?
 
     // MARK: - Private Properties
-    private let desktopAPIClient: DesktopAPIClient
     private let apiClient: APIClientProtocol
     private let cacheManager: CacheManager
     private var cancellables = Set<AnyCancellable>()
     private var progressSubscription: AnyCancellable?
+    private var jobsIndex: [String: Int] = [:]
 
     // MARK: - Initialization
     public init(
-        desktopAPIClient: DesktopAPIClient,
         apiClient: APIClientProtocol = APIClient.shared,
         cacheManager: CacheManager = CacheManager.shared
     ) {
-        self.desktopAPIClient = desktopAPIClient
         self.apiClient = apiClient
         self.cacheManager = cacheManager
         setupProgressTracking()
+    }
+
+    public convenience init() {
+        self.init(
+            apiClient: APIClient.shared,
+            cacheManager: CacheManager.shared
+        )
     }
 
     // MARK: - Public Methods
@@ -46,27 +54,55 @@ public class JobsDataService: ObservableObject {
                 .eraseToAnyPublisher()
         }
 
-        let jobListPublisher: AnyPublisher<JobListResponse, DesktopAPIError> = desktopAPIClient.invoke(
-            command: "list_jobs_api",
-            payload: request
+        // Relay-first: directly use RPC-via-relay
+        logger.debug("Jobs RPC path selected")
+        return listJobsViaRPC(request: request, cacheKey: cacheKey)
+    }
+
+    /// Get a single job by ID (returns raw dictionary)
+    public func getJob(jobId: String) -> AnyPublisher<[String: Any], DataServiceError> {
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+            return Fail(error: DataServiceError.connectionError("No active device connection"))
+                .eraseToAnyPublisher()
+        }
+
+        let rpcRequest = RpcRequest(
+            method: "job.get",
+            params: ["jobId": AnyCodable(jobId)]
         )
 
-        return jobListPublisher
-        .map { [weak self] (response: JobListResponse) in
-            self?.jobs = response.jobs
-            self?.cacheManager.set(response, forKey: cacheKey, ttl: 300) // 5 min cache
-            return response
-        }
-        .handleEvents(
-            receiveOutput: { [weak self] response in self?.isLoading = false },
-            receiveCompletion: { [weak self] completion in
-                self?.isLoading = false
-                if case .failure(let error) = completion {
-                    self?.error = self?.mapDesktopAPIError(error)
+        return Future<[String: Any], DataServiceError> { promise in
+            Task {
+                do {
+                    var jobData: [String: Any]?
+
+                    for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: rpcRequest) {
+                        if let error = response.error {
+                            promise(.failure(.serverError("RPC Error: \(error.message)")))
+                            return
+                        }
+
+                        if let result = response.result?.value as? [String: Any] {
+                            jobData = result
+                            if response.isFinal {
+                                break
+                            }
+                        }
+                    }
+
+                    guard let data = jobData else {
+                        promise(.failure(.invalidResponse("No job data received")))
+                        return
+                    }
+
+                    promise(.success(data))
+                } catch {
+                    let dataServiceError = error as? DataServiceError ?? .networkError(error)
+                    promise(.failure(dataServiceError))
                 }
             }
-        )
-        .mapError { [weak self] error in self?.mapDesktopAPIError(error) ?? DataServiceError.networkError(error) }
+        }
         .eraseToAnyPublisher()
     }
 
@@ -80,35 +116,21 @@ public class JobsDataService: ObservableObject {
                 .eraseToAnyPublisher()
         }
 
-        let jobDetailsPublisher: AnyPublisher<JobDetailsResponse, DesktopAPIError> = desktopAPIClient.invoke(
-            command: "get_job_details_api",
-            payload: request
-        )
-
-        return jobDetailsPublisher
-        .map { [weak self] (response: JobDetailsResponse) in
-            self?.cacheManager.set(response, forKey: cacheKey, ttl: 600) // 10 min cache
-            return response
-        }
-        .mapError { [weak self] error in self?.mapDesktopAPIError(error) ?? DataServiceError.networkError(error) }
-        .eraseToAnyPublisher()
+        // Relay-first: directly use RPC-via-relay
+        logger.debug("Jobs RPC path selected")
+        return getJobDetailsViaRPC(request: request, cacheKey: cacheKey)
     }
 
     /// Cancel a background job
     public func cancelJob(request: JobCancellationRequest) -> AnyPublisher<JobCancellationResponse, DataServiceError> {
-        let cancellationPublisher: AnyPublisher<JobCancellationResponse, DesktopAPIError> = desktopAPIClient.invoke(
-            command: "cancel_job_api",
-            payload: request
-        )
+        // Relay-first: directly use RPC-via-relay
+        logger.debug("Jobs RPC path selected")
+        return cancelJobViaRPC(request: request)
+    }
 
-        return cancellationPublisher
-        .handleEvents(receiveOutput: { [weak self] (_: JobCancellationResponse) in
-            // Invalidate cache
-            self?.cacheManager.invalidatePattern("jobs_")
-            self?.cacheManager.invalidatePattern("job_details_")
-        })
-        .mapError { [weak self] error in self?.mapDesktopAPIError(error) ?? DataServiceError.networkError(error) }
-        .eraseToAnyPublisher()
+    /// Delete a job
+    public func deleteJob(jobId: String) -> AnyPublisher<Bool, DataServiceError> {
+        return deleteJobViaRPC(jobId: jobId)
     }
 
     /// Subscribe to real-time job progress updates
@@ -192,27 +214,297 @@ public class JobsDataService: ObservableObject {
         )
     }
 
-    /// Map DesktopAPIError to DataServiceError
-    private func mapDesktopAPIError(_ error: DesktopAPIError) -> DataServiceError {
-        switch error {
-        case .notConnected:
-            return DataServiceError.connectionError("Not connected to desktop")
-        case .networkError(let networkError):
-            return DataServiceError.networkError(networkError)
-        case .timeout:
-            return DataServiceError.timeout
-        case .serverError(let code, let message):
-            return DataServiceError.serverError("\(code): \(message)")
-        case .encodingError(let encodingError):
-            return DataServiceError.networkError(encodingError)
-        case .decodingError(let decodingError):
-            return DataServiceError.networkError(decodingError)
-        case .invalidResponse:
-            return DataServiceError.invalidResponse("Invalid server response")
-        case .disconnected:
-            return DataServiceError.connectionError("Disconnected from desktop")
-        case .invalidURL, .invalidState:
-            return DataServiceError.invalidResponse(error.localizedDescription)
+    // MARK: - RPC Helper Methods
+
+    @MainActor
+    private func listJobsViaRPC(request: JobListRequest, cacheKey: String) -> AnyPublisher<JobListResponse, DataServiceError> {
+        return Future<JobListResponse, DataServiceError> { [weak self] promise in
+            Task {
+                do {
+                    var jobsData: [String: Any]?
+
+                    for try await response in CommandRouter.jobList(
+                        projectDirectory: request.projectDirectory,
+                        sessionId: request.sessionId,
+                        statusFilter: request.statusFilter?.map { $0.rawValue },
+                        taskTypeFilter: request.taskTypeFilter?.joined(separator: ","),
+                        page: request.page.map { Int($0) },
+                        pageSize: request.pageSize.map { Int($0) }
+                    ) {
+                        if let error = response.error {
+                            promise(.failure(.serverError("RPC Error: \(error.message)")))
+                            return
+                        }
+
+                        if let result = response.result?.value as? [String: Any] {
+                            jobsData = result
+                            if response.isFinal {
+                                break
+                            }
+                        }
+                    }
+
+                    guard let data = jobsData,
+                          let jobs = data["jobs"] as? [[String: Any]] else {
+                        promise(.failure(.invalidResponse("No jobs data received")))
+                        return
+                    }
+
+                    let jsonData = try JSONSerialization.data(withJSONObject: jobs)
+                    let decoder = JSONDecoder()
+                    decoder.keyDecodingStrategy = .convertFromSnakeCase
+                    let backgroundJobs = try decoder.decode([BackgroundJob].self, from: jsonData)
+
+                    let response = JobListResponse(
+                        jobs: backgroundJobs,
+                        totalCount: UInt32(data["totalCount"] as? Int ?? backgroundJobs.count),
+                        page: request.page ?? 0,
+                        pageSize: request.pageSize ?? 50,
+                        hasMore: data["hasMore"] as? Bool ?? false
+                    )
+
+                    self?.jobs = response.jobs
+                    self?.cacheManager.set(response, forKey: cacheKey, ttl: 300)
+                    promise(.success(response))
+
+                } catch {
+                    let dataServiceError = error as? DataServiceError ?? .networkError(error)
+                    promise(.failure(dataServiceError))
+                }
+            }
+        }
+        .handleEvents(
+            receiveOutput: { [weak self] _ in self?.isLoading = false },
+            receiveCompletion: { [weak self] completion in
+                self?.isLoading = false
+                if case .failure(let error) = completion {
+                    self?.error = error
+                }
+            }
+        )
+        .eraseToAnyPublisher()
+    }
+
+    @MainActor
+    private func getJobDetailsViaRPC(request: JobDetailsRequest, cacheKey: String) -> AnyPublisher<JobDetailsResponse, DataServiceError> {
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+            return Fail(error: DataServiceError.connectionError("No active device connection"))
+                .eraseToAnyPublisher()
+        }
+
+        let rpcRequest = RpcRequest(
+            method: "job.get_details",
+            params: [
+                "jobId": AnyCodable(request.jobId),
+                "includeFullContent": AnyCodable(request.includeFullContent)
+            ]
+        )
+
+        return Future<JobDetailsResponse, DataServiceError> { [weak self] promise in
+            Task {
+                do {
+                    var jobDetailsData: [String: Any]?
+
+                    for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: rpcRequest) {
+                        if let error = response.error {
+                            promise(.failure(.serverError("RPC Error: \(error.message)")))
+                            return
+                        }
+
+                        if let result = response.result?.value as? [String: Any] {
+                            jobDetailsData = result
+                            if response.isFinal {
+                                break
+                            }
+                        }
+                    }
+
+                    guard let data = jobDetailsData,
+                          let jobData = data["job"] as? [String: Any] else {
+                        promise(.failure(.invalidResponse("No job details received")))
+                        return
+                    }
+
+                    let jobJsonData = try JSONSerialization.data(withJSONObject: jobData)
+                    let decoder = JSONDecoder()
+                    decoder.keyDecodingStrategy = .convertFromSnakeCase
+                    let job = try decoder.decode(BackgroundJob.self, from: jobJsonData)
+
+                    var metrics: JobMetrics?
+                    if let metricsData = data["metrics"] as? [String: Any] {
+                        let metricsJsonData = try JSONSerialization.data(withJSONObject: metricsData)
+                        let metricsDecoder = JSONDecoder()
+                        metricsDecoder.keyDecodingStrategy = .convertFromSnakeCase
+                        metrics = try? metricsDecoder.decode(JobMetrics.self, from: metricsJsonData)
+                    }
+
+                    let response = JobDetailsResponse(job: job, metrics: metrics)
+
+                    self?.cacheManager.set(response, forKey: cacheKey, ttl: 600)
+                    promise(.success(response))
+
+                } catch {
+                    let dataServiceError = error as? DataServiceError ?? .networkError(error)
+                    promise(.failure(dataServiceError))
+                }
+            }
+        }
+        .eraseToAnyPublisher()
+    }
+
+    @MainActor
+    private func deleteJobViaRPC(jobId: String) -> AnyPublisher<Bool, DataServiceError> {
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+            return Fail(error: DataServiceError.connectionError("No active device connection"))
+                .eraseToAnyPublisher()
+        }
+
+        let rpcRequest = RpcRequest(
+            method: "job.delete",
+            params: [
+                "jobId": AnyCodable(jobId)
+            ]
+        )
+
+        return Future<Bool, DataServiceError> { [weak self] promise in
+            Task {
+                do {
+                    for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: rpcRequest) {
+                        if let error = response.error {
+                            promise(.failure(.serverError("Failed to delete job: \(error.message)")))
+                            return
+                        }
+
+                        // Remove from cache and local state
+                        self?.jobs.removeAll { $0.id == jobId }
+                        promise(.success(true))
+                        return
+                    }
+                } catch {
+                    promise(.failure(.serverError("Failed to delete job: \(error.localizedDescription)")))
+                }
+            }
+        }.eraseToAnyPublisher()
+    }
+
+    private func cancelJobViaRPC(request: JobCancellationRequest) -> AnyPublisher<JobCancellationResponse, DataServiceError> {
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+            return Fail(error: DataServiceError.connectionError("No active device connection"))
+                .eraseToAnyPublisher()
+        }
+
+        let rpcRequest = RpcRequest(
+            method: "job.cancel",
+            params: [
+                "jobId": AnyCodable(request.jobId),
+                "reason": AnyCodable(request.reason)
+            ]
+        )
+
+        return Future<JobCancellationResponse, DataServiceError> { [weak self] promise in
+            Task {
+                do {
+                    var cancelData: [String: Any]?
+
+                    for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: rpcRequest) {
+                        if let error = response.error {
+                            promise(.failure(.serverError("RPC Error: \(error.message)")))
+                            return
+                        }
+
+                        if let result = response.result?.value as? [String: Any] {
+                            cancelData = result
+                            if response.isFinal {
+                                break
+                            }
+                        }
+                    }
+
+                    guard let data = cancelData else {
+                        promise(.failure(.invalidResponse("No cancellation response received")))
+                        return
+                    }
+
+                    let response = JobCancellationResponse(
+                        success: data["success"] as? Bool ?? false,
+                        message: data["message"] as? String ?? "",
+                        cancelledAt: data["cancelledAt"] as? Int64
+                    )
+
+                    // Invalidate cache
+                    self?.cacheManager.invalidatePattern("jobs_")
+                    self?.cacheManager.invalidatePattern("job_details_")
+
+                    promise(.success(response))
+
+                } catch {
+                    let dataServiceError = error as? DataServiceError ?? .networkError(error)
+                    promise(.failure(dataServiceError))
+                }
+            }
+        }
+        .eraseToAnyPublisher()
+    }
+
+    @MainActor
+    public func applyRelayEvent(_ event: RelayEvent) {
+        guard event.eventType.hasPrefix("job:") else { return }
+        let dict = event.data.mapValues { $0.value }
+        let jobId = dict["jobId"] as? String ?? dict["id"] as? String
+
+        switch event.eventType {
+        case "job:created":
+            if let jobData = dict["job"] as? [String: Any],
+               let id = jobData["id"] as? String,
+               jobsIndex[id] == nil {
+                do {
+                    let jsonData = try JSONSerialization.data(withJSONObject: jobData)
+                    let decoder = JSONDecoder()
+                    decoder.keyDecodingStrategy = .convertFromSnakeCase
+                    if let job = try? decoder.decode(BackgroundJob.self, from: jsonData) {
+                        self.jobs.append(job)
+                        self.jobsIndex[job.id] = self.jobs.count - 1
+                    }
+                } catch {
+                    logger.error("Failed to decode job:created: \(error)")
+                }
+            }
+
+        case "job:deleted":
+            if let id = jobId, let idx = jobsIndex[id] {
+                self.jobs.remove(at: idx)
+                self.jobsIndex.removeValue(forKey: id)
+                self.jobsIndex = Dictionary(uniqueKeysWithValues: self.jobs.enumerated().map { ($1.id, $0) })
+            }
+
+        case "job:status-changed", "job:tokens-updated", "job:cost-updated", "job:metadata-updated", "job:finalized":
+            if let id = jobId, let idx = jobsIndex[id] {
+                var job = self.jobs[idx]
+                if let status = dict["status"] as? String {
+                    job.status = status
+                }
+                if let updatedAt = dict["updatedAt"] as? Int64 {
+                    job.updatedAt = updatedAt
+                }
+                if let actualCost = dict["actualCost"] as? Double {
+                    job.actualCost = actualCost
+                }
+                self.jobs[idx] = job
+            }
+
+        case "job:response-appended":
+            if let id = jobId, let idx = jobsIndex[id], let chunk = dict["chunk"] as? String {
+                var job = self.jobs[idx]
+                let currentResponse = job.response ?? ""
+                job.response = currentResponse + chunk
+                self.jobs[idx] = job
+            }
+
+        default:
+            break
         }
     }
 }
@@ -221,6 +513,7 @@ public class JobsDataService: ObservableObject {
 
 public struct JobListRequest: Codable {
     public let projectDirectory: String?
+    public let sessionId: String?
     public let statusFilter: [JobStatus]?
     public let taskTypeFilter: [String]?
     public let dateFrom: Int64?
@@ -233,6 +526,7 @@ public struct JobListRequest: Codable {
 
     public init(
         projectDirectory: String? = nil,
+        sessionId: String? = nil,
         statusFilter: [JobStatus]? = nil,
         taskTypeFilter: [String]? = nil,
         dateFrom: Int64? = nil,
@@ -244,6 +538,7 @@ public struct JobListRequest: Codable {
         includeContent: Bool? = false
     ) {
         self.projectDirectory = projectDirectory
+        self.sessionId = sessionId
         self.statusFilter = statusFilter
         self.taskTypeFilter = taskTypeFilter
         self.dateFrom = dateFrom
@@ -257,12 +552,13 @@ public struct JobListRequest: Codable {
 
     var cacheKey: String {
         let projectKey = projectDirectory ?? "nil"
+        let sessionKey = sessionId ?? "nil"
         let statusKey = statusFilter?.map(\.rawValue).joined(separator: ",") ?? "nil"
         let typeKey = taskTypeFilter?.joined(separator: ",") ?? "nil"
         let pageKey = String(page ?? 0)
         let sizeKey = String(pageSize ?? 50)
 
-        let components = [projectKey, statusKey, typeKey, pageKey, sizeKey]
+        let components = [projectKey, sessionKey, statusKey, typeKey, pageKey, sizeKey]
         return components.joined(separator: "_")
     }
 }

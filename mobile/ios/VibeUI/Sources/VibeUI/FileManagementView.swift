@@ -3,373 +3,706 @@ import Core
 
 public struct FileManagementView: View {
     @EnvironmentObject private var container: AppContainer
+    @ObservedObject private var filesService: FilesDataService
+    @StateObject private var multiConnectionManager = MultiConnectionManager.shared
     @State private var searchText = ""
-    @State private var isSearching = false
-    @State private var searchResults: [FileSearchResult] = []
+    @State private var files: [FileInfo] = []
+    @State private var includedFilesNotInList: [String] = [] // Files that are included but not in current file list
     @State private var errorMessage: String?
     @State private var isLoading = false
+    @State private var localSearchTerm: String = ""
+    @State private var searchDebounceTimer: Timer?
+    @State private var refreshTrigger = UUID()
 
-    public init() {}
+    public init(filesService: FilesDataService) {
+        self.filesService = filesService
+    }
+
+    private var sessionService: SessionDataService {
+        container.sessionService
+    }
 
     public var body: some View {
-        VStack(spacing: 20) {
-            // Header
-            AppHeaderBar(
-                title: "Files",
-                subtitle: "Find and manage project files"
-            )
+        let _ = refreshTrigger // Force view dependency
+        let includedSet = Set(container.sessionService.currentSession?.includedFiles ?? [])
+        let excludedSet = Set(container.sessionService.currentSession?.forceExcludedFiles ?? [])
 
-                // Action Buttons
-                HStack(spacing: 16) {
-                    ActionButton(
-                        title: "Find Relevant Files",
-                        subtitle: "Discover files related to your task",
-                        icon: "doc.text.magnifyingglass",
-                        color: Color.primary
-                    ) {
-                        startFileFinderWorkflow()
-                    }
-
-                    ActionButton(
-                        title: "Deep Research",
-                        subtitle: "Search web for related information",
-                        icon: "globe",
-                        color: Color("Secondary")
-                    ) {
-                        startWebSearchWorkflow()
-                    }
+        let displayedFiles = files
+            .filter { file in
+                let matchesSearch = localSearchTerm.isEmpty || file.path.lowercased().contains(localSearchTerm.lowercased())
+                let matchesFilter = filesService.currentFilterMode == "all" ||
+                                   (filesService.currentFilterMode == "selected" && includedSet.contains(file.path) && !excludedSet.contains(file.path))
+                return matchesSearch && matchesFilter
+            }
+            .sorted { lhs, rhs in
+                switch filesService.currentSortBy {
+                case "size":
+                    return filesService.currentSortOrder == "asc" ? lhs.size < rhs.size : lhs.size > rhs.size
+                case "modified":
+                    return filesService.currentSortOrder == "asc" ? lhs.modifiedAt < rhs.modifiedAt : lhs.modifiedAt > rhs.modifiedAt
+                default: // "name"
+                    return filesService.currentSortOrder == "asc" ?
+                           lhs.name.localizedCompare(rhs.name) == .orderedAscending :
+                           lhs.name.localizedCompare(rhs.name) == .orderedDescending
                 }
+            }
 
-                // Search Bar
-                VStack(spacing: 16) {
-                    HStack {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundColor(Color.mutedForeground)
+        return VStack(spacing: 0) {
+            connectedView
+        }
+        .onAppear {
+            if isConnected {
+                loadFiles()
+            }
+            updateIncludedFilesNotInList()
+        }
+        .onReceive(filesService.$currentSearchTerm) { newValue in
+            if newValue != localSearchTerm {
+                localSearchTerm = newValue
+            }
+        }
+        .onChange(of: files) { _ in
+            updateIncludedFilesNotInList()
+        }
+        .onChange(of: container.sessionService.currentSession?.includedFiles) { _ in
+            updateIncludedFilesNotInList()
+        }
+        .onReceive(container.sessionService.$currentSession) { _ in
+            // Force view refresh when session changes
+            refreshTrigger = UUID()
+        }
+    }
 
-                        TextField("Search files...", text: $searchText)
-                            .textFieldStyle(PlainTextFieldStyle())
-                            .onSubmit {
-                                performSearch()
-                            }
+    @ViewBuilder
+    private var connectedView: some View {
+        VStack(spacing: 0) {
+            searchAndFilterSection
 
-                        if !searchText.isEmpty {
-                            Button("Clear") {
-                                searchText = ""
-                                searchResults = []
-                            }
-                            .foregroundColor(Color.mutedForeground)
-                            .font(.caption)
-                        }
-                    }
-                    .padding(12)
-                    .background(Color.card)
-                    .cornerRadius(8)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.border, lineWidth: 1)
-                    )
+            Divider()
 
-                    HStack {
-                        Button("Search") {
-                            performSearch()
-                        }
-                        .buttonStyle(PrimaryButtonStyle())
-                        .disabled(searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLoading)
+            fileListContent
+        }
 
-                        Spacer()
-
-                        if isLoading {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: Color.primary))
-                                .scaleEffect(0.8)
-                        }
-                    }
-                }
-
-                // Error Message
-                if let errorMessage = errorMessage {
-                    StatusAlertView(variant: .destructive, title: "Error", message: errorMessage)
-                }
-
-                // Search Results
-                if !searchResults.isEmpty {
-                    VStack(alignment: .leading, spacing: 16) {
-                        HStack {
-                            Text("Search Results")
-                                .h4()
-                                .foregroundColor(Color.cardForeground)
-
-                            Spacer()
-
-                            Text("\(searchResults.count) files found")
-                                .small()
-                                .foregroundColor(Color.mutedForeground)
-                        }
-
-                        LazyVStack(spacing: 8) {
-                            ForEach(searchResults, id: \.path) { result in
-                                FileResultRow(result: result)
-                            }
-                        }
-                    }
-                }
-
-                if searchResults.isEmpty && !searchText.isEmpty && !isLoading {
-                    VStack(spacing: 16) {
-                        Image(systemName: "doc.questionmark")
-                            .font(.system(size: 48))
-                            .foregroundColor(Color.mutedForeground)
-
-                        VStack(spacing: 8) {
-                            Text("No Files Found")
-                                .h4()
-                                .foregroundColor(Color.cardForeground)
-
-                            Text("Try different search terms or use the workflow buttons above to find relevant files.")
-                                .paragraph()
-                                .foregroundColor(Color.mutedForeground)
-                                .multilineTextAlignment(.center)
-                        }
-                    }
-                    .padding(.vertical)
-                }
-
+        // Error Message Overlay
+        if let errorMessage = errorMessage {
+            VStack {
+                StatusAlertView(variant: .destructive, title: "Error", message: errorMessage)
+                    .padding()
                 Spacer()
             }
-            .padding()
-    }
-
-    private func startFileFinderWorkflow() {
-        Task {
-            await executeFileFinderWorkflow()
         }
     }
 
-    private func startWebSearchWorkflow() {
-        Task {
-            await executeWebSearchWorkflow()
+    @ViewBuilder
+    private var searchAndFilterSection: some View {
+        VStack(spacing: 12) {
+            searchBar
+            filterControls
+            actionButtons
         }
+        .padding()
+        .background(Color.muted)
     }
 
-    private func executeFileFinderWorkflow() async {
-        await MainActor.run {
-            isLoading = true
-            errorMessage = nil
-        }
+    private var searchBar: some View {
+        HStack {
+            Image(systemName: "magnifyingglass")
+                .foregroundColor(.mutedForeground)
+                .frame(width: 20)
 
-        do {
-            let sessionId = container.sessionService.currentSessionId ?? "mobile-session"
-
-            for try await result in container.filesService.startFileFinderWorkflow(sessionId: sessionId) {
-                await MainActor.run {
-                    if let resultDict = result as? [String: Any],
-                       let jobId = resultDict["jobId"] as? String {
-                        errorMessage = nil
+            TextField("Search files...", text: $localSearchTerm)
+                .textFieldStyle(PlainTextFieldStyle())
+                .onChange(of: localSearchTerm) { newValue in
+                    searchDebounceTimer?.invalidate()
+                    searchDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
+                        filesService.currentSearchTerm = newValue
                     }
+                }
+
+            if !localSearchTerm.isEmpty {
+                Button(action: {
+                    localSearchTerm = ""
+                    filesService.currentSearchTerm = ""
+                }) {
+                    Image(systemName: "xmark.circle.fill")
+                }
+                .buttonStyle(CompactIconButtonStyle())
+            }
+        }
+        .padding(14)
+        .background(Color.input)
+        .cornerRadius(10)
+    }
+
+    private var filterControls: some View {
+        HStack(spacing: 12) {
+            // Filter Mode
+            Picker("Filter", selection: $filesService.currentFilterMode) {
+                Text("All").tag("all")
+                Text("Selected").tag("selected")
+            }
+            .pickerStyle(SegmentedPickerStyle())
+            .frame(width: 140)
+
+            Spacer()
+
+            sortControls
+        }
+    }
+
+    private var sortControls: some View {
+        HStack(spacing: 8) {
+            Menu {
+                Button("Name") { filesService.currentSortBy = "name" }
+                Button("Size") { filesService.currentSortBy = "size" }
+                Button("Modified") { filesService.currentSortBy = "modified" }
+            } label: {
+                HStack(spacing: 4) {
+                    Text(filesService.currentSortBy.capitalized)
+                        .font(.system(size: 14))
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10))
+                }
+                .foregroundColor(Color.foreground)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color.card)
+                .cornerRadius(8)
+            }
+
+            Button(action: {
+                filesService.currentSortOrder = filesService.currentSortOrder == "asc" ? "desc" : "asc"
+            }) {
+                Image(systemName: filesService.currentSortOrder == "asc" ? "arrow.up" : "arrow.down")
+            }
+            .buttonStyle(IconButtonStyle())
+        }
+    }
+
+    private var actionButtons: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ActionButton(title: "Select All", systemImage: "checkmark.circle") {
+                    selectAllFiltered()
+                }
+
+                ActionButton(title: "Deselect All", systemImage: "circle") {
+                    deselectAllFiltered()
+                }
+
+                ActionButton(title: "Exclude All", systemImage: "minus.circle") {
+                    excludeAllFiltered()
+                }
+
+                ActionButton(title: "Clear Excludes", systemImage: "arrow.uturn.left.circle") {
+                    unexcludeAllFiltered()
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var fileListContent: some View {
+        if isLoading {
+            loadingView
+        } else if !files.isEmpty || !includedFilesNotInList.isEmpty {
+            filesList
+        } else {
+            emptyStateView
+        }
+    }
+
+    private var loadingView: some View {
+        VStack {
+            Spacer()
+            ProgressView()
+                .progressViewStyle(CircularProgressViewStyle(tint: .accentColor))
+                .scaleEffect(0.8)
+            Text("Loading files...")
+                .small()
+                .foregroundColor(.secondary)
+                .padding(.top, 8)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(.systemBackground))
+    }
+
+    private var filesList: some View {
+        ScrollView {
+            LazyVStack(spacing: 4) {
+                fileCountHeader
+                selectedFilesSection
+                searchResultsSection
+            }
+            .padding(.vertical, 8)
+        }
+        .background(Color.background)
+        .scrollDismissesKeyboard(.interactively)
+    }
+
+    private var fileCountHeader: some View {
+        let includedSet = Set(container.sessionService.currentSession?.includedFiles ?? [])
+        let excludedSet = Set(container.sessionService.currentSession?.forceExcludedFiles ?? [])
+
+        let displayedFiles = files
+            .filter { file in
+                let matchesSearch = localSearchTerm.isEmpty || file.path.lowercased().contains(localSearchTerm.lowercased())
+                let matchesFilter = filesService.currentFilterMode == "all" ||
+                                   (filesService.currentFilterMode == "selected" && includedSet.contains(file.path) && !excludedSet.contains(file.path))
+                return matchesSearch && matchesFilter
+            }
+
+        return HStack {
+            Text("\(displayedFiles.count + includedFilesNotInList.count) files")
+                .small()
+                .fontWeight(.semibold)
+
+            Text("•")
+                .small()
+                .foregroundColor(.secondary)
+
+            Text("\(includedSet.count) selected")
+                .small()
+                .foregroundColor(.secondary)
+
+            Spacer()
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+    }
+
+    @ViewBuilder
+    private var selectedFilesSection: some View {
+        if !includedFilesNotInList.isEmpty {
+            let excludedSet = Set(container.sessionService.currentSession?.forceExcludedFiles ?? [])
+
+            Section {
+                ForEach(includedFilesNotInList, id: \.self) { filePath in
+                    if let file = FileInfo(from: [
+                        "path": filePath,
+                        "name": URL(fileURLWithPath: filePath).lastPathComponent,
+                        "relativePath": URL(fileURLWithPath: filePath).deletingLastPathComponent().path,
+                        "fileExtension": URL(fileURLWithPath: filePath).pathExtension,
+                        "size": UInt64(0),
+                        "modifiedAt": Int64(0),
+                        "isBinary": false
+                    ]) {
+                        FileManagementRowView(
+                            file: file,
+                            isIncluded: true,
+                            isExcluded: excludedSet.contains(filePath),
+                            onIncludeToggle: { toggleInclude(filePath) },
+                            onExcludeToggle: { toggleExclude(filePath) }
+                        )
+                        .padding(.horizontal)
+                    }
+                }
+            } header: {
+                HStack {
+                    Text("Selected Files")
+                        .small()
+                        .foregroundColor(.secondary)
+                        .fontWeight(.medium)
+                    Spacer()
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 4)
+            }
+        }
+    }
+
+    private var searchResultsSection: some View {
+        let includedSet = Set(container.sessionService.currentSession?.includedFiles ?? [])
+        let excludedSet = Set(container.sessionService.currentSession?.forceExcludedFiles ?? [])
+
+        let displayedFiles = files
+            .filter { file in
+                let matchesSearch = localSearchTerm.isEmpty || file.path.lowercased().contains(localSearchTerm.lowercased())
+                let matchesFilter = filesService.currentFilterMode == "all" ||
+                                   (filesService.currentFilterMode == "selected" && includedSet.contains(file.path) && !excludedSet.contains(file.path))
+                return matchesSearch && matchesFilter
+            }
+            .sorted { lhs, rhs in
+                switch filesService.currentSortBy {
+                case "size":
+                    return filesService.currentSortOrder == "asc" ? lhs.size < rhs.size : lhs.size > rhs.size
+                case "modified":
+                    return filesService.currentSortOrder == "asc" ? lhs.modifiedAt < rhs.modifiedAt : lhs.modifiedAt > rhs.modifiedAt
+                default: // "name"
+                    return filesService.currentSortOrder == "asc" ?
+                           lhs.name.localizedCompare(rhs.name) == .orderedAscending :
+                           lhs.name.localizedCompare(rhs.name) == .orderedDescending
                 }
             }
 
-            await MainActor.run {
-                isLoading = false
-            }
-
-        } catch {
-            await MainActor.run {
-                errorMessage = error.localizedDescription
-                isLoading = false
-            }
+        return ForEach(displayedFiles, id: \.path) { file in
+            FileManagementRowView(
+                file: file,
+                isIncluded: includedSet.contains(file.path),
+                isExcluded: excludedSet.contains(file.path),
+                onIncludeToggle: { toggleInclude(file.path) },
+                onExcludeToggle: { toggleExclude(file.path) }
+            )
+            .padding(.horizontal)
         }
     }
 
-    private func executeWebSearchWorkflow() async {
-        await MainActor.run {
-            isLoading = true
-            errorMessage = nil
+    private var emptyStateView: some View {
+        VStack(spacing: 20) {
+            Spacer()
+
+            VStack(spacing: 12) {
+                Image(systemName: "doc.text.magnifyingglass")
+                    .font(.system(size: 48))
+                    .foregroundColor(.secondary)
+
+                Text("No Files")
+                    .h3()
+                    .foregroundColor(.primary)
+
+                Text(localSearchTerm.isEmpty ? "Files will appear here when loaded." : "No files match your search.")
+                    .paragraph()
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+            }
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(.systemBackground))
+    }
+
+    private var isConnected: Bool {
+        guard let deviceId = multiConnectionManager.activeDeviceId,
+              let state = multiConnectionManager.connectionStates[deviceId] else {
+            return false
+        }
+        return state.isConnected
+    }
+
+    private func updateIncludedFilesNotInList() {
+        guard let session = container.sessionService.currentSession else {
+            includedFilesNotInList = []
+            return
         }
 
-        do {
-            let sessionId = container.sessionService.currentSessionId ?? "mobile-session"
+        let includedSet = Set(session.includedFiles ?? [])
+        let filesInListSet = Set(files.map(\.path))
 
-            for try await result in container.filesService.startWebSearchWorkflow(sessionId: sessionId, query: "Find relevant files for mobile app") {
+        // Find included files that aren't in the current file list
+        includedFilesNotInList = Array(includedSet.subtracting(filesInListSet)).sorted()
+    }
+
+    private func loadFiles() {
+        // Use session's projectDirectory, then currentProject, then selectedProjectDirectory from AppState
+        let projectDirectory = container.sessionService.currentSession?.projectDirectory
+            ?? container.currentProject?.directory
+            ?? Core.AppState.shared.selectedProjectDirectory
+
+        guard let projectDir = projectDirectory else {
+            errorMessage = "No project directory configured. Please select a session or project."
+            return
+        }
+
+        Task {
+            await MainActor.run {
+                isLoading = true
+                errorMessage = nil
+            }
+
+            do {
+                // Load all project files, not just search results
+                let results = try await container.filesService.searchFiles(
+                    query: "",
+                    maxResults: 10000, // Increased to get more files
+                    includeContent: false,
+                    projectDirectory: projectDir
+                )
+
                 await MainActor.run {
-                    if let resultDict = result as? [String: Any],
-                       let jobId = resultDict["jobId"] as? String {
-                        errorMessage = nil
-                    }
+                    files = results
+                    isLoading = false
+                    updateIncludedFilesNotInList()
                 }
-            }
-
-            await MainActor.run {
-                isLoading = false
-            }
-
-        } catch {
-            await MainActor.run {
-                errorMessage = error.localizedDescription
-                isLoading = false
+            } catch {
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                    isLoading = false
+                }
             }
         }
     }
 
     private func performSearch() {
-        guard !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        // Use session's projectDirectory, then currentProject, then selectedProjectDirectory from AppState
+        let projectDirectory = container.sessionService.currentSession?.projectDirectory
+            ?? container.currentProject?.directory
+            ?? Core.AppState.shared.selectedProjectDirectory
+
+        guard let projectDir = projectDirectory else {
             return
         }
 
         Task {
-            await searchFiles(query: searchText)
+            await MainActor.run {
+                isLoading = true
+                errorMessage = nil
+            }
+
+            do {
+                let results = try await container.filesService.searchFiles(
+                    query: searchText,
+                    maxResults: 1000,
+                    includeContent: false,
+                    projectDirectory: projectDir
+                )
+
+                await MainActor.run {
+                    files = results
+                    isLoading = false
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                    isLoading = false
+                }
+            }
         }
     }
 
-    private func searchFiles(query: String) async {
-        await MainActor.run {
-            isLoading = true
-            errorMessage = nil
-            searchResults = []
+    private func toggleInclude(_ path: String) {
+        guard let session = container.sessionService.currentSession else {
+            errorMessage = "No active session"
+            return
         }
 
-        do {
-            let projectDirectory = "/path/to/project"
-            let results = try await container.filesService.searchFiles(
-                query: query,
-                maxResults: 50,
-                includeContent: true,
-                projectDirectory: projectDirectory
-            )
+        let includedSet = Set(session.includedFiles ?? [])
+        let isIncluded = includedSet.contains(path)
 
-            await MainActor.run {
-                searchResults = results.compactMap { fileInfo in
-                    var dict: [String: Any] = [
-                        "path": fileInfo.path,
-                        "name": fileInfo.name,
-                        "size": fileInfo.size,
-                        "modifiedAt": Double(fileInfo.modifiedAt)
-                    ]
-                    if let preview = fileInfo.contentPreview {
-                        dict["contentSnippet"] = preview
-                    }
-                    return FileSearchResult.from(dictionary: dict)
-                }
-                isLoading = false
+        Task {
+            try? await container.sessionService.updateSessionFiles(
+                sessionId: session.id,
+                addIncluded: isIncluded ? nil : [path],
+                removeIncluded: isIncluded ? [path] : nil,
+                addExcluded: nil,
+                removeExcluded: isIncluded ? nil : [path] // remove exclusion when including
+            )
+        }
+    }
+
+    private func toggleExclude(_ path: String) {
+        guard let session = container.sessionService.currentSession else {
+            errorMessage = "No active session"
+            return
+        }
+
+        let excludedSet = Set(session.forceExcludedFiles ?? [])
+        let isExcluded = excludedSet.contains(path)
+
+        Task {
+            try? await container.sessionService.updateSessionFiles(
+                sessionId: session.id,
+                addIncluded: nil,
+                removeIncluded: isExcluded ? nil : [path], // remove included when excluding
+                addExcluded: isExcluded ? nil : [path],
+                removeExcluded: isExcluded ? [path] : nil
+            )
+        }
+    }
+
+    private func selectAllFiltered() {
+        guard let session = container.sessionService.currentSession else { return }
+        let includedSet = Set(session.includedFiles ?? [])
+        let excludedSet = Set(session.forceExcludedFiles ?? [])
+
+        let displayedFiles = files
+            .filter { file in
+                let matchesSearch = localSearchTerm.isEmpty || file.path.lowercased().contains(localSearchTerm.lowercased())
+                let matchesFilter = filesService.currentFilterMode == "all" ||
+                                   (filesService.currentFilterMode == "selected" && includedSet.contains(file.path) && !excludedSet.contains(file.path))
+                return matchesSearch && matchesFilter
             }
 
-        } catch {
-            await MainActor.run {
-                errorMessage = error.localizedDescription
-                isLoading = false
+        let paths = displayedFiles.map(\.path).filter { !includedSet.contains($0) }
+        if !paths.isEmpty {
+            Task {
+                try? await container.sessionService.updateSessionFiles(
+                    sessionId: session.id,
+                    addIncluded: paths,
+                    removeIncluded: nil,
+                    addExcluded: nil,
+                    removeExcluded: paths
+                )
+            }
+        }
+    }
+
+    private func deselectAllFiltered() {
+        guard let session = container.sessionService.currentSession else { return }
+        let includedSet = Set(session.includedFiles ?? [])
+        let excludedSet = Set(session.forceExcludedFiles ?? [])
+
+        let displayedFiles = files
+            .filter { file in
+                let matchesSearch = localSearchTerm.isEmpty || file.path.lowercased().contains(localSearchTerm.lowercased())
+                let matchesFilter = filesService.currentFilterMode == "all" ||
+                                   (filesService.currentFilterMode == "selected" && includedSet.contains(file.path) && !excludedSet.contains(file.path))
+                return matchesSearch && matchesFilter
+            }
+
+        let paths = displayedFiles.map(\.path).filter { includedSet.contains($0) }
+        if !paths.isEmpty {
+            Task {
+                try? await container.sessionService.updateSessionFiles(
+                    sessionId: session.id,
+                    addIncluded: nil,
+                    removeIncluded: paths,
+                    addExcluded: nil,
+                    removeExcluded: nil
+                )
+            }
+        }
+    }
+
+    private func excludeAllFiltered() {
+        guard let session = container.sessionService.currentSession else { return }
+        let includedSet = Set(session.includedFiles ?? [])
+        let excludedSet = Set(session.forceExcludedFiles ?? [])
+
+        let displayedFiles = files
+            .filter { file in
+                let matchesSearch = localSearchTerm.isEmpty || file.path.lowercased().contains(localSearchTerm.lowercased())
+                let matchesFilter = filesService.currentFilterMode == "all" ||
+                                   (filesService.currentFilterMode == "selected" && includedSet.contains(file.path) && !excludedSet.contains(file.path))
+                return matchesSearch && matchesFilter
+            }
+
+        let paths = displayedFiles.map(\.path).filter { !excludedSet.contains($0) }
+        if !paths.isEmpty {
+            Task {
+                try? await container.sessionService.updateSessionFiles(
+                    sessionId: session.id,
+                    addIncluded: nil,
+                    removeIncluded: paths,
+                    addExcluded: paths,
+                    removeExcluded: nil
+                )
+            }
+        }
+    }
+
+    private func unexcludeAllFiltered() {
+        guard let session = container.sessionService.currentSession else { return }
+        let includedSet = Set(session.includedFiles ?? [])
+        let excludedSet = Set(session.forceExcludedFiles ?? [])
+
+        let displayedFiles = files
+            .filter { file in
+                let matchesSearch = localSearchTerm.isEmpty || file.path.lowercased().contains(localSearchTerm.lowercased())
+                let matchesFilter = filesService.currentFilterMode == "all" ||
+                                   (filesService.currentFilterMode == "selected" && includedSet.contains(file.path) && !excludedSet.contains(file.path))
+                return matchesSearch && matchesFilter
+            }
+
+        let paths = displayedFiles.map(\.path).filter { excludedSet.contains($0) }
+        if !paths.isEmpty {
+            Task {
+                try? await container.sessionService.updateSessionFiles(
+                    sessionId: session.id,
+                    addIncluded: nil,
+                    removeIncluded: nil,
+                    addExcluded: nil,
+                    removeExcluded: paths
+                )
             }
         }
     }
 }
 
-private struct ActionButton: View {
-    let title: String
-    let subtitle: String
-    let icon: String
-    let color: Color
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 12) {
-                Image(systemName: icon)
-                    .font(.system(size: 32))
-                    .foregroundColor(color)
-
-                VStack(spacing: 4) {
-                    Text(title)
-                        .h4()
-                        .foregroundColor(Color.cardForeground)
-                        .multilineTextAlignment(.center)
-
-                    Text(subtitle)
-                        .small()
-                        .foregroundColor(Color.mutedForeground)
-                        .multilineTextAlignment(.center)
-                }
-            }
-            .padding(20)
-            .frame(maxWidth: .infinity)
-            .background(Color.card)
-            .cornerRadius(12)
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(color.opacity(0.3), lineWidth: 1)
-            )
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-}
-
-private struct FileResultRow: View {
-    let result: FileSearchResult
+private struct FileManagementRowView: View {
+    let file: FileInfo
+    let isIncluded: Bool
+    let isExcluded: Bool
+    let onIncludeToggle: () -> Void
+    let onExcludeToggle: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: fileIcon)
-                    .font(.title3)
-                    .foregroundColor(fileIconColor)
+            // First line: File path ONLY with highlighted filename
+            formattedPath
+                .small().fontWeight(.semibold)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack {
-                        Text(result.name)
-                            .h4()
-                            .foregroundColor(Color.cardForeground)
-
-                        Spacer()
-
-                        if let relevanceScore = result.relevanceScore {
-                            Text(String(format: "%.2f", relevanceScore))
-                                .small()
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Color.primary.opacity(0.1))
-                                .foregroundColor(Color.primary)
-                                .cornerRadius(4)
-                        }
-                    }
-
-                    Text(result.path)
-                        .small()
-                        .foregroundColor(Color.mutedForeground)
-                        .lineLimit(1)
-                }
-
-                if let size = result.size {
-                    Text(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file))
-                        .small()
-                        .foregroundColor(Color.mutedForeground)
-                }
-            }
-
-            if let snippet = result.contentSnippet, !snippet.isEmpty {
-                Text(snippet)
+            // Second line: Metadata inline + toggles
+            HStack(spacing: 12) {
+                // Modified time
+                Text(formattedDate)
                     .small()
-                    .foregroundColor(Color.mutedForeground)
-                    .lineLimit(3)
-                    .padding(.leading, 28)
-                    .padding(.top, 4)
+                    .foregroundColor(.mutedForeground)
+
+                Text("•")
+                    .small()
+                    .foregroundColor(.mutedForeground)
+
+                // Size
+                Text(ByteCountFormatter.string(fromByteCount: Int64(file.size), countStyle: .file))
+                    .small()
+                    .foregroundColor(.mutedForeground)
+
+                Spacer()
+
+                // Include toggle
+                Toggle("", isOn: Binding(
+                    get: { isIncluded },
+                    set: { _ in onIncludeToggle() }
+                ))
+                .labelsHidden()
+                .toggleStyle(SwitchToggleStyle(tint: Color.success))
+                .frame(width: 50)
+                .disabled(isExcluded)
+                .accessibilityLabel(isIncluded ? "Exclude file from task context" : "Include file in task context")
+                .accessibilityHint("Toggles whether this file is included in the current task")
+                .accessibilityValue(isIncluded ? "On" : "Off")
+
+                // Exclude toggle
+                Toggle("", isOn: Binding(
+                    get: { isExcluded },
+                    set: { _ in onExcludeToggle() }
+                ))
+                .labelsHidden()
+                .toggleStyle(SwitchToggleStyle(tint: Color.destructive))
+                .frame(width: 50)
+                .accessibilityLabel(isExcluded ? "Un-exclude file" : "Exclude file")
+                .accessibilityHint("Toggles whether this file is forcibly excluded from tasks")
+                .accessibilityValue(isExcluded ? "On" : "Off")
             }
         }
         .padding(12)
-        .background(Color.card)
+        .background(isIncluded && !isExcluded ? Color.accent : Color.card)
         .cornerRadius(8)
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.border, lineWidth: 1)
+                .stroke(isIncluded && !isExcluded ? Color.primary.opacity(0.5) : Color.border, lineWidth: 1)
         )
+        .opacity(isExcluded ? 0.5 : 1.0)
     }
 
     private var fileIcon: String {
-        let ext = (result.name as NSString).pathExtension.lowercased()
+        let ext = (file.fileExtension ?? "").lowercased()
         switch ext {
-        case "swift", "js", "ts", "py", "java", "cpp", "c", "h":
+        case "swift":
+            return "swift"
+        case "js", "ts", "tsx", "jsx":
+            return "doc.text"
+        case "py":
+            return "doc.text"
+        case "java", "cpp", "c", "h":
             return "doc.text"
         case "json", "xml", "yml", "yaml":
             return "doc.plaintext"
         case "md", "txt":
-            return "doc.text"
+            return "doc.richtext"
         case "png", "jpg", "jpeg", "gif":
             return "photo"
         case "pdf":
@@ -380,53 +713,68 @@ private struct FileResultRow: View {
     }
 
     private var fileIconColor: Color {
-        let ext = (result.name as NSString).pathExtension.lowercased()
+        let ext = (file.fileExtension ?? "").lowercased()
         switch ext {
         case "swift":
-            return Color.warning
-        case "js", "ts":
-            return Color.warning
+            return .orange
+        case "js", "ts", "tsx", "jsx":
+            return .yellow
         case "py":
-            return Color.primary
+            return .blue
         case "json":
-            return Color.success
+            return .green
         default:
-            return Color.mutedForeground
+            return .secondary
         }
+    }
+
+    private var formattedPath: Text {
+        let pathComponents = file.path.split(separator: "/")
+        if pathComponents.isEmpty {
+            return Text(file.path).foregroundColor(.foreground)
+        }
+
+        let filename = String(pathComponents.last ?? "")
+        let directory = pathComponents.dropLast().joined(separator: "/")
+
+        if directory.isEmpty {
+            return Text(filename).foregroundColor(.primary)
+        } else {
+            return Text(directory + "/").foregroundColor(.foreground) +
+                   Text(filename).foregroundColor(.primary)
+        }
+    }
+
+    private var formattedDate: String {
+        let date = Date(timeIntervalSince1970: TimeInterval(file.modifiedAt) / 1000.0)
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: Date())
     }
 }
 
-// Supporting Types
-public struct FileSearchResult {
-    public let path: String
-    public let name: String
-    public let size: UInt64?
-    public let modifiedAt: Date?
-    public let contentSnippet: String?
-    public let relevanceScore: Double?
+// MARK: - Action Button Component
+private struct ActionButton: View {
+    let title: String
+    let systemImage: String
+    let action: () -> Void
 
-    public static func from(dictionary: [String: Any]) -> FileSearchResult? {
-        guard let path = dictionary["path"] as? String else {
-            return nil
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 14))
+                Text(title)
+            }
         }
-
-        let name = (path as NSString).lastPathComponent
-        let size = dictionary["size"] as? UInt64
-        let modifiedAt = (dictionary["modifiedAt"] as? Double).map { Date(timeIntervalSince1970: $0) }
-        let contentSnippet = dictionary["contentSnippet"] as? String
-        let relevanceScore = dictionary["relevanceScore"] as? Double
-
-        return FileSearchResult(
-            path: path,
-            name: name,
-            size: size,
-            modifiedAt: modifiedAt,
-            contentSnippet: contentSnippet,
-            relevanceScore: relevanceScore
-        )
+        .buttonStyle(ToolbarButtonStyle())
     }
 }
 
 #Preview {
-    FileManagementView()
+    let serverURL = URL(string: "https://localhost:3000")!
+    let deviceId = UUID().uuidString
+    let relayClient = ServerRelayClient(serverURL: serverURL, deviceId: deviceId)
+    FileManagementView(filesService: FilesDataService(serverRelayClient: relayClient))
+        .environmentObject(AppContainer(baseURL: serverURL, deviceId: deviceId))
 }

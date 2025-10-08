@@ -10,10 +10,13 @@ public struct SessionsView: View {
     @State private var showingSessionDetail = false
     @State private var selectedSession: Session?
 
+    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var container: AppContainer
+
     public init() {}
 
     public var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack(spacing: 20) {
                 // Header
                 AppHeaderBar(
@@ -33,9 +36,9 @@ public struct SessionsView: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .background(Color.card)
-                    .cornerRadius(8)
+                    .cornerRadius(Theme.Radii.base)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: Theme.Radii.base)
                             .stroke(Color.border, lineWidth: 1)
                     )
                 }
@@ -73,6 +76,7 @@ public struct SessionsView: View {
                         }
                         .padding(.vertical)
                     }
+                    .scrollDismissesKeyboard(.immediately)
                 }
 
                 // Empty State
@@ -96,10 +100,22 @@ public struct SessionsView: View {
                         }
 
                         if searchText.isEmpty {
-                            Button("Refresh") {
-                                loadSessions()
+                            Button(action: { loadSessions() }) {
+                                HStack(spacing: 6) {
+                                    if isLoading {
+                                        ProgressView()
+                                            .progressViewStyle(CircularProgressViewStyle(tint: Color.primary))
+                                            .scaleEffect(0.6)
+                                    } else {
+                                        Image(systemName: "arrow.clockwise")
+                                            .small()
+                                    }
+                                    Text("Refresh")
+                                        .small()
+                                }
                             }
                             .buttonStyle(SecondaryButtonStyle())
+                            .disabled(isLoading)
                         }
                     }
                     .padding()
@@ -109,12 +125,16 @@ public struct SessionsView: View {
             }
             .padding()
         }
+        .ignoresSafeArea(.keyboard, edges: .bottom)
         .navigationTitle("Sessions")
         .refreshable {
             await refreshSessions()
         }
         .onAppear {
             loadSessions()
+        }
+        .onReceive(container.$currentProject.receive(on: RunLoop.main)) { _ in
+            self.loadSessions()
         }
         .sheet(isPresented: $showingSessionDetail) {
             if let session = selectedSession,
@@ -136,6 +156,10 @@ public struct SessionsView: View {
         }
     }
 
+    private func effectiveProjectDirectory() -> String? {
+        return container.currentProject?.directory ?? appState.selectedProjectDirectory
+    }
+
     private func loadSessions() {
         isLoading = true
         errorMessage = nil
@@ -146,7 +170,7 @@ public struct SessionsView: View {
             return
         }
 
-        guard let projectDir = dataServices.currentProject?.directory else {
+        guard let projectDir = effectiveProjectDirectory(), !projectDir.isEmpty else {
             self.sessions = []
             self.errorMessage = "No active project"
             self.isLoading = false
@@ -177,7 +201,7 @@ public struct SessionsView: View {
             return
         }
 
-        guard let projectDir = dataServices.currentProject?.directory else {
+        guard let projectDir = effectiveProjectDirectory(), !projectDir.isEmpty else {
             await MainActor.run {
                 self.sessions = []
                 self.errorMessage = "No active project"
@@ -252,10 +276,10 @@ struct SessionCard: View {
         }
         .padding(16)
         .background(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: Theme.Radii.base)
                 .fill(Color.card)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12)
+                    RoundedRectangle(cornerRadius: Theme.Radii.base)
                         .stroke(Color.border, lineWidth: 1)
                 )
         )
@@ -274,7 +298,7 @@ struct SessionDetailView: View {
     @Environment(\.presentationMode) var presentationMode
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     // Session Info
@@ -303,9 +327,9 @@ struct SessionDetailView: View {
                     }
                     .padding(16)
                     .background(Color.card)
-                    .cornerRadius(12)
+                    .cornerRadius(Theme.Radii.base)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 12)
+                        RoundedRectangle(cornerRadius: Theme.Radii.base)
                             .stroke(Color.border, lineWidth: 1)
                     )
 
@@ -336,9 +360,9 @@ struct SessionDetailView: View {
                         }
                         .padding(16)
                         .background(Color.card)
-                        .cornerRadius(12)
+                        .cornerRadius(Theme.Radii.base)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 12)
+                            RoundedRectangle(cornerRadius: Theme.Radii.base)
                                 .stroke(Color.border, lineWidth: 1)
                         )
                     }
@@ -351,7 +375,8 @@ struct SessionDetailView: View {
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarItems(trailing: Button("Done") {
                 presentationMode.wrappedValue.dismiss()
-            })
+            }
+            .buttonStyle(ToolbarButtonStyle()))
         }
     }
 

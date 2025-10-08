@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 
 import { type ActionState } from "@/types";
 import { hashString } from "@/utils/hash";
@@ -13,7 +14,8 @@ import {
  */
 export async function setActiveSessionAction(
   projectDirectory: string,
-  sessionId: string | null
+  sessionId: string | null,
+  options?: { broadcast?: boolean }
 ): Promise<ActionState<void>> {
   try {
 
@@ -33,6 +35,13 @@ export async function setActiveSessionAction(
         isSuccess: false,
         message: result.message || "Failed to set active session",
       };
+    }
+
+    if (options?.broadcast !== false) {
+      await invoke("broadcast_active_session_changed_command", {
+        projectDirectory,
+        sessionId,
+      });
     }
 
     return {

@@ -44,24 +44,21 @@ public struct GlobalTopBar: View {
 
                     Button(action: { showingRegion = true }) {
                         Image(systemName: "globe")
-                            .font(.system(size: 20))
-                            .foregroundColor(Color.foreground)
-                            .frame(width: 44, height: 44)
+                            .h4()
                     }
+                    .buttonStyle(ToolbarButtonStyle())
 
                     Button(action: { showingDeviceSelection = true }) {
                         Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.system(size: 20))
-                            .foregroundColor(Color.foreground)
-                            .frame(width: 44, height: 44)
+                            .h4()
                     }
+                    .buttonStyle(ToolbarButtonStyle())
 
                     Button(action: { showingSettings = true }) {
                         Image(systemName: "gearshape")
-                            .font(.system(size: 20))
-                            .foregroundColor(Color.foreground)
-                            .frame(width: 44, height: 44)
+                            .h4()
                     }
+                    .buttonStyle(ToolbarButtonStyle())
                 }
             }
             .padding(.horizontal, 16)
@@ -75,21 +72,21 @@ public struct GlobalTopBar: View {
             )
         }
         .sheet(isPresented: $showingSettings) {
-            NavigationView {
-                Text("Settings")
+            NavigationStack {
+                SettingsView()
                     .navigationTitle("Settings")
-                    .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
                         ToolbarItem(placement: .navigationBarTrailing) {
                             Button("Done") {
                                 showingSettings = false
                             }
+                            .buttonStyle(ToolbarButtonStyle())
                         }
                     }
             }
         }
         .sheet(isPresented: $showingDeviceSelection) {
-            NavigationView {
+            NavigationStack {
                 DeviceSelectionView()
                     .navigationTitle("Switch Device")
                     .navigationBarTitleDisplayMode(.inline)
@@ -98,12 +95,13 @@ public struct GlobalTopBar: View {
                             Button("Done") {
                                 showingDeviceSelection = false
                             }
+                            .buttonStyle(ToolbarButtonStyle())
                         }
                     }
             }
         }
         .sheet(isPresented: $showingRegion) {
-            NavigationView {
+            NavigationStack {
                 ServerSelectionView()
                     .navigationTitle("Select Region")
                     .navigationBarTitleDisplayMode(.inline)
@@ -112,6 +110,7 @@ public struct GlobalTopBar: View {
                             Button("Done") {
                                 showingRegion = false
                             }
+                            .buttonStyle(ToolbarButtonStyle())
                         }
                     }
             }

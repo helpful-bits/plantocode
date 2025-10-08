@@ -37,6 +37,26 @@ public struct AnyCodable: Codable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
+
+        // Handle non-JSON-safe types first by converting to string representations
+        if let date = value as? Date {
+            let dateString = ISO8601DateFormatter().string(from: date)
+            try container.encode(dateString)
+            return
+        }
+
+        if let data = value as? Data {
+            let base64String = data.base64EncodedString()
+            try container.encode(base64String)
+            return
+        }
+
+        if let url = value as? URL {
+            try container.encode(url.absoluteString)
+            return
+        }
+
+        // Handle JSON-safe primitives and collections
         switch value {
         case is NSNull:
             try container.encodeNil()
