@@ -165,43 +165,43 @@ public struct JobCardView: View {
     public var body: some View {
         VStack(spacing: 0) {
             // Header
-            HStack(alignment: .center, spacing: 8) {
+            HStack(alignment: .center, spacing: Theme.Spacing.cardSpacing) {
                 // Status Icon
                 Image(systemName: statusIcon)
                     .foregroundColor(statusColor)
                     .font(.system(size: 14))
-                    .frame(width: 16, height: 16)
+                    .frame(width: 18, height: 18)
                     .if(isJobRunning) { view in
                         view.rotationEffect(.degrees(progress * 360))
                             .animation(.linear(duration: 1).repeatForever(autoreverses: false), value: progress)
                     }
 
                 // Job Name and Type
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                     Text(jobDisplayName)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(.primary)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(Color.foreground)
                         .lineLimit(1)
 
-                    HStack(spacing: 4) {
+                    HStack(spacing: Theme.Spacing.itemSpacing) {
                         Text(formatTaskType(job.taskType))
-                            .font(.system(size: 10))
-                            .foregroundColor(Color(.label))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color(.tertiarySystemFill))
-                            .cornerRadius(4)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(Color.mutedForeground)
+                            .padding(.horizontal, Theme.Spacing.sm)
+                            .padding(.vertical, 3)
+                            .background(Color.muted)
+                            .cornerRadius(Theme.Radii.sm)
 
                         Text(job.formattedTimeAgo)
-                            .font(.system(size: 10))
-                            .foregroundColor(Color(.secondaryLabel))
+                            .font(.footnote)
+                            .foregroundColor(Color.mutedForeground)
                     }
                 }
 
                 Spacer()
 
                 // Action Buttons
-                HStack(spacing: 4) {
+                HStack(spacing: Theme.Spacing.itemSpacing) {
                     if canCancel, let onCancel = onCancel {
                         Button {
                             Task {
@@ -212,14 +212,14 @@ public struct JobCardView: View {
                         } label: {
                             if isCancelling {
                                 ProgressView()
-                                    .scaleEffect(0.6)
+                                    .scaleEffect(0.7)
                             } else {
                                 Image(systemName: "xmark")
-                                    .font(.system(size: 12))
+                                    .font(.system(size: 12, weight: .medium))
                             }
                         }
-                        .frame(width: 24, height: 24)
-                        .foregroundColor(Color(.secondaryLabel))
+                        .frame(width: 28, height: 28)
+                        .foregroundColor(Color.mutedForeground)
                         .disabled(isCancelling)
                     } else if let onDelete = onDelete {
                         Button {
@@ -231,189 +231,206 @@ public struct JobCardView: View {
                         } label: {
                             if isDeleting {
                                 ProgressView()
-                                    .scaleEffect(0.6)
+                                    .scaleEffect(0.7)
                             } else {
                                 Image(systemName: "trash")
-                                    .font(.system(size: 12))
+                                    .font(.system(size: 12, weight: .medium))
                             }
                         }
-                        .frame(width: 24, height: 24)
-                        .foregroundColor(Color(.secondaryLabel))
+                        .frame(width: 28, height: 28)
+                        .foregroundColor(Color.mutedForeground)
                         .disabled(isDeleting)
                     }
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.top, 10)
-            .padding(.bottom, 8)
+            .padding(.horizontal, Theme.Spacing.cardPadding)
+            .padding(.top, Theme.Spacing.md)
+            .padding(.bottom, Theme.Spacing.cardSpacing)
 
             // Progress Bar (for active jobs)
             if isJobRunning {
-                VStack(spacing: 4) {
+                VStack(spacing: Theme.Spacing.itemSpacing) {
                     if let progressPct = job.progressPercentage, progressPct > 0 {
                         ProgressView(value: Double(progressPct), total: 100)
                             .tint(statusColor)
-                            .frame(height: 3)
-                            .padding(.horizontal, 12)
+                            .frame(height: 4)
+                            .padding(.horizontal, Theme.Spacing.cardPadding)
 
-                        HStack {
+                        HStack(alignment: .center) {
                             if let subStatus = job.subStatusMessage {
                                 Text(subStatus)
-                                    .font(.system(size: 9))
-                                    .foregroundColor(Color(.secondaryLabel))
+                                    .font(.footnote)
+                                    .foregroundColor(Color.mutedForeground)
                                     .lineLimit(1)
                             }
                             Spacer()
                             Text("\(progressPct)%")
-                                .font(.system(size: 9))
-                                .foregroundColor(Color(.secondaryLabel))
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(Color.mutedForeground)
                         }
-                        .padding(.horizontal, 12)
+                        .padding(.horizontal, Theme.Spacing.cardPadding)
                     } else {
                         ProgressView()
                             .progressViewStyle(LinearProgressViewStyle())
                             .tint(statusColor)
-                            .frame(height: 3)
-                            .padding(.horizontal, 12)
+                            .frame(height: 4)
+                            .padding(.horizontal, Theme.Spacing.cardPadding)
 
                         if let subStatus = job.subStatusMessage {
                             Text(subStatus)
-                                .font(.system(size: 9))
-                                .foregroundColor(Color(.secondaryLabel))
+                                .font(.footnote)
+                                .foregroundColor(Color.mutedForeground)
                                 .lineLimit(1)
-                                .padding(.horizontal, 12)
+                                .padding(.horizontal, Theme.Spacing.cardPadding)
                         }
                     }
                 }
-                .padding(.bottom, 6)
+                .padding(.bottom, Theme.Spacing.sm)
             }
 
             // Metrics Row (tokens, model, duration)
             if job.tokensSent ?? 0 > 0 || job.tokensReceived ?? 0 > 0 || job.modelUsed != nil {
-                HStack(spacing: 8) {
-                    // Token counts
-                    if job.tokensSent ?? 0 > 0 || job.tokensReceived ?? 0 > 0 {
-                        HStack(spacing: 2) {
-                            Text("Tokens:")
-                                .font(.system(size: 9))
-                                .foregroundColor(Color(.secondaryLabel))
-                            Text(formatTokenCount(job.tokensSent))
-                                .font(.system(size: 9, design: .monospaced))
-                                .foregroundColor(Color(.label))
-                            Image(systemName: "arrow.right")
-                                .font(.system(size: 7))
-                                .foregroundColor(Color(.secondaryLabel))
-                            Text(formatTokenCount(job.tokensReceived))
-                                .font(.system(size: 9, design: .monospaced))
-                                .foregroundColor(Color(.label))
+                VStack(alignment: .leading, spacing: Theme.Spacing.itemSpacing) {
+                    HStack(spacing: Theme.Spacing.sm) {
+                        // Token counts
+                        if job.tokensSent ?? 0 > 0 || job.tokensReceived ?? 0 > 0 {
+                            HStack(spacing: 3) {
+                                Text("Tokens:")
+                                    .font(.footnote)
+                                    .foregroundColor(Color.mutedForeground)
+                                Text(formatTokenCount(job.tokensSent))
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundColor(Color.secondaryForeground)
+                                Image(systemName: "arrow.right")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(Color.mutedForeground)
+                                Text(formatTokenCount(job.tokensReceived))
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundColor(Color.secondaryForeground)
 
-                            // Cache tokens if present
-                            if let cacheRead = job.cacheReadTokens, cacheRead > 0,
-                               let cacheWrite = job.cacheWriteTokens, cacheWrite > 0 {
-                                Text("(cache: R\(formatTokenCount(cacheRead))/W\(formatTokenCount(cacheWrite)))")
-                                    .font(.system(size: 8))
-                                    .foregroundColor(.teal)
+                                // Cache tokens if present
+                                if let cacheRead = job.cacheReadTokens, cacheRead > 0,
+                                   let cacheWrite = job.cacheWriteTokens, cacheWrite > 0 {
+                                    Text("(cache: R\(formatTokenCount(cacheRead))/W\(formatTokenCount(cacheWrite)))")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.teal)
+                                }
                             }
                         }
-                    }
-
-                    Spacer()
-
-                    // Duration
-                    if let duration = job.formattedDuration {
-                        Text(duration)
-                            .font(.system(size: 9))
-                            .foregroundColor(Color(.secondaryLabel))
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.bottom, 6)
-
-                // Model
-                if let model = job.modelUsed {
-                    Text(model)
-                        .font(.system(size: 9))
-                        .foregroundColor(Color(.secondaryLabel))
-                        .lineLimit(1)
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 6)
-                }
-            }
-
-            // Bottom Section - Results or Error
-            VStack(alignment: .leading, spacing: 8) {
-                if job.jobStatus == .completed || job.jobStatus == .completedByTag {
-                    // Completion info
-                    HStack {
-                        Text(getCompletionSummary())
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(.primary)
 
                         Spacer()
 
-                        // Action buttons
-                        HStack(spacing: 8) {
-                            // Apply files button for relevant job types
-                            if shouldShowApplyButton(), let onApplyFiles = onApplyFiles {
-                                Button {
-                                    Task {
-                                        await onApplyFiles(job)
-                                    }
-                                } label: {
-                                    Text(applyButtonLabel())
-                                }
-                                .buttonStyle(LinkButtonStyle())
-                                .controlSize(.small)
-                            }
-
-                            // Continue workflow button
-                            if job.taskType == "web_search_prompts_generation",
-                               !hasContinuationJob,
-                               !isWorkflowActive,
-                               let onContinue = onContinueWorkflow {
-                                Button {
-                                    Task {
-                                        await onContinue(job)
-                                    }
-                                } label: {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "play.circle")
-                                        Text("Continue Research")
-                                    }
-                                }
-                                .buttonStyle(LinkButtonStyle())
-                                .controlSize(.small)
-                            }
-
-                            // Cost
-                            if let cost = job.actualCost, cost > 0 {
-                                Text(formatCurrency(cost))
-                                    .font(.system(size: 9, design: .monospaced))
-                                    .foregroundColor(.primary)
-                            }
+                        // Duration
+                        if let duration = job.formattedDuration {
+                            Text(duration)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(Color.mutedForeground)
                         }
                     }
-                } else if job.jobStatus == .failed || job.jobStatus == .canceled {
-                    // Error message
-                    if let error = job.errorMessage {
-                        Text(getErrorPreview(error))
-                            .font(.system(size: 10))
-                            .foregroundColor(job.jobStatus == .failed ? .red : Color(.secondaryLabel))
-                            .lineLimit(2)
+
+                    // Model
+                    if let model = job.modelUsed {
+                        Text(model)
+                            .font(.footnote)
+                            .foregroundColor(Color.mutedForeground)
+                            .lineLimit(1)
                     }
                 }
+                .padding(.horizontal, Theme.Spacing.cardPadding)
+                .padding(.bottom, Theme.Spacing.sm)
             }
-            .padding(.horizontal, 12)
-            .padding(.bottom, 10)
-            .padding(.top, 4)
-            .background(Color(.tertiarySystemFill))
+
+            // Bottom Section - Results or Error
+            if job.jobStatus == .completed || job.jobStatus == .completedByTag ||
+               job.jobStatus == .failed || job.jobStatus == .canceled {
+                VStack(alignment: .leading, spacing: Theme.Spacing.cardSpacing) {
+                    if job.jobStatus == .completed || job.jobStatus == .completedByTag {
+                        // Completion summary
+                        Text(getCompletionSummary())
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(Color.primary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        // Action buttons and cost row - only show if there's ANY content
+                        let hasButtons = shouldShowApplyButton() || shouldShowContinueButton()
+                        let hasCost = (job.actualCost ?? 0) > 0
+
+                        if hasButtons || hasCost {
+                            HStack(alignment: .center, spacing: Theme.Spacing.sm) {
+                                // Apply files button for relevant job types
+                                if shouldShowApplyButton(), let onApplyFiles = onApplyFiles {
+                                    Button {
+                                        Task {
+                                            await onApplyFiles(job)
+                                        }
+                                    } label: {
+                                        HStack(spacing: 5) {
+                                            Image(systemName: getApplyButtonIcon())
+                                                .font(.system(size: 12, weight: .medium))
+                                            Text(applyButtonLabel())
+                                                .font(.system(size: 13, weight: .semibold))
+                                        }
+                                        .padding(.horizontal, Theme.Spacing.cardPadding)
+                                        .padding(.vertical, 7)
+                                        .background(Color.primary)
+                                        .foregroundColor(Color.primaryForeground)
+                                        .cornerRadius(Theme.Radii.md)
+                                    }
+                                }
+
+                                // Continue workflow button
+                                if shouldShowContinueButton(), let onContinue = onContinueWorkflow {
+                                    Button {
+                                        Task {
+                                            await onContinue(job)
+                                        }
+                                    } label: {
+                                        HStack(spacing: 5) {
+                                            Image(systemName: "play.circle")
+                                                .font(.system(size: 12, weight: .medium))
+                                            Text("Continue Research")
+                                                .font(.system(size: 13, weight: .semibold))
+                                        }
+                                        .padding(.horizontal, Theme.Spacing.cardPadding)
+                                        .padding(.vertical, 7)
+                                        .background(Color.success)
+                                        .foregroundColor(Color.successForeground)
+                                        .cornerRadius(Theme.Radii.md)
+                                    }
+                                }
+
+                                Spacer()
+
+                                // Cost
+                                if let cost = job.actualCost, cost > 0 {
+                                    Text(formatCurrency(cost))
+                                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                                        .foregroundColor(Color.mutedForeground)
+                                }
+                            }
+                        }
+                    } else if job.jobStatus == .failed || job.jobStatus == .canceled {
+                        // Error message
+                        if let error = job.errorMessage {
+                            Text(getErrorPreview(error))
+                                .font(.footnote)
+                                .foregroundColor(job.jobStatus == .failed ? Color.destructive : Color.mutedForeground)
+                                .lineLimit(2)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                }
+                .padding(.horizontal, Theme.Spacing.cardPadding)
+                .padding(.vertical, Theme.Spacing.md)
+                .background(Color.muted)
+            }
         }
-        .background(isCurrentSession ? Color.blue.opacity(0.15) : Color(.secondarySystemBackground))
-        .cornerRadius(8)
+        .background(isCurrentSession ? Color.primary.opacity(0.1) : Color.card)
+        .cornerRadius(Theme.Radii.base)
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: Theme.Radii.base)
                 .stroke(
-                    isCurrentSession ? Color.blue.opacity(0.3) : Color(.separator),
+                    isCurrentSession ? Color.primary.opacity(0.3) : Color.border,
                     lineWidth: 1
                 )
         )
@@ -545,14 +562,30 @@ public struct JobCardView: View {
         return false
     }
 
+    private func shouldShowContinueButton() -> Bool {
+        return job.taskType == "web_search_prompts_generation" &&
+               !hasContinuationJob &&
+               !isWorkflowActive
+    }
+
     private func hasFilesInResponse() -> Bool {
         guard let response = job.response,
               let data = response.data(using: .utf8),
-              let responseObj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let files = responseObj["files"] as? [[String: Any]] else {
+              let responseObj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return false
         }
-        return !files.isEmpty
+
+        // Check for files as array of objects
+        if let filesArray = responseObj["files"] as? [[String: Any]] {
+            return !filesArray.isEmpty
+        }
+
+        // Check for files as array of strings
+        if let filesArray = responseObj["files"] as? [String] {
+            return !filesArray.isEmpty
+        }
+
+        return false
     }
 
     private func applyButtonLabel() -> String {
@@ -563,6 +596,17 @@ public struct JobCardView: View {
             return "Use Findings"
         default:
             return "Use Files"
+        }
+    }
+
+    private func getApplyButtonIcon() -> String {
+        switch job.taskType {
+        case "web_search_execution":
+            return "book"
+        case "video_analysis":
+            return "video"
+        default:
+            return "doc.on.doc"
         }
     }
 

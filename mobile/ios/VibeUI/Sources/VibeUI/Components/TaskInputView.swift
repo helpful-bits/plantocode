@@ -41,6 +41,9 @@ struct SelectableTextView: UIViewRepresentable {
     let onSubmit: (() -> Void)?
     let onUpArrow: (() -> Void)?
     let onDownArrow: (() -> Void)?
+    let textColor: UIColor?
+    let backgroundColor: UIColor?
+    let font: UIFont?
 
     init(
         text: Binding<String>,
@@ -50,7 +53,10 @@ struct SelectableTextView: UIViewRepresentable {
         singleLine: Bool = false,
         onSubmit: (() -> Void)? = nil,
         onUpArrow: (() -> Void)? = nil,
-        onDownArrow: (() -> Void)? = nil
+        onDownArrow: (() -> Void)? = nil,
+        textColor: UIColor? = nil,
+        backgroundColor: UIColor? = nil,
+        font: UIFont? = nil
     ) {
         self._text = text
         self._selectedRange = selectedRange
@@ -60,6 +66,9 @@ struct SelectableTextView: UIViewRepresentable {
         self.onSubmit = onSubmit
         self.onUpArrow = onUpArrow
         self.onDownArrow = onDownArrow
+        self.textColor = textColor
+        self.backgroundColor = backgroundColor
+        self.font = font
     }
 
     func makeCoordinator() -> Coordinator {
@@ -68,15 +77,18 @@ struct SelectableTextView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> UITextView {
         let textView = KeyCommandTextView()
-        textView.font = UIFont.systemFont(ofSize: 14)
-        textView.textColor = UIColor.label
-        textView.backgroundColor = UIColor.secondarySystemBackground
-        textView.layer.cornerRadius = 12
-        textView.layer.borderWidth = 1
-        textView.layer.borderColor = UIColor.separator.cgColor
-        textView.textContainerInset = UIEdgeInsets(top: 16, left: 12, bottom: 16, right: 12)
+        textView.font = font ?? UIFont.preferredFont(forTextStyle: .body)
+        textView.textColor = textColor ?? UIColor.label
+        textView.backgroundColor = backgroundColor ?? UIColor.secondarySystemBackground
+
+        // Only apply border styling if custom background is not provided
+        if backgroundColor == nil {
+            textView.layer.cornerRadius = 12
+            textView.layer.borderWidth = 1
+            textView.layer.borderColor = UIColor.separator.cgColor
+        }
+
         textView.delegate = context.coordinator
-        textView.isScrollEnabled = true
         textView.autocapitalizationType = .sentences
         textView.autocorrectionType = .yes
         textView.spellCheckingType = .yes
@@ -84,10 +96,17 @@ struct SelectableTextView: UIViewRepresentable {
         textView.textAlignment = .left
 
         if singleLine {
+            // Single-line mode: minimal insets and no scrolling
+            textView.isScrollEnabled = false
+            textView.textContainerInset = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
             textView.returnKeyType = .send
             textView.textContainer.maximumNumberOfLines = 1
             textView.textContainer.lineBreakMode = .byTruncatingTail
+            textView.textContainer.lineFragmentPadding = 0
         } else {
+            // Multi-line mode: normal insets and scrolling enabled
+            textView.isScrollEnabled = true
+            textView.textContainerInset = UIEdgeInsets(top: 16, left: 12, bottom: 16, right: 12)
             textView.returnKeyType = .default
         }
 
@@ -137,15 +156,19 @@ struct SelectableTextView: UIViewRepresentable {
             if uiView.subviews.first(where: { $0.tag == 999 }) == nil {
                 let placeholderLabel = UILabel()
                 placeholderLabel.text = placeholder
-                placeholderLabel.font = UIFont.systemFont(ofSize: 14)
-                placeholderLabel.textColor = UIColor.tertiaryLabel
+                placeholderLabel.font = font ?? UIFont.preferredFont(forTextStyle: .body)
+                placeholderLabel.textColor = textColor?.withAlphaComponent(0.5) ?? UIColor.tertiaryLabel
                 placeholderLabel.tag = 999
                 placeholderLabel.translatesAutoresizingMaskIntoConstraints = false
                 uiView.addSubview(placeholderLabel)
 
+                // Use appropriate positioning based on single-line vs multi-line
+                let topConstant: CGFloat = singleLine ? 8 : 16
+                let leadingConstant: CGFloat = singleLine ? 12 : 16
+
                 NSLayoutConstraint.activate([
-                    placeholderLabel.topAnchor.constraint(equalTo: uiView.topAnchor, constant: 16),
-                    placeholderLabel.leadingAnchor.constraint(equalTo: uiView.leadingAnchor, constant: 16)
+                    placeholderLabel.topAnchor.constraint(equalTo: uiView.topAnchor, constant: topConstant),
+                    placeholderLabel.leadingAnchor.constraint(equalTo: uiView.leadingAnchor, constant: leadingConstant)
                 ])
             }
         } else {
@@ -286,18 +309,24 @@ public struct TaskInputView: View {
     @StateObject private var voiceService = VoiceDictationService.shared
     @StateObject private var enhancementService = TextEnhancementService.shared
     @StateObject private var settingsService = SettingsDataService()
+    @StateObject private var undoRedoManager = UndoRedoManager()
 
     @State private var selectedRange: NSRange = NSRange(location: 0, length: 0)
     @State private var showingLanguagePicker = false
     @State private var selectedLanguage = "en-US"
     @State private var recordingDuration: TimeInterval = 0
     @State private var timer: Timer?
-    @State private var showDeepResearch = false
     @State private var selectionRect: CGRect = .zero
     @State private var isEnhancingSelection = false
+    @State private var isEnhancingFullText = false
     @State private var transcriptionModel: String?
     @State private var transcriptionPrompt: String?
     @State private var transcriptionTemperature: Double?
+    @State private var showTerminal = false
+    @State private var terminalJobId: String = ""
+    @State private var showDeepResearch = false
+    @State private var lastSavedText: String = ""
+    @State private var saveHistoryTimer: Timer?
 
     let placeholder: String
     let onInteraction: () -> Void
@@ -320,51 +349,32 @@ public struct TaskInputView: View {
 
     public var body: some View {
         VStack(spacing: 20) {
-            // Text Editor with Selection Support
-            ZStack(alignment: .topTrailing) {
-                SelectableTextView(
-                    text: $taskDescription,
-                    selectedRange: $selectedRange,
-                    placeholder: placeholder,
-                    onInteraction: onInteraction
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .frame(minHeight: 250)
-                .gesture(
-                    DragGesture()
-                        .onEnded { value in
-                            if value.translation.height > 50 {
-                                // Swipe down to dismiss keyboard
-                                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                            }
-                        }
-                )
-
-                // Sparkles button - shown when text is selected
-                if selectedRange.length > 0 {
-                    Button(action: enhanceSelectedText) {
-                        if isEnhancingSelection {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                .scaleEffect(0.8)
-                        } else {
-                            Image(systemName: "sparkles")
-                                .fontWeight(.semibold)
+            // Text Editor (no floating sparkles for selection anymore)
+            SelectableTextView(
+                text: $taskDescription,
+                selectedRange: $selectedRange,
+                placeholder: placeholder,
+                onInteraction: {
+                    onInteraction()
+                    // Save to undo history with debouncing
+                    saveToUndoHistory()
+                }
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(minHeight: 250)
+            .gesture(
+                DragGesture()
+                    .onEnded { value in
+                        if value.translation.height > 50 {
+                            // Swipe down to dismiss keyboard
+                            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                         }
                     }
-                    .buttonStyle(FloatingActionButtonStyle(color: .purple))
-                    .disabled(isEnhancingSelection)
-                    .accessibilityLabel("Enhance selected text")
-                    .accessibilityHint("Improve the quality and clarity of the selected text")
-                    .padding(12)
-                    .transition(.scale.combined(with: .opacity))
-                }
-            }
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: selectedRange.length > 0)
+            )
 
-            // Action Buttons Row
+            // Action Buttons Row - New Order: Voice, Language, Sparkles, Undo, Redo, Menu
             HStack(spacing: 12) {
-                // Voice Recording Button
+                // 1. Voice Recording Button
                 Button(action: toggleRecording) {
                     HStack(spacing: 6) {
                         Image(systemName: voiceService.isRecording ? "stop.circle.fill" : "mic.circle.fill")
@@ -382,26 +392,14 @@ public struct TaskInputView: View {
                                         .frame(width: 2, height: CGFloat.random(in: 4...12))
                                 }
                             }
-                        } else {
-                            Text("Voice")
                         }
                     }
+                    .frame(maxWidth: voiceService.isRecording ? .infinity : nil)
                 }
                 .buttonStyle(RecordingButtonStyle(isRecording: voiceService.isRecording))
 
-                // Deep Research Button
-                Button(action: { showDeepResearch = true }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "sparkle.magnifyingglass")
-                            .font(.system(size: 18))
-                        Text("Deep Research")
-                    }
-                }
-                .buttonStyle(UtilityButtonStyle())
-                .disabled(taskDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
                 if !voiceService.isRecording {
-                    // Language Picker
+                    // 2. Language Picker
                     Button(action: { showingLanguagePicker = true }) {
                         HStack(spacing: 4) {
                             Image(systemName: "globe")
@@ -411,6 +409,63 @@ public struct TaskInputView: View {
                         }
                     }
                     .buttonStyle(UtilityButtonStyle())
+
+                    // 3. Sparkles - Enhance ENTIRE task description
+                    Button(action: enhanceFullText) {
+                        HStack(spacing: 4) {
+                            if isEnhancingFullText {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle())
+                                    .scaleEffect(0.7)
+                            } else {
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 16))
+                            }
+                        }
+                    }
+                    .buttonStyle(UtilityButtonStyle())
+                    .disabled(isEnhancingFullText || taskDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityLabel("Enhance task description")
+                    .accessibilityHint("Improve the quality and clarity of the entire task description")
+
+                    // 4. Undo Button
+                    Button(action: performUndo) {
+                        Image(systemName: "arrow.uturn.backward")
+                            .font(.system(size: 16))
+                    }
+                    .buttonStyle(UtilityButtonStyle())
+                    .disabled(!undoRedoManager.canUndo)
+                    .opacity(undoRedoManager.canUndo ? 1.0 : 0.4)
+                    .accessibilityLabel("Undo")
+
+                    // 5. Redo Button
+                    Button(action: performRedo) {
+                        Image(systemName: "arrow.uturn.forward")
+                            .font(.system(size: 16))
+                    }
+                    .buttonStyle(UtilityButtonStyle())
+                    .disabled(!undoRedoManager.canRedo)
+                    .opacity(undoRedoManager.canRedo ? 1.0 : 0.4)
+                    .accessibilityLabel("Redo")
+
+                    // 6. More Menu (Terminal + Deep Research)
+                    Menu {
+                        Button(action: {
+                            terminalJobId = "task-terminal-\(sessionId)"
+                            showTerminal = true
+                        }) {
+                            Label("Terminal", systemImage: "terminal")
+                        }
+
+                        Button(action: { showDeepResearch = true }) {
+                            Label("Deep Research", systemImage: "sparkle.magnifyingglass")
+                        }
+                        .disabled(taskDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .font(.system(size: 18))
+                    }
+                    .buttonStyle(UtilityButtonStyle())
                 }
 
                 Spacer()
@@ -418,6 +473,11 @@ public struct TaskInputView: View {
         }
         .sheet(isPresented: $showingLanguagePicker) {
             LanguagePickerSheet(selectedLanguage: $selectedLanguage)
+        }
+        .sheet(isPresented: $showTerminal) {
+            NavigationStack {
+                RemoteTerminalView(jobId: terminalJobId)
+            }
         }
         .alert("Deep Research", isPresented: $showDeepResearch) {
             Button("Cancel", role: .cancel) {}
@@ -442,44 +502,81 @@ public struct TaskInputView: View {
                 }
             }
         }
+        .onAppear {
+            // Initialize undo/redo manager with current task description
+            if taskDescription != lastSavedText {
+                undoRedoManager.reset(with: taskDescription)
+                lastSavedText = taskDescription
+            }
+        }
+        .onChange(of: sessionId) { _ in
+            // Reset undo/redo history when session changes
+            undoRedoManager.reset(with: taskDescription)
+            lastSavedText = taskDescription
+        }
     }
 
     // MARK: - Helper Methods
 
-    private func enhanceSelectedText() {
-        guard selectedRange.length > 0 else { return }
+    // Enhance the entire task description (not just selection)
+    private func enhanceFullText() {
+        let textToEnhance = taskDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !textToEnhance.isEmpty else { return }
 
-        let selectedText = (taskDescription as NSString).substring(with: selectedRange)
-        guard !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-
-        isEnhancingSelection = true
+        isEnhancingFullText = true
 
         Task {
             do {
+                // Save current state to history before enhancement
+                await MainActor.run {
+                    undoRedoManager.saveState(taskDescription)
+                }
+
                 let enhanced = try await enhancementService.enhance(
-                    text: selectedText,
+                    text: textToEnhance,
                     context: "task_description",
                     sessionId: sessionId,
                     projectDirectory: projectDirectory
                 )
 
                 await MainActor.run {
-                    let nsString = taskDescription as NSString
-                    let beforeSelection = nsString.substring(to: selectedRange.location)
-                    let afterSelection = nsString.substring(from: selectedRange.location + selectedRange.length)
-
-                    taskDescription = beforeSelection + enhanced + afterSelection
-
-                    let newCursorPosition = (beforeSelection as NSString).length + (enhanced as NSString).length
-                    selectedRange = NSRange(location: newCursorPosition, length: 0)
-                    isEnhancingSelection = false
+                    taskDescription = enhanced
+                    undoRedoManager.saveState(enhanced)
+                    isEnhancingFullText = false
+                    onInteraction()
                 }
             } catch {
                 await MainActor.run {
-                    isEnhancingSelection = false
+                    isEnhancingFullText = false
                     print("Enhancement error: \(error)")
                 }
             }
+        }
+    }
+
+    // Undo/Redo handlers
+    private func performUndo() {
+        guard let previousText = undoRedoManager.undo() else { return }
+        taskDescription = previousText
+        onInteraction()
+    }
+
+    private func performRedo() {
+        guard let nextText = undoRedoManager.redo() else { return }
+        taskDescription = nextText
+        onInteraction()
+    }
+
+    // Debounced history saving
+    private func saveToUndoHistory() {
+        saveHistoryTimer?.invalidate()
+        let newTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [undoRedoManager, taskDescription] _ in
+            Task { @MainActor in
+                undoRedoManager.saveState(taskDescription)
+            }
+        }
+        Task { @MainActor in
+            self.saveHistoryTimer = newTimer
         }
     }
 
@@ -566,53 +663,6 @@ public struct TaskInputView: View {
         case "fr-FR": return "FR"
         case "de-DE": return "DE"
         default: return "EN"
-        }
-    }
-}
-
-// MARK: - Language Picker Sheet
-
-private struct LanguagePickerSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @Binding var selectedLanguage: String
-
-    let languages = [
-        ("en-US", "English"),
-        ("es-ES", "Spanish"),
-        ("fr-FR", "French"),
-        ("de-DE", "German"),
-        ("it-IT", "Italian"),
-        ("pt-PT", "Portuguese"),
-        ("ja-JP", "Japanese"),
-        ("zh-CN", "Chinese (Simplified)"),
-    ]
-
-    var body: some View {
-        NavigationStack {
-            List(languages, id: \.0) { code, name in
-                Button(action: {
-                    selectedLanguage = code
-                    dismiss()
-                }) {
-                    HStack {
-                        Text(name)
-                        Spacer()
-                        if selectedLanguage == code {
-                            Image(systemName: "checkmark")
-                                .foregroundColor(.blue)
-                        }
-                    }
-                }
-            }
-            .navigationTitle("Select Language")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        dismiss()
-                    }
-                }
-            }
         }
     }
 }

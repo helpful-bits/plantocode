@@ -23,6 +23,7 @@ public class DataServicesManager: ObservableObject {
     @Published public var connectionStatus: ConnectionStatus = .disconnected
     @Published public var currentProject: ProjectInfo?
     public var activeDesktopDeviceId: UUID?
+    @Published public var isJobsViewActive: Bool = false
 
     // MARK: - Private Properties
     private let apiClient: APIClient
@@ -31,8 +32,6 @@ public class DataServicesManager: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var relayEventsCancellable: AnyCancellable?
     private let logger = Logger(subsystem: "VibeManager", category: "DataServicesManager")
-    private var sessionRefetchTask: Task<Void, Never>?
-    private var sessionRefetchDebounceTime: TimeInterval = 1.0
     private var isApplyingRemoteActiveSession = false
 
     // MARK: - Initialization
@@ -50,7 +49,8 @@ public class DataServicesManager: ObservableObject {
         )
         self.plansService = PlansDataService(
             apiClient: apiClient,
-            cacheManager: cacheManager
+            cacheManager: cacheManager,
+            jobsService: self.jobsService
         )
         self.filesService = FilesDataService(apiClient: apiClient, cacheManager: cacheManager)
         self.taskSyncService = TaskSyncDataService(
@@ -96,21 +96,48 @@ public class DataServicesManager: ObservableObject {
 
     /// Test connection to desktop app
     public func testConnection() -> AnyPublisher<Bool, Never> {
-        // Simple ping test using job list API
-        let request = JobListRequest(
-            projectDirectory: nil,
-            pageSize: 1
-        )
+        // Use terminal default shell as lightweight connectivity probe
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+            return Just(false)
+                .handleEvents(receiveOutput: { [weak self] isConnected in
+                    Task { @MainActor in
+                        self?.updateConnectionStatus(connected: isConnected)
+                    }
+                })
+                .eraseToAnyPublisher()
+        }
 
-        return jobsService.listJobs(request: request)
-            .map { _ in true }
-            .catch { _ in Just(false) }
-            .handleEvents(receiveOutput: { [weak self] isConnected in
-                Task { @MainActor in
-                    self?.updateConnectionStatus(connected: isConnected)
+        return Future<Bool, Never> { promise in
+            Task {
+                do {
+                    for try await response in CommandRouter.terminalGetDefaultShell() {
+                        if response.error != nil {
+                            promise(.success(false))
+                            return
+                        }
+                        if response.isFinal {
+                            promise(.success(true))
+                            return
+                        }
+                    }
+                    promise(.success(false))
+                } catch {
+                    promise(.success(false))
                 }
-            })
-            .eraseToAnyPublisher()
+            }
+        }
+        .handleEvents(receiveOutput: { [weak self] isConnected in
+            Task { @MainActor in
+                self?.updateConnectionStatus(connected: isConnected)
+            }
+        })
+        .eraseToAnyPublisher()
+    }
+
+    /// Set whether the Jobs view is currently active
+    public func setJobsViewActive(_ active: Bool) {
+        self.isJobsViewActive = active
     }
 
     /// Get sync status across all services
@@ -163,33 +190,6 @@ public class DataServicesManager: ObservableObject {
 
     // MARK: - Private Methods
 
-    /// Debounced session refetch to avoid excessive API calls
-    private func debouncedSessionRefetch() {
-        // Cancel any existing pending refetch
-        sessionRefetchTask?.cancel()
-
-        // Schedule a new refetch after the debounce time
-        sessionRefetchTask = Task { @MainActor [weak self] in
-            guard let self = self else { return }
-
-            // Wait for debounce period
-            try? await Task.sleep(nanoseconds: UInt64(self.sessionRefetchDebounceTime * 1_000_000_000))
-
-            // Check if task was cancelled
-            guard !Task.isCancelled else { return }
-
-            // Perform the refetch
-            if let project = self.currentProject {
-                do {
-                    try await self.sessionService.fetchSessions(projectDirectory: project.directory)
-                    self.logger.debug("Debounced session refetch completed for project: \(project.directory)")
-                } catch {
-                    self.logger.error("Failed to refetch sessions: \(error.localizedDescription)")
-                }
-            }
-        }
-    }
-
     private func setupConnectionMonitoring() {
         Timer.publish(every: 30, on: .main, in: .common)
             .autoconnect()
@@ -210,6 +210,20 @@ public class DataServicesManager: ObservableObject {
                     }
                     return false
                 }
+
+                // Detect active device change and propagate
+                let newActive = MultiConnectionManager.shared.activeDeviceId
+                if newActive != self.activeDesktopDeviceId {
+                    self.activeDesktopDeviceId = newActive
+                    self.plansService.onActiveDeviceChanged(newActive)
+                    if let project = self.currentProject {
+                        self.plansService.preloadPlans(for: project.directory)
+                    }
+                    Task { @MainActor in
+                        await self.terminalService.bootstrapFromRemote()
+                    }
+                }
+
                 self.handleConnectionStateChange(connected: isConnected)
 
                 // Re-subscribe to relay events when connection state changes
@@ -227,6 +241,10 @@ public class DataServicesManager: ObservableObject {
                 guard let self = self,
                       self.isApplyingRemoteActiveSession == false,
                       let s = session else { return }
+
+                // Enable background event processing for jobs
+                self.jobsService.setActiveSession(sessionId: s.id, projectDirectory: s.projectDirectory)
+
                 Task {
                     try? await self.sessionService.broadcastActiveSessionChanged(
                         sessionId: s.id,
@@ -266,52 +284,10 @@ public class DataServicesManager: ObservableObject {
                         )
                     }
 
-                case "session-files-updated":
-                    if let sessionId = dict["sessionId"] as? String,
-                       let includedFiles = dict["includedFiles"] as? [String],
-                       let forceExcludedFiles = dict["forceExcludedFiles"] as? [String] {
-                        self.sessionService.updateSessionFilesInMemory(
-                            sessionId: sessionId,
-                            includedFiles: includedFiles,
-                            forceExcludedFiles: forceExcludedFiles
-                        )
-                    }
-
-                case "session-history-synced":
-                    if let sessionId = dict["sessionId"] as? String,
-                       let taskDescription = dict["taskDescription"] as? String,
-                       let currentSession = self.sessionService.currentSession,
-                       currentSession.id == sessionId {
-                        let updatedSession = Session(
-                            id: currentSession.id,
-                            name: currentSession.name,
-                            projectDirectory: currentSession.projectDirectory,
-                            taskDescription: taskDescription,
-                            createdAt: currentSession.createdAt,
-                            updatedAt: currentSession.updatedAt,
-                            includedFiles: currentSession.includedFiles,
-                            forceExcludedFiles: currentSession.forceExcludedFiles
-                        )
-                        self.sessionService.currentSession = updatedSession
-                    }
-
-                case "session-updated":
-                    if let sessionData = dict["session"] as? [String: Any],
-                       let sessionId = sessionData["id"] as? String,
-                       let currentSession = self.sessionService.currentSession,
-                       currentSession.id == sessionId {
-                        let updatedSession = Session(
-                            id: currentSession.id,
-                            name: currentSession.name,
-                            projectDirectory: currentSession.projectDirectory,
-                            taskDescription: sessionData["taskDescription"] as? String ?? currentSession.taskDescription,
-                            createdAt: currentSession.createdAt,
-                            updatedAt: sessionData["updatedAt"] as? Int64 ?? currentSession.updatedAt,
-                            includedFiles: sessionData["includedFiles"] as? [String] ?? currentSession.includedFiles,
-                            forceExcludedFiles: sessionData["forceExcludedFiles"] as? [String] ?? currentSession.forceExcludedFiles
-                        )
-                        self.sessionService.currentSession = updatedSession
-                    }
+                case "session-created", "session-updated", "session-deleted",
+                     "session-files-updated", "session-history-synced", "session:auto-files-applied":
+                    // Use incremental updates instead of full refetch
+                    self.sessionService.applyRelayEvent(event)
 
                 case "active-session-changed":
                     if let sessionId = dict["sessionId"] as? String,
@@ -326,19 +302,22 @@ public class DataServicesManager: ObservableObject {
 
                 default:
                     if eventType.hasPrefix("job:") {
-                        self.jobsService.applyRelayEvent(event)
-                    }
-                }
+                        // Process job events continuously in background (like desktop)
+                        // This ensures jobs data is always fresh when user navigates to Jobs tab
 
-                // Debounced refetch for session events
-                let sessionEvents = [
-                    "session-created", "session-updated", "session-deleted",
-                    "session-files-updated", "session-history-synced",
-                    "session:auto-files-applied", "session-file-browser-state-updated"
-                ]
-                if sessionEvents.contains(eventType) {
-                    Task { @MainActor in
-                        self.debouncedSessionRefetch()
+                        // Gate by current session
+                        guard let currentSessionId = self.sessionService.currentSession?.id else { return }
+
+                        // Parse and verify session ID
+                        if let sessionId = dict["sessionId"] as? String {
+                            guard sessionId == currentSessionId else { return }
+                        } else if let jobData = dict["job"] as? [String: Any],
+                                  let sessionId = jobData["sessionId"] as? String {
+                            guard sessionId == currentSessionId else { return }
+                        }
+                        // If only jobId present, allow forwarding - JobsDataService will handle it
+
+                        self.jobsService.applyRelayEvent(event)
                     }
                 }
             }
@@ -350,9 +329,11 @@ public class DataServicesManager: ObservableObject {
                 guard let self = self else { return }
 
                 await self.sessionService.processOfflineQueue()
+                await self.terminalService.bootstrapFromRemote()
 
-                // Use debounced refetch to avoid excessive API calls
-                self.debouncedSessionRefetch()
+                if let project = self.currentProject {
+                    try? await self.sessionService.fetchSessions(projectDirectory: project.directory)
+                }
             }
         }
     }

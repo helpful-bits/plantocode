@@ -25,11 +25,11 @@ public class WorkflowService: ObservableObject {
 
         self.encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-        encoder.keyEncodingStrategy = .convertToSnakeCase
+        // Backend uses camelCase serialization - use default keys
 
         self.decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        // Backend uses camelCase serialization - use default keys
     }
 
     // MARK: - Public API

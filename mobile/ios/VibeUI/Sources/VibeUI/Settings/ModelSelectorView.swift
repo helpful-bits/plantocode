@@ -39,6 +39,16 @@ public struct ModelSelectorView: View {
         }
         .background(Color.appBackground)
         .cornerRadius(AppColors.radius)
+        .onAppear {
+            activeProviderIndex = providers.firstIndex(where: {
+                $0.models.contains(where: { $0.id == selectedModelId })
+            }) ?? 0
+        }
+        .onChange(of: selectedModelId) { newValue in
+            activeProviderIndex = providers.firstIndex(where: {
+                $0.models.contains(where: { $0.id == newValue })
+            }) ?? 0
+        }
     }
 
     // MARK: - Subviews
@@ -54,6 +64,34 @@ public struct ModelSelectorView: View {
             }
             Spacer()
         }
+        .overlay(
+            Group {
+                if providers.count > 8 {
+                    LinearGradient(
+                        gradient: Gradient(colors: [Color.appMuted, Color.appMuted.opacity(0)]),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: 12)
+                    .allowsHitTesting(false)
+                }
+            },
+            alignment: .top
+        )
+        .overlay(
+            Group {
+                if providers.count > 8 {
+                    LinearGradient(
+                        gradient: Gradient(colors: [Color.appMuted.opacity(0), Color.appMuted]),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: 12)
+                    .allowsHitTesting(false)
+                }
+            },
+            alignment: .bottom
+        )
         .frame(maxWidth: 160)
         .padding(8)
         .background(Color.appMuted)
@@ -61,9 +99,13 @@ public struct ModelSelectorView: View {
     }
 
     private var modelListView: some View {
-        ScrollView {
+        let models = providers[activeProviderIndex].models
+        let selectedModel = models.first(where: { $0.id == selectedModelId })
+        let reorderedModels = (selectedModel.map { [$0] } ?? []) + models.filter { $0.id != selectedModelId }
+
+        return ScrollView {
             VStack(spacing: 12) {
-                ForEach(providers[activeProviderIndex].models, id: \.id) { model in
+                ForEach(reorderedModels, id: \.id) { model in
                     ModelButton(
                         model: model,
                         isSelected: model.id == selectedModelId,
@@ -76,6 +118,34 @@ public struct ModelSelectorView: View {
             }
             .padding(12)
         }
+        .overlay(
+            Group {
+                if reorderedModels.count > 6 {
+                    LinearGradient(
+                        gradient: Gradient(colors: [Color.appBackground, Color.appBackground.opacity(0)]),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: 12)
+                    .allowsHitTesting(false)
+                }
+            },
+            alignment: .top
+        )
+        .overlay(
+            Group {
+                if reorderedModels.count > 6 {
+                    LinearGradient(
+                        gradient: Gradient(colors: [Color.appBackground.opacity(0), Color.appBackground]),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: 12)
+                    .allowsHitTesting(false)
+                }
+            },
+            alignment: .bottom
+        )
         .frame(maxWidth: .infinity)
         .background(Color.appBackground)
     }
@@ -141,22 +211,16 @@ private struct ModelButton: View {
         Group {
             if isSelected {
                 Button(action: action) {
-                    HStack(alignment: .top, spacing: 12) {
-                        ModelInfoView(model: model)
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 24))
-                    }
-                    .padding(16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    ModelInfoView(model: model, isSelected: isSelected)
+                        .padding(16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(PrimaryButtonStyle())
             } else {
                 Button(action: action) {
-                    HStack(alignment: .top, spacing: 12) {
-                        ModelInfoView(model: model)
-                    }
-                    .padding(16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    ModelInfoView(model: model, isSelected: isSelected)
+                        .padding(16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(SecondaryButtonStyle())
             }
@@ -168,13 +232,21 @@ private struct ModelButton: View {
 
 private struct ModelInfoView: View {
     let model: ModelInfo
+    let isSelected: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             // Model name
-            Text(model.name)
-                .font(.system(size: 16, weight: .semibold))
-                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 4) {
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundColor(Color.appPrimary)
+                }
+                Text(model.name)
+                    .font(.system(size: 16, weight: .semibold))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             // Provider
             HStack(spacing: 4) {

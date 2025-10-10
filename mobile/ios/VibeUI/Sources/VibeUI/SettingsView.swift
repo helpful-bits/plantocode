@@ -147,6 +147,7 @@ public struct SettingsView: View {
         DeviceSelectionView()
       }
       .onAppear {
+        guard !hasLoadedInitialSettings else { return }
         loadCliToolSettings()
       }
     }

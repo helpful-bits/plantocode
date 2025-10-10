@@ -44,19 +44,19 @@ public struct GlobalTopBar: View {
 
                     Button(action: { showingRegion = true }) {
                         Image(systemName: "globe")
-                            .h4()
+                            .font(.system(size: 20))
                     }
                     .buttonStyle(ToolbarButtonStyle())
 
                     Button(action: { showingDeviceSelection = true }) {
                         Image(systemName: "arrow.triangle.2.circlepath")
-                            .h4()
+                            .font(.system(size: 20))
                     }
                     .buttonStyle(ToolbarButtonStyle())
 
                     Button(action: { showingSettings = true }) {
                         Image(systemName: "gearshape")
-                            .h4()
+                            .font(.system(size: 20))
                     }
                     .buttonStyle(ToolbarButtonStyle())
                 }

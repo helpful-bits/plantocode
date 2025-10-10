@@ -63,11 +63,20 @@ public final class MultiConnectionManager: ObservableObject {
             return .failure(MultiConnectionError.authenticationRequired)
         }
 
-        // If already connected, return success
+        // Check if we have an existing connection that's actually connected
         if let existingClient = storage[deviceId] {
-            print("[MultiConnectionManager] Reusing existing connection for device: \(deviceId)")
-            activeDeviceId = deviceId
-            return .success(deviceId)
+            // Verify the connection is actually healthy
+            if existingClient.isConnected {
+                print("[MultiConnectionManager] Reusing existing healthy connection for device: \(deviceId)")
+                activeDeviceId = deviceId
+                return .success(deviceId)
+            } else {
+                // Connection exists but is not healthy - remove it and create a new one
+                print("[MultiConnectionManager] Existing connection is not healthy, removing and recreating for device: \(deviceId)")
+                existingClient.disconnect()
+                storage.removeValue(forKey: deviceId)
+                connectionStates.removeValue(forKey: deviceId)
+            }
         }
 
         // If already connecting, wait for that task

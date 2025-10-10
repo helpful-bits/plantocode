@@ -77,6 +77,19 @@ export function useOrchestratedBackgroundJobsState({
     setJobs(newJobsArray);
   }, []);
 
+  // Server-side filtering architecture:
+  // The Rust backend (desktop/src-tauri/src/remote_api/handlers/jobs.rs) now handles:
+  // 1. Session-based scoping via SessionRepository resolution
+  // 2. Workflow job type exclusion (file_finder_workflow, web_search_workflow)
+  //
+  // This ensures all clients (desktop, mobile) receive pre-filtered, session-scoped data
+  // from the initial fetch, eliminating client-side filtering complexity and preventing
+  // UI flicker from over-fetching followed by client-side reduction.
+  //
+  // Client-side filtering in this hook is now minimal and handles only:
+  // - UI-level search queries
+  // - Status filtering for display purposes
+
   // Fetch jobs using Tauri command
   const fetchJobs = useCallback(async () => {
     // Prevent multiple concurrent fetches
@@ -410,22 +423,11 @@ export function useOrchestratedBackgroundJobsState({
         });
 
         // Listen for job response appended events - Append chunk to response field
-        // OPTIMIZATION: For implementation plans, only append if currently being viewed in a modal
         unlistenJobResponseAppended = await safeListen("job:response-appended", async (event) => {
           try {
             const update = event.payload as { jobId: string; chunk: string; accumulatedLength: number };
             const existingJob = jobsMapRef.current.get(update.jobId);
             if (existingJob) {
-              // Skip appending for implementation plans that aren't being viewed
-              const isImplementationPlan =
-                existingJob.taskType === 'implementation_plan' ||
-                existingJob.taskType === 'implementation_plan_merge';
-
-              if (isImplementationPlan && viewedImplementationPlanIdRef.current !== update.jobId) {
-                // Skip this update - the modal will fetch full content when it opens
-                return;
-              }
-
               const currentResponse = existingJob.response || '';
               const updatedJob: BackgroundJob = {
                 ...existingJob,
@@ -539,56 +541,10 @@ export function useOrchestratedBackgroundJobsState({
   );
 
   // Set which implementation plan is currently being viewed in a modal
-  // This optimizes streaming by only appending chunks for the viewed job
   const setViewedImplementationPlanId = useCallback(async (jobId: string | null) => {
-    // If setting a job as viewed (not clearing), fetch current accumulated response first
-    if (jobId) {
-      const existingJob = jobsMapRef.current.get(jobId);
-
-      // Only fetch if this is a streaming implementation plan
-      const isImplementationPlan =
-        existingJob?.taskType === 'implementation_plan' ||
-        existingJob?.taskType === 'implementation_plan_merge';
-
-      const isStreaming = existingJob?.status &&
-        ['queued', 'running', 'processing', 'generating'].includes(existingJob.status);
-
-      if (isImplementationPlan && isStreaming) {
-        try {
-          // Fetch the current accumulated response from database
-          const fullJob = await invoke<BackgroundJob>("get_background_job_by_id_command", {
-            jobId
-          });
-
-          // Update the job in the map with the full accumulated response
-          // This ensures we don't lose content that was accumulated before viewing started
-          if (fullJob && fullJob.response) {
-            const updatedJob: BackgroundJob = {
-              ...existingJob,
-              response: fullJob.response,
-              // Also sync other fields that might have been updated
-              tokensSent: fullJob.tokensSent ?? existingJob.tokensSent,
-              tokensReceived: fullJob.tokensReceived ?? existingJob.tokensReceived,
-              cacheReadTokens: fullJob.cacheReadTokens ?? existingJob.cacheReadTokens,
-              cacheWriteTokens: fullJob.cacheWriteTokens ?? existingJob.cacheWriteTokens,
-              actualCost: fullJob.actualCost ?? existingJob.actualCost,
-              updatedAt: Date.now(),
-            };
-            jobsMapRef.current.set(jobId, updatedJob);
-            updateJobsFromMap();
-
-            console.log(`[BackgroundJobs] Synced ${fullJob.response.length} chars for streaming plan ${jobId}`);
-          }
-        } catch (err) {
-          console.error(`[BackgroundJobs] Failed to fetch accumulated response for plan ${jobId}:`, err);
-          // Continue anyway - incremental updates will still work from this point
-        }
-      }
-    }
-
-    // Set the viewed ID to enable chunk appending
+    // Simply set the viewed ID - no fetch needed as list already has full content
     viewedImplementationPlanIdRef.current = jobId;
-  }, [updateJobsFromMap]);
+  }, []);
 
   return useMemo(
     () => ({

@@ -80,7 +80,7 @@ public struct BackgroundJob: Codable, Identifiable {
     public let tokensReceived: Int32?
     public let modelUsed: String?
     public let durationMs: Int32?
-    public let metadata: String? // JSON string
+    public var metadata: String? // JSON string
     public let systemPromptTemplate: String?
     public let startTime: Int64?
     public let endTime: Int64?
@@ -100,7 +100,7 @@ public struct BackgroundJob: Codable, Identifiable {
     }
 
     public var formattedDate: String {
-        let date = Date(timeIntervalSince1970: TimeInterval(createdAt))
+        let date = Date(timeIntervalSince1970: TimeInterval(createdAt) / 1000.0)
         return DateFormatter.medium.string(from: date)
     }
 
@@ -208,6 +208,7 @@ public struct Session: Codable, Identifiable {
     }
 
     public var formattedDate: String {
+        // createdAt is already normalized to seconds by SessionDataService.normalizeEpochSeconds
         let date = Date(timeIntervalSince1970: TimeInterval(createdAt))
         return DateFormatter.medium.string(from: date)
     }
@@ -547,10 +548,10 @@ public class APIClient: APIClientProtocol {
         config.timeoutIntervalForResource = 60
         self.session = URLSession(configuration: config)
 
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        // Backend uses camelCase serialization - use default keys
         decoder.dateDecodingStrategy = .secondsSince1970
 
-        encoder.keyEncodingStrategy = .convertToSnakeCase
+        // Backend uses camelCase serialization - use default keys
         encoder.dateEncodingStrategy = .secondsSince1970
     }
 

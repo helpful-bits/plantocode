@@ -9,6 +9,7 @@ public final class SessionDataService: ObservableObject {
     @Published public var isLoading = false
     @Published public var error: DataServiceError?
     private let offlineQueue = OfflineActionQueue()
+    private var sessionsIndex: [String: Int] = [:]
 
     public init() {
         self.currentSessionId = "mobile-session-\(UUID().uuidString)"
@@ -97,6 +98,8 @@ public final class SessionDataService: ObservableObject {
 
                     await MainActor.run {
                         self.sessions = sessionList
+                        // Build index for fast lookups
+                        self.sessionsIndex = Dictionary(uniqueKeysWithValues: sessionList.enumerated().map { ($1.id, $0) })
                         self.isLoading = false
                     }
                     let cacheKey = "sessions_\(projectDirectory.replacingOccurrences(of: "/", with: "_"))"
@@ -806,7 +809,7 @@ public final class SessionDataService: ObservableObject {
     public func loadSessionById(sessionId: String, projectDirectory: String) async throws {
         guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
               let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else { return }
-        let request = RpcRequest(method: "session.get", params: ["sessionId": AnyCodable(sessionId)])
+        let request = RpcRequest(method: "session.get", params: ["sessionId": sessionId])
         var resolvedSession: Session? = nil
         for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
             if let result = response.result?.value as? [String: Any],
@@ -834,6 +837,196 @@ public final class SessionDataService: ObservableObject {
         if let s = resolvedSession {
             await MainActor.run { self.currentSession = s }
         }
+    }
+
+    // MARK: - Incremental Event Updates
+
+    /// Apply relay event to update sessions incrementally without full refetch
+    @MainActor
+    public func applyRelayEvent(_ event: RelayEvent) {
+        let dict = event.data.mapValues { $0.value }
+
+        switch event.eventType {
+        case "session-created":
+            handleSessionCreated(dict: dict)
+
+        case "session-updated":
+            handleSessionUpdated(dict: dict)
+
+        case "session-deleted":
+            handleSessionDeleted(dict: dict)
+
+        case "session-files-updated":
+            handleSessionFilesUpdated(dict: dict)
+
+        case "session-history-synced":
+            handleSessionHistorySynced(dict: dict)
+
+        case "session:auto-files-applied":
+            handleSessionAutoFilesApplied(dict: dict)
+
+        default:
+            break
+        }
+    }
+
+    private func handleSessionCreated(dict: [String: Any]) {
+        guard let sessionData = dict["session"] as? [String: Any],
+              let session = parseSession(from: sessionData),
+              sessionsIndex[session.id] == nil else {
+            return
+        }
+
+        // Add new session to list and index
+        sessions.append(session)
+        sessionsIndex[session.id] = sessions.count - 1
+
+        // Sort by createdAt (newest first) to maintain consistent ordering
+        sessions.sort { $0.createdAt > $1.createdAt }
+        // Rebuild index after sorting
+        sessionsIndex = Dictionary(uniqueKeysWithValues: sessions.enumerated().map { ($1.id, $0) })
+    }
+
+    private func handleSessionUpdated(dict: [String: Any]) {
+        guard let sessionData = dict["session"] as? [String: Any],
+              let sessionId = sessionData["id"] as? String,
+              let index = sessionsIndex[sessionId] else {
+            return
+        }
+
+        // Parse updated session
+        if let updatedSession = parseSession(from: sessionData) {
+            sessions[index] = updatedSession
+
+            // Update currentSession if it's the same
+            if currentSession?.id == sessionId {
+                currentSession = updatedSession
+            }
+        }
+    }
+
+    private func handleSessionDeleted(dict: [String: Any]) {
+        guard let sessionId = dict["sessionId"] as? String ?? dict["id"] as? String,
+              let index = sessionsIndex[sessionId] else {
+            return
+        }
+
+        // Remove from list
+        sessions.remove(at: index)
+        sessionsIndex.removeValue(forKey: sessionId)
+
+        // Rebuild index with updated positions
+        sessionsIndex = Dictionary(uniqueKeysWithValues: sessions.enumerated().map { ($1.id, $0) })
+
+        // Clear current session if it was deleted
+        if currentSession?.id == sessionId {
+            currentSession = nil
+        }
+        if currentSessionId == sessionId {
+            currentSessionId = nil
+        }
+    }
+
+    private func handleSessionFilesUpdated(dict: [String: Any]) {
+        guard let sessionId = dict["sessionId"] as? String,
+              let includedFiles = dict["includedFiles"] as? [String],
+              let forceExcludedFiles = dict["forceExcludedFiles"] as? [String],
+              let index = sessionsIndex[sessionId] else {
+            return
+        }
+
+        // Update files in session
+        var session = sessions[index]
+        let updatedSession = Session(
+            id: session.id,
+            name: session.name,
+            projectDirectory: session.projectDirectory,
+            taskDescription: session.taskDescription,
+            createdAt: session.createdAt,
+            updatedAt: session.updatedAt,
+            includedFiles: includedFiles,
+            forceExcludedFiles: forceExcludedFiles
+        )
+        sessions[index] = updatedSession
+
+        // Update current session if it's the same
+        if currentSession?.id == sessionId {
+            currentSession = updatedSession
+        }
+    }
+
+    private func handleSessionHistorySynced(dict: [String: Any]) {
+        guard let sessionId = dict["sessionId"] as? String,
+              let taskDescription = dict["taskDescription"] as? String,
+              let index = sessionsIndex[sessionId] else {
+            return
+        }
+
+        // Update task description in session
+        var session = sessions[index]
+        let updatedSession = Session(
+            id: session.id,
+            name: session.name,
+            projectDirectory: session.projectDirectory,
+            taskDescription: taskDescription,
+            createdAt: session.createdAt,
+            updatedAt: session.updatedAt,
+            includedFiles: session.includedFiles,
+            forceExcludedFiles: session.forceExcludedFiles
+        )
+        sessions[index] = updatedSession
+
+        // Update current session if it's the same
+        if currentSession?.id == sessionId {
+            currentSession = updatedSession
+        }
+    }
+
+    private func handleSessionAutoFilesApplied(dict: [String: Any]) {
+        guard let sessionId = dict["sessionId"] as? String ?? dict["session_id"] as? String,
+              let files = dict["files"] as? [String],
+              let index = sessionsIndex[sessionId] else {
+            return
+        }
+
+        var session = sessions[index]
+        let updatedSession = Session(
+            id: session.id,
+            name: session.name,
+            projectDirectory: session.projectDirectory,
+            taskDescription: session.taskDescription,
+            createdAt: session.createdAt,
+            updatedAt: session.updatedAt,
+            includedFiles: files,
+            forceExcludedFiles: session.forceExcludedFiles
+        )
+        sessions[index] = updatedSession
+
+        if currentSession?.id == sessionId {
+            currentSession = updatedSession
+        }
+    }
+
+    private func parseSession(from dict: [String: Any]) -> Session? {
+        guard let id = dict["id"] as? String,
+              let name = dict["name"] as? String,
+              let projectDirectory = dict["projectDirectory"] as? String else {
+            return nil
+        }
+
+        let createdAt = ts(from: dict, camel: "createdAt", snake: "created_at")
+        let updatedAt = ts(from: dict, camel: "updatedAt", snake: "updated_at")
+
+        return Session(
+            id: id,
+            name: name,
+            projectDirectory: projectDirectory,
+            taskDescription: dict["taskDescription"] as? String,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+            includedFiles: dict["includedFiles"] as? [String] ?? [],
+            forceExcludedFiles: dict["forceExcludedFiles"] as? [String] ?? []
+        )
     }
 
 }

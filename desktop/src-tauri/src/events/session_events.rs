@@ -35,3 +35,13 @@ pub fn emit_session_updated(app: &AppHandle, session_id: &str, session_obj: &ser
     })).map_err(|e| format!("relay emit failed: {e}"))?;
     Ok(())
 }
+
+pub fn emit_session_deleted(app: &AppHandle, session_id: &str) -> Result<(), String> {
+    app.emit("session-deleted", serde_json::json!({ "sessionId": session_id }))
+        .map_err(|e| format!("local emit failed: {e}"))?;
+    app.emit("device-link-event", serde_json::json!({
+        "type": "session-deleted",
+        "payload": { "sessionId": session_id }
+    })).map_err(|e| format!("relay emit failed: {e}"))?;
+    Ok(())
+}

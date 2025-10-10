@@ -249,6 +249,54 @@ public struct CommandRouter {
         return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
     }
 
+    public static func terminalGetStatus(sessionId: String) -> AsyncThrowingStream<RpcResponse, Error> {
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: ServerRelayError.notConnected)
+            }
+        }
+
+        let request = RpcRequest(
+            method: "terminal.getStatus",
+            params: ["sessionId": sessionId]
+        )
+
+        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+    }
+
+    public static func terminalGetMetadata(sessionId: String) -> AsyncThrowingStream<RpcResponse, Error> {
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: ServerRelayError.notConnected)
+            }
+        }
+
+        let request = RpcRequest(
+            method: "terminal.getMetadata",
+            params: ["sessionId": sessionId]
+        )
+
+        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+    }
+
+    public static func terminalGetActiveSessions() -> AsyncThrowingStream<RpcResponse, Error> {
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: ServerRelayError.notConnected)
+            }
+        }
+
+        let request = RpcRequest(
+            method: "terminal.getActiveSessions",
+            params: [:]
+        )
+
+        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+    }
+
     public static func plansList(
         taskId: String
     ) -> AsyncThrowingStream<RpcResponse, Error> {

@@ -19,6 +19,9 @@ pub async fn dispatch(app_handle: AppHandle, req: RpcRequest) -> RpcResponse {
         "terminal.kill" => handle_terminal_kill(&app_handle, req).await,
         "terminal.detach" => handle_terminal_detach(&app_handle, req).await,
         "terminal.getLog" => handle_terminal_get_log(&app_handle, req).await,
+        "terminal.getStatus" => handle_terminal_get_status(app_handle, req).await,
+        "terminal.getMetadata" => handle_terminal_get_metadata(app_handle, req).await,
+        "terminal.getActiveSessions" => handle_terminal_get_active_sessions(app_handle, req).await,
         _ => RpcResponse {
             correlation_id: req.correlation_id,
             result: None,
@@ -360,5 +363,85 @@ async fn handle_terminal_get_log(app_handle: &AppHandle, request: RpcRequest) ->
         result: Some(json),
         error: None,
         is_final: true,
+    }
+}
+
+async fn handle_terminal_get_status(app_handle: AppHandle, request: RpcRequest) -> RpcResponse {
+    let session_id = match request.params.get("sessionId") {
+        Some(Value::String(id)) => id.clone(),
+        _ => {
+            return RpcResponse {
+                correlation_id: request.correlation_id,
+                result: None,
+                error: Some("Missing or invalid sessionId parameter".to_string()),
+                is_final: true,
+            };
+        }
+    };
+
+    let status_result = terminal_commands::get_terminal_session_status_command(
+        app_handle.clone(),
+        session_id.clone(),
+    );
+
+    match status_result {
+        Ok(status_json) => RpcResponse {
+            correlation_id: request.correlation_id,
+            result: Some(status_json),
+            error: None,
+            is_final: true,
+        },
+        Err(error) => RpcResponse {
+            correlation_id: request.correlation_id,
+            result: None,
+            error: Some(error),
+            is_final: true,
+        },
+    }
+}
+
+async fn handle_terminal_get_metadata(app_handle: AppHandle, request: RpcRequest) -> RpcResponse {
+    let session_id = match request.params.get("sessionId") {
+        Some(Value::String(id)) => id.clone(),
+        _ => {
+            return RpcResponse {
+                correlation_id: request.correlation_id,
+                result: None,
+                error: Some("Missing or invalid sessionId parameter".to_string()),
+                is_final: true,
+            };
+        }
+    };
+
+    match terminal_commands::get_terminal_metadata_command(app_handle.clone(), session_id.clone()) {
+        Ok(metadata) => RpcResponse {
+            correlation_id: request.correlation_id,
+            result: Some(metadata),
+            error: None,
+            is_final: true,
+        },
+        Err(error) => RpcResponse {
+            correlation_id: request.correlation_id,
+            result: None,
+            error: Some(error),
+            is_final: true,
+        },
+    }
+}
+
+async fn handle_terminal_get_active_sessions(app_handle: AppHandle, request: RpcRequest) -> RpcResponse {
+    match terminal_commands::get_active_terminal_sessions_command(app_handle.clone()) {
+        Ok(sessions) => RpcResponse {
+            correlation_id: request.correlation_id,
+            result: Some(json!({ "sessions": sessions })),
+            error: None,
+            is_final: true,
+        },
+        Err(error) => RpcResponse {
+            correlation_id: request.correlation_id,
+            result: None,
+            error: Some(error),
+            is_final: true,
+        },
     }
 }

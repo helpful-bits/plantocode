@@ -70,6 +70,10 @@ public final class AppContainer: ObservableObject {
         manager.testConnection()
     }
 
+    public func setJobsViewActive(_ active: Bool) {
+        manager.setJobsViewActive(active)
+    }
+
     public func getAllSyncStatuses() -> AnyPublisher<ServicesSyncStatus, DataServiceError> {
         manager.getAllSyncStatuses()
     }

@@ -199,18 +199,7 @@ export const BackgroundJobsSidebar = () => {
 
   // Function to apply files from job to session
   const handleApplyFilesFromJob = async (job: BackgroundJob) => {
-    // If response is missing (due to lightweight query), fetch full job data
-    let jobWithResponse = job;
-    if (!job.response && job.status === 'completed') {
-      try {
-        jobWithResponse = await invoke<BackgroundJob>('get_background_job_by_id_command', {
-          jobId: job.id
-        });
-      } catch (error) {
-        console.error('Failed to fetch full job details:', error);
-        return;
-      }
-    }
+    const jobWithResponse = job;
 
     // Handle web search execution jobs specially
     if (jobWithResponse.taskType === 'web_search_execution' && jobWithResponse.status === 'completed' && jobWithResponse.response) {

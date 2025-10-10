@@ -87,51 +87,137 @@ public final class SettingsDataService: ObservableObject {
         _ = try await drain(CommandRouter.configRefreshRuntimeAIConfig())
     }
 
+    public func getRawProjectTaskSetting(projectDirectory: String, taskKey: String, settingKey: String) async throws -> Any? {
+        for try await res in CommandRouter.settingsGetProjectTaskModelSettings(projectDirectory: projectDirectory) {
+            if let dict = res.resultDict {
+                // Try camelCase task key first
+                if let taskSettings = dict[taskKey] as? [String: Any] {
+                    // Try exact settingKey
+                    if let value = taskSettings[settingKey] {
+                        return value
+                    }
+                    // Try snake_case variant for language_code
+                    if settingKey == "languageCode", let value = taskSettings["language_code"] {
+                        return value
+                    }
+                }
+                // Try snake_case task key
+                let snakeCaseTaskKey = toSnakeCase(taskKey)
+                if let taskSettings = dict[snakeCaseTaskKey] as? [String: Any] {
+                    // Try exact settingKey
+                    if let value = taskSettings[settingKey] {
+                        return value
+                    }
+                    // Try snake_case variant
+                    if settingKey == "languageCode", let value = taskSettings["language_code"] {
+                        return value
+                    }
+                }
+            }
+        }
+        return nil
+    }
+
+    private func toSnakeCase(_ str: String) -> String {
+        var result = ""
+        for (index, char) in str.enumerated() {
+            if char.isUppercase {
+                if index > 0 {
+                    result += "_"
+                }
+                result += char.lowercased()
+            } else {
+                result += String(char)
+            }
+        }
+        return result
+    }
+
+    private func canonicalizeTaskType(_ taskType: String) -> String {
+        return toSnakeCase(taskType)
+    }
+
     // MARK: - System Prompts
     public func loadProjectSystemPrompt(projectDirectory: String, taskType: String) async throws {
+        let normalizedTaskType = canonicalizeTaskType(taskType)
         var prompt: String?
-        for try await res in CommandRouter.systemPromptsGetProject(projectDirectory: projectDirectory, taskType: taskType) {
-            if let dict = res.resultDict {
-                // systemPrompt is a nested object with a "systemPrompt" field
-                if let systemPromptObj = dict["systemPrompt"] as? [String: Any] {
-                    prompt = systemPromptObj["systemPrompt"] as? String
-                } else {
-                    // Fallback: try direct string access
-                    prompt = dict["systemPrompt"] as? String
+
+        // Backend returns: { "systemPrompt": { "systemPrompt": "text", "isCustom": true, ... } }
+        // or { "systemPrompt": null } when no custom prompt exists
+        for try await res in CommandRouter.systemPromptsGetProject(projectDirectory: projectDirectory, taskType: normalizedTaskType) {
+            if let dict = res.resultDict,
+               let systemPromptObj = dict["systemPrompt"] as? [String: Any],
+               let p = systemPromptObj["systemPrompt"] as? String {
+                prompt = p
+            }
+        }
+
+        // Fallback: try original taskType if normalized differs and no result
+        if prompt == nil && normalizedTaskType != taskType {
+            for try await res in CommandRouter.systemPromptsGetProject(projectDirectory: projectDirectory, taskType: taskType) {
+                if let dict = res.resultDict,
+                   let systemPromptObj = dict["systemPrompt"] as? [String: Any],
+                   let p = systemPromptObj["systemPrompt"] as? String {
+                    prompt = p
                 }
             }
         }
         self.currentSystemPrompt = prompt
 
+        // Backend returns: { "isCustom": true, "isCustomized": true }
         var custom = false
-        for try await res in CommandRouter.systemPromptsIsProjectCustomized(projectDirectory: projectDirectory, taskType: taskType) {
-            if let dict = res.resultDict, let v = dict["isCustom"] as? Bool { custom = v }
+        for try await res in CommandRouter.systemPromptsIsProjectCustomized(projectDirectory: projectDirectory, taskType: normalizedTaskType) {
+            if let dict = res.resultDict,
+               let isCustom = dict["isCustom"] as? Bool {
+                custom = isCustom
+            }
         }
         self.isSystemPromptCustom = custom
     }
 
     public func setProjectSystemPrompt(projectDirectory: String, taskType: String, systemPrompt: String) async throws {
-        _ = try await drain(CommandRouter.systemPromptsSetProject(projectDirectory: projectDirectory, taskType: taskType, systemPrompt: systemPrompt))
+        let normalizedTaskType = canonicalizeTaskType(taskType)
+        _ = try await drain(CommandRouter.systemPromptsSetProject(projectDirectory: projectDirectory, taskType: normalizedTaskType, systemPrompt: systemPrompt))
         try await loadProjectSystemPrompt(projectDirectory: projectDirectory, taskType: taskType)
     }
 
     public func resetProjectSystemPrompt(projectDirectory: String, taskType: String) async throws {
-        _ = try await drain(CommandRouter.systemPromptsResetProject(projectDirectory: projectDirectory, taskType: taskType))
+        let normalizedTaskType = canonicalizeTaskType(taskType)
+        _ = try await drain(CommandRouter.systemPromptsResetProject(projectDirectory: projectDirectory, taskType: normalizedTaskType))
         try await loadProjectSystemPrompt(projectDirectory: projectDirectory, taskType: taskType)
     }
 
     public func fetchDefaultSystemPrompt(taskType: String) async throws -> String? {
+        let normalizedTaskType = canonicalizeTaskType(taskType)
         var prompt: String?
-        for try await res in CommandRouter.systemPromptsGetDefault(taskType: taskType) {
+
+        // Backend returns: { "systemPrompt": "text" } or { "systemPrompt": null }
+        // or potentially { "systemPrompt": { ... } } if server returns structured data
+        for try await res in CommandRouter.systemPromptsGetDefault(taskType: normalizedTaskType) {
             if let dict = res.resultDict {
-                // Response structure: { "systemPrompt": { "systemPrompt": "actual text", ... } }
-                // The outer "systemPrompt" is the DefaultSystemPrompt object
-                // The inner "systemPrompt" is the actual prompt text
-                if let systemPromptObj = dict["systemPrompt"] as? [String: Any] {
-                    prompt = systemPromptObj["systemPrompt"] as? String
-                } else {
-                    // Fallback: try direct string access
-                    prompt = dict["systemPrompt"] as? String
+                // Try direct string access first (most common case)
+                if let p = dict["systemPrompt"] as? String {
+                    prompt = p
+                }
+                // Fallback: try nested object structure
+                else if let systemPromptObj = dict["systemPrompt"] as? [String: Any],
+                        let p = systemPromptObj["systemPrompt"] as? String {
+                    prompt = p
+                }
+            }
+        }
+
+        // Fallback: try original taskType if normalized differs and no result
+        if prompt == nil && normalizedTaskType != taskType {
+            for try await res in CommandRouter.systemPromptsGetDefault(taskType: taskType) {
+                if let dict = res.resultDict {
+                    if let p = dict["systemPrompt"] as? String {
+                        prompt = p
+                    }
+                    else if let systemPromptObj = dict["systemPrompt"] as? [String: Any],
+                            let p = systemPromptObj["systemPrompt"] as? String {
+                        prompt = p
+                    }
                 }
             }
         }
@@ -206,7 +292,7 @@ public final class SettingsDataService: ObservableObject {
     // MARK: - Decoding Helpers
     private func configuredDecoder() -> JSONDecoder {
         let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        // Backend uses camelCase serialization - use default keys
         return decoder
     }
 

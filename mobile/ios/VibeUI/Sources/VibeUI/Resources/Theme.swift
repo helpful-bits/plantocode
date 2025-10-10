@@ -204,4 +204,20 @@ public enum Theme {
         public static let md: CGFloat = 6
         public static let sm: CGFloat = 4
     }
+
+    public enum Spacing {
+        // Base spacing scale (4pt grid)
+        public static let xs: CGFloat = 4
+        public static let sm: CGFloat = 8
+        public static let md: CGFloat = 12
+        public static let lg: CGFloat = 16
+        public static let xl: CGFloat = 20
+        public static let xxl: CGFloat = 24
+
+        // Common component spacing
+        public static let cardPadding: CGFloat = 14
+        public static let cardSpacing: CGFloat = 10
+        public static let sectionSpacing: CGFloat = 16
+        public static let itemSpacing: CGFloat = 6
+    }
 }

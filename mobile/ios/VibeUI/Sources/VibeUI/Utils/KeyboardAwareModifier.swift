@@ -6,6 +6,8 @@ import Combine
 /// with smooth animation to prevent keyboard from covering input fields
 public struct KeyboardAwareModifier: ViewModifier {
     @State private var keyboardHeight: CGFloat = 0
+    @State private var willShowObserver: NSObjectProtocol?
+    @State private var willHideObserver: NSObjectProtocol?
 
     public init() {}
 
@@ -13,7 +15,7 @@ public struct KeyboardAwareModifier: ViewModifier {
         content
             .padding(.bottom, keyboardHeight)
             .onAppear {
-                NotificationCenter.default.addObserver(
+                willShowObserver = NotificationCenter.default.addObserver(
                     forName: UIResponder.keyboardWillShowNotification,
                     object: nil,
                     queue: .main
@@ -29,7 +31,7 @@ public struct KeyboardAwareModifier: ViewModifier {
                     }
                 }
 
-                NotificationCenter.default.addObserver(
+                willHideObserver = NotificationCenter.default.addObserver(
                     forName: UIResponder.keyboardWillHideNotification,
                     object: nil,
                     queue: .main
@@ -42,16 +44,14 @@ public struct KeyboardAwareModifier: ViewModifier {
                 }
             }
             .onDisappear {
-                NotificationCenter.default.removeObserver(
-                    self,
-                    name: UIResponder.keyboardWillShowNotification,
-                    object: nil
-                )
-                NotificationCenter.default.removeObserver(
-                    self,
-                    name: UIResponder.keyboardWillHideNotification,
-                    object: nil
-                )
+                if let observer = willShowObserver {
+                    NotificationCenter.default.removeObserver(observer)
+                    willShowObserver = nil
+                }
+                if let observer = willHideObserver {
+                    NotificationCenter.default.removeObserver(observer)
+                    willHideObserver = nil
+                }
             }
     }
 }

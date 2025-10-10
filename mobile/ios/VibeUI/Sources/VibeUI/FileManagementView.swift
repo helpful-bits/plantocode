@@ -13,6 +13,8 @@ public struct FileManagementView: View {
     @State private var localSearchTerm: String = ""
     @State private var searchDebounceTimer: Timer?
     @State private var refreshTrigger = UUID()
+    @State private var findFilesError: String? = nil
+    @State private var runningWorkflowCount: Int = 0
 
     public init(filesService: FilesDataService) {
         self.filesService = filesService
@@ -42,8 +44,8 @@ public struct FileManagementView: View {
                     return filesService.currentSortOrder == "asc" ? lhs.modifiedAt < rhs.modifiedAt : lhs.modifiedAt > rhs.modifiedAt
                 default: // "name"
                     return filesService.currentSortOrder == "asc" ?
-                           lhs.name.localizedCompare(rhs.name) == .orderedAscending :
-                           lhs.name.localizedCompare(rhs.name) == .orderedDescending
+                           lhs.path.localizedCompare(rhs.path) == .orderedAscending :
+                           lhs.path.localizedCompare(rhs.path) == .orderedDescending
                 }
             }
 
@@ -70,6 +72,14 @@ public struct FileManagementView: View {
         .onReceive(container.sessionService.$currentSession) { _ in
             // Force view refresh when session changes
             refreshTrigger = UUID()
+            updateRunningWorkflowCount()
+        }
+        .onReceive(container.jobsService.$jobs) { _ in
+            // Update workflow count whenever jobs change (real-time updates)
+            updateRunningWorkflowCount()
+        }
+        .onAppear {
+            updateRunningWorkflowCount()
         }
     }
 
@@ -91,16 +101,26 @@ public struct FileManagementView: View {
                 Spacer()
             }
         }
+
+        if let findFilesError = findFilesError {
+            VStack {
+                StatusAlertView(variant: .destructive, title: "Error", message: findFilesError)
+                    .padding()
+                Spacer()
+            }
+        }
     }
 
     @ViewBuilder
     private var searchAndFilterSection: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: Theme.Spacing.md) {
             searchBar
             filterControls
             actionButtons
         }
-        .padding()
+        .padding(.horizontal)
+        .padding(.top, Theme.Spacing.sm)
+        .padding(.bottom, Theme.Spacing.md)
         .background(Color.muted)
     }
 
@@ -110,7 +130,7 @@ public struct FileManagementView: View {
                 .foregroundColor(.mutedForeground)
                 .frame(width: 20)
 
-            TextField("Search files...", text: $localSearchTerm)
+            TextField("Filter files...", text: $localSearchTerm)
                 .textFieldStyle(PlainTextFieldStyle())
                 .onChange(of: localSearchTerm) { newValue in
                     searchDebounceTimer?.invalidate()
@@ -129,13 +149,13 @@ public struct FileManagementView: View {
                 .buttonStyle(CompactIconButtonStyle())
             }
         }
-        .padding(14)
+        .padding(Theme.Spacing.cardPadding)
         .background(Color.input)
         .cornerRadius(10)
     }
 
     private var filterControls: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: Theme.Spacing.md) {
             // Filter Mode
             Picker("Filter", selection: $filesService.currentFilterMode) {
                 Text("All").tag("all")
@@ -151,21 +171,21 @@ public struct FileManagementView: View {
     }
 
     private var sortControls: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Theme.Spacing.sm) {
             Menu {
                 Button("Name") { filesService.currentSortBy = "name" }
                 Button("Size") { filesService.currentSortBy = "size" }
                 Button("Modified") { filesService.currentSortBy = "modified" }
             } label: {
-                HStack(spacing: 4) {
+                HStack(spacing: Theme.Spacing.xs) {
                     Text(filesService.currentSortBy.capitalized)
                         .font(.system(size: 14))
                     Image(systemName: "chevron.down")
                         .font(.system(size: 10))
                 }
                 .foregroundColor(Color.foreground)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.itemSpacing)
                 .background(Color.card)
                 .cornerRadius(8)
             }
@@ -181,7 +201,7 @@ public struct FileManagementView: View {
 
     private var actionButtons: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(spacing: Theme.Spacing.sm) {
                 ActionButton(title: "Select All", systemImage: "checkmark.circle") {
                     selectAllFiltered()
                 }
@@ -221,7 +241,7 @@ public struct FileManagementView: View {
             Text("Loading files...")
                 .small()
                 .foregroundColor(.secondary)
-                .padding(.top, 8)
+                .padding(.top, Theme.Spacing.sm)
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -230,12 +250,12 @@ public struct FileManagementView: View {
 
     private var filesList: some View {
         ScrollView {
-            LazyVStack(spacing: 4) {
+            LazyVStack(spacing: Theme.Spacing.xs) {
                 fileCountHeader
                 selectedFilesSection
                 searchResultsSection
             }
-            .padding(.vertical, 8)
+            .padding(.vertical, Theme.Spacing.sm)
         }
         .background(Color.background)
         .scrollDismissesKeyboard(.interactively)
@@ -264,12 +284,116 @@ public struct FileManagementView: View {
 
             Text("\(includedSet.count) selected")
                 .small()
-                .foregroundColor(.secondary)
+                .foregroundColor(.foreground)
 
             Spacer()
+                .frame(width: Theme.Spacing.lg)
+
+            // Find Files Button
+            Button(action: {
+                if !isConnected {
+                    findFilesError = "No active device connection"
+                    return
+                }
+                guard let session = container.sessionService.currentSession else {
+                    findFilesError = "No active session"
+                    return
+                }
+                guard !session.projectDirectory.isEmpty else {
+                    findFilesError = "Missing project directory"
+                    return
+                }
+
+                // Launch workflow directly
+                Task {
+                    do {
+                        // Fetch latest session data from server
+                        guard let refreshedSession = try await container.sessionService.getSession(id: session.id) else {
+                            await MainActor.run {
+                                findFilesError = "Session not found"
+                            }
+                            return
+                        }
+
+                        guard let taskDesc = refreshedSession.taskDescription,
+                              !taskDesc.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                              taskDesc.trimmingCharacters(in: .whitespacesAndNewlines).count >= 10 else {
+                            await MainActor.run {
+                                findFilesError = "Task description must be at least 10 characters. Please add a task description first."
+                            }
+                            return
+                        }
+
+                        await MainActor.run {
+                            findFilesError = nil
+                        }
+
+                        let stream = container.filesService.startFindFiles(
+                            sessionId: refreshedSession.id,
+                            taskDescription: taskDesc,
+                            projectDirectory: refreshedSession.projectDirectory,
+                            excludedPaths: refreshedSession.forceExcludedFiles ?? []
+                        )
+
+                        // Update count after launching
+                        await MainActor.run {
+                            updateRunningWorkflowCount()
+                        }
+
+                        var suggestionPaths: [String] = []
+                        for try await event in stream {
+                            switch event {
+                            case .suggestions(let list):
+                                suggestionPaths.append(contentsOf: list.map { $0.path })
+                            case .completed:
+                                // Auto-apply suggestions to session
+                                if !suggestionPaths.isEmpty {
+                                    try? await container.sessionService.updateSessionFiles(
+                                        sessionId: refreshedSession.id,
+                                        addIncluded: suggestionPaths,
+                                        removeIncluded: nil,
+                                        addExcluded: nil,
+                                        removeExcluded: suggestionPaths
+                                    )
+                                }
+                                // Update count when complete
+                                await MainActor.run {
+                                    updateRunningWorkflowCount()
+                                }
+                            case .error(let msg):
+                                await MainActor.run {
+                                    findFilesError = msg
+                                    updateRunningWorkflowCount()
+                                }
+                            default:
+                                break
+                            }
+                        }
+                    } catch {
+                        await MainActor.run {
+                            findFilesError = "Failed to run workflow: \(error.localizedDescription)"
+                            updateRunningWorkflowCount()
+                        }
+                    }
+                }
+            }) {
+                HStack {
+                    Image(systemName: "sparkles")
+                    if runningWorkflowCount == 0 {
+                        Text("Find Files")
+                            .lineLimit(1)
+                    } else {
+                        Text("Find Files (\(runningWorkflowCount))")
+                            .lineLimit(1)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(PrimaryButtonStyle())
+            .disabled(!isConnected || container.sessionService.currentSession == nil)
         }
         .padding(.horizontal)
-        .padding(.vertical, 8)
+        .padding(.vertical, Theme.Spacing.sm)
     }
 
     @ViewBuilder
@@ -307,7 +431,7 @@ public struct FileManagementView: View {
                     Spacer()
                 }
                 .padding(.horizontal)
-                .padding(.vertical, 4)
+                .padding(.vertical, Theme.Spacing.xs)
             }
         }
     }
@@ -331,8 +455,8 @@ public struct FileManagementView: View {
                     return filesService.currentSortOrder == "asc" ? lhs.modifiedAt < rhs.modifiedAt : lhs.modifiedAt > rhs.modifiedAt
                 default: // "name"
                     return filesService.currentSortOrder == "asc" ?
-                           lhs.name.localizedCompare(rhs.name) == .orderedAscending :
-                           lhs.name.localizedCompare(rhs.name) == .orderedDescending
+                           lhs.path.localizedCompare(rhs.path) == .orderedAscending :
+                           lhs.path.localizedCompare(rhs.path) == .orderedDescending
                 }
             }
 
@@ -349,10 +473,10 @@ public struct FileManagementView: View {
     }
 
     private var emptyStateView: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: Theme.Spacing.xl) {
             Spacer()
 
-            VStack(spacing: 12) {
+            VStack(spacing: Theme.Spacing.md) {
                 Image(systemName: "doc.text.magnifyingglass")
                     .font(.system(size: 48))
                     .foregroundColor(.secondary)
@@ -619,6 +743,34 @@ public struct FileManagementView: View {
             }
         }
     }
+
+    private func updateRunningWorkflowCount() {
+        guard let session = container.sessionService.currentSession else {
+            runningWorkflowCount = 0
+            return
+        }
+
+        // Use in-memory jobs from JobsDataService for instant updates
+        let activeStatuses: Set<String> = ["created", "queued", "acknowledgedByWorker", "preparing", "preparingInput", "generatingStream", "processingStream", "running"]
+
+        let count = container.jobsService.jobs.filter { job in
+            // Check session ID matches
+            guard job.sessionId == session.id else {
+                return false
+            }
+
+            // Check status is active
+            guard activeStatuses.contains(job.status) else {
+                return false
+            }
+
+            // Check it's a file finder workflow
+            let taskType = job.taskType ?? ""
+            return taskType == "file_finder" || taskType == "fileFinder" || taskType == "find_files"
+        }.count
+
+        runningWorkflowCount = count
+    }
 }
 
 private struct FileManagementRowView: View {
@@ -629,13 +781,13 @@ private struct FileManagementRowView: View {
     let onExcludeToggle: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             // First line: File path ONLY with highlighted filename
             formattedPath
                 .small().fontWeight(.semibold)
 
             // Second line: Metadata inline + toggles
-            HStack(spacing: 12) {
+            HStack(spacing: Theme.Spacing.md) {
                 // Modified time
                 Text(formattedDate)
                     .small()
@@ -678,7 +830,7 @@ private struct FileManagementRowView: View {
                 .accessibilityValue(isExcluded ? "On" : "Off")
             }
         }
-        .padding(12)
+        .padding(Theme.Spacing.md)
         .background(isIncluded && !isExcluded ? Color.accent : Color.card)
         .cornerRadius(8)
         .overlay(
@@ -761,7 +913,7 @@ private struct ActionButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 6) {
+            HStack(spacing: Theme.Spacing.itemSpacing) {
                 Image(systemName: systemImage)
                     .font(.system(size: 14))
                 Text(title)

@@ -5,6 +5,17 @@ import OSLog
 import UIKit
 #endif
 
+/// Terminal input must remain raw bytes end-to-end to preserve all keyboard sequences.
+///
+/// Root cause of keyboard issues: byte→String conversion drops control/meta sequences.
+/// Fix: Always transmit raw bytes via write(jobId:bytes:) or write(jobId:data:).
+/// Base64 encoding happens only at the transport boundary (RPC layer).
+///
+/// Parity with desktop:
+/// - Raw byte input pipeline via base64-encoded RPC
+/// - PTY resize propagation on terminal size changes
+/// - Connection readiness gating before session start
+
 /// Service for managing terminal sessions via RPC calls to connected desktop devices
 @MainActor
 public class TerminalDataService: ObservableObject {
@@ -19,10 +30,34 @@ public class TerminalDataService: ObservableObject {
     private let connectionManager = MultiConnectionManager.shared
     private var eventSubscriptions: [String: AnyCancellable] = [:]
     private var outputPublishers: [String: PassthroughSubject<TerminalOutput, Never>] = [:]
+    private var connectionStateCancellable: AnyCancellable?
+    private var jobToSessionId: [String: String] = [:]
+    private var ensureInFlight: Set<String> = []
 
     // MARK: - Initialization
     public init() {
         setupEventSubscriptions()
+
+        connectionStateCancellable = MultiConnectionManager.shared.$connectionStates
+            .sink { [weak self] states in
+                guard let self = self else { return }
+                let isConnected = states.values.contains { state in
+                    if case .connected = state { return true }
+                    return false
+                }
+
+                if isConnected {
+                    Task { @MainActor in
+                        await self.bootstrapFromRemote()
+
+                        for sessionId in self.activeSessions.keys {
+                            if let deviceId = self.connectionManager.activeDeviceId {
+                                self.subscribeToSessionOutputIfNeeded(sessionId: sessionId, deviceId: deviceId)
+                            }
+                        }
+                    }
+                }
+            }
     }
 
     deinit {
@@ -32,7 +67,7 @@ public class TerminalDataService: ObservableObject {
     // MARK: - Terminal Session Management
 
     /// Start a new terminal session for the given job
-    public func startSession(jobId: String) async throws -> TerminalSession {
+    public func startSession(jobId: String, workingDirectory: String? = nil, shell: String? = nil) async throws -> TerminalSession {
         guard let deviceId = connectionManager.activeDeviceId,
               let relayClient = connectionManager.relayConnection(for: deviceId) else {
             throw DataServiceError.connectionError("No active device connection")
@@ -41,13 +76,21 @@ public class TerminalDataService: ObservableObject {
         isLoading = true
         defer { isLoading = false }
 
+        var params: [String: Any] = ["jobId": jobId]
+
+        // Use provided shell or fetch default from settings
+        if let shell = shell {
+            params["shell"] = shell
+        }
+
+        // Use provided working directory
+        if let workingDirectory = workingDirectory {
+            params["workingDirectory"] = workingDirectory
+        }
+
         let request = RpcRequest(
             method: "terminal.start",
-            params: [
-                "jobId": AnyCodable(jobId),
-                "shell": AnyCodable("default"),
-                "workingDirectory": AnyCodable(NSNull())
-            ]
+            params: params
         )
 
         do {
@@ -82,6 +125,7 @@ public class TerminalDataService: ObservableObject {
             )
 
             activeSessions[sessionId] = session
+            jobToSessionId[jobId] = sessionId
 
             // Subscribe to terminal output events for this session
             subscribeToSessionOutput(sessionId: sessionId, deviceId: deviceId)
@@ -95,14 +139,56 @@ public class TerminalDataService: ObservableObject {
         }
     }
 
-    /// Write data to a terminal session
+    /// Write text to a terminal session
     public func write(jobId: String, data: String) async throws {
-        guard let session = activeSessions.values.first(where: { $0.jobId == jobId && $0.isActive }) else {
-            throw DataServiceError.invalidState("No active session for job \(jobId)")
+        guard let textData = data.data(using: .utf8) else {
+            throw DataServiceError.invalidState("Failed to encode text as UTF-8")
+        }
+        try await write(jobId: jobId, data: textData)
+    }
+
+    /// Write raw bytes to terminal session (preserves all control/meta/function keys)
+    ///
+    /// This method preserves the exact byte sequences from SwiftTerm, ensuring that
+    /// Ctrl, Meta, ESC, and function keys work correctly. Desktop uses this same
+    /// byte-preserving approach. Raw bytes are base64-encoded for transport only.
+    public func write(jobId: String, bytes: [UInt8]) async throws {
+        let data = Data(bytes)
+        try await write(jobId: jobId, data: data)
+    }
+
+    /// Write raw data to terminal session (preserves all control/meta/function keys)
+    ///
+    /// This is the canonical terminal input path. All keyboard input must use this
+    /// method to preserve control sequences. Base64 encoding happens only at the
+    /// transport boundary to avoid any lossy conversions.
+    public func write(jobId: String, data: Data) async throws {
+        let session = try await ensureSession(jobId: jobId, autostartIfNeeded: true)
+        try await writeViaRelay(session: session, data: data)
+    }
+
+    /// Send large text to terminal in chunks to avoid overwhelming the PTY
+    public func sendLargeText(jobId: String, text: String, appendCarriageReturn: Bool = true, chunkSize: Int = 4096) async throws {
+        guard !text.isEmpty else { return }
+
+        let session = try await ensureSession(jobId: jobId, autostartIfNeeded: true)
+
+        let finalText = appendCarriageReturn ? text + "\n" : text
+        guard let data = finalText.data(using: .utf8) else {
+            throw DataServiceError.invalidState("Failed to encode text as UTF-8")
         }
 
-        // Route all operations through relay
-        try await writeViaRelay(session: session, data: data)
+        // Split into chunks by byte count (not String length) and send sequentially
+        var offset = 0
+        while offset < data.count {
+            let endIndex = min(offset + chunkSize, data.count)
+            let chunk = data[offset..<endIndex]
+
+            try await writeViaRelay(session: session, data: Data(chunk))
+
+            offset = endIndex
+            await Task.yield()
+        }
     }
 
 
@@ -122,11 +208,31 @@ public class TerminalDataService: ObservableObject {
         }
     }
 
+    private func writeViaRelay(session: TerminalSession, data: Data) async throws {
+        guard connectionManager.activeDeviceId != nil,
+              connectionManager.relayConnection(for: session.deviceId) != nil else {
+            throw DataServiceError.connectionError("No active relay connection")
+        }
+
+        do {
+            let base64 = data.base64EncodedString()
+            for try await response in CommandRouter.terminalWriteData(sessionId: session.id, base64Data: base64) {
+                if let error = response.error {
+                    throw DataServiceError.serverError("RPC Error \(error.code): \(error.message)")
+                }
+                if response.isFinal {
+                    break
+                }
+            }
+        } catch {
+            lastError = error as? DataServiceError ?? DataServiceError.networkError(error)
+            throw error
+        }
+    }
+
     /// Resize terminal window
     public func resize(jobId: String, cols: Int, rows: Int) async throws {
-        guard let session = activeSessions.values.first(where: { $0.jobId == jobId && $0.isActive }) else {
-            throw DataServiceError.invalidState("No active session for job \(jobId)")
-        }
+        let session = try await ensureSession(jobId: jobId, autostartIfNeeded: true)
 
         do {
             for try await response in CommandRouter.terminalResize(sessionId: session.id, cols: cols, rows: rows) {
@@ -145,9 +251,7 @@ public class TerminalDataService: ObservableObject {
 
     /// Kill a terminal session
     public func kill(jobId: String) async throws {
-        guard let session = activeSessions.values.first(where: { $0.jobId == jobId }) else {
-            throw DataServiceError.invalidState("No active session for job \(jobId)")
-        }
+        let session = try await ensureSession(jobId: jobId, autostartIfNeeded: false)
 
         do {
             for try await response in CommandRouter.terminalKill(sessionId: session.id) {
@@ -178,7 +282,7 @@ public class TerminalDataService: ObservableObject {
 
     /// Send Ctrl+C to a terminal session
     public func sendCtrlC(jobId: String) async throws {
-        try await write(jobId: jobId, data: "\u{03}") // ASCII ETX (End of Text) - Ctrl+C
+        try await write(jobId: jobId, bytes: [0x03]) // ETX (End of Text) control byte
     }
 
     /// Detach from a terminal session (cleanup on view dismiss)
@@ -190,12 +294,6 @@ public class TerminalDataService: ObservableObject {
 
         // Route all operations through relay
         try await detachViaRelay(session: session)
-
-        // Clean up local session state
-        activeSessions.removeValue(forKey: session.id)
-        eventSubscriptions[session.id]?.cancel()
-        eventSubscriptions.removeValue(forKey: session.id)
-        outputPublishers.removeValue(forKey: session.id)
 
         logger.info("Terminal session detached: \(session.id) for job \(jobId)")
     }
@@ -291,6 +389,60 @@ public class TerminalDataService: ObservableObject {
         }
     }
 
+    public func bootstrapFromRemote() async {
+        guard let deviceId = connectionManager.activeDeviceId,
+              connectionManager.relayConnection(for: deviceId) != nil else {
+            return
+        }
+
+        do {
+            var sessionIds: [String] = []
+            for try await response in CommandRouter.terminalGetActiveSessions() {
+                if let error = response.error {
+                    logger.warning("Failed to get active sessions: \(error)")
+                    return
+                }
+                if let result = response.result?.value as? [String: Any],
+                   let sessions = result["sessions"] as? [String] {
+                    sessionIds = sessions
+                }
+                if response.isFinal { break }
+            }
+
+            for sessionId in sessionIds {
+                guard activeSessions[sessionId] == nil else { continue }
+
+                var metadataDict: [String: Any]?
+                do {
+                    for try await response in CommandRouter.terminalGetMetadata(sessionId: sessionId) {
+                        if let result = response.result?.value as? [String: Any] {
+                            metadataDict = result
+                        }
+                        if response.isFinal { break }
+                    }
+                } catch {
+                    logger.warning("Failed to get metadata for \(sessionId): \(error)")
+                    continue
+                }
+
+                guard let metadata = metadataDict else { continue }
+
+                let session = rebuildSessionFromMetadata(
+                    sessionId: sessionId,
+                    jobId: sessionId,
+                    deviceId: deviceId,
+                    metadata: metadata
+                )
+                activeSessions[sessionId] = session
+                jobToSessionId[sessionId] = sessionId
+
+                logger.info("Bootstrapped session: \(sessionId)")
+            }
+        } catch {
+            logger.warning("Bootstrap failed: \(error)")
+        }
+    }
+
     // MARK: - Private Methods
 
     private func setupEventSubscriptions() {
@@ -298,6 +450,125 @@ public class TerminalDataService: ObservableObject {
         // For now, we subscribe to specific session outputs when sessions are created
     }
 
+    private func rebuildSessionFromMetadata(sessionId: String, jobId: String, deviceId: UUID, metadata: [String: Any]) -> TerminalSession {
+        let status = metadata["status"] as? String ?? "unknown"
+        let workingDir = metadata["workingDirectory"] as? String ?? "~"
+        let startedAt = metadata["startedAt"] as? TimeInterval ?? Date().timeIntervalSince1970
+        let isActive = (status == "running")
+
+        let session = TerminalSession(
+            id: sessionId,
+            jobId: jobId,
+            deviceId: deviceId,
+            createdAt: Date(timeIntervalSince1970: startedAt),
+            isActive: isActive,
+            workingDirectory: workingDir,
+            shell: "default"
+        )
+
+        subscribeToSessionOutputIfNeeded(sessionId: sessionId, deviceId: deviceId)
+
+        return session
+    }
+
+    private func subscribeToSessionOutputIfNeeded(sessionId: String, deviceId: UUID) {
+        guard outputPublishers[sessionId] == nil else { return }
+        subscribeToSessionOutput(sessionId: sessionId, deviceId: deviceId)
+    }
+
+    private func ensureSession(jobId: String, workingDirectory: String? = nil, shell: String? = nil, autostartIfNeeded: Bool = true) async throws -> TerminalSession {
+        guard !ensureInFlight.contains(jobId) else {
+            try await Task.sleep(nanoseconds: 100_000_000)
+            if let session = activeSessions.values.first(where: { $0.jobId == jobId }) {
+                return session
+            }
+            throw DataServiceError.invalidState("Concurrent ensure in progress for job \(jobId)")
+        }
+
+        ensureInFlight.insert(jobId)
+        defer { ensureInFlight.remove(jobId) }
+
+        if let existing = activeSessions.values.first(where: { $0.jobId == jobId }) {
+            return existing
+        }
+
+        guard let deviceId = connectionManager.activeDeviceId else {
+            throw DataServiceError.connectionError("No active device")
+        }
+
+        let sessionId = jobToSessionId[jobId] ?? jobId
+
+        var statusData: [String: Any]?
+        do {
+            for try await response in CommandRouter.terminalGetStatus(sessionId: sessionId) {
+                if let result = response.result?.value as? [String: Any] {
+                    statusData = result
+                }
+                if response.isFinal { break }
+            }
+        } catch {
+            logger.warning("Failed to get status for \(sessionId), will try to start: \(error)")
+        }
+
+        if let status = statusData?["status"] as? String {
+            if status == "running" || status == "restored" {
+                var metadataDict: [String: Any]?
+                do {
+                    for try await response in CommandRouter.terminalGetMetadata(sessionId: sessionId) {
+                        if let result = response.result?.value as? [String: Any] {
+                            metadataDict = result
+                        }
+                        if response.isFinal { break }
+                    }
+                } catch {
+                    logger.warning("Failed to get metadata: \(error)")
+                }
+
+                let session = rebuildSessionFromMetadata(
+                    sessionId: sessionId,
+                    jobId: jobId,
+                    deviceId: deviceId,
+                    metadata: metadataDict ?? [:]
+                )
+                activeSessions[sessionId] = session
+                jobToSessionId[jobId] = sessionId
+
+                Task {
+                    do {
+                        let logEntries = try await self.getLog(jobId: jobId)
+                        for entry in logEntries {
+                            if let publisher = self.outputPublishers[sessionId] {
+                                publisher.send(entry)
+                            }
+                        }
+                    } catch {
+                        logger.warning("Failed to hydrate log: \(error)")
+                    }
+                }
+
+                if status == "restored" && autostartIfNeeded {
+                    _ = try await startSession(jobId: jobId, workingDirectory: workingDirectory, shell: shell)
+                }
+
+                return session
+            }
+        }
+
+        if autostartIfNeeded {
+            return try await startSession(jobId: jobId, workingDirectory: workingDirectory, shell: shell)
+        } else {
+            throw DataServiceError.invalidState("Session \(jobId) is stopped and autostart disabled")
+        }
+    }
+
+    /// Subscribes to terminal output events for a session via relay protocol
+    ///
+    /// Terminal synchronization pattern:
+    /// - Listens to "terminal.output" event topic for real-time output streaming
+    /// - Listens to "terminal.exit" event topic for session termination
+    /// - Events are pushed from desktop via relay server to mobile devices
+    /// - Terminal data is Base64 encoded in transit and decoded here
+    /// - Supports both stdout and stderr streams with proper type identification
     private func subscribeToSessionOutput(sessionId: String, deviceId: UUID) {
         guard let relayClient = connectionManager.relayConnection(for: deviceId) else {
             return
