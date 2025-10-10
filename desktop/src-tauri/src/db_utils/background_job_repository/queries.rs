@@ -5,6 +5,43 @@ use crate::models::{BackgroundJob, JobStatus};
 use crate::utils::get_timestamp;
 use sqlx::Row;
 
+/// Calculate priority score for a job (lower = higher priority)
+fn calculate_job_priority(job: &BackgroundJob, thirty_minutes_ago: i64, seven_days_ago: i64) -> u8 {
+    let updated_at = job.updated_at.unwrap_or(job.created_at);
+    let status = job.status.as_str();
+
+    // Active jobs updated in last 30 minutes (highest priority)
+    if updated_at > thirty_minutes_ago {
+        return match status {
+            "running" => 0,
+            "preparing" => 1,
+            "queued" => 2,
+            "acknowledged_by_worker" => 3,
+            "created" => 4,
+            "idle" => 5,
+            _ => 12,
+        };
+    }
+
+    // Recent completed/failed/canceled jobs (last 7 days)
+    if job.created_at > seven_days_ago {
+        return match status {
+            "completed" => 6,
+            "failed" => 7,
+            "canceled" => 8,
+            _ => 12,
+        };
+    }
+
+    // Older completed/failed/canceled jobs
+    match status {
+        "completed" => 9,
+        "failed" => 10,
+        "canceled" => 11,
+        _ => 12,
+    }
+}
+
 impl BackgroundJobRepository {
     /// Get all jobs
     pub async fn get_all_jobs(&self) -> AppResult<Vec<BackgroundJob>> {
@@ -215,66 +252,43 @@ impl BackgroundJobRepository {
     /// Get all visible jobs for a specific session within a project
     pub async fn get_all_visible_jobs_for_session(
         &self,
-        project_hash: &str,
         session_id: &str,
     ) -> AppResult<Vec<BackgroundJob>> {
-        // Get current timestamp for recency calculation
-        let thirty_minutes_ago = get_timestamp() - (30 * 60 * 1000); // 30 minutes in milliseconds
-        let seven_days_ago = get_timestamp() - (7 * 24 * 60 * 60 * 1000); // For completed jobs history
-
-        let rows = sqlx::query(
-            r#"
+        // Simple, fast query - let Rust handle the sorting
+        let query_str = r#"
             SELECT bj.* FROM background_jobs bj
-            INNER JOIN sessions s ON bj.session_id = s.id
-            WHERE s.project_hash = $1 AND bj.session_id = $2
-            ORDER BY
-                -- First priority: Active jobs updated in last 30 minutes
-                CASE
-                    WHEN bj.status = $3 AND bj.updated_at > $4 THEN 0  -- Running (recent)
-                    WHEN bj.status = $5 AND bj.updated_at > $4 THEN 1  -- Preparing (recent)
-                    WHEN bj.status = $6 AND bj.updated_at > $4 THEN 2  -- Queued (recent)
-                    WHEN bj.status = $7 AND bj.updated_at > $4 THEN 3  -- AcknowledgedByWorker (recent)
-                    WHEN bj.status = $8 AND bj.updated_at > $4 THEN 4  -- Created (recent)
-                    WHEN bj.status = $9 AND bj.updated_at > $4 THEN 5  -- Idle (recent)
-                    -- Recent completed/failed/canceled jobs (last 7 days for history)
-                    WHEN bj.status = $10 AND bj.created_at > $11 THEN 6   -- Completed (recent)
-                    WHEN bj.status = $12 AND bj.created_at > $11 THEN 7  -- Failed (recent)
-                    WHEN bj.status = $13 AND bj.created_at > $11 THEN 8  -- Canceled (recent)
-                    -- Older completed/failed/canceled jobs
-                    WHEN bj.status = $10 THEN 9   -- Completed (old)
-                    WHEN bj.status = $12 THEN 10 -- Failed (old)
-                    WHEN bj.status = $13 THEN 11 -- Canceled (old)
-                    -- Everything else (jobs requiring attention older than 30 minutes)
-                    ELSE 12
-                END,
-                -- Within each priority group, sort by most recently updated
-                bj.updated_at DESC
+            WHERE bj.session_id = $1
+            AND bj.task_type NOT IN ('file_finder_workflow', 'web_search_workflow')
+            ORDER BY bj.updated_at DESC
             LIMIT 100
-            "#,
-        )
-        .bind(project_hash)                          // $1
-        .bind(session_id)                            // $2
-        .bind(JobStatus::Running.to_string())        // $3
-        .bind(thirty_minutes_ago)                    // $4
-        .bind(JobStatus::Preparing.to_string())      // $5
-        .bind(JobStatus::Queued.to_string())         // $6
-        .bind(JobStatus::AcknowledgedByWorker.to_string()) // $7
-        .bind(JobStatus::Created.to_string())        // $8
-        .bind(JobStatus::Idle.to_string())           // $9
-        .bind(JobStatus::Completed.to_string())      // $10
-        .bind(seven_days_ago)                        // $11
-        .bind(JobStatus::Failed.to_string())         // $12
-        .bind(JobStatus::Canceled.to_string())       // $13
-        .fetch_all(&*self.pool)
-        .await
-        .map_err(|e| AppError::DatabaseError(format!("Failed to fetch jobs for session: {}", e)))?;
+            "#;
+
+        let rows = sqlx::query(query_str)
+            .bind(session_id)
+            .fetch_all(&*self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to fetch jobs for session: {}", e)))?;
 
         let mut jobs = Vec::new();
-
         for row in rows {
             let job = row_to_job(&row)?;
             jobs.push(job);
         }
+
+        // Fast in-memory sorting by priority (much faster than SQL CASE for <100 items)
+        let thirty_minutes_ago = get_timestamp() - (30 * 60 * 1000);
+        let seven_days_ago = get_timestamp() - (7 * 24 * 60 * 60 * 1000);
+
+        jobs.sort_by(|a, b| {
+            let priority_a = calculate_job_priority(a, thirty_minutes_ago, seven_days_ago);
+            let priority_b = calculate_job_priority(b, thirty_minutes_ago, seven_days_ago);
+
+            priority_a.cmp(&priority_b).then_with(|| {
+                let time_a = a.updated_at.unwrap_or(a.created_at);
+                let time_b = b.updated_at.unwrap_or(b.created_at);
+                time_b.cmp(&time_a)
+            })
+        });
 
         Ok(jobs)
     }

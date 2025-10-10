@@ -433,9 +433,23 @@ public class ServerRelayClient: NSObject, ObservableObject {
         }
 
         do {
-            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let messageType = json["type"] as? String else {
-                logger.error("Invalid message format - missing type field")
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                logger.error("Invalid message format - not a JSON object")
+                return
+            }
+
+            // Check for DeviceMessage format (with message_type field) first
+            if let messageType = json["message_type"] as? String {
+                let preview = text.count > 200 ? String(text.prefix(200)) + "…" : text
+                logger.info("Relay message received type=device_message(\(messageType), privacy: .public) preview=\(preview, privacy: .public)")
+                print("[Relay] message type=device_message(\(messageType)) preview=\(preview)")
+                handleDeviceMessageEvent(json)
+                return
+            }
+
+            // Check for standard relay message format (with type field)
+            guard let messageType = json["type"] as? String else {
+                logger.error("Invalid message format - missing both 'type' and 'message_type' fields")
                 return
             }
 
@@ -458,11 +472,6 @@ public class ServerRelayClient: NSObject, ObservableObject {
             case "error":
                 handleErrorMessage(json)
             default:
-                // Check for DeviceMessage format
-                if let messageType = json["message_type"] as? String {
-                    handleDeviceMessageEvent(json)
-                    return
-                }
                 logger.debug("Received unknown message type: \(messageType)")
             }
         } catch {

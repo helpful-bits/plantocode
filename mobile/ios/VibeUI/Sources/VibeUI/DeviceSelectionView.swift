@@ -79,7 +79,7 @@ public struct DeviceSelectionView: View {
 
                             VStack(spacing: 8) {
                                 Text("No Devices Found")
-                                    .h4()
+                                    .h3()
                                     .foregroundColor(Color.cardForeground)
 
                                 Text("Open the Vibe Manager desktop app, sign in with the same account, and enable 'Allow Remote Access' and 'Discoverable' in Settings.")
@@ -315,11 +315,11 @@ private struct DeviceRow: View {
                         .scaleEffect(0.8)
                 } else if isSelected {
                     Image(systemName: "checkmark.circle.fill")
-                        .h3()
+                        .font(.system(size: 24))
                         .foregroundColor(Color.primary)
                 } else {
                     Image(systemName: "arrow.right.circle")
-                        .h3()
+                        .font(.system(size: 24))
                         .foregroundColor(Color.mutedForeground)
                         .opacity(device.status.isAvailable ? 1.0 : 0.5)
                 }

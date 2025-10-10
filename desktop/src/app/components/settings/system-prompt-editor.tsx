@@ -30,6 +30,7 @@ export function SystemPromptEditor({ projectDirectory, taskType, onSave }: Syste
   const [isSaving, setIsSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [serverDefault, setServerDefault] = useState<{systemPrompt: string, description?: string} | null>(null);
+  const [savedCustomPrompt, setSavedCustomPrompt] = useState<string | null>(null); // Cache of custom prompt
 
   const currentPrompt = prompt || '';
   const defaultPrompt = serverDefault;
@@ -42,6 +43,13 @@ export function SystemPromptEditor({ projectDirectory, taskType, onSave }: Syste
       });
     }
   }, [isCustom, prompt, taskType]);
+
+  // Cache the custom prompt whenever it's loaded
+  useEffect(() => {
+    if (isCustom && prompt) {
+      setSavedCustomPrompt(prompt);
+    }
+  }, [isCustom, prompt]);
 
   const handlePromptChange = useCallback((value: string) => {
     setEditedPrompt(value);
@@ -60,6 +68,8 @@ export function SystemPromptEditor({ projectDirectory, taskType, onSave }: Syste
     setIsSaving(true);
     try {
       await update(valueToSave);
+      // Update the cached custom prompt when saving
+      setSavedCustomPrompt(valueToSave);
       setHasUnsavedChanges(false);
       onSave?.();
     } catch (err) {
@@ -131,9 +141,29 @@ export function SystemPromptEditor({ projectDirectory, taskType, onSave }: Syste
               variant={!isCustom ? "filter-active" : "filter"}
               size="xs"
               className="px-3 h-7 text-xs"
-              onClick={() => {
+              onClick={async () => {
                 if (isCustom) {
-                  handleReset();
+                  setIsSaving(true);
+                  setValidationError(null);
+
+                  try {
+                    // Cache the current custom prompt (including any unsaved edits)
+                    const currentCustom = editedPrompt || currentPrompt;
+                    if (currentCustom) {
+                      setSavedCustomPrompt(currentCustom);
+                    }
+
+                    // Reset to default (this will delete the custom prompt from DB)
+                    await reset();
+
+                    // Clear editing state
+                    setEditedPrompt('');
+                    setHasUnsavedChanges(false);
+                  } catch (err) {
+                    setValidationError(err instanceof Error ? err.message : 'Failed to switch to default');
+                  } finally {
+                    setIsSaving(false);
+                  }
                 }
               }}
             >
@@ -150,15 +180,19 @@ export function SystemPromptEditor({ projectDirectory, taskType, onSave }: Syste
                   setValidationError(null);
 
                   try {
-                    // First check if a custom prompt already exists
+                    // First check if a custom prompt already exists in DB
                     const existingCustomPrompt = await loadCustomPrompt();
-                    
+
                     if (existingCustomPrompt) {
-                      // Use the existing custom prompt
+                      // Use the existing custom prompt from DB
                       await update(existingCustomPrompt);
                       setEditedPrompt(existingCustomPrompt);
+                    } else if (savedCustomPrompt) {
+                      // Restore from our cached copy
+                      await update(savedCustomPrompt);
+                      setEditedPrompt(savedCustomPrompt);
                     } else {
-                      // No custom prompt exists, use default as starting point
+                      // No custom prompt exists anywhere, use default as starting point
                       const promptToSave = defaultPrompt?.systemPrompt || '';
                       await update(promptToSave);
                       setEditedPrompt('');

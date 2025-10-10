@@ -33,14 +33,12 @@ public struct SessionWorkspaceView: View {
             if let session = currentSession {
                 TabView(selection: $selectedTab) {
                     // Tab 1: Task Description (Updated with TaskInputView)
-                    Group {
-                        if selectedTab == 0 {
-                            TaskTab(
-                                session: session,
-                                taskText: $taskText,
-                                onSessionChange: { showingSessionSelector = true }
-                            )
-                        }
+                    LazyTabContent(isActive: selectedTab == 0) {
+                        TaskTab(
+                            session: session,
+                            taskText: $taskText,
+                            onSessionChange: { showingSessionSelector = true }
+                        )
                     }
                     .tabItem {
                         Label("Task", systemImage: "square.and.pencil")
@@ -48,13 +46,11 @@ public struct SessionWorkspaceView: View {
                     .tag(0)
 
                     // Tab 2: Files
-                    Group {
-                        if selectedTab == 1 {
-                            FilesTab(
-                                session: session,
-                                isOfflineMode: isOfflineMode
-                            )
-                        }
+                    LazyTabContent(isActive: selectedTab == 1) {
+                        FilesTab(
+                            session: session,
+                            isOfflineMode: isOfflineMode
+                        )
                     }
                     .tabItem {
                         Label("Files", systemImage: "doc.text")
@@ -62,15 +58,13 @@ public struct SessionWorkspaceView: View {
                     .tag(1)
 
                     // Tab 3: Plans
-                    Group {
-                        if selectedTab == 2 {
-                            PlansTab(
-                                session: session,
-                                taskText: taskText,
-                                onCreatePlan: createImplementationPlan,
-                                isOfflineMode: isOfflineMode
-                            )
-                        }
+                    LazyTabContent(isActive: selectedTab == 2) {
+                        PlansTab(
+                            session: session,
+                            taskText: taskText,
+                            onCreatePlan: createImplementationPlan,
+                            isOfflineMode: isOfflineMode
+                        )
                     }
                     .tabItem {
                         Label("Plans", systemImage: "list.bullet.rectangle")
@@ -78,13 +72,11 @@ public struct SessionWorkspaceView: View {
                     .tag(2)
 
                     // Tab 4: Jobs
-                    Group {
-                        if selectedTab == 3 {
-                            JobsTab(
-                                session: session,
-                                isOfflineMode: isOfflineMode
-                            )
-                        }
+                    LazyTabContent(isActive: selectedTab == 3) {
+                        JobsTab(
+                            session: session,
+                            isOfflineMode: isOfflineMode
+                        )
                     }
                     .tabItem {
                         Label("Jobs", systemImage: "chart.bar.doc.horizontal")
@@ -92,10 +84,8 @@ public struct SessionWorkspaceView: View {
                     .tag(3)
 
                     // Tab 5: Settings
-                    Group {
-                        if selectedTab == 4 {
-                            SettingsView()
-                        }
+                    LazyTabContent(isActive: selectedTab == 4) {
+                        SettingsView()
                     }
                     .tabItem {
                         Label("Settings", systemImage: "gearshape")
@@ -122,7 +112,13 @@ public struct SessionWorkspaceView: View {
                         state: connectionState,
                         onReconnect: {
                             Task {
-                                _ = await multiConnectionManager.addConnection(for: activeDeviceId)
+                                print("[SessionWorkspace] Manual reconnect triggered for device: \(activeDeviceId)")
+                                let result = await multiConnectionManager.addConnection(for: activeDeviceId)
+                                if case .success = result {
+                                    print("[SessionWorkspace] Reconnection successful")
+                                } else if case .failure(let error) = result {
+                                    print("[SessionWorkspace] Reconnection failed: \(error)")
+                                }
                             }
                         }
                     )
@@ -171,6 +167,7 @@ public struct SessionWorkspaceView: View {
                             Button("Done") {
                                 showingDeviceSelection = false
                             }
+                            .buttonStyle(ToolbarButtonStyle())
                         }
                     }
             }
@@ -197,7 +194,12 @@ public struct SessionWorkspaceView: View {
             // Reconnect when app comes back to foreground
             Task {
                 if let deviceId = multiConnectionManager.activeDeviceId {
-                    _ = await multiConnectionManager.addConnection(for: deviceId)
+                    // Add a small delay to allow the network stack to stabilize
+                    try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+                    let result = await multiConnectionManager.addConnection(for: deviceId)
+                    if case .failure(let error) = result {
+                        print("[SessionWorkspace] Failed to reconnect on foreground: \(error)")
+                    }
                 }
             }
         }
@@ -311,10 +313,10 @@ public struct SessionWorkspaceView: View {
         let request = RpcRequest(
             method: "actions.createImplementationPlan",
             params: [
-                "sessionId": AnyCodable(session.id),
-                "taskDescription": AnyCodable(taskText),
-                "projectDirectory": AnyCodable(projectDirectory),
-                "relevantFiles": AnyCodable(session.includedFiles)
+                "sessionId": session.id,
+                "taskDescription": taskText,
+                "projectDirectory": projectDirectory,
+                "relevantFiles": session.includedFiles
             ]
         )
 
@@ -365,11 +367,13 @@ public struct SessionWorkspaceView: View {
 // MARK: - Task Tab (Using TaskInputView)
 
 struct TaskTab: View {
+    @EnvironmentObject private var container: AppContainer
     let session: Session
     @Binding var taskText: String
     let onSessionChange: () -> Void
 
     @State private var showingDeviceMenu = false
+    @State private var showFindFilesSheet: Bool = false
     @StateObject private var multiConnectionManager = MultiConnectionManager.shared
 
     var body: some View {
@@ -416,9 +420,17 @@ struct TaskTab: View {
                                 Label("Switch Device", systemImage: "arrow.triangle.2.circlepath")
                             }
                         }
+
+                        Section("Tools") {
+                            Button {
+                                showFindFilesSheet = true
+                            } label: {
+                                Label("Find Files", systemImage: "doc.text.magnifyingglass")
+                            }
+                        }
                     } label: {
                         Image(systemName: "ellipsis.circle")
-                            .h4()
+                            .font(.system(size: 20))
                     }
                 }
 
@@ -436,6 +448,16 @@ struct TaskTab: View {
                                 .buttonStyle(ToolbarButtonStyle())
                             }
                         }
+                }
+            }
+            .sheet(isPresented: $showFindFilesSheet) {
+                if let session = container.sessionService.currentSession {
+                    FindFilesWorkflowView(sessionId: session.id,
+                                          projectDirectory: session.projectDirectory,
+                                          taskDescription: taskText)
+                    .environmentObject(container)
+                } else {
+                    Text("No active session")
                 }
             }
         }
@@ -491,7 +513,7 @@ struct FileRowView: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: fileIcon)
-                .h4()
+                .font(.system(size: 20))
                 .foregroundColor(Color.primary)
                 .frame(width: 32)
 
@@ -533,6 +555,7 @@ struct FileRowView: View {
 // MARK: - Plans Tab
 
 struct PlansTab: View {
+    @EnvironmentObject private var container: AppContainer
     let session: Session
     let taskText: String
     let onCreatePlan: () -> Void
@@ -564,10 +587,28 @@ struct PlansTab: View {
                 .background(Color.background)
                 .navigationTitle("Plans")
                 .navigationBarTitleDisplayMode(.inline)
-            } else {
+            } else if container.sessionService.currentSession?.id == session.id {
+                // Only render ImplementationPlansView when container session is properly synchronized
                 ImplementationPlansView()
                     .navigationTitle("Plans")
                     .navigationBarTitleDisplayMode(.inline)
+            } else {
+                // Loading state while session synchronizes
+                VStack {
+                    Spacer()
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: Color.primary))
+                        .scaleEffect(0.8)
+                    Text("Loading session...")
+                        .small()
+                        .foregroundColor(Color.mutedForeground)
+                        .padding(.top, 8)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.background)
+                .navigationTitle("Plans")
+                .navigationBarTitleDisplayMode(.inline)
             }
         }
     }
@@ -744,47 +785,107 @@ struct ConnectionStatusBanner: View {
     let onReconnect: () -> Void
     @State private var showingDeviceSelection = false
     @State private var showingHelp = false
+    @State private var isReconnecting = false
     @ObservedObject private var appState = AppState.shared
 
     var body: some View {
         VStack(spacing: 0) {
-            VStack(spacing: 8) {
-                StatusAlertView(
-                    variant: .warning,
-                    title: "Disconnected from desktop",
-                    message: "Reconnect to continue working on your tasks"
-                )
-
-                HStack(spacing: 8) {
-                    Button(action: onReconnect) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "arrow.clockwise")
-                            Text("Reconnect")
-                        }
+            VStack(spacing: 16) {
+                // Alert message
+                HStack(alignment: .top, spacing: 12) {
+                    if isReconnecting {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: Color.appWarning))
+                            .scaleEffect(0.8)
+                    } else {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundColor(Color.appWarning)
                     }
-                    .buttonStyle(PrimaryButtonStyle())
 
-                    Button(action: { showingDeviceSelection = true }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                            Text("Switch Device")
-                        }
-                    }
-                    .buttonStyle(SecondaryButtonStyle())
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(isReconnecting ? "Reconnecting..." : "Disconnected from desktop")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(Color.appWarningForeground)
 
-                    Button(action: { showingHelp = true }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "questionmark.circle")
-                            Text("Help")
-                        }
+                        Text(isReconnecting ? "Please wait while we restore your connection" : "Reconnect to continue working on your tasks")
+                            .font(.system(size: 14))
+                            .foregroundColor(Color.appMutedForeground)
                     }
-                    .buttonStyle(SecondaryButtonStyle())
 
                     Spacer()
                 }
+
+                // Action buttons
+                VStack(spacing: 10) {
+                    // Primary action - full width
+                    Button(action: {
+                        isReconnecting = true
+                        Task {
+                            onReconnect()
+                            // Reset reconnecting state after a delay
+                            try? await Task.sleep(nanoseconds: 3_000_000_000) // 3 seconds
+                            await MainActor.run {
+                                isReconnecting = false
+                            }
+                        }
+                    }) {
+                        HStack(spacing: 8) {
+                            if isReconnecting {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    .scaleEffect(0.7)
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 16, weight: .semibold))
+                            }
+                            Text(isReconnecting ? "Reconnecting..." : "Reconnect")
+                                .font(.system(size: 16, weight: .semibold))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .disabled(isReconnecting)
+
+                    // Secondary actions - side by side
+                    HStack(spacing: 10) {
+                        Button(action: { showingDeviceSelection = true }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.triangle.2.circlepath")
+                                    .font(.system(size: 14, weight: .medium))
+                                Text("Switch Device")
+                                    .font(.system(size: 14, weight: .medium))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                        }
+                        .buttonStyle(OutlineButtonStyle())
+                        .disabled(isReconnecting)
+
+                        Button(action: { showingHelp = true }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "questionmark.circle")
+                                    .font(.system(size: 14, weight: .medium))
+                                Text("Help")
+                                    .font(.system(size: 14, weight: .medium))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                        }
+                        .buttonStyle(OutlineButtonStyle())
+                        .disabled(isReconnecting)
+                    }
+                }
             }
-            .padding(12)
+            .padding(16)
             .background(Color.appWarningBackground)
+        }
+        .onChange(of: state) { newState in
+            // Reset reconnecting state when connection succeeds
+            if newState.isConnected {
+                isReconnecting = false
+            }
         }
         .sheet(isPresented: $showingDeviceSelection) {
             NavigationStack {
@@ -829,6 +930,24 @@ struct OfflineModeBanner: View {
             }
             .padding()
             .background(Color.mutedForeground.opacity(0.15))
+        }
+    }
+}
+
+// MARK: - LazyTabContent
+
+/// Wrapper that keeps tab registered but only renders content when active
+struct LazyTabContent<Content: View>: View {
+    let isActive: Bool
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        Group {
+            if isActive {
+                content()
+            } else {
+                Color.clear
+            }
         }
     }
 }

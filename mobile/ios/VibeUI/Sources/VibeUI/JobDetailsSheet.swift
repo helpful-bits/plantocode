@@ -35,18 +35,19 @@ public struct JobDetailsSheet: View {
                             Button("Close") {
                                 dismiss()
                             }
+                            .buttonStyle(ToolbarButtonStyle())
                         }
                     }
             } else if let error = error {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 48))
-                        .foregroundColor(.red)
+                        .foregroundColor(Color.destructive)
                     Text("Error loading job")
                         .font(.headline)
                     Text(error)
                         .font(.caption)
-                        .foregroundColor(Color(.secondaryLabel))
+                        .foregroundColor(Color.mutedForeground)
                         .multilineTextAlignment(.center)
                 }
                 .padding()
@@ -57,6 +58,7 @@ public struct JobDetailsSheet: View {
                         Button("Close") {
                             dismiss()
                         }
+                        .buttonStyle(ToolbarButtonStyle())
                     }
                 }
             } else if let job = job {
@@ -123,7 +125,7 @@ public struct JobDetailsSheet: View {
                                 }
                             }
                             .disabled(isDeleting)
-                            .foregroundColor(.red)
+                            .foregroundColor(Color.destructive)
                         }
                     }
 
@@ -131,6 +133,7 @@ public struct JobDetailsSheet: View {
                         Button("Done") {
                             dismiss()
                         }
+                        .buttonStyle(ToolbarButtonStyle())
                     }
                 }
             }
@@ -160,26 +163,42 @@ public struct JobDetailsSheet: View {
     }
 
     private func loadJobDetails() {
-        if let cachedJob = jobsService.jobs.first(where: { $0.id == jobId }) {
-            self.job = cachedJob
+        // Tier 1: Immediate render with in-memory job if available
+        if let existingJob = jobsService.jobs.first(where: { $0.id == jobId }) {
+            self.job = existingJob
             self.isLoading = false
-        } else {
-            let request = JobDetailsRequest(jobId: jobId, includeFullContent: true)
-            jobsService.getJobDetails(request: request)
+        }
+
+        // Tier 2: Fast-path fetch if not in memory or missing content
+        if self.job == nil || self.job?.response == nil {
+            jobsService.getJobFast(jobId: jobId)
                 .receive(on: DispatchQueue.main)
                 .sink(
                     receiveCompletion: { completion in
-                        if case .failure(let error) = completion {
-                            self.error = error.localizedDescription
+                        if case .failure = completion {
+                            self.isLoading = false
                         }
-                        self.isLoading = false
                     },
-                    receiveValue: { response in
-                        self.job = response.job
+                    receiveValue: { job in
+                        self.job = job
+                        self.isLoading = false
                     }
                 )
                 .store(in: &cancellables)
         }
+
+        // Tier 3: Background hydration with full details (don't toggle isLoading)
+        let request = JobDetailsRequest(jobId: jobId, includeFullContent: true)
+        jobsService.getJobDetails(request: request)
+            .receive(on: DispatchQueue.main)
+            .sink(
+                receiveCompletion: { _ in },
+                receiveValue: { response in
+                    self.job = response.job
+                    // Don't set isLoading here - sheet is already open
+                }
+            )
+            .store(in: &cancellables)
     }
 
     private func cancelJob() async {
@@ -226,15 +245,15 @@ struct JobStatusHeader: View {
     private var statusColor: Color {
         switch job.jobStatus {
         case .completed, .completedByTag:
-            return .green
+            return Color.success
         case .failed:
-            return .red
+            return Color.destructive
         case .canceled:
-            return .orange
+            return Color.warning
         case .running, .generatingStream, .processingStream:
-            return .blue
+            return Color.info
         default:
-            return .gray
+            return Color.mutedForeground
         }
     }
 
@@ -267,12 +286,12 @@ struct JobStatusHeader: View {
                 if let subStatus = job.subStatusMessage {
                     Text(subStatus)
                         .font(.caption)
-                        .foregroundColor(Color(.secondaryLabel))
+                        .foregroundColor(Color.mutedForeground)
                 }
 
                 Text(job.formattedDate)
                     .font(.caption2)
-                    .foregroundColor(Color(.secondaryLabel))
+                    .foregroundColor(Color.mutedForeground)
             }
 
             Spacer()
@@ -283,8 +302,8 @@ struct JobStatusHeader: View {
             }
         }
         .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(12)
+        .background(Color.muted)
+        .cornerRadius(Theme.Radii.base)
         .padding(.horizontal)
     }
 }
@@ -330,16 +349,8 @@ struct OverviewTab: View {
                 VStack(spacing: 12) {
                     MetricRow(label: "Created", value: formatDate(job.createdAt))
 
-                    if let startTime = job.startTime {
-                        MetricRow(label: "Started", value: formatDate(startTime))
-                    }
-
                     if let endTime = job.endTime {
                         MetricRow(label: "Completed", value: formatDate(endTime))
-                    }
-
-                    if let updatedAt = job.updatedAt {
-                        MetricRow(label: "Last Updated", value: formatDate(updatedAt))
                     }
                 }
             }
@@ -349,14 +360,14 @@ struct OverviewTab: View {
                 DetailSection(title: "Error Details") {
                     ScrollView {
                         Text(errorMessage)
-                            .font(.system(.body, design: .monospaced))
-                            .foregroundColor(.red)
+                            .inlineCode()
+                            .foregroundColor(Color.destructive)
                             .padding()
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .frame(maxHeight: 200)
-                    .background(Color.red.opacity(0.1))
-                    .cornerRadius(8)
+                    .background(Color.destructive.opacity(0.1))
+                    .cornerRadius(Theme.Radii.base)
                 }
             }
         }
@@ -386,6 +397,13 @@ struct OverviewTab: View {
         formatter.timeStyle = .medium
         return formatter.string(from: date)
     }
+
+    private func formatTaskType(_ taskType: String) -> String {
+        taskType.replacingOccurrences(of: "_", with: " ")
+            .split(separator: " ")
+            .map { $0.capitalized }
+            .joined(separator: " ")
+    }
 }
 
 // MARK: - Request Tab
@@ -397,12 +415,12 @@ struct RequestTab: View {
         VStack(spacing: 16) {
             // Task Type
             DetailSection(title: "Task Type") {
-                Text(job.taskType)
-                    .font(.system(.body, design: .monospaced))
+                Text(formatTaskType(job.taskType))
+                    .inlineCode()
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(.systemGray6))
-                    .cornerRadius(8)
+                    .background(Color.muted)
+                    .cornerRadius(Theme.Radii.base)
             }
 
             // Prompt
@@ -410,13 +428,13 @@ struct RequestTab: View {
                 DetailSection(title: "Prompt") {
                     ScrollView {
                         Text(job.prompt)
-                            .font(.system(.body, design: .monospaced))
+                            .inlineCode()
                             .padding()
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .frame(maxHeight: 300)
-                    .background(Color(.systemGray6))
-                    .cornerRadius(8)
+                    .background(Color.muted)
+                    .cornerRadius(Theme.Radii.base)
                 }
             }
 
@@ -425,17 +443,24 @@ struct RequestTab: View {
                 DetailSection(title: "System Prompt") {
                     ScrollView {
                         Text(systemPrompt)
-                            .font(.system(.caption, design: .monospaced))
+                            .inlineCode()
                             .padding()
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .frame(maxHeight: 200)
-                    .background(Color(.systemGray6))
-                    .cornerRadius(8)
+                    .background(Color.muted)
+                    .cornerRadius(Theme.Radii.base)
                 }
             }
         }
         .padding(.horizontal)
+    }
+
+    private func formatTaskType(_ taskType: String) -> String {
+        taskType.replacingOccurrences(of: "_", with: " ")
+            .split(separator: " ")
+            .map { $0.capitalized }
+            .joined(separator: " ")
     }
 }
 
@@ -443,50 +468,97 @@ struct RequestTab: View {
 
 struct ResponseTab: View {
     let job: BackgroundJob
+    @EnvironmentObject private var container: AppContainer
 
     var body: some View {
         VStack(spacing: 16) {
-            if let response = job.response, !response.isEmpty {
-                DetailSection(title: "Response") {
-                    ScrollView {
-                        if let prettyJson = formatJSON(response) {
-                            Text(prettyJson)
-                                .font(.system(.caption, design: .monospaced))
-                                .padding()
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        } else {
-                            Text(response)
-                                .font(.system(.body, design: .monospaced))
-                                .padding()
-                                .frame(maxWidth: .infinity, alignment: .leading)
+            if let formattedView = ResponseFormatter.formattedView(
+                for: job,
+                onUseFiles: { files in
+                    // Handle Use Files action
+                    guard let sessionId = container.sessionService.currentSession?.id else { return }
+                    Task {
+                        for try await _ in CommandRouter.sessionUpdateFiles(
+                            id: sessionId,
+                            addIncluded: files,
+                            removeIncluded: nil,
+                            addExcluded: nil,
+                            removeExcluded: nil
+                        ) {}
+                    }
+                },
+                onUseResearch: { results in
+                    // Handle Use Research action
+                    guard let sessionId = container.sessionService.currentSession?.id,
+                          let currentTaskDescription = container.sessionService.currentSession?.taskDescription else { return }
+
+                    var findingsText = ""
+                    for (index, result) in results.enumerated() {
+                        if let findings = result["findings"] as? String ?? result["content"] as? String {
+                            findingsText += "\n\n<research_finding_\(index + 1)>\n\(findings)\n</research_finding_\(index + 1)>"
                         }
                     }
-                    .frame(maxHeight: 400)
-                    .background(Color(.systemGray6))
-                    .cornerRadius(8)
+
+                    let updatedTaskDescription = currentTaskDescription + findingsText
+                    Task {
+                        for try await _ in CommandRouter.sessionUpdateTaskDescription(
+                            sessionId: sessionId,
+                            taskDescription: updatedTaskDescription
+                        ) {}
+                    }
+                },
+                onUseFindings: { data in
+                    // Handle Use Findings action
+                    guard let sessionId = container.sessionService.currentSession?.id,
+                          let currentTaskDescription = container.sessionService.currentSession?.taskDescription else { return }
+
+                    let analysis = data["analysis"] as? String ?? ""
+                    let videoSummary = "\n\n<video_analysis_summary>\n\(analysis)\n</video_analysis_summary>"
+                    let updatedTaskDescription = currentTaskDescription + videoSummary
+
+                    Task {
+                        for try await _ in CommandRouter.sessionUpdateTaskDescription(
+                            sessionId: sessionId,
+                            taskDescription: updatedTaskDescription
+                        ) {}
+                    }
                 }
+            ) {
+                formattedView
+                    .background(Color.muted)
+                    .cornerRadius(Theme.Radii.base)
             } else {
-                VStack(spacing: 16) {
-                    Image(systemName: "doc.text")
-                        .font(.system(size: 48))
-                        .foregroundColor(.secondary)
-                    Text("No response available")
-                        .foregroundColor(.secondary)
+                // Fallback to pretty-printed JSON or raw text
+                if let response = job.response {
+                    ScrollView {
+                        Text(response.data(using: .utf8).flatMap {
+                            try? JSONSerialization.jsonObject(with: $0)
+                        }.flatMap {
+                            try? JSONSerialization.data(withJSONObject: $0, options: .prettyPrinted)
+                        }.flatMap {
+                            String(data: $0, encoding: .utf8)
+                        } ?? response)
+                            .inlineCode()
+                            .textSelection(.enabled)
+                            .padding()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .background(Color.muted)
+                    .cornerRadius(Theme.Radii.base)
+                } else {
+                    VStack(spacing: 16) {
+                        Image(systemName: "doc.text")
+                            .font(.system(size: 48))
+                            .foregroundColor(.secondary)
+                        Text("No response available")
+                            .paragraph()
+                            .foregroundColor(.secondary)
+                    }
+                    .padding()
                 }
-                .frame(maxHeight: 200)
             }
         }
         .padding(.horizontal)
-    }
-
-    private func formatJSON(_ jsonString: String) -> String? {
-        guard let data = jsonString.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data),
-              let prettyData = try? JSONSerialization.data(withJSONObject: json, options: .prettyPrinted),
-              let prettyString = String(data: prettyData, encoding: .utf8) else {
-            return nil
-        }
-        return prettyString
     }
 }
 
@@ -501,7 +573,7 @@ struct MetadataTab: View {
             DetailSection(title: "Job ID") {
                 HStack {
                     Text(job.id)
-                        .font(.system(.caption, design: .monospaced))
+                        .inlineCode()
                         .lineLimit(1)
 
                     Spacer()
@@ -510,19 +582,19 @@ struct MetadataTab: View {
                         UIPasteboard.general.string = job.id
                     }) {
                         Image(systemName: "doc.on.doc")
-                            .font(.caption)
+                            .font(.body)
                     }
                 }
                 .padding()
-                .background(Color(.systemGray6))
-                .cornerRadius(8)
+                .background(Color.muted)
+                .cornerRadius(Theme.Radii.base)
             }
 
             // Session ID
             DetailSection(title: "Session ID") {
                 HStack {
                     Text(job.sessionId)
-                        .font(.system(.caption, design: .monospaced))
+                        .inlineCode()
                         .lineLimit(1)
 
                     Spacer()
@@ -531,12 +603,12 @@ struct MetadataTab: View {
                         UIPasteboard.general.string = job.sessionId
                     }) {
                         Image(systemName: "doc.on.doc")
-                            .font(.caption)
+                            .font(.body)
                     }
                 }
                 .padding()
-                .background(Color(.systemGray6))
-                .cornerRadius(8)
+                .background(Color.muted)
+                .cornerRadius(Theme.Radii.base)
             }
 
             // Metadata
@@ -545,19 +617,19 @@ struct MetadataTab: View {
                     ScrollView {
                         if let prettyJson = formatJSON(metadata) {
                             Text(prettyJson)
-                                .font(.system(.caption, design: .monospaced))
+                                .inlineCode()
                                 .padding()
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         } else {
                             Text(metadata)
-                                .font(.system(.caption, design: .monospaced))
+                                .inlineCode()
                                 .padding()
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
                     .frame(maxHeight: 300)
-                    .background(Color(.systemGray6))
-                    .cornerRadius(8)
+                    .background(Color.muted)
+                    .cornerRadius(Theme.Radii.base)
                 }
             }
 
@@ -565,11 +637,11 @@ struct MetadataTab: View {
             if let projectHash = job.projectHash {
                 DetailSection(title: "Project Hash") {
                     Text(projectHash)
-                        .font(.system(.caption, design: .monospaced))
+                        .inlineCode()
                         .padding()
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(.systemGray6))
-                        .cornerRadius(8)
+                        .background(Color.muted)
+                        .cornerRadius(Theme.Radii.base)
                 }
             }
         }
@@ -611,18 +683,17 @@ struct MetricRow: View {
     var body: some View {
         HStack {
             Text(label)
-                .font(.subheadline)
-                .foregroundColor(Color(.secondaryLabel))
+                .paragraph()
+                .foregroundColor(Color.mutedForeground)
             Spacer()
             Text(value)
-                .font(.subheadline)
-                .fontWeight(.medium)
+                .font(.body.weight(.medium))
                 .foregroundColor(.primary)
         }
         .padding(.horizontal)
         .padding(.vertical, 4)
-        .background(Color(.systemGray6))
-        .cornerRadius(6)
+        .background(Color.muted)
+        .cornerRadius(Theme.Radii.md)
     }
 }
 
@@ -632,11 +703,11 @@ struct CircularProgressView: View {
     var body: some View {
         ZStack {
             Circle()
-                .stroke(Color(.secondaryLabel).opacity(0.2), lineWidth: 4)
+                .stroke(Color.border, lineWidth: 4)
 
             Circle()
                 .trim(from: 0, to: progress)
-                .stroke(Color.blue, lineWidth: 4)
+                .stroke(Color.info, lineWidth: 4)
                 .rotationEffect(.degrees(-90))
                 .animation(.linear, value: progress)
 

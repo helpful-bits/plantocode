@@ -1,13 +1,16 @@
 import SwiftUI
 import Core
 import Combine
+import OSLog
 
 public struct ImplementationPlansView: View {
     @EnvironmentObject private var container: AppContainer
     @StateObject private var multiConnectionManager = MultiConnectionManager.shared
     @StateObject private var settingsService = SettingsDataService()
+    private let logger = Logger(subsystem: "VibeManager", category: "ImplementationPlansView")
     @State private var selectedPlans: Set<String> = []
     @State private var mergeInstructions = ""
+    @FocusState private var isMergeInstructionsFocused: Bool
     @State private var isLoading = false
     @State private var isMerging = false
     @State private var errorMessage: String?
@@ -31,6 +34,11 @@ public struct ImplementationPlansView: View {
     @State private var activatingPlans = Set<String>()
     @State private var deletingPlans = Set<String>()
 
+    // Terminal launch states
+    @State private var showTerminal = false
+    @State private var terminalJobId: String? = nil
+    @State private var showDeviceSelector = false
+
     public init() {}
 
     public var body: some View {
@@ -38,51 +46,45 @@ public struct ImplementationPlansView: View {
 
         VStack(spacing: 0) {
             // Streamlined Action Bar with Desktop Parity
-            VStack(spacing: 16) {
-                // Token Estimation Display
-                if canCreatePlan && (estimatedTokens != nil || isEstimatingTokens) {
-                    HStack(spacing: 8) {
+            VStack(spacing: Theme.Spacing.sectionSpacing) {
+                // Token Estimation Display - Silent background estimation
+                if canCreatePlan, let tokens = estimatedTokens {
+                    HStack(spacing: Theme.Spacing.sm) {
                         Image(systemName: "number.square")
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
+                            .font(.footnote)
+                            .foregroundColor(Color.primary.opacity(0.7))
 
-                        if isEstimatingTokens {
-                            ProgressView()
-                                .scaleEffect(0.7)
-                            Text("Estimating tokens...")
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                        } else if let tokens = estimatedTokens {
-                            Text("Estimated tokens: ")
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                            Text("\(tokens)")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(tokenCountColor(tokens))
-                        }
+                        Text("Estimated tokens: ")
+                            .font(.footnote)
+                            .foregroundColor(Color.primary.opacity(0.7))
+
+                        Text("\(tokens)")
+                            .font(.footnote)
+                            .fontWeight(.medium)
+                            .foregroundColor(tokenCountColor(tokens))
 
                         Spacer()
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, Theme.Spacing.sm)
                     .background(Color(.secondarySystemBackground))
-                    .cornerRadius(6)
+                    .cornerRadius(Theme.Radii.md)
                 }
 
                 // Model Selector - Desktop-style segmented toggle
                 if isLoadingModels {
                     // Loading state
-                    HStack(spacing: 4) {
+                    HStack(spacing: Theme.Spacing.xs) {
                         ProgressView()
                             .scaleEffect(0.6)
                         Text("Loading models...")
-                            .font(.system(size: 13))
+                            .font(.subheadline)
                             .foregroundColor(.secondary)
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, Theme.Spacing.itemSpacing)
                     .background(Color(.secondarySystemBackground))
-                    .cornerRadius(8)
+                    .cornerRadius(Theme.Radii.base)
                 } else if availableModelInfos.count > 1 {
                     ScrollView(.horizontal, showsIndicators: false) {
                         ModelSelectorToggle(
@@ -101,17 +103,17 @@ public struct ImplementationPlansView: View {
 
                 // Toggles Section
                 if canCreatePlan {
-                    VStack(spacing: 8) {
+                    VStack(spacing: Theme.Spacing.sm) {
                         // Web Search Toggle (only for OpenAI models)
                         if isOpenAIModel {
                             Toggle(isOn: $enableWebSearch) {
-                                HStack(spacing: 6) {
+                                HStack(spacing: Theme.Spacing.itemSpacing) {
                                     Image(systemName: "globe")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(.secondary)
+                                        .font(.footnote)
+                                        .foregroundColor(Color.primary.opacity(0.6))
                                     Text("Web Search")
-                                        .font(.system(size: 13))
-                                        .foregroundColor(.primary)
+                                        .font(.subheadline)
+                                        .foregroundColor(Color.primary)
                                     Spacer()
                                 }
                             }
@@ -123,13 +125,13 @@ public struct ImplementationPlansView: View {
 
                         // Project Structure Toggle
                         Toggle(isOn: $includeProjectStructure) {
-                            HStack(spacing: 6) {
+                            HStack(spacing: Theme.Spacing.itemSpacing) {
                                 Image(systemName: "folder.badge.gearshape")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.secondary)
+                                    .font(.footnote)
+                                    .foregroundColor(Color.primary.opacity(0.6))
                                 Text("Include Project Tree")
-                                    .font(.system(size: 13))
-                                    .foregroundColor(.primary)
+                                    .font(.subheadline)
+                                    .foregroundColor(Color.primary)
                                 Spacer()
                             }
                         }
@@ -141,48 +143,44 @@ public struct ImplementationPlansView: View {
 
                     // Web Search Warning
                     if enableWebSearch && isOpenAIModel {
-                        HStack(spacing: 6) {
+                        HStack(spacing: Theme.Spacing.itemSpacing) {
                             Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.system(size: 10))
-                                .foregroundColor(.orange)
+                                .font(.footnote)
+                                .foregroundColor(Color.orange)
                             Text("Web search will increase token usage by 3-10x")
-                                .font(.system(size: 10))
-                                .foregroundColor(.orange)
+                                .font(.footnote)
+                                .foregroundColor(Color.primary)
                             Spacer()
                         }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.orange.opacity(0.15))
-                        .cornerRadius(4)
+                        .padding(.horizontal, Theme.Spacing.cardSpacing)
+                        .padding(.vertical, Theme.Spacing.itemSpacing)
+                        .background(Color.orange.opacity(0.2))
+                        .cornerRadius(Theme.Radii.sm)
                     }
 
                     // Action Buttons Row
-                    HStack(spacing: 8) {
+                    HStack(spacing: Theme.Spacing.sm) {
                         // View Prompt Button
                         Button(action: viewPrompt) {
-                            HStack(spacing: 4) {
+                            HStack(spacing: Theme.Spacing.xs) {
                                 Image(systemName: "eye")
                                     .small()
                                 Text("View")
                                     .small()
                                     .fontWeight(.medium)
                             }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
                         }
                         .buttonStyle(SecondaryButtonStyle())
 
                         // Copy Prompt Button
                         Button(action: copyPrompt) {
-                            HStack(spacing: 4) {
+                            HStack(spacing: Theme.Spacing.xs) {
                                 Image(systemName: "doc.on.doc")
                                     .small()
                                 Text("Copy")
                                     .small()
                                     .fontWeight(.medium)
                             }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
                         }
                         .buttonStyle(SecondaryButtonStyle())
 
@@ -224,7 +222,7 @@ public struct ImplementationPlansView: View {
                     Text("Loading plans...")
                         .small()
                         .foregroundColor(Color.mutedForeground)
-                        .padding(.top, 8)
+                        .padding(.top, Theme.Spacing.sm)
                     Spacer()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -248,7 +246,7 @@ public struct ImplementationPlansView: View {
             // Plans List
             else if !plans.isEmpty {
                 ScrollView {
-                    LazyVStack(spacing: 8) {
+                    LazyVStack(spacing: Theme.Spacing.sm) {
                         // Plans count header
                         HStack {
                             Text("\(plans.count) plan\(plans.count == 1 ? "" : "s")")
@@ -275,32 +273,14 @@ public struct ImplementationPlansView: View {
                             }
                         }
                         .padding(.horizontal)
-                        .padding(.vertical, 12)
+                        .padding(.vertical, Theme.Spacing.md)
 
-                        // Show grouped plans by task/session
+                        // Show all plans (grouped by session but without visual headers)
                         ForEach(Array(groupedPlans.keys.sorted()), id: \.self) { sessionId in
                             let sessionPlans = groupedPlans[sessionId] ?? []
 
-                            VStack(spacing: 0) {
-                                // Session group header
-                                HStack {
-                                    Text("Task Group")
-                                        .small()
-                                        .fontWeight(.medium)
-                                        .foregroundColor(Color.mutedForeground)
-
-                                    Spacer()
-
-                                    Text("\(sessionPlans.count)")
-                                        .small()
-                                        .foregroundColor(Color.mutedForeground)
-                                }
-                                .padding(.horizontal)
-                                .padding(.vertical, 8)
-                                .background(Color(UIColor.secondarySystemBackground))
-
-                                // Plans in this group
-                                ForEach(sessionPlans) { plan in
+                            // Plans in this group
+                            ForEach(sessionPlans) { plan in
                                     NavigationLink(destination: PlanDetailView(plan: plan, allPlans: plans, plansService: container.plansService)) {
                                         PlanCard(
                                             plan: plan,
@@ -319,6 +299,14 @@ public struct ImplementationPlansView: View {
                                     }
                                     .buttonStyle(PlainButtonStyle())
                                     .contextMenu {
+                                        Button {
+                                            openTerminal(for: plan.jobId)
+                                        } label: {
+                                            Label("Open Terminal", systemImage: "terminal.fill")
+                                        }
+
+                                        Divider()
+
                                         Button("Activate") {
                                             guard !activatingPlans.contains(plan.id) else { return }
                                             activatingPlans.insert(plan.id)
@@ -366,27 +354,36 @@ public struct ImplementationPlansView: View {
                                         .disabled(deletingPlans.contains(plan.id))
                                     }
                                     .padding(.horizontal)
-                                }
+                                    .padding(.bottom, Theme.Spacing.sm)
                             }
-                            .padding(.bottom, 8)
                         }
                     }
-                    .padding(.vertical, 8)
+                    .padding(.vertical, Theme.Spacing.sm)
                 }
                 .background(Color.background)
 
                 // Merge Section
                 if selectedPlans.count > 1 {
-                    VStack(spacing: 12) {
+                    VStack(spacing: Theme.Spacing.md) {
                         Divider()
 
-                        VStack(spacing: 12) {
+                        VStack(spacing: Theme.Spacing.md) {
                             TextField("Merge instructions...", text: $mergeInstructions, axis: .vertical)
                                 .lineLimit(2...3)
                                 .textFieldStyle(PlainTextFieldStyle())
-                                .padding(12)
+                                .padding(Theme.Spacing.md)
                                 .background(Color(UIColor.secondarySystemBackground))
-                                .cornerRadius(8)
+                                .cornerRadius(Theme.Radii.base)
+                                .submitLabel(.done)
+                                .focused($isMergeInstructionsFocused)
+                                .toolbar {
+                                    ToolbarItemGroup(placement: .keyboard) {
+                                        Spacer()
+                                        Button("Done") {
+                                            isMergeInstructionsFocused = false
+                                        }
+                                    }
+                                }
 
                             Button(action: mergePlans) {
                                 HStack {
@@ -414,7 +411,7 @@ public struct ImplementationPlansView: View {
                 VStack(spacing: 20) {
                     Spacer()
 
-                    VStack(spacing: 12) {
+                    VStack(spacing: Theme.Spacing.md) {
                         Image(systemName: "doc.text.magnifyingglass")
                             .font(.system(size: 48))
                             .foregroundColor(Color.mutedForeground)
@@ -444,6 +441,16 @@ public struct ImplementationPlansView: View {
                         UIPasteboard.general.string = prompt
                     }
                 )
+            }
+        }
+        .sheet(isPresented: $showDeviceSelector) {
+            DeviceSelectionView()
+        }
+        .sheet(isPresented: $showTerminal) {
+            if let jobId = terminalJobId {
+                NavigationStack {
+                    RemoteTerminalView(jobId: jobId)
+                }
             }
         }
         .refreshable {
@@ -523,13 +530,43 @@ public struct ImplementationPlansView: View {
     }
 
     private func loadPlans() {
-        isLoading = true
+        // Cache-first strategy: only show loading if we have no cached plans
+        let hasCachedPlans = !container.plansService.plans.isEmpty
+        if !hasCachedPlans {
+            isLoading = true
+        }
+
         errorMessage = nil
 
-        guard let session = container.sessionService.currentSession else { return }
+        let currentSession = container.sessionService.currentSession
+        let projectDirectory = currentSession?.projectDirectory ?? container.currentProject?.directory
+
+        guard let projectDir = projectDirectory else {
+            isLoading = false
+            logger.warning("Cannot load plans: no project directory available")
+            return
+        }
+
+        let sessionId: String? = {
+            guard let id = currentSession?.id else { return nil }
+            return id.hasPrefix("mobile-session-") ? nil : id
+        }()
+
+        let capturedSessionId = sessionId
+
+        // Show cached plans immediately
+        if hasCachedPlans {
+            self.plans = container.plansService.plans.filter { plan in
+                if let sessionId = sessionId {
+                    return plan.sessionId == sessionId
+                }
+                return true
+            }
+        }
+
         let request = PlanListRequest(
-            projectDirectory: session.projectDirectory,
-            sessionId: session.id,
+            projectDirectory: projectDir,
+            sessionId: sessionId,
             page: 0,
             pageSize: 50,
             sortBy: .createdAt,
@@ -540,15 +577,20 @@ public struct ImplementationPlansView: View {
         container.plansService.listPlans(request: request)
             .receive(on: DispatchQueue.main)
             .sink(
-                receiveCompletion: { completion in
-                    isLoading = false
+                receiveCompletion: { [self] completion in
+                    self.isLoading = false
                     if case .failure(let error) = completion {
-                        errorMessage = error.localizedDescription
+                        self.errorMessage = error.localizedDescription
                     }
                 },
-                receiveValue: { response in
-                    plans = response.plans
-                    isLoading = false
+                receiveValue: { [self] response in
+                    // Verify session hasn't changed mid-flight
+                    if let captured = capturedSessionId, captured != container.sessionService.currentSession?.id {
+                        return
+                    }
+
+                    self.plans = response.plans
+                    self.isLoading = false
                 }
             )
             .store(in: &cancellables)
@@ -556,13 +598,24 @@ public struct ImplementationPlansView: View {
 
     private func refreshPlans() async {
         await withCheckedContinuation { continuation in
-            guard let session = container.sessionService.currentSession else {
+            let currentSession = container.sessionService.currentSession
+            let projectDirectory = currentSession?.projectDirectory ?? container.currentProject?.directory
+
+            guard let projectDir = projectDirectory else {
                 continuation.resume()
                 return
             }
+
+            let sessionId: String? = {
+                guard let id = currentSession?.id else { return nil }
+                return id.hasPrefix("mobile-session-") ? nil : id
+            }()
+
+            let capturedSessionId = sessionId
+
             let request = PlanListRequest(
-                projectDirectory: session.projectDirectory,
-                sessionId: session.id,
+                projectDirectory: projectDir,
+                sessionId: sessionId,
                 page: 0,
                 pageSize: 50,
                 sortBy: .createdAt,
@@ -573,14 +626,20 @@ public struct ImplementationPlansView: View {
             container.plansService.listPlans(request: request)
                 .receive(on: DispatchQueue.main)
                 .sink(
-                    receiveCompletion: { completion in
+                    receiveCompletion: { [self] completion in
                         if case .failure(let error) = completion {
-                            errorMessage = error.localizedDescription
+                            self.errorMessage = error.localizedDescription
                         }
                         continuation.resume()
                     },
-                    receiveValue: { response in
-                        plans = response.plans
+                    receiveValue: { [self] response in
+                        // Verify session hasn't changed
+                        if let captured = capturedSessionId, captured != container.sessionService.currentSession?.id {
+                            continuation.resume()
+                            return
+                        }
+
+                        self.plans = response.plans
                     }
                 )
                 .store(in: &cancellables)
@@ -624,9 +683,9 @@ public struct ImplementationPlansView: View {
         let request = RpcRequest(
             method: "actions.mergePlans",
             params: [
-                "sessionId": AnyCodable(currentSessionId),
-                "sourceJobIds": AnyCodable(Array(selectedPlans)),
-                "mergeInstructions": AnyCodable(mergeInstructions.trimmingCharacters(in: .whitespacesAndNewlines))
+                "sessionId": currentSessionId,
+                "sourceJobIds": Array(selectedPlans),
+                "mergeInstructions": mergeInstructions.trimmingCharacters(in: .whitespacesAndNewlines)
             ]
         )
 
@@ -796,22 +855,22 @@ public struct ImplementationPlansView: View {
             }
 
             do {
-                var params: [String: AnyCodable] = [
-                    "sessionId": AnyCodable(currentSessionId),
-                    "taskDescription": AnyCodable(taskDescription),
-                    "projectDirectory": AnyCodable(projectDirectory),
-                    "relevantFiles": AnyCodable(files),
-                    "includeProjectStructure": AnyCodable(includeProjectStructure)
+                var params: [String: Any] = [
+                    "sessionId": currentSessionId,
+                    "taskDescription": taskDescription,
+                    "projectDirectory": projectDirectory,
+                    "relevantFiles": files,
+                    "includeProjectStructure": includeProjectStructure
                 ]
 
                 // Add model if selected (not "Select Model")
                 if !selectedModel.isEmpty && selectedModel != "Select Model" {
-                    params["model"] = AnyCodable(selectedModel)
+                    params["model"] = selectedModel
                 }
 
                 // Add web search for OpenAI models
                 if enableWebSearch && isOpenAIModel {
-                    params["enableWebSearch"] = AnyCodable(true)
+                    params["enableWebSearch"] = true
                 }
 
                 let request = RpcRequest(
@@ -889,6 +948,15 @@ public struct ImplementationPlansView: View {
             loadPlans()
         }
     }
+
+    private func openTerminal(for planJobId: String) {
+        if multiConnectionManager.activeDeviceId != nil {
+            terminalJobId = planJobId
+            showTerminal = true
+        } else {
+            showDeviceSelector = true
+        }
+    }
 }
 
 private struct PlanCard: View {
@@ -898,82 +966,80 @@ private struct PlanCard: View {
     let onTap: () -> Void
 
     var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 16) {
-                // Selection checkbox
-                Button(action: {
-                    onSelectionChanged(!isSelected)
-                }) {
-                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .font(.title2)
-                        .foregroundColor(isSelected ? Color.primary : Color.mutedForeground)
+        HStack(spacing: Theme.Spacing.sectionSpacing) {
+            // Selection checkbox
+            Button(action: {
+                onSelectionChanged(!isSelected)
+            }) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .h3()
+                    .foregroundColor(isSelected ? Color.primary : Color.mutedForeground)
+            }
+            .buttonStyle(PlainButtonStyle())
+
+            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                HStack {
+                    Text(plan.title ?? "Untitled Plan")
+                        .h4()
+                        .foregroundColor(Color.cardForeground)
+                        .lineLimit(2)
+
+                    Spacer()
+
+                    // Status badge
+                    StatusBadge(status: plan.status)
                 }
-                .buttonStyle(PlainButtonStyle())
 
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text(plan.title ?? "Untitled Plan")
-                            .h4()
-                            .foregroundColor(Color.cardForeground)
-                            .lineLimit(2)
+                if let status = plan.executionStatus, status.isExecuting {
+                    ProgressView(value: Double(status.progressPercentage ?? 0) / 100.0, total: 1.0)
+                        .progressViewStyle(.linear)
+                        .padding(.top, Theme.Spacing.xs)
 
-                        Spacer()
-
-                        // Status badge
-                        StatusBadge(status: plan.status)
-                    }
-
-                    if let status = plan.executionStatus, status.isExecuting {
-                        ProgressView(value: Double(status.progressPercentage ?? 0) / 100.0, total: 1.0)
-                            .progressViewStyle(.linear)
-                            .padding(.top, 4)
-
-                        if let step = status.currentStep {
-                            Text(step)
-                                .small()
-                                .foregroundColor(Color.mutedForeground)
-                                .lineLimit(1)
-                        }
-                    }
-
-                    HStack {
-                        Text(plan.formattedDate)
-                            .small()
-                            .foregroundColor(Color.mutedForeground)
-
-                        Spacer()
-
-                        Text(plan.size)
-                            .small()
-                            .foregroundColor(Color.mutedForeground)
-                    }
-
-                    if let filePath = plan.filePath {
-                        Text(filePath)
+                    if let step = status.currentStep {
+                        Text(step)
                             .small()
                             .foregroundColor(Color.mutedForeground)
                             .lineLimit(1)
                     }
                 }
 
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundColor(Color.mutedForeground)
+                HStack {
+                    Text(plan.formattedDate)
+                        .small()
+                        .foregroundColor(Color.mutedForeground)
+
+                    Spacer()
+
+                    Text(plan.tokenCount)
+                        .small()
+                        .foregroundColor(Color.mutedForeground)
+                }
+
+                if let filePath = plan.filePath {
+                    Text(filePath)
+                        .small()
+                        .foregroundColor(Color.mutedForeground)
+                        .lineLimit(1)
+                }
             }
-            .padding(16)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(isSelected ? Color.primary.opacity(0.1) : Color.card)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(
-                                isSelected ? Color.primary : Color.border,
-                                lineWidth: isSelected ? 2 : 1
-                            )
-                    )
-            )
+
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundColor(Color.mutedForeground)
         }
-        .buttonStyle(PlainButtonStyle())
+        .padding(Theme.Spacing.lg)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.Radii.base)
+                .fill(isSelected ? Color.primary.opacity(0.1) : Color.card)
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.Radii.base)
+                        .stroke(
+                            isSelected ? Color.primary : Color.border,
+                            lineWidth: isSelected ? 2 : 1
+                        )
+                )
+        )
+        .contentShape(Rectangle())
     }
 }
 
@@ -983,11 +1049,11 @@ private struct StatusBadge: View {
     var body: some View {
         Text(status.capitalized)
             .small()
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.horizontal, Theme.Spacing.sm)
+            .padding(.vertical, Theme.Spacing.xs)
             .background(statusColor.opacity(0.2))
             .foregroundColor(statusColor)
-            .cornerRadius(4)
+            .cornerRadius(Theme.Radii.sm)
     }
 
     private var statusColor: Color {
@@ -1021,9 +1087,10 @@ private struct ModelSelectorToggle: View {
                         onSelect(model.id)
                     }) {
                         Text(model.name)
-                            .font(.system(size: 12, weight: selectedModelId == model.id ? .semibold : .regular))
+                            .font(.footnote)
+                            .fontWeight(selectedModelId == model.id ? .semibold : .regular)
                             .foregroundColor(selectedModelId == model.id ? Color.primary : Color.mutedForeground)
-                            .padding(.horizontal, 12)
+                            .padding(.horizontal, Theme.Spacing.md)
                             .padding(.vertical, 7)
                             .background(
                                 selectedModelId == model.id ?
@@ -1044,10 +1111,10 @@ private struct ModelSelectorToggle: View {
         }
         .background(Color(UIColor.secondarySystemBackground))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: Theme.Radii.base)
                 .stroke(Color.border.opacity(0.5), lineWidth: 1)
         )
-        .cornerRadius(8)
+        .cornerRadius(Theme.Radii.base)
     }
 }
 
@@ -1115,15 +1182,15 @@ extension ImplementationPlansView {
         }
 
         do {
-            let params: [String: AnyCodable] = [
-                "sessionId": AnyCodable(session.id),
-                "taskDescription": AnyCodable(session.taskDescription ?? ""),
-                "projectDirectory": AnyCodable(session.projectDirectory ?? ""),
-                "relevantFiles": AnyCodable(session.includedFiles ?? []),
-                "taskType": AnyCodable("implementation_plan"),
-                "model": AnyCodable(selectedModel),
-                "includeProjectStructure": AnyCodable(includeProjectStructure),
-                "enableWebSearch": AnyCodable(enableWebSearch && isOpenAIModel)
+            let params: [String: Any] = [
+                "sessionId": session.id,
+                "taskDescription": session.taskDescription ?? "",
+                "projectDirectory": session.projectDirectory ?? "",
+                "relevantFiles": session.includedFiles ?? [],
+                "taskType": "implementation_plan",
+                "model": selectedModel,
+                "includeProjectStructure": includeProjectStructure,
+                "enableWebSearch": enableWebSearch && isOpenAIModel
             ]
 
             let request = RpcRequest(
@@ -1223,6 +1290,7 @@ private struct PromptPreviewSheet: View {
                     Button("Done") {
                         dismiss()
                     }
+                    .buttonStyle(ToolbarButtonStyle())
                 }
             }
         }

@@ -12,6 +12,7 @@ public struct TaskSettingsEditorView: View {
     @State private var temp: Double = 0.7
     @State private var maxTokens: Double = 8000
     @State private var voiceLang: String = "en"
+    @State private var resetError: String?
     @FocusState private var isLanguageFieldFocused: Bool
 
     public init(projectDirectory: String, taskKey: String, dataService: SettingsDataService, settings: Binding<TaskModelSettings>, providers: [ProviderWithModels]) {
@@ -28,6 +29,28 @@ public struct TaskSettingsEditorView: View {
     public var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
+                // Error display
+                if let error = resetError {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(Color.appDestructive)
+                        Text(error)
+                            .font(.callout)
+                            .foregroundColor(Color.appDestructive)
+                        Spacer()
+                        Button {
+                            resetError = nil
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(Color.appMutedForeground)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                    .padding()
+                    .background(Color.appDestructive.opacity(0.1))
+                    .cornerRadius(AppColors.radius)
+                }
+
                 // Model Selection
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
@@ -84,7 +107,20 @@ public struct TaskSettingsEditorView: View {
 
                     Button {
                         Task {
-                            try? await dataService.resetProjectTaskSetting(projectDirectory: projectDirectory, taskKey: taskKey, settingKey: "temperature")
+                            do {
+                                try await dataService.resetProjectTaskSetting(projectDirectory: projectDirectory, taskKey: taskKey, settingKey: "temperature")
+                                // Refresh settings from server (this updates dataService.projectTaskSettings)
+                                try await dataService.fetchProjectTaskModelSettings(projectDirectory: projectDirectory)
+                                // Update UI from the refreshed project settings
+                                if let taskSettings = dataService.projectTaskSettings[taskKey] {
+                                    let defaultTemp = taskSettings.temperature
+                                    temp = defaultTemp
+                                    settings.temperature = defaultTemp
+                                }
+                                resetError = nil
+                            } catch {
+                                resetError = "Failed to reset: \(error.localizedDescription)"
+                            }
                         }
                     } label: {
                         Label("Reset to Default", systemImage: "arrow.counterclockwise")
@@ -131,7 +167,20 @@ public struct TaskSettingsEditorView: View {
 
                     Button {
                         Task {
-                            try? await dataService.resetProjectTaskSetting(projectDirectory: projectDirectory, taskKey: taskKey, settingKey: "maxTokens")
+                            do {
+                                try await dataService.resetProjectTaskSetting(projectDirectory: projectDirectory, taskKey: taskKey, settingKey: "maxTokens")
+                                // Refresh settings from server (this updates dataService.projectTaskSettings)
+                                try await dataService.fetchProjectTaskModelSettings(projectDirectory: projectDirectory)
+                                // Update UI from the refreshed project settings
+                                if let taskSettings = dataService.projectTaskSettings[taskKey] {
+                                    let defaultMaxTokens = taskSettings.maxTokens
+                                    maxTokens = Double(defaultMaxTokens)
+                                    settings.maxTokens = defaultMaxTokens
+                                }
+                                resetError = nil
+                            } catch {
+                                resetError = "Failed to reset: \(error.localizedDescription)"
+                            }
                         }
                     } label: {
                         Label("Reset to Default", systemImage: "arrow.counterclockwise")
@@ -166,6 +215,7 @@ public struct TaskSettingsEditorView: View {
                             Button("Reset Language") {
                                 Task {
                                     try? await dataService.resetProjectTaskSetting(projectDirectory: projectDirectory, taskKey: taskKey, settingKey: "languageCode")
+                                    voiceLang = "en"
                                     isLanguageFieldFocused = false
                                 }
                             }
@@ -198,6 +248,27 @@ public struct TaskSettingsEditorView: View {
             .padding()
         }
         .background(Color.appBackground)
+        .onAppear {
+            selectedModel = settings.model
+            if taskKey == "voiceTranscription" {
+                Task {
+                    do {
+                        if let value = try await dataService.getRawProjectTaskSetting(
+                            projectDirectory: projectDirectory,
+                            taskKey: "voiceTranscription",
+                            settingKey: "languageCode"
+                        ) as? String {
+                            voiceLang = value
+                        }
+                    } catch {
+                        // Keep default "en" on error
+                    }
+                }
+            }
+        }
+        .onChange(of: settings.model) { newValue in
+            selectedModel = newValue
+        }
     }
 
     // MARK: - Helpers

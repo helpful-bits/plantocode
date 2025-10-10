@@ -11,7 +11,10 @@ public struct SystemPromptEditorView: View {
     @State private var defaultPrompt: String?
     @State private var isLoading: Bool = true
     @State private var loadError: String?
-    @State private var showFullScreenEditor: Bool = false
+    @State private var showDefaultFullScreenViewer = false
+    @State private var showCustomFullScreenEditor = false
+    @State private var viewerText = ""
+    @State private var viewerTitle = ""
 
     public init(projectDirectory: String, taskType: String, dataService: SettingsDataService) {
         self.projectDirectory = projectDirectory
@@ -56,8 +59,32 @@ public struct SystemPromptEditorView: View {
                 await loadPrompt()
             }
         }
-        .sheet(isPresented: $showFullScreenEditor) {
-            fullScreenPromptEditor
+        .fullScreenCover(isPresented: $showDefaultFullScreenViewer) {
+            PlanEditorFullScreenView(
+                text: .constant(viewerText.isEmpty ? (defaultPrompt ?? "") : viewerText),
+                onSave: nil,
+                isReadOnly: true,
+                languageHint: "markdown"
+            )
+        }
+        .fullScreenCover(isPresented: $showCustomFullScreenEditor) {
+            PlanEditorFullScreenView(
+                text: $editedPrompt,
+                onSave: { newValue in
+                    Task {
+                        try? await dataService.setProjectSystemPrompt(
+                            projectDirectory: projectDirectory,
+                            taskType: taskType,
+                            systemPrompt: newValue
+                        )
+                        await loadPrompt()
+                        useCustom = dataService.isSystemPromptCustom
+                        editedPrompt = dataService.currentSystemPrompt ?? ""
+                    }
+                },
+                isReadOnly: false,
+                languageHint: "markdown"
+            )
         }
     }
 
@@ -69,8 +96,8 @@ public struct SystemPromptEditorView: View {
             HStack {
                 Spacer()
                 HStack(spacing: 0) {
-                    if useCustom {
-                        Button {
+                    Button {
+                        if useCustom {
                             Task {
                                 do {
                                     try await dataService.resetProjectSystemPrompt(projectDirectory: projectDirectory, taskType: taskType)
@@ -80,66 +107,55 @@ public struct SystemPromptEditorView: View {
                                     loadError = error.localizedDescription
                                 }
                             }
-                        } label: {
-                            Text("Default")
-                                .font(.subheadline)
-                                .fontWeight(.regular)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
                         }
-                        .buttonStyle(SecondaryButtonStyle())
-                        .controlSize(.small)
-                    } else {
-                        Button {
-                            // No action when already on default
-                        } label: {
-                            Text("Default")
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                        }
-                        .buttonStyle(PrimaryButtonStyle())
-                        .controlSize(.small)
-                        .disabled(true)
+                    } label: {
+                        Text("Default")
+                            .font(.system(size: 12, weight: !useCustom ? .semibold : .regular))
+                            .foregroundColor(!useCustom ? Color.primary : Color.mutedForeground)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(
+                                !useCustom ?
+                                Color.primary.opacity(0.1) :
+                                Color.clear
+                            )
                     }
+                    .buttonStyle(PlainButtonStyle())
 
-                    Divider()
-                        .frame(height: 24)
+                    Rectangle()
+                        .fill(Color.border.opacity(0.4))
+                        .frame(width: 1, height: 24)
 
-                    if useCustom {
-                        Button {
-                            // No action when already on custom
-                        } label: {
-                            Text("Custom")
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                        }
-                        .buttonStyle(PrimaryButtonStyle())
-                        .controlSize(.small)
-                        .disabled(true)
-                    } else {
-                        Button {
-                            let startingPrompt = defaultPrompt ?? ""
-                            editedPrompt = startingPrompt
+                    Button {
+                        if !useCustom {
+                            if dataService.isSystemPromptCustom, let currentPrompt = dataService.currentSystemPrompt {
+                                editedPrompt = currentPrompt
+                            } else {
+                                let startingPrompt = defaultPrompt ?? ""
+                                editedPrompt = startingPrompt
+                            }
                             useCustom = true
-                        } label: {
-                            Text("Custom")
-                                .font(.subheadline)
-                                .fontWeight(.regular)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
                         }
-                        .buttonStyle(SecondaryButtonStyle())
-                        .controlSize(.small)
+                    } label: {
+                        Text("Custom")
+                            .font(.system(size: 12, weight: useCustom ? .semibold : .regular))
+                            .foregroundColor(useCustom ? Color.primary : Color.mutedForeground)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(
+                                useCustom ?
+                                Color.primary.opacity(0.1) :
+                                Color.clear
+                            )
                     }
+                    .buttonStyle(PlainButtonStyle())
                 }
+                .background(Color(UIColor.secondarySystemBackground))
                 .overlay(
-                    RoundedRectangle(cornerRadius: AppColors.radius)
-                        .stroke(Color.appBorder, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: Theme.Radii.base)
+                        .stroke(Color.border.opacity(0.5), lineWidth: 1)
                 )
+                .cornerRadius(Theme.Radii.base)
             }
 
             // Content
@@ -149,11 +165,23 @@ public struct SystemPromptEditorView: View {
                 defaultPromptViewer
             }
         }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        }
+        .keyboardAware()
+        .toolbar {
+            ToolbarItem(placement: .keyboard) {
+                Button("Done") {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
+            }
+        }
     }
 
     private var customPromptEditor: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Preview/editor
+            // Editor section
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text("Custom System Prompt")
@@ -163,33 +191,46 @@ public struct SystemPromptEditorView: View {
 
                     Spacer()
 
+                    // Edit Full Screen button
                     Button {
-                        showFullScreenEditor = true
+                        showCustomFullScreenEditor = true
                     } label: {
                         Label("Edit Full Screen", systemImage: "arrow.up.left.and.arrow.down.right")
                             .labelStyle(.iconOnly)
                     }
                     .buttonStyle(IconButtonStyle())
+
+                    // Copy button
+                    Button {
+                        UIPasteboard.general.string = editedPrompt
+                    } label: {
+                        Label("Copy", systemImage: "doc.on.doc")
+                            .labelStyle(.iconOnly)
+                    }
+                    .buttonStyle(IconButtonStyle())
                 }
 
-                TextEditor(text: $editedPrompt)
-                    .frame(minHeight: 120)
-                    .padding(8)
-                    .background(Color.appMuted)
-                    .cornerRadius(AppColors.radius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppColors.radius)
-                            .stroke(Color.appBorder, lineWidth: 1)
-                    )
-                    .font(.system(.callout, design: .monospaced))
+                PlanRunestoneEditorView(
+                    text: $editedPrompt,
+                    isReadOnly: false,
+                    languageHint: "markdown"
+                )
+                .frame(minHeight: 120)
             }
 
-            // Actions
+            // Action buttons
             HStack(spacing: 12) {
                 Button {
                     Task {
                         do {
-                            try await dataService.setProjectSystemPrompt(projectDirectory: projectDirectory, taskType: taskType, systemPrompt: editedPrompt)
+                            try await dataService.setProjectSystemPrompt(
+                                projectDirectory: projectDirectory,
+                                taskType: taskType,
+                                systemPrompt: editedPrompt
+                            )
+                            await loadPrompt()
+                            useCustom = dataService.isSystemPromptCustom
+                            editedPrompt = dataService.currentSystemPrompt ?? ""
                         } catch {
                             loadError = error.localizedDescription
                         }
@@ -202,9 +243,14 @@ public struct SystemPromptEditorView: View {
                 Button {
                     Task {
                         do {
-                            try await dataService.resetProjectSystemPrompt(projectDirectory: projectDirectory, taskType: taskType)
-                            useCustom = false
+                            try await dataService.resetProjectSystemPrompt(
+                                projectDirectory: projectDirectory,
+                                taskType: taskType
+                            )
                             await loadPrompt()
+                            // After successful reset, always switch to default view
+                            useCustom = false
+                            editedPrompt = ""
                         } catch {
                             loadError = error.localizedDescription
                         }
@@ -214,31 +260,88 @@ public struct SystemPromptEditorView: View {
                 }
                 .buttonStyle(SecondaryButtonStyle())
             }
+
+            // Default Prompt Reference disclosure
+            if let defaultPrompt = defaultPrompt {
+                DisclosureGroup("Default Prompt (Reference)") {
+                    PlanRunestoneEditorView(
+                        text: .constant(defaultPrompt),
+                        isReadOnly: true,
+                        languageHint: "markdown"
+                    )
+                    .frame(minHeight: 120)
+                    .padding(.top, 8)
+                }
+                .font(.callout)
+                .foregroundColor(Color.appMutedForeground)
+            }
         }
     }
 
     private var defaultPromptViewer: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Default System Prompt")
-                .font(.subheadline)
-                .fontWeight(.semibold)
-                .foregroundColor(Color.appForeground)
+            HStack {
+                Text("Default System Prompt")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(Color.appForeground)
+
+                Spacer()
+
+                // View Full Screen button
+                Button {
+                    showDefaultFullScreenViewer = true
+                } label: {
+                    Label("View Full Screen", systemImage: "eye")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(IconButtonStyle())
+
+                // Copy button
+                Button {
+                    UIPasteboard.general.string = defaultPrompt ?? ""
+                } label: {
+                    Label("Copy", systemImage: "doc.on.doc")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(IconButtonStyle())
+            }
 
             if let prompt = defaultPrompt {
-                ScrollView {
-                    Text(prompt)
-                        .font(.system(.callout, design: .monospaced))
-                        .foregroundColor(Color.appMutedForeground)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(12)
-                }
-                .frame(maxHeight: 200)
-                .background(Color.appMuted)
-                .cornerRadius(AppColors.radius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: AppColors.radius)
-                        .stroke(Color.appBorder, lineWidth: 1)
+                PlanRunestoneEditorView(
+                    text: .constant(prompt),
+                    isReadOnly: true,
+                    languageHint: "markdown"
                 )
+                .frame(minHeight: 200)
+
+                // Callout to view custom if it exists
+                if dataService.isSystemPromptCustom, let customPrompt = dataService.currentSystemPrompt {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Image(systemName: "info.circle")
+                                .foregroundColor(Color.accentColor)
+                            Text("Custom prompt is set")
+                                .font(.callout)
+                                .foregroundColor(Color.appForeground)
+                            Spacer()
+                            Button {
+                                viewerText = customPrompt
+                                viewerTitle = "Custom System Prompt"
+                                showDefaultFullScreenViewer = true
+                            } label: {
+                                Text("View Custom")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                            }
+                            .buttonStyle(SecondaryButtonStyle())
+                            .controlSize(.small)
+                        }
+                    }
+                    .padding(12)
+                    .background(Color.accentColor.opacity(0.1))
+                    .cornerRadius(Theme.Radii.base)
+                }
             } else {
                 HStack {
                     Spacer()
@@ -250,37 +353,6 @@ public struct SystemPromptEditorView: View {
                 .padding()
                 .background(Color.appMuted)
                 .cornerRadius(AppColors.radius)
-            }
-        }
-    }
-
-    // MARK: - Full Screen Editor
-
-    private var fullScreenPromptEditor: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                TextEditor(text: $editedPrompt)
-                    .font(.system(.body, design: .monospaced))
-                    .padding()
-            }
-            .background(Color.appBackground)
-            .navigationTitle("Edit System Prompt")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        showFullScreenEditor = false
-                    }
-                    .buttonStyle(ToolbarButtonStyle())
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        showFullScreenEditor = false
-                    }
-                    .fontWeight(.semibold)
-                    .buttonStyle(ToolbarButtonStyle())
-                }
             }
         }
     }

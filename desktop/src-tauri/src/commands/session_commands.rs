@@ -127,7 +127,11 @@ pub async fn delete_session_command(app_handle: AppHandle, session_id: String) -
     job_repo.cancel_session_jobs(&session_id).await?;
 
     // Then delete the session (this will cascade to related records)
-    session_repo.delete_session(&session_id).await
+    session_repo.delete_session(&session_id).await?;
+
+    crate::events::session_events::emit_session_deleted(&app_handle, &session_id)?;
+
+    Ok(())
 }
 
 /// Rename a session
