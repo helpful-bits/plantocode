@@ -23,7 +23,7 @@ public struct AppHeaderBar: View {
             // Breadcrumb
             if !breadcrumb.isEmpty {
                 Text(breadcrumb.joined(separator: " › "))
-                    .small()
+                    .font(.subheadline)
                     .foregroundColor(Color.mutedForeground)
             }
 

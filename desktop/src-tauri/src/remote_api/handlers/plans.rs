@@ -1,8 +1,20 @@
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use serde_json::json;
 use crate::remote_api::types::{RpcRequest, RpcResponse};
 use crate::commands::{implementation_plan_commands, job_commands};
 use serde_json::Value;
+use std::sync::Arc;
+use crate::db_utils::SessionRepository;
+use log::{debug, warn};
+
+fn utf8_safe_slice(s: &str, start: usize, end: usize) -> String {
+    let len = s.len();
+    let mut s_start = start.min(len);
+    let mut s_end = end.min(len);
+    while s_start < len && !s.is_char_boundary(s_start) { s_start += 1; }
+    while s_end > s_start && !s.is_char_boundary(s_end) { s_end -= 1; }
+    s[s_start..s_end].to_string()
+}
 
 pub async fn dispatch(app_handle: AppHandle, req: RpcRequest) -> RpcResponse {
     match req.method.as_str() {
@@ -20,6 +32,11 @@ pub async fn dispatch(app_handle: AppHandle, req: RpcRequest) -> RpcResponse {
     }
 }
 
+// MARK: - Session-based Project Directory Resolution
+// When sessionId is provided, we resolve the canonical project directory
+// from the session record to prevent path normalization mismatches.
+// This follows the same pattern used in prompt commands.
+// Fallback to None returns all visible jobs; mobile filters client-side.
 async fn handle_plans_list(app_handle: &AppHandle, request: RpcRequest) -> RpcResponse {
     let project_directory = request
         .params
@@ -33,7 +50,33 @@ async fn handle_plans_list(app_handle: &AppHandle, request: RpcRequest) -> RpcRe
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
 
-    match job_commands::get_all_visible_jobs_command(project_directory, session_id, app_handle.clone()).await {
+    let effective_project_directory = if let Some(ref session_id) = session_id {
+        let pool = app_handle.state::<sqlx::SqlitePool>().inner().clone();
+        let session_repo = SessionRepository::new(Arc::new(pool));
+        match session_repo.get_session_by_id(session_id).await {
+            Ok(Some(session)) => {
+                debug!("Using effective project directory from session: {}", session.project_directory);
+                Some(session.project_directory)
+            },
+            Ok(None) => {
+                debug!("Session not found for {}, falling back to None", session_id);
+                None
+            },
+            Err(e) => {
+                warn!("Session lookup failed for {}: {:?}, using provided projectDirectory", session_id, e);
+                project_directory.clone()
+            }
+        }
+    } else {
+        project_directory.clone()
+    };
+
+    match job_commands::get_all_visible_jobs_command_with_content(
+        effective_project_directory,
+        session_id.clone(),
+        false,
+        app_handle.clone()
+    ).await {
         Ok(jobs) => {
             let plans: Vec<serde_json::Value> = jobs
                 .into_iter()
@@ -53,19 +96,21 @@ async fn handle_plans_list(app_handle: &AppHandle, request: RpcRequest) -> RpcRe
                         metadata["filePath"].as_str()
                     );
 
-                    // Calculate size from response content
-                    let size_bytes = job.response.as_ref().map(|r| r.len() as u64);
+                    // Content-free listing; no size calculation from response
+                    let size_bytes = None::<u64>;
 
                     json!({
                         "id": job.id,
-                        "session_id": job.session_id,
-                        "task_type": job.task_type,
+                        "sessionId": job.session_id,
+                        "taskType": job.task_type,
                         "status": job.status,
                         "title": title,
-                        "file_path": file_path,
-                        "created_at": job.created_at,
-                        "updated_at": job.updated_at,
-                        "size_bytes": size_bytes,
+                        "filePath": file_path,
+                        "createdAt": job.created_at,
+                        "updatedAt": job.updated_at,
+                        "sizeBytes": size_bytes,
+                        "tokensSent": job.tokens_sent,
+                        "tokensReceived": job.tokens_received,
                     })
                 })
                 .collect();
@@ -86,17 +131,27 @@ async fn handle_plans_list(app_handle: &AppHandle, request: RpcRequest) -> RpcRe
 }
 
 async fn handle_plans_get(app_handle: &AppHandle, request: RpcRequest) -> RpcResponse {
-    let plan_id = match request.params.get("planId") {
+    // Read-only handler; NEVER mutate job.response. Content returned verbatim, only sliced on UTF-8 boundaries for transport.
+
+    let plan_id = match request.params.get("planId").or_else(|| request.params.get("id")) {
         Some(Value::String(id)) => id.clone(),
         _ => {
             return RpcResponse {
                 correlation_id: request.correlation_id,
                 result: None,
-                error: Some("Missing or invalid planId parameter".to_string()),
+                error: Some("Missing or invalid planId/id parameter".to_string()),
                 is_final: true,
             };
         }
     };
+
+    // Parse optional chunking parameters
+    let chunk_size = request.params.get("chunkSize")
+        .and_then(|v| v.as_u64());
+
+    let chunk_index = request.params.get("chunkIndex")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
 
     match implementation_plan_commands::read_implementation_plan_command(
         plan_id,
@@ -104,11 +159,73 @@ async fn handle_plans_get(app_handle: &AppHandle, request: RpcRequest) -> RpcRes
     )
     .await
     {
-        Ok(plan) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: Some(json!({ "plan": plan })),
-            error: None,
-            is_final: true,
+        Ok(plan) => {
+            // Extract content and compute total size
+            let content = plan.content
+                .clone()
+                .unwrap_or_default();
+
+            let total_size = content.len();
+
+            // Check if chunking is requested and needed
+            if let Some(chunk_sz) = chunk_size {
+                if total_size as u64 > chunk_sz {
+                    // Calculate chunk boundaries
+                    let total_chunks = ((total_size as f64) / (chunk_sz as f64)).ceil() as u64;
+                    let start_byte = ((chunk_index * chunk_sz).min(total_size as u64)) as usize;
+                    let end_byte = ((start_byte as u64 + chunk_sz).min(total_size as u64)) as usize;
+
+                    // Get UTF-8 safe chunk
+                    let chunk_str = utf8_safe_slice(&content, start_byte, end_byte);
+
+                    // Build chunked response
+                    let response = json!({
+                        "id": plan.id,
+                        "title": plan.title,
+                        "description": plan.description,
+                        "content": chunk_str,
+                        "contentFormat": plan.content_format,
+                        "createdAt": plan.created_at,
+                        "status": plan.status,
+                        "isChunked": true,
+                        "chunkInfo": {
+                            "chunkIndex": chunk_index,
+                            "totalChunks": total_chunks,
+                            "chunkSize": chunk_sz,
+                            "totalSize": total_size,
+                            "hasMore": chunk_index < total_chunks - 1
+                        },
+                        "sizeBytes": total_size
+                    });
+
+                    return RpcResponse {
+                        correlation_id: request.correlation_id,
+                        result: Some(json!({ "plan": response })),
+                        error: None,
+                        is_final: true,
+                    };
+                }
+            }
+
+            // No chunking - return full content
+            let response = json!({
+                "id": plan.id,
+                "title": plan.title,
+                "description": plan.description,
+                "content": plan.content,
+                "contentFormat": plan.content_format,
+                "createdAt": plan.created_at,
+                "status": plan.status,
+                "isChunked": false,
+                "sizeBytes": total_size
+            });
+
+            RpcResponse {
+                correlation_id: request.correlation_id,
+                result: Some(json!({ "plan": response })),
+                error: None,
+                is_final: true,
+            }
         },
         Err(error) => RpcResponse {
             correlation_id: request.correlation_id,
@@ -120,13 +237,13 @@ async fn handle_plans_get(app_handle: &AppHandle, request: RpcRequest) -> RpcRes
 }
 
 async fn handle_plans_save(app_handle: &AppHandle, request: RpcRequest) -> RpcResponse {
-    let plan_id = match request.params.get("planId") {
+    let plan_id = match request.params.get("planId").or_else(|| request.params.get("id")) {
         Some(Value::String(id)) => id.clone(),
         _ => {
             return RpcResponse {
                 correlation_id: request.correlation_id,
                 result: None,
-                error: Some("Missing or invalid planId parameter".to_string()),
+                error: Some("Missing or invalid planId/id parameter".to_string()),
                 is_final: true,
             };
         }
@@ -176,19 +293,19 @@ async fn handle_plans_activate(_app_handle: &AppHandle, request: RpcRequest) -> 
 }
 
 async fn handle_plans_delete(app_handle: &AppHandle, request: RpcRequest) -> RpcResponse {
-    let plan_id = match request.params.get("planId") {
+    let plan_id = match request.params.get("planId").or_else(|| request.params.get("id")) {
         Some(Value::String(id)) => id.clone(),
         _ => {
             return RpcResponse {
                 correlation_id: request.correlation_id,
                 result: None,
-                error: Some("Missing or invalid planId parameter".to_string()),
+                error: Some("Missing or invalid planId/id parameter".to_string()),
                 is_final: true,
             };
         }
     };
 
-    match job_commands::cancel_background_job_command(plan_id, app_handle.clone()).await {
+    match job_commands::delete_background_job_command(plan_id, app_handle.clone()).await {
         Ok(_) => RpcResponse {
             correlation_id: request.correlation_id,
             result: Some(json!({ "success": true })),

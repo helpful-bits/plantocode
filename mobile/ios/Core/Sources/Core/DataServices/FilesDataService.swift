@@ -2,6 +2,25 @@ import Foundation
 import Combine
 import OSLog
 
+public struct FindFilesSuggestion: Hashable {
+    public let path: String
+    public let reason: String?
+    public let score: Double?
+    public init(path: String, reason: String? = nil, score: Double? = nil) {
+        self.path = path
+        self.reason = reason
+        self.score = score
+    }
+}
+
+public enum FindFilesEvent: Equatable {
+    case progress(Double, message: String?)
+    case suggestions([FindFilesSuggestion])
+    case info(String)
+    case completed
+    case error(String)
+}
+
 /// Service for accessing file system data from desktop
 @MainActor
 public final class FilesDataService: ObservableObject {
@@ -243,7 +262,7 @@ public final class FilesDataService: ObservableObject {
                     let request = RpcRequest(
                         method: "workflows.startFileFinder",
                         params: [
-                            "sessionId": AnyCodable(sessionId)
+                            "sessionId": sessionId
                         ]
                     )
 
@@ -288,8 +307,8 @@ public final class FilesDataService: ObservableObject {
                     let request = RpcRequest(
                         method: "workflows.startWebSearch",
                         params: [
-                            "sessionId": AnyCodable(sessionId),
-                            "query": AnyCodable(query)
+                            "sessionId": sessionId,
+                            "query": query
                         ]
                     )
 
@@ -308,6 +327,109 @@ public final class FilesDataService: ObservableObject {
                         }
                     }
                 } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
+    public func workflowsStartFileFinder(sessionId: String,
+                                       taskDescription: String,
+                                       projectDirectory: String,
+                                       excludedPaths: [String],
+                                       timeoutMs: Int = 120_000) -> AsyncThrowingStream<RpcResponse, Error> {
+        CommandRouter.workflowsStartFileFinder(sessionId: sessionId,
+                                              taskDescription: taskDescription,
+                                              projectDirectory: projectDirectory,
+                                              excludedPaths: excludedPaths,
+                                              timeoutMs: timeoutMs)
+    }
+
+    private func parseProgress(_ any: Any) -> Double? {
+        if let d = any as? Double { return d > 1.0 ? min(d / 100.0, 1.0) : max(min(d, 1.0), 0.0) }
+        if let i = any as? Int { return Double(i) > 1.0 ? min(Double(i) / 100.0, 1.0) : max(min(Double(i), 1.0), 0.0) }
+        if let s = any as? String, let d = Double(s) { return d > 1.0 ? min(d / 100.0, 1.0) : max(min(d, 1.0), 0.0) }
+        return nil
+    }
+
+    private func makeSuggestion(from dict: [String: Any]) -> FindFilesSuggestion? {
+        let path = (dict["path"] as? String) ?? (dict["filePath"] as? String)
+        let reason = (dict["reason"] as? String) ?? (dict["why"] as? String)
+        let score: Double?
+        if let s = dict["score"] as? Double { score = s }
+        else if let r = dict["rank"] as? Double { score = r }
+        else if let str = dict["score"] as? String, let d = Double(str) { score = d }
+        else { score = nil }
+        guard let p = path, !p.isEmpty else { return nil }
+        return FindFilesSuggestion(path: p, reason: reason, score: score)
+    }
+
+    public func startFindFiles(sessionId: String,
+                             taskDescription: String,
+                             projectDirectory: String,
+                             excludedPaths: [String] = [],
+                             timeoutMs: Int = 120_000) -> AsyncThrowingStream<FindFilesEvent, Error> {
+        let source = CommandRouter.workflowsStartFileFinder(sessionId: sessionId,
+                                                           taskDescription: taskDescription,
+                                                           projectDirectory: projectDirectory,
+                                                           excludedPaths: excludedPaths,
+                                                           timeoutMs: timeoutMs)
+        return AsyncThrowingStream { continuation in
+            Task {
+                var bestSuggestionsByPath: [String: FindFilesSuggestion] = [:]
+                do {
+                    for try await resp in source {
+                        if let err = resp.error {
+                            continuation.yield(.error(err.message))
+                            continuation.finish(throwing: DataServiceError.serverError(err.message))
+                            break
+                        }
+                        if let dict = resp.result?.value as? [String: Any] {
+                            if let p = dict["progress"].flatMap(parseProgress) {
+                                let msg = (dict["message"] as? String)
+                                    ?? (dict["status"] as? String)
+                                    ?? (dict["stage"] as? String)
+                                continuation.yield(.progress(p, message: msg))
+                            }
+                            if let arr = dict["files"] as? [Any] ?? dict["recommendations"] as? [Any] {
+                                var batch: [FindFilesSuggestion] = []
+                                for item in arr {
+                                    if let d = item as? [String: Any], let s = makeSuggestion(from: d) {
+                                        let existing = bestSuggestionsByPath[s.path]
+                                        let chosen: FindFilesSuggestion
+                                        if let ex = existing {
+                                            let score = max(ex.score ?? -Double.infinity, s.score ?? -Double.infinity)
+                                            let reason = ex.reason ?? s.reason
+                                            chosen = FindFilesSuggestion(path: s.path, reason: reason, score: score.isFinite ? score : nil)
+                                        } else {
+                                            chosen = s
+                                        }
+                                        bestSuggestionsByPath[s.path] = chosen
+                                        batch.append(chosen)
+                                    }
+                                }
+                                if !batch.isEmpty {
+                                    continuation.yield(.suggestions(Array(Set(batch))))
+                                }
+                            }
+                            if dict["path"] != nil || dict["filePath"] != nil, let s = makeSuggestion(from: dict) {
+                                let existing = bestSuggestionsByPath[s.path]
+                                let chosen = existing ?? s
+                                bestSuggestionsByPath[s.path] = chosen
+                                continuation.yield(.suggestions([chosen]))
+                            }
+                            if let info = (dict["message"] as? String) ?? (dict["status"] as? String) ?? (dict["stage"] as? String) {
+                                continuation.yield(.info(info))
+                            }
+                        }
+                        if resp.isFinal == true {
+                            continuation.yield(.completed)
+                            continuation.finish()
+                            break
+                        }
+                    }
+                } catch {
+                    continuation.yield(.error(error.localizedDescription))
                     continuation.finish(throwing: error)
                 }
             }

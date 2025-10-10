@@ -5,6 +5,7 @@ import Combine
 public struct JobsMonitoringView: View {
     @EnvironmentObject private var container: AppContainer
     @StateObject private var multiConnectionManager = MultiConnectionManager.shared
+    @Environment(\.colorScheme) var colorScheme
     @State private var searchQuery: String = ""
     @State private var selectedJobId: String? = nil
     @State private var showingJobDetails = false
@@ -20,15 +21,23 @@ public struct JobsMonitoringView: View {
         container.jobsService
     }
 
-    // Filter jobs based on search query
     private var filteredJobs: [BackgroundJob] {
+        guard let currentSessionId = container.sessionService.currentSession?.id else {
+            return []
+        }
+
         let search = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let excludedIds = planJobIdsForCurrentSession
 
         return jobsService.jobs
+            .filter { $0.sessionId == currentSessionId }
             .filter { job in
-                if excludedIds.contains(job.id) { return false }
-                if isPlanTaskType(job.taskType) { return false }
+                if job.taskType == "implementation_plan" || job.taskType == "implementation_plan_merge" {
+                    return false
+                }
+                if excludedIds.contains(job.id) {
+                    return false
+                }
                 return true
             }
             .filter { job in
@@ -62,54 +71,83 @@ public struct JobsMonitoringView: View {
             VStack(spacing: 0) {
                 // Search and Summary Section
                 VStack(spacing: 16) {
-                    // Search Bar
-                    HStack {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundColor(.secondary)
-                            .frame(width: 20)
-                        TextField("Search jobs...", text: $searchQuery)
-                            .textFieldStyle(.plain)
-                        if !searchQuery.isEmpty {
-                            Button(action: { searchQuery = "" }) {
-                                Image(systemName: "xmark.circle.fill")
+                    // Search bar
+                    ZStack(alignment: .leading) {
+                        // Custom placeholder
+                        if searchQuery.isEmpty {
+                            HStack(spacing: 8) {
+                                Image(systemName: "magnifyingglass")
+                                    .foregroundColor(Color.mutedForeground)
+                                    .frame(width: 16)
+                                Text("Search jobs...")
+                                    .foregroundColor(Color.mutedForeground)
                             }
-                            .buttonStyle(CompactIconButtonStyle())
+                            .padding(14)
+                            .allowsHitTesting(false)
                         }
+
+                        HStack(spacing: 8) {
+                            Image(systemName: "magnifyingglass")
+                                .foregroundColor(Color.mutedForeground)
+                                .frame(width: 16)
+                            TextField("", text: $searchQuery)
+                                .textFieldStyle(.plain)
+                                .foregroundColor(Color.foreground)
+                            if !searchQuery.isEmpty {
+                                Button(action: { searchQuery = "" }) {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(Color.mutedForeground)
+                                }
+                            }
+                        }
+                        .padding(14)
                     }
-                    .padding(12)
-                    .background(Color(.secondarySystemBackground))
+                    .background(Color.input)
                     .cornerRadius(Theme.Radii.base)
                     .overlay(
                         RoundedRectangle(cornerRadius: Theme.Radii.base)
-                            .stroke(Color(.separator), lineWidth: 1)
+                            .stroke(Color.border, lineWidth: 1)
                     )
 
                     // Summary Cards
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 12) {
-                            SummaryCard(title: "Active", count: activeJobs.count, color: .blue)
-                            SummaryCard(title: "Completed", count: completedJobs.count, color: .green)
-                            SummaryCard(title: "Failed", count: failedJobs.count, color: .red)
+                        HStack(spacing: 10) {
+                            SummaryCard(title: "Active", count: activeJobs.count, color: .info)
+                            SummaryCard(title: "Completed", count: completedJobs.count, color: .success)
+                            SummaryCard(title: "Failed", count: failedJobs.count, color: .destructive)
                         }
+                        .padding(.horizontal, 1)
                     }
                 }
                 .padding()
 
                 // Job List
-                if filteredJobs.isEmpty {
+                if jobsService.isLoading && jobsService.jobs.isEmpty {
+                    VStack(spacing: 16) {
+                        Spacer()
+                        ProgressView()
+                            .scaleEffect(1.5)
+                        Text("Loading jobs...")
+                            .font(.system(size: 15))
+                            .foregroundColor(Color.mutedForeground)
+                            .padding(.top, 16)
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if filteredJobs.isEmpty {
                     VStack(spacing: 16) {
                         Spacer()
                         Image(systemName: "tray")
                             .font(.system(size: 48))
-                            .foregroundColor(.secondary)
+                            .foregroundColor(Color.mutedForeground.opacity(0.6))
                         Text(searchQuery.isEmpty ? "No jobs yet" : "No matching jobs")
                             .h4()
-                            .foregroundColor(.secondary)
+                            .foregroundColor(Color.foreground)
 
                         if searchQuery.isEmpty {
                             Text("Background jobs will appear here once they are created")
-                                .paragraph()
-                                .foregroundColor(.secondary)
+                                .font(.system(size: 15))
+                                .foregroundColor(Color.mutedForeground)
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal, 40)
                         }
@@ -118,7 +156,7 @@ public struct JobsMonitoringView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollView {
-                        LazyVStack(spacing: 12) {
+                        LazyVStack(spacing: 10) {
                             ForEach(filteredJobs) { job in
                                 JobCardView(
                                     job: job,
@@ -136,8 +174,9 @@ public struct JobsMonitoringView: View {
                                 )
                             }
                         }
-                        .padding(.horizontal)
-                        .padding(.bottom)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 16)
+                        .padding(.top, 4)
                     }
                 }
             }
@@ -152,29 +191,32 @@ public struct JobsMonitoringView: View {
             }
         }
         .onAppear {
-            if isConnected {
-                Task {
-                    await loadJobs()
-                    loadPlansForFiltering()
-                }
-            }
-        }
-        .onReceive(multiConnectionManager.$connectionStates) { states in
-            guard let activeId = multiConnectionManager.activeDeviceId,
-                  let state = states[activeId] else { return }
+            guard let session = container.sessionService.currentSession else { return }
 
-            if state.isConnected && jobsService.jobs.isEmpty {
-                Task {
-                    await loadJobs()
-                }
-            }
-        }
-        .onReceive(container.sessionService.$currentSession) { _ in
-            refreshTrigger = UUID()
+            // Start session-scoped sync
+            container.setJobsViewActive(true)
+
+            // CRITICAL: Do an initial full fetch of ALL jobs (not just active ones)
+            // before starting the sync timer that only monitors active jobs
             Task {
                 await loadJobs()
+            }
+
+            jobsService.startSessionScopedSync(
+                sessionId: session.id,
+                projectDirectory: session.projectDirectory
+            )
+
+            // Load plans for filtering
+            if isConnected {
                 loadPlansForFiltering()
             }
+        }
+        .onDisappear {
+            // Stop session-scoped sync
+            jobsService.stopSessionScopedSync()
+            container.setJobsViewActive(false)
+            // Keep jobs cached for instant display on next view - events keep data fresh
         }
         .alert("Error", isPresented: $showingError) {
             Button("OK") {
@@ -213,31 +255,49 @@ public struct JobsMonitoringView: View {
     }
 
     private func loadJobs() async {
-        isLoading = true
+        // Gate: only fetch when session exists
+        guard let sessionId = container.sessionService.currentSession?.id else {
+            return
+        }
+
+        // Cache-first strategy: only show loading if we have no cached jobs
+        let hasCachedJobs = !jobsService.jobs.isEmpty
+        if !hasCachedJobs {
+            isLoading = true
+        }
+
         let projectDir = container.sessionService.currentSession?.projectDirectory ?? container.currentProject?.directory
-        let sessionId = container.sessionService.currentSession?.id
+
+        // Capture session ID for verification
+        let capturedSessionId = sessionId
 
         let request = JobListRequest(
             projectDirectory: projectDir,
             sessionId: sessionId,
             pageSize: 100,
             sortBy: .createdAt,
-            sortOrder: .desc,
-            includeContent: false
+            sortOrder: .desc
         )
 
         jobsService.listJobs(request: request)
             .receive(on: DispatchQueue.main)
             .sink(
-                receiveCompletion: { _ in
+                receiveCompletion: { [self] _ in
                     self.isLoading = false
                 },
-                receiveValue: { _ in
+                receiveValue: { [self] _ in
+                    // Verify session hasn't changed
+                    guard container.sessionService.currentSession?.id == capturedSessionId else {
+                        return
+                    }
+
                     self.isLoading = false
+                    // Note: Prefetch is now triggered automatically inside JobsDataService for faster loading
                 }
             )
             .store(in: &cancellables)
     }
+
 
     // MARK: - Job Actions
 
@@ -291,9 +351,11 @@ public struct JobsMonitoringView: View {
         // Handle different job types
         switch job.taskType {
         case "extended_path_finder", "file_relevance_assessment", "path_correction", "regex_file_filter":
-            if let files = responseObj["files"] as? [[String: Any]] {
-                // Apply files to current session
-                let filePaths = files.compactMap { $0["path"] as? String }
+            // Handle both array of strings and array of objects
+            if let filesArray = responseObj["files"] as? [String] {
+                await applyFilesToSession(filesArray)
+            } else if let filesObjArray = responseObj["files"] as? [[String: Any]] {
+                let filePaths = filesObjArray.compactMap { $0["path"] as? String }
                 await applyFilesToSession(filePaths)
             }
 
@@ -321,7 +383,6 @@ public struct JobsMonitoringView: View {
 
         // Trigger the web search execution
         // This would need to be implemented based on your workflow system
-        print("Continue workflow for job: \(job.id)")
     }
 
     private func checkHasContinuationJob(for job: BackgroundJob) -> Bool {
@@ -347,32 +408,96 @@ public struct JobsMonitoringView: View {
     }
 
     private func applyFilesToSession(_ filePaths: [String]) async {
-        // Apply files to the current session
-        guard let session = container.sessionService.currentSession else { return }
+        guard let sessionId = container.sessionService.currentSession?.id else {
+            return
+        }
 
-        // This would need to be implemented based on your session update logic
-        print("Applying \(filePaths.count) files to session \(session.id)")
+        Task {
+            do {
+                for try await response in CommandRouter.sessionUpdateFiles(
+                    id: sessionId,
+                    addIncluded: filePaths,
+                    removeIncluded: nil,
+                    addExcluded: nil,
+                    removeExcluded: nil
+                ) {
+                    if let error = response.error {
+                        return
+                    }
+                    if response.isFinal {
+                        break
+                    }
+                }
+            } catch {
+                // Silent error handling
+            }
+        }
     }
 
     private func applyResearchToSession(_ searchResults: [[String: Any]]) async {
-        // Apply research findings to the current session
-        guard let session = container.sessionService.currentSession else { return }
-
-        // Format and apply research findings
-        let findings = searchResults.compactMap { result in
-            result["findings"] as? String ?? result["content"] as? String
+        guard let sessionId = container.sessionService.currentSession?.id,
+              let currentTaskDescription = container.sessionService.currentSession?.taskDescription else {
+            return
         }
 
-        // This would need to be implemented based on your session update logic
-        print("Applying \(findings.count) research findings to session \(session.id)")
+        // Extract findings and wrap in XML tags (mirror desktop pattern)
+        var findingsText = ""
+        for (index, result) in searchResults.enumerated() {
+            if let findings = result["findings"] as? String ?? result["content"] as? String {
+                findingsText += "\n\n<research_finding_\(index + 1)>\n\(findings)\n</research_finding_\(index + 1)>"
+            }
+        }
+
+        let updatedTaskDescription = currentTaskDescription + findingsText
+
+        Task {
+            do {
+                for try await response in CommandRouter.sessionUpdateTaskDescription(
+                    sessionId: sessionId,
+                    taskDescription: updatedTaskDescription
+                ) {
+                    if let error = response.error {
+                        return
+                    }
+                    if response.isFinal {
+                        break
+                    }
+                }
+            } catch {
+                // Silent error handling
+            }
+        }
     }
 
     private func applyVideoAnalysisToSession(_ analysisData: [String: Any]) async {
-        // Apply video analysis findings to the current session
-        guard let session = container.sessionService.currentSession else { return }
+        guard let sessionId = container.sessionService.currentSession?.id,
+              let currentTaskDescription = container.sessionService.currentSession?.taskDescription else {
+            return
+        }
 
-        // This would need to be implemented based on your session update logic
-        print("Applying video analysis to session \(session.id)")
+        // Extract analysis and wrap in XML tags
+        let analysis = analysisData["analysis"] as? String ?? ""
+        let videoSummary = "\n\n<video_analysis_summary>\n\(analysis)\n</video_analysis_summary>"
+
+        let updatedTaskDescription = currentTaskDescription + videoSummary
+
+        Task {
+            do {
+                for try await response in CommandRouter.sessionUpdateTaskDescription(
+                    sessionId: sessionId,
+                    taskDescription: updatedTaskDescription
+                ) {
+                    if let error = response.error {
+                        return
+                    }
+                    if response.isFinal {
+                        break
+                    }
+                }
+            } catch {
+                // Silent error handling
+            }
+        }
     }
 }
 
@@ -383,26 +508,24 @@ private struct SummaryCard: View {
     let color: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             Text(title)
-                .font(.caption)
-                .fontWeight(.medium)
-                .foregroundColor(.secondary)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(Color.mutedForeground)
             Text("\(count)")
-                .font(.title)
-                .fontWeight(.bold)
+                .h2()
                 .foregroundColor(color)
         }
-        .frame(minWidth: 110)
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
-        .background(Color(.secondarySystemBackground))
+        .frame(minWidth: 100, alignment: .leading)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+        .background(Color.card)
         .cornerRadius(Theme.Radii.base)
         .overlay(
             RoundedRectangle(cornerRadius: Theme.Radii.base)
-                .stroke(Color(.separator), lineWidth: 1)
+                .stroke(Color.border, lineWidth: 1)
         )
-        .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
+        .shadow(color: Color.black.opacity(0.03), radius: 3, x: 0, y: 1)
     }
 }
 

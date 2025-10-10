@@ -53,6 +53,13 @@ pub async fn delete_background_job_command(job_id: String, app_handle: AppHandle
         .inner()
         .clone();
 
+    let job_opt = repo.get_job_by_id(&job_id)
+        .await
+        .ok()
+        .flatten();
+
+    let preserved_task_type = job_opt.as_ref().map(|j| j.task_type.clone());
+
     repo.delete_job(&job_id)
         .await
         .map_err(|e| AppError::DatabaseError(format!("Failed to delete job: {}", e)))?;
@@ -68,22 +75,16 @@ pub async fn delete_background_job_command(job_id: String, app_handle: AppHandle
         },
     );
 
-    // Emit PlanDeleted event if this was an implementation plan
-    let task_type = repo.get_job_by_id(&job_id)
-        .await
-        .ok()
-        .flatten()
-        .map(|j| j.task_type)
-        .unwrap_or_default();
-
-    if task_type == "implementation_plan" || task_type == "implementation_plan_merge" {
-        app_handle.emit(
-            "device-link-event",
-            serde_json::json!({
-                "type": "PlanDeleted",
-                "payload": { "jobId": job_id }
-            })
-        ).ok();
+    if let Some(task_type) = preserved_task_type {
+        if task_type == "implementation_plan" || task_type == "implementation_plan_merge" {
+            app_handle.emit(
+                "device-link-event",
+                serde_json::json!({
+                    "type": "PlanDeleted",
+                    "payload": { "jobId": job_id }
+                })
+            ).ok();
+        }
     }
 
     Ok(())
@@ -146,6 +147,17 @@ pub async fn get_all_visible_jobs_command(
     session_id: Option<String>,
     app_handle: AppHandle,
 ) -> AppResult<Vec<crate::models::BackgroundJob>> {
+    // Default to including content for backwards compatibility with desktop
+    get_all_visible_jobs_command_with_content(project_directory, session_id, true, app_handle).await
+}
+
+/// Internal version that accepts includeContent parameter
+pub async fn get_all_visible_jobs_command_with_content(
+    project_directory: Option<String>,
+    session_id: Option<String>,
+    _include_content: bool,
+    app_handle: AppHandle,
+) -> AppResult<Vec<crate::models::BackgroundJob>> {
     info!(
         "Fetching all visible jobs for project: {:?}, session: {:?}",
         project_directory, session_id
@@ -162,7 +174,7 @@ pub async fn get_all_visible_jobs_command(
 
         if let Some(sess_id) = session_id {
             // Filter by both project and session
-            repo.get_all_visible_jobs_for_session(&project_hash, &sess_id)
+            repo.get_all_visible_jobs_for_session(&sess_id)
                 .await
                 .map_err(|e| {
                     AppError::DatabaseError(format!("Failed to get all visible jobs: {}", e))
@@ -182,17 +194,5 @@ pub async fn get_all_visible_jobs_command(
         })?
     };
 
-    // Strip large content from implementation plans to reduce payload size
-    strip_implementation_plan_content(&mut jobs);
-
     Ok(jobs)
-}
-
-/// Strip large content from implementation plan jobs to reduce payload size
-fn strip_implementation_plan_content(jobs: &mut Vec<BackgroundJob>) {
-    for job in jobs.iter_mut() {
-        if job.task_type == "implementation_plan" || job.task_type == "implementation_plan_merge" {
-            job.response = Some("".to_string());
-        }
-    }
 }

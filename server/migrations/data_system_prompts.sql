@@ -32,18 +32,7 @@ To control inference cost, you **MUST** keep the resulting list as concise as po
 
 Return the final list using the same formatting rules described above.', 'Enhanced system prompt for finding relevant files in a codebase', '2.0'),
 
-('default_text_improvement', 'text_improvement', 'Please improve the following text to make it clearer and grammatically correct while EXACTLY preserving its formatting style, including:
-- All line breaks
-- All indentation
-- All bullet points and numbering
-- All blank lines
-- All special characters and symbols
-
-Do not change the formatting structure at all.
-
-IMPORTANT: Keep the original language of the text.
-
-Return only the improved text without any additional commentary or XML formatting. Remove informational redundancy and make the thoughts clearer. If there is weird formatting in place, remove it too.', 'Simple system prompt for text improvement with formatting preservation', '2.0'),
+('default_text_improvement', 'text_improvement', 'Transform the user''s task description into clear, actionable requirements for implementation planning. Strengthen and elevate the user''s intentions into precise requirements that define WHAT must be accomplished - not HOW to accomplish it. Do not suggest solutions, approaches, or implementation details. Remove redundancy while preserving the original language and intent. The output should serve as strong, unambiguous requirements that an implementation planner can work from. Return only the refined requirements as plain text without XML tags or formatting.', 'Text improvement with requirement structuring', '3.0'),
 
 
 

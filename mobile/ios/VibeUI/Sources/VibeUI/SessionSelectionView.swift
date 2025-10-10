@@ -148,7 +148,7 @@ public struct SessionSelectionView: View {
 
                         VStack(spacing: 8) {
                             Text(searchText.isEmpty ? "No Sessions" : "No Matching Sessions")
-                                .h4()
+                                .h3()
                                 .foregroundColor(Color.cardForeground)
 
                             Text(searchText.isEmpty ?

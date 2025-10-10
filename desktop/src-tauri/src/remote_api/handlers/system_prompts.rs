@@ -224,7 +224,7 @@ async fn handle_is_project_customized(app_handle: AppHandle, req: RpcRequest) ->
     ).await {
         Ok(is_customized) => RpcResponse {
             correlation_id: req.correlation_id,
-            result: Some(json!({ "isCustomized": is_customized })),
+            result: Some(json!({ "isCustom": is_customized, "isCustomized": is_customized })),
             error: None,
             is_final: true,
         },

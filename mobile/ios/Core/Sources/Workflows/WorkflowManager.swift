@@ -360,7 +360,7 @@ public class MobileSessionManager {
         )
 
         let encoder = JSONEncoder()
-        encoder.keyEncodingStrategy = .convertToSnakeCase
+        // Backend uses camelCase serialization - use default keys
         request.httpBody = try encoder.encode(sessionRequest)
 
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -371,7 +371,7 @@ public class MobileSessionManager {
         }
 
         let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        // Backend uses camelCase serialization - use default keys
         let sessionResponse = try decoder.decode(SessionEstablishResponse.self, from: data)
 
         currentSessionId = sessionResponse.sessionId

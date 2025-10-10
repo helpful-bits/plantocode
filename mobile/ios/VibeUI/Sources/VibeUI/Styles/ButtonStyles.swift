@@ -14,8 +14,8 @@ public struct PrimaryButtonStyle: ButtonStyle {
         configuration.label
             .font(.system(size: 16, weight: .medium))
             .foregroundColor(AppColors.primaryForeground)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.horizontal, Theme.Spacing.lg)
+            .padding(.vertical, Theme.Spacing.md)
             .frame(minHeight: 44)
             .background(
                 backgroundView(isPressed: configuration.isPressed)
@@ -48,8 +48,8 @@ public struct SecondaryButtonStyle: ButtonStyle {
         configuration.label
             .font(.system(size: 16, weight: .medium))
             .foregroundColor(AppColors.secondaryForeground)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.horizontal, Theme.Spacing.lg)
+            .padding(.vertical, Theme.Spacing.md)
             .frame(minHeight: 44)
             .background(
                 backgroundView(isPressed: configuration.isPressed)
@@ -88,8 +88,8 @@ public struct OutlineButtonStyle: ButtonStyle {
             .foregroundColor(
                 configuration.isPressed ? AppColors.accentForeground : AppColors.foreground
             )
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.horizontal, Theme.Spacing.lg)
+            .padding(.vertical, Theme.Spacing.md)
             .frame(minHeight: 44)
             .background(
                 backgroundView(isPressed: configuration.isPressed)
@@ -128,8 +128,8 @@ public struct GhostButtonStyle: ButtonStyle {
             .foregroundColor(
                 configuration.isPressed ? AppColors.accentForeground : AppColors.foreground
             )
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.horizontal, Theme.Spacing.lg)
+            .padding(.vertical, Theme.Spacing.md)
             .frame(minHeight: 44)
             .background(
                 configuration.isPressed ? AppColors.accent.opacity(0.4) : Color.clear
@@ -153,8 +153,8 @@ public struct DestructiveButtonStyle: ButtonStyle {
         configuration.label
             .font(.system(size: 16, weight: .medium))
             .foregroundColor(AppColors.destructiveForeground)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.horizontal, Theme.Spacing.lg)
+            .padding(.vertical, Theme.Spacing.md)
             .frame(minHeight: 44)
             .background(
                 configuration.isPressed
@@ -180,8 +180,8 @@ public struct WarningButtonStyle: ButtonStyle {
         configuration.label
             .font(.system(size: 16, weight: .medium))
             .foregroundColor(AppColors.warningForeground)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.horizontal, Theme.Spacing.lg)
+            .padding(.vertical, Theme.Spacing.md)
             .frame(minHeight: 44)
             .background(
                 configuration.isPressed
@@ -206,8 +206,8 @@ public struct SuccessButtonStyle: ButtonStyle {
         configuration.label
             .font(.system(size: 16, weight: .medium))
             .foregroundColor(AppColors.successForeground)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.horizontal, Theme.Spacing.lg)
+            .padding(.vertical, Theme.Spacing.md)
             .frame(minHeight: 44)
             .background(
                 configuration.isPressed
@@ -255,8 +255,8 @@ public struct CompactPrimaryButtonStyle: ButtonStyle {
         configuration.label
             .font(.system(size: 14, weight: .medium))
             .foregroundColor(AppColors.primaryForeground)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.vertical, Theme.Spacing.sm)
             .background(
                 configuration.isPressed
                     ? AppColors.primary.opacity(0.85)
@@ -278,8 +278,8 @@ public struct CompactSecondaryButtonStyle: ButtonStyle {
         configuration.label
             .font(.system(size: 14, weight: .medium))
             .foregroundColor(AppColors.secondaryForeground)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.vertical, Theme.Spacing.sm)
             .background(
                 configuration.isPressed
                     ? AppColors.secondary.opacity(0.6)
@@ -359,8 +359,8 @@ public struct RecordingButtonStyle: ButtonStyle {
         configuration.label
             .font(.system(size: 14, weight: .medium))
             .foregroundColor(isRecording ? AppColors.destructiveForeground : AppColors.foreground)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .padding(.horizontal, Theme.Spacing.cardPadding)
+            .padding(.vertical, Theme.Spacing.cardSpacing)
             .background(
                 isRecording ? AppColors.destructive : AppColors.muted
             )
@@ -417,8 +417,8 @@ public struct ToolbarButtonStyle: ButtonStyle {
         configuration.label
             .font(.system(size: 17, weight: .regular))
             .foregroundColor(isEnabled ? AppColors.primary : AppColors.mutedForeground)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.horizontal, Theme.Spacing.sm)
+            .padding(.vertical, Theme.Spacing.xs)
             .background(
                 configuration.isPressed
                     ? AppColors.primary.opacity(0.1)
@@ -440,8 +440,8 @@ public struct CompactDestructiveButtonStyle: ButtonStyle {
         configuration.label
             .font(.system(size: 13, weight: .medium))
             .foregroundColor(AppColors.destructiveForeground)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.horizontal, Theme.Spacing.sm)
+            .padding(.vertical, Theme.Spacing.xs)
             .background(
                 configuration.isPressed
                     ? AppColors.destructive.opacity(0.85)
@@ -463,8 +463,8 @@ public struct CompactSuccessButtonStyle: ButtonStyle {
         configuration.label
             .font(.system(size: 13, weight: .medium))
             .foregroundColor(AppColors.successForeground)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.horizontal, Theme.Spacing.sm)
+            .padding(.vertical, Theme.Spacing.xs)
             .background(
                 configuration.isPressed
                     ? AppColors.success.opacity(0.85)
@@ -488,8 +488,8 @@ public struct UtilityButtonStyle: ButtonStyle {
         configuration.label
             .font(.system(size: 13, weight: .medium))
             .foregroundColor(AppColors.mutedForeground)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
+            .padding(.horizontal, Theme.Spacing.cardSpacing)
+            .padding(.vertical, Theme.Spacing.sm)
             .background(AppColors.muted)
             .overlay(
                 RoundedRectangle(cornerRadius: AppColors.radiusSm)
@@ -537,8 +537,8 @@ public struct SocialLoginButtonStyle: ButtonStyle {
         configuration.label
             .font(.system(size: 16, weight: .medium))
             .foregroundColor(provider.foregroundColor)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.horizontal, Theme.Spacing.lg)
+            .padding(.vertical, Theme.Spacing.md)
             .frame(minHeight: 44)
             .background(
                 configuration.isPressed
@@ -557,7 +557,7 @@ public struct SocialLoginButtonStyle: ButtonStyle {
 struct ButtonStyles_Previews: PreviewProvider {
     static var previews: some View {
         ScrollView {
-            VStack(spacing: 20) {
+            VStack(spacing: Theme.Spacing.xl) {
                 Text("Standard Buttons").font(.headline)
 
                 Button("Primary Button") {}
@@ -587,7 +587,7 @@ struct ButtonStyles_Previews: PreviewProvider {
                 Divider()
                 Text("Compact Buttons").font(.headline)
 
-                HStack(spacing: 12) {
+                HStack(spacing: Theme.Spacing.md) {
                     Button("Compact Primary") {}
                         .buttonStyle(CompactPrimaryButtonStyle())
 
@@ -595,7 +595,7 @@ struct ButtonStyles_Previews: PreviewProvider {
                         .buttonStyle(CompactSecondaryButtonStyle())
                 }
 
-                HStack(spacing: 12) {
+                HStack(spacing: Theme.Spacing.md) {
                     Button("Compact Destructive") {}
                         .buttonStyle(CompactDestructiveButtonStyle())
 
@@ -606,7 +606,7 @@ struct ButtonStyles_Previews: PreviewProvider {
                 Divider()
                 Text("Icon Buttons").font(.headline)
 
-                HStack(spacing: 12) {
+                HStack(spacing: Theme.Spacing.md) {
                     Button(action: {}) {
                         Image(systemName: "heart.fill")
                     }

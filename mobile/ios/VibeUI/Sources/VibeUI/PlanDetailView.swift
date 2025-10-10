@@ -2,32 +2,34 @@ import SwiftUI
 import Core
 import Combine
 
-/// Plan Detail View with "Use" buttons for copying plan content
+/// Simplified plan viewer for mobile - maximum reading space
 public struct PlanDetailView: View {
     let plan: PlanSummary
     let allPlans: [PlanSummary]
     let plansService: PlansDataService
     @EnvironmentObject private var container: AppContainer
+    @Environment(\.dismiss) private var dismiss
 
     @State private var content: String = ""
     @State private var isLoading = false
     @State private var isSaving = false
     @State private var errorMessage: String?
-    @State private var saveMessage: String?
     @State private var currentIndex: Int
     @State private var showingTerminal = false
-    @State private var showingShareSheet = false
-    @State private var shareContent: String = ""
-    @State private var selectedStepNumber: String?
-    @State private var showingStepSelector = false
-    @State private var copiedButtonId: String?
-    @State private var showingPrompt = false
-    @State private var promptData: PromptResponse?
-    @State private var isLoadingPrompt = false
-    @State private var promptErrorMessage: String?
+    @State private var hasUnsavedChanges = false
+    @State private var showingSaveConfirmation = false
+    @State private var hasRetriedLoad = false
+    @State private var loadToken = UUID()
+    @State private var isEditMode = false
 
-    @StateObject private var copyButtonManager = CopyButtonManager.shared
     @State private var cancellables = Set<AnyCancellable>()
+    @FocusState private var isEditorFocused: Bool
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    private var isLandscape: Bool {
+        return verticalSizeClass == .compact
+    }
 
     public init(plan: PlanSummary, allPlans: [PlanSummary], plansService: PlansDataService) {
         self.plan = plan
@@ -38,70 +40,55 @@ public struct PlanDetailView: View {
     }
 
     public var body: some View {
-        VStack(spacing: 0) {
-            // Header with breadcrumb
-            AppHeaderBar(
-                title: currentPlan.title ?? "Plan Details",
-                breadcrumb: ["Plans", currentPlan.title ?? "Untitled"],
-                actions: AnyView(
-                    HStack(spacing: 16) {
-                        Button(action: previousPlan) {
-                            Image(systemName: "chevron.left")
-                        }
-                        .buttonStyle(IconButtonStyle(size: 32))
-                        .disabled(!canGoPrevious)
+        ZStack {
+            Color.background.ignoresSafeArea()
 
-                        Button(action: nextPlan) {
-                            Image(systemName: "chevron.right")
-                        }
-                        .buttonStyle(IconButtonStyle(size: 32))
-                        .disabled(!canGoNext)
-                    }
-                )
-            )
-
-            // Content area
             if isLoading {
                 loadingView()
-            } else if let errorMessage = errorMessage {
-                errorView(message: errorMessage)
+            } else if let error = errorMessage {
+                errorView(message: error)
             } else {
-                contentView()
+                editorView()
             }
         }
-        .navigationTitle("Plan Details")
+        .navigationTitle(currentPlan.title ?? "Implementation Plan")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(isLandscape)
+        .statusBarHidden(isLandscape)
+        .toolbar {
+            // Save button (only if changes)
+            if hasUnsavedChanges {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        savePlan()
+                    } label: {
+                        if isSaving {
+                            ProgressView()
+                                .scaleEffect(0.7)
+                        } else {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                    .disabled(isSaving)
+                }
+            }
+        }
         .sheet(isPresented: $showingTerminal) {
             NavigationStack {
                 RemoteTerminalView(jobId: currentPlan.jobId)
             }
         }
-        .sheet(isPresented: $showingShareSheet) {
-            ShareSheet(activityItems: [shareContent])
-        }
-        .sheet(isPresented: $showingPrompt) {
-            if let data = promptData {
-                PromptDetailView(promptData: data)
+        .alert("Unsaved Changes", isPresented: $showingSaveConfirmation) {
+            Button("Discard", role: .destructive) {
+                dismiss()
             }
-        }
-        .alert("Prompt Error", isPresented: .constant(promptErrorMessage != nil), actions: {
-            Button("OK", role: .cancel) {
-                promptErrorMessage = nil
+            Button("Save") {
+                savePlan()
+                dismiss()
             }
-        }, message: {
-            if let error = promptErrorMessage {
-                Text(error)
-            }
-        })
-        .sheet(isPresented: $showingStepSelector) {
-            StepSelectorSheet(
-                steps: parsedSteps,
-                selectedStep: $selectedStepNumber,
-                onSelect: { step in
-                    selectedStepNumber = step
-                    showingStepSelector = false
-                }
-            )
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("You have unsaved changes. What would you like to do?")
         }
         .onAppear {
             loadPlanContent()
@@ -149,53 +136,73 @@ public struct PlanDetailView: View {
         .background(Color.appBackground)
     }
 
-    // MARK: - Content View
+    // MARK: - Editor View
 
     @ViewBuilder
-    private func contentView() -> some View {
+    private func editorView() -> some View {
         VStack(spacing: 0) {
-            // Plan header info
-            planHeaderInfo()
-
-            // Use Buttons Section (Mobile-optimized)
-            useButtonsSection()
-
-            // Code editor with content
-            VStack(spacing: 0) {
-                // Editor toolbar
-                HStack {
-                    Text("Plan Content")
-                        .h4()
-                        .foregroundColor(Color.cardForeground)
+            // Minimal status bar with navigation (hidden in landscape for max space)
+            if !isLandscape {
+                HStack(spacing: 0) {
+                    Text(currentPlan.formattedDate)
+                        .small()
+                        .foregroundColor(Color.mutedForeground)
 
                     Spacer()
 
-                    if isSaving {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: Color.primary))
-                            .scaleEffect(0.8)
-                    }
-
+                    // Edit mode toggle
                     Button {
-                        Task { await loadPrompt() }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "doc.text.magnifyingglass")
-                                .font(.caption)
-                            Text("View Prompt")
-                                .small()
+                        isEditMode.toggle()
+                        if !isEditMode {
+                            isEditorFocused = false
                         }
+                    } label: {
+                        Image(systemName: isEditMode ? "pencil.circle.fill" : "pencil.circle")
+                            .font(.title3)
+                            .foregroundColor(Color.primary)
                     }
-                    .buttonStyle(SecondaryButtonStyle())
-                    .disabled(isLoadingPrompt)
 
-                    Button("Save") {
-                        savePlan()
+                    Spacer()
+                        .frame(width: 24)
+
+                    // Previous plan
+                    Button {
+                        navigateToPlan(direction: .previous)
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.title3)
+                            .foregroundColor(canGoPrevious ? Color.primary : Color.mutedForeground)
                     }
-                    .buttonStyle(PrimaryButtonStyle())
-                    .disabled(isSaving)
+                    .disabled(!canGoPrevious)
+
+                    Spacer()
+                        .frame(width: 24)
+
+                    // Next plan
+                    Button {
+                        navigateToPlan(direction: .next)
+                    } label: {
+                        Image(systemName: "chevron.right")
+                            .font(.title3)
+                            .foregroundColor(canGoNext ? Color.primary : Color.mutedForeground)
+                    }
+                    .disabled(!canGoNext)
+
+                    Spacer()
+                        .frame(width: 40)
+
+                    // Terminal
+                    Button {
+                        showingTerminal = true
+                    } label: {
+                        Image(systemName: "terminal")
+                            .font(.title3)
+                            .foregroundColor(Color.primary)
+                    }
                 }
-                .padding()
+                .padding(.horizontal)
+                .padding(.top, 4)
+                .padding(.bottom, 8)
                 .background(Color.card)
                 .overlay(
                     Rectangle()
@@ -203,133 +210,95 @@ public struct PlanDetailView: View {
                         .foregroundColor(Color.border),
                     alignment: .bottom
                 )
-
-                // Save/Error messages
-                if let saveMessage = saveMessage {
-                    HStack {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(Color.success)
-                        Text(saveMessage)
-                            .small()
-                            .foregroundColor(Color.success)
-                        Spacer()
-                    }
-                    .padding(.horizontal)
-                    .padding(.vertical, 8)
-                    .background(Color.success.opacity(0.1))
-                }
-
-                // Code editor
-                CodeEditor(text: $content, language: .xml)
-                    .background(Color.card)
             }
-        }
-    }
 
-    // MARK: - Use Buttons Section
+            // Maximum space for editor
+            PlanRunestoneEditorView(
+                text: Binding(
+                    get: { content },
+                    set: { newValue in
+                        if newValue != content {
+                            hasUnsavedChanges = true
+                        }
+                        content = newValue
+                    }
+                ),
+                isReadOnly: !isEditMode,
+                languageHint: "markdown"
+            )
+            .focused($isEditorFocused)
+            .ignoresSafeArea(.keyboard)
+            .background(Color.codeBackground)
 
-    @ViewBuilder
-    private func useButtonsSection() -> some View {
-        VStack(spacing: 12) {
-            // Section header
-            HStack {
-                Image(systemName: "square.and.arrow.up")
-                    .font(.caption)
-                    .foregroundColor(Color.primary)
-                Text("Quick Actions")
-                    .h4()
-                    .foregroundColor(Color.cardForeground)
-
-                Spacer()
-
-                // Step selector button
-                if !parsedSteps.isEmpty {
-                    Button(action: { showingStepSelector = true }) {
-                        HStack(spacing: 4) {
-                            if let stepNum = selectedStepNumber {
-                                Text("Step \(stepNum)")
-                                    .small()
-                            } else {
-                                Text("All Steps")
-                                    .small()
+            // Keyboard toolbar (when keyboard is visible) - compact in landscape
+            if isEditorFocused {
+                HStack(spacing: 0) {
+                    // In landscape, add navigation controls here since they're hidden above
+                    if isLandscape {
+                        // Edit mode toggle
+                        Button {
+                            isEditMode.toggle()
+                            if !isEditMode {
+                                isEditorFocused = false
                             }
-                            Image(systemName: "chevron.down")
-                                .small()
+                        } label: {
+                            Image(systemName: isEditMode ? "pencil.circle.fill" : "pencil.circle")
+                                .font(.title3)
+                        }
+
+                        Spacer()
+                            .frame(width: 24)
+
+                        Button {
+                            navigateToPlan(direction: .previous)
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.title3)
+                        }
+                        .disabled(!canGoPrevious)
+
+                        Spacer()
+                            .frame(width: 24)
+
+                        Button {
+                            navigateToPlan(direction: .next)
+                        } label: {
+                            Image(systemName: "chevron.right")
+                                .font(.title3)
+                        }
+                        .disabled(!canGoNext)
+
+                        Spacer()
+                            .frame(width: 40)
+
+                        Button {
+                            showingTerminal = true
+                        } label: {
+                            Image(systemName: "terminal")
+                                .font(.title3)
                         }
                     }
-                    .buttonStyle(UtilityButtonStyle())
-                }
-            }
 
-            // Copy buttons grid (2 columns for mobile)
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                ForEach(copyButtonManager.buttons) { button in
-                    UseButton(
-                        button: button,
-                        isCopied: copiedButtonId == button.id,
-                        onTap: {
-                            handleCopyButtonClick(button)
-                        }
-                    )
+                    Spacer()
+
+                    Button("Done") {
+                        isEditorFocused = false
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
                 }
+                .padding(.horizontal)
+                .padding(.vertical, isLandscape ? 4 : 8)
+                .background(Color.card)
+                .overlay(
+                    Rectangle()
+                        .frame(height: 1)
+                        .foregroundColor(Color.border),
+                    alignment: .top
+                )
             }
         }
-        .padding()
-        .background(Color.card)
-        .overlay(
-            Rectangle()
-                .frame(height: 1)
-                .foregroundColor(Color.border),
-            alignment: .bottom
-        )
     }
 
-    // MARK: - Plan Header
-
-    @ViewBuilder
-    private func planHeaderInfo() -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let title = currentPlan.title {
-                Text(title)
-                    .h4()
-                    .foregroundColor(Color.cardForeground)
-                    .lineLimit(2)
-            }
-
-            HStack {
-                if let filePath = currentPlan.filePath {
-                    Text(filePath)
-                        .small()
-                        .foregroundColor(Color.mutedForeground)
-                        .lineLimit(1)
-                }
-
-                Spacer()
-
-                StatusBadge(status: currentPlan.status)
-            }
-
-            HStack {
-                Text(currentPlan.formattedDate)
-                    .small()
-                    .foregroundColor(Color.mutedForeground)
-
-                Spacer()
-
-                Text(currentPlan.size)
-                    .small()
-                    .foregroundColor(Color.mutedForeground)
-            }
-        }
-        .padding()
-        .background(Color.card)
-        .overlay(
-            Rectangle()
-                .frame(height: 1)
-                .foregroundColor(Color.border),
-            alignment: .bottom
-        )
-    }
 
     // MARK: - Computed Properties
 
@@ -348,52 +317,32 @@ public struct PlanDetailView: View {
         return currentIndex < allPlans.count - 1
     }
 
-    private var parsedSteps: [PlanContentParser.ParsedStep] {
-        guard !content.isEmpty else { return [] }
-        return PlanContentParser.extractSteps(from: content)
+    // MARK: - Navigation
+
+    private enum NavigationDirection {
+        case previous
+        case next
     }
 
-    // MARK: - Button Handlers
+    private func navigateToPlan(direction: NavigationDirection) {
+        guard canGoPrevious || canGoNext else { return }
 
-    private func handleCopyButtonClick(_ button: CopyButton) {
-        let processedContent = button.processContent(
-            planContent: content,
-            stepNumber: selectedStepNumber
-        )
+        let newIndex = direction == .previous ? currentIndex - 1 : currentIndex + 1
+        guard newIndex >= 0 && newIndex < allPlans.count else { return }
 
-        // Copy to clipboard
-        UIPasteboard.general.string = processedContent
+        currentIndex = newIndex
+        loadToken = UUID()
+        hasUnsavedChanges = false
+        isEditMode = false
+        isEditorFocused = false
 
-        // Show feedback
-        copiedButtonId = button.id
+        // Reset cancellables
+        cancellables.removeAll()
+        cancellables = Set<AnyCancellable>()
 
-        // Haptic feedback
-        let generator = UINotificationFeedbackGenerator()
-        generator.notificationOccurred(.success)
+        // Prefetch neighbors
+        prefetchNeighbors()
 
-        // Reset copied state after 2 seconds
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            copiedButtonId = nil
-        }
-
-        // Also trigger share sheet for iOS sharing
-        shareContent = processedContent
-        showingShareSheet = true
-    }
-
-    // MARK: - Navigation Methods
-
-    private func previousPlan() {
-        guard canGoPrevious else { return }
-        currentIndex -= 1
-        selectedStepNumber = nil
-        loadPlanContent()
-    }
-
-    private func nextPlan() {
-        guard canGoNext else { return }
-        currentIndex += 1
-        selectedStepNumber = nil
         loadPlanContent()
     }
 
@@ -401,21 +350,69 @@ public struct PlanDetailView: View {
 
     private func loadPlanContent() {
         let planToLoad = currentPlan
+        let localToken = loadToken
 
         isLoading = true
         errorMessage = nil
-        content = ""
+        hasRetriedLoad = false
 
         plansService.getFullPlanContent(jobId: planToLoad.jobId)
             .receive(on: DispatchQueue.main)
             .sink(
                 receiveCompletion: { completion in
+                    // Guard: only process if token matches
+                    guard localToken == self.loadToken else { return }
+
                     self.isLoading = false
                     if case .failure(let error) = completion {
-                        self.errorMessage = error.localizedDescription
+                        let errorDescription = error.localizedDescription
+
+                        // Treat in-progress states as non-fatal
+                        if errorDescription.contains("not completed") ||
+                           errorDescription.contains("response is not available") ||
+                           errorDescription.contains("still being generated") {
+                            // Plan is still being created, wait and retry
+                            self.isLoading = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                                self.loadPlanContent()
+                            }
+                            return
+                        }
+
+                        // Handle "Job not found" with retry
+                        if errorDescription.contains("Job not found") || errorDescription.contains("Not found") {
+                            if !self.hasRetriedLoad {
+                                self.hasRetriedLoad = true
+                                self.container.plansService.invalidateCache()
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                                    self.loadPlanContent()
+                                }
+                                return
+                            }
+                            // After retry, show user-friendly message
+                            self.errorMessage = "This plan no longer exists or has been deleted."
+                            return
+                        }
+
+                        // Handle other errors
+                        if let range = errorDescription.range(of: "message: ") {
+                            let startIndex = errorDescription.index(range.upperBound, offsetBy: 0)
+                            if let endRange = errorDescription[startIndex...].range(of: ")") {
+                                let cleanMessage = String(errorDescription[startIndex..<endRange.lowerBound])
+                                self.errorMessage = cleanMessage.replacingOccurrences(of: "AnyCodable(value: \"", with: "")
+                                    .replacingOccurrences(of: "\")", with: "")
+                            } else {
+                                self.errorMessage = errorDescription
+                            }
+                        } else {
+                            self.errorMessage = errorDescription
+                        }
                     }
                 },
                 receiveValue: { planContent in
+                    // Guard: only process if token matches
+                    guard localToken == self.loadToken else { return }
+
                     self.content = planContent
                     self.isLoading = false
                 }
@@ -423,12 +420,35 @@ public struct PlanDetailView: View {
             .store(in: &cancellables)
     }
 
+    private func prefetchNeighbors() {
+        // Prefetch previous plan
+        if currentIndex > 0 {
+            let prevPlan = allPlans[currentIndex - 1]
+            plansService.getFullPlanContent(jobId: prevPlan.jobId)
+                .sink(
+                    receiveCompletion: { _ in },
+                    receiveValue: { _ in }
+                )
+                .store(in: &cancellables)
+        }
+
+        // Prefetch next plan
+        if currentIndex < allPlans.count - 1 {
+            let nextPlan = allPlans[currentIndex + 1]
+            plansService.getFullPlanContent(jobId: nextPlan.jobId)
+                .sink(
+                    receiveCompletion: { _ in },
+                    receiveValue: { _ in }
+                )
+                .store(in: &cancellables)
+        }
+    }
+
     private func savePlan() {
         let planToSave = currentPlan
 
         isSaving = true
         errorMessage = nil
-        saveMessage = nil
 
         Task {
             do {
@@ -436,10 +456,7 @@ public struct PlanDetailView: View {
                     await MainActor.run {
                         if let resultDict = result as? [String: Any],
                            let success = resultDict["success"] as? Bool, success {
-                            saveMessage = "Plan saved successfully"
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                                saveMessage = nil
-                            }
+                            hasUnsavedChanges = false
                         }
                     }
                 }
@@ -457,93 +474,51 @@ public struct PlanDetailView: View {
         }
     }
 
-    private func loadPrompt() async {
-        await MainActor.run {
-            isLoadingPrompt = true
-            promptErrorMessage = nil
-        }
-
-        do {
-            let job = try await container.jobsService.getJob(jobId: currentPlan.jobId).asyncValue()
-
-            guard let jobDict = job as? [String: Any],
-                  let sessionId = jobDict["sessionId"] as? String,
-                  let prompt = jobDict["prompt"] as? String else {
-                throw DataServiceError.invalidResponse("Missing job data")
-            }
-
-            let session = try await container.sessionService.getSession(id: sessionId)
-
-            guard let sessionDict = session as? [String: Any],
-                  let projectDirectory = sessionDict["projectDirectory"] as? String else {
-                throw DataServiceError.invalidResponse("Missing session data")
-            }
-
-            let relevantFiles = (sessionDict["includedFiles"] as? [String]) ?? []
-
-            let result = try await container.plansService.getPlanPrompt(
-                sessionId: sessionId,
-                taskDescription: prompt,
-                projectDirectory: projectDirectory,
-                relevantFiles: relevantFiles
-            )
-
-            await MainActor.run {
-                promptData = result
-                showingPrompt = true
-                isLoadingPrompt = false
-            }
-        } catch {
-            await MainActor.run {
-                promptErrorMessage = error.localizedDescription
-                isLoadingPrompt = false
-            }
-        }
-    }
-
     private func setupRealTimeUpdates() {
         container.plansService.$lastUpdateEvent
             .compactMap { $0 }
-            .filter { event in
-                event.eventType.hasPrefix("job:")
-            }
             .sink { event in
-                if event.eventType == "PlanModified",
-                   let planJobId = event.data["jobId"]?.value as? String,
-                   planJobId == self.currentPlan.jobId {
-                    DispatchQueue.main.async {
-                        self.loadPlanContent()
-                    }
-                    return
-                }
-
-                // Extract jobId from event payload
-                guard let eventJobId = event.data["jobId"]?.value as? String,
-                      eventJobId == self.currentPlan.jobId else {
-                    return
-                }
-
                 DispatchQueue.main.async {
+                    // Extract jobId from event payload
+                    let eventJobId = event.data["jobId"]?.value as? String
+
                     switch event.eventType {
+                    case "PlanModified":
+                        // Reload content when this plan is modified on desktop
+                        if let planJobId = eventJobId, planJobId == self.currentPlan.jobId {
+                            self.loadPlanContent()
+                        }
+
+                    case "job:deleted":
+                        let eventJobId = (event.data["jobId"]?.value as? String) ?? (event.data["id"]?.value as? String)
+                        if eventJobId == self.currentPlan.jobId {
+                            self.errorMessage = "This plan has been deleted on desktop."
+                            self.content = ""
+                        }
+
                     case "job:response-appended":
-                        // Try to append chunk if available
+                        // Only process if matches current plan
+                        guard let jobId = eventJobId, jobId == self.currentPlan.jobId else { return }
+
                         if let chunk = event.data["chunk"]?.value as? String {
                             self.content += chunk
                         } else {
-                            // No chunk available, reload full content
+                            self.loadPlanContent()
+                        }
+
+                    case "job:finalized":
+                        // Reload on finalization
+                        if let jobId = eventJobId, jobId == self.currentPlan.jobId {
                             self.loadPlanContent()
                         }
 
                     case "job:status-changed":
                         // Check if status is completed
-                        if let status = event.data["status"]?.value as? String,
+                        if let jobId = eventJobId, jobId == self.currentPlan.jobId,
+                           let status = event.data["status"]?.value as? String,
                            status == "completed" {
                             self.loadPlanContent()
                         }
-
-                    case "job:finalized":
-                        // Always reload on finalized
-                        self.loadPlanContent()
 
                     default:
                         break
@@ -554,165 +529,8 @@ public struct PlanDetailView: View {
     }
 }
 
-// MARK: - Use Button Component
-
-struct UseButton: View {
-    let button: CopyButton
-    let isCopied: Bool
-    let onTap: () -> Void
-
-    var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 6) {
-                Image(systemName: isCopied ? "checkmark" : "doc.on.doc")
-                    .font(.caption)
-                    .foregroundColor(isCopied ? Color.success : Color.primary)
-
-                Text(button.label)
-                    .small()
-                    .foregroundColor(isCopied ? Color.success : Color.cardForeground)
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-            .padding(.horizontal, 8)
-            .background(
-                isCopied ?
-                Color.success.opacity(0.1) :
-                Color.secondary.opacity(0.5)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(
-                        isCopied ? Color.success : Color.border,
-                        lineWidth: 1
-                    )
-            )
-            .cornerRadius(8)
-        }
-        .buttonStyle(PlainButtonStyle())
-        .accessibilityLabel("Copy: \(button.label)")
-        .accessibilityHint("Copies tailored content to clipboard and opens share options")
-        .accessibilityValue(isCopied ? "Copied" : "")
-    }
-}
-
-// MARK: - Step Selector Sheet
-
-struct StepSelectorSheet: View {
-    let steps: [PlanContentParser.ParsedStep]
-    @Binding var selectedStep: String?
-    let onSelect: (String?) -> Void
-    @Environment(\.presentationMode) var presentationMode
-
-    var body: some View {
-        NavigationStack {
-            List {
-                // All steps option
-                Button(action: {
-                    onSelect(nil)
-                    presentationMode.wrappedValue.dismiss()
-                }) {
-                    HStack {
-                        Text("All Steps")
-                            .foregroundColor(Color.cardForeground)
-                        Spacer()
-                        if selectedStep == nil {
-                            Image(systemName: "checkmark")
-                                .foregroundColor(Color.primary)
-                        }
-                    }
-                }
-                .accessibilityLabel("All Steps")
-                .accessibilityHint("Selects all steps in the plan")
-                .accessibilityValue(selectedStep == nil ? "Selected" : "")
-
-                // Individual steps
-                ForEach(steps, id: \.number) { step in
-                    Button(action: {
-                        onSelect(step.number)
-                        presentationMode.wrappedValue.dismiss()
-                    }) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Step \(step.number)")
-                                    .small()
-                                    .foregroundColor(Color.mutedForeground)
-                                Text(step.title)
-                                    .paragraph()
-                                    .foregroundColor(Color.cardForeground)
-                            }
-                            Spacer()
-                            if selectedStep == step.number {
-                                Image(systemName: "checkmark")
-                                    .foregroundColor(Color.primary)
-                            }
-                        }
-                    }
-                    .accessibilityLabel("Step \(step.number): \(step.title)")
-                    .accessibilityHint("Selects this step for copying")
-                    .accessibilityValue(selectedStep == step.number ? "Selected" : "")
-                }
-            }
-            .navigationTitle("Select Step")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Cancel") {
-                        presentationMode.wrappedValue.dismiss()
-                    }
-                }
-            }
-        }
-    }
-}
-
-// MARK: - Share Sheet
-
-struct ShareSheet: UIViewControllerRepresentable {
-    let activityItems: [Any]
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        let controller = UIActivityViewController(
-            activityItems: activityItems,
-            applicationActivities: nil
-        )
-        return controller
-    }
-
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
-}
-
 // MARK: - Supporting Views
-
-private struct StatusBadge: View {
-    let status: String
-
-    var body: some View {
-        Text(status.capitalized)
-            .small()
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(statusColor.opacity(0.2))
-            .foregroundColor(statusColor)
-            .cornerRadius(4)
-    }
-
-    private var statusColor: Color {
-        switch status.lowercased() {
-        case "completed":
-            return Color.success
-        case "running", "processing":
-            return Color.primary
-        case "failed", "error":
-            return Color.destructive
-        case "pending", "queued":
-            return Color.warning
-        default:
-            return Color.muted
-        }
-    }
-}
+// (None needed - all inline)
 
 #Preview {
     let planJSON = """

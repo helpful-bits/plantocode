@@ -146,11 +146,6 @@ public struct AISettingsView: View {
                 }
 
                 Spacer()
-
-                // Chevron
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(Color.appMutedForeground)
             }
             .padding(.vertical, 4)
         }
@@ -229,7 +224,7 @@ public struct AISettingsView: View {
 
             guard let dir = effectiveDir else {
                 isLoading = false
-                loadError = "No project selected. Please select a project in the Sessions tab."
+                loadError = "No project selected. Please set Active Project at the top of Settings."
                 return
             }
 

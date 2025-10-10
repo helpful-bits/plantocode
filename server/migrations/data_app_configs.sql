@@ -37,7 +37,7 @@ VALUES (
         "model": "anthropic/claude-sonnet-4-5-20250929",
         "allowed_models": ["anthropic/claude-sonnet-4-5-20250929", "google/gemini-2.5-flash"],
         "max_tokens": 4096,
-        "temperature": 0.7
+        "temperature": 0.45
       },
       "voice_transcription": {
         "model": "openai/gpt-4o-transcribe",

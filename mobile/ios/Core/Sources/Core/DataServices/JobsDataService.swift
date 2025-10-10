@@ -19,6 +19,11 @@ public class JobsDataService: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var progressSubscription: AnyCancellable?
     private var jobsIndex: [String: Int] = [:]
+    private var activeSyncTimer: AnyCancellable?
+    private var activeSessionId: String?
+    private var activeProjectDirectory: String?
+    private var isSyncActive: Bool = false
+    private var sessionScopeEnabled: Bool = false
 
     // MARK: - Initialization
     public init(
@@ -27,7 +32,6 @@ public class JobsDataService: ObservableObject {
     ) {
         self.apiClient = apiClient
         self.cacheManager = cacheManager
-        setupProgressTracking()
     }
 
     public convenience init() {
@@ -40,6 +44,7 @@ public class JobsDataService: ObservableObject {
     // MARK: - Public Methods
 
     /// List jobs with filtering and pagination
+    /// This replaces the entire jobs array - use for initial loads or explicit refreshes
     public func listJobs(request: JobListRequest) -> AnyPublisher<JobListResponse, DataServiceError> {
         isLoading = true
         error = nil
@@ -49,6 +54,9 @@ public class JobsDataService: ObservableObject {
         // Try cache first if enabled
         if let cached: JobListResponse = cacheManager.get(key: cacheKey) {
             isLoading = false
+            // Replace jobs array with cached data
+            self.jobs = cached.jobs
+            self.jobsIndex = Dictionary(uniqueKeysWithValues: cached.jobs.enumerated().map { ($1.id, $0) })
             return Just(cached)
                 .setFailureType(to: DataServiceError.self)
                 .eraseToAnyPublisher()
@@ -56,7 +64,7 @@ public class JobsDataService: ObservableObject {
 
         // Relay-first: directly use RPC-via-relay
         logger.debug("Jobs RPC path selected")
-        return listJobsViaRPC(request: request, cacheKey: cacheKey)
+        return listJobsViaRPC(request: request, cacheKey: cacheKey, shouldReplace: true)
     }
 
     /// Get a single job by ID (returns raw dictionary)
@@ -69,7 +77,7 @@ public class JobsDataService: ObservableObject {
 
         let rpcRequest = RpcRequest(
             method: "job.get",
-            params: ["jobId": AnyCodable(jobId)]
+            params: ["jobId": jobId]
         )
 
         return Future<[String: Any], DataServiceError> { promise in
@@ -84,7 +92,12 @@ public class JobsDataService: ObservableObject {
                         }
 
                         if let result = response.result?.value as? [String: Any] {
-                            jobData = result
+                            // Unwrap the "job" envelope if present, otherwise use result directly
+                            if let jobEnvelope = result["job"] as? [String: Any] {
+                                jobData = jobEnvelope
+                            } else {
+                                jobData = result
+                            }
                             if response.isFinal {
                                 break
                             }
@@ -148,6 +161,63 @@ public class JobsDataService: ObservableObject {
         .eraseToAnyPublisher()
     }
 
+    /// Set the active session (enables background event processing and does initial fetch)
+    public func setActiveSession(sessionId: String, projectDirectory: String?) {
+        // Only fetch if session actually changed
+        let sessionChanged = self.activeSessionId != sessionId
+
+        self.activeSessionId = sessionId
+        self.activeProjectDirectory = projectDirectory
+
+        // Do initial background fetch if session changed
+        if sessionChanged {
+            let request = JobListRequest(
+                projectDirectory: projectDirectory,
+                sessionId: sessionId,
+                pageSize: 100,
+                sortBy: .createdAt,
+                sortOrder: .desc
+            )
+
+            listJobs(request: request)
+                .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
+                .store(in: &cancellables)
+        }
+    }
+
+    /// Start session-scoped sync for a specific session
+    public func startSessionScopedSync(sessionId: String, projectDirectory: String?) {
+        self.activeSessionId = sessionId
+        self.activeProjectDirectory = projectDirectory
+        self.isSyncActive = true
+        self.sessionScopeEnabled = true
+
+        // Scoped 30s refresh; minimal payload
+        self.activeSyncTimer = Timer.publish(every: 30, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                self?.refreshActiveJobs()
+            }
+
+        // Immediate fetch on enter to get the most recent jobs
+        self.refreshActiveJobs()
+    }
+
+    /// Stop session-scoped sync timer (but keep processing events)
+    public func stopSessionScopedSync() {
+        self.activeSyncTimer?.cancel()
+        self.activeSyncTimer = nil
+        self.isSyncActive = false
+        self.sessionScopeEnabled = false
+        // Keep activeSessionId and activeProjectDirectory so events continue processing in background
+    }
+
+    /// Clear jobs from memory
+    public func clearJobs() {
+        self.jobs.removeAll()
+        self.jobsIndex.removeAll()
+    }
+
     /// Get status updates for specific jobs
     public func getJobStatusUpdates(jobIds: [String]) -> AnyPublisher<[JobProgressUpdate], DataServiceError> {
         return apiClient.request(
@@ -160,32 +230,109 @@ public class JobsDataService: ObservableObject {
         .eraseToAnyPublisher()
     }
 
-    // MARK: - Private Methods
+    /// Prefetch job details for multiple jobs in background (best-effort, no loading state)
+    public func prefetchJobDetails(jobIds: [String], limit: Int = 20) {
+        let idsToFetch = Array(jobIds.prefix(limit))
 
-    private func setupProgressTracking() {
-        // Auto-refresh active jobs every 30 seconds
-        Timer.publish(every: 30, on: .main, in: .common)
-            .autoconnect()
-            .sink { [weak self] _ in
-                self?.refreshActiveJobs()
-            }
-            .store(in: &cancellables)
+        // Fetch concurrently on MainActor
+        for jobId in idsToFetch {
+            let request = JobDetailsRequest(jobId: jobId, includeFullContent: true)
+            getJobDetails(request: request)
+                .sink(
+                    receiveCompletion: { _ in },
+                    receiveValue: { _ in }
+                )
+                .store(in: &cancellables)
+        }
     }
 
+    /// Internal helper to prefetch top jobs based on current jobs array
+    private func prefetchTopJobsInternal() {
+        // Prioritize active jobs, then most recent
+        let topJobs = jobs
+            .sorted { job1, job2 in
+                if job1.jobStatus.isActive && !job2.jobStatus.isActive { return true }
+                if !job1.jobStatus.isActive && job2.jobStatus.isActive { return false }
+                let time1 = job1.updatedAt ?? job1.createdAt ?? 0
+                let time2 = job2.updatedAt ?? job2.createdAt ?? 0
+                return time1 > time2
+            }
+            .prefix(20)
+            .map { $0.id }
+
+        prefetchJobDetails(jobIds: Array(topJobs))
+    }
+
+    /// Fast-path job fetch with cache-first strategy
+    public func getJobFast(jobId: String) -> AnyPublisher<BackgroundJob, DataServiceError> {
+        // Check cache first
+        let cacheKey = "job_details_\(jobId)"
+        if let cached: JobDetailsResponse = cacheManager.get(key: cacheKey) {
+            return Just(cached.job)
+                .setFailureType(to: DataServiceError.self)
+                .eraseToAnyPublisher()
+        }
+
+        // Use existing getJob RPC
+        return getJob(jobId: jobId)
+            .tryMap { [weak self] jobDict -> BackgroundJob in
+                do {
+                    let jsonData = try JSONSerialization.data(withJSONObject: jobDict)
+                    let decoder = JSONDecoder()
+                    // Backend uses camelCase serialization - use default keys
+                    return try decoder.decode(BackgroundJob.self, from: jsonData)
+                } catch {
+                    self?.logger.error("Failed to decode job \(jobId): \(error.localizedDescription)")
+                    self?.logger.debug("Job dict keys: \(jobDict.keys.joined(separator: ", "))")
+
+                    // Provide more helpful error message for decoding failures
+                    if let decodingError = error as? DecodingError {
+                        throw DataServiceError.invalidResponse("Job data format error: \(decodingError.localizedDescription)")
+                    }
+                    throw error
+                }
+            }
+            .handleEvents(receiveOutput: { [weak self] job in
+                // Cache as JobDetailsResponse for consistency
+                let response = JobDetailsResponse(job: job, metrics: nil)
+                self?.cacheManager.set(response, forKey: cacheKey, ttl: 600)
+            })
+            .mapError { error in
+                error as? DataServiceError ?? .networkError(error)
+            }
+            .eraseToAnyPublisher()
+    }
+
+    // MARK: - Private Methods
+
     private func refreshActiveJobs() {
+        // Early return if sync not active
+        guard isSyncActive, sessionScopeEnabled, let sessionId = activeSessionId else {
+            return
+        }
+
         let activeStatuses: [JobStatus] = [.created, .queued, .acknowledgedByWorker, .preparing, .preparingInput, .generatingStream, .processingStream, .running]
 
         let request = JobListRequest(
+            projectDirectory: self.activeProjectDirectory,
+            sessionId: sessionId,
             statusFilter: activeStatuses,
-            pageSize: 50,
-            includeContent: false
+            pageSize: 100
         )
 
-        listJobs(request: request)
+        let cacheKey = "jobs_\(request.cacheKey)"
+
+        // Fetch without replacing - we'll merge instead
+        listJobsViaRPC(request: request, cacheKey: cacheKey, shouldReplace: false)
             .sink(
                 receiveCompletion: { _ in },
                 receiveValue: { [weak self] response in
-                    self?.syncStatus = JobSyncStatus(
+                    guard let self = self else { return }
+
+                    // Merge fetched active jobs with existing jobs
+                    self.mergeJobs(fetchedJobs: response.jobs)
+
+                    self.syncStatus = JobSyncStatus(
                         activeJobs: response.jobs.count,
                         lastUpdate: Date(),
                         isConnected: true
@@ -195,16 +342,38 @@ public class JobsDataService: ObservableObject {
             .store(in: &cancellables)
     }
 
-    private func handleJobProgressUpdate(_ update: JobProgressUpdate) {
-        // Update local job if it exists
-        if let index = jobs.firstIndex(where: { $0.id == update.jobId }) {
-            jobs[index].status = update.status.rawValue
-            jobs[index].updatedAt = update.timestamp
-
-            // Invalidate relevant cache entries
-            cacheManager.invalidatePattern("jobs_")
-            cacheManager.invalidatePattern("job_details_\(update.jobId)")
+    /// Merge fetched jobs with existing jobs, preserving incremental updates
+    /// Note: This only updates/adds jobs, it doesn't remove completed jobs
+    /// Completed jobs remain in memory and are updated only via events
+    private func mergeJobs(fetchedJobs: [BackgroundJob]) {
+        for fetchedJob in fetchedJobs {
+            if let existingIndex = jobsIndex[fetchedJob.id] {
+                // Update existing job - the server data is source of truth
+                // Any event-based updates between fetch and now will be corrected by next event
+                jobs[existingIndex] = fetchedJob
+            } else {
+                // Add new job that we didn't know about
+                jobs.append(fetchedJob)
+                jobsIndex[fetchedJob.id] = jobs.count - 1
+            }
         }
+
+        // Rebuild index to ensure consistency after any additions
+        jobsIndex = Dictionary(uniqueKeysWithValues: jobs.enumerated().map { ($1.id, $0) })
+    }
+
+    private func handleJobProgressUpdate(_ update: JobProgressUpdate) {
+        // Update local job if it exists - use index for O(1) lookup
+        guard let index = jobsIndex[update.jobId] else { return }
+
+        var job = jobs[index]
+        job.status = update.status.rawValue
+        job.updatedAt = update.timestamp
+        jobs[index] = job
+
+        // Invalidate relevant cache entries
+        cacheManager.invalidatePattern("jobs_")
+        cacheManager.invalidatePattern("job_details_\(update.jobId)")
 
         // Update sync status
         syncStatus = JobSyncStatus(
@@ -217,7 +386,7 @@ public class JobsDataService: ObservableObject {
     // MARK: - RPC Helper Methods
 
     @MainActor
-    private func listJobsViaRPC(request: JobListRequest, cacheKey: String) -> AnyPublisher<JobListResponse, DataServiceError> {
+    private func listJobsViaRPC(request: JobListRequest, cacheKey: String, shouldReplace: Bool) -> AnyPublisher<JobListResponse, DataServiceError> {
         return Future<JobListResponse, DataServiceError> { [weak self] promise in
             Task {
                 do {
@@ -229,7 +398,8 @@ public class JobsDataService: ObservableObject {
                         statusFilter: request.statusFilter?.map { $0.rawValue },
                         taskTypeFilter: request.taskTypeFilter?.joined(separator: ","),
                         page: request.page.map { Int($0) },
-                        pageSize: request.pageSize.map { Int($0) }
+                        pageSize: request.pageSize.map { Int($0) },
+                        filter: nil
                     ) {
                         if let error = response.error {
                             promise(.failure(.serverError("RPC Error: \(error.message)")))
@@ -252,7 +422,7 @@ public class JobsDataService: ObservableObject {
 
                     let jsonData = try JSONSerialization.data(withJSONObject: jobs)
                     let decoder = JSONDecoder()
-                    decoder.keyDecodingStrategy = .convertFromSnakeCase
+                    // Backend uses camelCase serialization - use default keys
                     let backgroundJobs = try decoder.decode([BackgroundJob].self, from: jsonData)
 
                     let response = JobListResponse(
@@ -263,7 +433,19 @@ public class JobsDataService: ObservableObject {
                         hasMore: data["hasMore"] as? Bool ?? false
                     )
 
-                    self?.jobs = response.jobs
+                    // Apply to local state based on shouldReplace parameter
+                    if let strongSelf = self {
+                        if shouldReplace {
+                            // Full replace - used for initial loads
+                            strongSelf.jobs = response.jobs
+                            strongSelf.jobsIndex = Dictionary(uniqueKeysWithValues: response.jobs.enumerated().map { ($1.id, $0) })
+
+                            // CRITICAL: Immediately prefetch top jobs for instant details sheet opening
+                            // This happens INSIDE the service as soon as jobs are loaded, not waiting for view's sink handler
+                            strongSelf.prefetchTopJobsInternal()
+                        }
+                        // If not replacing, caller will handle the response (e.g., merging)
+                    }
                     self?.cacheManager.set(response, forKey: cacheKey, ttl: 300)
                     promise(.success(response))
 
@@ -294,10 +476,9 @@ public class JobsDataService: ObservableObject {
         }
 
         let rpcRequest = RpcRequest(
-            method: "job.get_details",
+            method: "job.get",
             params: [
-                "jobId": AnyCodable(request.jobId),
-                "includeFullContent": AnyCodable(request.includeFullContent)
+                "jobId": request.jobId
             ]
         )
 
@@ -328,14 +509,14 @@ public class JobsDataService: ObservableObject {
 
                     let jobJsonData = try JSONSerialization.data(withJSONObject: jobData)
                     let decoder = JSONDecoder()
-                    decoder.keyDecodingStrategy = .convertFromSnakeCase
+                    // Backend uses camelCase serialization - use default keys
                     let job = try decoder.decode(BackgroundJob.self, from: jobJsonData)
 
                     var metrics: JobMetrics?
                     if let metricsData = data["metrics"] as? [String: Any] {
                         let metricsJsonData = try JSONSerialization.data(withJSONObject: metricsData)
                         let metricsDecoder = JSONDecoder()
-                        metricsDecoder.keyDecodingStrategy = .convertFromSnakeCase
+                        // Backend uses camelCase serialization - use default keys
                         metrics = try? metricsDecoder.decode(JobMetrics.self, from: metricsJsonData)
                     }
 
@@ -364,7 +545,7 @@ public class JobsDataService: ObservableObject {
         let rpcRequest = RpcRequest(
             method: "job.delete",
             params: [
-                "jobId": AnyCodable(jobId)
+                "jobId": jobId
             ]
         )
 
@@ -377,8 +558,17 @@ public class JobsDataService: ObservableObject {
                             return
                         }
 
-                        // Remove from cache and local state
-                        self?.jobs.removeAll { $0.id == jobId }
+                        // Remove from local state and rebuild index
+                        await MainActor.run {
+                            guard let self = self, let index = self.jobsIndex[jobId] else {
+                                promise(.success(true))
+                                return
+                            }
+                            self.jobs.remove(at: index)
+                            self.jobsIndex.removeValue(forKey: jobId)
+                            // Rebuild index after deletion
+                            self.jobsIndex = Dictionary(uniqueKeysWithValues: self.jobs.enumerated().map { ($1.id, $0) })
+                        }
                         promise(.success(true))
                         return
                     }
@@ -399,8 +589,8 @@ public class JobsDataService: ObservableObject {
         let rpcRequest = RpcRequest(
             method: "job.cancel",
             params: [
-                "jobId": AnyCodable(request.jobId),
-                "reason": AnyCodable(request.reason)
+                "jobId": request.jobId,
+                "reason": request.reason as Any
             ]
         )
 
@@ -452,8 +642,25 @@ public class JobsDataService: ObservableObject {
     @MainActor
     public func applyRelayEvent(_ event: RelayEvent) {
         guard event.eventType.hasPrefix("job:") else { return }
+
+        // Process events continuously (like desktop) - only gate by session ID
+        guard let currentSessionId = activeSessionId else {
+            return
+        }
+
         let dict = event.data.mapValues { $0.value }
         let jobId = dict["jobId"] as? String ?? dict["id"] as? String
+
+        // Check session ID in event data
+        if let eventSessionId = dict["sessionId"] as? String {
+            guard eventSessionId == currentSessionId else { return }
+        } else if let jobData = dict["job"] as? [String: Any],
+                  let eventSessionId = jobData["sessionId"] as? String {
+            guard eventSessionId == currentSessionId else { return }
+        } else if let jobId = jobId {
+            // Only allow if job already in our index
+            guard jobsIndex[jobId] != nil else { return }
+        }
 
         switch event.eventType {
         case "job:created":
@@ -463,8 +670,12 @@ public class JobsDataService: ObservableObject {
                 do {
                     let jsonData = try JSONSerialization.data(withJSONObject: jobData)
                     let decoder = JSONDecoder()
-                    decoder.keyDecodingStrategy = .convertFromSnakeCase
+                    // Backend uses camelCase serialization - use default keys
                     if let job = try? decoder.decode(BackgroundJob.self, from: jsonData) {
+                        // Filter out workflow orchestrator jobs from real-time events
+                        guard job.taskType != "file_finder_workflow" && job.taskType != "web_search_workflow" else {
+                            return
+                        }
                         self.jobs.append(job)
                         self.jobsIndex[job.id] = self.jobs.count - 1
                     }
@@ -480,9 +691,54 @@ public class JobsDataService: ObservableObject {
                 self.jobsIndex = Dictionary(uniqueKeysWithValues: self.jobs.enumerated().map { ($1.id, $0) })
             }
 
-        case "job:status-changed", "job:tokens-updated", "job:cost-updated", "job:metadata-updated", "job:finalized":
+        case "job:metadata-updated":
             if let id = jobId, let idx = jobsIndex[id] {
                 var job = self.jobs[idx]
+                guard job.taskType != "file_finder_workflow" && job.taskType != "web_search_workflow" else {
+                    return
+                }
+
+                if let metadataPatch = dict["metadataPatch"] as? [String: Any] {
+                    if let existingMetadata = job.metadata,
+                       let metadataData = existingMetadata.data(using: .utf8),
+                       var metadataDict = try? JSONSerialization.jsonObject(with: metadataData) as? [String: Any] {
+
+                        for (key, value) in metadataPatch {
+                            if let existingValue = metadataDict[key] as? [String: Any],
+                               let newValue = value as? [String: Any] {
+                                var mergedDict = existingValue
+                                for (nestedKey, nestedValue) in newValue {
+                                    mergedDict[nestedKey] = nestedValue
+                                }
+                                metadataDict[key] = mergedDict
+                            } else {
+                                metadataDict[key] = value
+                            }
+                        }
+
+                        if let updatedData = try? JSONSerialization.data(withJSONObject: metadataDict),
+                           let updatedString = String(data: updatedData, encoding: .utf8) {
+                            job.metadata = updatedString
+                            job.updatedAt = Int64(Date().timeIntervalSince1970 * 1000)
+                            self.jobs[idx] = job
+                        }
+                    } else {
+                        if let patchData = try? JSONSerialization.data(withJSONObject: metadataPatch),
+                           let patchString = String(data: patchData, encoding: .utf8) {
+                            job.metadata = patchString
+                            job.updatedAt = Int64(Date().timeIntervalSince1970 * 1000)
+                            self.jobs[idx] = job
+                        }
+                    }
+                }
+            }
+
+        case "job:status-changed", "job:tokens-updated", "job:cost-updated", "job:finalized":
+            if let id = jobId, let idx = jobsIndex[id] {
+                var job = self.jobs[idx]
+                guard job.taskType != "file_finder_workflow" && job.taskType != "web_search_workflow" else {
+                    return
+                }
                 if let status = dict["status"] as? String {
                     job.status = status
                 }
@@ -501,6 +757,40 @@ public class JobsDataService: ObservableObject {
                 let currentResponse = job.response ?? ""
                 job.response = currentResponse + chunk
                 self.jobs[idx] = job
+            }
+
+        case "job:stream-progress":
+            if let id = jobId, let idx = jobsIndex[id] {
+                var job = self.jobs[idx]
+                guard job.taskType != "file_finder_workflow" && job.taskType != "web_search_workflow" else {
+                    return
+                }
+
+                if let existingMetadata = job.metadata,
+                   let metadataData = existingMetadata.data(using: .utf8),
+                   var metadataDict = try? JSONSerialization.jsonObject(with: metadataData) as? [String: Any] {
+
+                    var taskData = metadataDict["taskData"] as? [String: Any] ?? [:]
+
+                    if let progress = dict["progress"] as? Double {
+                        taskData["streamProgress"] = progress
+                    }
+                    if let responseLength = dict["responseLength"] as? Int {
+                        taskData["responseLength"] = responseLength
+                    }
+                    if let lastStreamUpdateTime = dict["lastStreamUpdateTime"] as? Int64 {
+                        taskData["lastStreamUpdateTime"] = lastStreamUpdateTime
+                    }
+
+                    metadataDict["taskData"] = taskData
+
+                    if let updatedData = try? JSONSerialization.data(withJSONObject: metadataDict),
+                       let updatedString = String(data: updatedData, encoding: .utf8) {
+                        job.metadata = updatedString
+                        job.updatedAt = Int64(Date().timeIntervalSince1970 * 1000)
+                        self.jobs[idx] = job
+                    }
+                }
             }
 
         default:
@@ -522,7 +812,6 @@ public struct JobListRequest: Codable {
     public let pageSize: UInt32?
     public let sortBy: JobSortBy?
     public let sortOrder: SortOrder?
-    public let includeContent: Bool?
 
     public init(
         projectDirectory: String? = nil,
@@ -534,8 +823,7 @@ public struct JobListRequest: Codable {
         page: UInt32? = 0,
         pageSize: UInt32? = 50,
         sortBy: JobSortBy? = .createdAt,
-        sortOrder: SortOrder? = .desc,
-        includeContent: Bool? = false
+        sortOrder: SortOrder? = .desc
     ) {
         self.projectDirectory = projectDirectory
         self.sessionId = sessionId
@@ -547,7 +835,6 @@ public struct JobListRequest: Codable {
         self.pageSize = pageSize
         self.sortBy = sortBy
         self.sortOrder = sortOrder
-        self.includeContent = includeContent
     }
 
     var cacheKey: String {
@@ -666,7 +953,7 @@ public struct JobSyncStatus {
 extension JSONDecoder {
     static let apiDecoder: JSONDecoder = {
         let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        // Backend uses camelCase serialization - use default keys
         decoder.dateDecodingStrategy = .secondsSince1970
         return decoder
     }()

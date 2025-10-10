@@ -17,7 +17,6 @@ import { getProjectTaskModelSettings } from "@/actions/project-settings.actions"
 import { useSessionStateContext } from "@/contexts/session";
 import { useLiveDuration } from "@/hooks/use-live-duration";
 import { normalizeJobResponse } from '@/utils/response-utils';
-import { invoke } from '@tauri-apps/api/core';
 import { JobDetailsContextProvider } from "./_contexts/job-details-context";
 
 // Lazy load component sections
@@ -114,46 +113,11 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
   // State for job task settings
   const [jobTaskSettings, setJobTaskSettings] = useState<TaskModelSettings | null>(null);
   
-  // State for full job details (with prompt, response, etc.)
-  const [fullJobDetails, setFullJobDetails] = useState<BackgroundJob | null>(null);
-  const [isLoadingFullDetails, setIsLoadingFullDetails] = useState(false);
-  
   // Get current session context for project directory
   const { currentSession } = useSessionStateContext();
 
   // Get live duration that updates every second for running jobs
   const liveDuration = useLiveDuration(job?.startTime, job?.endTime, job?.status || '');
-  
-  // Fetch full job details when job changes or modal opens
-  useEffect(() => {
-    const fetchFullJobDetails = async () => {
-      if (!job?.id) {
-        setFullJobDetails(null);
-        return;
-      }
-      
-      setIsLoadingFullDetails(true);
-      try {
-        const fullJob = await invoke<BackgroundJob>('get_background_job_by_id_command', {
-          jobId: job.id
-        });
-        if (fullJob) {
-          setFullJobDetails(fullJob);
-        } else {
-          // Fallback to the provided job if fetch fails
-          setFullJobDetails(job);
-        }
-      } catch (error) {
-        console.error('Failed to fetch full job details:', error);
-        // Fallback to the provided job if fetch fails
-        setFullJobDetails(job);
-      } finally {
-        setIsLoadingFullDetails(false);
-      }
-    };
-    
-    fetchFullJobDetails();
-  }, [job?.id, !!job]);
 
   // Load task settings when job changes
   useEffect(() => {
@@ -191,34 +155,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
   }, [job, currentSession?.projectDirectory]);
 
 
-  // Use fullJobDetails if available, but merge with the live job prop to get updates
-  const displayJob = useMemo(() => {
-    if (!job) return null;
-    if (!fullJobDetails) {
-      return job;
-    }
-    // Merge the live job over the fetched details to ensure streaming updates are reflected
-    // BUT preserve the response content from fullJobDetails (lightweight job has NULL response)
-    const merged = { 
-      ...fullJobDetails, 
-      ...job, 
-      response: fullJobDetails.response || job.response,
-      prompt: fullJobDetails.prompt || job.prompt,
-      systemPromptTemplate: fullJobDetails.systemPromptTemplate || job.systemPromptTemplate
-    };
-    
-    // Debug logging to verify content is preserved
-    if (process.env.NODE_ENV === 'development') {
-      console.log('JobDetailsModal merge:', {
-        jobId: job.id,
-        fullDetailsResponseLength: fullJobDetails.response?.length || 0,
-        lightweightResponseLength: job.response?.length || 0,
-        mergedResponseLength: merged.response?.length || 0
-      });
-    }
-    
-    return merged;
-  }, [job, fullJobDetails]);
+  const displayJob = job;
 
   // Early return if no job to avoid null checks throughout
   if (!displayJob) return null;
@@ -441,7 +378,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
     };
   }, [displayJob, formatMetadata, formatStructuredResponse, jobTaskSettings, liveDuration]);
 
-  if (!job || !contextValue) return null;
+  if (!contextValue) return null;
 
   return (
     <Dialog open={!!job} onOpenChange={(open: boolean) => !open && onClose()}>
@@ -491,14 +428,6 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
             })()}
           </DialogDescription>
         </DialogHeader>
-        {isLoadingFullDetails && (
-          <div className="absolute inset-0 bg-background/80 flex items-center justify-center z-50">
-            <div className="flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span>Loading job details...</span>
-            </div>
-          </div>
-        )}
         <JobDetailsContextProvider value={contextValue}>
           <div
             className="flex-1 flex flex-col space-y-4 overflow-y-auto pr-2 mt-4 w-full min-h-0"

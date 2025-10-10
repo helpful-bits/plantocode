@@ -24,7 +24,7 @@ public struct TerminalSettingsView: View {
                 .pickerStyle(.menu)
             } else {
                 Text("Loading available shells...")
-                    .foregroundColor(Color.mutedForeground)
+                    .foregroundColor(Color.appMutedForeground)
             }
 
             HStack(spacing: 12) {
@@ -46,7 +46,7 @@ public struct TerminalSettingsView: View {
 
             Text("This selection is stored on the remote desktop (terminal.defaultShell).")
                 .font(.caption)
-                .foregroundColor(Color.mutedForeground)
+                .foregroundColor(Color.appMutedForeground)
 
             Spacer()
         }

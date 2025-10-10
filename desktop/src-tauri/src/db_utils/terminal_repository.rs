@@ -19,6 +19,54 @@ impl TerminalRepository {
         started_at: i64,
         working_directory: Option<String>,
     ) -> AppResult<()> {
+        // First, check if a background job exists with this id (job_id)
+        // If not, we need to create a minimal background job for this terminal session
+        let job_exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM background_jobs WHERE id = ?1)"
+        )
+        .bind(session_id)
+        .fetch_one(&*self.pool)
+        .await?;
+
+        if !job_exists {
+            // Create a minimal background job for standalone terminal sessions
+            // We need a valid session_id from the sessions table
+            // First, try to find a session or create a default one
+            let default_session_id = "terminal-standalone";
+
+            // Ensure a default session exists for standalone terminals
+            let _ = sqlx::query(
+                r#"
+                INSERT OR IGNORE INTO sessions (
+                    id, name, project_directory, project_hash, created_at, updated_at
+                ) VALUES (
+                    ?1, 'Terminal Sessions', '/tmp', '', ?2, ?2
+                )
+                "#
+            )
+            .bind(default_session_id)
+            .bind(started_at)
+            .execute(&*self.pool)
+            .await;
+
+            // Now create the background job for this terminal
+            sqlx::query(
+                r#"
+                INSERT OR IGNORE INTO background_jobs (
+                    id, session_id, task_type, status, prompt, created_at, updated_at
+                ) VALUES (
+                    ?1, ?2, 'terminal', 'running', 'Terminal session', ?3, ?3
+                )
+                "#
+            )
+            .bind(session_id)
+            .bind(default_session_id)
+            .bind(started_at)
+            .execute(&*self.pool)
+            .await?;
+        }
+
+        // Now create the terminal session record
         sqlx::query(
             r#"
             INSERT OR IGNORE INTO terminal_sessions (

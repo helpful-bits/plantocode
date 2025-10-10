@@ -150,7 +150,7 @@ pub struct ReadImplementationPlanArgs {
 }
 
 /// Response for the read implementation plan command
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ImplementationPlanDataResponse {
     pub id: String,
     pub title: Option<String>,
@@ -158,6 +158,7 @@ pub struct ImplementationPlanDataResponse {
     pub content: Option<String>,
     pub content_format: Option<String>,
     pub created_at: String,
+    pub status: String,
 }
 
 /// Response for the get prompt command
@@ -219,22 +220,27 @@ pub async fn estimate_prompt_tokens_command(
         .map_err(|_| AppError::ValidationError(format!("Unsupported task type: {}", task_type)))?;
 
     // Get session to access actual project directory
+    // If session doesn't exist (e.g., mobile app created locally), use the provided project_directory
     let background_job_repo = app_handle
         .state::<Arc<BackgroundJobRepository>>()
         .inner()
         .clone();
     let session_repo = crate::db_utils::SessionRepository::new(background_job_repo.get_pool());
-    let session = session_repo
+    let actual_project_directory = match session_repo
         .get_session_by_id(&session_id)
-        .await?
-        .ok_or_else(|| AppError::JobError(format!("Session {} not found", session_id)))?;
-    let actual_project_directory = &session.project_directory;
+        .await? {
+        Some(session) => session.project_directory,
+        None => {
+            log::warn!("Session {} not found in database, using provided project_directory", session_id);
+            project_directory.clone()
+        }
+    };
 
     // Read file contents for relevant files - using parallel direct file reading to avoid lock contention
     let file_futures: Vec<_> = relevant_files
         .iter()
         .map(|relative_path_str| {
-            let full_path = std::path::Path::new(actual_project_directory).join(relative_path_str);
+            let full_path = std::path::Path::new(&actual_project_directory).join(relative_path_str);
             let relative_path_clone = relative_path_str.clone();
             async move {
                 let content_result = tokio::fs::read_to_string(&full_path).await;
@@ -277,7 +283,7 @@ pub async fn estimate_prompt_tokens_command(
                     );
                     // Fallback to full directory tree
                     match crate::utils::directory_tree::get_directory_tree_with_defaults(
-                        actual_project_directory,
+                        &actual_project_directory,
                     )
                     .await
                     {
@@ -292,7 +298,7 @@ pub async fn estimate_prompt_tokens_command(
         } else {
             // Empty root directories - use full tree
             match crate::utils::directory_tree::get_directory_tree_with_defaults(
-                actual_project_directory,
+                &actual_project_directory,
             )
             .await
             {
@@ -309,7 +315,7 @@ pub async fn estimate_prompt_tokens_command(
     } else {
         // No root directories specified - use full tree
         match crate::utils::directory_tree::get_directory_tree_with_defaults(
-            actual_project_directory,
+            &actual_project_directory,
         )
         .await
         {
@@ -327,7 +333,7 @@ pub async fn estimate_prompt_tokens_command(
     let model_settings = crate::utils::config_resolver::resolve_model_settings(
         &app_handle,
         parsed_task_type,
-        actual_project_directory,
+        &actual_project_directory,
         model,
         None,
         None,
@@ -400,16 +406,21 @@ pub async fn get_prompt_command(
     }
 
     // Get session to access actual project directory
+    // If session doesn't exist (e.g., mobile app created locally), use the provided project_directory
     let background_job_repo = app_handle
         .state::<Arc<BackgroundJobRepository>>()
         .inner()
         .clone();
     let session_repo = SessionRepository::new(background_job_repo.get_pool());
-    let session = session_repo
+    let actual_project_directory = match session_repo
         .get_session_by_id(&session_id)
-        .await?
-        .ok_or_else(|| AppError::JobError(format!("Session {} not found", session_id)))?;
-    let actual_project_directory = &session.project_directory;
+        .await? {
+        Some(session) => session.project_directory,
+        None => {
+            log::warn!("Session {} not found in database, using provided project_directory", session_id);
+            project_directory.clone()
+        }
+    };
 
     // Parse task_type string into TaskType enum using the FromStr implementation
     let parsed_task_type = task_type
@@ -420,7 +431,7 @@ pub async fn get_prompt_command(
     let file_futures: Vec<_> = relevant_files
         .iter()
         .map(|relative_path_str| {
-            let full_path = std::path::Path::new(actual_project_directory).join(relative_path_str);
+            let full_path = std::path::Path::new(&actual_project_directory).join(relative_path_str);
             let relative_path_clone = relative_path_str.clone();
             async move {
                 let content_result = tokio::fs::read_to_string(&full_path).await;
@@ -457,7 +468,7 @@ pub async fn get_prompt_command(
                     );
                     // Fallback to full directory tree
                     match crate::utils::directory_tree::get_directory_tree_with_defaults(
-                        actual_project_directory,
+                        &actual_project_directory,
                     )
                     .await
                     {
@@ -472,7 +483,7 @@ pub async fn get_prompt_command(
         } else {
             // Empty root directories - use full tree
             match crate::utils::directory_tree::get_directory_tree_with_defaults(
-                actual_project_directory,
+                &actual_project_directory,
             )
             .await
             {
@@ -489,7 +500,7 @@ pub async fn get_prompt_command(
     } else {
         // No root directories specified - use full tree
         match crate::utils::directory_tree::get_directory_tree_with_defaults(
-            actual_project_directory,
+            &actual_project_directory,
         )
         .await
         {
@@ -572,28 +583,10 @@ pub async fn read_implementation_plan_command(
         )));
     }
 
-    // Check if job is complete
-    if job.status != JobStatus::Completed.to_string() {
-        return Err(AppError::ValidationError(format!(
-            "Implementation plan job is not completed: {}",
-            args.job_id
-        )));
-    }
-
-    // Check if the response is available
-    if job.response.is_none() {
-        return Err(AppError::NotFoundError(format!(
-            "Implementation plan response is not available: {}",
-            args.job_id
-        )));
-    }
+    let content = job.response.unwrap_or_default();
 
     // Extract job details
     let created_at = job.created_at;
-    let job_response = job.response.clone().unwrap_or_default();
-
-    // job.response now contains clean XML directly
-    let implementation_plan_content = job_response;
 
     // Try to parse the title from metadata
     let title = if let Some(metadata) = job.metadata.as_ref() {
@@ -606,14 +599,14 @@ pub async fn read_implementation_plan_command(
         None
     };
 
-    // Create and return the response
     Ok(ImplementationPlanDataResponse {
         id: job.id,
         title,
         description: Some(job.prompt),
-        content: Some(implementation_plan_content),
+        content: Some(content),
         content_format: Some("xml".to_string()),
         created_at: created_at.to_string(),
+        status: job.status,
     })
 }
 
