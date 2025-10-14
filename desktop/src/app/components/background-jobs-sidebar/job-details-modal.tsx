@@ -207,7 +207,6 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
         case 'regex_file_filter':
         case 'file_relevance_assessment':
         case 'extended_path_finder':
-        case 'path_correction':
           if (response.files && Array.isArray(response.files)) {
             // Check if this is an empty result with a message
             if (response.isEmptyResult && response.message) {

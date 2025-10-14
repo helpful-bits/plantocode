@@ -12,8 +12,8 @@ import { Code2, Terminal, GitMerge, Search, Zap } from 'lucide-react';
 import type { SoftwareApplication } from 'schema-dts';
 
 export const metadata: Metadata = {
-  title: 'Architectural Planning for Codex CLI, Claude Code & Cursor - Vibe Manager',
-  description: 'Pre-planning workflow for Codex CLI, Claude Code, Cursor. Discover files, run models multiple times to surface complementary details, merge with your guidance. Review before CLI execution.',
+  title: 'AI Architect for Codex CLI, Claude Code & Cursor | Stop AI Drift in 2025',
+  description: 'Pre-plan complex changes before AI writes code. Discover impacted files, merge multi-model plans (GPT-5, Claude 4, Gemini 2.5), execute with full visibility. Used by senior engineers who review before they run.',
   keywords: [
     'codex cli planning workflow',
     'codex cli architectural planning',

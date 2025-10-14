@@ -73,16 +73,6 @@ pub(super) async fn find_next_abstract_stages_to_execute_internal<'a>(
             }
         }
 
-        // Skip PathCorrection stage if there are no unverified paths to correct
-        if stage_def.task_type == TaskType::PathCorrection
-            && workflow_state
-                .intermediate_data
-                .extended_unverified_paths
-                .is_empty()
-        {
-            continue;
-        }
-
         // Check if dependencies are met
         let dependencies_met = abstract_stage_dependencies_met_internal(
             stage_def,
@@ -181,7 +171,6 @@ pub(super) fn stage_to_task_type_internal(stage: &WorkflowStage) -> TaskType {
         WorkflowStage::RegexFileFilter => TaskType::RegexFileFilter,
         WorkflowStage::FileRelevanceAssessment => TaskType::FileRelevanceAssessment,
         WorkflowStage::ExtendedPathFinder => TaskType::ExtendedPathFinder,
-        WorkflowStage::PathCorrection => TaskType::PathCorrection,
         WorkflowStage::WebSearchPromptsGeneration => TaskType::WebSearchPromptsGeneration,
         WorkflowStage::WebSearchExecution => TaskType::WebSearchExecution,
     }

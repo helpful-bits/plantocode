@@ -13,7 +13,6 @@ import {
 } from "@/ui";
 
 import { useVoiceTranscription } from "@/hooks/use-voice-recording";
-import { type TaskDescriptionHandle } from "./task-description";
 import { TRANSCRIPTION_LANGUAGES } from "@/app/components/settings/shared/task-settings-types";
 import { AudioLevelMeter } from "./audio-level-meter";
 import { usePlausible } from "@/hooks/use-plausible";
@@ -21,14 +20,12 @@ import { usePlausible } from "@/hooks/use-plausible";
 interface VoiceTranscriptionProps {
   onTranscribed: (text: string) => void;
   onInteraction?: () => void;
-  textareaRef?: React.RefObject<TaskDescriptionHandle | null> | undefined;
   disabled?: boolean;
 }
 
 const VoiceTranscription = function VoiceTranscription({
   onTranscribed,
   onInteraction,
-  textareaRef,
   disabled = false,
 }: VoiceTranscriptionProps) {
   const { trackEvent } = usePlausible();
@@ -54,7 +51,6 @@ const VoiceTranscription = function VoiceTranscription({
   } = useVoiceTranscription({
     onTranscribed,
     onInteraction,
-    textareaRef,
     disabled,
   });
 

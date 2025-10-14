@@ -18,7 +18,6 @@ import { Progress } from "@/ui/progress";
 import { Checkbox } from "@/ui/checkbox";
 
 import { getParsedMetadata } from "../../background-jobs-sidebar/utils";
-import { getJobDisplaySessionName } from "../../background-jobs-sidebar/_utils/job-display-utils";
 import { useLiveProgress } from "@/hooks/use-live-progress";
 import { useTerminalSessions } from "@/contexts/terminal-sessions/useTerminalSessions";
 
@@ -58,9 +57,8 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
   const terminalSession = getSession(plan.id);
   const attention = getAttention(plan.id);
   const parsedMeta = getParsedMetadata(plan.metadata);
-  
-  // Extract the plan title from metadata
-  const planTitle = String(parsedMeta?.planTitle || "");
+
+  const planTitle = String(parsedMeta?.planTitle || parsedMeta?.generated_title || "Implementation Plan");
   
   // Helper function to truncate long titles
   const truncateTitle = (title: string, maxLength: number = 80) => {
@@ -101,9 +99,6 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
   const timeAgo = plan.updatedAt
     ? formatDistanceToNow(new Date(plan.updatedAt), { addSuffix: true })
     : "Unknown time";
-
-  // Extract session name using centralized utility function
-  const sessionName = getJobDisplaySessionName(plan);
 
   // Determine if the job has content to display
   // For completed jobs, we assume they have content (will be fetched on demand)
@@ -198,7 +193,7 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
             <div className="flex-1">
               <div className="flex items-center gap-2">
                 <CardTitle className="text-base">
-                  {truncateTitle(planTitle || plan.prompt || sessionName || "Implementation Plan")}
+                  {truncateTitle(planTitle)}
                 </CardTitle>
                 {getAttentionIcon() || getTerminalStatusIcon()}
               </div>

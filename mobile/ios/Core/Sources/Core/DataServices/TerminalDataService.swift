@@ -16,6 +16,39 @@ import UIKit
 /// - PTY resize propagation on terminal size changes
 /// - Connection readiness gating before session start
 
+/// Ring buffer for terminal output bytes with automatic head-trimming.
+///
+/// Maintains a rolling window of recent terminal output using byte-based capacity
+/// (not frame count). When capacity is exceeded, older bytes are removed from the head.
+///
+/// This buffer persists across view attach/detach cycles, enabling instant rendering
+/// when reopening the terminal sheet.
+private struct ByteRing {
+    private var storage: Data
+    private let maxBytes: Int
+
+    init(maxBytes: Int = 2_000_000) {
+        self.storage = Data()
+        self.maxBytes = maxBytes
+    }
+
+    mutating func append(_ data: Data) {
+        storage.append(data)
+        if storage.count > maxBytes {
+            let overflow = storage.count - maxBytes
+            storage.removeFirst(overflow)
+        }
+    }
+
+    func snapshot() -> Data {
+        return storage
+    }
+
+    var isEmpty: Bool {
+        return storage.isEmpty
+    }
+}
+
 /// Service for managing terminal sessions via RPC calls to connected desktop devices
 @MainActor
 public class TerminalDataService: ObservableObject {
@@ -30,9 +63,15 @@ public class TerminalDataService: ObservableObject {
     private let connectionManager = MultiConnectionManager.shared
     private var eventSubscriptions: [String: AnyCancellable] = [:]
     private var outputPublishers: [String: PassthroughSubject<TerminalOutput, Never>] = [:]
+    private var outputBytesPublishers: [String: PassthroughSubject<Data, Never>] = [:]
     private var connectionStateCancellable: AnyCancellable?
     private var jobToSessionId: [String: String] = [:]
     private var ensureInFlight: Set<String> = []
+    private var outputRings: [String: ByteRing] = [:]
+    private var boundSessions: Set<String> = []
+    private var activeDeviceReconnectCancellable: AnyCancellable?
+    private var recentSentChunks: [String: [Data]] = [:]
+    private let recentSentChunksLimit = 3
 
     // MARK: - Initialization
     public init() {
@@ -58,6 +97,25 @@ public class TerminalDataService: ObservableObject {
                     }
                 }
             }
+
+        activeDeviceReconnectCancellable = MultiConnectionManager.shared.$connectionStates
+            .sink { [weak self] (states: [UUID: ConnectionState]) in
+                guard let self = self else { return }
+                guard let activeId = self.connectionManager.activeDeviceId else { return }
+
+                if case .connected = states[activeId] {
+                    Task { @MainActor in
+                        for sessionId in self.boundSessions {
+                            if let relayClient = self.connectionManager.relayConnection(for: activeId),
+                               relayClient.isConnected {
+                                // Note: includeSnapshot parameter will be added to sendBinaryBind in Step 2
+                                relayClient.sendBinaryBind(producerDeviceId: activeId.uuidString)
+                                self.logger.info("Rebound session \(sessionId) after reconnect")
+                            }
+                        }
+                    }
+                }
+            }
     }
 
     deinit {
@@ -67,7 +125,7 @@ public class TerminalDataService: ObservableObject {
     // MARK: - Terminal Session Management
 
     /// Start a new terminal session for the given job
-    public func startSession(jobId: String, workingDirectory: String? = nil, shell: String? = nil) async throws -> TerminalSession {
+    public func startSession(jobId: String, shell: String? = nil) async throws -> TerminalSession {
         guard let deviceId = connectionManager.activeDeviceId,
               let relayClient = connectionManager.relayConnection(for: deviceId) else {
             throw DataServiceError.connectionError("No active device connection")
@@ -81,11 +139,6 @@ public class TerminalDataService: ObservableObject {
         // Use provided shell or fetch default from settings
         if let shell = shell {
             params["shell"] = shell
-        }
-
-        // Use provided working directory
-        if let workingDirectory = workingDirectory {
-            params["workingDirectory"] = workingDirectory
         }
 
         let request = RpcRequest(
@@ -130,6 +183,17 @@ public class TerminalDataService: ObservableObject {
             // Subscribe to terminal output events for this session
             subscribeToSessionOutput(sessionId: sessionId, deviceId: deviceId)
 
+            // Check for initialLog in response and hydrate
+            if let initialLog = data["initialLog"] as? [[String: Any]], !initialLog.isEmpty {
+                if let publisher = outputPublishers[sessionId] {
+                    for entry in initialLog {
+                        if let output = parseTerminalOutputFromEntry(entry, sessionId: sessionId) {
+                            publisher.send(output)
+                        }
+                    }
+                }
+            }
+
             logger.info("Terminal session started: \(sessionId) for job \(jobId)")
             return session
 
@@ -163,6 +227,13 @@ public class TerminalDataService: ObservableObject {
     /// method to preserve control sequences. Base64 encoding happens only at the
     /// transport boundary to avoid any lossy conversions.
     public func write(jobId: String, data: Data) async throws {
+        // Fast path: if session exists and publisher is ready, skip ensureSession
+        if let existingSession = activeSessions.values.first(where: { $0.jobId == jobId }),
+           outputPublishers[existingSession.id] != nil {
+            try await writeViaRelay(session: existingSession, data: data)
+            return
+        }
+
         let session = try await ensureSession(jobId: jobId, autostartIfNeeded: true)
         try await writeViaRelay(session: session, data: data)
     }
@@ -174,11 +245,8 @@ public class TerminalDataService: ObservableObject {
         let session = try await ensureSession(jobId: jobId, autostartIfNeeded: true)
 
         let finalText = appendCarriageReturn ? text + "\n" : text
-        guard let data = finalText.data(using: .utf8) else {
-            throw DataServiceError.invalidState("Failed to encode text as UTF-8")
-        }
+        let data = Data(finalText.utf8)
 
-        // Split into chunks by byte count (not String length) and send sequentially
         var offset = 0
         while offset < data.count {
             let endIndex = min(offset + chunkSize, data.count)
@@ -301,6 +369,13 @@ public class TerminalDataService: ObservableObject {
 
     /// Detach via relay
     private func detachViaRelay(session: TerminalSession) async throws {
+        detachLiveBinary(for: session.jobId)
+
+        // Send unbind control message
+        if let relayClient = connectionManager.relayConnection(for: session.deviceId) {
+            relayClient.sendBinaryUnbind()
+        }
+
         do {
             for try await response in CommandRouter.terminalDetach(sessionId: session.id) {
                 if let error = response.error {
@@ -317,6 +392,84 @@ public class TerminalDataService: ObservableObject {
         }
     }
 
+    /// Attach to live binary terminal output for a session.
+    ///
+    /// This method establishes binary WebSocket streaming with proper ordering guarantees:
+    /// 1. Ensures output ring buffer and publishers exist FIRST
+    /// 2. Then sends terminal.binary.bind to the desktop
+    /// 3. Sets up automatic rebinding on reconnect/device-change
+    ///
+    /// This ordering prevents the race where binary frames arrive before subscription,
+    /// which caused the "blank until reopen" bug.
+    ///
+    /// Call this AFTER subscribing to getHydratedRawOutputStream for best results.
+    ///
+    /// - Parameters:
+    ///   - jobId: The terminal job ID
+    ///   - includeSnapshot: Whether to include ring buffer snapshot in the bind call (default true)
+    public func attachLiveBinary(for jobId: String, includeSnapshot: Bool = true) {
+        guard let session = activeSessions.values.first(where: { $0.jobId == jobId }) else {
+            logger.warning("Cannot attach: no session for job \(jobId)")
+            return
+        }
+
+        let sessionId = session.id
+
+        // Already bound
+        if boundSessions.contains(sessionId) {
+            logger.debug("Session \(sessionId) already bound")
+            return
+        }
+
+        guard let deviceId = connectionManager.activeDeviceId,
+              let relayClient = connectionManager.relayConnection(for: deviceId) else {
+            logger.warning("Cannot attach: no active relay connection")
+            return
+        }
+
+        // CRITICAL ORDER: Ensure publishers and ring exist BEFORE binding
+        _ = ensureBytesPublisher(for: sessionId)
+        if outputRings[sessionId] == nil {
+            outputRings[sessionId] = ByteRing(maxBytes: 2_000_000)
+        }
+
+        // Now safe to bind - incoming frames have a destination
+        // Note: ServerRelayClient.sendBinaryBind will be updated to accept includeSnapshot in Step 2
+        relayClient.sendBinaryBind(producerDeviceId: deviceId.uuidString, includeSnapshot: includeSnapshot)
+        boundSessions.insert(sessionId)
+
+        logger.info("Attached binary stream for session \(sessionId) with includeSnapshot=\(includeSnapshot)")
+    }
+
+    /// Detach from live binary terminal output.
+    ///
+    /// This sends terminal.binary.unbind but keeps the ring buffer and publishers intact.
+    /// This allows instant re-attachment without losing historical output.
+    ///
+    /// Call this when dismissing the terminal view to free server resources.
+    ///
+    /// - Parameter jobId: The terminal job ID
+    public func detachLiveBinary(for jobId: String) {
+        guard let session = activeSessions.values.first(where: { $0.jobId == jobId }) else {
+            return
+        }
+
+        let sessionId = session.id
+
+        guard boundSessions.contains(sessionId) else {
+            return
+        }
+
+        if let deviceId = connectionManager.activeDeviceId,
+           let relayClient = connectionManager.relayConnection(for: deviceId) {
+            relayClient.sendBinaryUnbind()
+        }
+
+        boundSessions.remove(sessionId)
+
+        logger.info("Detached binary stream for session \(sessionId)")
+    }
+
     /// Get terminal output stream for a specific job
     public func getOutputStream(for jobId: String) -> AnyPublisher<TerminalOutput, Never> {
         guard let session = activeSessions.values.first(where: { $0.jobId == jobId }),
@@ -330,6 +483,44 @@ public class TerminalDataService: ObservableObject {
                 output.sessionId == session.id
             }
             .eraseToAnyPublisher()
+    }
+
+    /// Get raw byte stream for terminal rendering (no text conversion)
+    public func getRawOutputStream(for jobId: String) -> AnyPublisher<Data, Never> {
+        guard let session = activeSessions.values.first(where: { $0.jobId == jobId }) else {
+            return Empty().eraseToAnyPublisher()
+        }
+        return ensureBytesPublisher(for: session.id).eraseToAnyPublisher()
+    }
+
+    /// Get hydrated raw byte stream that replays the ring buffer snapshot before live data.
+    ///
+    /// This method solves the PassthroughSubject race condition where terminal output sent
+    /// before subscription would be lost. It returns a publisher that:
+    /// 1. First emits the current ring buffer snapshot (historical output)
+    /// 2. Then streams live binary frames from the desktop
+    ///
+    /// The ring buffer is NOT cleared on subscription, so reopening the terminal sheet
+    /// always shows the most recent output immediately.
+    ///
+    /// - Parameter jobId: The terminal job ID
+    /// - Returns: A publisher emitting raw terminal bytes (Data)
+    public func getHydratedRawOutputStream(for jobId: String) -> AnyPublisher<Data, Never> {
+        guard let session = activeSessions.values.first(where: { $0.jobId == jobId }) else {
+            return Empty().eraseToAnyPublisher()
+        }
+        let live = ensureBytesPublisher(for: session.id)
+        let ringSnapshot = outputRings[session.id]?.snapshot() ?? Data()
+
+        // DO NOT clear ring - keep it persistent for future subscriptions
+        // Return snapshot as single emission, then live stream
+        if !ringSnapshot.isEmpty {
+            return Just(ringSnapshot)
+                .append(live)
+                .eraseToAnyPublisher()
+        } else {
+            return live.eraseToAnyPublisher()
+        }
     }
 
     /// Get terminal log for a job (historical output)
@@ -450,6 +641,15 @@ public class TerminalDataService: ObservableObject {
         // For now, we subscribe to specific session outputs when sessions are created
     }
 
+    private func ensureBytesPublisher(for sessionId: String) -> PassthroughSubject<Data, Never> {
+        if let p = outputBytesPublishers[sessionId] {
+            return p
+        }
+        let p = PassthroughSubject<Data, Never>()
+        outputBytesPublishers[sessionId] = p
+        return p
+    }
+
     private func rebuildSessionFromMetadata(sessionId: String, jobId: String, deviceId: UUID, metadata: [String: Any]) -> TerminalSession {
         let status = metadata["status"] as? String ?? "unknown"
         let workingDir = metadata["workingDirectory"] as? String ?? "~"
@@ -476,7 +676,7 @@ public class TerminalDataService: ObservableObject {
         subscribeToSessionOutput(sessionId: sessionId, deviceId: deviceId)
     }
 
-    private func ensureSession(jobId: String, workingDirectory: String? = nil, shell: String? = nil, autostartIfNeeded: Bool = true) async throws -> TerminalSession {
+    private func ensureSession(jobId: String, shell: String? = nil, autostartIfNeeded: Bool = true) async throws -> TerminalSession {
         guard !ensureInFlight.contains(jobId) else {
             try await Task.sleep(nanoseconds: 100_000_000)
             if let session = activeSessions.values.first(where: { $0.jobId == jobId }) {
@@ -533,21 +733,8 @@ public class TerminalDataService: ObservableObject {
                 activeSessions[sessionId] = session
                 jobToSessionId[jobId] = sessionId
 
-                Task {
-                    do {
-                        let logEntries = try await self.getLog(jobId: jobId)
-                        for entry in logEntries {
-                            if let publisher = self.outputPublishers[sessionId] {
-                                publisher.send(entry)
-                            }
-                        }
-                    } catch {
-                        logger.warning("Failed to hydrate log: \(error)")
-                    }
-                }
-
                 if status == "restored" && autostartIfNeeded {
-                    _ = try await startSession(jobId: jobId, workingDirectory: workingDirectory, shell: shell)
+                    _ = try await startSession(jobId: jobId, shell: shell)
                 }
 
                 return session
@@ -555,41 +742,51 @@ public class TerminalDataService: ObservableObject {
         }
 
         if autostartIfNeeded {
-            return try await startSession(jobId: jobId, workingDirectory: workingDirectory, shell: shell)
+            return try await startSession(jobId: jobId, shell: shell)
         } else {
             throw DataServiceError.invalidState("Session \(jobId) is stopped and autostart disabled")
         }
     }
 
-    /// Subscribes to terminal output events for a session via relay protocol
-    ///
-    /// Terminal synchronization pattern:
-    /// - Listens to "terminal.output" event topic for real-time output streaming
-    /// - Listens to "terminal.exit" event topic for session termination
-    /// - Events are pushed from desktop via relay server to mobile devices
-    /// - Terminal data is Base64 encoded in transit and decoded here
-    /// - Supports both stdout and stderr streams with proper type identification
+    /// Subscribes to terminal output via raw binary frames.
+    /// Sends bind control message to pair this mobile device with the desktop producer.
+    /// Binary frames are forwarded as-is without any decoding.
     private func subscribeToSessionOutput(sessionId: String, deviceId: UUID) {
         guard let relayClient = connectionManager.relayConnection(for: deviceId) else {
             return
         }
 
+        // Bind is now controlled by attachLiveBinary - don't bind here
+
         let outputSubject = PassthroughSubject<TerminalOutput, Never>()
         outputPublishers[sessionId] = outputSubject
 
-        // Subscribe to terminal.output events
-        let outputSubscription = relayClient.events
-            .filter { event in
-                event.eventType == "terminal.output"
-            }
-            .compactMap { event in
-                self.parseTerminalOutput(from: event.data.mapValues { $0.value }, sessionId: sessionId)
-            }
-            .sink { output in
-                outputSubject.send(output)
+        let bytesSubject = ensureBytesPublisher(for: sessionId)
+
+        // Subscribe to raw binary frames
+        let binarySubscription = relayClient.terminalBytes
+            .sink { [weak self] evt in
+                guard let self = self else { return }
+
+                // Store into ring buffer (persistent across subscriptions)
+                self.outputRings[sessionId, default: ByteRing(maxBytes: 2_000_000)].append(evt.data)
+
+                // Forward raw bytes to bytes publisher (always show remote output)
+                bytesSubject.send(evt.data)
+
+                // Also decode to text for text-based output publisher (backward compat)
+                if let decoded = String(data: evt.data, encoding: .utf8) {
+                    let output = TerminalOutput(
+                        sessionId: sessionId,
+                        data: decoded,
+                        timestamp: evt.timestamp,
+                        outputType: .stdout
+                    )
+                    outputSubject.send(output)
+                }
             }
 
-        // Subscribe to terminal.exit events
+        // Keep terminal.exit subscription for session termination
         let exitSubscription = relayClient.events
             .filter { event in
                 event.eventType == "terminal.exit"
@@ -600,6 +797,10 @@ public class TerminalDataService: ObservableObject {
                 let code = dict["code"] as? Int
                 let line = code != nil ? "[Session exited (code \(code!))]" : "[Session exited]"
                 self.activeSessions[sid]?.isActive = false
+
+                // Send unbind on exit
+                relayClient.sendBinaryUnbind()
+
                 return TerminalOutput(sessionId: sid, data: line, timestamp: Date(), outputType: .system)
             }
             .sink { output in
@@ -608,7 +809,7 @@ public class TerminalDataService: ObservableObject {
 
         // Store both subscriptions
         let combinedSubscription = AnyCancellable {
-            outputSubscription.cancel()
+            binarySubscription.cancel()
             exitSubscription.cancel()
         }
         eventSubscriptions[sessionId] = combinedSubscription
@@ -619,7 +820,7 @@ public class TerminalDataService: ObservableObject {
             return nil
         }
 
-        // Decode base64 data
+        // Terminal data is base64-encoded by desktop; fallback to raw string for compatibility
         guard let dataB64 = event["data"] as? String else { return nil }
         let decodedData: String
         if let decodedBytes = Data(base64Encoded: dataB64),
@@ -638,6 +839,28 @@ public class TerminalDataService: ObservableObject {
             data: decodedData,
             timestamp: Date(timeIntervalSince1970: ts),
             outputType: type
+        )
+    }
+
+    private func parseTerminalOutputFromEntry(_ entry: [String: Any], sessionId: String) -> TerminalOutput? {
+        guard let data = entry["data"] as? String else { return nil }
+
+        let content: String
+        if let decodedData = Data(base64Encoded: data),
+           let decodedString = String(data: decodedData, encoding: .utf8) {
+            content = decodedString
+        } else {
+            content = data
+        }
+
+        let timestamp = entry["timestamp"] as? TimeInterval ?? Date().timeIntervalSince1970
+        let type = (entry["type"] as? String) ?? "stdout"
+
+        return TerminalOutput(
+            sessionId: sessionId,
+            data: content,
+            timestamp: Date(timeIntervalSince1970: timestamp),
+            outputType: type == "stderr" ? .stderr : .stdout
         )
     }
 

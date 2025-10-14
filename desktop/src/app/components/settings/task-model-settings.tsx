@@ -45,19 +45,12 @@ const FILE_FINDING_WORKFLOW_STAGES = [
     nextStage: 'Extended Path Finding',
     description: 'AI-powered assessment of file relevance'
   },
-  { 
-    key: 'extendedPathFinder', 
-    stageNumber: 4, 
+  {
+    key: 'extendedPathFinder',
+    stageNumber: 4,
     displayName: 'Extended Path Finding',
-    nextStage: 'Path Correction',
-    description: 'Deep analysis to find related files'
-  },
-  { 
-    key: 'pathCorrection', 
-    stageNumber: 5, 
-    displayName: 'Path Correction',
     nextStage: null,
-    description: 'Final refinement and path validation'
+    description: 'Deep analysis to find related files'
   },
 ] as const;
 

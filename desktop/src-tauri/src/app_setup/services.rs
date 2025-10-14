@@ -65,6 +65,16 @@ pub async fn initialize_token_manager(app_handle: &AppHandle) -> AppResult<()> {
         }
     });
 
+    // Auto-start device link connection if token is available
+    if token_manager.get().await.is_some() {
+        let app_for_device_link = app_handle.clone();
+        tokio::spawn(async move {
+            if let Err(e) = initialize_device_link_connection(&app_for_device_link).await {
+                tracing::warn!("Failed to initialize device link connection: {:?}", e);
+            }
+        });
+    }
+
     info!("TokenManager and cache services initialized");
     Ok(())
 }
@@ -177,6 +187,24 @@ pub async fn reinitialize_api_clients(app_handle: &AppHandle, server_url: String
 
     app_state.set_api_clients_ready(true);
     info!("API clients reinitialized and registered in app state.");
+
+    // Start new DeviceLinkClient with updated server URL
+    // The old client will be cleaned up when its Arc is dropped after being replaced in app state
+    let new_client = Arc::new(crate::services::device_link_client::DeviceLinkClient::new(app_handle.clone(), server_url.clone()));
+    app_handle.manage(new_client);
+
+    // Auto-start if token is available
+    if token_manager.get().await.is_some() {
+        let app_for_restart = app_handle.clone();
+        let restart_url = server_url.clone();
+        tokio::spawn(async move {
+            let mut client = crate::services::device_link_client::DeviceLinkClient::new(app_for_restart.clone(), restart_url);
+            if let Err(e) = client.start().await {
+                tracing::warn!("Failed to restart DeviceLinkClient: {:?}", e);
+            }
+        });
+    }
+
     Ok(())
 }
 
@@ -311,6 +339,7 @@ pub async fn initialize_device_link_connection(
 ) -> crate::error::AppResult<()> {
     use crate::auth::token_manager::TokenManager;
     use crate::services::device_link_client::DeviceLinkClient;
+    use crate::api_clients::server_proxy_client::ServerProxyClient;
     use std::sync::Arc;
 
     tracing::info!("Starting DeviceLinkClient connection...");
@@ -325,16 +354,35 @@ pub async fn initialize_device_link_connection(
         let device_settings = settings_repo.get_device_settings().await?;
 
         if device_settings.is_discoverable && device_settings.allow_remote_access {
-            // Get or create device link client and start it
-            let server_url = std::env::var("SERVER_URL")
-                .unwrap_or_else(|_| "https://api.vibemanager.app".to_string());
+            // Resolve server URL with precedence: ServerProxyClient > env var > default
+            let server_url = if let Some(proxy_client_lock) = app_handle
+                .try_state::<Arc<tokio::sync::RwLock<Option<Arc<ServerProxyClient>>>>>()
+            {
+                let proxy_guard = proxy_client_lock.read().await;
+                if let Some(proxy_client) = proxy_guard.as_ref() {
+                    proxy_client.base_url().to_string()
+                } else {
+                    std::env::var("SERVER_URL")
+                        .unwrap_or_else(|_| "https://api.vibemanager.app".to_string())
+                }
+            } else {
+                std::env::var("SERVER_URL")
+                    .unwrap_or_else(|_| "https://api.vibemanager.app".to_string())
+            };
 
-            let mut client = DeviceLinkClient::new(app_handle.clone(), server_url);
+            tracing::info!("Using server URL for DeviceLinkClient: {}", server_url);
+
+            let client = Arc::new(DeviceLinkClient::new(app_handle.clone(), server_url.clone()));
+
+            // Manage the client in app state so TerminalManager can access it
+            app_handle.manage(client.clone());
 
             // Start in background task
             let app_handle_clone = app_handle.clone();
+            let server_url_clone = server_url.clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = client.start().await {
+                let mut client_instance = DeviceLinkClient::new(app_handle_clone, server_url_clone);
+                if let Err(e) = client_instance.start().await {
                     tracing::warn!(error = ?e, "Failed to start DeviceLinkClient");
                 }
             });

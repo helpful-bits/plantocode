@@ -34,13 +34,23 @@ public class ServerRelayClient: NSObject, ObservableObject {
         eventPublisher.eraseToAnyPublisher()
     }
 
+    // Binary terminal bytes publisher
+    public struct TerminalBytesEvent {
+        public let data: Data
+        public let timestamp: Date
+    }
+    private let terminalBytesSubject = PassthroughSubject<TerminalBytesEvent, Never>()
+    public var terminalBytes: AnyPublisher<TerminalBytesEvent, Never> {
+        terminalBytesSubject.eraseToAnyPublisher()
+    }
+
     // Connection management
     private var heartbeatTimer: Timer?
     private var reconnectionTimer: Timer?
     private var registrationTimer: Timer?
     private var isReconnecting = false
     private var reconnectAttempts = 0
-    private let maxReconnectAttempts = 5
+    private let maxReconnectAttempts = 0  // 0 = unlimited reconnection attempts
 
     private var cancellables = Set<AnyCancellable>()
 
@@ -58,8 +68,9 @@ public class ServerRelayClient: NSObject, ObservableObject {
         self.deviceId = deviceId
 
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 30
-        config.timeoutIntervalForResource = 0
+        config.timeoutIntervalForRequest = 15
+        config.timeoutIntervalForResource = 120
+        config.waitsForConnectivity = true
 
         let delegate = sessionDelegate ?? CertificatePinningManager.shared.createURLSessionDelegate(endpointType: .relay)
         self.urlSession = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
@@ -143,17 +154,17 @@ public class ServerRelayClient: NSObject, ObservableObject {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 self.sendRegistration()
 
-                // Start registration timeout timer (10 seconds)
+                // Start registration timeout timer (20 seconds)
                 DispatchQueue.main.async { [weak self] in
-                    self?.registrationTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: false) { [weak self] _ in
+                    self?.registrationTimer = Timer.scheduledTimer(withTimeInterval: 20.0, repeats: false) { [weak self] _ in
                         guard let self = self else { return }
                         if self.registrationPromise != nil {
                             self.logger.error("Registration handshake timeout - no response received")
                             self.connectionState = .failed(ServerRelayError.timeout)
+                            self.webSocketTask?.cancel(with: .abnormalClosure, reason: nil)
                             self.registrationPromise?(.failure(.timeout))
                             self.registrationPromise = nil
-                            self.isReconnecting = false
-                            // Do NOT schedule reconnection for timeout
+                            self.scheduleReconnection()
                         }
                     }
                 }
@@ -183,30 +194,67 @@ public class ServerRelayClient: NSObject, ObservableObject {
         webSocketTask = nil
 
         // Fail all pending RPC calls
-        rpcQueue.async(execute: {
+        rpcQueue.sync {
             let subjects = Array(self.pendingRPCCalls.values)
             self.pendingRPCCalls.removeAll()
 
             for subject in subjects {
                 subject.send(completion: .failure(.disconnected))
             }
-        })
+        }
     }
 
     // MARK: - RPC Calls
 
     /// Invoke an RPC method on a target device
+    ///
+    /// Expected envelope sent to server:
+    /// {
+    ///   "type": "relay",
+    ///   "payload": {
+    ///     "targetDeviceId": "<desktop-uuid>",
+    ///     "messageType": "rpc",
+    ///     "payload": {
+    ///       "method": "<method-name>",
+    ///       "params": {...},
+    ///       "id": "<correlation-id>"
+    ///     }
+    ///   }
+    /// }
     public func invoke(
         targetDeviceId: String,
         request: RpcRequest,
         timeout: TimeInterval = 30.0
     ) -> AsyncThrowingStream<RpcResponse, Error> {
         return AsyncThrowingStream { continuation in
+            // PREFLIGHT VALIDATION
+
+            // 1. Validate targetDeviceId is valid UUID and non-empty
+            guard let _ = UUID(uuidString: targetDeviceId),
+                  !targetDeviceId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                continuation.finish(throwing: ServerRelayError.invalidState("Invalid or missing targetDeviceId"))
+                return
+            }
+
+            // 2. Validate request.method is non-empty
+            guard !request.method.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                continuation.finish(throwing: ServerRelayError.invalidState("Missing request.method"))
+                return
+            }
+
+            // 3. Generate id if missing (create new RpcRequest if needed)
+            let req: RpcRequest
+            if request.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                req = RpcRequest(method: request.method, params: request.params.mapValues { $0.value }, id: UUID().uuidString)
+            } else {
+                req = request
+            }
+
             // Create response subject for this call
             let responseSubject = PassthroughSubject<RpcResponse, ServerRelayError>()
 
             rpcQueue.async {
-                self.pendingRPCCalls[request.id] = responseSubject
+                self.pendingRPCCalls[req.id] = responseSubject
             }
 
             // Subscribe to responses and stream them
@@ -223,7 +271,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
                         // Clean up
                         self.rpcQueue.async {
-                            self.pendingRPCCalls.removeValue(forKey: request.id)
+                            self.pendingRPCCalls.removeValue(forKey: req.id)
                         }
                     },
                     receiveValue: { response in
@@ -239,26 +287,33 @@ public class ServerRelayClient: NSObject, ObservableObject {
             continuation.onTermination = { _ in
                 cancellable.cancel()
                 self.rpcQueue.async {
-                    self.pendingRPCCalls.removeValue(forKey: request.id)
+                    self.pendingRPCCalls.removeValue(forKey: req.id)
                 }
             }
 
-            // Serialize: {"type":"relay","target_device_id":targetDeviceId,"message_type":"rpc","payload":request}
-            let messageData: [String: Any] = [
-                "type": "relay",
-                "target_device_id": targetDeviceId,
-                "message_type": "rpc",
+            // Build canonical envelope
+            let payload: [String: Any] = [
+                "targetDeviceId": targetDeviceId,
+                "messageType": "rpc",
                 "payload": [
-                    "method": request.method,
-                    "params": request.params.mapValues { $0.jsonValue },
-                    "id": request.id
+                    "method": req.method,
+                    "params": req.params.mapValues { $0.jsonValue },
+                    "id": req.id
                 ]
             ]
 
-            // Send the message
+            // 5. Validate encodability
             Task {
                 do {
-                    try await self.sendMessage(messageData)
+                    // Validate JSON serializability using existing encodeForWebSocket
+                    let envelope: [String: Any] = [
+                        "type": "relay",
+                        "payload": payload
+                    ]
+                    let _ = try self.encodeForWebSocket(envelope)
+
+                    // Send the message
+                    try await self.sendMessage(type: "relay", payload: payload)
                 } catch {
                     continuation.finish(throwing: error)
                 }
@@ -267,6 +322,33 @@ public class ServerRelayClient: NSObject, ObservableObject {
     }
 
     // MARK: - Private Methods
+
+    /// Encodes an Encodable object to a JSON string for WebSocket transmission.
+    /// Uses JSONEncoder with default (camelCase) strategy for consistent key naming.
+    /// - Parameter object: The Encodable object to encode
+    /// - Returns: A JSON string representation
+    /// - Throws: ServerRelayError.encodingError if encoding fails
+    private func encodeForWebSocket<T: Encodable>(_ object: T) throws -> String {
+        let encoder = JSONEncoder()
+        // Use default key encoding strategy (camelCase) - no custom strategies
+        encoder.dateEncodingStrategy = .iso8601
+
+        do {
+            let jsonData = try encoder.encode(object)
+            guard let jsonString = String(data: jsonData, encoding: .utf8) else {
+                throw ServerRelayError.encodingError(
+                    NSError(
+                        domain: "ServerRelayClient.Encoding",
+                        code: -1,
+                        userInfo: [NSLocalizedDescriptionKey: "Failed to convert JSON data to UTF-8 string"]
+                    )
+                )
+            }
+            return jsonString
+        } catch {
+            throw ServerRelayError.encodingError(error)
+        }
+    }
 
     /// Encodes an object to a JSON string for WebSocket transmission.
     /// Sanitizes the object to ensure JSON compatibility and prevents serialization crashes.
@@ -318,8 +400,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
         // Step 5: Debug logging (DEBUG mode only)
         #if DEBUG
-        let preview = jsonString.count > 200 ? String(jsonString.prefix(200)) + "…" : jsonString
-        print("[ServerRelayClient] Encoded JSON: \(preview)")
+        // JSON encoding successful - not logging content for security
         #endif
 
         return jsonString
@@ -328,34 +409,37 @@ public class ServerRelayClient: NSObject, ObservableObject {
     // Send registration message on open
     private func sendRegistration() {
         // Check if resume credentials exist in Keychain
-        let registrationData: [String: Any]
+        let payload: [String: Any]
 
         if let resumeMeta = try? KeychainManager.shared.retrieve(
             type: RelaySessionMeta.self,
-            for: KeychainManager.KeychainItem.relayResumeToken(deviceId: deviceId),
+            for: KeychainManager.KeychainItem.relayResumeToken(deviceId: self.deviceId),
             prompt: nil
         ) {
             // Send register message with resume credentials
-            registrationData = [
-                "type": "register",
-                "device_id": deviceId,
-                "device_name": UIDevice.current.name,
-                "session_id": resumeMeta.sessionId,
-                "resume_token": resumeMeta.resumeToken
+            payload = [
+                "deviceId": self.deviceId,
+                "deviceName": UIDevice.current.name,
+                "sessionId": resumeMeta.sessionId,
+                "resumeToken": resumeMeta.resumeToken
             ]
-            logger.info("Attempting to register with resume credentials: \(resumeMeta.sessionId)")
+            logger.info("Attempting to register with resume credentials, deviceId=\(self.deviceId)")
         } else {
             // Send register message
-            registrationData = [
-                "type": "register",
-                "device_id": deviceId,
-                "device_name": UIDevice.current.name
+            payload = [
+                "deviceId": self.deviceId,
+                "deviceName": UIDevice.current.name
             ]
-            logger.info("Registering new session")
+            logger.info("Registering new session, deviceId=\(self.deviceId)")
         }
 
         do {
-            let jsonString = try encodeForWebSocket(registrationData)
+            // Build envelope manually to avoid Encodable conformance issues
+            let envelope: [String: Any] = [
+                "type": "register",
+                "payload": payload
+            ]
+            let jsonString = try encodeForWebSocket(envelope)
 
             // Use webSocketTask.send(.string(json)) exclusively (no .data frames)
             webSocketTask?.send(.string(jsonString)) { [weak self] error in
@@ -374,12 +458,18 @@ public class ServerRelayClient: NSObject, ObservableObject {
         }
     }
 
-    public func sendMessage(_ messageData: [String: Any]) async throws {
+    public func sendMessage(type: String, payload: [String: Any]?) async throws {
         guard let webSocketTask = webSocketTask else {
             throw ServerRelayError.notConnected
         }
 
-        let jsonString = try encodeForWebSocket(messageData)
+        // Build envelope manually to avoid Encodable conformance issues
+        var envelope: [String: Any] = ["type": type]
+        if let payload = payload {
+            envelope["payload"] = payload
+        }
+
+        let jsonString = try encodeForWebSocket(envelope)
 
         // Use webSocketTask.send(.string(json)) exclusively (no .data frames)
         try await webSocketTask.send(.string(jsonString))
@@ -388,12 +478,39 @@ public class ServerRelayClient: NSObject, ObservableObject {
     // Relay event publisher for ephemeral cross-device signals
     /// Publish an ephemeral event to all connected devices via relay
     public func sendEvent(eventType: String, data: [String: Any]) async throws {
-        let envelope: [String: Any] = [
-            "type": "event",
-            "event_type": eventType,
+        let payload: [String: Any] = [
+            "eventType": eventType,
             "payload": data
         ]
-        try await self.sendMessage(envelope)
+        try await self.sendMessage(type: "event", payload: payload)
+    }
+
+    /// Send control message to bind this mobile device to a desktop producer for binary terminal output
+    public func sendBinaryBind(producerDeviceId: String, includeSnapshot: Bool = true) {
+        let payload: [String: Any] = [
+            "producerDeviceId": producerDeviceId,
+            "includeSnapshot": includeSnapshot
+        ]
+        Task {
+            do {
+                try await self.sendMessage(type: "terminal.binary.bind", payload: payload)
+                logger.info("Binary bind request sent for producer: \(producerDeviceId)")
+            } catch {
+                logger.error("Failed to send binary bind: \(error)")
+            }
+        }
+    }
+
+    /// Send control message to unbind binary terminal output
+    public func sendBinaryUnbind() {
+        Task {
+            do {
+                try await self.sendMessage(type: "terminal.binary.unbind", payload: nil)
+                logger.info("Binary unbind request sent")
+            } catch {
+                logger.error("Failed to send binary unbind: \(error)")
+            }
+        }
     }
 
     private func startReceivingMessages() {
@@ -418,9 +535,9 @@ public class ServerRelayClient: NSObject, ObservableObject {
         case .string(let text):
             // In receive loop (text-only), route by root["type"]
             handleTextMessage(text)
-        case .data(_):
-            // Ignore data frames - we only handle text messages
-            logger.warning("Received unexpected data frame, ignoring")
+        case .data(let data):
+            // Binary frames are raw terminal output - publish as-is without inspection
+            terminalBytesSubject.send(TerminalBytesEvent(data: data, timestamp: Date()))
         @unknown default:
             break
         }
@@ -438,24 +555,40 @@ public class ServerRelayClient: NSObject, ObservableObject {
                 return
             }
 
-            // Check for DeviceMessage format (with message_type field) first
-            if let messageType = json["message_type"] as? String {
-                let preview = text.count > 200 ? String(text.prefix(200)) + "…" : text
-                logger.info("Relay message received type=device_message(\(messageType), privacy: .public) preview=\(preview, privacy: .public)")
-                print("[Relay] message type=device_message(\(messageType)) preview=\(preview)")
+            // Check for DeviceMessage format (with messageType field) first
+            if let messageType = json["messageType"] as? String {
+                logger.info("Relay message received type=device_message(\(messageType), privacy: .public)")
                 handleDeviceMessageEvent(json)
                 return
             }
 
             // Check for standard relay message format (with type field)
             guard let messageType = json["type"] as? String else {
-                logger.error("Invalid message format - missing both 'type' and 'message_type' fields")
+                logger.error("Invalid message format - missing both 'type' and 'messageType' fields")
                 return
             }
 
-            let preview = text.count > 200 ? String(text.prefix(200)) + "…" : text
-            logger.info("Relay message received type=\(messageType, privacy: .public) preview=\(preview, privacy: .public)")
-            print("[Relay] message type=\(messageType) preview=\(preview)")
+            // Fallback: check for relayPassthrough wrapper
+            if messageType == "relayPassthrough" {
+                if let innerData = json["data"] as? [String: Any] {
+                    // Check if inner has "type" field
+                    if innerData["type"] != nil {
+                        // Re-serialize and re-route
+                        if let reEncodedData = try? JSONSerialization.data(withJSONObject: innerData),
+                           let reEncodedText = String(data: reEncodedData, encoding: .utf8) {
+                            handleTextMessage(reEncodedText)
+                            return
+                        }
+                    } else if innerData["messageType"] != nil {
+                        // Route as device message
+                        handleDeviceMessageEvent(innerData)
+                        return
+                    }
+                }
+                // If we can't route it, just ignore
+                logger.debug("Ignoring relayPassthrough message with no recognizable inner type")
+                return
+            }
 
             // Route by root["type"]
             switch messageType {
@@ -487,17 +620,17 @@ public class ServerRelayClient: NSObject, ObservableObject {
         logger.info("Device registered with relay server")
 
         // Extract optional session credentials
-        if let sessionId = json["session_id"] as? String {
+        if let sessionId = json["sessionId"] as? String {
             self.sessionId = sessionId
-            logger.info("Registered with session: \(sessionId)")
+            logger.info("Registered with session")
         }
 
-        if let resumeToken = json["resume_token"] as? String {
+        if let resumeToken = json["resumeToken"] as? String {
             self.resumeToken = resumeToken
 
-            // Persist to keychain if we have both session_id and resume_token
+            // Persist to keychain if we have both sessionId and resumeToken
             if let sessionId = self.sessionId {
-                let expiresAt = json["expires_at"] as? String
+                let expiresAt = json["expiresAt"] as? String
                 let resumeMeta = RelaySessionMeta(
                     sessionId: sessionId,
                     resumeToken: resumeToken,
@@ -534,25 +667,19 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
         logger.info("Relay session resumed successfully")
 
-        // Extract session_id and expires_at
-        guard let sessionId = json["session_id"] as? String else {
-            let keys = Array(json.keys).joined(separator: ",")
-            logger.error("Resumed payload missing session_id keys=\(keys, privacy: .public)")
-            print("[Relay] resumed payload missing session_id, keys=\(keys)")
-            logger.error("Missing session_id in resumed response")
-            registrationPromise?(.failure(.serverError("invalid_response", "Missing session_id")))
+        // Extract sessionId and expiresAt
+        guard let sessionId = json["sessionId"] as? String else {
+            logger.error("Missing sessionId in resumed response")
+            registrationPromise?(.failure(.serverError("invalid_response", "Missing sessionId")))
             registrationPromise = nil
             return
         }
 
-        let expiresAtValue = (json["expires_at"] as? String) ?? "<none>"
-        logger.info("Resumed payload session_id=\(sessionId, privacy: .public) expires_at=\(expiresAtValue, privacy: .public)")
-        print("[Relay] resumed payload session_id=\(sessionId) expires_at=\(expiresAtValue)")
-        logger.info("Resumed session: \(sessionId)")
+        logger.info("Resumed session successfully")
 
-        let expiresAt = json["expires_at"] as? String
+        let expiresAt = json["expiresAt"] as? String
 
-        // Update expires_at in keychain if we have the resume token
+        // Update expiresAt in keychain if we have the resume token
         if let existingMeta = try? KeychainManager.shared.retrieve(
             type: RelaySessionMeta.self,
             for: KeychainManager.KeychainItem.relayResumeToken(deviceId: deviceId),
@@ -569,7 +696,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
             )
         }
 
-        // Store session_id in instance var
+        // Store sessionId in instance var
         self.sessionId = sessionId
 
         // Create a handshake object for the connected state
@@ -593,16 +720,16 @@ public class ServerRelayClient: NSObject, ObservableObject {
         logger.info("Received session details from server")
 
         // Update session credentials if provided
-        if let sessionId = json["session_id"] as? String {
+        if let sessionId = json["sessionId"] as? String {
             self.sessionId = sessionId
         }
 
-        if let resumeToken = json["resume_token"] as? String {
+        if let resumeToken = json["resumeToken"] as? String {
             self.resumeToken = resumeToken
 
             // Persist to keychain
             if let sessionId = self.sessionId {
-                let expiresAt = json["expires_at"] as? String
+                let expiresAt = json["expiresAt"] as? String
                 let resumeMeta = RelaySessionMeta(
                     sessionId: sessionId,
                     resumeToken: resumeToken,
@@ -615,7 +742,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
             }
         }
 
-        // If we have session_id and not yet connected, mark as connected
+        // If we have sessionId and not yet connected, mark as connected
         if let sessionId = self.sessionId, !isConnected {
             let handshake = ConnectionHandshake(
                 sessionId: sessionId,
@@ -634,24 +761,18 @@ public class ServerRelayClient: NSObject, ObservableObject {
             return
         }
 
-        // Extract correlation_id
-        let correlationId = (responseDict["correlation_id"] as? String)
+        // Extract correlationId
+        let correlationId = (responseDict["correlationId"] as? String)
             ?? (responseDict["id"] as? String)
             ?? (json["id"] as? String)
 
         guard let correlationId = correlationId else {
-            logger.warning("Relay response missing correlation_id")
+            logger.warning("Relay response missing correlationId")
             return
         }
 
-        // Parse is_final, default to true if not present
-        let isFinal = (responseDict["is_final"] as? Bool) ?? true
-
-        // Log structured relay response
-        let payloadString = (try? JSONSerialization.data(withJSONObject: responseDict))
-            .flatMap { String(data: $0, encoding: .utf8) } ?? ""
-        let payloadPreview = payloadString.count > 200 ? String(payloadString.prefix(200)) + "…" : payloadString
-        logger.info("Relay response: type=relay_response id=\(correlationId, privacy: .public) isFinal=\(isFinal) payload=\(payloadPreview, privacy: .public)")
+        // Parse isFinal, default to true if not present
+        let isFinal = (responseDict["isFinal"] as? Bool) ?? true
 
         rpcQueue.async {
             guard let responseSubject = self.pendingRPCCalls[correlationId] else {
@@ -710,7 +831,9 @@ public class ServerRelayClient: NSObject, ObservableObject {
     }
 
     private func handleDeviceMessageEvent(_ json: [String: Any]) {
-        let eventType = json["message_type"] as? String ?? "unknown"
+        // Terminal events: terminal.output payload data is base64-encoded by desktop;
+        // terminal.exit indicates session termination with exit code.
+        let eventType = json["messageType"] as? String ?? "unknown"
         let payload = json["payload"] as? [String: Any] ?? [:]
         let sourceDeviceId = json["sourceDeviceId"] as? String
 
@@ -731,8 +854,18 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
         logger.error("Received relay error: \(errorMessage)")
 
-        // Check for non-retryable errors
-        let nonRetryableCodes = ["auth_required", "invalid_device_id", "missing_scope", "device_ownership_failed"]
+        // Extended non-retryable errors including server validation codes
+        let nonRetryableCodes = [
+            "auth_required",
+            "invalid_device_id",
+            "missing_scope",
+            "device_ownership_failed",
+            "invalid_payload",
+            "missing_target_device_id",
+            "invalid_rpc_payload",
+            "missing_method",
+            "invalid_params"
+        ]
 
         if nonRetryableCodes.contains(errorCode) {
             logger.error("Non-retryable error received: \(errorCode)")
@@ -798,14 +931,9 @@ public class ServerRelayClient: NSObject, ObservableObject {
     }
 
     private func sendHeartbeat() {
-        let heartbeatPayload: [String: Any] = [
-            "type": "heartbeat"
-        ]
-
         Task {
             do {
-                let jsonString = try encodeForWebSocket(heartbeatPayload)
-                try await webSocketTask?.send(.string(jsonString))
+                try await self.sendMessage(type: "heartbeat", payload: nil)
             } catch {
                 logger.error("Failed to send heartbeat: \(error)")
             }
@@ -815,7 +943,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
     // MARK: - Reconnection
 
     private func shouldReconnect() -> Bool {
-        return reconnectAttempts < maxReconnectAttempts && !isReconnecting
+        return (maxReconnectAttempts <= 0 || reconnectAttempts < maxReconnectAttempts) && !isReconnecting
     }
 
     private func scheduleReconnection() {

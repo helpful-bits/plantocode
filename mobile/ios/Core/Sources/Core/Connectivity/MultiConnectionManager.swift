@@ -6,7 +6,7 @@ import Security
 public final class MultiConnectionManager: ObservableObject {
     public static let shared = MultiConnectionManager()
     private var storage: [UUID: ServerRelayClient] = [:]
-    public private(set) var activeDeviceId: UUID?
+    @Published public private(set) var activeDeviceId: UUID?
     @Published public private(set) var connectionStates: [UUID: ConnectionState] = [:]
     private let connectedDevicesKey = "vm_connected_devices"
     private let activeDeviceKey = "ActiveDesktopDeviceId"

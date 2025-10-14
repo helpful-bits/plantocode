@@ -260,14 +260,26 @@ async fn create_pool_with_role(
                             err
                         );
                     }
-                    if let Err(err) = sqlx::query("SET deadlock_timeout TO '1000ms'")
-                        .execute(&mut *conn)
-                        .await
-                    {
-                        log::warn!(
-                            "Unable to set deadlock_timeout for {} pool: {}",
-                            pool_type_label.as_str(),
-                            err
+                    // Only attempt deadlock_timeout for system pool (requires elevated permissions)
+                    if pool_type_label == "system" {
+                        if let Err(err) = sqlx::query("SET deadlock_timeout TO '1000ms'")
+                            .execute(&mut *conn)
+                            .await
+                        {
+                            log::debug!(
+                                "Permission denied setting deadlock_timeout for {} pool: {}",
+                                pool_type_label.as_str(),
+                                err
+                            );
+                            log::info!(
+                                "Skipped deadlock_timeout for {} pool (requires elevated permissions)",
+                                pool_type_label.as_str()
+                            );
+                        }
+                    } else {
+                        log::debug!(
+                            "Skipping deadlock_timeout for {} pool (requires elevated permissions)",
+                            pool_type_label.as_str()
                         );
                     }
                     if let Err(err) = sqlx::query("SET idle_session_timeout TO '600000ms'")
@@ -301,13 +313,23 @@ async fn create_pool_with_role(
                     idle_timeout_secs,
                     max_lifetime_secs
                 );
-                log::info!(
-                    "{} pool timeouts - statement: {}ms, idle_in_tx: {}ms, lock: {}ms, deadlock: 1000ms, idle_session: 10min",
-                    pool_type,
-                    statement_timeout_ms,
-                    idle_in_tx_timeout_ms,
-                    lock_timeout_ms
-                );
+                if pool_type == "system" {
+                    log::info!(
+                        "{} pool timeouts - statement: {}ms, idle_in_tx: {}ms, lock: {}ms, deadlock: 1000ms, idle_session: 10min",
+                        pool_type,
+                        statement_timeout_ms,
+                        idle_in_tx_timeout_ms,
+                        lock_timeout_ms
+                    );
+                } else {
+                    log::info!(
+                        "{} pool timeouts - statement: {}ms, idle_in_tx: {}ms, lock: {}ms, idle_session: 10min",
+                        pool_type,
+                        statement_timeout_ms,
+                        idle_in_tx_timeout_ms,
+                        lock_timeout_ms
+                    );
+                }
                 return Ok(pool);
             }
             Err(e) => {

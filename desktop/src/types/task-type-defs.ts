@@ -12,7 +12,6 @@ export type TaskType =
   | "implementation_plan_merge"
   | "voice_transcription"
   | "text_improvement"
-  | "path_correction"
   | "task_refinement"
   | "generic_llm_stream"
   | "regex_file_filter"
@@ -35,7 +34,6 @@ export type TaskTypeSupportingSystemPrompts =
   | "text_improvement"
   | "implementation_plan"
   | "implementation_plan_merge"
-  | "path_correction"
   | "task_refinement"
   | "regex_file_filter"
   | "generic_llm_stream"
@@ -52,7 +50,6 @@ export const ALL_TASK_TYPES: readonly TaskType[] = [
   "implementation_plan_merge",
   "voice_transcription",
   "text_improvement",
-  "path_correction",
   "task_refinement",
   "generic_llm_stream",
   "regex_file_filter",
@@ -75,7 +72,6 @@ export const SYSTEM_PROMPT_TASK_TYPES: readonly TaskTypeSupportingSystemPrompts[
   "text_improvement",
   "implementation_plan",
   "implementation_plan_merge",
-  "path_correction",
   "task_refinement",
   "regex_file_filter",
   "generic_llm_stream",
@@ -136,19 +132,12 @@ export const TaskTypeDetails: Record<TaskType, {
     apiType: "llm",
     defaultProvider: "openai"
   },
-  text_improvement: { 
-    requiresLlm: true, 
-    displayName: "Text Improvement", 
+  text_improvement: {
+    requiresLlm: true,
+    displayName: "Text Improvement",
     category: "Text Processing",
     description: "Improve and enhance text for accuracy and clarity",
     defaultProvider: "anthropic"
-  },
-  path_correction: { 
-    requiresLlm: true, 
-    displayName: "Path Correction", 
-    category: "Code Analysis",
-    description: "Automatically correct and improve file paths",
-    defaultProvider: "google"
   },
   task_refinement: { 
     requiresLlm: true, 

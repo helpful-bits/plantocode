@@ -30,6 +30,10 @@ import { UILayoutProvider } from "@/contexts/ui-layout-context";
 import { EmptyState, LoadingScreen } from "@/ui";
 
 import { RuntimeConfigProvider } from "./contexts/runtime-config-context";
+import { initSessionEventBridge } from "./contexts/session/event-bridge";
+
+void initSessionEventBridge();
+
 // Custom provider for desktop-specific functionality
 import { TauriEnvironmentChecker } from "./providers/tauri-environment-checker";
 

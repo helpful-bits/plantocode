@@ -62,6 +62,11 @@ impl ServerProxyClient {
         }
     }
 
+    /// Get the base server URL
+    pub fn base_url(&self) -> &str {
+        &self.server_url
+    }
+
     /// Get the server URL
     pub fn server_url(&self) -> &str {
         &self.server_url

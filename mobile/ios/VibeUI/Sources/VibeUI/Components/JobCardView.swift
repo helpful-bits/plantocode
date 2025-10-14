@@ -343,19 +343,22 @@ public struct JobCardView: View {
             // Bottom Section - Results or Error
             if job.jobStatus == .completed || job.jobStatus == .completedByTag ||
                job.jobStatus == .failed || job.jobStatus == .canceled {
+                let hasButtons = shouldShowApplyButton() || shouldShowContinueButton()
+                let hasCost = (job.actualCost ?? 0) > 0
+
                 VStack(alignment: .leading, spacing: Theme.Spacing.cardSpacing) {
                     if job.jobStatus == .completed || job.jobStatus == .completedByTag {
-                        // Completion summary
-                        Text(getCompletionSummary())
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(Color.primary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        // If we have buttons, use two-row layout (summary, then buttons+cost)
+                        // If no buttons but have cost, use single-row layout (summary + cost inline)
+                        // If neither, just show summary
 
-                        // Action buttons and cost row - only show if there's ANY content
-                        let hasButtons = shouldShowApplyButton() || shouldShowContinueButton()
-                        let hasCost = (job.actualCost ?? 0) > 0
+                        if hasButtons {
+                            // Two-row layout: summary on first row, buttons+cost on second
+                            Text(getCompletionSummary())
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(Color.primary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
 
-                        if hasButtons || hasCost {
                             HStack(alignment: .center, spacing: Theme.Spacing.sm) {
                                 // Apply files button for relevant job types
                                 if shouldShowApplyButton(), let onApplyFiles = onApplyFiles {
@@ -402,6 +405,22 @@ public struct JobCardView: View {
                                 Spacer()
 
                                 // Cost
+                                if let cost = job.actualCost, cost > 0 {
+                                    Text(formatCurrency(cost))
+                                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                                        .foregroundColor(Color.mutedForeground)
+                                }
+                            }
+                        } else {
+                            // Single-row layout: summary and cost inline
+                            HStack(alignment: .center, spacing: Theme.Spacing.sm) {
+                                Text(getCompletionSummary())
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(Color.primary)
+                                    .lineLimit(1)
+
+                                Spacer()
+
                                 if let cost = job.actualCost, cost > 0 {
                                     Text(formatCurrency(cost))
                                         .font(.system(size: 12, weight: .medium, design: .monospaced))

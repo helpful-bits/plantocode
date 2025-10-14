@@ -1,6 +1,7 @@
 use actix::prelude::*;
 use actix_web_actors::{ws, ws::Message};
 use serde_json::Value as JsonValue;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
@@ -99,8 +100,6 @@ impl DeviceLinkWs {
             Err(e) => {
                 warn!(
                     connection_id = %self.connection_id,
-                    error = %e,
-                    message = %msg,
                     "Failed to parse WebSocket message"
                 );
                 self.send_error("invalid_json", "Invalid JSON format", ctx);
@@ -160,6 +159,14 @@ impl DeviceLinkWs {
                 let msg = HandleEventMessage { payload: parsed };
                 addr.do_send(msg);
             }
+            "terminal.binary.bind" => {
+                let msg = HandleTerminalBinaryBind { payload: parsed };
+                addr.do_send(msg);
+            }
+            "terminal.binary.unbind" => {
+                let msg = HandleTerminalBinaryUnbind { payload: parsed };
+                addr.do_send(msg);
+            }
             _ => {
                 warn!(
                     connection_id = %self.connection_id,
@@ -209,6 +216,25 @@ impl Actor for DeviceLinkWs {
             relay_store.invalidate_session(session_id);
         }
 
+        // Clear binary routes for this device
+        if let (Some(user_id), Some(device_id), Some(connection_manager)) =
+            (self.user_id, &self.device_id, &self.connection_manager)
+        {
+            connection_manager.clear_binary_routes_for_device(&user_id, device_id);
+        }
+
+        // Set device offline
+        if let (Some(device_id), Some(device_repo)) = (&self.device_id, &self.device_repository) {
+            if let Ok(device_uuid) = Uuid::parse_str(device_id) {
+                let device_repo_clone = device_repo.clone();
+                actix::spawn(async move {
+                    if let Err(e) = device_repo_clone.set_offline(&device_uuid).await {
+                        warn!("Failed to set device offline: {}", e);
+                    }
+                });
+            }
+        }
+
         // Clean up connection from manager
         if let (Some(user_id), Some(device_id), Some(connection_manager)) =
             (self.user_id, &self.device_id, &self.connection_manager)
@@ -223,6 +249,13 @@ impl Actor for DeviceLinkWs {
 #[rtype(result = "()")]
 pub struct RelayMessage {
     pub message: String,
+}
+
+/// Message for relaying binary data to the WebSocket client (for terminal I/O)
+#[derive(Message)]
+#[rtype(result = "()")]
+pub struct BinaryMessage {
+    pub data: Vec<u8>,
 }
 
 /// Message to gracefully close the WebSocket connection
@@ -241,16 +274,58 @@ impl Handler<RelayMessage> for DeviceLinkWs {
             log_stage = "relay:send",
             "Delivering relay message to client"
         );
-        ctx.text(msg.message.clone());
 
-        debug!(
-            connection_id = %self.connection_id,
-            user_id = ?self.user_id,
-            device_id = ?self.device_id,
-            payload = %msg.message,
-            log_stage = "relay:sent",
-            "Relay message delivered to client"
-        );
+        // Parse and validate message structure
+        if let Ok(mut obj) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&msg.message) {
+            let mut final_value = serde_json::Value::Object(obj.clone());
+
+            // Only wrap messages that lack both "type" and "messageType" fields
+            if !obj.contains_key("type") && !obj.contains_key("messageType") {
+                warn!(
+                    connection_id = %self.connection_id,
+                    log_stage = "relay:missing_type",
+                    "Wrapping untyped relay message"
+                );
+                final_value = serde_json::json!({
+                    "type": "relayPassthrough",
+                    "data": obj
+                });
+                obj = final_value.as_object().unwrap().clone();
+            }
+
+            // Check for snake_case keys at transport edge (rate-limited diagnostic)
+            let has_snake_case = obj.keys().any(|k| k.contains('_'));
+            if has_snake_case {
+                // Rate limit: only warn once per minute
+                static LAST_SNAKE_WARN: AtomicU64 = AtomicU64::new(0);
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
+                let last = LAST_SNAKE_WARN.load(Ordering::Relaxed);
+                if now - last > 60 {
+                    warn!(
+                        connection_id = %self.connection_id,
+                        log_stage = "relay:contract_violation",
+                        "Transport contract violation: snake_case keys at edge"
+                    );
+                    LAST_SNAKE_WARN.store(now, Ordering::Relaxed);
+                }
+            }
+
+            ctx.text(final_value.to_string());
+        } else {
+            // Fallback: send original if parse fails
+            ctx.text(msg.message.clone());
+        }
+    }
+}
+
+impl Handler<BinaryMessage> for DeviceLinkWs {
+    type Result = ();
+
+    fn handle(&mut self, msg: BinaryMessage, ctx: &mut Self::Context) {
+        ctx.binary(msg.data);
     }
 }
 
@@ -289,11 +364,15 @@ impl StreamHandler<Result<Message, ws::ProtocolError>> for DeviceLinkWs {
                 });
             }
             Ok(Message::Binary(bin)) => {
-                warn!(
-                    connection_id = %self.connection_id,
-                    "Received unexpected binary message: {} bytes",
-                    bin.len()
-                );
+                self.last_heartbeat = Instant::now();
+
+                // Headerless binary forwarding via pairing
+                if let (Some(user_id), Some(device_id), Some(connection_manager)) =
+                    (self.user_id.as_ref(), self.device_id.as_deref(), &self.connection_manager) {
+                    if let Some(target) = connection_manager.get_binary_consumer(user_id, device_id) {
+                        let _ = connection_manager.send_binary_to_device(user_id, &target, bin.to_vec());
+                    }
+                }
             }
             Ok(Message::Close(reason)) => {
                 if self.device_id.is_some() && self.user_id.is_none() {
@@ -361,6 +440,18 @@ struct HandleEventMessage {
     payload: JsonValue,
 }
 
+#[derive(Message)]
+#[rtype(result = "()")]
+struct HandleTerminalBinaryBind {
+    payload: JsonValue,
+}
+
+#[derive(Message)]
+#[rtype(result = "()")]
+struct HandleTerminalBinaryUnbind {
+    payload: JsonValue,
+}
+
 impl Handler<HandleTextMessage> for DeviceLinkWs {
     type Result = ();
 
@@ -374,17 +465,32 @@ impl Handler<HandleRegisterMessage> for DeviceLinkWs {
     type Result = ();
 
     fn handle(&mut self, msg: HandleRegisterMessage, ctx: &mut Self::Context) -> Self::Result {
+        // Extract the nested payload object from the message
+        let payload = match msg.payload.get("payload") {
+            Some(p) => p,
+            None => {
+                warn!(
+                    connection_id = %self.connection_id,
+                    log_stage = "register:early_return",
+                    code = "missing_payload",
+                    "Registration failed: missing payload field"
+                );
+                self.send_error("missing_payload", "Missing payload field in register message", ctx);
+                return;
+            }
+        };
+
         // STEP 1.1: Log registration start
         info!(
             connection_id = %self.connection_id,
             user_id = ?self.user_id,
-            has_device_id = %msg.payload.get("device_id").is_some(),
+            has_device_id = %payload.get("deviceId").is_some(),
             log_stage = "register:begin",
             "Starting device registration"
         );
 
         // Extract what we need from the payload
-        let device_id = match msg.payload.get("device_id").and_then(|v| v.as_str()) {
+        let device_id = match payload.get("deviceId").and_then(|v| v.as_str()) {
             Some(id) => id.to_string(),
             None => {
                 // STEP 1.8: Log early return for missing device_id
@@ -392,7 +498,7 @@ impl Handler<HandleRegisterMessage> for DeviceLinkWs {
                     connection_id = %self.connection_id,
                     log_stage = "register:early_return",
                     code = "missing_device_id",
-                    "Registration failed: missing device_id"
+                    "Registration failed: missing deviceId"
                 );
                 // STEP 3.2: Send proper error with message field
                 self.send_error("missing_device_id", "Device ID is required", ctx);
@@ -401,9 +507,8 @@ impl Handler<HandleRegisterMessage> for DeviceLinkWs {
             }
         };
 
-        let device_name = msg
-            .payload
-            .get("device_name")
+        let device_name = payload
+            .get("deviceName")
             .and_then(|v| v.as_str())
             .unwrap_or("Unknown Device")
             .to_string();
@@ -522,8 +627,8 @@ impl Handler<HandleRegisterMessage> for DeviceLinkWs {
         }
 
         // Check for resume attempt
-        let resume_session_id = msg.payload.get("session_id").and_then(|v| v.as_str());
-        let resume_token_param = msg.payload.get("resume_token").and_then(|v| v.as_str());
+        let resume_session_id = payload.get("sessionId").and_then(|v| v.as_str());
+        let resume_token_param = payload.get("resumeToken").and_then(|v| v.as_str());
 
         // Track whether session was resumed for consolidated response
         let was_resumed = if let (Some(sid), Some(token), Some(relay_store)) =
@@ -620,6 +725,40 @@ impl Handler<HandleRegisterMessage> for DeviceLinkWs {
         self.device_id = Some(device_id.clone());
         self.device_name = Some(device_name.clone());
 
+        // Register device and set online status
+        if let (Some(device_repo), Some(user_id)) = (&self.device_repository, self.user_id) {
+            if let Ok(device_uuid) = Uuid::parse_str(&device_id) {
+                let device_repo_clone = device_repo.clone();
+                let ctx_addr = ctx.address();
+                ctx.spawn(
+                    async move {
+                        // Ensure device exists in DB
+                        let register_req = crate::db::repositories::device_repository::RegisterDeviceRequest {
+                            device_id: device_uuid,
+                            user_id,
+                            device_name: "Unknown".to_string(),
+                            device_type: "desktop".to_string(),
+                            platform: "unknown".to_string(),
+                            platform_version: None,
+                            app_version: "ws".to_string(),
+                            local_ips: None,
+                            public_ip: None,
+                            relay_eligible: true,
+                            available_ports: None,
+                            capabilities: serde_json::json!({}),
+                        };
+                        let _ = device_repo_clone.register_device(register_req).await;
+
+                        // Set online
+                        if let Err(e) = device_repo_clone.set_online(&device_uuid).await {
+                            warn!("Failed to set device online: {}", e);
+                        }
+                    }
+                    .into_actor(self),
+                );
+            }
+        }
+
         info!(
             connection_id = %self.connection_id,
             user_id = %user_id,
@@ -635,8 +774,8 @@ impl Handler<HandleRegisterMessage> for DeviceLinkWs {
             if let (Some(session_id), Some(expires_at)) = (&self.session_id, &self.expires_at) {
                 serde_json::json!({
                     "type": "resumed",
-                    "session_id": session_id,
-                    "expires_at": expires_at.to_rfc3339()
+                    "sessionId": session_id,
+                    "expiresAt": expires_at.to_rfc3339()
                 })
             } else {
                 // Fallback if session data missing (shouldn't happen)
@@ -651,9 +790,9 @@ impl Handler<HandleRegisterMessage> for DeviceLinkWs {
             {
                 serde_json::json!({
                     "type": "registered",
-                    "session_id": session_id,
-                    "resume_token": resume_token,
-                    "expires_at": expires_at.to_rfc3339()
+                    "sessionId": session_id,
+                    "resumeToken": resume_token,
+                    "expiresAt": expires_at.to_rfc3339()
                 })
             } else {
                 // Fallback for when relay_store was unavailable
@@ -746,18 +885,18 @@ impl Handler<HandleHeartbeatMessage> for DeviceLinkWs {
             let heartbeat = HeartbeatRequest {
                 cpu_usage: msg
                     .payload
-                    .get("cpu_usage")
+                    .get("cpuUsage")
                     .and_then(|v| v.as_f64())
                     .and_then(|v| BigDecimal::from_str(&v.to_string()).ok()),
                 memory_usage: msg
                     .payload
-                    .get("memory_usage")
+                    .get("memoryUsage")
                     .and_then(|v| v.as_f64())
                     .and_then(|v| BigDecimal::from_str(&v.to_string()).ok()),
-                disk_space_gb: msg.payload.get("disk_space_gb").and_then(|v| v.as_i64()),
+                disk_space_gb: msg.payload.get("diskSpaceGb").and_then(|v| v.as_i64()),
                 active_jobs: msg
                     .payload
-                    .get("active_jobs")
+                    .get("activeJobs")
                     .and_then(|v| v.as_i64())
                     .unwrap_or(0) as i32,
                 status: msg
@@ -796,71 +935,192 @@ impl Handler<HandleHeartbeatMessage> for DeviceLinkWs {
     }
 }
 
+/// Expected Message Schemas:
+///
+/// Mobile → Server (Relay):
+/// {
+///   "type": "relay",
+///   "payload": {
+///     "targetDeviceId": "<desktop-uuid>",
+///     "messageType": "rpc",
+///     "payload": {
+///       "method": "<method-name>",
+///       "params": {...},
+///       "id": "<correlation-id>"
+///     }
+///   }
+/// }
+///
+/// Server → Desktop (Relay):
+/// {
+///   "type": "relay",
+///   "clientId": "<mobile-uuid>",
+///   "request": {
+///     "method": "<method-name>",
+///     "params": {...},
+///     "correlationId": "<correlation-id>"
+///   }
+/// }
+///
+/// Desktop → Server (RelayResponse):
+/// {
+///   "type": "relay_response",
+///   "clientId": "<desktop-uuid>",
+///   "response": {
+///     "correlationId": "<correlation-id>",
+///     "result": {...} | null,
+///     "error": "<error-message>" | null,
+///     "isFinal": true
+///   }
+/// }
 impl Handler<HandleRelayMessageInternal> for DeviceLinkWs {
     type Result = ();
 
     fn handle(&mut self, msg: HandleRelayMessageInternal, ctx: &mut Self::Context) -> Self::Result {
-        let target_device_id = match msg.payload.get("target_device_id").and_then(|v| v.as_str()) {
-            Some(id) => id,
-            None => {
-                self.send_error(
-                    "missing_target_device_id",
-                    "Missing target_device_id in relay message",
-                    ctx,
-                );
-                return;
-            }
-        };
-
-        info!(
-            source_device = ?self.device_id,
-            target_device = %target_device_id,
-            user_id = ?self.user_id,
-            "Relay message received - attempting to forward"
-        );
-
-        // Extract and validate payload structure
-        let payload_obj = msg.payload.get("payload").and_then(|v| v.as_object());
-        if payload_obj.is_none() {
-            self.send_error("invalid_payload", "Missing or invalid payload field", ctx);
-            return;
+        // Touch relay session to extend TTL on each RPC frame
+        if let (Some(session_id), Some(relay_store)) = (&self.session_id, &self.relay_store) {
+            relay_store.touch(session_id);
         }
 
-        let method = payload_obj
-            .and_then(|o| o.get("method"))
-            .and_then(|v| v.as_str());
-        if method.is_none() {
-            self.send_error("invalid_payload", "Missing method in RPC payload", ctx);
+        // 1. Resolve outer payload object
+        let root_obj = msg.payload.as_object();
+        if root_obj.is_none() {
+            self.send_error("invalid_payload", "Missing or invalid root object", ctx);
             return;
         }
+        let root_obj = root_obj.unwrap();
 
-        let params = payload_obj
-            .and_then(|o| o.get("params"))
-            .cloned()
-            .unwrap_or(serde_json::json!({}));
+        let outer = msg.payload.get("payload")
+            .and_then(|v| v.as_object())
+            .or_else(|| msg.payload.as_object());
 
-        // Extract correlation_id from payload.id or payload.correlation_id, or generate one
-        let correlation_id = payload_obj
-            .and_then(|o| o.get("correlation_id"))
-            .or_else(|| payload_obj.and_then(|o| o.get("id")))
+        if outer.is_none() {
+            self.send_error("invalid_payload", "Relay envelope must contain a payload object", ctx);
+            return;
+        }
+        let outer = outer.unwrap();
+
+        // 2. Extract targetDeviceId with canonical path and fallbacks
+        let target_device_id = outer.get("targetDeviceId")
             .and_then(|v| v.as_str())
+            .or_else(|| root_obj.get("targetDeviceId").and_then(|v| v.as_str()))
+            .or_else(|| {
+                // snake_case fallback with warning
+                let snake = outer.get("target_device_id")
+                    .or(root_obj.get("target_device_id"))
+                    .and_then(|v| v.as_str());
+                if snake.is_some() {
+                    // Rate-limited warning
+                    static LAST_SNAKE_WARN: AtomicU64 = AtomicU64::new(0);
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs();
+                    let last = LAST_SNAKE_WARN.load(Ordering::Relaxed);
+                    if now - last > 60 {
+                        warn!(
+                            log_stage = "relay:contract_violation",
+                            code = "non_canonical_field",
+                            field = "target_device_id",
+                            "snake_case target_device_id detected"
+                        );
+                        LAST_SNAKE_WARN.store(now, Ordering::Relaxed);
+                    }
+                }
+                snake
+            });
+
+        if target_device_id.is_none() || target_device_id.unwrap().trim().is_empty() {
+            let available_root_keys: Vec<String> = root_obj.keys().cloned().collect();
+            let available_payload_keys: Vec<String> = outer.keys().cloned().collect();
+            let error_msg = format!(
+                "Missing targetDeviceId in relay message (expected at payload.targetDeviceId). Available root keys: {:?}, Available payload keys: {:?}",
+                available_root_keys, available_payload_keys
+            );
+            warn!(
+                connection_id = %self.connection_id,
+                user_id = ?self.user_id,
+                log_stage = "relay:validation_failed",
+                code = "missing_target_device_id",
+                available_root_keys = ?available_root_keys,
+                available_payload_keys = ?available_payload_keys,
+                "Missing targetDeviceId"
+            );
+            self.send_error("missing_target_device_id", &error_msg, ctx);
+            return;
+        }
+        let target_device_id = target_device_id.unwrap();
+
+        // 3. Extract RPC inner payload
+        let inner = outer.get("payload")
+            .and_then(|v| v.as_object())
+            .or_else(|| outer.get("request").and_then(|v| v.as_object()));
+
+        if inner.is_none() {
+            let error_msg = format!(
+                "Missing or invalid payload.payload object. Available outer keys: {:?}",
+                outer.keys().collect::<Vec<_>>()
+            );
+            warn!(
+                connection_id = %self.connection_id,
+                log_stage = "relay:validation_failed",
+                code = "invalid_rpc_payload",
+                "Missing RPC payload"
+            );
+            self.send_error("invalid_rpc_payload", &error_msg, ctx);
+            return;
+        }
+        let inner = inner.unwrap();
+
+        // 4. Validate required fields
+        let method = inner.get("method")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.trim().is_empty());
+
+        if method.is_none() {
+            let error_msg = format!(
+                "Missing or invalid payload.payload.method. Available inner keys: {:?}",
+                inner.keys().collect::<Vec<_>>()
+            );
+            warn!(
+                connection_id = %self.connection_id,
+                log_stage = "relay:validation_failed",
+                code = "missing_method",
+                "Missing method"
+            );
+            self.send_error("missing_method", &error_msg, ctx);
+            return;
+        }
+        let method = method.unwrap();
+
+        let params = inner.get("params").cloned().unwrap_or(serde_json::json!({}));
+
+        // Validate params is valid JSON
+        if !params.is_object() && !params.is_array() && !params.is_null() && !params.is_string() && !params.is_number() && !params.is_boolean() {
+            self.send_error("invalid_params", "Params must be valid JSON", ctx);
+            return;
+        }
+
+        let correlation_id = inner.get("correlationId")
+            .and_then(|v| v.as_str())
+            .or_else(|| inner.get("id").and_then(|v| v.as_str()))
             .map(|s| s.to_string())
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
-        // Build desktop-expected envelope
-        let envelope = serde_json::json!({
+        // 5. Build and forward desktop envelope
+        let forward = serde_json::json!({
             "type": "relay",
-            "client_id": self.device_id.clone().unwrap_or_default(), // mobile device_id as string
+            "clientId": self.device_id.clone().unwrap_or_default(),
             "request": {
-                "method": method.unwrap(),
+                "method": method,
                 "params": params,
-                "correlation_id": correlation_id
+                "correlationId": correlation_id
             }
         });
 
-        let envelope_str = envelope.to_string();
+        let envelope_str = forward.to_string();
 
-        // Forward via send_raw_to_device
+        // 6. Forward via send_raw_to_device
         if let Some(connection_manager) = &self.connection_manager {
             let user_id = match self.user_id {
                 Some(id) => id,
@@ -895,12 +1155,12 @@ impl Handler<HandleRelayMessageInternal> for DeviceLinkWs {
                             );
                             let error_response = serde_json::json!({
                                 "type": "relay_response",
-                                "client_id": device_id_clone,
+                                "clientId": device_id_clone,
                                 "response": {
-                                    "correlation_id": correlation_id_clone,
+                                    "correlationId": correlation_id_clone,
                                     "result": null,
                                     "error": "relay_failed",
-                                    "is_final": true
+                                    "isFinal": true
                                 }
                             });
                             addr.do_send(RelayMessage {
@@ -933,12 +1193,12 @@ impl Handler<HandleRelayResponseMessage> for DeviceLinkWs {
             return;
         }
 
-        let client_id = match msg.payload.get("client_id").and_then(|v| v.as_str()) {
+        let client_id = match msg.payload.get("clientId").and_then(|v| v.as_str()) {
             Some(id) => id,
             None => {
                 self.send_error(
                     "missing_client_id",
-                    "Missing client_id in relay_response message",
+                    "Missing clientId in relay_response message",
                     ctx,
                 );
                 return;
@@ -955,7 +1215,7 @@ impl Handler<HandleRelayResponseMessage> for DeviceLinkWs {
             // Forward to the target mobile device
             let relay_response = serde_json::json!({
                 "type": "relay_response",
-                "client_id": client_id,
+                "clientId": client_id,
                 "response": response_payload
             });
 
@@ -997,9 +1257,11 @@ impl Handler<HandleEventMessage> for DeviceLinkWs {
     type Result = ();
 
     fn handle(&mut self, msg: HandleEventMessage, ctx: &mut Self::Context) -> Self::Result {
+        // Accept both eventType (new) and messageType (legacy) for compatibility
         let event_type = msg
             .payload
-            .get("event_type")
+            .get("eventType")
+            .or_else(|| msg.payload.get("messageType"))
             .and_then(|v| v.as_str())
             .unwrap_or("event")
             .to_string();
@@ -1066,6 +1328,100 @@ impl Handler<HandleEventMessage> for DeviceLinkWs {
                     }
                 }
                 .into_actor(self),
+            );
+        }
+    }
+}
+
+impl Handler<HandleTerminalBinaryBind> for DeviceLinkWs {
+    type Result = ();
+
+    fn handle(&mut self, msg: HandleTerminalBinaryBind, ctx: &mut Self::Context) -> Self::Result {
+        let user_id = match self.user_id {
+            Some(id) => id,
+            None => {
+                self.send_error("auth_required", "Authentication required", ctx);
+                return;
+            }
+        };
+
+        let producer_device_id = match msg.payload.get("producerDeviceId").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => {
+                self.send_error("missing_producer_device_id", "Missing producerDeviceId in bind request", ctx);
+                return;
+            }
+        };
+
+        // Extract includeSnapshot parameter (defaults to true for backward compatibility)
+        let include_snapshot = msg.payload.get("includeSnapshot")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+
+        // Verify producer belongs to same user and is connected
+        if let Some(connection_manager) = &self.connection_manager {
+            if !connection_manager.is_device_connected(&user_id, producer_device_id) {
+                self.send_error("producer_not_connected", "Producer device not connected", ctx);
+                return;
+            }
+
+            // Verify producer belongs to same user by checking connection
+            if let Some(producer_conn) = connection_manager.get_connection(&user_id, producer_device_id) {
+                if producer_conn.user_id != user_id {
+                    self.send_error("unauthorized", "Producer device belongs to different user", ctx);
+                    return;
+                }
+            } else {
+                self.send_error("producer_not_found", "Producer device not found", ctx);
+                return;
+            }
+
+            // Set the binary route
+            if let Some(consumer_device_id) = &self.device_id {
+                connection_manager.set_binary_route(&user_id, producer_device_id, consumer_device_id);
+                info!(
+                    user_id = %user_id,
+                    producer = %producer_device_id,
+                    consumer = %consumer_device_id,
+                    include_snapshot = %include_snapshot,
+                    "Binary route established"
+                );
+
+                // Forward the bind request to the producer (desktop) with include_snapshot parameter
+                let bind_message = serde_json::json!({
+                    "type": "terminal.binary.bind",
+                    "consumerDeviceId": consumer_device_id,
+                    "includeSnapshot": include_snapshot
+                });
+
+                if let Err(e) = connection_manager.send_raw_to_device(
+                    &user_id,
+                    producer_device_id,
+                    &bind_message.to_string(),
+                ) {
+                    warn!(
+                        error = %e,
+                        producer = %producer_device_id,
+                        "Failed to forward bind request to producer"
+                    );
+                    self.send_error("forward_failed", "Failed to forward bind request to producer", ctx);
+                }
+            }
+        }
+    }
+}
+
+impl Handler<HandleTerminalBinaryUnbind> for DeviceLinkWs {
+    type Result = ();
+
+    fn handle(&mut self, _msg: HandleTerminalBinaryUnbind, _ctx: &mut Self::Context) -> Self::Result {
+        if let (Some(user_id), Some(device_id), Some(connection_manager)) =
+            (self.user_id, &self.device_id, &self.connection_manager) {
+            connection_manager.clear_binary_routes_for_device(&user_id, device_id);
+            info!(
+                user_id = %user_id,
+                device_id = %device_id,
+                "Binary routes cleared for device"
             );
         }
     }

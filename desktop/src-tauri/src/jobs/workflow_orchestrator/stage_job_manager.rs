@@ -40,7 +40,6 @@ pub async fn create_abstract_stage_job_with_lock_internal(
         TaskType::RegexFileFilter => Some(WorkflowStage::RegexFileFilter),
         TaskType::FileRelevanceAssessment => Some(WorkflowStage::FileRelevanceAssessment),
         TaskType::ExtendedPathFinder => Some(WorkflowStage::ExtendedPathFinder),
-        TaskType::PathCorrection => Some(WorkflowStage::PathCorrection),
         TaskType::WebSearchPromptsGeneration => Some(WorkflowStage::WebSearchPromptsGeneration),
         TaskType::WebSearchExecution => Some(WorkflowStage::WebSearchExecution),
         _ => {

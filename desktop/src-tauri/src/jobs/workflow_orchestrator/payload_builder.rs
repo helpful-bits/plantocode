@@ -72,30 +72,6 @@ pub(super) async fn create_abstract_stage_payload(
             };
             Ok(JobPayload::RegexFileFilter(payload))
         }
-        TaskType::PathCorrection => {
-            use crate::jobs::types::PathCorrectionPayload;
-
-            // Retrieve extended_unverified_paths from workflow_state.intermediate_data with robust fallback
-            let unverified_paths = workflow_state
-                .intermediate_data
-                .extended_unverified_paths
-                .clone(); // extended_unverified_paths is Vec<String>, not Option<Vec<String>>
-
-            if unverified_paths.is_empty() {
-                warn!("Extended unverified paths is empty in intermediate_data for PathCorrection");
-            } else {
-                debug!(
-                    "Using {} extended unverified paths for PathCorrection payload",
-                    unverified_paths.len()
-                );
-            }
-
-            let payload = PathCorrectionPayload {
-                paths_to_correct: unverified_paths,
-            };
-
-            Ok(JobPayload::PathCorrection(payload))
-        }
         TaskType::ExtendedPathFinder => {
             use crate::jobs::types::ExtendedPathFinderPayload;
 

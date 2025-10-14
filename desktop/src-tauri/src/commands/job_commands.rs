@@ -168,27 +168,21 @@ pub async fn get_all_visible_jobs_command_with_content(
         .inner()
         .clone();
 
-    let mut jobs = if let Some(dir) = project_directory {
-        // Generate project hash from directory
+    let mut jobs = if let Some(sess_id) = session_id {
+        // Honor session_id FIRST, regardless of project_directory
+        repo.get_all_visible_jobs_for_session(&sess_id)
+            .await
+            .map_err(|e| {
+                AppError::DatabaseError(format!("Failed to get all visible jobs: {}", e))
+            })?
+    } else if let Some(dir) = project_directory {
         let project_hash = crate::utils::hash_utils::generate_project_hash(&dir);
-
-        if let Some(sess_id) = session_id {
-            // Filter by both project and session
-            repo.get_all_visible_jobs_for_session(&sess_id)
-                .await
-                .map_err(|e| {
-                    AppError::DatabaseError(format!("Failed to get all visible jobs: {}", e))
-                })?
-        } else {
-            // Filter by project only
-            repo.get_all_visible_jobs_for_project(&project_hash)
-                .await
-                .map_err(|e| {
-                    AppError::DatabaseError(format!("Failed to get all visible jobs: {}", e))
-                })?
-        }
+        repo.get_all_visible_jobs_for_project(&project_hash)
+            .await
+            .map_err(|e| {
+                AppError::DatabaseError(format!("Failed to get all visible jobs: {}", e))
+            })?
     } else {
-        // If no project directory specified, get all jobs (backwards compatibility)
         repo.get_all_visible_jobs().await.map_err(|e| {
             AppError::DatabaseError(format!("Failed to get all visible jobs: {}", e))
         })?

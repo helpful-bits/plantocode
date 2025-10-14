@@ -182,7 +182,7 @@ const TerminalView: React.FC<Props> = ({ sessionId, isVisible }) => {
     // This happens after page reload
     if (!instance) {
       const term = new Terminal({
-        convertEol: true,
+        convertEol: false,
         scrollback: 5000,
         fontSize: 13,
         fontFamily: "Menlo, Monaco, 'Courier New', monospace",
@@ -192,6 +192,7 @@ const TerminalView: React.FC<Props> = ({ sessionId, isVisible }) => {
         fastScrollModifier: 'alt',
         fastScrollSensitivity: 5,
         scrollSensitivity: 1,
+        ignoreBracketedPasteMode: true,
       });
 
       const fit = new FitAddon();

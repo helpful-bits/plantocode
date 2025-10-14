@@ -22,7 +22,7 @@ import {
   GitMerge,
   Mic,
 } from 'lucide-react';
-import type { SoftwareApplication, FAQPage, VideoObject, ImageObject } from 'schema-dts';
+import type { SoftwareApplication, FAQPage, VideoObject, ImageObject, Organization, WebSite } from 'schema-dts';
 import { SectionDividerMesh } from '@/components/ui/SectionDivider';
 
 
@@ -108,6 +108,36 @@ export const metadata: Metadata = {
 };
 
 export default function Home() {
+  const organizationJsonLd: Organization = {
+    '@type': 'Organization',
+    name: 'Vibe Manager',
+    url: 'https://www.vibemanager.app',
+    logo: 'https://www.vibemanager.app/images/icon.png',
+    description: 'Desktop planning workspace for AI-powered implementation plans with file discovery, multi-model synthesis, and integrated terminal execution.',
+    foundingDate: '2024',
+    contactPoint: {
+      '@type': 'ContactPoint',
+      contactType: 'Customer Support',
+      url: 'https://www.vibemanager.app/support',
+    },
+  };
+
+  const websiteJsonLd: WebSite = {
+    '@type': 'WebSite',
+    name: 'Vibe Manager',
+    url: 'https://www.vibemanager.app',
+    description: 'Desktop planning workspace with file discovery, multi-model plan synthesis, and integrated terminal for AI coding tools like Claude Code, Cursor, and OpenAI Codex.',
+    inLanguage: 'en-US',
+    potentialAction: {
+      '@type': 'SearchAction',
+      target: {
+        '@type': 'EntryPoint',
+        urlTemplate: 'https://www.vibemanager.app/docs?q={search_term_string}',
+      },
+      'query-input': 'required name=search_term_string',
+    },
+  };
+
   const softwareApplicationJsonLd: SoftwareApplication = {
     '@type': 'SoftwareApplication',
     name: 'Vibe Manager',
@@ -404,6 +434,8 @@ export default function Home() {
 
   return (
     <>
+      <StructuredData data={organizationJsonLd} />
+      <StructuredData data={websiteJsonLd} />
       <StructuredData data={softwareApplicationJsonLd} />
       <StructuredData data={faqPageJsonLd} />
       {videoStructuredData.map((video, index) => (

@@ -111,55 +111,8 @@ pub(super) async fn extract_and_store_stage_data_internal(
                 );
                 serde_json::Value::Array(filtered_files)
             }
-            TaskType::PathCorrection => {
-                // Extract files from standardized response
-                let response_json = match job_result_data {
-                    Some(crate::jobs::types::JobResultData::Json(json_data)) => json_data,
-                    Some(crate::jobs::types::JobResultData::Text(text_data)) => {
-                        serde_json::from_str(&text_data).map_err(|e| {
-                            warn!(
-                                "Failed to parse text response as JSON for {:?} job {}: {}",
-                                stage_job.task_type, job_id, e
-                            );
-                            AppError::JobError(format!(
-                                "Invalid response format for {:?} job {}",
-                                stage_job.task_type, job_id
-                            ))
-                        })?
-                    }
-                    None => {
-                        return Err(AppError::JobError(format!(
-                            "No response data found for {:?} job {}",
-                            stage_job.task_type, job_id
-                        )));
-                    }
-                };
-
-                // Try standardized format first, fall back to legacy format
-                let corrected_paths = response_json
-                    .get("files")
-                    .and_then(|v| v.as_array())
-                    .or_else(|| {
-                        response_json
-                            .get("correctedPaths")
-                            .and_then(|v| v.as_array())
-                    })
-                    .ok_or_else(|| {
-                        AppError::JobError(format!(
-                            "Missing or invalid 'files' field in path correction job {}",
-                            job_id
-                        ))
-                    })?;
-
-                debug!(
-                    "Extracted {} corrected paths from job {}",
-                    corrected_paths.len(),
-                    job_id
-                );
-                serde_json::json!({ "correctedPaths": corrected_paths })
-            }
             TaskType::ExtendedPathFinder => {
-                // Extract files from standardized response with metadata
+                // Extract all files from standardized response (no more verified/unverified split)
                 let response_json = match job_result_data {
                     Some(crate::jobs::types::JobResultData::Json(json_data)) => json_data,
                     Some(crate::jobs::types::JobResultData::Text(text_data)) => {
@@ -183,65 +136,43 @@ pub(super) async fn extract_and_store_stage_data_internal(
                 };
 
                 // Try standardized format first, fall back to legacy format
-                if let Some(files) = response_json.get("files").and_then(|v| v.as_array()) {
-                    // Standardized format: extract metadata for verified/unverified counts
-                    let verified_count = response_json
-                        .get("metadata")
-                        .and_then(|m| m.get("verifiedCount"))
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-                    let unverified_count = response_json
-                        .get("metadata")
-                        .and_then(|m| m.get("unverifiedCount"))
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-
+                let files = if let Some(files) = response_json.get("files").and_then(|v| v.as_array()) {
+                    // Standardized format - just use all files
                     debug!(
-                        "Extracted {} total files ({} verified, {} unverified) from standardized format for job {}",
+                        "Extracted {} files from standardized format for job {}",
                         files.len(),
-                        verified_count,
-                        unverified_count,
                         job_id
                     );
-
-                    // Return legacy format for compatibility
-                    let (verified_files, unverified_files) =
-                        if verified_count > 0 || unverified_count > 0 {
-                            let verified_end = verified_count as usize;
-                            (
-                                files[0..verified_end.min(files.len())].to_vec(),
-                                files[verified_end..].to_vec(),
-                            )
-                        } else {
-                            (files.clone(), vec![])
-                        };
-
-                    serde_json::json!({
-                        "verifiedPaths": verified_files,
-                        "unverifiedPaths": unverified_files
-                    })
+                    files.clone()
                 } else {
-                    // Legacy format
-                    let verified_paths = response_json.get("verifiedPaths")
-                        .and_then(|v| v.as_array())
-                        .ok_or_else(|| AppError::JobError(format!("Missing or invalid 'verifiedPaths' field in extended path finder job {}", job_id)))?;
+                    // Legacy format - merge verified and unverified into single list
+                    let mut all_files = vec![];
 
-                    let unverified_paths = response_json.get("unverifiedPaths")
-                        .and_then(|v| v.as_array())
-                        .ok_or_else(|| AppError::JobError(format!("Missing or invalid 'unverifiedPaths' field in extended path finder job {}", job_id)))?;
+                    if let Some(verified) = response_json.get("verifiedPaths").and_then(|v| v.as_array()) {
+                        all_files.extend(verified.clone());
+                    }
+
+                    if let Some(unverified) = response_json.get("unverifiedPaths").and_then(|v| v.as_array()) {
+                        all_files.extend(unverified.clone());
+                    }
+
+                    if all_files.is_empty() {
+                        return Err(AppError::JobError(format!(
+                            "No files found in extended path finder job {}",
+                            job_id
+                        )));
+                    }
 
                     debug!(
-                        "Extracted {} verified and {} unverified paths from legacy format for job {}",
-                        verified_paths.len(),
-                        unverified_paths.len(),
+                        "Extracted {} total files from legacy format for job {}",
+                        all_files.len(),
                         job_id
                     );
 
-                    serde_json::json!({
-                        "verifiedPaths": verified_paths,
-                        "unverifiedPaths": unverified_paths
-                    })
-                }
+                    all_files
+                };
+
+                serde_json::json!({ "files": files })
             }
             TaskType::FileRelevanceAssessment => {
                 // Extract files from standardized response

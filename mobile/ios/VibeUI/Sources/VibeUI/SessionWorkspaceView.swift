@@ -5,11 +5,16 @@ import UIKit
 
 /// Mobile-optimized workspace view with tab navigation for better UX
 /// Uses bottom navigation tabs to separate concerns and reduce scrolling
+///
+/// External Update Gate: Remote task description updates are deferred while
+/// the text field is focused to prevent cursor jumps during active typing.
+/// Pending updates are flushed when the keyboard dismisses.
 public struct SessionWorkspaceView: View {
     @EnvironmentObject private var container: AppContainer
     @StateObject private var voiceDictationService = VoiceDictationService.shared
     @StateObject private var textEnhancementService = TextEnhancementService.shared
     @StateObject private var multiConnectionManager = MultiConnectionManager.shared
+    @ObservedObject private var appState = AppState.shared
 
     @State private var currentSession: Session?
     @State private var taskText = ""
@@ -20,230 +25,238 @@ public struct SessionWorkspaceView: View {
     @State private var isOfflineMode = false
     @State private var activeSyncSessionId: String?
     @State private var isReceivingRemoteUpdate = false
+    @State private var reconnectionSuccess: Bool?
+    @State private var reconnectionMessage: String?
+    @State private var isLoadingSession = false
 
-    private let projectDirectory = "/path/to/project"
+    // External update gate for cursor stability (matching desktop behavior)
+    @State private var pendingRemoteTaskDescription: String?
+    @State private var lastSyncedSessionId: String?
+
     let autoPresentDeviceSelection: Bool
+
+    private var currentProjectDirectory: String {
+        container.currentProject?.directory ?? appState.selectedProjectDirectory ?? ""
+    }
+
+    private var mainContentView: some View {
+        ZStack {
+            sessionContentView
+            connectionStatusOverlay
+        }
+    }
+
+    private var sessionContentView: some View {
+        Group {
+            if let session = currentSession {
+                tabsView(for: session)
+            } else {
+                EmptySessionView(onSelectSession: { showingSessionSelector = true })
+            }
+        }
+    }
+
+    private func tabsView(for session: Session) -> some View {
+        TabView(selection: $selectedTab) {
+            // Tab 1: Task Description (Updated with TaskInputView)
+            LazyTabContent(isActive: selectedTab == 0) {
+                TaskTab(
+                    session: session,
+                    taskText: $taskText,
+                    onSessionChange: { showingSessionSelector = true }
+                )
+            }
+            .tabItem {
+                Label("Task", systemImage: "square.and.pencil")
+            }
+            .tag(0)
+
+            // Tab 2: Files
+            LazyTabContent(isActive: selectedTab == 1) {
+                FilesTab(
+                    session: session,
+                    isOfflineMode: isOfflineMode
+                )
+            }
+            .tabItem {
+                Label("Files", systemImage: "doc.text")
+            }
+            .tag(1)
+
+            // Tab 3: Plans
+            LazyTabContent(isActive: selectedTab == 2) {
+                PlansTab(
+                    session: session,
+                    taskText: taskText,
+                    onCreatePlan: createImplementationPlan,
+                    isOfflineMode: isOfflineMode
+                )
+            }
+            .tabItem {
+                Label("Plans", systemImage: "list.bullet.rectangle")
+            }
+            .tag(2)
+
+            // Tab 4: Jobs
+            LazyTabContent(isActive: selectedTab == 3) {
+                JobsTab(
+                    session: session,
+                    isOfflineMode: isOfflineMode
+                )
+            }
+            .tabItem {
+                Label("Jobs", systemImage: "chart.bar.doc.horizontal")
+            }
+            .tag(3)
+
+            // Tab 5: Settings
+            LazyTabContent(isActive: selectedTab == 4) {
+                SettingsView()
+            }
+            .tabItem {
+                Label("Settings", systemImage: "gearshape")
+            }
+            .tag(4)
+        }
+        .tint(Color.primary)
+    }
+
+    private var connectionStatusOverlay: some View {
+        VStack(spacing: 0) {
+            successBannerView
+            connectionBannerView
+            Spacer()
+        }
+    }
+
+    @ViewBuilder
+    private var successBannerView: some View {
+        if let success = reconnectionSuccess, success, let message = reconnectionMessage {
+            ReconnectionSuccessBanner(message: message)
+                .onAppear {
+                    // Auto-dismiss after 2 seconds
+                    Task {
+                        try? await Task.sleep(nanoseconds: 2_000_000_000)
+                        await MainActor.run {
+                            reconnectionSuccess = nil
+                            reconnectionMessage = nil
+                        }
+                    }
+                }
+        }
+    }
+
+    @ViewBuilder
+    private var connectionBannerView: some View {
+        if isOfflineMode {
+            OfflineModeBanner(onGoOnline: {
+                isOfflineMode = false
+                showingDeviceSelection = true
+            })
+        } else if let activeDeviceId = multiConnectionManager.activeDeviceId,
+           let connectionState = multiConnectionManager.connectionStates[activeDeviceId],
+           !connectionState.isConnected {
+            ConnectionStatusBanner(
+                state: connectionState,
+                failureMessage: reconnectionSuccess == false ? reconnectionMessage : nil,
+                onReconnect: {
+                    Task {
+                        // Clear previous messages
+                        await MainActor.run {
+                            reconnectionSuccess = nil
+                            reconnectionMessage = nil
+                        }
+
+                        let result = await multiConnectionManager.addConnection(for: activeDeviceId)
+
+                        await MainActor.run {
+                            switch result {
+                            case .success:
+                                reconnectionSuccess = true
+                                reconnectionMessage = "Reconnected successfully"
+
+                            case .failure(let error):
+                                reconnectionSuccess = false
+
+                                // Generate diagnostic message based on error type
+                                if let multiError = error as? MultiConnectionError {
+                                    switch multiError {
+                                    case .authenticationRequired:
+                                        reconnectionMessage = "Authentication required. Please sign in again."
+                                    case .invalidConfiguration:
+                                        reconnectionMessage = "Invalid server configuration. Check your settings."
+                                    case .connectionFailed(let reason):
+                                        reconnectionMessage = "Connection failed: \(reason). Ensure desktop app is running."
+                                    case .deviceNotFound:
+                                        reconnectionMessage = "Device not found. Try selecting a different device."
+                                    }
+                                } else {
+                                    reconnectionMessage = "Connection failed: \(error.localizedDescription). Check network and desktop app."
+                                }
+                            }
+                        }
+                    }
+                },
+                onDismissFailure: {
+                    reconnectionSuccess = nil
+                    reconnectionMessage = nil
+                }
+            )
+        }
+    }
 
     public init(autoPresentDeviceSelection: Bool = true) {
         self.autoPresentDeviceSelection = autoPresentDeviceSelection
     }
 
     public var body: some View {
-        ZStack {
-            if let session = currentSession {
-                TabView(selection: $selectedTab) {
-                    // Tab 1: Task Description (Updated with TaskInputView)
-                    LazyTabContent(isActive: selectedTab == 0) {
-                        TaskTab(
-                            session: session,
-                            taskText: $taskText,
-                            onSessionChange: { showingSessionSelector = true }
-                        )
-                    }
-                    .tabItem {
-                        Label("Task", systemImage: "square.and.pencil")
-                    }
-                    .tag(0)
+        configuredMainView
+    }
 
-                    // Tab 2: Files
-                    LazyTabContent(isActive: selectedTab == 1) {
-                        FilesTab(
-                            session: session,
-                            isOfflineMode: isOfflineMode
-                        )
-                    }
-                    .tabItem {
-                        Label("Files", systemImage: "doc.text")
-                    }
-                    .tag(1)
-
-                    // Tab 3: Plans
-                    LazyTabContent(isActive: selectedTab == 2) {
-                        PlansTab(
-                            session: session,
-                            taskText: taskText,
-                            onCreatePlan: createImplementationPlan,
-                            isOfflineMode: isOfflineMode
-                        )
-                    }
-                    .tabItem {
-                        Label("Plans", systemImage: "list.bullet.rectangle")
-                    }
-                    .tag(2)
-
-                    // Tab 4: Jobs
-                    LazyTabContent(isActive: selectedTab == 3) {
-                        JobsTab(
-                            session: session,
-                            isOfflineMode: isOfflineMode
-                        )
-                    }
-                    .tabItem {
-                        Label("Jobs", systemImage: "chart.bar.doc.horizontal")
-                    }
-                    .tag(3)
-
-                    // Tab 5: Settings
-                    LazyTabContent(isActive: selectedTab == 4) {
-                        SettingsView()
-                    }
-                    .tabItem {
-                        Label("Settings", systemImage: "gearshape")
-                    }
-                    .tag(4)
-                }
-                .tint(Color.primary)
-            } else {
-                // Empty state - no session
-                EmptySessionView(onSelectSession: { showingSessionSelector = true })
-            }
-
-            // Connection status overlay
-            VStack(spacing: 0) {
-                if isOfflineMode {
-                    OfflineModeBanner(onGoOnline: {
-                        isOfflineMode = false
-                        showingDeviceSelection = true
-                    })
-                } else if let activeDeviceId = multiConnectionManager.activeDeviceId,
-                   let connectionState = multiConnectionManager.connectionStates[activeDeviceId],
-                   !connectionState.isConnected {
-                    ConnectionStatusBanner(
-                        state: connectionState,
-                        onReconnect: {
-                            Task {
-                                print("[SessionWorkspace] Manual reconnect triggered for device: \(activeDeviceId)")
-                                let result = await multiConnectionManager.addConnection(for: activeDeviceId)
-                                if case .success = result {
-                                    print("[SessionWorkspace] Reconnection successful")
-                                } else if case .failure(let error) = result {
-                                    print("[SessionWorkspace] Reconnection failed: \(error)")
-                                }
-                            }
-                        }
-                    )
-                }
-                Spacer()
-            }
-        }
-        .ignoresSafeArea(.keyboard, edges: .bottom)
-        .onAppear {
-            startSyncIfNeeded()
-        }
-        .onChange(of: selectedTab) { newTab in
-            if newTab == 0 {
-                startSyncIfNeeded()
-            } else {
-                stopCurrentSync()
-            }
-        }
-        .onChange(of: currentSession?.id) { newSessionId in
-            stopCurrentSync()
-            if selectedTab == 0 {
-                startSyncIfNeeded()
-            }
-        }
-        .onDisappear {
-            stopCurrentSync()
-        }
-        .sheet(isPresented: $showingSessionSelector) {
-            NavigationStack {
-                SessionSelectionView(
-                    projectDirectory: projectDirectory,
-                    onSessionSelected: { session in
-                        loadSession(session)
-                        showingSessionSelector = false
-                    }
-                )
-            }
-        }
-        .sheet(isPresented: $showingDeviceSelection) {
-            NavigationStack {
-                DeviceSelectionView()
-                    .navigationTitle("Switch Device")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .navigationBarTrailing) {
-                            Button("Done") {
-                                showingDeviceSelection = false
-                            }
-                            .buttonStyle(ToolbarButtonStyle())
-                        }
-                    }
-            }
-        }
-        .alert("Error", isPresented: .constant(errorMessage != nil), presenting: errorMessage) { message in
-            Button("Select Device") {
-                errorMessage = nil
-                showingDeviceSelection = true
-            }
-            Button("Try Offline") {
-                errorMessage = nil
-                isOfflineMode = true
-            }
-            Button("Cancel", role: .cancel) {
-                errorMessage = nil
-            }
-        } message: { message in
-            Text(message)
-        }
-        .onAppear {
-            checkConnectionAndLoad()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-            // Reconnect when app comes back to foreground
-            Task {
-                if let deviceId = multiConnectionManager.activeDeviceId {
-                    // Add a small delay to allow the network stack to stabilize
-                    try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-                    let result = await multiConnectionManager.addConnection(for: deviceId)
-                    if case .failure(let error) = result {
-                        print("[SessionWorkspace] Failed to reconnect on foreground: \(error)")
-                    }
-                }
-            }
-        }
-        .onReceive(multiConnectionManager.$connectionStates) { states in
-            guard let activeId = multiConnectionManager.activeDeviceId,
-                  let state = states[activeId] else { return }
-
-            if state.isConnected {
-                loadMostRecentSession()
-            }
-        }
-        // REMOVED: Direct persistence now handled by TaskSyncDataService
-        // .onChange(of: taskText) { newValue in
-        //     taskTextDebounceTimer?.invalidate()
-        //     taskTextDebounceTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { _ in
-        //         guard let session = currentSession else { return }
-        //         Task {
-        //             do {
-        //                 try await container.sessionService.updateTaskDescription(
-        //                     sessionId: session.id,
-        //                     content: newValue
-        //                 )
-        //             } catch {
-        //                 print("Failed to sync task description: \(error)")
-        //             }
-        //         }
-        //     }
-        // }
-        .onReceive(container.sessionService.$currentSession) { updatedSession in
-            // Update taskText when session changes from desktop (echo prevention)
-            if let session = updatedSession,
-               session.id == currentSession?.id,
-               let updatedTaskDesc = session.taskDescription,
-               !updatedTaskDesc.isEmpty,
-               updatedTaskDesc != taskText {
-                let trimmedReceived = updatedTaskDesc.trimmingCharacters(in: .whitespacesAndNewlines)
-                let trimmedCurrent = taskText.trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmedReceived != trimmedCurrent {
-                    // Update local text AND sync service hash to prevent echo
-                    taskText = updatedTaskDesc
-                    container.taskSyncService.updateLastSyncedText(sessionId: session.id, text: updatedTaskDesc)
-                }
-            }
-        }
+    private var configuredMainView: some View {
+        mainContentView
+            .ignoresSafeArea(.keyboard, edges: .bottom)
+            .modifier(SyncLifecycleModifier(
+                selectedTab: $selectedTab,
+                currentSessionId: currentSession?.id,
+                pendingRemoteTaskDescription: $pendingRemoteTaskDescription,
+                lastSyncedSessionId: $lastSyncedSessionId,
+                startSync: startSyncIfNeeded,
+                stopSync: stopCurrentSync
+            ))
+            .modifier(SheetModifier(
+                showingSessionSelector: $showingSessionSelector,
+                showingDeviceSelection: $showingDeviceSelection,
+                currentProjectDirectory: currentProjectDirectory,
+                loadSession: loadSession
+            ))
+            .modifier(SessionUpdateModifier(
+                container: container,
+                appState: appState,
+                currentSession: $currentSession,
+                taskText: $taskText,
+                errorMessage: $errorMessage,
+                showingDeviceSelection: $showingDeviceSelection,
+                isOfflineMode: $isOfflineMode,
+                handleDeepLink: handleDeepLink
+            ))
+            .modifier(ConnectionModifier(
+                container: container,
+                multiConnectionManager: multiConnectionManager,
+                loadMostRecentSession: loadMostRecentSession,
+                checkConnectionAndLoad: checkConnectionAndLoad
+            ))
+            .modifier(TaskSyncModifier(
+                container: container,
+                currentSession: currentSession,
+                taskText: $taskText,
+                pendingRemoteTaskDescription: $pendingRemoteTaskDescription
+            ))
+            .modifier(ProjectChangeModifier(
+                container: container,
+                currentSession: $currentSession,
+                loadMostRecentSession: loadMostRecentSession
+            ))
     }
 
     // MARK: - Helper Methods
@@ -263,9 +276,39 @@ public struct SessionWorkspaceView: View {
     }
 
     private func loadMostRecentSession() {
+        // Prevent multiple simultaneous loads
+        guard !isLoadingSession else {
+            return
+        }
+
+        // Prevent loading if we already have a session
+        guard currentSession == nil else {
+            return
+        }
+
+        // Wait for initialization to complete
+        guard !container.isInitializing else {
+            return
+        }
+
         Task {
+            await MainActor.run {
+                isLoadingSession = true
+            }
+
+            defer {
+                Task { @MainActor in
+                    isLoadingSession = false
+                }
+            }
+
             do {
-                let sessions = try await container.sessionService.fetchSessions(projectDirectory: projectDirectory)
+                guard !currentProjectDirectory.isEmpty else {
+                    return
+                }
+
+                let sessions = try await container.sessionService.fetchSessions(projectDirectory: currentProjectDirectory)
+
                 if let mostRecent = sessions.sorted(by: { $0.updatedAt > $1.updatedAt }).first {
                     await MainActor.run {
                         loadSession(mostRecent)
@@ -294,6 +337,35 @@ public struct SessionWorkspaceView: View {
         container.setCurrentProject(ProjectInfo(name: name, directory: dir, hash: hash))
     }
 
+    private func handleDeepLink(_ route: AppState.DeepLinkRoute) async {
+        switch route {
+        case let .filesSelected(sessionId, _):
+            // Check if we need to adopt an externally loaded session
+            if currentSession?.id != sessionId {
+                // Give time for session service to publish
+                try? await Task.sleep(nanoseconds: 50_000_000)
+                self.currentSession = container.sessionService.currentSession
+            }
+
+            // Navigate to Files tab and set filter to Selected
+            self.selectedTab = 1
+            container.filesService.currentFilterMode = "selected"
+            appState.clearDeepLinkRoute()
+
+        case let .openPlan(sessionId, _, jobId):
+            // Check if we need to adopt an externally loaded session
+            if currentSession?.id != sessionId {
+                // Give time for session service to publish
+                try? await Task.sleep(nanoseconds: 50_000_000)
+                self.currentSession = container.sessionService.currentSession
+            }
+
+            // Navigate to Plans tab and set pending plan
+            self.selectedTab = 2
+            appState.setPendingPlanToOpen(jobId)
+            appState.clearDeepLinkRoute()
+        }
+    }
 
     private func createImplementationPlan() {
         guard let session = currentSession else { return }
@@ -315,7 +387,7 @@ public struct SessionWorkspaceView: View {
             params: [
                 "sessionId": session.id,
                 "taskDescription": taskText,
-                "projectDirectory": projectDirectory,
+                "projectDirectory": session.projectDirectory,
                 "relevantFiles": session.includedFiles
             ]
         )
@@ -587,30 +659,29 @@ struct PlansTab: View {
                 .background(Color.background)
                 .navigationTitle("Plans")
                 .navigationBarTitleDisplayMode(.inline)
-            } else if container.sessionService.currentSession?.id == session.id {
-                // Only render ImplementationPlansView when container session is properly synchronized
-                ImplementationPlansView()
-                    .navigationTitle("Plans")
-                    .navigationBarTitleDisplayMode(.inline)
             } else {
-                // Loading state while session synchronizes
-                VStack {
-                    Spacer()
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: Color.primary))
-                        .scaleEffect(0.8)
-                    Text("Loading session...")
-                        .small()
-                        .foregroundColor(Color.mutedForeground)
-                        .padding(.top, 8)
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.background)
-                .navigationTitle("Plans")
-                .navigationBarTitleDisplayMode(.inline)
+                // Wrapper that ensures session is synchronized before rendering
+                SessionSynchronizedPlansView(session: session)
             }
         }
+    }
+}
+
+// Wrapper view that synchronizes session before rendering ImplementationPlansView
+private struct SessionSynchronizedPlansView: View {
+    @EnvironmentObject private var container: AppContainer
+    let session: Session
+
+    var body: some View {
+        ImplementationPlansView()
+            .navigationTitle("Plans")
+            .navigationBarTitleDisplayMode(.inline)
+            .task {
+                // Synchronize session immediately when view appears
+                if container.sessionService.currentSession?.id != session.id {
+                    container.sessionService.currentSession = session
+                }
+            }
     }
 }
 
@@ -693,51 +764,98 @@ struct SessionInfoBar: View {
 
 struct EmptySessionView: View {
     let onSelectSession: () -> Void
-    @State private var showingAccountView = false
+    @State private var showingSettingsView = false
     @State private var showingDeviceSelection = false
     @State private var showingMenu = false
+    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var container: AppContainer
+    @StateObject private var multiConnectionManager = MultiConnectionManager.shared
+
+    // Use computed property based on container state instead of local state
+    private var isLoadingProject: Bool {
+        return container.isInitializing || (!container.hasCompletedInitialLoad && container.currentProject == nil)
+    }
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 24) {
                 Spacer()
 
-                Image(systemName: "tray")
-                    .font(.system(size: 48))
-                    .foregroundColor(Color.mutedForeground)
+                if isLoadingProject {
+                    // Loading state while fetching project from desktop
+                    VStack(spacing: 16) {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: Color.primary))
+                            .scaleEffect(1.2)
 
-                VStack(spacing: 16) {
-                    Text("No Session Selected")
-                        .h3()
-                        .foregroundColor(Color.cardForeground)
+                        VStack(spacing: 8) {
+                            Text("Loading Project")
+                                .h3()
+                                .foregroundColor(Color.cardForeground)
 
-                    Text("Select an existing session or create a new one to start working")
-                        .paragraph()
-                        .foregroundColor(Color.mutedForeground)
-                        .multilineTextAlignment(.center)
+                            Text("Fetching project directory from desktop...")
+                                .paragraph()
+                                .foregroundColor(Color.mutedForeground)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 40)
+                        }
+                    }
+                } else {
+                    // Project Selection Section
+                    VStack(spacing: 16) {
+                        Image(systemName: "folder.badge.gearshape")
+                            .font(.system(size: 48))
+                            .foregroundColor(Color.mutedForeground)
+
+                        VStack(spacing: 8) {
+                            Text("Set Active Project")
+                                .h3()
+                                .foregroundColor(Color.cardForeground)
+
+                            Text("Select your project directory to load sessions")
+                                .paragraph()
+                                .foregroundColor(Color.mutedForeground)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 40)
+                        }
+
+                        // Inline Project Selection
+                        VStack(alignment: .leading, spacing: 12) {
+                            if let currentProject = container.currentProject {
+                                Text("Current: \(currentProject.name)")
+                                    .paragraph()
+                                    .foregroundColor(.secondary)
+                            } else {
+                                Text("No project selected")
+                                    .paragraph()
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 40)
-                }
-
-                VStack(spacing: 12) {
-                    Button(action: onSelectSession) {
-                        HStack {
-                            Image(systemName: "list.bullet")
-                            Text("Browse Sessions")
-                        }
-                        .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(PrimaryButtonStyle())
 
-                    Button(action: onSelectSession) {
-                        HStack {
-                            Image(systemName: "plus.circle")
-                            Text("Create New Session")
+                    VStack(spacing: 12) {
+                        Button(action: { showingSettingsView = true }) {
+                            HStack {
+                                Image(systemName: "folder.badge.gearshape")
+                                Text("Select Project Directory")
+                            }
+                            .frame(maxWidth: .infinity)
                         }
-                        .frame(maxWidth: .infinity)
+                        .buttonStyle(PrimaryButtonStyle())
+
+                        Button(action: onSelectSession) {
+                            HStack {
+                                Image(systemName: "list.bullet")
+                                Text("Browse Sessions")
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(SecondaryButtonStyle())
                     }
-                    .buttonStyle(SecondaryButtonStyle())
+                    .padding(.horizontal, 40)
                 }
-                .padding(.horizontal, 40)
 
                 Spacer()
             }
@@ -746,8 +864,8 @@ struct EmptySessionView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
-                        Button(action: { showingAccountView = true }) {
-                            Label("Account", systemImage: "person.circle")
+                        Button(action: { showingSettingsView = true }) {
+                            Label("Settings", systemImage: "gearshape")
                         }
 
                         Button(action: { showingDeviceSelection = true }) {
@@ -758,8 +876,10 @@ struct EmptySessionView: View {
                     }
                 }
             }
-            .sheet(isPresented: $showingAccountView) {
-                AccountView()
+            .sheet(isPresented: $showingSettingsView) {
+                SettingsView()
+                    .environmentObject(appState)
+                    .environmentObject(container)
             }
             .sheet(isPresented: $showingDeviceSelection) {
                 NavigationStack {
@@ -782,7 +902,9 @@ struct EmptySessionView: View {
 
 struct ConnectionStatusBanner: View {
     let state: ConnectionState
+    let failureMessage: String?
     let onReconnect: () -> Void
+    let onDismissFailure: () -> Void
     @State private var showingDeviceSelection = false
     @State private var showingHelp = false
     @State private var isReconnecting = false
@@ -814,6 +936,33 @@ struct ConnectionStatusBanner: View {
                     }
 
                     Spacer()
+
+                    if failureMessage != nil {
+                        Button(action: onDismissFailure) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 20))
+                                .foregroundColor(Color.mutedForeground)
+                        }
+                    }
+                }
+
+                // Failure diagnostic message
+                if let failureMessage = failureMessage {
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: "info.circle.fill")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(Color.destructive)
+
+                        Text(failureMessage)
+                            .font(.system(size: 14))
+                            .foregroundColor(Color.cardForeground)
+                            .multilineTextAlignment(.leading)
+
+                        Spacer()
+                    }
+                    .padding(12)
+                    .background(Color.destructive.opacity(0.1))
+                    .cornerRadius(8)
                 }
 
                 // Action buttons
@@ -934,6 +1083,28 @@ struct OfflineModeBanner: View {
     }
 }
 
+struct ReconnectionSuccessBanner: View {
+    let message: String
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(Color.success)
+
+                Text(message)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(Color.successForeground)
+
+                Spacer()
+            }
+            .padding(16)
+            .background(Color.successBackground)
+        }
+    }
+}
+
 // MARK: - LazyTabContent
 
 /// Wrapper that keeps tab registered but only renders content when active
@@ -949,6 +1120,237 @@ struct LazyTabContent<Content: View>: View {
                 Color.clear
             }
         }
+    }
+}
+
+// MARK: - View Modifiers
+
+struct SyncLifecycleModifier: ViewModifier {
+    @Binding var selectedTab: Int
+    let currentSessionId: String?
+    @Binding var pendingRemoteTaskDescription: String?
+    @Binding var lastSyncedSessionId: String?
+    let startSync: () -> Void
+    let stopSync: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear {
+                startSync()
+            }
+            .onChange(of: selectedTab) { newTab in
+                if newTab == 0 {
+                    startSync()
+                } else {
+                    stopSync()
+                }
+            }
+            .onChange(of: currentSessionId) { newSessionId in
+                stopSync()
+                // Clear pending updates on session switch
+                pendingRemoteTaskDescription = nil
+                lastSyncedSessionId = newSessionId
+                if selectedTab == 0 {
+                    startSync()
+                }
+            }
+            .onDisappear {
+                stopSync()
+            }
+    }
+}
+
+struct SheetModifier: ViewModifier {
+    @Binding var showingSessionSelector: Bool
+    @Binding var showingDeviceSelection: Bool
+    let currentProjectDirectory: String
+    let loadSession: (Session) -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(isPresented: $showingSessionSelector) {
+                NavigationStack {
+                    SessionSelectionView(
+                        projectDirectory: currentProjectDirectory,
+                        onSessionSelected: { session in
+                            loadSession(session)
+                            showingSessionSelector = false
+                        }
+                    )
+                }
+            }
+            .sheet(isPresented: $showingDeviceSelection) {
+                NavigationStack {
+                    DeviceSelectionView()
+                        .navigationTitle("Switch Device")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .navigationBarTrailing) {
+                                Button("Done") {
+                                    showingDeviceSelection = false
+                                }
+                                .buttonStyle(ToolbarButtonStyle())
+                            }
+                        }
+                }
+            }
+    }
+}
+
+struct SessionUpdateModifier: ViewModifier {
+    @ObservedObject var container: AppContainer
+    @ObservedObject var appState: AppState
+    @Binding var currentSession: Session?
+    @Binding var taskText: String
+    @Binding var errorMessage: String?
+    @Binding var showingDeviceSelection: Bool
+    @Binding var isOfflineMode: Bool
+    let handleDeepLink: (AppState.DeepLinkRoute) async -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onReceive(container.sessionService.$currentSession.compactMap { $0 }) { newSession in
+                // Adopt externally switched session
+                currentSession = newSession
+                taskText = newSession.taskDescription ?? taskText
+            }
+            .onReceive(appState.$deepLinkRoute.compactMap { $0 }) { route in
+                Task { await handleDeepLink(route) }
+            }
+            .alert("Error", isPresented: .constant(errorMessage != nil), presenting: errorMessage) { message in
+                Button("Select Device") {
+                    errorMessage = nil
+                    showingDeviceSelection = true
+                }
+                Button("Try Offline") {
+                    errorMessage = nil
+                    isOfflineMode = true
+                }
+                Button("Cancel", role: .cancel) {
+                    errorMessage = nil
+                }
+            } message: { message in
+                Text(message)
+            }
+    }
+}
+
+struct ConnectionModifier: ViewModifier {
+    @ObservedObject var container: AppContainer
+    @ObservedObject var multiConnectionManager: MultiConnectionManager
+    let loadMostRecentSession: () -> Void
+    let checkConnectionAndLoad: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear {
+                checkConnectionAndLoad()
+                // Trigger live bootstrap for instant data
+                Task {
+                    if let manager = container as? DataServicesManager {
+                        await manager.performLiveBootstrap()
+                    }
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+                // Reconnect when app comes back to foreground
+                Task {
+                    if let deviceId = multiConnectionManager.activeDeviceId {
+                        // Add a small delay to allow the network stack to stabilize
+                        try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+                        _ = await multiConnectionManager.addConnection(for: deviceId)
+                    }
+                }
+            }
+            .onReceive(multiConnectionManager.$connectionStates) { states in
+                guard let activeId = multiConnectionManager.activeDeviceId,
+                      let state = states[activeId] else { return }
+
+                if state.isConnected {
+                    loadMostRecentSession()
+                }
+            }
+    }
+}
+
+struct TaskSyncModifier: ViewModifier {
+    @ObservedObject var container: AppContainer
+    let currentSession: Session?
+    @Binding var taskText: String
+    @Binding var pendingRemoteTaskDescription: String?
+    @State private var isKeyboardVisible = false
+
+    func body(content: Content) -> some View {
+        content
+            .onReceive(container.sessionService.$currentSession) { updatedSession in
+                // External Update Gate: defer updates while user is actively editing
+                // This prevents cursor jumps during typing (matching desktop behavior)
+                guard let session = updatedSession,
+                      session.id == currentSession?.id,
+                      let updatedTaskDesc = session.taskDescription,
+                      !updatedTaskDesc.isEmpty,
+                      updatedTaskDesc != taskText else {
+                    return
+                }
+
+                let trimmedReceived = updatedTaskDesc.trimmingCharacters(in: .whitespacesAndNewlines)
+                let trimmedCurrent = taskText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                guard trimmedReceived != trimmedCurrent else {
+                    return
+                }
+
+                // Check if keyboard is visible to decide whether to queue or apply update
+                if isKeyboardVisible {
+                    // Queue the update for later to prevent cursor jumps during typing
+                    pendingRemoteTaskDescription = updatedTaskDesc
+                } else {
+                    // Apply immediately if not actively typing
+                    taskText = updatedTaskDesc
+                    container.taskSyncService.updateLastSyncedText(sessionId: session.id, text: updatedTaskDesc)
+                    pendingRemoteTaskDescription = nil
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+                isKeyboardVisible = true
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                isKeyboardVisible = false
+
+                // Flush pending remote updates when keyboard dismisses
+                if let pending = pendingRemoteTaskDescription,
+                   let session = currentSession,
+                   pending != taskText {
+                    taskText = pending
+                    container.taskSyncService.updateLastSyncedText(sessionId: session.id, text: pending)
+                    pendingRemoteTaskDescription = nil
+                }
+            }
+    }
+}
+
+struct ProjectChangeModifier: ViewModifier {
+    @ObservedObject var container: AppContainer
+    @Binding var currentSession: Session?
+    let loadMostRecentSession: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onReceive(container.$currentProject) { newProject in
+                // Clear current session when project changes to force re-selection
+                if let oldSession = currentSession,
+                   oldSession.projectDirectory != newProject?.directory {
+                    currentSession = nil
+                    container.sessionService.currentSession = nil
+                }
+                loadMostRecentSession()
+            }
+            .onReceive(container.$isInitializing) { initializing in
+                // When initialization completes, load session if we don't have one
+                if !initializing && container.hasCompletedInitialLoad && currentSession == nil {
+                    loadMostRecentSession()
+                }
+            }
     }
 }
 

@@ -24,14 +24,12 @@ type RecordingStatus = 'IDLE' | 'RECORDING' | 'PROCESSING' | 'ERROR';
 interface UseVoiceTranscriptionProps {
   onTranscribed: (text: string) => void;
   onInteraction?: () => void;
-  textareaRef?: React.RefObject<any>;
   disabled?: boolean;
 }
 
 export function useVoiceTranscription({
   onTranscribed,
   onInteraction,
-  textareaRef,
   disabled = false,
 }: UseVoiceTranscriptionProps): {
   status: RecordingStatus;
@@ -166,21 +164,13 @@ export function useVoiceTranscription({
 
   // Handle transcription completion
   const handleTranscriptionComplete = useCallback((text: string) => {
-    if (textareaRef?.current && text.trim()) {
-      try {
-        const currentValue = (textareaRef.current as any)?.getValue?.() || "";
-        const prefix = currentValue.trim() ? " " : "";
-        textareaRef.current.insertTextAtCursorPosition(prefix + text.trim());
-        onInteraction?.();
-      } catch (error) {
-        onTranscribed(text.trim());
-        onInteraction?.();
-      }
-    } else if (text.trim()) {
-      onTranscribed(text.trim());
-      onInteraction?.();
-    }
-  }, [textareaRef, onTranscribed, onInteraction]);
+    if (!text.trim()) return;
+
+    // Simply call the onTranscribed callback which is properly wired to appendText
+    // The parent component (task-description.tsx) handles the text insertion correctly
+    onTranscribed(text.trim());
+    onInteraction?.();
+  }, [onTranscribed, onInteraction]);
 
   // Audio level monitoring
   const { audioLevel } = useAudioLevelMonitor({

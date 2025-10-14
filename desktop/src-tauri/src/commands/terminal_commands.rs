@@ -3,6 +3,7 @@ use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, Window, command};
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct TerminalSessionInfo {
     pub session_id: String,
     pub working_directory: Option<String>,
@@ -33,7 +34,7 @@ pub async fn start_terminal_session_command(
         .and_then(|o| o.get("rows"))
         .and_then(|v| v.as_u64())
         .map(|v| v as u16);
-    mgr.start_session(session_id, wd, cols, rows, output)
+    mgr.start_session(session_id, wd, cols, rows, Some(output))
         .await
         .map_err(|e| e.to_string())
 }
@@ -45,7 +46,7 @@ pub fn attach_terminal_output_command(
     output: Channel<Vec<u8>>,
 ) -> Result<(), String> {
     let mgr = app.state::<std::sync::Arc<crate::services::TerminalManager>>();
-    mgr.attach(&session_id, output).map_err(|e| e.to_string())
+    mgr.attach(&session_id, Some(output)).map_err(|e| e.to_string())
 }
 
 #[command]
@@ -119,11 +120,13 @@ pub fn reconnect_terminal_session_command(
     output: Channel<Vec<u8>>,
 ) -> Result<bool, String> {
     let mgr = app.state::<std::sync::Arc<crate::services::TerminalManager>>();
-    mgr.reconnect_to_session(&session_id, output)
+    mgr.reconnect_to_session(&session_id, Some(output))
         .map_err(|e| e.to_string())
 }
 
-/// RPC-specific version of terminal session creation that returns session info
+/// RPC-specific terminal session creation (headless mode).
+/// Output is streamed via device-link events (terminal.output/terminal.exit) for mobile clients.
+/// Desktop local UI uses a separate start path with a Channel for low-latency rendering.
 pub async fn start_terminal_session_for_rpc_command(
     app: AppHandle,
     session_id: String,
@@ -150,20 +153,13 @@ pub async fn start_terminal_session_for_rpc_command(
     }
     // If stopped or doesn't exist, proceed to start new session below...
 
-    // Create a dummy channel for the terminal manager (RPC doesn't use real-time streaming)
-    // We create a Channel that discards all output since RPC doesn't stream
-    let output = Channel::new(|_data| {
-        // Discard output for RPC - terminal data is retrieved via separate commands
-        Ok(())
-    });
-
     // Start the session using the existing terminal manager
     mgr.start_session(
         session_id.clone(),
         working_directory.clone(),
-        None, // cols - use default
-        None, // rows - use default
-        output,
+        None, // cols
+        None, // rows
+        None, // RPC path runs headless; output relayed via device-link events
     )
     .await
     .map_err(|e| e.to_string())?;

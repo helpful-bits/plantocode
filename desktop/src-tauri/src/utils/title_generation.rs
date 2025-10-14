@@ -142,3 +142,32 @@ pub async fn generate_plan_title(
         Ok(Some(final_title))
     }
 }
+
+pub async fn generate_plan_title_with_retry(
+    app: &tauri::AppHandle,
+    task_description: &str,
+    request_id: Option<String>,
+    model_override: Option<(String, f32, u32)>,
+    attempts: usize,
+    backoff_ms: &[u64],
+) -> Result<Option<String>, AppError> {
+    use tokio::time::{sleep, Duration};
+    let mut last_err: Option<AppError> = None;
+    let tries = attempts.min(backoff_ms.len().max(1));
+    for i in 0..tries {
+        match generate_plan_title(app, task_description, request_id.clone(), model_override.clone()).await {
+            Ok(Some(title)) => return Ok(Some(title)),
+            Ok(None) => return Ok(None),
+            Err(e) => {
+                last_err = Some(e);
+                if i + 1 < tries {
+                    sleep(Duration::from_millis(backoff_ms[i])).await;
+                }
+            }
+        }
+    }
+    if let Some(e) = last_err {
+        tracing::warn!(error=?e, "Title generation failed after retries");
+    }
+    Ok(None)
+}

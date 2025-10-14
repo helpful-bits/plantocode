@@ -1,4 +1,4 @@
-use crate::utils::title_generation::generate_plan_title;
+use crate::utils::title_generation::{generate_plan_title, generate_plan_title_with_retry};
 use log::{debug, error, info, warn};
 use serde_json::Value;
 use uuid::Uuid;
@@ -231,44 +231,20 @@ pub async fn create_and_queue_background_job(
     // Create a unique job ID
     let job_id = format!("job_{}", Uuid::new_v4());
 
-    // Create provisional title immediately for ImplementationPlan jobs
-    // Background generation will update it later without blocking
-    let provisional_title_opt = if matches!(task_type_enum, TaskType::ImplementationPlan) {
-        // Create smart provisional title from task description
-        let first_line = prompt_text.lines().next().unwrap_or(prompt_text).trim();
-
-        let provisional = if first_line.chars().count() <= 70 {
-            first_line.to_string()
-        } else {
-            first_line
-                .chars()
-                .take(70)
-                .collect::<String>()
-                .trim_end()
-                .to_string()
-        };
-
-        if !provisional.is_empty() {
-            Some(provisional)
-        } else {
-            Some("Implementation Plan".to_string())
-        }
-    } else {
-        None
-    };
-
-    // Start background title generation for ImplementationPlan jobs (non-blocking)
-    if matches!(task_type_enum, TaskType::ImplementationPlan) {
+    // Start background title generation for ImplementationPlan and ImplementationPlanMerge jobs (non-blocking)
+    if matches!(task_type_enum, TaskType::ImplementationPlan | TaskType::ImplementationPlanMerge) {
         let job_id_clone = job_id.clone();
         let req_id = format!("{}:title", job_id_clone);
         let td = prompt_text.to_string();
         let app_handle_clone = app_handle.clone();
 
         tokio::spawn(async move {
-            // Generate title in background
-            match generate_plan_title(&app_handle_clone, &td, Some(req_id), None).await {
+            use crate::db_utils::BackgroundJobRepository;
+            use crate::events::job_events::{JobMetadataUpdatedEvent, emit_job_metadata_updated};
+            use std::sync::Arc;
+
+            match generate_plan_title_with_retry(&app_handle_clone, &td, Some(req_id), None, 3, &[500, 1000, 2000]).await {
                 Ok(Some(generated_title)) => {
-                    // Update job metadata with the generated title
                     if let Err(e) = update_job_title_metadata(
                         &app_handle_clone,
                         &job_id_clone,
@@ -280,22 +256,29 @@ pub async fn create_and_queue_background_job(
                     }
                 }
                 Ok(None) => {
-                    debug!(
-                        "Title generation returned empty result for job {}",
-                        job_id_clone
-                    );
+                    if let Some(repo) = app_handle_clone.try_state::<Arc<BackgroundJobRepository>>() {
+                        let patch = serde_json::json!({"title_generation_failed": true});
+                        if let Err(e) = repo.update_job_metadata(&job_id_clone, &patch).await {
+                            warn!("Failed to update job metadata with title_generation_failed: {:?}", e);
+                        } else {
+                            emit_job_metadata_updated(
+                                &app_handle_clone,
+                                JobMetadataUpdatedEvent {
+                                    job_id: job_id_clone.clone(),
+                                    metadata_patch: patch,
+                                },
+                            );
+                        }
+                    }
+                    tracing::warn!("Title generation returned empty result for job {}", job_id_clone);
                 }
                 Err(e) => {
-                    warn!(
-                        "Background title generation failed for job {}: {:?}",
-                        job_id_clone, e
-                    );
+                    warn!("Background title generation failed for job {}: {:?}", job_id_clone, e);
                 }
             }
         });
     }
 
-    // Compute display name using generated title if available
     let default_display_name = prompt_text
         .lines()
         .next()
@@ -305,13 +288,7 @@ pub async fn create_and_queue_background_job(
         .take(70)
         .collect::<String>();
 
-    let display_name = if matches!(task_type_enum, TaskType::ImplementationPlan) {
-        provisional_title_opt
-            .clone()
-            .unwrap_or_else(|| default_display_name.clone())
-    } else {
-        default_display_name.clone()
-    };
+    let display_name = default_display_name.clone();
 
     // Inject job_id into the payload by cloning and updating it
     let mut payload_with_job_id = payload_for_worker.clone();
@@ -393,16 +370,6 @@ pub async fn create_and_queue_background_job(
     let mut metadata_value = serde_json::to_value(&ui_metadata).map_err(|e| {
         AppError::SerializationError(format!("Failed to serialize JobUIMetadata: {}", e))
     })?;
-
-    // Add provisional planTitle to metadata root level for immediate UI access
-    if let Some(t) = &provisional_title_opt {
-        if let Some(obj) = metadata_value.as_object_mut() {
-            obj.insert(
-                "planTitle".to_string(),
-                serde_json::Value::String(t.clone()),
-            );
-        }
-    }
 
     // Add additional workflow parameters at the top level for workflow jobs
     if let Some(ref additional_data) = additional_params {
@@ -587,7 +554,6 @@ fn inject_job_id_into_payload(payload: &mut JobPayload, job_id: &str) {
     // This function is kept for potential future payload modifications
     match payload {
         JobPayload::ImplementationPlan(_) => {}
-        JobPayload::PathCorrection(_) => {}
         JobPayload::TextImprovement(_) => {}
         JobPayload::GenericLlmStream(_) => {}
         JobPayload::RegexFileFilter(_) => {}
@@ -637,9 +603,10 @@ async fn update_job_title_metadata(
         .inner()
         .clone();
 
-    // Create patch to update generated_title (processor will set planTitle from this)
     let patch = serde_json::json!({
-        "generated_title": generated_title
+        "generated_title": generated_title,
+        "planTitle": generated_title,
+        "titleSource": "generated"
     });
 
     // Update job metadata using the patch method

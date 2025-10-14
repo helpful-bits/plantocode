@@ -45,8 +45,14 @@ public final class AppContainer: ObservableObject {
         manager.settingsService
     }
 
+    public var subscriptionManager: SubscriptionManager {
+        manager.subscriptionManager
+    }
+
     @Published public var connectionStatus: ConnectionStatus = .disconnected
     @Published public var currentProject: ProjectInfo?
+    @Published public var isInitializing: Bool = false
+    @Published public var hasCompletedInitialLoad: Bool = false
 
     public init(baseURL: URL, deviceId: String) {
         self.manager = DataServicesManager(baseURL: baseURL, deviceId: deviceId)
@@ -56,9 +62,18 @@ public final class AppContainer: ObservableObject {
 
         manager.$currentProject
             .assign(to: &$currentProject)
+
+        manager.$isInitializing
+            .assign(to: &$isInitializing)
+
+        manager.$hasCompletedInitialLoad
+            .assign(to: &$hasCompletedInitialLoad)
     }
 
     public func setCurrentProject(_ project: ProjectInfo) {
+        #if DEBUG
+        print("[AppContainer] Setting current project: \(project.name) at \(project.directory)")
+        #endif
         manager.setCurrentProject(project)
     }
 

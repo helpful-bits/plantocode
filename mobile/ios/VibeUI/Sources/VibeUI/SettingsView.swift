@@ -64,11 +64,40 @@ public struct SettingsView: View {
             .buttonStyle(SecondaryButtonStyle())
           }
 
+          Section("Subscription") {
+            NavigationLink {
+              SubscriptionSettingsView()
+                .environmentObject(container)
+            } label: {
+              VStack(alignment: .leading, spacing: 4) {
+                Text("Subscription")
+                if let status = container.subscriptionManager.status.isActive ? "Active" : nil {
+                  Text(status)
+                    .font(.caption)
+                    .foregroundColor(.green)
+                } else {
+                  Text("Not Subscribed")
+                    .font(.caption)
+                    .foregroundColor(Color.mutedForeground)
+                }
+              }
+            }
+          }
+
           Section("AI Settings") {
             NavigationLink("Configure AI Models") {
               AISettingsView(dataService: container.settingsService)
                 .environmentObject(appState)
                 .environmentObject(container)
+            }
+
+            NavigationLink("Copy Buttons") {
+              CopyButtonListEditorView(
+                projectDirectory: container.sessionService.currentSession?.projectDirectory ?? "",
+                dataService: container.settingsService
+              )
+              .navigationTitle("Copy Buttons")
+              .navigationBarTitleDisplayMode(.inline)
             }
           }
 
@@ -90,7 +119,7 @@ public struct SettingsView: View {
               HStack {
                 Text("Command:")
                   .font(.caption)
-                  .foregroundColor(.secondary)
+                  .foregroundColor(Color.mutedForeground)
                 TextField("custom-cli", text: $customCommand)
                   .textFieldStyle(RoundedBorderTextFieldStyle())
                   .autocapitalization(.none)
@@ -106,7 +135,7 @@ public struct SettingsView: View {
             HStack {
               Text("Args:")
                 .font(.caption)
-                .foregroundColor(.secondary)
+                .foregroundColor(Color.mutedForeground)
               TextField("Additional arguments", text: $additionalArgs)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
                 .autocapitalization(.none)
@@ -123,9 +152,11 @@ public struct SettingsView: View {
           Section("Legal") {
             if let termsURL = URL(string: "https://vibemanager.app/terms") {
               Link("Terms of Service", destination: termsURL)
+                .tint(Color.primary)
             }
             if let privacyURL = URL(string: "https://vibemanager.app/privacy") {
               Link("Privacy Policy", destination: privacyURL)
+                .tint(Color.primary)
             }
           }
         }

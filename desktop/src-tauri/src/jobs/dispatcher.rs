@@ -29,7 +29,6 @@ fn is_file_finding_task(task_type: &TaskType) -> bool {
         TaskType::RegexFileFilter
             | TaskType::FileRelevanceAssessment
             | TaskType::ExtendedPathFinder
-            | TaskType::PathCorrection
     )
 }
 
@@ -57,19 +56,6 @@ fn standardize_file_finding_response(response: Value, task_type: &TaskType) -> V
             // Extended Path Finder already returns standardized format: {"files": [...], "count": n, "summary": "..."}
             // No transformation needed
             response
-        }
-        TaskType::PathCorrection => {
-            // {"correctedPaths": [...]} -> {"files": [...], "count": n}
-            if let Some(corrected_paths) = response.get("correctedPaths").and_then(|v| v.as_array())
-            {
-                json!({
-                    "files": corrected_paths,
-                    "count": corrected_paths.len(),
-                    "summary": format!("{} paths corrected", corrected_paths.len())
-                })
-            } else {
-                response
-            }
         }
         _ => response,
     };
@@ -431,13 +417,16 @@ async fn handle_job_success(
                 .await
                 {
                     if !outcome.applied_files.is_empty() {
-                        let payload = session_events::SessionAutoFilesAppliedPayload {
-                            session_id: outcome.session_id,
-                            job_id: outcome.job_id,
-                            task_type: outcome.task_type,
-                            files: outcome.applied_files,
-                        };
-                        session_events::emit_session_auto_files_applied(app_handle, payload);
+                        // Fetch fresh session state from DB after auto-apply commit
+                        if let Ok(Some(updated_session)) = session_repo.get_session_by_id(&completed_job.session_id).await {
+                            // Emit unified session-files-updated event with fresh state
+                            let _ = session_events::emit_session_files_updated(
+                                app_handle,
+                                &completed_job.session_id,
+                                &updated_session.included_files,
+                                &updated_session.force_excluded_files,
+                            );
+                        }
                     }
                 }
             }

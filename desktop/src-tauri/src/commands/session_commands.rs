@@ -53,6 +53,15 @@ pub async fn create_session_command(
     // Create the session
     repo.create_session(&session).await?;
 
+    let payload = serde_json::json!({ "session": &session });
+    app_handle.emit("session-created", payload.clone())
+        .map_err(|e| crate::error::AppError::from(e))?;
+    app_handle.emit("device-link-event", serde_json::json!({
+        "type": "session-created",
+        "payload": payload
+    }))
+    .map_err(|e| crate::error::AppError::from(e))?;
+
     // Return the created session
     Ok(session)
 }
@@ -575,6 +584,11 @@ pub async fn update_session_files_command(
         }
     };
 
+    // No-op guard: skip if files unchanged
+    if session.included_files == files_to_add && session.force_excluded_files == excluded_to_add {
+        return Ok(session);
+    }
+
     // Convert to sets for efficient operations (clone to avoid moving)
     let mut included_set: HashSet<String> = session.included_files.clone().into_iter().collect();
     let mut excluded_set: HashSet<String> =
@@ -607,28 +621,13 @@ pub async fn update_session_files_command(
     // Update the session
     repo.update_session(&updated_session).await?;
 
-    // Emit session-files-updated event
-    let _ = app_handle.emit(
-        "session-files-updated",
-        serde_json::json!({
-            "sessionId": &session_id,
-            "includedFiles": &updated_session.included_files,
-            "forceExcludedFiles": &updated_session.force_excluded_files
-        }),
-    );
-
-    // Emit device-link event
-    let _ = app_handle.emit(
-        "device-link-event",
-        serde_json::json!({
-            "type": "session-files-updated",
-            "payload": {
-                "sessionId": &session_id,
-                "includedFiles": &updated_session.included_files,
-                "forceExcludedFiles": &updated_session.force_excluded_files
-            }
-        }),
-    );
+    // Emit unified session-files-updated event
+    crate::events::session_events::emit_session_files_updated(
+        &app_handle,
+        &session_id,
+        &updated_session.included_files,
+        &updated_session.force_excluded_files,
+    )?;
 
     Ok(updated_session)
 }

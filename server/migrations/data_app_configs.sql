@@ -45,12 +45,6 @@ VALUES (
         "max_tokens": 4096,
         "temperature": 0.0
       },
-      "path_correction": {
-        "model": "google/gemini-2.5-flash",
-        "allowed_models": ["google/gemini-2.5-flash", "openai/o4-mini"],
-        "max_tokens": 4096,
-        "temperature": 0.3
-      },
       "regex_file_filter": {
         "model": "anthropic/claude-sonnet-4-5-20250929",
         "allowed_models": ["anthropic/claude-sonnet-4-5-20250929", "google/gemini-2.5-flash"],

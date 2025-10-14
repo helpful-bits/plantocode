@@ -4,6 +4,7 @@ import UserNotifications
 import UIKit
 #endif
 import OSLog
+import Core
 
 /// Manager for handling Apple Push Notifications (APNs) registration and token management
 @MainActor
@@ -16,6 +17,10 @@ public class PushNotificationManager: NSObject, ObservableObject {
     @Published public private(set) var authorizationStatus: UNAuthorizationStatus = .notDetermined
     @Published public private(set) var deviceToken: String?
     @Published public private(set) var lastError: PushNotificationError?
+
+    // MARK: - Local Notification Identifiers
+    static let FILE_FINDER_COMPLETE = "file_finder_complete"
+    static let IMPLEMENTATION_PLAN_COMPLETE = "implementation_plan_complete"
 
     // MARK: - Private Properties
     private let notificationCenter = UNUserNotificationCenter.current()
@@ -154,6 +159,76 @@ public class PushNotificationManager: NSObject, ObservableObject {
         return settings.authorizationStatus == .authorized && deviceToken != nil
     }
 
+    // MARK: - Local Notification Methods
+
+    /// Generic method to schedule local notifications
+    private func scheduleLocalNotification(title: String, body: String, userInfo: [String: Any], categoryIdentifier: String) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.userInfo = userInfo
+        content.categoryIdentifier = categoryIdentifier
+        content.sound = .default
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
+        let identifier = UUID().uuidString
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+
+        notificationCenter.add(request) { error in
+            if let error = error {
+                self.logger.error("Failed to schedule local notification: \(error)")
+            } else {
+                self.logger.info("Local notification scheduled: \(categoryIdentifier)")
+            }
+        }
+    }
+
+    /// Schedule notification for completed file finder job
+    public func scheduleFileFinderCompleted(sessionId: String, projectDirectory: String?) {
+        scheduleLocalNotification(
+            title: "File Finder complete",
+            body: "Discovered files are ready in Selected",
+            userInfo: [
+                "type": Self.FILE_FINDER_COMPLETE,
+                "sessionId": sessionId,
+                "projectDirectory": projectDirectory ?? ""
+            ],
+            categoryIdentifier: Self.FILE_FINDER_COMPLETE
+        )
+    }
+
+    /// Schedule notification for completed implementation plan
+    public func scheduleImplementationPlanCompleted(sessionId: String, projectDirectory: String?, jobId: String) {
+        scheduleLocalNotification(
+            title: "Plan ready",
+            body: "An implementation plan has completed",
+            userInfo: [
+                "type": Self.IMPLEMENTATION_PLAN_COMPLETE,
+                "sessionId": sessionId,
+                "projectDirectory": projectDirectory ?? "",
+                "jobId": jobId
+            ],
+            categoryIdentifier: Self.IMPLEMENTATION_PLAN_COMPLETE
+        )
+    }
+
+    /// Ensure session is loaded before navigating
+    private func ensureSessionLoaded(sessionId: String, projectDirectory: String?) async {
+        guard let dataServices = VibeManagerCore.shared.dataServices else { return }
+        if dataServices.sessionService.currentSession?.id != sessionId {
+            // Only load if we have a project directory
+            guard let projectDir = projectDirectory else {
+                logger.warning("Cannot load session without project directory")
+                return
+            }
+            do {
+                try await dataServices.sessionService.loadSessionById(sessionId: sessionId, projectDirectory: projectDir)
+            } catch {
+                logger.error("Failed to load session: \(error)")
+            }
+        }
+    }
+
     // MARK: - Private Methods
 
     private func checkAuthorizationStatus() async {
@@ -284,12 +359,32 @@ public class PushNotificationManager: NSObject, ObservableObject {
             switch notificationType {
             case "job_completed":
                 await handleJobCompletedNotification(data)
+            case "job_failed":
+                await handleJobFailedNotification(data)
             case "task_update":
                 await handleTaskUpdateNotification(data)
             case "device_status":
                 await handleDeviceStatusNotification(data)
             default:
                 logger.info("Unknown notification type: \(notificationType)")
+            }
+        }
+
+        // Enhanced type handling for file finder and implementation plan notifications
+        if let type = data.customData["type"] as? String {
+            let sessionId = data.customData["sessionId"] as? String ?? ""
+            let projectDirectory = data.customData["projectDirectory"] as? String
+
+            // Handle various type formats
+            let fileFinderTypes = ["file_finder_complete", "file_finder.completed", "fileFinder.completed", "find_files.completed"]
+            let planTypes = ["implementation_plan_complete", "implementation_plan.completed", "plan.completed"]
+
+            if fileFinderTypes.contains(type) {
+                await ensureSessionLoaded(sessionId: sessionId, projectDirectory: projectDirectory)
+                AppState.shared.deepLinkRoute = .filesSelected(sessionId: sessionId, projectDirectory: projectDirectory)
+            } else if planTypes.contains(type), let jobId = data.customData["jobId"] as? String {
+                await ensureSessionLoaded(sessionId: sessionId, projectDirectory: projectDirectory)
+                AppState.shared.deepLinkRoute = .openPlan(sessionId: sessionId, projectDirectory: projectDirectory, jobId: jobId)
             }
         }
 
@@ -308,6 +403,18 @@ public class PushNotificationManager: NSObject, ObservableObject {
         logger.info("Job completed: \(jobId)")
 
         // Could trigger a refresh of job status or navigate to job details
+        // This would integrate with your job management system
+    }
+
+    private func handleJobFailedNotification(_ data: PushNotificationData) async {
+        guard let jobId = data.customData["jobId"] as? String else {
+            logger.warning("Job failed notification missing jobId")
+            return
+        }
+
+        logger.info("Job failed: \(jobId)")
+
+        // Could trigger a refresh of job status or show error details
         // This would integrate with your job management system
     }
 
@@ -386,7 +493,34 @@ extension PushNotificationManager: UNUserNotificationCenterDelegate {
         let userInfo = response.notification.request.content.userInfo
 
         Task {
-            await didReceiveRemoteNotification(userInfo)
+            // Check if it's a local notification (no "aps" key)
+            if userInfo["aps"] == nil {
+                // Local notification
+                if let type = userInfo["type"] as? String,
+                   let sessionId = userInfo["sessionId"] as? String {
+                    let projectDirectory = userInfo["projectDirectory"] as? String
+
+                    // Ensure session is loaded first
+                    await ensureSessionLoaded(sessionId: sessionId, projectDirectory: projectDirectory)
+
+                    // Set appropriate deep link route
+                    switch type {
+                    case Self.FILE_FINDER_COMPLETE:
+                        AppState.shared.deepLinkRoute = .filesSelected(sessionId: sessionId, projectDirectory: projectDirectory)
+
+                    case Self.IMPLEMENTATION_PLAN_COMPLETE:
+                        if let jobId = userInfo["jobId"] as? String {
+                            AppState.shared.deepLinkRoute = .openPlan(sessionId: sessionId, projectDirectory: projectDirectory, jobId: jobId)
+                        }
+
+                    default:
+                        break
+                    }
+                }
+            } else {
+                // Remote notification - use existing logic
+                await didReceiveRemoteNotification(userInfo)
+            }
         }
 
         completionHandler()

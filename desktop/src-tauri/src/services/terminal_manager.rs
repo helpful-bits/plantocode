@@ -1,3 +1,12 @@
+//! Terminal session management with dual-output architecture.
+//!
+//! Output is delivered via two paths:
+//! - Local desktop: Channel<Vec<u8>> subscribers for low-latency UI rendering
+//! - Remote/mobile: Binary WebSocket frames via DeviceLinkClient for headerless streaming
+//!
+//! The RPC path runs headless (Option<Channel> = None) and relies entirely on binary streaming.
+//! Terminal exit events continue to use device-link-event emissions for control-plane signaling.
+
 use crate::db_utils::terminal_repository::RestorableSession;
 use crate::error::{AppError, AppResult};
 use base64::Engine;
@@ -51,7 +60,7 @@ impl TerminalManager {
         working_dir: Option<String>,
         cols: Option<u16>,
         rows: Option<u16>,
-        output: Channel<Vec<u8>>,
+        output: Option<Channel<Vec<u8>>>,
     ) -> AppResult<()> {
         let now = now_secs();
         self.repo
@@ -174,7 +183,7 @@ impl TerminalManager {
 
         let handle = Arc::new(SessionHandle {
             buffer: Mutex::new(Vec::new()),
-            subscribers: Mutex::new(vec![output]),
+            subscribers: Mutex::new(if let Some(ch) = output { vec![ch] } else { Vec::new() }),
             writer: Mutex::new(Some(writer)),
             resizer: Mutex::new(Some(pair.master)),
             child_stopper: Mutex::new(Some(child)),
@@ -262,20 +271,10 @@ impl TerminalManager {
                             let _ = s.send(chunk.clone());
                         }
 
-                        // Emit device-link-event for terminal output
-                        app.emit(
-                            "device-link-event",
-                            json!({
-                                "type": "terminal.output",
-                                "payload": {
-                                    "sessionId": sid,
-                                    "data": String::from_utf8_lossy(&chunk),
-                                    "timestamp": now_secs(),
-                                    "type": "stdout"
-                                }
-                            }),
-                        )
-                        .ok();
+                        // Send raw binary to mobile via device link client
+                        if let Some(client) = app.try_state::<Arc<crate::services::device_link_client::DeviceLinkClient>>() {
+                            let _ = client.send_terminal_output_binary(&chunk);
+                        }
 
                         // Incremental flush logic
                         let should_flush = {
@@ -379,20 +378,18 @@ impl TerminalManager {
                     handle.working_dir.clone(),
                 )
                 .await;
-            let _ = app.emit(
-                "terminal-exit",
-                serde_json::json!({ "sessionId": sid, "exitCode": exit_code }),
-            );
         });
 
         Ok(())
     }
 
-    pub fn attach(&self, session_id: &str, output: Channel<Vec<u8>>) -> AppResult<()> {
+    pub fn attach(&self, session_id: &str, output: Option<Channel<Vec<u8>>>) -> AppResult<()> {
         if let Some(h) = self.sessions.get(session_id) {
-            let snapshot = h.buffer.lock().unwrap().clone();
-            let _ = output.send(snapshot);
-            h.subscribers.lock().unwrap().push(output);
+            if let Some(output_channel) = output {
+                let snapshot = h.buffer.lock().unwrap().clone();
+                let _ = output_channel.send(snapshot);
+                h.subscribers.lock().unwrap().push(output_channel);
+            }
         }
         Ok(())
     }
@@ -501,16 +498,18 @@ impl TerminalManager {
     pub fn reconnect_to_session(
         &self,
         session_id: &str,
-        output: Channel<Vec<u8>>,
+        output: Option<Channel<Vec<u8>>>,
     ) -> AppResult<bool> {
         // Try to reconnect to an existing session (used for page reloads)
         if let Some(h) = self.sessions.get(session_id) {
-            // Send the current buffer snapshot to catch up
-            let snapshot = h.buffer.lock().unwrap().clone();
-            let _ = output.send(snapshot);
+            if let Some(output_channel) = output {
+                // Send the current buffer snapshot to catch up
+                let snapshot = h.buffer.lock().unwrap().clone();
+                let _ = output_channel.send(snapshot);
 
-            // Add the new subscriber
-            h.subscribers.lock().unwrap().push(output);
+                // Add the new subscriber
+                h.subscribers.lock().unwrap().push(output_channel);
+            }
 
             // Return true to indicate successful reconnection
             Ok(true)

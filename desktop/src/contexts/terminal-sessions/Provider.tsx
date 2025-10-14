@@ -8,7 +8,6 @@ import {
   startTerminalSession,
   writeTerminalInput,
   getActiveTerminalSessions,
-  listTerminalSessions,
   reconnectTerminalSession
 } from "@/actions/terminal/terminal.actions";
 import { safeListen } from "@/utils/tauri-event-utils";
@@ -63,17 +62,20 @@ class TerminalStore {
 
     // Set up terminal exit listener
     try {
-      this.unlistenExit = await safeListen("terminal-exit", (event: any) => {
-        const { sessionId, exitCode } = event.payload || {};
-        if (sessionId) {
-          const existing = this.sessions.get(sessionId);
-          if (existing) {
-            this.sessions.set(sessionId, {
-              ...existing,
-              status: exitCode === 0 ? "completed" : "failed",
-              exitCode
-            });
-            this.notifySubscribers();
+      this.unlistenExit = await safeListen("device-link-event", (event: any) => {
+        const data = event.payload;
+        if (data?.type === "terminal.exit") {
+          const { sessionId, code: exitCode } = data.payload || {};
+          if (sessionId) {
+            const existing = this.sessions.get(sessionId);
+            if (existing) {
+              this.sessions.set(sessionId, {
+                ...existing,
+                status: exitCode === 0 ? "completed" : "failed",
+                exitCode
+              });
+              this.notifySubscribers();
+            }
           }
         }
       });
@@ -84,7 +86,7 @@ class TerminalStore {
     // Bootstrap sessions on first load
     try {
       // List all sessions already in memory (includes running, restored, and completed)
-      const sessionIds = await listTerminalSessions();
+      const sessionIds = await getActiveTerminalSessions();
 
       // Add all sessions to the store
       // The backend already restored sessions at startup, so we just list what's there

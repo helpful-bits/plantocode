@@ -89,8 +89,7 @@ public struct CommandRouter {
 
     public static func terminalStart(
         jobId: String? = nil,
-        shell: String? = nil,
-        workingDirectory: String? = nil
+        shell: String? = nil
     ) -> AsyncThrowingStream<RpcResponse, Error> {
         guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
               let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
@@ -105,9 +104,6 @@ public struct CommandRouter {
         }
         if let shell = shell {
             params["shell"] = shell
-        }
-        if let workingDirectory = workingDirectory {
-            params["workingDirectory"] = workingDirectory
         }
 
         let request = RpcRequest(
@@ -298,7 +294,8 @@ public struct CommandRouter {
     }
 
     public static func plansList(
-        taskId: String
+        sessionId: String? = nil,
+        projectDirectory: String? = nil
     ) -> AsyncThrowingStream<RpcResponse, Error> {
         guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
               let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
@@ -307,11 +304,21 @@ public struct CommandRouter {
             }
         }
 
+        guard let sessionId = sessionId, !sessionId.isEmpty else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: DataServiceError.invalidState("sessionId is required"))
+            }
+        }
+
+        var params: [String: Any] = [:]
+        if let projectDirectory = projectDirectory {
+            params["projectDirectory"] = projectDirectory
+        }
+        params["sessionId"] = sessionId
+
         let request = RpcRequest(
             method: "plans.list",
-            params: [
-                "taskId": taskId
-            ]
+            params: params
         )
 
         return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
@@ -843,14 +850,18 @@ public struct CommandRouter {
             }
         }
 
+        guard let sessionId = sessionId, !sessionId.isEmpty else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: DataServiceError.invalidState("sessionId is required"))
+            }
+        }
+
         var params: [String: Any] = [:]
 
         if let projectDirectory = projectDirectory {
             params["projectDirectory"] = projectDirectory
         }
-        if let sessionId = sessionId {
-            params["sessionId"] = sessionId
-        }
+        params["sessionId"] = sessionId
         if let statusFilter = statusFilter {
             params["statusFilter"] = statusFilter
         }
@@ -954,6 +965,28 @@ public struct CommandRouter {
 
     public static func configRefreshRuntimeAIConfig() -> AsyncThrowingStream<RpcResponse, Error> {
         invoke("config.refreshRuntimeAIConfig", [:])
+    }
+
+    // MARK: - App
+
+    public static func appSetProjectDirectory(_ projectDirectory: String) -> AsyncThrowingStream<RpcResponse, Error> {
+        invoke("app.setProjectDirectory", ["projectDirectory": projectDirectory])
+    }
+
+    public static func appGetProjectDirectory() -> AsyncThrowingStream<RpcResponse, Error> {
+        invoke("app.getProjectDirectory", [:])
+    }
+
+    public static func appGetActiveSessionId() -> AsyncThrowingStream<RpcResponse, Error> {
+        invoke("app.getActiveSessionId", [:])
+    }
+
+    public static func appGetUserHomeDirectory() -> AsyncThrowingStream<RpcResponse, Error> {
+        invoke("app.getUserHomeDirectory", [:])
+    }
+
+    public static func appListFolders(_ path: String) -> AsyncThrowingStream<RpcResponse, Error> {
+        invoke("app.listFolders", ["path": path])
     }
 
     // MARK: - Helper

@@ -14,6 +14,8 @@ import {
   type SessionStateContextType,
   type SessionActionsContextType,
 } from "./_types/session-context-types";
+import { registerSessionEventHandlers, initSessionEventBridge, disposeSessionEventBridge } from "./event-bridge";
+import { setActiveSessionAction } from "@/actions/session/active.actions";
 
 import type { ReactNode } from "react";
 
@@ -52,7 +54,7 @@ interface SessionProviderProps {
 
 export function SessionProvider({ children }: SessionProviderProps) {
   const { projectDirectory } = useProject();
-  const { setAppInitializing } = useUILayout();
+  const { setAppInitializing, isUserPresent, lastPresenceChangeTs } = useUILayout();
 
   // Use the session state hook to manage session state
   const sessionStateHook = useSessionState();
@@ -63,6 +65,8 @@ export function SessionProvider({ children }: SessionProviderProps) {
     id: null,
     timestamp: 0,
   });
+  const previousProjectDirectoryRef = useRef<string | null>(null);
+  const prevPresentRef = useRef<boolean>(isUserPresent);
   
 
   // Initialize the active session manager
@@ -127,6 +131,45 @@ export function SessionProvider({ children }: SessionProviderProps) {
     onSessionNeedsReload: sessionLoader.loadSessionById,
   });
 
+  const currentSessionId = sessionStateHook.currentSession?.id;
+
+  // Initialize session event bridge on mount
+  useEffect(() => {
+    void initSessionEventBridge();
+    return () => {
+      void disposeSessionEventBridge();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!projectDirectory) return;
+
+    const handleActiveSessionChanged = async (sessionId: string, dir: string) => {
+      if (dir !== projectDirectory) return;
+      if (sessionId === currentSessionId) return;
+      await setActiveSessionAction(projectDirectory, sessionId, { broadcast: false });
+      if (!isUserPresent) return;
+      await sessionLoader.loadSessionById(sessionId);
+    };
+
+    const handleRemoteSessionCreated = async (session: { id: string; projectDirectory: string }) => {
+      if (session.projectDirectory !== projectDirectory) return;
+      if (session.id === currentSessionId) return;
+      await setActiveSessionAction(projectDirectory, session.id, { broadcast: false });
+      if (!isUserPresent) return;
+      await sessionLoader.loadSessionById(session.id);
+    };
+
+    const unregister = registerSessionEventHandlers({
+      onActiveSessionChanged: handleActiveSessionChanged,
+      onRemoteSessionCreated: handleRemoteSessionCreated,
+      onSessionListInvalidate: (dir) => {
+        if (dir !== projectDirectory) return;
+      }
+    });
+
+    return unregister;
+  }, [projectDirectory, currentSessionId, sessionLoader, isUserPresent]);
 
   // Memoize individual session fields to reduce re-renders
   const sessionBasicFields = useMemo(() => ({
@@ -267,6 +310,8 @@ export function SessionProvider({ children }: SessionProviderProps) {
               return;
             }
 
+            if (!isUserPresent) return;
+
             // Validate files array
             const files = Array.isArray(payload.files)
               ? payload.files.filter((s: any) => typeof s === 'string' && s.trim().length > 0)
@@ -310,7 +355,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
         unlisten();
       }
     };
-  }, [sessionStateHook.currentSession?.id, sessionStateHook.currentSession?.forceExcludedFiles, sessionActions]);
+  }, [sessionStateHook.currentSession?.id, sessionStateHook.currentSession?.forceExcludedFiles, sessionActions, isUserPresent]);
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;
@@ -327,6 +372,8 @@ export function SessionProvider({ children }: SessionProviderProps) {
           if (!sessionStateHook.currentSession?.id || p.sessionId !== sessionStateHook.currentSession.id) {
             return;
           }
+
+          if (!isUserPresent) return;
 
           sessionActions.updateCurrentSessionFields({
             includedFiles: p.includedFiles,
@@ -345,7 +392,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
         unlisten();
       }
     };
-  }, [sessionStateHook.currentSession?.id, sessionActions]);
+  }, [sessionStateHook.currentSession?.id, sessionActions, isUserPresent]);
 
   // Listen for task description updates from mobile/remote
   useEffect(() => {
@@ -361,6 +408,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
           // Update task description for matching session
           if (sessionStateHook.currentSession?.id === p.sessionId) {
+            if (!isUserPresent) return;
             sessionActions.updateCurrentSessionFields({
               taskDescription: p.taskDescription,
             });
@@ -378,46 +426,40 @@ export function SessionProvider({ children }: SessionProviderProps) {
         unlistenHistory();
       }
     };
-  }, [sessionStateHook.currentSession?.id, sessionActions]);
+  }, [sessionStateHook.currentSession?.id, sessionActions, isUserPresent]);
 
-  // Step 4: Listen for remote active-session changes
   useEffect(() => {
-    let unlistenFns: Array<() => void> = [];
+    const wasPresent = prevPresentRef.current;
+    const nowPresent = isUserPresent;
+    prevPresentRef.current = nowPresent;
 
-    const handlePayload = async (payload: any) => {
-      // device-link-event form: { type, payload, relayOrigin }
-      const type = payload?.type ?? "active-session-changed";
-      const relayOrigin = payload?.relayOrigin;
-      const data = payload?.payload ?? payload;
+    if (!wasPresent && nowPresent && activeSessionManager.activeSessionId) {
+      sessionLoader.loadSessionById(activeSessionManager.activeSessionId);
+    }
+  }, [lastPresenceChangeTs, isUserPresent, activeSessionManager.activeSessionId, sessionLoader]);
 
-      if (type !== "active-session-changed") return;
-      if (relayOrigin && relayOrigin !== "remote") return;
+  // Reset session state when project directory changes (but not on initial mount)
+  useEffect(() => {
+    if (!projectDirectory) return;
 
-      const { sessionId, projectDirectory: eventProjectDirectory } = data || {};
-      if (!eventProjectDirectory || eventProjectDirectory !== projectDirectory) return;
-      if (sessionId === (sessionStateHook.currentSession?.id ?? null)) return;
+    // Check if this is a real change (not initial mount)
+    if (previousProjectDirectoryRef.current !== null && previousProjectDirectoryRef.current !== projectDirectory) {
+      console.log("Project directory changed from", previousProjectDirectoryRef.current, "to", projectDirectory, "- clearing session state");
 
-      const { setActiveSessionAction } = await import("@/actions/session/active.actions");
-      await setActiveSessionAction(projectDirectory, sessionId ?? null, { broadcast: false });
+      // Clear the current session data immediately to remove old task description and files from UI
+      sessionStateHook.setCurrentSession(null);
+      sessionStateHook.setSessionModified(false);
+      sessionStateHook.setSessionError(null);
 
-      if (sessionId) {
-        await sessionLoader.loadSessionById(sessionId);
-      }
-    };
+      // Clear active session ID without broadcasting to avoid loops
+      sessionActions.setActiveSessionId(null).catch((err) => {
+        console.error("Failed to clear active session on project change:", err);
+      });
+    }
 
-    listen("device-link-event", (e) => handlePayload((e as any).payload))
-      .then((un) => unlistenFns.push(un))
-      .catch((err) => console.error("Failed to listen to device-link-event:", err));
-
-    listen("active-session-changed", (e) => handlePayload((e as any).payload))
-      .then((un) => unlistenFns.push(un))
-      .catch((err) => console.error("Failed to listen to active-session-changed:", err));
-
-    return () => {
-      unlistenFns.forEach((u) => u());
-    };
-  }, [projectDirectory, sessionStateHook.currentSession?.id, sessionLoader]);
-
+    // Update the ref for next comparison
+    previousProjectDirectoryRef.current = projectDirectory;
+  }, [projectDirectory, sessionActions, sessionStateHook]);
 
   return (
     <SessionStateContext.Provider value={stateContextValue}>

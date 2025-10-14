@@ -5,6 +5,7 @@ import type { UnlistenFn } from "@tauri-apps/api/event";
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 
 import { useNotification } from "@/contexts/notification-context";
+import { useUILayout } from "@/contexts/ui-layout-context";
 
 import {
   type BackgroundJob,
@@ -38,6 +39,11 @@ export function useOrchestratedBackgroundJobsState({
   sessionId,
 }: UseOrchestratedBackgroundJobsStateParams = {}) {
   const { showNotification } = useNotification();
+  const { isUserPresent, lastPresenceChangeTs } = useUILayout();
+
+  const presenceRef = useRef(isUserPresent);
+  const prevPresenceRef = useRef(isUserPresent);
+
   // Authoritative job store using Map for O(1) operations
   const jobsMapRef = useRef(new Map<string, BackgroundJob>());
 
@@ -68,11 +74,16 @@ export function useOrchestratedBackgroundJobsState({
     }
   }, [initialJobs]);
   
+  useEffect(() => {
+    presenceRef.current = isUserPresent;
+  }, [isUserPresent]);
+
   // Derive activeJobs from jobs
   const activeJobs = useMemo(() => jobs.filter((job) => JOB_STATUSES.ACTIVE.includes(job.status)), [jobs]);
 
   // Helper function to update Map and derive new array
   const updateJobsFromMap = useCallback(() => {
+    if (!presenceRef.current) return;
     const newJobsArray = Array.from(jobsMapRef.current.values());
     setJobs(newJobsArray);
   }, []);
@@ -104,8 +115,7 @@ export function useOrchestratedBackgroundJobsState({
       // Clear previous error state
       setError(null);
 
-      // Show loading state on initial load only
-      if (initialLoad) {
+      if (initialLoad && presenceRef.current) {
         setIsLoading(true);
       }
 
@@ -153,39 +163,42 @@ export function useOrchestratedBackgroundJobsState({
 
       return null;
     } finally {
-      // Reset the fetching flag
       isFetchingRef.current = false;
 
-      // Update loading state if this was initial load
       if (initialLoad) {
-        setIsLoading(false);
+        if (presenceRef.current) {
+          setIsLoading(false);
+        }
         setInitialLoad(false);
       }
     }
   }, [initialLoad, projectDirectory, sessionId]);
 
-  // Manual refresh function - fetches all jobs and replaces Map contents
   const refreshJobs = useCallback(async () => {
-    // Skip if already fetching
     if (isFetchingRef.current) {
       return;
     }
 
-    setIsLoading(true);
+    if (presenceRef.current) {
+      setIsLoading(true);
+    }
 
     try {
       const jobsData = await fetchJobs();
 
-      // Update Map and derive new state if we got data back
       if (jobsData) {
         jobsMapRef.current.clear();
         jobsData.forEach(job => {
           jobsMapRef.current.set(job.id, job);
         });
-        updateJobsFromMap();
+        if (presenceRef.current) {
+          updateJobsFromMap();
+        }
       }
     } finally {
-      setIsLoading(false);
+      if (presenceRef.current) {
+        setIsLoading(false);
+      }
     }
   }, [fetchJobs, updateJobsFromMap]);
 
@@ -251,6 +264,7 @@ export function useOrchestratedBackgroundJobsState({
     let unlistenJobResponseAppended: UnlistenFn | null = null;
     let unlistenJobErrorDetails: UnlistenFn | null = null;
     let unlistenJobFinalized: UnlistenFn | null = null;
+    let unlistenJobMetadataUpdated: UnlistenFn | null = null;
     
     const setupListeners = async () => {
       try {
@@ -464,9 +478,9 @@ export function useOrchestratedBackgroundJobsState({
         // Listen for job finalized events - Set final status/cost/tokens snapshot
         unlistenJobFinalized = await safeListen("job:finalized", async (event) => {
           try {
-            const update = event.payload as { 
-              jobId: string; 
-              status: string; 
+            const update = event.payload as {
+              jobId: string;
+              status: string;
               response?: string;
               actualCost: number;
               tokensSent?: number;
@@ -496,6 +510,42 @@ export function useOrchestratedBackgroundJobsState({
           }
         });
 
+        unlistenJobMetadataUpdated = await safeListen("job:metadata-updated", async (event) => {
+          try {
+            const update = event.payload as { jobId: string; metadataPatch: any };
+            const existingJob = jobsMapRef.current.get(update.jobId);
+            if (existingJob) {
+              let metadata: any = existingJob.metadata;
+              if (typeof metadata === 'string') {
+                try {
+                  metadata = JSON.parse(metadata);
+                } catch {
+                  metadata = {};
+                }
+              }
+              metadata = metadata || {};
+
+              for (const [key, value] of Object.entries(update.metadataPatch)) {
+                if (value && typeof value === 'object' && !Array.isArray(value) && metadata[key] && typeof metadata[key] === 'object') {
+                  metadata[key] = { ...metadata[key], ...value };
+                } else {
+                  metadata[key] = value;
+                }
+              }
+
+              const updatedJob: BackgroundJob = {
+                ...existingJob,
+                metadata,
+                updatedAt: Date.now(),
+              };
+              jobsMapRef.current.set(update.jobId, updatedJob);
+              updateJobsFromMap();
+            }
+          } catch (err) {
+            console.error("[BackgroundJobs] Error processing job:metadata-updated:", err);
+          }
+        });
+
       } catch (err) {
         console.error("[BackgroundJobs] Error setting up job listeners:", err);
       }
@@ -514,6 +564,7 @@ export function useOrchestratedBackgroundJobsState({
       unlistenJobResponseAppended?.();
       unlistenJobErrorDetails?.();
       unlistenJobFinalized?.();
+      unlistenJobMetadataUpdated?.();
     };
   }, [updateJobsFromMap]);
 
@@ -533,6 +584,13 @@ export function useOrchestratedBackgroundJobsState({
       void refreshJobs();
     }
   }, [sessionId, initialLoad, refreshJobs]);
+
+  useEffect(() => {
+    if (isUserPresent && !prevPresenceRef.current) {
+      void refreshJobs();
+    }
+    prevPresenceRef.current = isUserPresent;
+  }, [lastPresenceChangeTs, isUserPresent, refreshJobs]);
 
   // Get job by ID helper
   const getJobById = useCallback(

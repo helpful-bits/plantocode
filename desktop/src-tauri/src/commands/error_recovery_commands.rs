@@ -99,7 +99,6 @@ pub async fn get_config_health_status(app_handle: AppHandle) -> AppResult<Config
                 "implementation_plan",
                 "voice_transcription",
                 "text_improvement",
-                "path_correction",
                 "task_refinement",
                 "regex_file_filter",
                 "file_relevance_assessment",

@@ -113,7 +113,6 @@ fn validate_task_type_configurations(runtime_config: &RuntimeAIConfig) -> Result
         TaskType::ImplementationPlanMerge,
         TaskType::VoiceTranscription,
         TaskType::TextImprovement,
-        TaskType::PathCorrection,
         TaskType::TaskRefinement,
         TaskType::GenericLlmStream,
         TaskType::RegexFileFilter,
@@ -185,34 +184,36 @@ fn validate_task_type_configurations(runtime_config: &RuntimeAIConfig) -> Result
         .cloned()
         .collect();
 
-    // Report all validation errors with ZERO tolerance
-    let mut error_messages = Vec::new();
+    // Report critical validation errors (missing/invalid configs)
+    let mut critical_errors = Vec::new();
 
     if !missing_configs.is_empty() {
-        error_messages.push(format!(
+        critical_errors.push(format!(
             "CRITICAL: Missing task configurations: {}. These task types are defined in the codebase but have no server configuration.",
             missing_configs.join(", ")
         ));
     }
 
     if !invalid_configs.is_empty() {
-        error_messages.push(format!(
+        critical_errors.push(format!(
             "CRITICAL: Invalid task configurations: {}",
             invalid_configs.join(", ")
         ));
     }
 
+    // Log warnings for unknown configs but don't fail validation
     if !unknown_configs.is_empty() {
-        error_messages.push(format!(
-            "WARNING: Unknown task configurations found: {}. These configurations exist on the server but don't correspond to any known task types.",
+        warn!(
+            "Unknown task configurations found in server database: {}. These will be ignored. Consider removing them from the database migration file.",
             unknown_configs.join(", ")
-        ));
+        );
     }
 
-    if !error_messages.is_empty() {
+    // Only fail if there are critical errors
+    if !critical_errors.is_empty() {
         let full_error = format!(
             "Task configuration validation FAILED:\n{}",
-            error_messages.join("\n")
+            critical_errors.join("\n")
         );
         error!("{}", full_error);
         return Err(AppError::ConfigError(full_error));

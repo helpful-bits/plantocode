@@ -43,6 +43,20 @@ public final class SessionDataService: ObservableObject {
         return id
     }
 
+    @MainActor
+    public func setSessions(_ sessions: [Session], activeId: String?) {
+        self.sessions = sessions
+        self.sessionsIndex = Dictionary(uniqueKeysWithValues: sessions.enumerated().map { ($1.id, $0) })
+
+        if let activeId = activeId, let found = sessions.first(where: { $0.id == activeId }) {
+            self.currentSession = found
+        } else if let latest = sessions.sorted(by: { ($0.updatedAt) > ($1.updatedAt) }).first {
+            self.currentSession = latest
+        } else {
+            self.currentSession = nil
+        }
+    }
+
     public func fetchSessions(projectDirectory: String) async throws -> [Session] {
         isLoading = true
         error = nil
@@ -132,6 +146,40 @@ public final class SessionDataService: ObservableObject {
                 self.error = DataServiceError.networkError(error)
                 self.isLoading = false
             }
+            throw error
+        }
+    }
+
+    @MainActor
+    public func fetchActiveSession() async throws -> Session? {
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            // Get active session ID from desktop
+            let stream = CommandRouter.appGetActiveSessionId()
+
+            for try await response in stream {
+                if let error = response.error {
+                    throw DataServiceError.serverError(error.message)
+                }
+
+                if let result = response.result?.value as? [String: Any],
+                   let sessionId = result["sessionId"] as? String,
+                   !sessionId.isEmpty {
+
+                    // Load the full session
+                    let session = try await getSession(id: sessionId)
+                    self.currentSession = session
+                    return session
+                }
+
+                if response.isFinal { break }
+            }
+
+            return nil
+        } catch {
+            self.error = DataServiceError.networkError(error)
             throw error
         }
     }
@@ -244,6 +292,13 @@ public final class SessionDataService: ObservableObject {
                                 self.sessions.append(session)
                             }
                             self.isLoading = false
+                        }
+                        Task { [weak self] in
+                            guard let self else { return }
+                            try? await self.broadcastActiveSessionChanged(
+                                sessionId: session.id,
+                                projectDirectory: session.projectDirectory
+                            )
                         }
                         return session
                     }

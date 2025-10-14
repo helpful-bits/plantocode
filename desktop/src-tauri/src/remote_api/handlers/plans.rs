@@ -6,6 +6,19 @@ use serde_json::Value;
 use std::sync::Arc;
 use crate::db_utils::SessionRepository;
 use log::{debug, warn};
+use once_cell::sync::Lazy;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+use std::collections::HashMap;
+
+struct CacheEntry {
+    inserted_at: Instant,
+    value: serde_json::Value,
+}
+
+static PLANS_LIST_CACHE: Lazy<Mutex<HashMap<String, CacheEntry>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+const CACHE_TTL: Duration = Duration::from_millis(750);
+const MAX_ENTRIES: usize = 128;
 
 fn utf8_safe_slice(s: &str, start: usize, end: usize) -> String {
     let len = s.len();
@@ -50,30 +63,71 @@ async fn handle_plans_list(app_handle: &AppHandle, request: RpcRequest) -> RpcRe
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
 
-    let effective_project_directory = if let Some(ref session_id) = session_id {
-        let pool = app_handle.state::<sqlx::SqlitePool>().inner().clone();
-        let session_repo = SessionRepository::new(Arc::new(pool));
-        match session_repo.get_session_by_id(session_id).await {
-            Ok(Some(session)) => {
-                debug!("Using effective project directory from session: {}", session.project_directory);
-                Some(session.project_directory)
-            },
-            Ok(None) => {
-                debug!("Session not found for {}, falling back to None", session_id);
-                None
-            },
-            Err(e) => {
-                warn!("Session lookup failed for {}: {:?}, using provided projectDirectory", session_id, e);
-                project_directory.clone()
-            }
+    // Require sessionId to be present
+    let session_id = match session_id {
+        Some(id) if !id.is_empty() => id,
+        _ => {
+            return RpcResponse {
+                correlation_id: request.correlation_id,
+                result: None,
+                error: Some("Missing required sessionId".to_string()),
+                is_final: true,
+            };
         }
-    } else {
-        project_directory.clone()
     };
 
+    // Resolve effective project directory from session - no fallbacks
+    let pool = app_handle.state::<sqlx::SqlitePool>().inner().clone();
+    let session_repo = SessionRepository::new(Arc::new(pool));
+    let effective_project_directory = match session_repo.get_session_by_id(&session_id).await {
+        Ok(Some(session)) => {
+            debug!("Validated session {} with project directory {}", session_id, session.project_directory);
+            Some(session.project_directory)
+        },
+        Ok(None) => {
+            return RpcResponse {
+                correlation_id: request.correlation_id,
+                result: None,
+                error: Some("Invalid sessionId: not found".to_string()),
+                is_final: true,
+            };
+        },
+        Err(_) => {
+            return RpcResponse {
+                correlation_id: request.correlation_id,
+                result: None,
+                error: Some("Invalid sessionId: not found".to_string()),
+                is_final: true,
+            };
+        }
+    };
+
+    // Build cache key
+    let cache_key = format!(
+        "plans::{}::{}",
+        effective_project_directory.as_deref().unwrap_or(""),
+        session_id
+    );
+
+    // Check cache
+    {
+        let cache = PLANS_LIST_CACHE.lock().unwrap();
+        if let Some(entry) = cache.get(&cache_key) {
+            if entry.inserted_at.elapsed() < CACHE_TTL {
+                return RpcResponse {
+                    correlation_id: request.correlation_id,
+                    result: Some(entry.value.clone()),
+                    error: None,
+                    is_final: true,
+                };
+            }
+        }
+    }
+
+    // Execute actual query
     match job_commands::get_all_visible_jobs_command_with_content(
         effective_project_directory,
-        session_id.clone(),
+        Some(session_id.clone()),
         false,
         app_handle.clone()
     ).await {
@@ -88,9 +142,9 @@ async fn handle_plans_list(app_handle: &AppHandle, request: RpcRequest) -> RpcRe
                         .and_then(|m| serde_json::from_str(m).ok())
                         .unwrap_or(json!({}));
 
-                    let title = metadata["planTitle"].as_str().or(
-                        metadata["title"].as_str()
-                    );
+                    let title = metadata["planTitle"].as_str()
+                        .or(metadata["generated_title"].as_str())
+                        .or(metadata["title"].as_str());
 
                     let file_path = metadata["planFilePath"].as_str().or(
                         metadata["filePath"].as_str()
@@ -114,9 +168,27 @@ async fn handle_plans_list(app_handle: &AppHandle, request: RpcRequest) -> RpcRe
                     })
                 })
                 .collect();
+
+            let result_value = json!({ "plans": plans });
+
+            // Store in cache
+            {
+                let mut cache = PLANS_LIST_CACHE.lock().unwrap();
+                if cache.len() >= MAX_ENTRIES {
+                    // Evict oldest
+                    if let Some(oldest_key) = cache.iter().min_by_key(|(_, v)| v.inserted_at).map(|(k, _)| k.clone()) {
+                        cache.remove(&oldest_key);
+                    }
+                }
+                cache.insert(cache_key, CacheEntry {
+                    inserted_at: Instant::now(),
+                    value: result_value.clone(),
+                });
+            }
+
             RpcResponse {
                 correlation_id: request.correlation_id,
-                result: Some(json!({ "plans": plans })),
+                result: Some(result_value),
                 error: None,
                 is_final: true,
             }

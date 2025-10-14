@@ -35,6 +35,57 @@ public final class AppState: ObservableObject {
     }
   }
 
+  // MARK: - Bootstrap Presentation State
+  public struct MissingConfig: Equatable {
+    public let projectMissing: Bool
+    public let sessionsEmpty: Bool
+    public let activeSessionMissing: Bool
+
+    public init(projectMissing: Bool, sessionsEmpty: Bool, activeSessionMissing: Bool) {
+      self.projectMissing = projectMissing
+      self.sessionsEmpty = sessionsEmpty
+      self.activeSessionMissing = activeSessionMissing
+    }
+  }
+
+  public enum BootstrapState: Equatable {
+    case idle
+    case running
+    case ready
+    case needsConfiguration(MissingConfig)
+    case failed(String)
+  }
+
+  @Published public private(set) var bootstrapState: BootstrapState = .idle
+
+  // MARK: - Deep Link Routing
+  public enum DeepLinkRoute: Equatable {
+    case filesSelected(sessionId: String, projectDirectory: String?)
+    case openPlan(sessionId: String, projectDirectory: String?, jobId: String)
+
+    public static func == (lhs: DeepLinkRoute, rhs: DeepLinkRoute) -> Bool {
+      switch (lhs, rhs) {
+      case let (.filesSelected(lSession, lProject), .filesSelected(rSession, rProject)):
+        return lSession == rSession && lProject == rProject
+      case let (.openPlan(lSession, lProject, lJobId), .openPlan(rSession, rProject, rJobId)):
+        return lSession == rSession && lProject == rProject && lJobId == rJobId
+      default:
+        return false
+      }
+    }
+  }
+
+  @Published public var deepLinkRoute: DeepLinkRoute? = nil
+  @Published public var pendingPlanJobIdToOpen: String? = nil
+
+  public func clearDeepLinkRoute() {
+    self.deepLinkRoute = nil
+  }
+
+  public func setPendingPlanToOpen(_ jobId: String?) {
+    self.pendingPlanJobIdToOpen = jobId
+  }
+
   // MARK: - Debug toggles for validation
   @Published public var isEventsWebSocketEnabled: Bool = false
 
@@ -185,6 +236,26 @@ public final class AppState: ObservableObject {
 
   public func setSelectedProjectDirectory(_ path: String?) {
     self.selectedProjectDirectory = path
+  }
+
+  @MainActor
+  public func setBootstrapRunning() {
+    self.bootstrapState = .running
+  }
+
+  @MainActor
+  public func setBootstrapReady() {
+    self.bootstrapState = .ready
+  }
+
+  @MainActor
+  public func setBootstrapNeedsConfig(_ missing: MissingConfig) {
+    self.bootstrapState = .needsConfiguration(missing)
+  }
+
+  @MainActor
+  public func setBootstrapFailed(_ message: String) {
+    self.bootstrapState = .failed(message)
   }
 
   // URL handling is no longer needed with Auth0.swift 2.13+

@@ -2,28 +2,30 @@ use serde::Serialize;
 use serde_json;
 use tauri::{AppHandle, Emitter};
 
-/// Emitted after backend auto-applies discovered files to a session:
-/// event: "session:auto-files-applied"
-/// payload: { session_id, job_id, task_type, files }
-#[derive(Debug, Serialize)]
-pub struct SessionAutoFilesAppliedPayload {
-    pub session_id: String,
-    pub job_id: String,
-    pub task_type: String,
-    pub files: Vec<String>,
-}
+/// Emitted when session files are updated (unified event for all file selection changes)
+/// event: "session-files-updated"
+/// payload: { sessionId, includedFiles, forceExcludedFiles }
+pub fn emit_session_files_updated(
+    app: &tauri::AppHandle,
+    session_id: &str,
+    included_files: &Vec<String>,
+    force_excluded_files: &Vec<String>,
+) -> Result<(), String> {
+    let payload = serde_json::json!({
+        "sessionId": session_id,
+        "includedFiles": included_files,
+        "forceExcludedFiles": force_excluded_files
+    });
 
-pub fn emit_session_auto_files_applied(app: &AppHandle, payload: SessionAutoFilesAppliedPayload) {
-    let _ = app.emit("session:auto-files-applied", &payload);
+    app.emit("session-files-updated", &payload)
+        .map_err(|e| format!("local emit failed: {e}"))?;
 
-    // Also emit device-link-event for remote devices
-    let _ = app.emit(
-        "device-link-event",
-        serde_json::json!({
-            "type": "session:auto-files-applied",
-            "payload": payload
-        }),
-    );
+    app.emit("device-link-event", serde_json::json!({
+        "type": "session-files-updated",
+        "payload": payload
+    })).map_err(|e| format!("relay emit failed: {e}"))?;
+
+    Ok(())
 }
 
 pub fn emit_session_updated(app: &AppHandle, session_id: &str, session_obj: &serde_json::Value) -> Result<(), String> {

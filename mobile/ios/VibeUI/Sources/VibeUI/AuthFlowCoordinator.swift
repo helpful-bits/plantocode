@@ -17,7 +17,7 @@ public struct AuthFlowCoordinator: View {
   @StateObject private var multiConnectionManager = MultiConnectionManager.shared
 
   private enum FlowRoute {
-    case loading, regionSelection, login, deviceSelection, workspace
+    case loading, regionSelection, login, deviceSelection, workspace, missingConfiguration
   }
   @State private var route: FlowRoute = .loading
 
@@ -36,6 +36,8 @@ public struct AuthFlowCoordinator: View {
         DeviceSelectionView()
       case .workspace:
         SessionWorkspaceView(autoPresentDeviceSelection: false)
+      case .missingConfiguration:
+        MissingConfigurationView()
       }
     }
     .transition(.opacity)
@@ -52,6 +54,7 @@ public struct AuthFlowCoordinator: View {
         withAnimation { updateRoute() }
       }
     }
+    .onChange(of: appState.bootstrapState) { _ in withAnimation { updateRoute() } }
   }
 
   @MainActor
@@ -60,7 +63,9 @@ public struct AuthFlowCoordinator: View {
     while appState.authBootstrapCompleted == false {
       try? await Task.sleep(nanoseconds: 100_000_000)
     }
-    await multiConnectionManager.restoreConnections()
+    if appState.bootstrapState == .idle {
+      await InitializationOrchestrator.shared.run()
+    }
     withAnimation { updateRoute() }
   }
 
@@ -69,12 +74,19 @@ public struct AuthFlowCoordinator: View {
     guard appState.hasSelectedRegionOnce else { route = .regionSelection; return }
     guard appState.isAuthenticated else { route = .login; return }
 
-    // If we have an active device, stay in workspace even if temporarily disconnected
-    // The workspace view will handle showing connection status
-    if multiConnectionManager.activeDeviceId != nil {
-      route = .workspace
-    } else {
+    switch appState.bootstrapState {
+    case .idle, .running:
+      route = .loading
+      return
+    case .failed:
       route = .deviceSelection
+      return
+    case .needsConfiguration:
+      route = .missingConfiguration
+      return
+    case .ready:
+      route = (multiConnectionManager.activeDeviceId != nil) ? .workspace : .deviceSelection
+      return
     }
   }
 }

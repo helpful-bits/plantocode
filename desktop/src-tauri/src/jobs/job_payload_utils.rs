@@ -41,7 +41,7 @@ pub fn deserialize_value_to_job_payload(
     use crate::jobs::types::{
         ExtendedPathFinderPayload, FileFinderWorkflowPayload, FileRelevanceAssessmentPayload,
         GenericLlmStreamPayload, ImplementationPlanMergePayload, ImplementationPlanPayload,
-        JobPayload, OpenRouterLlmPayload, PathCorrectionPayload, RegexFileFilterPayload,
+        JobPayload, OpenRouterLlmPayload, RegexFileFilterPayload,
         RootFolderSelectionPayload, TaskRefinementPayload, TextImprovementPayload,
         VideoAnalysisPayload, WebSearchExecutionPayload, WebSearchPromptsGenerationPayload,
         WebSearchWorkflowPayload,
@@ -58,16 +58,6 @@ pub fn deserialize_value_to_job_payload(
                     ))
                 })?;
             Ok(JobPayload::RegexFileFilter(workflow_payload))
-        }
-        TaskType::PathCorrection => {
-            let payload: PathCorrectionPayload = serde_json::from_value(json_value.clone())
-                .map_err(|e| {
-                    AppError::JobError(format!(
-                        "Failed to deserialize PathCorrectionPayload: {}",
-                        e
-                    ))
-                })?;
-            Ok(JobPayload::PathCorrection(payload))
         }
         TaskType::ExtendedPathFinder => {
             let payload: ExtendedPathFinderPayload = serde_json::from_value(json_value.clone())

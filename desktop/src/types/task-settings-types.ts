@@ -11,7 +11,6 @@ export interface VoiceTranscriptionSettings extends TaskModelSettings {
 export interface TaskSettings {
   voiceTranscription: VoiceTranscriptionSettings;
   regexFileFilter: TaskModelSettings;
-  pathCorrection: TaskModelSettings;
   textImprovement: TaskModelSettings;
   taskRefinement: TaskModelSettings;
   implementationPlan: TaskModelSettings;

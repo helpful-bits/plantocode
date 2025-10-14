@@ -21,6 +21,7 @@ public struct PlanDetailView: View {
     @State private var hasRetriedLoad = false
     @State private var loadToken = UUID()
     @State private var isEditMode = false
+    @State private var selectedCopyButtonId: String? = nil
 
     @State private var cancellables = Set<AnyCancellable>()
     @FocusState private var isEditorFocused: Bool
@@ -75,7 +76,7 @@ public struct PlanDetailView: View {
         }
         .sheet(isPresented: $showingTerminal) {
             NavigationStack {
-                RemoteTerminalView(jobId: currentPlan.jobId)
+                RemoteTerminalView(jobId: currentPlan.jobId, initialCopyButtonId: selectedCopyButtonId)
             }
         }
         .alert("Unsaved Changes", isPresented: $showingSaveConfirmation) {
@@ -89,6 +90,11 @@ public struct PlanDetailView: View {
             Button("Cancel", role: .cancel) { }
         } message: {
             Text("You have unsaved changes. What would you like to do?")
+        }
+        .task {
+            if let dir = container.sessionService.currentSession?.projectDirectory, !dir.isEmpty {
+                try? await container.settingsService.fetchProjectTaskModelSettings(projectDirectory: dir)
+            }
         }
         .onAppear {
             loadPlanContent()
@@ -191,8 +197,9 @@ public struct PlanDetailView: View {
                     Spacer()
                         .frame(width: 40)
 
-                    // Terminal
+                    // Terminal button - launch directly
                     Button {
+                        selectedCopyButtonId = nil
                         showingTerminal = true
                     } label: {
                         Image(systemName: "terminal")
@@ -272,6 +279,7 @@ public struct PlanDetailView: View {
                             .frame(width: 40)
 
                         Button {
+                            selectedCopyButtonId = nil
                             showingTerminal = true
                         } label: {
                             Image(systemName: "terminal")

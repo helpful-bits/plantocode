@@ -9,7 +9,6 @@ export interface ValidationResult {
 
 export const taskSettingsKeyToTaskType: Record<keyof TaskSettings, TaskType> = {
   voiceTranscription: "voice_transcription",
-  pathCorrection: "path_correction",
   textImprovement: "text_improvement",
   implementationPlan: "implementation_plan",
   implementationPlanMerge: "implementation_plan_merge",
