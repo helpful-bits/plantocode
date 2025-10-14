@@ -338,38 +338,16 @@ pub async fn get_workflow_results_legacy(
     // Extract extended path finder results
     if !workflow_result
         .intermediate_data
-        .extended_verified_paths
+        .extended_paths
         .is_empty()
-        || !workflow_result
-            .intermediate_data
-            .extended_unverified_paths
-            .is_empty()
     {
         stage_results.insert(
             "ExtendedPathFinder".to_string(),
             serde_json::json!({
-                "verified_paths": workflow_result.intermediate_data.extended_verified_paths,
-                "unverified_paths": workflow_result.intermediate_data.extended_unverified_paths,
-                "verified_count": workflow_result.intermediate_data.extended_verified_paths.len(),
-                "unverified_count": workflow_result.intermediate_data.extended_unverified_paths.len(),
+                "files": workflow_result.intermediate_data.extended_paths,
+                "count": workflow_result.intermediate_data.extended_paths.len(),
                 "type": "path_finder_results"
             })
-        );
-    }
-
-    // Extract extended path correction results
-    if !workflow_result
-        .intermediate_data
-        .extended_corrected_paths
-        .is_empty()
-    {
-        stage_results.insert(
-            "PathCorrection".to_string(),
-            serde_json::json!({
-                "corrected_paths": workflow_result.intermediate_data.extended_corrected_paths,
-                "count": workflow_result.intermediate_data.extended_corrected_paths.len(),
-                "type": "path_correction_results"
-            }),
         );
     }
 

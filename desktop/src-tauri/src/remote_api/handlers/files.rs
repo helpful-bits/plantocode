@@ -2,6 +2,32 @@ use tauri::AppHandle;
 use serde_json::{json, Value};
 use crate::remote_api::types::{RpcRequest, RpcResponse};
 use crate::commands::file_system_commands;
+use once_cell::sync::Lazy;
+use std::collections::HashMap;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+// Cache configuration
+const MAX_CACHE_ENTRIES: usize = 256;
+const CACHE_TTL_MS: u64 = 1000;
+
+#[derive(Clone, Debug)]
+struct CacheEntry {
+    inserted_at: Instant,
+    value: serde_json::Value,
+}
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq)]
+struct CacheKey {
+    project_directory: String,
+    query: String,
+    include_content: bool,
+    max_results: u32,
+}
+
+static SEARCH_CACHE: Lazy<Mutex<HashMap<CacheKey, CacheEntry>>> = Lazy::new(|| {
+    Mutex::new(HashMap::new())
+});
 
 pub async fn dispatch(app_handle: AppHandle, req: RpcRequest) -> RpcResponse {
     match req.method.as_str() {
@@ -238,32 +264,89 @@ async fn handle_files_search(app_handle: &AppHandle, request: RpcRequest) -> Rpc
         }
     };
 
+    // Empty queries return all files (useful for listing all project files)
+
     let include_content = request
         .params
         .get("includeContent")
-        .and_then(|v| v.as_bool());
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
     let max_results = request
         .params
         .get("maxResults")
         .and_then(|v| v.as_u64())
-        .map(|u| u as u32);
+        .map(|u| u as u32)
+        .unwrap_or(100);
 
+    // Create cache key
+    let cache_key = CacheKey {
+        project_directory: project_directory.clone(),
+        query: query.to_lowercase(),
+        include_content,
+        max_results,
+    };
+
+    // Check cache
+    if let Ok(mut cache) = SEARCH_CACHE.lock() {
+        if let Some(entry) = cache.get(&cache_key) {
+            let age = entry.inserted_at.elapsed();
+            if age < Duration::from_millis(CACHE_TTL_MS) {
+                // Cache hit
+                return RpcResponse {
+                    correlation_id: request.correlation_id,
+                    result: Some(entry.value.clone()),
+                    error: None,
+                    is_final: true,
+                };
+            } else {
+                // Entry expired, remove it
+                cache.remove(&cache_key);
+            }
+        }
+    }
+
+    // Call search command
     match file_system_commands::search_files_command(
         app_handle.clone(),
         project_directory,
         query,
-        include_content,
-        max_results,
+        Some(include_content),
+        Some(max_results),
     )
     .await
     {
-        Ok(result) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: Some(result),
-            error: None,
-            is_final: true,
-        },
+        Ok(result) => {
+            // Store in cache
+            if let Ok(mut cache) = SEARCH_CACHE.lock() {
+                // Evict oldest entry if cache is full
+                if cache.len() >= MAX_CACHE_ENTRIES {
+                    if let Some(oldest_key) = cache
+                        .iter()
+                        .min_by_key(|(_, entry)| entry.inserted_at)
+                        .map(|(key, _)| key.clone())
+                    {
+                        cache.remove(&oldest_key);
+                    }
+                }
+
+                // Insert new entry
+                cache.insert(
+                    cache_key,
+                    CacheEntry {
+                        inserted_at: Instant::now(),
+                        value: result.clone(),
+                    },
+                );
+            }
+
+            RpcResponse {
+                correlation_id: request.correlation_id,
+                result: Some(result),
+                error: None,
+                is_final: true,
+            }
+        }
         Err(error) => RpcResponse {
             correlation_id: request.correlation_id,
             result: None,

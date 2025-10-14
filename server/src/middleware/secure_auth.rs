@@ -162,23 +162,19 @@ fn validate_device_binding(
         (Some(jwt_device_id), Some(header_device_id)) => {
             if jwt_device_id != header_device_id {
                 error!(
-                    "Device ID mismatch for request_id: {} - header '{}' vs JWT '{}'",
-                    request_id, header_device_id, jwt_device_id
+                    "Device ID mismatch for request_id: {}",
+                    request_id
                 );
-                return Err(AppError::Auth(format!(
-                    "Device ID mismatch: header '{}' vs JWT '{}'",
-                    header_device_id, jwt_device_id
-                )));
+                return Err(AppError::Auth(
+                    "Device ID mismatch".to_string()
+                ));
             }
-            info!(
-                "Device binding validation successful for request_id: {} device_id: {}",
-                request_id, jwt_device_id
-            );
+            // Device binding validation successful
         }
         (Some(jwt_device_id), None) => {
             error!(
-                "Missing X-Device-ID header for device-bound token, request_id: {} device_id: {}",
-                request_id, jwt_device_id
+                "Missing X-Device-ID header for device-bound token, request_id: {}",
+                request_id
             );
             return Err(AppError::Auth(
                 "Missing X-Device-ID header for device-bound token".to_string(),
@@ -199,25 +195,19 @@ fn validate_device_binding(
             Ok(request_token_binding_hash) => {
                 if jwt_token_binding_hash != &request_token_binding_hash {
                     error!(
-                        "Token binding hash mismatch for request_id: {} device_id: {:?} - JWT hash: '{}' vs request hash: '{}'",
-                        request_id,
-                        claims.device_id,
-                        jwt_token_binding_hash,
-                        request_token_binding_hash
+                        "Token binding hash mismatch for request_id: {}",
+                        request_id
                     );
                     return Err(AppError::Auth(
                         "Token binding validation failed".to_string(),
                     ));
                 }
-                info!(
-                    "Token binding validation successful for request_id: {} device_id: {:?}",
-                    request_id, claims.device_id
-                );
+                // Token binding validation successful
             }
             Err(e) => {
                 error!(
-                    "Token binding validation failed - rejecting request. request_id: {} device_id: {:?} - error: {}",
-                    request_id, claims.device_id, e
+                    "Token binding validation failed - rejecting request. request_id: {} - error: {}",
+                    request_id, e
                 );
                 return Err(AppError::Auth(
                     "Token binding validation failed".to_string(),

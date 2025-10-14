@@ -1,5 +1,6 @@
 use crate::error::AppResult;
 use sqlx::{Row, SqlitePool};
+use std::env;
 use std::sync::Arc;
 
 const MAX_OUTPUT_LOG_SIZE: usize = 1_048_576; // 1 MiB
@@ -35,16 +36,18 @@ impl TerminalRepository {
             let default_session_id = "terminal-standalone";
 
             // Ensure a default session exists for standalone terminals
+            let temp_dir = env::temp_dir().to_string_lossy().to_string();
             let _ = sqlx::query(
                 r#"
                 INSERT OR IGNORE INTO sessions (
                     id, name, project_directory, project_hash, created_at, updated_at
                 ) VALUES (
-                    ?1, 'Terminal Sessions', '/tmp', '', ?2, ?2
+                    ?1, 'Terminal Sessions', ?2, '', ?3, ?3
                 )
                 "#
             )
             .bind(default_session_id)
+            .bind(&temp_dir)
             .bind(started_at)
             .execute(&*self.pool)
             .await;

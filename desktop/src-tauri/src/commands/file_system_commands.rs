@@ -689,8 +689,10 @@ pub async fn search_files_command(
         project_directory, query
     );
 
+    // Empty queries return all files (useful for listing all project files)
     let include_content = include_content.unwrap_or(false);
     let max_results = max_results.unwrap_or(100) as usize;
+    let is_empty_query = query.trim().is_empty();
 
     // Use canonicalize to properly handle all path formats
     let project_path = match std::path::Path::new(&project_directory).canonicalize() {
@@ -801,8 +803,8 @@ pub async fn search_files_command(
         let mut content_matches = false;
         let mut content_snippet = None;
 
-        // Check content if requested and file is not binary
-        if include_content && !fs_utils::is_binary_file_fast(&file_path) {
+        // Check content if requested, query is not empty, and file is not binary
+        if include_content && !is_empty_query && !fs_utils::is_binary_file_fast(&file_path) {
             match fs_utils::read_file_to_string(&file_path).await {
                 Ok(content) => {
                     if content.to_lowercase().contains(&query_lower) {
@@ -823,8 +825,8 @@ pub async fn search_files_command(
             }
         }
 
-        // Include file if it matches filename or content
-        if filename_matches || content_matches {
+        // Include file if query is empty (all files) OR if it matches filename or content
+        if is_empty_query || filename_matches || content_matches {
             // Get file metadata
             let (size, modified_at) = match tokio::fs::metadata(&file_path).await {
                 Ok(metadata) => {
@@ -858,17 +860,22 @@ pub async fn search_files_command(
         }
     }
 
-    // Sort by relevance (filename matches first, then by path)
-    matching_files.sort_by(|a, b| {
-        let a_filename_match = a.name.to_lowercase().contains(&query_lower);
-        let b_filename_match = b.name.to_lowercase().contains(&query_lower);
+    // Sort by relevance (filename matches first, then by path) - only if not empty query
+    if !is_empty_query {
+        matching_files.sort_by(|a, b| {
+            let a_filename_match = a.name.to_lowercase().contains(&query_lower);
+            let b_filename_match = b.name.to_lowercase().contains(&query_lower);
 
-        match (a_filename_match, b_filename_match) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => a.path.cmp(&b.path),
-        }
-    });
+            match (a_filename_match, b_filename_match) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => a.path.cmp(&b.path),
+            }
+        });
+    } else {
+        // For empty queries, just sort by path
+        matching_files.sort_by(|a, b| a.path.cmp(&b.path));
+    }
 
     let response = SearchFilesResponse {
         total_count: matching_files.len(),

@@ -255,6 +255,44 @@ impl DeviceRepository {
         Ok(())
     }
 
+    /// Update device status and last heartbeat with optional active_jobs
+    pub async fn set_device_status(
+        &self,
+        device_id: &Uuid,
+        status: &str,
+        active_jobs: Option<i32>,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            UPDATE devices
+            SET
+                status = $2,
+                last_heartbeat = NOW(),
+                active_jobs = COALESCE($3, active_jobs),
+                updated_at = NOW()
+            WHERE device_id = $1
+            "#
+        )
+        .bind(device_id)
+        .bind(status)
+        .bind(active_jobs)
+        .execute(&*self.db_pool)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to set device status: {}", e)))?;
+
+        Ok(())
+    }
+
+    /// Mark device as online
+    pub async fn set_online(&self, device_id: &Uuid) -> Result<(), AppError> {
+        self.set_device_status(device_id, "online", Some(0)).await
+    }
+
+    /// Mark device as offline
+    pub async fn set_offline(&self, device_id: &Uuid) -> Result<(), AppError> {
+        self.set_device_status(device_id, "offline", Some(0)).await
+    }
+
     /// Save push notification token for a device
     pub async fn save_push_token(
         &self,

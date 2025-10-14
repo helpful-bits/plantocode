@@ -29,7 +29,6 @@ pub enum WorkflowStage {
     RegexFileFilter,
     FileRelevanceAssessment,
     ExtendedPathFinder,
-    PathCorrection,
     WebSearchPromptsGeneration,
     WebSearchExecution,
 }
@@ -47,8 +46,7 @@ impl WorkflowStage {
             WorkflowStage::RootFolderSelection => Some(WorkflowStage::RegexFileFilter),
             WorkflowStage::RegexFileFilter => Some(WorkflowStage::FileRelevanceAssessment),
             WorkflowStage::FileRelevanceAssessment => Some(WorkflowStage::ExtendedPathFinder),
-            WorkflowStage::ExtendedPathFinder => Some(WorkflowStage::PathCorrection),
-            WorkflowStage::PathCorrection => Some(WorkflowStage::WebSearchPromptsGeneration),
+            WorkflowStage::ExtendedPathFinder => Some(WorkflowStage::WebSearchPromptsGeneration),
             WorkflowStage::WebSearchPromptsGeneration => Some(WorkflowStage::WebSearchExecution),
             WorkflowStage::WebSearchExecution => None,
         }
@@ -61,8 +59,7 @@ impl WorkflowStage {
             WorkflowStage::RegexFileFilter => Some(WorkflowStage::RootFolderSelection),
             WorkflowStage::FileRelevanceAssessment => Some(WorkflowStage::RegexFileFilter),
             WorkflowStage::ExtendedPathFinder => Some(WorkflowStage::FileRelevanceAssessment),
-            WorkflowStage::PathCorrection => Some(WorkflowStage::ExtendedPathFinder),
-            WorkflowStage::WebSearchPromptsGeneration => Some(WorkflowStage::PathCorrection),
+            WorkflowStage::WebSearchPromptsGeneration => Some(WorkflowStage::ExtendedPathFinder),
             WorkflowStage::WebSearchExecution => Some(WorkflowStage::WebSearchPromptsGeneration),
         }
     }
@@ -74,9 +71,8 @@ impl WorkflowStage {
             WorkflowStage::RegexFileFilter => 1,
             WorkflowStage::FileRelevanceAssessment => 2,
             WorkflowStage::ExtendedPathFinder => 3,
-            WorkflowStage::PathCorrection => 4,
-            WorkflowStage::WebSearchPromptsGeneration => 5,
-            WorkflowStage::WebSearchExecution => 6,
+            WorkflowStage::WebSearchPromptsGeneration => 4,
+            WorkflowStage::WebSearchExecution => 5,
         }
     }
 
@@ -87,7 +83,6 @@ impl WorkflowStage {
             WorkflowStage::RegexFileFilter => "Regex File Filtering",
             WorkflowStage::FileRelevanceAssessment => "AI File Relevance Assessment",
             WorkflowStage::ExtendedPathFinder => "Extended Path Finding",
-            WorkflowStage::PathCorrection => "Path Correction",
             WorkflowStage::WebSearchPromptsGeneration => "Web Search Prompts Generation",
             WorkflowStage::WebSearchExecution => "Web Search Execution",
         }
@@ -104,8 +99,6 @@ impl WorkflowStage {
             "FileRelevanceAssessment" => Some(WorkflowStage::FileRelevanceAssessment), // Handle enum variant name
             "Extended Path Finding" => Some(WorkflowStage::ExtendedPathFinder),
             "ExtendedPathFinder" => Some(WorkflowStage::ExtendedPathFinder), // Handle enum variant name
-            "Path Correction" => Some(WorkflowStage::PathCorrection),
-            "PathCorrection" => Some(WorkflowStage::PathCorrection), // Handle enum variant name
             "Web Search Prompts Generation" => Some(WorkflowStage::WebSearchPromptsGeneration),
             "WebSearchPromptsGeneration" => Some(WorkflowStage::WebSearchPromptsGeneration), // Handle enum variant name
             "Web Search Execution" => Some(WorkflowStage::WebSearchExecution),
@@ -121,7 +114,6 @@ impl WorkflowStage {
             TaskType::RegexFileFilter => Some(WorkflowStage::RegexFileFilter),
             TaskType::FileRelevanceAssessment => Some(WorkflowStage::FileRelevanceAssessment),
             TaskType::ExtendedPathFinder => Some(WorkflowStage::ExtendedPathFinder),
-            TaskType::PathCorrection => Some(WorkflowStage::PathCorrection),
             TaskType::WebSearchPromptsGeneration => Some(WorkflowStage::WebSearchPromptsGeneration),
             TaskType::WebSearchExecution => Some(WorkflowStage::WebSearchExecution),
             _ => None,
@@ -428,9 +420,7 @@ pub struct WorkflowIntermediateData {
     pub locally_filtered_files: Vec<String>,
     pub ai_filtered_files: Vec<String>,
     pub ai_filtered_files_token_count: Option<u32>,
-    pub extended_verified_paths: Vec<String>,
-    pub extended_unverified_paths: Vec<String>,
-    pub extended_corrected_paths: Vec<String>,
+    pub extended_paths: Vec<String>,
     pub web_search_prompts: Vec<String>,
     pub web_search_results: Vec<String>,
     pub workflow_completion_message: Option<String>,
@@ -451,9 +441,7 @@ impl WorkflowIntermediateData {
             locally_filtered_files: Vec::new(),
             ai_filtered_files: Vec::new(),
             ai_filtered_files_token_count: None,
-            extended_verified_paths: Vec::new(),
-            extended_unverified_paths: Vec::new(),
-            extended_corrected_paths: Vec::new(),
+            extended_paths: Vec::new(),
             web_search_prompts: Vec::new(),
             web_search_results: Vec::new(),
             workflow_completion_message: None,
@@ -462,14 +450,10 @@ impl WorkflowIntermediateData {
 
     /// Get all final selected files from the workflow
     pub fn get_final_selected_files(&self) -> Vec<String> {
-        // The method should combine files from the final relevant stages.
-        // For the FileFinderWorkflow, this means the extended_verified_paths
-        // (which are the result of FileRelevanceAssessment further processed by ExtendedPathFinder)
-        // and then any extended_corrected_paths.
-        let mut files = self.extended_verified_paths.clone();
-        files.extend(self.extended_corrected_paths.clone());
+        // Simply return the extended paths from ExtendedPathFinder
+        let mut files = self.extended_paths.clone();
 
-        // Remove duplicates while preserving order and sort
+        // Remove duplicates and sort
         files.sort_unstable();
         files.dedup();
 
@@ -615,13 +599,6 @@ impl Default for ErrorRecoveryConfig {
             RecoveryStrategy::RetryStage {
                 max_attempts: 2,
                 delay_ms: 5000,
-            },
-        );
-        strategy_map.insert(
-            "PathCorrection".to_string(),
-            RecoveryStrategy::RetryStage {
-                max_attempts: 2,
-                delay_ms: 3000,
             },
         );
 

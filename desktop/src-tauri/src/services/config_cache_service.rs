@@ -360,7 +360,6 @@ pub fn validate_all_task_types_have_configs(
         TaskType::ImplementationPlanMerge,
         TaskType::VoiceTranscription,
         TaskType::TextImprovement,
-        TaskType::PathCorrection,
         TaskType::TaskRefinement,
         TaskType::GenericLlmStream,
         TaskType::RegexFileFilter,

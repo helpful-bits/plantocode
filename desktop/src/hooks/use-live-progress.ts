@@ -28,7 +28,6 @@ function calculateJobProgress(job: BackgroundJob, isRunning: boolean): number | 
       'extended_path_finder': 20000,
       'file_relevance_assessment': 20000,
       'regex_file_filter': 20000,
-      'path_correction': 20000,
       'implementation_plan': 90000,
       'implementation_plan_merge': 90000,
       'web_search_prompts_generation': 30000,

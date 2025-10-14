@@ -32,20 +32,46 @@ struct RelayEnvelope {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct RegisterPayload {
+    #[serde(rename = "deviceId")]
+    pub device_id: String,
+    #[serde(rename = "deviceName")]
+    pub device_name: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HeartbeatPayload {
+    pub status: String,
+    pub cpu_usage: Option<f64>,
+    pub memory_usage: Option<f64>,
+    pub disk_space_gb: Option<i64>,
+    pub active_jobs: Option<i32>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum DeviceLinkMessage {
     #[serde(rename = "register")]
     Register {
-        device_id: String,
-        device_name: String,
+        payload: RegisterPayload,
     },
     #[serde(rename = "relay_response")]
     RelayResponse {
+        #[serde(rename = "clientId")]
         client_id: String,
         response: RpcResponse,
     },
     #[serde(rename = "event")]
-    Event { event_type: String, payload: Value },
+    Event {
+        #[serde(rename = "eventType")]
+        event_type: String,
+        payload: Value,
+    },
+    #[serde(rename = "heartbeat")]
+    Heartbeat {
+        payload: HeartbeatPayload,
+    },
     #[serde(rename = "ping")]
     Ping,
     #[serde(rename = "pong")]
@@ -57,23 +83,25 @@ pub enum DeviceLinkMessage {
 pub enum ServerMessage {
     #[serde(rename = "registered")]
     Registered {
-        #[serde(default)]
+        #[serde(default, rename = "sessionId")]
         session_id: Option<String>,
-        #[serde(default)]
+        #[serde(default, rename = "resumeToken")]
         resume_token: Option<String>,
-        #[serde(default)]
+        #[serde(default, rename = "expiresAt")]
         expires_at: Option<String>,
     },
     #[serde(rename = "resumed")]
     Resumed {
+        #[serde(rename = "sessionId")]
         session_id: String,
-        #[serde(default)]
+        #[serde(default, rename = "expiresAt")]
         expires_at: Option<String>,
     },
     #[serde(rename = "error")]
     Error { message: String },
     #[serde(rename = "relay")]
     Relay {
+        #[serde(rename = "clientId")]
         client_id: String,
         request: RpcRequest,
     },
@@ -87,6 +115,7 @@ pub struct DeviceLinkClient {
     app_handle: AppHandle,
     server_url: String,
     sender: Option<mpsc::UnboundedSender<DeviceLinkMessage>>,
+    binary_sender: Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>,
     event_listener_id: std::sync::Mutex<Option<tauri::EventId>>,
 }
 
@@ -96,6 +125,7 @@ impl DeviceLinkClient {
             app_handle,
             server_url,
             sender: None,
+            binary_sender: None,
             event_listener_id: std::sync::Mutex::new(None),
         }
     }
@@ -112,18 +142,6 @@ impl DeviceLinkClient {
         let settings_repo = SettingsRepository::new(std::sync::Arc::new(pool));
         let device_settings = settings_repo.get_device_settings().await?;
 
-        if !device_settings.is_discoverable {
-            info!("Desktop not discoverable: enable 'Allow Remote Access' in Settings");
-            return Ok(());
-        }
-
-        if !device_settings.allow_remote_access {
-            info!(
-                "Remote access disabled: enable 'Allow Remote Access' in Settings to connect via relay"
-            );
-            return Ok(());
-        }
-
         // Get device ID and token
         let device_id = device_id_manager::get_or_create(&self.app_handle)
             .map_err(|e| AppError::AuthError(format!("Failed to get device ID: {}", e)))?;
@@ -136,6 +154,19 @@ impl DeviceLinkClient {
 
         // Register device with server before connecting WebSocket
         self.register_device(&device_id, &token).await?;
+
+        // Check if device is discoverable AFTER registration
+        if !device_settings.is_discoverable {
+            info!("Desktop not discoverable: enable 'Allow Remote Access' in Settings");
+            return Ok(());
+        }
+
+        if !device_settings.allow_remote_access {
+            info!(
+                "Remote access disabled: enable 'Allow Remote Access' in Settings to connect via relay"
+            );
+            return Ok(());
+        }
 
         // Build WebSocket URL
         let ws_url = format!("{}/ws/device-link", self.server_url.replace("http", "ws"));
@@ -187,6 +218,10 @@ impl DeviceLinkClient {
         let (tx, mut rx) = mpsc::unbounded_channel::<DeviceLinkMessage>();
         self.sender = Some(tx.clone());
 
+        // Create binary channel for terminal output
+        let (bin_tx, mut bin_rx) = mpsc::unbounded_channel::<Vec<u8>>();
+        self.binary_sender = Some(bin_tx.clone());
+
         // Unlisten any previous listener to prevent leaks
         if let Ok(mut listener_guard) = self.event_listener_id.lock() {
             if let Some(id) = listener_guard.take() {
@@ -194,6 +229,7 @@ impl DeviceLinkClient {
             }
         }
 
+        // Forward terminal.output and terminal.exit events to relay with event_type field
         // Set up event listener for device-link-event emissions
         let tx_for_events = tx.clone();
         let app_handle_for_events = self.app_handle.clone();
@@ -206,20 +242,33 @@ impl DeviceLinkClient {
                     }
                 }
 
-                if let (Some(event_type), Some(event_payload)) = (
-                    event_data.get("type").and_then(|v| v.as_str()),
-                    event_data.get("payload"),
-                ) {
-                    let msg = DeviceLinkMessage::Event {
-                        event_type: event_type.to_string(),
-                        payload: event_payload.clone(),
-                    };
+                // VALIDATION: Check event_type is non-empty and payload is JSON-encodable
+                let event_type = event_data.get("type").and_then(|v| v.as_str());
+                let event_payload = event_data.get("payload");
 
-                    if let Err(e) = tx_for_events.send(msg) {
-                        warn!("Failed to forward event to device link: {}", e);
-                    } else {
-                        debug!("Forwarded event to device link: {}", event_type);
-                    }
+                if event_type.is_none() || event_type.unwrap().trim().is_empty() {
+                    warn!("Dropping device-link-event: missing or empty event_type");
+                    return;
+                }
+
+                if event_payload.is_none() {
+                    warn!("Dropping device-link-event: missing payload");
+                    return;
+                }
+
+                // Validate JSON encodability
+                if serde_json::to_string(event_payload.unwrap()).is_err() {
+                    warn!("Dropping device-link-event: payload not JSON-encodable");
+                    return;
+                }
+
+                let msg = DeviceLinkMessage::Event {
+                    event_type: event_type.unwrap().to_string(),
+                    payload: event_payload.unwrap().clone(),
+                };
+
+                if let Err(e) = tx_for_events.send(msg) {
+                    warn!("Failed to forward event to device link: {}", e);
                 }
             }
         });
@@ -236,8 +285,10 @@ impl DeviceLinkClient {
 
         // Send register message
         let register_msg = DeviceLinkMessage::Register {
-            device_id: device_id.clone(),
-            device_name: hostname,
+            payload: RegisterPayload {
+                device_id: device_id.clone(),
+                device_name: hostname,
+            },
         };
 
         let register_json = serde_json::to_string(&register_msg).map_err(|e| {
@@ -253,20 +304,36 @@ impl DeviceLinkClient {
 
         info!("Sent registration message for device: {}", device_id);
 
-        // Spawn sender task
+        // Spawn sender task with dual-channel support
         let ws_sender_handle = {
             let mut ws_sender = ws_sender;
             tokio::spawn(async move {
-                while let Some(msg) = rx.recv().await {
-                    match serde_json::to_string(&msg) {
-                        Ok(json) => {
-                            if let Err(e) = ws_sender.send(Message::Text(json)).await {
-                                error!("Failed to send WebSocket message: {}", e);
+                loop {
+                    tokio::select! {
+                        // Text messages
+                        Some(msg) = rx.recv() => {
+                            match serde_json::to_string(&msg) {
+                                Ok(json) => {
+                                    if let Err(e) = ws_sender.send(Message::Text(json)).await {
+                                        error!("Failed to send WebSocket text message: {}", e);
+                                        break;
+                                    }
+                                }
+                                Err(e) => {
+                                    error!("Failed to serialize message: {}", e);
+                                }
+                            }
+                        }
+                        // Binary messages (terminal output)
+                        Some(bytes) = bin_rx.recv() => {
+                            if let Err(e) = ws_sender.send(Message::Binary(bytes)).await {
+                                error!("Failed to send WebSocket binary message: {}", e);
                                 break;
                             }
                         }
-                        Err(e) => {
-                            error!("Failed to serialize message: {}", e);
+                        else => {
+                            // Both channels closed
+                            break;
                         }
                     }
                 }
@@ -277,14 +344,67 @@ impl DeviceLinkClient {
         // Spawn receiver task
         let app_handle = self.app_handle.clone();
         let tx_for_receiver = tx.clone();
+        let bin_tx_for_receiver = bin_tx.clone();
         let receiver_handle = tokio::spawn(async move {
             while let Some(msg) = ws_receiver.next().await {
                 match msg {
                     Ok(Message::Text(text)) => {
+                        // Rate-limited validation for missing "type" field with diagnostic context
+                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
+                            if json.get("type").is_none() && json.get("message_type").is_none() {
+                                static LAST_TYPE_WARN: AtomicU64 = AtomicU64::new(0);
+                                let now = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap()
+                                    .as_millis() as u64;
+                                let last = LAST_TYPE_WARN.load(Ordering::Relaxed);
+                                if now - last > 10000 {  // 10 seconds
+                                    // Collect first-level keys for diagnostics
+                                    let available_keys: Vec<String> = if let Some(obj) = json.as_object() {
+                                        obj.keys().take(6).cloned().collect()
+                                    } else {
+                                        vec![]
+                                    };
+                                    let text_prefix: String = text.chars().take(128).collect();
+                                    warn!(
+                                        "Dropping relay frame: missing 'type' field. Available keys: {:?}, Prefix: {}",
+                                        available_keys, text_prefix
+                                    );
+                                    LAST_TYPE_WARN.store(now, Ordering::Relaxed);
+                                }
+                                continue;  // Drop invalid frame
+                            }
+                        }
+
                         // Try parsing as RelayEnvelope first (handles both "type" and "message_type")
                         if let Ok(env) = serde_json::from_str::<RelayEnvelope>(&text) {
                             // Route based on event type
-                            if env.kind.starts_with("job:") {
+                            if env.kind == "terminal.binary.bind" {
+                                // Handle terminal binary bind request from mobile via server
+                                if let Some(terminal_mgr) = app_handle.try_state::<std::sync::Arc<crate::services::TerminalManager>>() {
+                                    let consumer_device_id = env.payload.get("consumerDeviceId").and_then(|v| v.as_str());
+                                    let include_snapshot = env.payload.get("includeSnapshot").and_then(|v| v.as_bool()).unwrap_or(true);
+
+                                    info!(
+                                        "Received terminal.binary.bind request: consumer={:?} include_snapshot={}",
+                                        consumer_device_id, include_snapshot
+                                    );
+
+                                    // If include_snapshot is requested, emit snapshot for all active sessions
+                                    if include_snapshot {
+                                        let active_sessions = terminal_mgr.get_active_sessions();
+                                        for session_id in active_sessions {
+                                            if let Some(snapshot) = terminal_mgr.get_buffer_snapshot(&session_id, None) {
+                                                info!(
+                                                    "Emitting terminal snapshot for session {}: {} bytes",
+                                                    session_id, snapshot.len()
+                                                );
+                                                let _ = bin_tx_for_receiver.send(snapshot);
+                                            }
+                                        }
+                                    }
+                                }
+                            } else if env.kind.starts_with("job:") {
                                 // Forward job events to local event bus
                                 if let Err(e) = app_handle.emit("device-link-event", json!({
                                     "type": env.kind,
@@ -294,7 +414,7 @@ impl DeviceLinkClient {
                                     error!("Failed to emit job event: {}", e);
                                 }
                             } else if ["session-updated", "session-files-updated", "session-file-browser-state-updated",
-                                       "session-history-synced"]
+                                       "session-history-synced", "session-created", "session-deleted", "session:auto-files-applied"]
                                        .contains(&env.kind.as_str()) {
                                 if let Err(e) = app_handle.emit("device-link-event", json!({
                                     "type": env.kind,
@@ -315,6 +435,15 @@ impl DeviceLinkClient {
                                 // Emit canonical active-session-changed event
                                 if let Err(e) = app_handle.emit("active-session-changed", env.payload) {
                                     error!("Failed to emit active-session-changed event: {}", e);
+                                }
+                            } else if env.kind == "project-directory-updated" {
+                                // Forward project directory changes from relay to frontend
+                                if let Err(e) = app_handle.emit("device-link-event", json!({
+                                    "type": "project-directory-updated",
+                                    "payload": env.payload,
+                                    "relayOrigin": "remote"
+                                })) {
+                                    error!("Failed to emit project-directory-updated device-link-event: {}", e);
                                 }
                             }
                             // Continue to next message
@@ -342,7 +471,7 @@ impl DeviceLinkClient {
                                     .as_millis() as u64;
                                 let last = LAST_WARN_MS.load(Ordering::Relaxed);
                                 if now - last > 200 {
-                                    warn!("Failed to parse server message: {} - Raw: {}", e, &text[..text.len().min(200)]);
+                                    warn!("Failed to parse server message: {}", e);
                                     LAST_WARN_MS.store(now, Ordering::Relaxed);
                                 }
                             }
@@ -392,7 +521,15 @@ impl DeviceLinkClient {
                     }
                 }
 
-                if tx_for_heartbeat.send(DeviceLinkMessage::Ping).is_err() {
+                if tx_for_heartbeat.send(DeviceLinkMessage::Heartbeat {
+                    payload: HeartbeatPayload {
+                        status: "online".to_string(),
+                        cpu_usage: None,
+                        memory_usage: None,
+                        disk_space_gb: None,
+                        active_jobs: Some(0),
+                    },
+                }).is_err() {
                     debug!("Heartbeat channel closed, terminating heartbeat task");
                     break;
                 }
@@ -464,8 +601,25 @@ impl DeviceLinkClient {
                 error!("Server error: {}", message);
                 Err(AppError::NetworkError(format!("Server error: {}", message)))
             }
+            // Expected server → desktop relay schema:
+            // {
+            //   "type": "relay",
+            //   "clientId": "<mobile-uuid>",
+            //   "request": {
+            //     "method": "<method-name>",
+            //     "params": {...},
+            //     "correlationId": "<correlation-id>"
+            //   }
+            // }
             ServerMessage::Relay { client_id, request } => {
                 debug!("Received relay request from client {}: method={}", client_id, request.method);
+
+                // VALIDATION: Ensure client_id is non-empty before sending response
+                if client_id.trim().is_empty() {
+                    warn!("Invalid client_id in relay request; dropping response");
+                    return Ok(());
+                }
+
                 let user_context = UserContext {
                     user_id: "remote_user".to_string(),
                     device_id: device_id_manager::get_or_create(app_handle).unwrap_or_else(|_| "unknown".to_string()),
@@ -557,11 +711,21 @@ impl DeviceLinkClient {
         }
     }
 
+    /// Send raw terminal output bytes without any header or encoding
+    pub fn send_terminal_output_binary(&self, data: &[u8]) -> Result<(), AppError> {
+        if let Some(tx) = &self.binary_sender {
+            tx.send(data.to_vec())
+                .map_err(|_| AppError::NetworkError("Binary uplink channel closed".into()))
+        } else {
+            Err(AppError::NetworkError("Device link client not connected".into()))
+        }
+    }
+
     /// Send an event to the server
     pub async fn send_event(&self, event_type: String, payload: Value) -> Result<(), AppError> {
         if let Some(sender) = &self.sender {
             let msg = DeviceLinkMessage::Event {
-                event_type,
+                event_type: event_type,
                 payload,
             };
 

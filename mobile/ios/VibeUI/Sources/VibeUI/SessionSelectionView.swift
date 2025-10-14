@@ -1,5 +1,6 @@
 import SwiftUI
 import Core
+import Combine
 
 /// Session selection modal that allows users to browse and select existing sessions or create new ones
 /// Similar to the desktop's SessionManager component
@@ -15,6 +16,9 @@ public struct SessionSelectionView: View {
     @State private var newSessionName = ""
     @Environment(\.presentationMode) var presentationMode
     @Environment(\.dismiss) private var dismiss
+
+    // Observe data services for real-time updates
+    @StateObject private var eventMonitor = SessionListEventMonitor()
 
     public init(projectDirectory: String, onSessionSelected: @escaping (Session) -> Void) {
         self.projectDirectory = projectDirectory
@@ -124,12 +128,6 @@ public struct SessionSelectionView: View {
                             ForEach(filteredSessions) { session in
                                 SessionSelectionCard(session: session) {
                                     onSessionSelected(session)
-                                    Task {
-                                        try? await VibeManagerCore.shared.dataServices?.sessionService.broadcastActiveSessionChanged(
-                                            sessionId: session.id,
-                                            projectDirectory: session.projectDirectory
-                                        )
-                                    }
                                 }
                             }
                         }
@@ -191,12 +189,6 @@ public struct SessionSelectionView: View {
                         showingNewSessionForm = false
                         sessions.insert(session, at: 0)
                         onSessionSelected(session)
-                        Task {
-                            try? await VibeManagerCore.shared.dataServices?.sessionService.broadcastActiveSessionChanged(
-                                sessionId: session.id,
-                                projectDirectory: session.projectDirectory
-                            )
-                        }
                     },
                     onCancel: {
                         showingNewSessionForm = false
@@ -204,7 +196,21 @@ public struct SessionSelectionView: View {
                 )
             }
             .onAppear {
+                eventMonitor.startMonitoring(projectDirectory: projectDirectory)
                 loadSessions()
+            }
+            .onDisappear {
+                eventMonitor.stopMonitoring()
+            }
+            .onChange(of: projectDirectory) { _ in
+                eventMonitor.startMonitoring(projectDirectory: projectDirectory)
+                loadSessions()
+            }
+            .onChange(of: eventMonitor.shouldRefresh) { shouldRefresh in
+                if shouldRefresh {
+                    loadSessions()
+                    eventMonitor.didRefresh()
+                }
             }
         }
     }
@@ -222,6 +228,13 @@ public struct SessionSelectionView: View {
     }
 
     private func loadSessions() {
+        // Guard against empty project directory
+        guard !projectDirectory.isEmpty else {
+            errorMessage = "No project directory set. Please select a project first."
+            isLoading = false
+            return
+        }
+
         isLoading = true
         errorMessage = nil
 
@@ -433,6 +446,64 @@ struct NewSessionFormView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Event Monitor
+
+/// Monitors relay events to trigger automatic session list refreshes when plans or jobs are updated
+@MainActor
+class SessionListEventMonitor: ObservableObject {
+    @Published var shouldRefresh = false
+    private var cancellables = Set<AnyCancellable>()
+    private var currentProjectDirectory: String?
+
+    func startMonitoring(projectDirectory: String) {
+        self.currentProjectDirectory = projectDirectory
+        cancellables.removeAll()
+
+        guard let dataServices = VibeManagerCore.shared.dataServices else { return }
+
+        // Monitor session service events for session changes
+        dataServices.sessionService.$sessions
+            .dropFirst() // Skip initial value
+            .sink { [weak self] _ in
+                self?.shouldRefresh = true
+            }
+            .store(in: &cancellables)
+
+        // Monitor plans service events for new/updated plans
+        dataServices.plansService.$lastUpdateEvent
+            .compactMap { $0 }
+            .sink { [weak self] event in
+                guard let self = self else { return }
+                // Only refresh if event is relevant to current project
+                if let eventProjectDir = event.data["projectDirectory"]?.value as? String,
+                   eventProjectDir == self.currentProjectDirectory {
+                    self.shouldRefresh = true
+                } else if event.eventType.hasPrefix("job:") || event.eventType.hasPrefix("Plan") {
+                    // Refresh for any plan/job events (they may affect sessions)
+                    self.shouldRefresh = true
+                }
+            }
+            .store(in: &cancellables)
+
+        // Monitor jobs service for new/updated jobs
+        dataServices.jobsService.$jobs
+            .dropFirst() // Skip initial value
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main) // Debounce rapid updates
+            .sink { [weak self] _ in
+                self?.shouldRefresh = true
+            }
+            .store(in: &cancellables)
+    }
+
+    func stopMonitoring() {
+        cancellables.removeAll()
+    }
+
+    func didRefresh() {
+        shouldRefresh = false
     }
 }
 

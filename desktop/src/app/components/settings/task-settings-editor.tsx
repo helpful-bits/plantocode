@@ -214,7 +214,7 @@ export function TaskSettingsEditor({
             />
           </div>
           <p className="text-xs text-muted-foreground text-balance">
-            {taskKey === "pathCorrection" || taskKey === "extendedPathFinder"
+            {taskKey === "extendedPathFinder"
               ? "Lower values produce more accurate path suggestions"
               : taskKey === "textImprovement"
               ? "Lower values for accuracy, higher for more creative corrections"

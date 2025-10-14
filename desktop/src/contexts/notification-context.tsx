@@ -7,6 +7,7 @@ import { NotificationBanner } from "@/ui/notification-banner";
 import type { ButtonProps } from "@/ui/button";
 import { Button } from "@/ui/button";
 import { extractErrorInfo, createUserFriendlyErrorMessage, logError, ErrorType } from "@/utils/error-handling";
+import { useUILayout } from "@/contexts/ui-layout-context";
 
 export interface NotificationType {
   title: string;
@@ -50,9 +51,11 @@ const NotificationContext = createContext<NotificationContextValue>({
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<ActiveNotification[]>([]);
-  
+
   // Store active timeouts for cleanup
   const activeTimeoutsRef = useRef<Map<string, number>>(new Map());
+
+  const { isUserPresent } = useUILayout();
 
   const showNotification = useCallback(({
     title,
@@ -61,6 +64,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     duration = 5000,
     actionButton,
   }: NotificationType) => {
+    if (!isUserPresent) return;
     const id = Math.random().toString(36).substr(2, 9);
     const notification: ActiveNotification = {
       id,
@@ -88,7 +92,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       // Store timeout ID for cleanup
       activeTimeoutsRef.current.set(id, timeoutId);
     }
-  }, []);
+  }, [isUserPresent]);
 
   const dismissNotification = useCallback((id: string) => {
     setNotifications(prev => prev.filter(n => n.id !== id));
@@ -102,6 +106,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const showPersistentNotification = useCallback((notification: NotificationType): string => {
+    if (!isUserPresent) {
+      const id = crypto.randomUUID?.() || String(Date.now());
+      return id;
+    }
     const id = Math.random().toString(36).substr(2, 9);
     const persistentNotification: ActiveNotification = {
       id,
@@ -117,7 +125,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
     setNotifications(prev => [...prev, persistentNotification]);
     return id;
-  }, []);
+  }, [isUserPresent]);
 
   const getPersistentNotifications = useCallback((tag?: string): ActiveNotification[] => {
     return notifications.filter(n => {

@@ -150,7 +150,7 @@ pub(super) async fn handle_stage_completion_internal(
             );
             let mut workflows_guard = workflows.lock().await;
             if let Some(workflow_state) = workflows_guard.get_mut(workflow_id) {
-                workflow_state.intermediate_data.extended_verified_paths =
+                workflow_state.intermediate_data.extended_paths =
                     workflow_state.intermediate_data.ai_filtered_files.clone();
             }
             drop(workflows_guard);

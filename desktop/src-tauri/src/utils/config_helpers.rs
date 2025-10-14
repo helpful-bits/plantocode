@@ -399,7 +399,6 @@ fn validate_runtime_config(config: &RuntimeAIConfig) -> AppResult<()> {
         TaskType::ImplementationPlan,
         TaskType::VoiceTranscription,
         TaskType::TextImprovement,
-        TaskType::PathCorrection,
         TaskType::TaskRefinement,
         TaskType::RegexFileFilter,
         TaskType::FileRelevanceAssessment,

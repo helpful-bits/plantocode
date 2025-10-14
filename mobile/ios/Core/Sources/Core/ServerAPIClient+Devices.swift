@@ -5,9 +5,14 @@ import Foundation
 extension ServerAPIClient {
 
     /// Get all registered devices for the authenticated user
-    public func getDevices() async throws -> [RegisteredDevice] {
+    public func getDevices(deviceType: String? = nil) async throws -> [RegisteredDevice] {
+        var path = "api/devices"
+        if let deviceType = deviceType {
+            path += "?device_type=\(deviceType)"
+        }
+
         let serverDevices: [ServerDeviceInfo] = try await deviceRequest(
-            path: "api/devices",
+            path: path,
             method: .GET,
             token: try await getAuthToken(),
             includeDeviceId: true

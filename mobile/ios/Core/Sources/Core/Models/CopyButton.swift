@@ -45,10 +45,27 @@ public struct CopyButton: Codable, Identifiable, Hashable {
     // MARK: - Content Processing
 
     /// Process the button's content template with actual plan data
-    public func processContent(planContent: String, stepNumber: String? = nil) -> String {
+    ///
+    /// - Parameters:
+    ///   - planContent: The full implementation plan content
+    ///   - stepNumber: Optional step number to extract step-specific content
+    ///   - taskDescription: Optional task description to include in the template
+    ///   - requirements: Optional requirements to include in the template
+    ///
+    /// - Returns: The processed content with all placeholders replaced
+    public func processContent(
+        planContent: String,
+        stepNumber: String? = nil,
+        taskDescription: String? = nil,
+        requirements: String? = nil
+    ) -> String {
         var data: [String: String] = [
             "IMPLEMENTATION_PLAN": planContent
         ]
+
+        // Add task description and requirements
+        data["TASK_DESCRIPTION"] = taskDescription ?? ""
+        data["REQUIREMENTS"] = requirements ?? ""
 
         // Extract step content if step number provided
         if let stepNumber = stepNumber {

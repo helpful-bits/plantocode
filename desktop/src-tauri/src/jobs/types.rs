@@ -52,12 +52,6 @@ pub struct ImplementationPlanPayload {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PathCorrectionPayload {
-    pub paths_to_correct: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct TaskRefinementPayload {
     pub task_description: String,
     pub relevant_files: Vec<String>,
@@ -227,7 +221,6 @@ pub enum JobPayload {
     OpenRouterLlm(OpenRouterLlmPayload),
     ImplementationPlan(ImplementationPlanPayload),
     ImplementationPlanMerge(ImplementationPlanMergePayload),
-    PathCorrection(PathCorrectionPayload),
     TaskRefinement(TaskRefinementPayload),
     TextImprovement(TextImprovementPayload),
     GenericLlmStream(GenericLlmStreamPayload),
@@ -401,6 +394,11 @@ impl JobProcessResult {
     ) -> Self {
         self.cache_write_tokens = cache_write_tokens;
         self.cache_read_tokens = cache_read_tokens;
+        self
+    }
+
+    pub fn with_metadata(mut self, metadata: serde_json::Value) -> Self {
+        self.metadata = Some(metadata);
         self
     }
 }

@@ -103,6 +103,23 @@ public struct Config {
         return websocketURL(base: serverURL, path: wsDeviceLinkPath)
     }
 
+    // MARK: - In-App Purchase Configuration
+
+    /// In-App Purchase product identifiers for subscription tiers.
+    ///
+    /// Configuration Requirements (App Store Connect):
+    /// - Both product IDs must be in the same subscription group
+    /// - Both must have a 7-day free trial configured as the introductory offer
+    /// - Reference pricing (US): Monthly $15/month, Annual $108/year (≈$9/month billed annually)
+    /// - UI displays localized prices fetched from StoreKit with static clarifying copy
+    public enum IAP {
+        /// Monthly subscription product identifier
+        public static let monthlyProductId = "app.vibemanager.pro.monthly"
+
+        /// Annual subscription product identifier
+        public static let annualProductId = "app.vibemanager.pro.yearly"
+    }
+
     // MARK: - Auth0 Scope
 
     /// OAuth2 scope for Auth0 authentication

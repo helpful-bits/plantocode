@@ -1,6 +1,6 @@
 use log::{info, debug, warn};
 use crate::jobs::types::{
-    ExtendedPathFinderPayload, PathCorrectionPayload,
+    ExtendedPathFinderPayload,
     RegexFileFilterPayload, FileRelevanceAssessmentPayload
 };
 use crate::db_utils::SettingsRepository;
@@ -73,34 +73,6 @@ impl StageDataInjector {
             initial_paths, // AI-filtered files from FileRelevanceAssessment stage
         })
     }
-
-
-    /// Create PathCorrectionPayload from specific data fields
-    /// Data sourced from WorkflowState.intermediate_data
-    /// Note: directory_tree is now generated on-demand by the processor
-    pub fn create_path_correction_payload(
-        _workflow_id: String,
-        _session_id: String,
-        _task_description: String,
-        _project_directory: String,
-        paths_to_correct: Vec<String>
-    ) -> PathCorrectionPayload {
-        info!("Creating PathCorrection payload from specific data fields");
-        
-        debug!("Paths to correct count: {}", paths_to_correct.len());
-        
-        // Convert Vec<String> to newline-separated String for PathCorrectionPayload
-        let paths_string = if paths_to_correct.is_empty() {
-            "No paths available for correction".to_string()
-        } else {
-            paths_to_correct.join("\n")
-        };
-        
-        PathCorrectionPayload {
-            paths_to_correct: paths_string,
-        }
-    }
-
 
     /// Create RegexFileFilterPayload from specific data fields
     /// Data sourced from WorkflowState.intermediate_data

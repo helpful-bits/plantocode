@@ -1,8 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, memo, useRef } from "react";
-import { StickyNote, GripVertical, Terminal } from "lucide-react";
-import { useTerminalSessions } from "@/contexts/terminal-sessions/useTerminalSessions";
+import { StickyNote, GripVertical } from "lucide-react";
 
 interface FloatingMergeInstructionsProps {
   mergeInstructions: string;
@@ -15,7 +14,6 @@ const FloatingMergeInstructionsComponent: React.FC<FloatingMergeInstructionsProp
   onMergeInstructionsChange,
   isOpen,
 }) => {
-  const { getActiveCount } = useTerminalSessions();
   // State for natural drag positioning
   const [position, setPosition] = useState({ x: 20, y: 20 });
   const [isDragging, setIsDragging] = useState(false);
@@ -213,18 +211,12 @@ const FloatingMergeInstructionsComponent: React.FC<FloatingMergeInstructionsProp
       }}
       onClick={(e) => e.stopPropagation()}
     >
-      <div 
+      <div
         className="merge-instructions-header flex items-center gap-2 mb-2 cursor-grab active:cursor-grabbing"
         onMouseDown={handleMouseDown}
       >
         <StickyNote className="h-4 w-4 text-primary" />
         <h3 className="text-sm font-medium text-foreground flex-1">Merge Instructions</h3>
-        {getActiveCount() > 0 && (
-          <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" title={`${getActiveCount()} active terminal${getActiveCount() > 1 ? 's' : ''}`}>
-            <Terminal className="h-2.5 w-2.5" />
-            <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-          </div>
-        )}
         <GripVertical className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors pointer-events-none" />
       </div>
       <div className="relative">

@@ -30,24 +30,27 @@ public struct ServerSelectionView: View {
         VStack {
           Spacer()
 
-          VStack(alignment: .leading, spacing: 20) {
+          VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
             Text("Choose Your Server Region")
               .h1()
 
             Text("Pick the closest region for best performance.")
               .paragraph()
+              .foregroundColor(Color.mutedForeground)
 
-            VStack(spacing: 12) {
+            VStack(spacing: Theme.Spacing.md) {
               ForEach(appState.availableRegions, id: \.id) { region in
                 Button {
                   selected = region
                 } label: {
-                  HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
+                  HStack(spacing: Theme.Spacing.md) {
+                    VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                       Text(region.name)
                         .h3()
+                        .foregroundColor(Color.foreground)
                       Text(region.baseURL.absoluteString)
                         .small()
+                        .foregroundColor(Color.mutedForeground)
                     }
                     Spacer()
                     if selected?.id == region.id {
@@ -56,13 +59,13 @@ public struct ServerSelectionView: View {
                     }
                   }
                 }
-                .padding(16)
+                .padding(Theme.Spacing.lg)
                 .background(selected?.id == region.id ? Color.primary.opacity(0.1) : Color.card)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: Theme.Radii.lg)
                         .stroke(selected?.id == region.id ? Color.primary : Color.border, lineWidth: 1)
                 )
-                .cornerRadius(8)
+                .cornerRadius(Theme.Radii.lg)
               }
             }
 
@@ -78,23 +81,23 @@ public struct ServerSelectionView: View {
             .buttonStyle(PrimaryButtonStyle())
             .disabled(selected == nil)
           }
-          .padding(24)
+          .padding(Theme.Spacing.xxl)
           .background(
             Color.background
               .opacity(0.95)
           )
           .overlay(
-            RoundedRectangle(cornerRadius: 20)
+            RoundedRectangle(cornerRadius: Theme.Radii.lg * 2.5)
               .stroke(Color.border.opacity(0.6), lineWidth: 1)
           )
-          .cornerRadius(20)
-          .shadow(color: Color.background.opacity(0.05), radius: 3, x: 0, y: 1)
-          .shadow(color: Color.background.opacity(0.03), radius: 2, x: 0, y: 1)
+          .cornerRadius(Theme.Radii.lg * 2.5)
+          .shadow(color: Color.border.opacity(0.1), radius: 3, x: 0, y: 1)
+          .shadow(color: Color.border.opacity(0.05), radius: 2, x: 0, y: 1)
           .frame(maxWidth: 520)
 
           Spacer()
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, Theme.Spacing.lg)
       }
       .navigationTitle("Server Region")
       .navigationBarTitleDisplayMode(.inline)

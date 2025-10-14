@@ -18,12 +18,15 @@ public class DataServicesManager: ObservableObject {
     public let sessionService: SessionDataService
     public let speechTextServices: SpeechTextServices
     public let settingsService: SettingsDataService
+    public let subscriptionManager: SubscriptionManager
 
     // MARK: - Connection Management
     @Published public var connectionStatus: ConnectionStatus = .disconnected
     @Published public var currentProject: ProjectInfo?
     public var activeDesktopDeviceId: UUID?
     @Published public var isJobsViewActive: Bool = false
+    @Published public var isInitializing: Bool = false
+    @Published public var hasCompletedInitialLoad: Bool = false
 
     // MARK: - Private Properties
     private let apiClient: APIClient
@@ -66,9 +69,16 @@ public class DataServicesManager: ObservableObject {
         self.serverFeatureService = ServerFeatureService()
         self.speechTextServices = SpeechTextServices()
         self.settingsService = SettingsDataService()
+        self.subscriptionManager = SubscriptionManager()
 
         setupConnectionMonitoring()
         setupSessionBroadcasting()
+
+        // Load subscription products and status
+        Task {
+            try? await subscriptionManager.loadProducts()
+            await subscriptionManager.refreshStatus()
+        }
     }
 
     // MARK: - Public Methods
@@ -76,10 +86,25 @@ public class DataServicesManager: ObservableObject {
     /// Set the current project and preload relevant data
     @MainActor
     public func setCurrentProject(_ project: ProjectInfo) {
-        currentProject = project
+        // Since we're already @MainActor, update directly for immediate UI update
+        self.currentProject = project
+        self.objectWillChange.send()
 
-        // Preload data for the project
+        // Clear project-scoped state to prevent cross-project leakage
+        sessionService.currentSession = nil
+        sessionService.sessions = []
+
+        // Invalidate caches
+        plansService.invalidateCache()
+        plansService.plans.removeAll()
+        filesService.invalidateCache()
+        filesService.files = []
+        jobsService.clearJobs()
+
+        // Preload data for the new project
         preloadProjectData(project)
+
+        logger.info("Project changed to: \(project.name), caches invalidated")
     }
 
     /// Refresh all data for the current project
@@ -167,6 +192,133 @@ public class DataServicesManager: ObservableObject {
         cacheManager.clear()
     }
 
+    /// Perform live bootstrap - fetch session, plans, and jobs data in parallel
+    @MainActor
+    public func performLiveBootstrap() async {
+        #if DEBUG
+        let bootstrapStart = Date()
+        logger.debug("Starting live bootstrap")
+        #endif
+
+        // Ensure connectivity is established
+        guard MultiConnectionManager.shared.activeDeviceId != nil else {
+            logger.warning("Cannot perform live bootstrap - no active device connection")
+            return
+        }
+
+        // Launch three concurrent tasks
+        async let sessionTask: Void = Task { @MainActor in
+            #if DEBUG
+            let start = Date()
+            #endif
+
+            // Fetch active session if method is available
+            do {
+                _ = try await self.sessionService.fetchActiveSession()
+                #if DEBUG
+                let duration = Date().timeIntervalSince(start) * 1000
+                self.logger.debug("Session fetch completed in \(duration, format: .fixed(precision: 2))ms")
+                #endif
+            } catch {
+                self.logger.error("Live bootstrap: Session fetch failed - \(error.localizedDescription)")
+            }
+        }.value
+
+        async let plansTask: Void = Task { @MainActor in
+            #if DEBUG
+            let start = Date()
+            #endif
+
+            let request = PlanListRequest(
+                projectDirectory: self.currentProject?.directory,
+                page: 0,
+                pageSize: 20
+            )
+
+            // Use Combine to async/await bridge
+            do {
+                let response = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<PlanListResponse, Error>) in
+                    var cancellable: AnyCancellable?
+                    cancellable = self.plansService.listPlans(request: request)
+                        .sink(
+                            receiveCompletion: { completion in
+                                if case .failure(let error) = completion {
+                                    continuation.resume(throwing: error)
+                                }
+                                cancellable?.cancel()
+                            },
+                            receiveValue: { response in
+                                continuation.resume(returning: response)
+                            }
+                        )
+                }
+
+                // Publish results immediately (already published by listPlans)
+                self.logger.info("Live bootstrap: Fetched \(response.plans.count) plans")
+
+            } catch {
+                self.logger.error("Live bootstrap: Plans fetch failed - \(error.localizedDescription)")
+            }
+
+            #if DEBUG
+            let duration = Date().timeIntervalSince(start) * 1000
+            self.logger.debug("Plans fetch completed in \(duration, format: .fixed(precision: 2))ms")
+            #endif
+        }.value
+
+        async let jobsTask: Void = Task { @MainActor in
+            #if DEBUG
+            let start = Date()
+            #endif
+
+            let request = JobListRequest(
+                projectDirectory: self.currentProject?.directory,
+                sessionId: self.sessionService.currentSession?.id,
+                pageSize: 100
+            )
+
+            // Use Combine to async/await bridge
+            do {
+                let response = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<JobListResponse, Error>) in
+                    var cancellable: AnyCancellable?
+                    cancellable = self.jobsService.listJobs(request: request)
+                        .sink(
+                            receiveCompletion: { completion in
+                                if case .failure(let error) = completion {
+                                    continuation.resume(throwing: error)
+                                }
+                                cancellable?.cancel()
+                            },
+                            receiveValue: { response in
+                                continuation.resume(returning: response)
+                            }
+                        )
+                }
+
+                // Publish results immediately (already published by listJobs)
+                self.logger.info("Live bootstrap: Fetched \(response.jobs.count) jobs")
+
+            } catch {
+                self.logger.error("Live bootstrap: Jobs fetch failed - \(error.localizedDescription)")
+            }
+
+            #if DEBUG
+            let duration = Date().timeIntervalSince(start) * 1000
+            self.logger.debug("Jobs fetch completed in \(duration, format: .fixed(precision: 2))ms")
+            #endif
+        }.value
+
+        // Wait for all tasks to complete (they publish results as they complete)
+        await sessionTask
+        await plansTask
+        await jobsTask
+
+        #if DEBUG
+        let totalDuration = Date().timeIntervalSince(bootstrapStart) * 1000
+        logger.debug("Live bootstrap completed in \(totalDuration, format: .fixed(precision: 2))ms")
+        #endif
+    }
+
     /// Export project data
     public func exportProjectData(_ project: ProjectInfo, format: ExportFormat = .json) -> AnyPublisher<URL, DataServiceError> {
         return Future<URL, DataServiceError> { [weak self] promise in
@@ -221,6 +373,9 @@ public class DataServicesManager: ObservableObject {
                     }
                     Task { @MainActor in
                         await self.terminalService.bootstrapFromRemote()
+
+                        // Fetch initial project directory from desktop when device changes
+                        await self.fetchInitialProjectDirectory()
                     }
                 }
 
@@ -284,6 +439,19 @@ public class DataServicesManager: ObservableObject {
                         )
                     }
 
+                case "project-directory-updated":
+                    // Handle project directory changes from desktop/other devices
+                    if let projectDir = dict["projectDirectory"] as? String, !projectDir.isEmpty {
+                        let name = URL(fileURLWithPath: projectDir).lastPathComponent
+                        let hash = String(projectDir.hashValue)
+                        let project = ProjectInfo(name: name, directory: projectDir, hash: hash)
+                        self.setCurrentProject(project)
+                        // Also update AppState for consistency
+                        Task { @MainActor in
+                            AppState.shared.setSelectedProjectDirectory(projectDir)
+                        }
+                    }
+
                 case "session-created", "session-updated", "session-deleted",
                      "session-files-updated", "session-history-synced", "session:auto-files-applied":
                     // Use incremental updates instead of full refetch
@@ -293,10 +461,8 @@ public class DataServicesManager: ObservableObject {
                     if let sessionId = dict["sessionId"] as? String,
                        let projectDir = dict["projectDirectory"] as? String {
                         if self.sessionService.currentSession?.id == sessionId { return }
-                        self.isApplyingRemoteActiveSession = true
                         Task {
-                            defer { self.isApplyingRemoteActiveSession = false }
-                            try? await self.sessionService.loadSessionById(sessionId: sessionId, projectDirectory: projectDir)
+                            await self.loadSessionFromDesktop(sessionId: sessionId, projectDirectory: projectDir)
                         }
                     }
 
@@ -328,13 +494,177 @@ public class DataServicesManager: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
 
+                logger.info("Connection established - starting reconnection sync")
+
                 await self.sessionService.processOfflineQueue()
                 await self.terminalService.bootstrapFromRemote()
 
+                // Guard: Skip initial fetch if orchestrator has already set state
+                if !self.hasCompletedInitialLoad && self.currentProject == nil {
+                    logger.info("Fetching initial project directory from desktop")
+                    await self.fetchInitialProjectDirectory()
+                    logger.info("Completed fetching initial project directory")
+                } else {
+                    logger.info("Skipping initial fetch - state already set by orchestrator")
+                }
+
                 if let project = self.currentProject {
+                    logger.info("Preloading sessions for project: \(project.name)")
                     try? await self.sessionService.fetchSessions(projectDirectory: project.directory)
                 }
+
+                guard let session = self.sessionService.currentSession,
+                      !session.id.isEmpty else {
+                    logger.info("Skipping jobs list - no valid session available")
+                    return
+                }
+
+                if let projectDirectory = self.currentProject?.directory {
+                    self.jobsService.listJobs(request: JobListRequest(
+                        projectDirectory: projectDirectory,
+                        sessionId: session.id,
+                        pageSize: 100,
+                        sortBy: .createdAt,
+                        sortOrder: .desc
+                    ))
+                    .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
+                    .store(in: &self.cancellables)
+                }
+
+                guard let project = self.currentProject else {
+                    logger.info("Skipping plans preload - no project directory")
+                    return
+                }
+
+                self.plansService.preloadPlans(for: project.directory)
+                self.filesService.performSearch(query: self.filesService.currentSearchTerm)
+                self.taskSyncService.getActiveTasks(request: GetActiveTasksRequest(
+                    sessionIds: nil,
+                    deviceId: self.deviceId,
+                    projectDirectory: project.directory,
+                    includeInactive: false
+                ))
+                .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
+                .store(in: &self.cancellables)
             }
+        }
+    }
+
+    /// Fetch the initial project directory from desktop when connecting
+    private func fetchInitialProjectDirectory() async {
+        await MainActor.run {
+            self.isInitializing = true
+        }
+
+        guard self.currentProject == nil else {
+            await MainActor.run { self.hasCompletedInitialLoad = true }
+            return
+        }
+        guard self.hasCompletedInitialLoad == false else { return }
+
+        defer {
+            Task { @MainActor in
+                self.isInitializing = false
+                self.hasCompletedInitialLoad = true
+            }
+        }
+
+        do {
+            for try await response in CommandRouter.appGetProjectDirectory() {
+                if let result = response.result?.value as? [String: Any],
+                   let projectDir = result["projectDirectory"] as? String,
+                   !projectDir.isEmpty {
+
+                    // Check if desktop-reported project differs from current mobile project
+                    if let currentProj = self.currentProject, currentProj.directory != projectDir {
+                        logger.info("Detected project directory mismatch - Mobile: \(currentProj.directory), Desktop: \(projectDir)")
+                        logger.info("Updating mobile project to match desktop")
+
+                        let name = URL(fileURLWithPath: projectDir).lastPathComponent
+                        let hash = String(projectDir.hashValue)
+                        let project = ProjectInfo(name: name, directory: projectDir, hash: hash)
+                        await MainActor.run {
+                            self.setCurrentProject(project)
+                            AppState.shared.setSelectedProjectDirectory(projectDir)
+                        }
+                        logger.info("Updated project directory to: \(projectDir)")
+                    } else if self.currentProject == nil {
+                        // Only initialize if we don't already have a project set
+                        let name = URL(fileURLWithPath: projectDir).lastPathComponent
+                        let hash = String(projectDir.hashValue)
+                        let project = ProjectInfo(name: name, directory: projectDir, hash: hash)
+                        await MainActor.run {
+                            self.setCurrentProject(project)
+                            AppState.shared.setSelectedProjectDirectory(projectDir)
+                        }
+                        logger.info("Initialized project directory from desktop: \(projectDir)")
+                    } else {
+                        logger.info("Project directory already synchronized: \(projectDir)")
+                    }
+
+                    // After setting project directory, fetch and load the active session
+                    await fetchAndLoadActiveSession(projectDirectory: projectDir)
+                }
+                if response.isFinal {
+                    break
+                }
+            }
+        } catch {
+            logger.error("Failed to fetch initial project directory: \(error.localizedDescription)")
+        }
+    }
+
+    /// Load a session by ID from desktop, preventing broadcast loops
+    private func loadSessionFromDesktop(sessionId: String, projectDirectory: String) async {
+        self.isApplyingRemoteActiveSession = true
+        defer { self.isApplyingRemoteActiveSession = false }
+
+        do {
+            try await self.sessionService.loadSessionById(sessionId: sessionId, projectDirectory: projectDirectory)
+            logger.info("Successfully loaded session from desktop: \(sessionId)")
+        } catch {
+            logger.error("Failed to load session \(sessionId): \(error.localizedDescription)")
+        }
+    }
+
+    /// Fetch the active session ID from desktop and load that session
+    private func fetchAndLoadActiveSession(projectDirectory: String) async {
+        do {
+            var foundActiveSession = false
+
+            // First, fetch the active session ID from desktop
+            for try await response in CommandRouter.appGetActiveSessionId() {
+                if let result = response.result?.value as? [String: Any],
+                   let sessionId = result["sessionId"] as? String,
+                   !sessionId.isEmpty {
+
+                    logger.info("Desktop reports active session ID: \(sessionId)")
+                    await loadSessionFromDesktop(sessionId: sessionId, projectDirectory: projectDirectory)
+                    foundActiveSession = true
+                }
+
+                if response.isFinal {
+                    break
+                }
+            }
+
+            // Fallback: If no active session found on desktop, load the most recent session
+            if !foundActiveSession {
+                logger.info("No active session ID found on desktop, loading most recent session as fallback")
+                do {
+                    let sessions = try await self.sessionService.fetchSessions(projectDirectory: projectDirectory)
+                    if let mostRecent = sessions.sorted(by: { $0.updatedAt > $1.updatedAt }).first {
+                        logger.info("Loading most recent session: \(mostRecent.id)")
+                        await loadSessionFromDesktop(sessionId: mostRecent.id, projectDirectory: projectDirectory)
+                    } else {
+                        logger.info("No sessions found for project directory: \(projectDirectory)")
+                    }
+                } catch {
+                    logger.error("Failed to fetch sessions for fallback: \(error.localizedDescription)")
+                }
+            }
+        } catch {
+            logger.error("Failed to fetch active session ID: \(error.localizedDescription)")
         }
     }
 
@@ -400,6 +730,12 @@ public class DataServicesManager: ObservableObject {
         }
 
         return fileURL
+    }
+
+    // MARK: - Subscription
+
+    public func hasActiveSubscription() -> Bool {
+        subscriptionManager.hasActiveSubscription()
     }
 }
 

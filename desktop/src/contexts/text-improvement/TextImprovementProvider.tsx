@@ -7,14 +7,17 @@ import { useSessionStateContext, useSessionActionsContext } from "@/contexts/ses
 import { useProject } from "@/contexts/project-context";
 import { useBackgroundJob } from "@/contexts/_hooks/use-background-job";
 import { createImproveTextJobAction } from "@/actions/ai/improve-text";
+import { refineTaskDescriptionAction } from "@/actions/ai/task-refinement.actions";
 import { logError } from "@/utils/error-handling";
 
 interface TextImprovementContextType {
   isVisible: boolean;
   position: { top: number; left: number };
   isImproving: boolean;
+  isRefining: boolean;
   jobId: string | null;
   triggerImprovement: () => Promise<void>;
+  triggerRefinement: () => Promise<void>;
 }
 
 const TextImprovementContext = createContext<TextImprovementContextType | null>(null);
@@ -44,16 +47,20 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
   const [isVisible, setIsVisible] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 0 });
   const [jobId, setJobId] = useState<string | null>(null);
-  
+  const [refineJobId, setRefineJobId] = useState<string | null>(null);
+
   // Internal state for tracking selection
   const [selectedText, setSelectedText] = useState("");
   const [targetElement, setTargetElement] = useState<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const [targetMonacoEditor, setTargetMonacoEditor] = useState<any>(null);
   const [selectionRange, setSelectionRange] = useState({ start: 0, end: 0 });
-  
+
   // Monitor background job status
   const { job, status } = useBackgroundJob(jobId);
   const isImproving = status === "running" || status === "queued" || status === "created";
+
+  const { job: refineJob } = useBackgroundJob(refineJobId);
+  const isRefining = !!refineJob && ['created', 'queued', 'running', 'streaming'].includes(refineJob.status);
 
   // Hide popover when job completes and apply improvements
   useEffect(() => {
@@ -89,35 +96,47 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
             
             // Flush any pending saves before applying changes to prevent conflicts
             flushSaves();
-            
-            // For task description fields, also trigger any component-level flush
-            const isTaskDescriptionField = targetElement.id === 'taskDescArea' || 
-                                         targetElement.id === 'task-description' || 
+
+            // For task description fields, update via session state to respect the gate
+            const isTaskDescriptionField = targetElement.id === 'taskDescArea' ||
+                                         targetElement.id === 'task-description' ||
                                          targetElement.getAttribute('data-field') === 'taskDescription' ||
                                          targetElement.closest('[data-task-description]') !== null;
-            
+
             if (isTaskDescriptionField) {
-              // Try to flush pending changes at component level if available
-              const flushEvent = new CustomEvent('flush-pending-changes', { bubbles: true });
-              targetElement.dispatchEvent(flushEvent);
-            }
-            
-            // Use native value setter to properly update React controlled components
-            const valueSetter = Object.getOwnPropertyDescriptor(targetElement, 'value') || 
-                              Object.getOwnPropertyDescriptor(Object.getPrototypeOf(targetElement), 'value');
-            if (valueSetter && valueSetter.set) {
-              valueSetter.set.call(targetElement, newValue);
-            }
-            
-            // Dispatch multiple events to ensure any debounced saves are triggered immediately
-            targetElement.dispatchEvent(new Event('input', { bubbles: true }));
-            targetElement.dispatchEvent(new Event('change', { bubbles: true }));
-            targetElement.dispatchEvent(new CustomEvent('enhancement-applied', { bubbles: true }));
-            targetElement.dispatchEvent(new CustomEvent('flush-pending-changes', { bubbles: true }));
-            
-            if (isTaskDescriptionField) {
-              // Update session state immediately to prevent reversion
+              // Update session state - this will flow through TaskSection's gate and preserve selection
               updateCurrentSessionFields({ taskDescription: newValue });
+
+              // Position cursor at the end of the replaced text after update propagates
+              const newCursorPos = selectionRange.start + improvedText.length;
+              requestAnimationFrame(() => {
+                try {
+                  if (targetElement.isConnected) {
+                    targetElement.focus();
+                    targetElement.setSelectionRange(newCursorPos, newCursorPos);
+                  }
+                } catch (e) {
+                  // Silently handle if element is no longer available
+                }
+              });
+            } else {
+              // For non-task-description fields, use the existing DOM manipulation approach
+              const valueSetter = Object.getOwnPropertyDescriptor(targetElement, 'value') ||
+                                Object.getOwnPropertyDescriptor(Object.getPrototypeOf(targetElement), 'value');
+              if (valueSetter && valueSetter.set) {
+                valueSetter.set.call(targetElement, newValue);
+              }
+
+              targetElement.dispatchEvent(new Event('input', { bubbles: true }));
+              targetElement.dispatchEvent(new Event('change', { bubbles: true }));
+
+              const newCursorPos = selectionRange.start + improvedText.length;
+              try {
+                targetElement.focus();
+                targetElement.setSelectionRange(newCursorPos, newCursorPos);
+              } catch (e) {
+                // Silently handle
+              }
             }
           }
         }
@@ -137,6 +156,93 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
       }
     }
   }, [job, status, targetElement, targetMonacoEditor, selectionRange, selectedText, flushSaves, updateCurrentSessionFields]);
+
+  // Handle refinement job completion
+  useEffect(() => {
+    if (refineJob && refineJob.status === 'completed' && refineJob.response) {
+      try {
+        const refinedText = refineJob.response;
+
+        if (targetMonacoEditor) {
+          const selection = targetMonacoEditor.getSelection();
+          if (selection) {
+            targetMonacoEditor.executeEdits('task-refinement', [{
+              range: selection,
+              text: refinedText,
+              forceMoveMarkers: true
+            }]);
+          }
+        } else if (targetElement) {
+          const currentValue = targetElement.value;
+          const currentSelectionText = currentValue.slice(selectionRange.start, selectionRange.end);
+
+          if (currentSelectionText !== selectedText) {
+            console.warn("Text was modified while refinement job was running, skipping application");
+          } else {
+            const newValue =
+              currentValue.slice(0, selectionRange.start) +
+              refinedText +
+              currentValue.slice(selectionRange.end);
+
+            flushSaves();
+
+            // For task description fields, update via session state to respect the gate
+            const isTaskDescriptionField = targetElement.id === 'taskDescArea' ||
+                                         targetElement.id === 'task-description' ||
+                                         targetElement.getAttribute('data-field') === 'taskDescription' ||
+                                         targetElement.closest('[data-task-description]') !== null;
+
+            if (isTaskDescriptionField) {
+              // Update session state - this will flow through TaskSection's gate and preserve selection
+              updateCurrentSessionFields({ taskDescription: newValue });
+
+              // Position cursor at the end of the replaced text after update propagates
+              const newCursorPos = selectionRange.start + refinedText.length;
+              requestAnimationFrame(() => {
+                try {
+                  if (targetElement.isConnected) {
+                    targetElement.focus();
+                    targetElement.setSelectionRange(newCursorPos, newCursorPos);
+                  }
+                } catch (e) {
+                  // Silently handle if element is no longer available
+                }
+              });
+            } else {
+              // For non-task-description fields, use the existing DOM manipulation approach
+              const valueSetter = Object.getOwnPropertyDescriptor(targetElement, 'value') ||
+                                Object.getOwnPropertyDescriptor(Object.getPrototypeOf(targetElement), 'value');
+              if (valueSetter && valueSetter.set) {
+                valueSetter.set.call(targetElement, newValue);
+              }
+
+              targetElement.dispatchEvent(new Event('input', { bubbles: true }));
+              targetElement.dispatchEvent(new Event('change', { bubbles: true }));
+
+              const newCursorPos = selectionRange.start + refinedText.length;
+              try {
+                targetElement.focus();
+                targetElement.setSelectionRange(newCursorPos, newCursorPos);
+              } catch (e) {
+                // Silently handle
+              }
+            }
+          }
+        }
+
+        setIsVisible(false);
+        setRefineJobId(null);
+        setSelectedText("");
+        setTargetElement(null);
+        setTargetMonacoEditor(null);
+        setSelectionRange({ start: 0, end: 0 });
+      } catch (error) {
+        console.error("Error applying task refinement:", error);
+        setIsVisible(false);
+        setRefineJobId(null);
+      }
+    }
+  }, [refineJob, targetElement, targetMonacoEditor, selectionRange, selectedText, flushSaves, updateCurrentSessionFields]);
 
   // Handle Monaco Editor selection events
   const handleMonacoSelection = useCallback((event: CustomEvent) => {
@@ -325,13 +431,45 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
     }
   }, [selectedText, sessionBasicFields.id, projectDirectory]);
 
+  const triggerRefinement = useCallback(async () => {
+    if (!selectedText || !selectedText.trim()) {
+      setIsVisible(false);
+      return;
+    }
+
+    if (!sessionBasicFields.id) {
+      setIsVisible(false);
+      return;
+    }
+
+    try {
+      const result = await refineTaskDescriptionAction({
+        taskDescription: selectedText,
+        sessionId: sessionBasicFields.id,
+        projectDirectory: undefined,
+        relevantFiles: []
+      });
+
+      if (result.isSuccess && result.data?.jobId) {
+        setRefineJobId(result.data.jobId);
+      } else {
+        setIsVisible(false);
+      }
+    } catch (error) {
+      console.error("Error triggering task refinement:", error);
+      setIsVisible(false);
+    }
+  }, [selectedText, sessionBasicFields.id]);
+
   const contextValue = useMemo<TextImprovementContextType>(() => ({
     isVisible,
     position,
     isImproving,
+    isRefining,
     jobId,
     triggerImprovement,
-  }), [isVisible, position, isImproving, jobId, triggerImprovement]);
+    triggerRefinement,
+  }), [isVisible, position, isImproving, isRefining, jobId, triggerImprovement, triggerRefinement]);
 
   return (
     <TextImprovementContext.Provider value={contextValue}>

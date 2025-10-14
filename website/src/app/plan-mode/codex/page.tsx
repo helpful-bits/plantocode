@@ -29,9 +29,9 @@ import {
 import type { SoftwareApplication, HowTo, FAQPage } from 'schema-dts';
 
 export const metadata: Metadata = {
-  title: 'Planning Workflow for OpenAI Codex CLI | Vibe Manager',
+  title: 'OpenAI Codex CLI: Pre-Plan & Review Before Execution (2025 Guide) | Vibe Manager',
   description:
-    'Architectural pre-planning for OpenAI Codex CLI. Vibe Manager discovers impacted files, merges multi-model plans, and provides reviewable context before executing with Codex approval modes.',
+    'See every file Codex will touch before it runs. Discover impacted files, merge GPT-5 & Claude plans, execute with Codex approval modes. Architectural pre-planning for OpenAI Codex CLI teams.',
   keywords: [
     'codex cli planning workflow',
     'openai codex cli architectural planning',
@@ -43,9 +43,9 @@ export const metadata: Metadata = {
     'vibe manager codex',
   ],
   openGraph: {
-    title: 'Planning Workflow for OpenAI Codex CLI',
+    title: 'OpenAI Codex CLI: Pre-Plan & Review Before Execution (2025)',
     description:
-      'See every file Codex will touch before it happens. Merge GPT-5-Codex, Claude, and Gemini plans, then execute with Codex approval modes in Vibe Manager\'s integrated terminal.',
+      'See every file Codex will touch before it runs. Discover impacted files, merge GPT-5 & Claude plans, execute with Codex approval modes. Architectural pre-planning for Codex CLI teams.',
     url: 'https://www.vibemanager.app/plan-mode/codex',
     siteName: 'Vibe Manager',
     type: 'website',

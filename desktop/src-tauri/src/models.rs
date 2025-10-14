@@ -189,7 +189,6 @@ pub enum TaskType {
     ImplementationPlanMerge,
     VoiceTranscription,
     TextImprovement,
-    PathCorrection,
     TaskRefinement,
     GenericLlmStream,
     RegexFileFilter,
@@ -213,7 +212,6 @@ impl ToString for TaskType {
             TaskType::ImplementationPlanMerge => "implementation_plan_merge".to_string(),
             TaskType::VoiceTranscription => "voice_transcription".to_string(),
             TaskType::TextImprovement => "text_improvement".to_string(),
-            TaskType::PathCorrection => "path_correction".to_string(),
             TaskType::TaskRefinement => "task_refinement".to_string(),
             TaskType::GenericLlmStream => "generic_llm_stream".to_string(),
             TaskType::RegexFileFilter => "regex_file_filter".to_string(),
@@ -240,7 +238,6 @@ impl std::str::FromStr for TaskType {
             "implementation_plan_merge" => Ok(TaskType::ImplementationPlanMerge),
             "voice_transcription" => Ok(TaskType::VoiceTranscription),
             "text_improvement" => Ok(TaskType::TextImprovement),
-            "path_correction" => Ok(TaskType::PathCorrection),
             "task_refinement" => Ok(TaskType::TaskRefinement),
             "generic_llm_stream" => Ok(TaskType::GenericLlmStream),
             "regex_file_filter" => Ok(TaskType::RegexFileFilter),
@@ -270,7 +267,6 @@ impl TaskType {
             | TaskType::ImplementationPlan
             | TaskType::ImplementationPlanMerge
             | TaskType::TextImprovement
-            | TaskType::PathCorrection
             | TaskType::TaskRefinement
             | TaskType::GenericLlmStream
             | TaskType::RegexFileFilter
@@ -897,7 +893,6 @@ pub struct FileSelectionHistoryEntryWithTimestamp {
 
 /// Device settings for controlling remote access and discoverability
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct DeviceSettings {
     pub is_discoverable: bool,
     pub allow_remote_access: bool,

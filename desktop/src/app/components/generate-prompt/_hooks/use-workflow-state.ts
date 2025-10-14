@@ -15,7 +15,7 @@ export function useWorkflowState() {
     if (!currentSession?.id) return null;
 
     // Look for active stage jobs that are part of file finding workflow
-    const fileFindingTaskTypes = ['regex_file_filter', 'file_relevance_assessment', 'extended_path_finder', 'path_correction'];
+    const fileFindingTaskTypes = ['regex_file_filter', 'file_relevance_assessment', 'extended_path_finder'];
     
     const activeStageJobs = jobs.filter(
       job => fileFindingTaskTypes.includes(job.taskType) && 

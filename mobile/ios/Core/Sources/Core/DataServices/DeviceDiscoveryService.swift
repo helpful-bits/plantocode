@@ -28,7 +28,8 @@ public class DeviceDiscoveryService: ObservableObject {
         }
 
         do {
-            self.devices = try await ServerAPIClient.shared.getDevices()
+            self.devices = try await ServerAPIClient.shared.getDevices(deviceType: "desktop")
+            self.logger.info("Fetched \(self.devices.count) desktop devices from server at \(Config.serverURL)")
             self.logger.info("Device discovery completed: \(self.devices.count) devices found")
         } catch {
             self.logger.error("getDevices failed: \(error.localizedDescription)")

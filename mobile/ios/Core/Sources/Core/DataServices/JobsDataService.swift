@@ -19,11 +19,10 @@ public class JobsDataService: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var progressSubscription: AnyCancellable?
     private var jobsIndex: [String: Int] = [:]
-    private var activeSyncTimer: AnyCancellable?
     private var activeSessionId: String?
     private var activeProjectDirectory: String?
-    private var isSyncActive: Bool = false
-    private var sessionScopeEnabled: Bool = false
+    private var currentListJobsRequestToken: UUID?
+    @Published public private(set) var hasLoadedOnce = false
 
     // MARK: - Initialization
     public init(
@@ -189,15 +188,8 @@ public class JobsDataService: ObservableObject {
     public func startSessionScopedSync(sessionId: String, projectDirectory: String?) {
         self.activeSessionId = sessionId
         self.activeProjectDirectory = projectDirectory
-        self.isSyncActive = true
-        self.sessionScopeEnabled = true
 
-        // Scoped 30s refresh; minimal payload
-        self.activeSyncTimer = Timer.publish(every: 30, on: .main, in: .common)
-            .autoconnect()
-            .sink { [weak self] _ in
-                self?.refreshActiveJobs()
-            }
+        // No polling; rely on relay events while connected and reconnection snapshot orchestrated by DataServicesManager.
 
         // Immediate fetch on enter to get the most recent jobs
         self.refreshActiveJobs()
@@ -205,10 +197,6 @@ public class JobsDataService: ObservableObject {
 
     /// Stop session-scoped sync timer (but keep processing events)
     public func stopSessionScopedSync() {
-        self.activeSyncTimer?.cancel()
-        self.activeSyncTimer = nil
-        self.isSyncActive = false
-        self.sessionScopeEnabled = false
         // Keep activeSessionId and activeProjectDirectory so events continue processing in background
     }
 
@@ -248,7 +236,7 @@ public class JobsDataService: ObservableObject {
 
     /// Internal helper to prefetch top jobs based on current jobs array
     private func prefetchTopJobsInternal() {
-        // Prioritize active jobs, then most recent
+        // Prioritize active jobs, then most recent (limit to 10)
         let topJobs = jobs
             .sorted { job1, job2 in
                 if job1.jobStatus.isActive && !job2.jobStatus.isActive { return true }
@@ -257,10 +245,10 @@ public class JobsDataService: ObservableObject {
                 let time2 = job2.updatedAt ?? job2.createdAt ?? 0
                 return time1 > time2
             }
-            .prefix(20)
+            .prefix(10)
             .map { $0.id }
 
-        prefetchJobDetails(jobIds: Array(topJobs))
+        prefetchJobDetails(jobIds: Array(topJobs), limit: 10)
     }
 
     /// Fast-path job fetch with cache-first strategy
@@ -306,8 +294,8 @@ public class JobsDataService: ObservableObject {
     // MARK: - Private Methods
 
     private func refreshActiveJobs() {
-        // Early return if sync not active
-        guard isSyncActive, sessionScopeEnabled, let sessionId = activeSessionId else {
+        // Early return if no active session
+        guard let sessionId = activeSessionId else {
             return
         }
 
@@ -387,14 +375,27 @@ public class JobsDataService: ObservableObject {
 
     @MainActor
     private func listJobsViaRPC(request: JobListRequest, cacheKey: String, shouldReplace: Bool) -> AnyPublisher<JobListResponse, DataServiceError> {
+        let token = UUID()
         return Future<JobListResponse, DataServiceError> { [weak self] promise in
             Task {
+                await MainActor.run {
+                    self?.currentListJobsRequestToken = token
+                }
+
                 do {
+                    let activeSessionId = request.sessionId
+                    let activeProjectDirectory = request.projectDirectory
+
+                    if activeSessionId == nil && activeProjectDirectory == nil {
+                        promise(.failure(.invalidState("sessionId or projectDirectory required")))
+                        return
+                    }
+
                     var jobsData: [String: Any]?
 
                     for try await response in CommandRouter.jobList(
-                        projectDirectory: request.projectDirectory,
-                        sessionId: request.sessionId,
+                        projectDirectory: activeProjectDirectory,
+                        sessionId: activeSessionId,
                         statusFilter: request.statusFilter?.map { $0.rawValue },
                         taskTypeFilter: request.taskTypeFilter?.joined(separator: ","),
                         page: request.page.map { Int($0) },
@@ -422,7 +423,6 @@ public class JobsDataService: ObservableObject {
 
                     let jsonData = try JSONSerialization.data(withJSONObject: jobs)
                     let decoder = JSONDecoder()
-                    // Backend uses camelCase serialization - use default keys
                     let backgroundJobs = try decoder.decode([BackgroundJob].self, from: jsonData)
 
                     let response = JobListResponse(
@@ -433,18 +433,13 @@ public class JobsDataService: ObservableObject {
                         hasMore: data["hasMore"] as? Bool ?? false
                     )
 
-                    // Apply to local state based on shouldReplace parameter
                     if let strongSelf = self {
-                        if shouldReplace {
-                            // Full replace - used for initial loads
+                        if shouldReplace && token == strongSelf.currentListJobsRequestToken {
                             strongSelf.jobs = response.jobs
                             strongSelf.jobsIndex = Dictionary(uniqueKeysWithValues: response.jobs.enumerated().map { ($1.id, $0) })
-
-                            // CRITICAL: Immediately prefetch top jobs for instant details sheet opening
-                            // This happens INSIDE the service as soon as jobs are loaded, not waiting for view's sink handler
                             strongSelf.prefetchTopJobsInternal()
+                            strongSelf.hasLoadedOnce = true
                         }
-                        // If not replacing, caller will handle the response (e.g., merging)
                     }
                     self?.cacheManager.set(response, forKey: cacheKey, ttl: 300)
                     promise(.success(response))
@@ -456,11 +451,20 @@ public class JobsDataService: ObservableObject {
             }
         }
         .handleEvents(
-            receiveOutput: { [weak self] _ in self?.isLoading = false },
+            receiveOutput: { [weak self] _ in
+                if let self = self, self.currentListJobsRequestToken == token {
+                    self.isLoading = false
+                }
+            },
             receiveCompletion: { [weak self] completion in
-                self?.isLoading = false
+                guard let self = self else { return }
+                self.isLoading = false
                 if case .failure(let error) = completion {
-                    self?.error = error
+                    self.error = error
+                    // Set hasLoadedOnce even on error to stop indefinite loading
+                    if self.currentListJobsRequestToken == token {
+                        self.hasLoadedOnce = true
+                    }
                 }
             }
         )

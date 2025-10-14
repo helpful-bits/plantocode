@@ -174,14 +174,9 @@ public class PlanContentParser {
 
     /// Replace placeholders in a template string
     public static func replacePlaceholders(in template: String, with data: [String: String]) -> String {
-        var result = template
-
-        for (key, value) in data {
-            let placeholder = "{{\(key)}}"
-            result = result.replacingOccurrences(of: placeholder, with: value)
-        }
-
-        return result
+        // Convert [String: String] to [String: String?] and delegate to PlaceholderUtils
+        let optionalData = data.mapValues { $0 as String? }
+        return PlaceholderUtils.replacePlaceholders(template: template, data: optionalData)
     }
 
     /// Extract all commands (bash + exploration) from a step

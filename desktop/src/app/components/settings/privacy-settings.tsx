@@ -10,9 +10,8 @@ import {
   CardHeader,
   CardTitle,
   Button,
-  Input,
+  Checkbox,
   Label,
-  Switch,
 } from "@/ui";
 import { useNotification } from "@/contexts/notification-context";
 import { extractErrorInfo, createUserFriendlyErrorMessage, logError } from "@/utils/error-handling";
@@ -22,7 +21,7 @@ import { DeviceSettings } from "@/types/settings-types";
 export default function PrivacySettings() {
   const { showNotification } = useNotification();
   const [settings, setSettings] = useState<DeviceSettings>({
-    is_discoverable: true,
+    is_discoverable: false,
     allow_remote_access: false,
     require_approval: true,
     session_timeout_minutes: 30,
@@ -65,6 +64,9 @@ export default function PrivacySettings() {
         message: "Privacy settings have been updated successfully.",
         type: "success",
       });
+
+      // Reload settings to confirm they were saved
+      await loadSettings();
     } catch (err) {
       const errorInfo = extractErrorInfo(err);
       const userMessage = createUserFriendlyErrorMessage(errorInfo, "saving privacy settings");
@@ -81,15 +83,8 @@ export default function PrivacySettings() {
     }
   };
 
-  const handleToggleChange = (field: keyof Omit<DeviceSettings, 'session_timeout_minutes'>, value: boolean) => {
+  const handleCheckboxChange = (field: keyof DeviceSettings, value: boolean) => {
     setSettings(prev => ({ ...prev, [field]: value }));
-  };
-
-  const handleTimeoutChange = (value: string) => {
-    const numValue = parseInt(value, 10);
-    if (!isNaN(numValue) && numValue > 0) {
-      setSettings(prev => ({ ...prev, session_timeout_minutes: numValue }));
-    }
   };
 
   if (isLoading) {
@@ -114,63 +109,32 @@ export default function PrivacySettings() {
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <Checkbox
+                id="discoverable"
+                checked={settings.is_discoverable}
+                onCheckedChange={(checked) => handleCheckboxChange('is_discoverable', checked as boolean)}
+              />
               <div className="space-y-0.5">
-                <Label htmlFor="discoverable">Device Discoverable</Label>
+                <Label htmlFor="discoverable" className="cursor-pointer">Device Discoverable</Label>
                 <div className="text-sm text-muted-foreground">
                   Allow other devices to discover this device on the network
                 </div>
               </div>
-              <Switch
-                id="discoverable"
-                checked={settings.is_discoverable}
-                onCheckedChange={(checked) => handleToggleChange('is_discoverable', checked)}
-              />
             </div>
 
-            <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <Checkbox
+                id="remote-access"
+                checked={settings.allow_remote_access}
+                onCheckedChange={(checked) => handleCheckboxChange('allow_remote_access', checked as boolean)}
+              />
               <div className="space-y-0.5">
-                <Label htmlFor="remote-access">Allow Remote Access</Label>
+                <Label htmlFor="remote-access" className="cursor-pointer">Allow Remote Access</Label>
                 <div className="text-sm text-muted-foreground">
                   Enable remote connections to this device
                 </div>
               </div>
-              <Switch
-                id="remote-access"
-                checked={settings.allow_remote_access}
-                onCheckedChange={(checked) => handleToggleChange('allow_remote_access', checked)}
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label htmlFor="require-approval">Require Approval</Label>
-                <div className="text-sm text-muted-foreground">
-                  Require manual approval for new remote connections
-                </div>
-              </div>
-              <Switch
-                id="require-approval"
-                checked={settings.require_approval}
-                onCheckedChange={(checked) => handleToggleChange('require_approval', checked)}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="session-timeout">Session Timeout (minutes)</Label>
-            <Input
-              id="session-timeout"
-              type="number"
-              min="1"
-              max="1440"
-              value={settings.session_timeout_minutes}
-              onChange={(e) => handleTimeoutChange(e.target.value)}
-              placeholder="30"
-              className="w-32"
-            />
-            <div className="text-sm text-muted-foreground">
-              Remote sessions will automatically expire after this duration
             </div>
           </div>
 
@@ -208,8 +172,7 @@ export default function PrivacySettings() {
           {settings.allow_remote_access && (
             <div className="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-md">
               <div className="text-sm text-blue-700 dark:text-blue-300">
-                <strong>Remote access is currently enabled.</strong> Other devices can connect to this application
-                {settings.require_approval ? " after approval" : " immediately"}.
+                <strong>Remote access is currently enabled.</strong> Other devices can connect to this application.
               </div>
             </div>
           )}

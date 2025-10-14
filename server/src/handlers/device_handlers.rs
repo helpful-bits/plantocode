@@ -33,6 +33,7 @@ pub struct RegisterDeviceRequestBody {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RegisterDeviceResponse {
     pub device_id: Uuid,
     pub status: String,
@@ -41,6 +42,7 @@ pub struct RegisterDeviceResponse {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DeviceInfo {
     pub device_id: Uuid,
     pub device_name: String,
@@ -74,10 +76,16 @@ pub struct PushTokenRequest {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ConnectionDescriptor {
     pub connection_info: JsonValue,
     pub signature: String,
     pub expires_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DeviceQuery {
+    pub device_type: Option<String>,
 }
 
 /// Register a new device
@@ -179,36 +187,64 @@ pub async fn register_device_handler(
 /// Get devices for the authenticated user
 pub async fn get_devices_handler(
     device_repo: web::Data<DeviceRepository>,
+    connection_manager: web::Data<DeviceConnectionManager>,
     user: AuthenticatedUser,
+    query: web::Query<DeviceQuery>,
 ) -> Result<HttpResponse, AppError> {
     let devices = device_repo.list_devices_by_user(&user.user_id).await?;
 
     let device_infos: Vec<DeviceInfo> = devices
         .into_iter()
-        .map(|device| DeviceInfo {
-            device_id: device.device_id,
-            device_name: device.device_name,
-            device_type: device.device_type,
-            platform: device.platform,
-            platform_version: device.platform_version,
-            app_version: device.app_version,
-            status: device.status,
-            last_heartbeat: device.last_heartbeat,
-            cpu_usage: device
-                .cpu_usage
-                .as_ref()
-                .and_then(|bd| bd.to_string().parse::<f64>().ok()),
-            memory_usage: device
-                .memory_usage
-                .as_ref()
-                .and_then(|bd| bd.to_string().parse::<f64>().ok()),
-            disk_space_gb: device.disk_space_gb,
-            active_jobs: device.active_jobs,
-            capabilities: device.capabilities,
-            created_at: device.created_at,
-            updated_at: device.updated_at,
+        .map(|device| {
+            // Check live connection status from DeviceConnectionManager
+            let is_connected = connection_manager.is_device_connected(
+                &user.user_id,
+                &device.device_id.to_string()
+            );
+
+            // Use "online" if connected, otherwise use database status (or "offline" if unavailable)
+            let live_status = if is_connected {
+                "online".to_string()
+            } else {
+                // If not connected, mark as offline regardless of database status
+                "offline".to_string()
+            };
+
+            DeviceInfo {
+                device_id: device.device_id,
+                device_name: device.device_name,
+                device_type: device.device_type,
+                platform: device.platform,
+                platform_version: device.platform_version,
+                app_version: device.app_version,
+                status: live_status,
+                last_heartbeat: device.last_heartbeat,
+                cpu_usage: device
+                    .cpu_usage
+                    .as_ref()
+                    .and_then(|bd| bd.to_string().parse::<f64>().ok()),
+                memory_usage: device
+                    .memory_usage
+                    .as_ref()
+                    .and_then(|bd| bd.to_string().parse::<f64>().ok()),
+                disk_space_gb: device.disk_space_gb,
+                active_jobs: device.active_jobs,
+                capabilities: device.capabilities,
+                created_at: device.created_at,
+                updated_at: device.updated_at,
+            }
         })
         .collect();
+
+    // Apply device_type filter if provided
+    let device_infos: Vec<DeviceInfo> = if let Some(ref device_type) = query.device_type {
+        device_infos
+            .into_iter()
+            .filter(|d| d.device_type == *device_type)
+            .collect()
+    } else {
+        device_infos
+    };
 
     debug!(
         user_id = %user.user_id,

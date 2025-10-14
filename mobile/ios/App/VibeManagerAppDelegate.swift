@@ -19,6 +19,10 @@ class VibeManagerAppDelegate: NSObject, UIApplicationDelegate {
     }
     print("Core initialized: \(VibeManagerCore.shared.isInitialized)")
 
+    // Initialize notification managers early to ensure delegate and subscriptions are active
+    _ = PushNotificationManager.shared
+    _ = WorkflowNotificationCoordinator.shared
+
     let center = UNUserNotificationCenter.current()
     center.requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
       if granted {

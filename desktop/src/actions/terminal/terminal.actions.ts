@@ -25,10 +25,6 @@ export async function getTerminalStatus(sessionId: string) {
   return invoke("get_terminal_session_status_command", { sessionId });
 }
 
-export async function listTerminalSessions(): Promise<string[]> {
-  return invoke("list_terminal_sessions_command");
-}
-
 export async function restoreTerminalSessions(): Promise<string[]> {
   return invoke("restore_terminal_sessions_command");
 }

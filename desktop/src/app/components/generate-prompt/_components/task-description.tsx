@@ -1,13 +1,12 @@
 "use client";
 
 import { Undo2, Redo2 } from "lucide-react";
-import {
+import React, {
   useState,
   useCallback,
   useRef,
   useImperativeHandle,
   forwardRef,
-  useEffect,
 } from "react";
 import type { ChangeEvent } from "react";
 
@@ -27,13 +26,15 @@ export interface TaskDescriptionHandle {
   replaceSelection: (newText: string) => void;
   replaceText: (oldText: string, newText: string) => void;
   flushPendingChanges: () => string; // Immediately flush any pending debounced changes and return current value
-  setValue: (value: string) => void;
+  setValue: (value: string, preserveSelection?: boolean) => void;
   getValue: () => string; // Get current value
   // Add properties that use-task-description-state.ts expects
   value: string;
   selectionStart: number;
   selectionEnd: number;
   focus: () => void;
+  readonly isFocused: boolean;
+  readonly isTyping: boolean;
 }
 
 // Define props for the component
@@ -70,227 +71,229 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
       const { state: taskState, actions: taskActions } = useTaskContext();
       const { isAnalyzingVideo } = taskState;
 
-      // Keep ref parameter
-      // Local state for responsive input handling
-      const [internalValue, setInternalValue] = useState(value);
-      const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+      // No local state - use the prop value directly as the single source of truth
+      // We'll update the parent immediately for all changes
 
       // Create an internal ref for the textarea element
       const internalTextareaRef = useRef<HTMLTextAreaElement>(null);
 
       const { isRecording, stopRecording } = useScreenRecording();
       const [showVideoDialog, setShowVideoDialog] = useState(false);
-      
-      // Sync internal value with prop value when it changes externally
-      useEffect(() => {
-        setInternalValue(value);
-      }, [value]);
 
-      // Debounced onChange for performance, with immediate flush capability
-      const debouncedOnChange = useCallback(
-        (newValue: string) => {
-          if (debounceTimeoutRef.current) {
-            clearTimeout(debounceTimeoutRef.current);
+      // Caret stabilization refs
+      const isFocusedRef = React.useRef(false);
+      const isUserTypingRef = React.useRef(false);
+      const typingIdleTimerRef = React.useRef<number | null>(null);
+      const isComposingRef = React.useRef(false);
+      const lastSelectionRef = React.useRef<{ start: number; end: number }>({ start: 0, end: 0 });
+
+      // Utility to clamp indices
+      const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
+
+      // Track selection precisely via document selectionchange
+      React.useEffect(() => {
+        const handler = () => {
+          const el = internalTextareaRef.current as HTMLTextAreaElement | null;
+          if (el && document.activeElement === el) {
+            lastSelectionRef.current = {
+              start: el.selectionStart ?? 0,
+              end: el.selectionEnd ?? 0,
+            };
           }
-          debounceTimeoutRef.current = setTimeout(() => {
-            onChange(newValue);
-          }, 100); // Fast debounce for Google Docs-like sync
-        },
-        [onChange]
-      );
-      
-      // Insert or replace text at the stored cursor or selection range
-      const insertTextAtCursor = useCallback(
-        (newText: string, start: number, end: number) => {
-          if (!internalTextareaRef.current) {
-            return;
+        };
+        document.addEventListener('selectionchange', handler);
+        return () => document.removeEventListener('selectionchange', handler);
+      }, []);
+
+      // Immediate onChange - no debouncing for internal state updates
+      // The parent handles its own backend sync debouncing
+      const handleValueChange = React.useCallback((newValue: string, opts?: { preserveSelection?: boolean }) => {
+        // Avoid redundant updates
+        if (newValue === value) {
+          return;
+        }
+
+        // Immediately notify parent - it's the source of truth
+        onChange(newValue);
+        onInteraction();
+
+        // Handle caret preservation if needed
+        if (opts?.preserveSelection && isFocusedRef.current) {
+          const el = internalTextareaRef.current as HTMLTextAreaElement | null;
+          if (el) {
+            // Restore selection to last known range (clamped to new value length)
+            const len = newValue.length;
+            const start = clamp(lastSelectionRef.current.start, 0, len);
+            const end = clamp(lastSelectionRef.current.end, 0, len);
+            // Defer until DOM updates
+            requestAnimationFrame(() => {
+              if (!el.isConnected) return;
+              try {
+                el.setSelectionRange(start, end);
+              } catch {}
+            });
           }
+        }
+      }, [value, onChange, onInteraction]);
 
+      // Typing detection via keydown/up with idle window
+      const TYPING_IDLE_MS = 200;
+      const handleKeyActivity = () => {
+        isUserTypingRef.current = true;
+        if (typingIdleTimerRef.current) clearTimeout(typingIdleTimerRef.current);
+        typingIdleTimerRef.current = window.setTimeout(() => {
+          isUserTypingRef.current = false;
+          typingIdleTimerRef.current = null;
+        }, TYPING_IDLE_MS);
+      };
 
-          // Validate that text is not empty
-          if (!newText || newText.trim() === "") {
-            return;
-          }
+      // Composition handlers for IME
+      const handleCompositionStart = () => { isComposingRef.current = true; };
+      const handleCompositionEnd = () => { isComposingRef.current = false; };
 
-          // Calculate the new value directly
-          const originalText = internalValue;
-          const before = originalText.slice(0, start);
-          const after = originalText.slice(end);
-          const newValue = before + newText + after;
-
-          // Update local state and debounce parent update
-          setInternalValue(newValue);
-          debouncedOnChange(newValue);
-          onInteraction(); // Notify parent
-
-          // Calculate new cursor position
-          const newPosition = start + newText.length;
-
-          // Focus and set selection range after re-render
-          setTimeout(() => {
-            if (internalTextareaRef.current) {
-              internalTextareaRef.current.focus();
-              internalTextareaRef.current.setSelectionRange(
-                newPosition,
-                newPosition
-              );
-            }
-          }, 0);
-        },
-        [internalValue, debouncedOnChange, onInteraction]
-      );
+      // Focus/blur handlers
+      const handleFocus = () => { isFocusedRef.current = true; };
+      const handleBlur = () => {
+        isFocusedRef.current = false;
+      };
 
       // No local storage effects - moved to useTaskDescriptionState hook
 
       // Removed the duplicate monitor for background job updates
       // This logic is now handled entirely in useTaskDescriptionState.ts
 
-      // Simplified ref implementation
+      // Imperative handle for external manipulation
       useImperativeHandle(ref, () => ({
         insertTextAtCursorPosition: (text: string) => {
           const textarea = internalTextareaRef.current;
           if (!textarea) return;
-          insertTextAtCursor(text, textarea.selectionStart, textarea.selectionEnd);
+          const start = textarea.selectionStart ?? 0;
+          const end = textarea.selectionEnd ?? 0;
+          const next = value.slice(0, start) + text + value.slice(end);
+          lastSelectionRef.current = { start: start + text.length, end: start + text.length };
+          handleValueChange(next, { preserveSelection: true });
         },
-        appendText: (text: string) => {
-          const separator = internalValue.trim() ? "\n\n" : "";
-          insertTextAtCursor(separator + text, internalValue.length, internalValue.length);
+        appendText: (text: string, separator = "\n\n") => {
+          const next = `${value}${separator}${text}`;
+          if (isFocusedRef.current) {
+            // Non-disruptive append: keep user where they are
+            handleValueChange(next, { preserveSelection: true });
+          } else {
+            // Not focused: allow tail caret placement
+            handleValueChange(next, { preserveSelection: false });
+            requestAnimationFrame(() => {
+              const e2 = internalTextareaRef.current as HTMLTextAreaElement | null;
+              if (e2) {
+                try {
+                  e2.focus();
+                  const end = next.length;
+                  e2.setSelectionRange(end, end);
+                } catch {}
+              }
+            });
+          }
         },
         replaceSelection: (newText: string) => {
-          const textarea = internalTextareaRef.current;
-          if (!textarea || textarea.selectionStart === textarea.selectionEnd) return;
-          insertTextAtCursor(newText, textarea.selectionStart, textarea.selectionEnd);
+          const el = internalTextareaRef.current as HTMLTextAreaElement | null;
+          if (!el) return;
+          const start = el.selectionStart ?? 0;
+          const end = el.selectionEnd ?? 0;
+          const next = value.slice(0, start) + newText + value.slice(end);
+          // After replacement, caret at end of inserted text
+          lastSelectionRef.current = { start: start + newText.length, end: start + newText.length };
+          handleValueChange(next, { preserveSelection: true });
         },
         replaceText: (oldText: string, newText: string) => {
-          const updatedText = internalValue.replace(oldText, newText);
-          if (updatedText !== internalValue) {
-            setInternalValue(updatedText);
-            debouncedOnChange(updatedText);
-            onInteraction();
+          const next = value.replace(oldText, newText);
+          if (next !== value) {
+            handleValueChange(next, { preserveSelection: isFocusedRef.current });
           }
         },
+        setValue: (newValue: string, preserveSelection = true) => {
+          handleValueChange(newValue, { preserveSelection: preserveSelection && isFocusedRef.current });
+        },
+        getValue: () => value,
         flushPendingChanges: () => {
-          // Immediately flush any pending debounced changes
-          if (debounceTimeoutRef.current) {
-            clearTimeout(debounceTimeoutRef.current);
-            debounceTimeoutRef.current = null;
-          }
-          // Call onChange with current internal value to ensure it's saved
-          onChange(internalValue);
-          // Return the current value so caller can use it immediately
-          return internalValue;
+          // No debouncing anymore, so nothing to flush
+          return value;
         },
-        get value() { return internalValue; },
+        get value() { return value; },
         get selectionStart() { return internalTextareaRef.current?.selectionStart ?? 0; },
         get selectionEnd() { return internalTextareaRef.current?.selectionEnd ?? 0; },
         focus: () => internalTextareaRef.current?.focus(),
-        setValue: (value: string) => {
-          setInternalValue(value);
-          debouncedOnChange(value);
-          onInteraction();
-        },
-        getValue: () => internalValue,
-      }), [insertTextAtCursor, internalValue, debouncedOnChange, onInteraction, onChange]);
+        get isFocused() { return isFocusedRef.current; },
+        get isTyping() { return isUserTypingRef.current; },
+      }), [value, handleValueChange]);
 
+      // Optional dev-only latency instrumentation for AC-1/NFR-1 validation
+      const latencyMeasurementRef = useRef<number | null>(null);
 
-
-      // Simplified change handler
+      // Change handler - immediately update parent
       const handleChange = useCallback((e: ChangeEvent<HTMLTextAreaElement>) => {
         const newValue = e.target.value;
-        setInternalValue(newValue);
-        debouncedOnChange(newValue);
-        onInteraction();
-      }, [setInternalValue, debouncedOnChange, onInteraction]);
+        handleValueChange(newValue);
+      }, [handleValueChange]);
 
       // Use the auto-resize hook to handle textarea height adjustments
-      useTextareaResize(internalTextareaRef, internalValue, {
+      useTextareaResize(internalTextareaRef, value, {
         minHeight: 200,
         maxHeight: 600,
         extraHeight: 50,
       });
 
-      // Add event listener for flush-pending-changes event from text improvement
-      useEffect(() => {
-        const handleFlushEvent = () => {
-          // Immediately flush any pending debounced changes
-          if (debounceTimeoutRef.current) {
-            clearTimeout(debounceTimeoutRef.current);
-            debounceTimeoutRef.current = null;
-            onChange(internalValue);
+      // No need for flush-pending-changes listener - we update immediately now
+
+      // Tauri event handlers for external text insertion
+      React.useEffect(() => {
+        let unlisten1: (() => void) | undefined;
+        let unlisten2: (() => void) | undefined;
+
+        const handleApplyText = (payloadValue: string) => {
+          const el = internalTextareaRef.current as HTMLTextAreaElement | null;
+          const focused = isFocusedRef.current;
+
+          // Snapshot current selection if focused
+          if (el && focused) {
+            lastSelectionRef.current = {
+              start: el.selectionStart ?? lastSelectionRef.current.start,
+              end: el.selectionEnd ?? lastSelectionRef.current.end,
+            };
           }
+
+          handleValueChange(payloadValue, { preserveSelection: focused });
         };
 
-        const element = internalTextareaRef.current;
-        if (element) {
-          element.addEventListener('flush-pending-changes', handleFlushEvent);
-          return () => {
-            element.removeEventListener('flush-pending-changes', handleFlushEvent);
-          };
-        }
-        
-        // Return empty cleanup function if no element
-        return () => {};
-      }, [internalValue, onChange]);
+        // Subscribe to Tauri events
+        const subscribe = async () => {
+          try {
+            unlisten1 = await listen<string>('apply-text-to-task-description', (event) => {
+              handleApplyText(event.payload);
+            });
 
-      // Add event listener for apply-text-to-task-description event
-      useEffect(() => {
-        const handleApplyTextEvent = async () => {
-          const unlisten = await listen<string>('apply-text-to-task-description', (event) => {
-            if (ref && typeof ref === 'object' && ref.current) {
-              ref.current.setValue(event.payload);
-            }
-          });
-          
-          return unlisten;
-        };
-        
-        let unlisten: (() => void) | undefined;
-        
-        handleApplyTextEvent().then((unlistenFn) => {
-          unlisten = unlistenFn;
-        });
-        
-        return () => {
-          if (unlisten) {
-            unlisten();
-          }
-        };
-      }, [ref]);
-
-      // Add event listener for apply-web-search-to-task-description event (with XML formatting)
-      useEffect(() => {
-        const handleApplyWebSearchEvent = async () => {
-          const unlisten = await listen<string>('apply-web-search-to-task-description', (event) => {
-            if (ref && typeof ref === 'object' && ref.current) {
-              const currentValue = ref.current.value || '';
-              const originalTask = currentValue.trim();
+            unlisten2 = await listen<string>('apply-web-search-to-task-description', (event) => {
+              const currentValue = value.trim();
               const searchFindings = event.payload.trim();
-              
+
               // Create XML-formatted task description
-              const formattedValue = `<original_task>\n${originalTask}\n</original_task>\n\n<web_search_findings>\n${searchFindings}\n</web_search_findings>`;
-              
-              ref.current.setValue(formattedValue);
-            }
-          });
-          
-          return unlisten;
-        };
-        
-        let unlisten: (() => void) | undefined;
-        
-        handleApplyWebSearchEvent().then((unlistenFn) => {
-          unlisten = unlistenFn;
-        });
-        
-        return () => {
-          if (unlisten) {
-            unlisten();
+              const formattedValue = `<original_task>\n${currentValue}\n</original_task>\n\n<web_search_findings>\n${searchFindings}\n</web_search_findings>`;
+
+              handleApplyText(formattedValue);
+            });
+          } catch (e) {
+            console.error('Error setting up Tauri listeners:', e);
           }
         };
-      }, [ref]);
+
+        subscribe();
+
+        return () => {
+          try { unlisten1?.(); } catch {}
+          try { unlisten2?.(); } catch {}
+        };
+      }, [handleValueChange, value]);
 
       // Simple empty check
-      const effectiveIsEmpty = !internalValue?.trim();
+      const effectiveIsEmpty = !value?.trim();
 
       return (
         <>
@@ -339,12 +342,33 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
             <div className="flex items-center gap-2">
               <VoiceTranscription
                 onTranscribed={(text) => {
-                  if (ref && typeof ref === 'object' && ref.current) {
-                    ref.current.appendText(text);
-                  }
+                  // Insert transcribed text at the cursor position (captured before recording started)
+                  const el = internalTextareaRef.current;
+                  if (!el) return;
+
+                  // Use the saved selection from before recording started
+                  const start = lastSelectionRef.current.start;
+                  const end = lastSelectionRef.current.end;
+
+                  const beforeCursor = value.slice(0, start);
+                  const afterCursor = value.slice(end);
+
+                  // Add smart spacing: space before if needed, newline after if needed
+                  const needsSpaceBefore = beforeCursor.length > 0 &&
+                    !beforeCursor.endsWith(' ') &&
+                    !beforeCursor.endsWith('\n');
+                  const prefix = needsSpaceBefore ? ' ' : '';
+
+                  const trimmedText = text.trim();
+                  const newValue = beforeCursor + prefix + trimmedText + afterCursor;
+
+                  // Place cursor after the inserted text
+                  const newCursorPos = beforeCursor.length + prefix.length + trimmedText.length;
+                  lastSelectionRef.current = { start: newCursorPos, end: newCursorPos };
+
+                  handleValueChange(newValue, { preserveSelection: true });
                 }}
                 onInteraction={onInteraction}
-                textareaRef={ref as React.RefObject<TaskDescriptionHandle | null>}
                 disabled={disabled}
               />
               
@@ -409,25 +433,37 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
               id="taskDescArea"
               data-field="taskDescription"
               className={`border rounded-xl bg-background backdrop-blur-sm text-foreground p-4 w-full resize-y font-normal shadow-soft ${effectiveIsEmpty ? "border-destructive/20 bg-destructive/5" : "border-border/60"}`}
-              value={internalValue}
+              value={value}
               onChange={handleChange}
+              onFocus={handleFocus}
               onBlur={(_e) => {
-                // Clear any pending debounce timeout
-                if (debounceTimeoutRef.current) {
-                  clearTimeout(debounceTimeoutRef.current);
-                  debounceTimeoutRef.current = null;
-                }
-
-                // Always propagate current internal value to parent to ensure sync
-                onChange(internalValue);
-
-                // Defer onBlur call to next event loop tick to prevent race conditions
+                handleBlur();
+                // Trigger parent's onBlur for any cleanup/save operations
                 if (onBlur) {
-                  setTimeout(() => {
+                  requestAnimationFrame(() => {
                     onBlur();
-                  }, 0);
+                  });
                 }
               }}
+              onKeyDown={(_e) => {
+                handleKeyActivity();
+                // Dev-only input latency measurement
+                if (process.env.NODE_ENV !== "production" || (window as any).__DEBUG_INPUT_LATENCY__) {
+                  latencyMeasurementRef.current = performance.now();
+                  requestAnimationFrame(() => {
+                    if (latencyMeasurementRef.current !== null) {
+                      const latency = Math.round(performance.now() - latencyMeasurementRef.current);
+                      if (latency > 16) {
+                        console.debug(`[TaskDesc] key→paint ${latency}ms (> 16ms target)`);
+                      }
+                      latencyMeasurementRef.current = null;
+                    }
+                  });
+                }
+              }}
+              onKeyUp={handleKeyActivity}
+              onCompositionStart={handleCompositionStart}
+              onCompositionEnd={handleCompositionEnd}
               placeholder="Clearly describe the changes or features you want the AI to implement. You can use the voice recorder below or type directly."
               aria-required="true"
               aria-invalid={effectiveIsEmpty}

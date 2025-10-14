@@ -51,7 +51,7 @@ export async function refineTaskDescriptionAction({
         sessionId,
         taskDescription,
         relevantFiles: relevantFiles ?? [],
-        projectDirectory: finalProjectDirectory ?? "",
+        projectDirectory: finalProjectDirectory ?? null,
       }
     );
 

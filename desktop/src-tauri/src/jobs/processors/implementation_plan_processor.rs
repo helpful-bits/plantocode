@@ -277,11 +277,16 @@ impl JobProcessor for ImplementationPlanProcessor {
         };
         let human_readable_summary = "Implementation plan generated".to_string();
 
-        // The raw response content will be stored directly in job.response
-        // The structured plan data is stored in metadata (additional_params)
+        // Get session name for better UI display
+        let session_name = session.name;
 
-        // Extract the generated title from job metadata, if it exists
-        let metadata: Option<serde_json::Value> = match &db_job.metadata {
+        // Re-fetch latest metadata before finalization to avoid races
+        let latest_job = repo
+            .get_job_by_id(&job.id)
+            .await?
+            .ok_or_else(|| AppError::JobError(format!("Job not found: {}", job.id)))?;
+
+        let metadata: Option<serde_json::Value> = match &latest_job.metadata {
             Some(metadata_str) => match serde_json::from_str(metadata_str) {
                 Ok(json) => Some(json),
                 Err(_) => None,
@@ -289,10 +294,11 @@ impl JobProcessor for ImplementationPlanProcessor {
             None => None,
         };
 
-        let generated_title = match metadata {
-            Some(json) => {
-                if let Some(title) = json.get("generated_title").and_then(|v| v.as_str()) {
-                    // Sanitize the title since it may come from LLM response
+        let final_title = match metadata {
+            Some(ref json) => {
+                if let Some(title) = json.get("planTitle").and_then(|v| v.as_str()) {
+                    title.to_string()
+                } else if let Some(title) = json.get("generated_title").and_then(|v| v.as_str()) {
                     crate::utils::path_utils::sanitize_filename(title)
                 } else {
                     "Implementation Plan".to_string()
@@ -301,41 +307,24 @@ impl JobProcessor for ImplementationPlanProcessor {
             None => "Implementation Plan".to_string(),
         };
 
-        // Update the job with the results
-        let timestamp = get_timestamp();
-
-        // Get the job and update it with all results at once
-        let mut job = repo
-            .get_job_by_id(&job.id)
-            .await?
-            .ok_or_else(|| AppError::JobError(format!("Job not found: {}", job.id)))?;
-
-        // Get session name for better UI display
-        let session_name = session.name;
-
-        // Construct the additional_params specific to the implementation plan
+        // Construct the complete metadata object
         let mut impl_plan_additional_params = json!({
             "planData": serde_json::to_value(structured_plan.clone()).unwrap_or_default(),
-            "planTitle": generated_title.clone(),
+            "planTitle": final_title.clone(),
             "summary": human_readable_summary.clone(),
             "isStructured": true,
+            "isStreaming": false,
             "sessionName": session_name
         });
 
-        // Ensure streaming flags are cleared for completed jobs
+        // Remove streaming-specific fields that should not persist for completed jobs
         if let Some(obj) = impl_plan_additional_params.as_object_mut() {
-            obj.insert("isStreaming".to_string(), json!(false));
-            // Remove streaming-specific fields that should not persist for completed jobs
             obj.remove("streamProgress");
             obj.remove("responseLength");
             obj.remove("estimatedTotalLength");
             obj.remove("lastStreamUpdateTime");
             obj.remove("streamStartTime");
         }
-
-        // Create updated job with raw response content for finalization
-        let mut finalized_job = job.clone();
-        finalized_job.response = Some(response_content.clone());
 
         // Extract system prompt template, usage and cost
         let system_prompt_template = llm_result.system_prompt_template.clone();
@@ -346,11 +335,6 @@ impl JobProcessor for ImplementationPlanProcessor {
             .and_then(|u| u.cost)
             .unwrap_or(0.0);
 
-        // Return success result with the raw response content as Text data
-        let success_message = format!(
-            "Implementation plan '{}' generated successfully",
-            generated_title
-        );
         Ok(
             JobProcessResult::success(job.id.clone(), JobResultData::Text(response_content))
                 .with_tokens(
@@ -368,7 +352,8 @@ impl JobProcessor for ImplementationPlanProcessor {
                         .map(|u| u.cache_read_tokens as i64),
                 )
                 .with_system_prompt_template(system_prompt_template)
-                .with_actual_cost(actual_cost),
+                .with_actual_cost(actual_cost)
+                .with_metadata(impl_plan_additional_params),
         )
     }
 }

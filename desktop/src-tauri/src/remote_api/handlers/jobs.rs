@@ -2,6 +2,21 @@ use tauri::{AppHandle, Manager};
 use serde_json::{json, Value};
 use crate::remote_api::types::{RpcRequest, RpcResponse};
 use crate::commands::job_commands;
+use once_cell::sync::Lazy;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+use std::collections::HashMap;
+use crate::db_utils::SessionRepository;
+use std::sync::Arc;
+
+struct CacheEntry {
+    inserted_at: Instant,
+    value: serde_json::Value,
+}
+
+static JOB_LIST_CACHE: Lazy<Mutex<HashMap<String, CacheEntry>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+const CACHE_TTL: Duration = Duration::from_millis(750);
+const MAX_ENTRIES: usize = 128;
 
 // Job list filtering architecture:
 //
@@ -47,16 +62,95 @@ async fn handle_job_list(app_handle: &AppHandle, request: RpcRequest) -> RpcResp
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
 
+    // Require sessionId to be present
+    let session_id = match session_id {
+        Some(id) if !id.is_empty() => id,
+        _ => {
+            return RpcResponse {
+                correlation_id: request.correlation_id,
+                result: None,
+                error: Some("Missing required sessionId".to_string()),
+                is_final: true,
+            };
+        }
+    };
+
+    // Resolve effective project directory from session - no fallbacks
+    let pool = app_handle.state::<sqlx::SqlitePool>().inner().clone();
+    let session_repo = SessionRepository::new(Arc::new(pool));
+    let effective_project_directory = match session_repo.get_session_by_id(&session_id).await {
+        Ok(Some(session)) => {
+            log::debug!("Validated session {} with project directory {}", session_id, session.project_directory);
+            Some(session.project_directory)
+        },
+        Ok(None) => {
+            return RpcResponse {
+                correlation_id: request.correlation_id,
+                result: None,
+                error: Some("Invalid sessionId: not found".to_string()),
+                is_final: true,
+            };
+        },
+        Err(_) => {
+            return RpcResponse {
+                correlation_id: request.correlation_id,
+                result: None,
+                error: Some("Invalid sessionId: not found".to_string()),
+                is_final: true,
+            };
+        }
+    };
+
+    // Build cache key
+    let cache_key = format!(
+        "jobs::{}::{}",
+        effective_project_directory.as_deref().unwrap_or(""),
+        session_id
+    );
+
+    // Check cache
+    {
+        let cache = JOB_LIST_CACHE.lock().unwrap();
+        if let Some(entry) = cache.get(&cache_key) {
+            if entry.inserted_at.elapsed() < CACHE_TTL {
+                return RpcResponse {
+                    correlation_id: request.correlation_id,
+                    result: Some(entry.value.clone()),
+                    error: None,
+                    is_final: true,
+                };
+            }
+        }
+    }
+
+    // Execute actual query
     match job_commands::get_all_visible_jobs_command_with_content(
-        project_directory,
-        session_id.clone(),
+        effective_project_directory,
+        Some(session_id.clone()),
         true,
         app_handle.clone()
     ).await {
         Ok(jobs) => {
+            let result_value = json!({ "jobs": jobs });
+
+            // Store in cache
+            {
+                let mut cache = JOB_LIST_CACHE.lock().unwrap();
+                if cache.len() >= MAX_ENTRIES {
+                    // Evict oldest
+                    if let Some(oldest_key) = cache.iter().min_by_key(|(_, v)| v.inserted_at).map(|(k, _)| k.clone()) {
+                        cache.remove(&oldest_key);
+                    }
+                }
+                cache.insert(cache_key, CacheEntry {
+                    inserted_at: Instant::now(),
+                    value: result_value.clone(),
+                });
+            }
+
             RpcResponse {
                 correlation_id: request.correlation_id,
-                result: Some(json!({ "jobs": jobs })),
+                result: Some(result_value),
                 error: None,
                 is_final: true,
             }

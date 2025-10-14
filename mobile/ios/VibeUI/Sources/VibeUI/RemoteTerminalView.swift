@@ -16,25 +16,102 @@ public struct RemoteTerminalView: View {
     @StateObject private var settingsService = SettingsDataService()
     @StateObject private var terminalController = SwiftTermController()
 
+    @State private var shouldShowKeyboard = false
     @State private var outputCancellable: AnyCancellable?
 
     private let outputBufferLimit = 1000
 
-    public init(jobId: String) {
+    @State private var copyButtons: [CopyButton] = []
+    @State private var planContentForJob: String = ""
+    @State private var didAutoPaste: Bool = false
+    @State private var initialCopyButtonId: String? = nil
+
+    public init(jobId: String, initialCopyButtonId: String? = nil) {
         self.jobId = jobId
+        self._initialCopyButtonId = State(initialValue: initialCopyButtonId)
+    }
+
+    private func loadCopyButtons() async {
+        if let dir = container.sessionService.currentSession?.projectDirectory, !dir.isEmpty {
+            try? await container.settingsService.fetchProjectTaskModelSettings(projectDirectory: dir)
+            copyButtons = container.settingsService.projectTaskSettings["implementationPlan"]?.copyButtons ?? CopyButton.defaults
+        } else {
+            copyButtons = CopyButton.defaults
+        }
+    }
+
+    private func loadPlanContent(jobId: String) async {
+        if let content = try? await container.plansService.getFullPlanContent(jobId: jobId).async() {
+            await MainActor.run { self.planContentForJob = content }
+        }
+    }
+
+    private func ensurePlanContent(jobId: String) async {
+        if planContentForJob.isEmpty {
+            await loadPlanContent(jobId: jobId)
+        }
+    }
+
+    private func paste(using button: CopyButton, jobId: String) async {
+        let processed = button.processContent(
+            planContent: planContentForJob,
+            stepNumber: nil,
+            taskDescription: container.sessionService.currentSession?.taskDescription
+        )
+        try? await container.terminalService.sendLargeText(
+            jobId: jobId,
+            text: processed,
+            appendCarriageReturn: true
+        )
+    }
+
+    private func tryAutoPaste(jobId: String) {
+        guard !didAutoPaste, !planContentForJob.isEmpty, !copyButtons.isEmpty else { return }
+        didAutoPaste = true
+        Task {
+            try? await Task.sleep(nanoseconds: 150_000_000) // PTY readiness delay
+            let chosen: CopyButton
+            if let id = initialCopyButtonId, let found = copyButtons.first(where: { $0.id == id }) {
+                chosen = found
+            } else {
+                chosen = copyButtons[0]
+            }
+            await paste(using: chosen, jobId: jobId)
+        }
     }
 
     public var body: some View {
         VStack(spacing: 0) {
-            terminalHeader()
+            // Compose + Copy buttons toolbar
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    Button("Compose") {
+                        showCompose = true
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+
+                    if !copyButtons.isEmpty && !planContentForJob.isEmpty {
+                        ForEach(copyButtons, id: \.id) { btn in
+                            Button(btn.label) {
+                                Task { await paste(using: btn, jobId: jobId) }
+                            }
+                            .buttonStyle(SecondaryButtonStyle())
+                            .disabled(planContentForJob.isEmpty)
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+            }
+            .background(Color(.systemGroupedBackground))
 
             // SwiftTerm terminal view - handles input, output, and keyboard accessories
-            SwiftTerminalView(controller: terminalController)
+            SwiftTerminalView(controller: terminalController, shouldShowKeyboard: $shouldShowKeyboard)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.black)
                 .onTapGesture {
-                    // Make terminal view first responder when tapped
-                    terminalController.terminalView?.becomeFirstResponder()
+                    // Toggle keyboard
+                    shouldShowKeyboard.toggle()
                 }
         }
         .background(Color.background)
@@ -47,13 +124,6 @@ public struct RemoteTerminalView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 HStack(spacing: 12) {
-                    Button("Compose") {
-                        showCompose = true
-                    }
-                    .buttonStyle(ToolbarButtonStyle())
-                    .accessibilityLabel("Compose")
-                    .accessibilityHint("Opens full-screen editor with voice and AI features")
-
                     if isSessionActive {
                         Button("Ctrl+C") {
                             sendCtrlC()
@@ -162,6 +232,13 @@ public struct RemoteTerminalView: View {
     }
 
     private func startTerminalSession() {
+        // Validate jobId is not empty
+        guard !jobId.isEmpty else {
+            errorMessage = "Invalid terminal job ID"
+            isLoading = false
+            return
+        }
+
         isLoading = true
         errorMessage = nil
 
@@ -180,9 +257,12 @@ public struct RemoteTerminalView: View {
                     print("Failed to fetch shell preference: \(error)")
                 }
 
-                let session = try await container.terminalService.startSession(
-                    jobId: jobId,
-                    workingDirectory: workingDirectory,
+                // Capture service and jobId before entering MainActor scope
+                let terminalService = container.terminalService
+                let capturedJobId = jobId
+
+                let session = try await terminalService.startSession(
+                    jobId: capturedJobId,
                     shell: preferredShell
                 )
                 await MainActor.run {
@@ -190,32 +270,41 @@ public struct RemoteTerminalView: View {
                     isSessionActive = true
                     isLoading = false
 
-                    // Set up terminal controller to send raw bytes to server (preserves all keys)
-                    terminalController.onSend = { [weak container] bytes in
+                    terminalController.onSend = { bytes in
                         Task {
-                            try? await container?.terminalService.write(jobId: jobId, bytes: bytes)
+                            do {
+                                try await terminalService.write(jobId: capturedJobId, bytes: bytes)
+                                print("[Terminal] Successfully sent \(bytes.count) bytes to desktop")
+                            } catch {
+                                print("[Terminal] Failed to send bytes: \(error)")
+                            }
                         }
                     }
 
                     // Propagate terminal size changes to remote PTY
-                    terminalController.onResize = { [weak container] cols, rows in
+                    terminalController.onResize = { cols, rows in
                         Task {
-                            try? await container?.terminalService.resize(jobId: jobId, cols: cols, rows: rows)
+                            try? await terminalService.resize(jobId: capturedJobId, cols: cols, rows: rows)
                         }
                     }
 
-                    // Small delay to ensure publisher is ready, then subscribe to terminal output
-                    Task {
-                        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 second
+                    outputCancellable = terminalService
+                        .getHydratedRawOutputStream(for: capturedJobId)
+                        .receive(on: DispatchQueue.main)
+                        .sink { data in
+                            terminalController.feedBytes(data: data)
+                        }
 
-                        outputCancellable = container.terminalService
-                            .getOutputStream(for: jobId)
-                            .receive(on: DispatchQueue.main)
-                            .sink { output in
-                                // Feed data to SwiftTerm
-                                terminalController.feed(data: output.data)
-                            }
-                    }
+                    terminalService.attachLiveBinary(for: capturedJobId, includeSnapshot: true)
+
+                    // Enable keyboard after setup
+                    shouldShowKeyboard = true
+                }
+
+                // Load copy buttons and plan content (no auto-paste)
+                Task {
+                    await loadCopyButtons()
+                    await ensurePlanContent(jobId: jobId)
                 }
             } catch {
                 await MainActor.run {
@@ -259,6 +348,7 @@ public struct RemoteTerminalView: View {
         outputCancellable = nil
 
         Task {
+            container.terminalService.detachLiveBinary(for: jobId)
             try? await container.terminalService.detach(jobId: jobId)
         }
     }
@@ -278,6 +368,27 @@ class SwiftTermController: ObservableObject {
 
         let buffer = ArraySlice([UInt8](data.utf8))
         terminalView.feed(byteArray: buffer)
+
+        // Force display update
+        DispatchQueue.main.async {
+            terminalView.setNeedsDisplay()
+            terminalView.layoutIfNeeded()
+        }
+    }
+
+    func feedBytes(data: Data) {
+        guard let terminalView = terminalView else {
+            return
+        }
+
+        let buffer = ArraySlice([UInt8](data))
+        terminalView.feed(byteArray: buffer)
+
+        // Force display update
+        DispatchQueue.main.async {
+            terminalView.setNeedsDisplay()
+            terminalView.layoutIfNeeded()
+        }
     }
 
     func send(data: [UInt8]) {
@@ -345,6 +456,11 @@ extension SwiftTermController: TerminalViewDelegate {
 
 struct SwiftTerminalView: UIViewRepresentable {
     @ObservedObject var controller: SwiftTermController
+    @Binding var shouldShowKeyboard: Bool
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(controller: controller)
+    }
 
     func makeUIView(context: Context) -> TerminalView {
         let terminalView = TerminalView(frame: .zero)
@@ -356,6 +472,10 @@ struct SwiftTerminalView: UIViewRepresentable {
         terminalView.nativeBackgroundColor = UIColor.black
 
         // Configure keyboard behavior for desktop parity (if properties exist)
+        // Configure Backspace to send DEL (0x7f) instead of ^H (0x08)
+        if terminalView.responds(to: Selector(("setBackspaceSendsControlH:"))) {
+            terminalView.setValue(false, forKey: "backspaceSendsControlH")
+        }
         // Option-as-Meta enables Alt/Option key combos (ESC prefix for word navigation, etc.)
         if terminalView.responds(to: Selector(("setOptionAsMetaKey:"))) {
             terminalView.setValue(true, forKey: "optionAsMetaKey")
@@ -368,11 +488,6 @@ struct SwiftTerminalView: UIViewRepresentable {
         // Enable keyboard input
         terminalView.isUserInteractionEnabled = true
 
-        // Make it become first responder automatically
-        DispatchQueue.main.async {
-            terminalView.becomeFirstResponder()
-        }
-
         // Store reference to terminal view in controller
         controller.terminalView = terminalView
 
@@ -383,6 +498,32 @@ struct SwiftTerminalView: UIViewRepresentable {
         // Ensure terminal view reference is up to date
         if controller.terminalView !== uiView {
             controller.terminalView = uiView
+        }
+
+        // Handle keyboard visibility changes
+        if shouldShowKeyboard {
+            if !uiView.isFirstResponder && !context.coordinator.didBecomeFirstResponder {
+                DispatchQueue.main.async {
+                    uiView.becomeFirstResponder()
+                    context.coordinator.didBecomeFirstResponder = true
+                }
+            }
+        } else {
+            if uiView.isFirstResponder {
+                DispatchQueue.main.async {
+                    uiView.resignFirstResponder()
+                    context.coordinator.didBecomeFirstResponder = false
+                }
+            }
+        }
+    }
+
+    class Coordinator {
+        var didBecomeFirstResponder = false
+        let controller: SwiftTermController
+
+        init(controller: SwiftTermController) {
+            self.controller = controller
         }
     }
 }

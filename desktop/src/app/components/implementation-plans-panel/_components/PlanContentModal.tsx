@@ -13,7 +13,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Progress } from "@/ui/progress";
 import { VirtualizedCodeViewer } from "@/ui/virtualized-code-viewer";
 
-import { getJobDisplaySessionName } from "../../background-jobs-sidebar/_utils/job-display-utils";
 import { getStreamingStatus } from "../../background-jobs-sidebar/utils";
 import { getContentForStep } from "../_utils/plan-content-parser";
 import { replacePlaceholders } from "@/utils/placeholder-utils";
@@ -184,11 +183,25 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
 
   if (!displayPlan) return null;
 
+  const parsedMeta = useMemo(() => {
+    if (!displayPlan) return null;
+    let metadata: any = displayPlan.metadata;
+    if (typeof metadata === 'string') {
+      try {
+        metadata = JSON.parse(metadata);
+      } catch {
+        metadata = {};
+      }
+    }
+    return metadata || {};
+  }, [displayPlan?.metadata]);
+
+  const planTitle = parsedMeta?.planTitle || parsedMeta?.generated_title || "Implementation Plan";
 
   // Use unified streaming detection with ACTIVE fallback
-  const isStreaming = getStreamingStatus(displayPlan?.metadata) || 
+  const isStreaming = getStreamingStatus(displayPlan?.metadata) ||
                      (displayPlan?.status ? ['queued','running','processing','generating'].includes(displayPlan.status) : false);
-  
+
   // Use live progress hook for consistent real-time updates
   const progress = useLiveProgress(displayPlan);
 
@@ -206,9 +219,6 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
   // Determine if we should show the loading indicator
   // Only show loading when streaming AND no content has arrived yet
   const showLoadingIndicator = isStreaming && streamedContent.trim() === "";
-
-  // Use centralized utility function for consistent sessionName logic
-  const sessionName = getJobDisplaySessionName(displayPlan);
 
   // Copy button handler with proper notification system
   const handleCopyButtonClick = React.useCallback(async (button: CopyButtonConfig) => {
@@ -351,7 +361,7 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
           </DialogDescription>
           <div className="flex-1 min-w-[40%] max-w-[40%]">
             <DialogTitle className="text-lg">
-              Implementation Plan: {sessionName}
+              {planTitle}
             </DialogTitle>
           </div>
           

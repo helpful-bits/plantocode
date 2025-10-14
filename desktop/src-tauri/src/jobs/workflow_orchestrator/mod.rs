@@ -397,7 +397,6 @@ impl WorkflowOrchestrator {
                                         crate::models::TaskType::ExtendedPathFinder => {
                                             "ExtendedPathFinder"
                                         }
-                                        crate::models::TaskType::PathCorrection => "PathCorrection",
                                         _ => continue,
                                     };
 
@@ -504,7 +503,6 @@ impl WorkflowOrchestrator {
                                 "FileRelevanceAssessment"
                             }
                             crate::models::TaskType::ExtendedPathFinder => "ExtendedPathFinder",
-                            crate::models::TaskType::PathCorrection => "PathCorrection",
                             _ => continue,
                         };
 
@@ -1278,7 +1276,6 @@ impl WorkflowOrchestrator {
                 WorkflowStage::FileRelevanceAssessment
             }
             "ExtendedPathFinder" | "Extended Path Finder" => WorkflowStage::ExtendedPathFinder,
-            "PathCorrection" | "Path Correction" => WorkflowStage::PathCorrection,
             _ => {
                 return Err(AppError::JobError(format!(
                     "Unknown stage name: {}",
@@ -1321,10 +1318,13 @@ impl WorkflowOrchestrator {
             "title": "Task Completed",
             "body": self.generate_completion_message(workflow_state),
             "custom_data": {
-                "workflow_definition_name": workflow_state.workflow_definition_name,
-                "total_cost": workflow_state.total_actual_cost,
-                "completion_time": workflow_state.completed_at,
-                "root_path": workflow_state.project_directory.clone()
+                "type": "job_completed",
+                "jobId": workflow_id,
+                "sessionId": workflow_state.session_id,
+                "projectDirectory": workflow_state.project_directory.clone(),
+                "workflowDefinitionName": workflow_state.workflow_definition_name,
+                "totalCost": workflow_state.total_actual_cost,
+                "completionTime": workflow_state.completed_at
             }
         });
 
@@ -1372,10 +1372,13 @@ impl WorkflowOrchestrator {
             "title": "Task Failed",
             "body": format!("Your task failed: {}", error_message),
             "custom_data": {
-                "workflow_definition_name": workflow_state.workflow_definition_name,
-                "error_message": error_message,
-                "failure_time": workflow_state.completed_at,
-                "root_path": workflow_state.project_directory.clone()
+                "type": "job_failed",
+                "jobId": workflow_id,
+                "sessionId": workflow_state.session_id,
+                "projectDirectory": workflow_state.project_directory.clone(),
+                "workflowDefinitionName": workflow_state.workflow_definition_name,
+                "errorMessage": error_message,
+                "failureTime": workflow_state.completed_at
             }
         });
 

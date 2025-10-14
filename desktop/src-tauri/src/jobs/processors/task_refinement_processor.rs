@@ -133,8 +133,8 @@ impl JobProcessor for TaskRefinementProcessor {
             .and_then(|u| u.cost)
             .unwrap_or(0.0);
 
-        // Return success result with structured JSON data
-        Ok(JobProcessResult::success(job_id, JobResultData::Json(serde_json::json!({"refinedTask": refined_content, "analysis": "Refined task based on provided context.", "summary": "Task description refined"})))
+        // Return success result with plain text content
+        Ok(JobProcessResult::success(job_id, JobResultData::Text(refined_content))
             .with_tokens(
                 usage_for_result.as_ref().map(|u| u.prompt_tokens as u32),
                 usage_for_result.as_ref().map(|u| u.completion_tokens as u32)

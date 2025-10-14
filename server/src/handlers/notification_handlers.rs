@@ -38,6 +38,7 @@ pub struct PushTokenRegistrationResponse {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NotificationResponse {
     pub success: bool,
     pub sent_count: usize,
@@ -59,21 +60,14 @@ pub async fn job_completed_handler(
         "Processing job completion notification"
     );
 
-    // Create notification with job completion data
-    let mut custom_data = json!({
-        "job_id": payload.job_id,
-        "notification_type": "job_completed",
-        "timestamp": chrono::Utc::now().to_rfc3339()
-    });
+    // Use custom data from desktop as-is (already in camelCase format)
+    // Desktop sends: type, jobId, sessionId, projectDirectory, etc.
+    let mut custom_data = payload.custom_data.clone().unwrap_or_else(|| json!({}));
 
-    // Merge any additional custom data
-    if let Some(additional_data) = &payload.custom_data {
-        if let Value::Object(map) = additional_data {
-            if let Value::Object(custom_map) = &mut custom_data {
-                for (key, value) in map {
-                    custom_map.insert(key.clone(), value.clone());
-                }
-            }
+    // Add timestamp if not already present
+    if let Value::Object(custom_map) = &mut custom_data {
+        if !custom_map.contains_key("timestamp") {
+            custom_map.insert("timestamp".to_string(), json!(chrono::Utc::now().to_rfc3339()));
         }
     }
 
@@ -136,21 +130,14 @@ pub async fn job_failed_handler(
         "Processing job failure notification"
     );
 
-    // Create notification with job failure data
-    let mut custom_data = json!({
-        "job_id": payload.job_id,
-        "notification_type": "job_failed",
-        "timestamp": chrono::Utc::now().to_rfc3339()
-    });
+    // Use custom data from desktop as-is (already in camelCase format)
+    // Desktop sends: type, jobId, sessionId, projectDirectory, errorMessage, etc.
+    let mut custom_data = payload.custom_data.clone().unwrap_or_else(|| json!({}));
 
-    // Merge any additional custom data
-    if let Some(additional_data) = &payload.custom_data {
-        if let Value::Object(map) = additional_data {
-            if let Value::Object(custom_map) = &mut custom_data {
-                for (key, value) in map {
-                    custom_map.insert(key.clone(), value.clone());
-                }
-            }
+    // Add timestamp if not already present
+    if let Value::Object(custom_map) = &mut custom_data {
+        if !custom_map.contains_key("timestamp") {
+            custom_map.insert("timestamp".to_string(), json!(chrono::Utc::now().to_rfc3339()));
         }
     }
 
@@ -213,21 +200,14 @@ pub async fn job_progress_handler(
         "Processing job progress notification"
     );
 
-    // Create notification with job progress data
-    let mut custom_data = json!({
-        "job_id": payload.job_id,
-        "notification_type": "job_progress",
-        "timestamp": chrono::Utc::now().to_rfc3339()
-    });
+    // Use custom data from desktop as-is (already in camelCase format)
+    // Desktop sends: type, jobId, sessionId, projectDirectory, progress, etc.
+    let mut custom_data = payload.custom_data.clone().unwrap_or_else(|| json!({}));
 
-    // Merge any additional custom data
-    if let Some(additional_data) = &payload.custom_data {
-        if let Value::Object(map) = additional_data {
-            if let Value::Object(custom_map) = &mut custom_data {
-                for (key, value) in map {
-                    custom_map.insert(key.clone(), value.clone());
-                }
-            }
+    // Add timestamp if not already present
+    if let Value::Object(custom_map) = &mut custom_data {
+        if !custom_map.contains_key("timestamp") {
+            custom_map.insert("timestamp".to_string(), json!(chrono::Utc::now().to_rfc3339()));
         }
     }
 
