@@ -80,58 +80,19 @@ pub(super) fn update_intermediate_data_internal(
                 .and_then(|v| u32::try_from(v).ok());
         }
         WorkflowStage::ExtendedPathFinder => {
-            if let Some(verified) = stage_data.get("verifiedPaths").and_then(|v| v.as_array()) {
-                workflow_state.intermediate_data.extended_verified_paths = verified
+            if let Some(files) = stage_data.get("files").and_then(|v| v.as_array()) {
+                workflow_state.intermediate_data.extended_paths = files
                     .iter()
                     .filter_map(|v| v.as_str().map(String::from))
                     .collect();
                 debug!(
-                    "Stored {} extended verified paths in intermediate_data",
-                    workflow_state
-                        .intermediate_data
-                        .extended_verified_paths
-                        .len()
+                    "Stored {} extended paths in intermediate_data",
+                    workflow_state.intermediate_data.extended_paths.len()
                 );
             } else {
                 warn!(
-                    "ExtendedPathFinder stage_data missing 'verifiedPaths' field, keeping existing data"
+                    "ExtendedPathFinder stage_data missing 'files' field, keeping existing data"
                 );
-            }
-
-            // Always initialize unverified paths, defaulting to empty if missing
-            workflow_state.intermediate_data.extended_unverified_paths = stage_data
-                .get("unverifiedPaths")
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(String::from))
-                        .collect()
-                })
-                .unwrap_or_default();
-
-            debug!(
-                "Stored {} extended unverified paths in intermediate_data",
-                workflow_state
-                    .intermediate_data
-                    .extended_unverified_paths
-                    .len()
-            );
-        }
-        WorkflowStage::PathCorrection => {
-            if let Some(corrected) = stage_data.get("correctedPaths").and_then(|v| v.as_array()) {
-                workflow_state.intermediate_data.extended_corrected_paths = corrected
-                    .iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect();
-                debug!(
-                    "Stored {} extended corrected paths in intermediate_data",
-                    workflow_state
-                        .intermediate_data
-                        .extended_corrected_paths
-                        .len()
-                );
-            } else {
-                warn!("PathCorrection stage_data missing or invalid 'correctedPaths' field");
             }
         }
         WorkflowStage::WebSearchPromptsGeneration => {

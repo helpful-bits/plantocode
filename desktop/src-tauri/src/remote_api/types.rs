@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RpcRequest {
     pub method: String,
     pub params: Value,
@@ -9,6 +10,7 @@ pub struct RpcRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RpcResponse {
     pub correlation_id: String,
     pub result: Option<Value>,

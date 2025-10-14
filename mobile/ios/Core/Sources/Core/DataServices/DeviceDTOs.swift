@@ -1,5 +1,30 @@
 import Foundation
 
+/*
+ Server-to-Client Device DTO Field Mapping:
+
+ Server (snake_case)          →  Client (camelCase)
+ ───────────────────────────────────────────────────
+ device_id                    →  deviceId
+ device_name                  →  deviceName
+ device_type                  →  deviceType
+ platform                     →  platform
+ platform_version             →  platformVersion
+ app_version                  →  appVersion
+ status                       →  status
+ last_heartbeat               →  lastHeartbeat
+ cpu_usage                    →  cpuUsage
+ memory_usage                 →  memoryUsage
+ disk_space_gb                →  diskSpaceGb
+ active_jobs                  →  activeJobs
+ capabilities                 →  capabilities
+ created_at                   →  createdAt
+ updated_at                   →  updatedAt
+
+ This mapping ensures consistent JSON decoding from the server's device registry.
+ All timestamps are ISO 8601 strings decoded to Swift Date objects.
+*/
+
 // MARK: - Server Device DTO
 
 /// Server-side device representation with snake_case fields

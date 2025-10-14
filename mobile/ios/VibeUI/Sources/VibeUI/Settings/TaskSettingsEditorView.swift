@@ -226,12 +226,6 @@ public struct TaskSettingsEditorView: View {
                     Divider()
                 }
 
-                // Implementation plan copy buttons
-                if taskKey == "implementationPlan" {
-                    CopyButtonListEditorView(projectDirectory: projectDirectory, dataService: dataService)
-                    Divider()
-                }
-
                 // System Prompt
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {

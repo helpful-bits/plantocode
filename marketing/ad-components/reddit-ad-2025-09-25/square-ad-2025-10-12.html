@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vibe Manager - Plan Mode Reddit Ad (Square)</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            background: #0a0a0b;
+            color: #e0e6ed;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .ad-container {
+            width: 1080px;
+            height: 1080px;
+            background: linear-gradient(135deg, #0f0f10 0%, #18181b 100%);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-sizing: border-box;
+        }
+
+        .header {
+            margin-bottom: 10px;
+            flex-shrink: 0;
+            text-align: center;
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .subreddit-tag {
+            display: none;
+        }
+
+        .title {
+            font-size: 71px;
+            font-weight: 700;
+            line-height: 1.2;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #7dd3c0 0%, #22d3ee 50%, #60a5fa 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            padding-bottom: 8px;
+        }
+
+        .hook {
+            font-size: 49px;
+            color: #e0e6ed;
+            line-height: 1.25;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .subhook {
+            font-size: 45px;
+            color: #94a3b8;
+            line-height: 1.2;
+            margin-bottom: 12px;
+        }
+
+        .pain-points {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+            border: 1px solid rgba(125, 211, 192, 0.1);
+        }
+
+        .pain-point {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 32px;
+        }
+
+        .pain-point:last-child {
+            margin-bottom: 0;
+        }
+
+        .solution-row {
+            display: flex;
+            align-items: flex-start;
+            margin-top: 8px;
+        }
+
+        .pain-icon {
+            color: #ef4444;
+            margin-right: 16px;
+            margin-top: 6px;
+            flex-shrink: 0;
+            font-size: 35px;
+            width: 35px;
+            text-align: center;
+        }
+
+        .solution-icon {
+            color: #7dd3c0;
+            margin-right: 16px;
+            margin-top: 12px;
+            flex-shrink: 0;
+            font-size: 35px;
+            width: 35px;
+            text-align: center;
+        }
+
+        .pain-text {
+            flex: 1;
+            line-height: 1.4;
+        }
+
+        .pain-problem {
+            color: #e0e6ed;
+            font-size: 47px;
+            margin-bottom: 4px;
+            font-weight: 500;
+        }
+
+        .pain-solution {
+            color: #7dd3c0;
+            font-size: 50px;
+        }
+
+        .workflow {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            padding: 8px 0;
+        }
+
+        .workflow-step {
+            flex: 1;
+            text-align: center;
+            position: relative;
+        }
+
+        .workflow-step:not(:last-child)::after {
+            content: '→';
+            position: absolute;
+            right: -28px;
+            top: 21px;
+            color: #475569;
+            font-size: 39px;
+        }
+
+        .step-number {
+            display: inline-block;
+            width: 42px;
+            height: 42px;
+            background: linear-gradient(135deg, #7dd3c0 0%, #22d3ee 100%);
+            border-radius: 50%;
+            color: #0a0a0b;
+            font-weight: 700;
+            line-height: 42px;
+            margin-bottom: 4px;
+            font-size: 33px;
+        }
+
+        .step-label {
+            font-size: 35px;
+            color: #cbd5e1;
+            font-weight: 500;
+        }
+
+        /* Preview info for development */
+        .preview-info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #888;
+            font-size: 14px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px;
+            border-radius: 8px;
+        }
+
+        .preview-info strong {
+            color: #aaa;
+        }
+    </style>
+</head>
+<body>
+    <div class="preview-info">
+        <strong>Reddit Ad Format (Square)</strong><br>
+        Dimensions: 1080x1080px<br>
+        Aspect Ratio: 1:1
+    </div>
+
+    <div id="root"></div>
+
+    <script type="text/babel">
+        function PlanModeRedditAd() {
+            return (
+                <div className="ad-container">
+                    <header className="header">
+                        <span className="subreddit-tag">r/ExperiencedDevs</span>
+                        <h1 className="title">
+                            Plan mode for coding agents
+                        </h1>
+                        <p className="hook">
+                            Your CLI agent nails the feature.<br />
+                            Breaks the system.
+                        </p>
+                    </header>
+
+                    <div className="main-content">
+                        <div className="pain-points">
+                        <div className="pain-point">
+                            <div style={{width: '100%'}}>
+                                <div style={{display: 'flex', alignItems: 'flex-start'}}>
+                                    <span className="pain-icon">✗</span>
+                                    <div className="pain-problem">CLI agent misses edge cases, breaks existing features</div>
+                                </div>
+                                <div className="solution-row">
+                                    <span className="solution-icon">→</span>
+                                    <div className="pain-solution">AI architect catches gaps before they hit your codebase</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="pain-point">
+                            <div style={{width: '100%'}}>
+                                <div style={{display: 'flex', alignItems: 'flex-start'}}>
+                                    <span className="pain-icon">✗</span>
+                                    <div className="pain-problem">Vague idea of what you want, no solid plan to get there</div>
+                                </div>
+                                <div className="solution-row">
+                                    <span className="solution-icon">→</span>
+                                    <div className="pain-solution">AI architect generates multiple approaches, guides you to best solution</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="pain-point">
+                            <div style={{width: '100%'}}>
+                                <div style={{display: 'flex', alignItems: 'flex-start'}}>
+                                    <span className="pain-icon">✗</span>
+                                    <div className="pain-problem">Change breaks downstream dependencies, found in production</div>
+                                </div>
+                                <div className="solution-row">
+                                    <span className="solution-icon">→</span>
+                                    <div className="pain-solution">File discovery maps all dependencies upfront</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<PlanModeRedditAd />, document.getElementById('root'));
+    </script>
+</body>
+</html>

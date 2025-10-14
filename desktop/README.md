@@ -125,3 +125,82 @@ The compiled binaries will be available in the `desktop/src-tauri/target/release
 - Secure token storage using Tauri's Stronghold plugin
 - LLM API access via the cloud server
 - Reuses UI components from the core application
+
+## Task Description Input Stability
+
+### Overview
+The Task Description textarea implements a comprehensive cursor stability and input latency optimization system to ensure smooth, uninterrupted typing even when background processes attempt to update the field.
+
+### Architecture
+
+#### Two-Layer Defense System
+
+**1. External Update Gate (Parent Level - TaskSection)**
+Remote updates to `session.taskDescription` are deferred while the textarea is focused or the user is actively typing:
+- **Typing Detection**: 200ms idle threshold via `isUserTypingRef` and `typingIdleTimerRef`
+- **Pending Queue**: Background updates are stored in `pendingRemoteValueRef` instead of immediately applied
+- **Flush on Idle**: Queued updates are applied when typing stops or on blur, using `handle.setValue(value, preserveSelection=true)`
+- **Session Switch**: Always applies new session's task description immediately and clears queue
+
+**2. Selection Preservation (Component Level - TaskDescriptionArea)**
+The input component maintains cursor position through prop-driven updates:
+- **Selection Tracking**: Captures caret position via `onBeforeInput`, `onSelect`, and `selectionchange` listener
+- **IME Safety**: Respects `compositionstart`/`compositionend` to avoid interfering with IME input
+- **Restoration**: Uses `requestAnimationFrame` to restore selection after React re-renders, clamped to new value length
+- **Internal vs External**: Distinguishes user-initiated changes from prop updates to avoid unnecessary restoration
+
+#### Performance Characteristics
+- **Input Latency**: Sub-16ms key-to-paint on modern hardware (AC-1/NFR-1)
+- **Backend Sync**: Debounced at 300ms to batch updates and reduce backend load
+- **Typing Idle**: 200ms threshold matches human typing cadence (balances responsiveness vs noise)
+
+### Background Update Sources
+
+All background processes that may update `taskDescription` are routed through the gate:
+
+| Source | Event/Method | Gating Mechanism |
+|--------|-------------|------------------|
+| Session sync (mobile/remote) | `session-history-synced` | → `updateCurrentSessionFields` → TaskSection gate |
+| Web search findings | `apply-web-search-to-task-description` | → Component `handleValueChange` → TaskSection gate |
+| Video analysis results | `apply-text-to-task-description` | → Component `handleValueChange` → TaskSection gate |
+| Text improvement AI | TextImprovementProvider | → `updateCurrentSessionFields` → TaskSection gate |
+| Manual undo/redo | TaskContext actions | → `updateCurrentSessionFields` → TaskSection gate |
+
+### Integrating New Background Writers
+
+When adding new features that may update the task description:
+
+1. **Preferred**: Update session state via `sessionActions.updateCurrentSessionFields({ taskDescription: newValue })`
+   - Automatically respects the gate
+   - Preserves cursor position
+   - Maintains audit trail
+
+2. **Alternative**: Use `TaskDescriptionHandle` methods (if you have a ref to the component)
+   - `handle.setValue(newValue, preserveSelection=true)` for full replacement
+   - `handle.insertTextAtCursorPosition(text)` for insertion at caret
+   - `handle.appendText(text)` for appending at end
+
+3. **Never**: Directly manipulate `textarea.value` via DOM during active typing
+   - Bypasses React's controlled component model
+   - Causes cursor jumps and state inconsistencies
+   - Will be rejected by the component's internal guards
+
+### Development & Debugging
+
+#### Latency Measurement
+Enable input latency instrumentation in development:
+```javascript
+// In browser console
+window.__DEBUG_INPUT_LATENCY__ = true;
+```
+This logs key-to-paint latency for any keystrokes over 16ms, helping identify performance regressions.
+
+#### Common Issues
+- **Cursor jumps to end**: Background update bypassed the gate → verify it uses `updateCurrentSessionFields`
+- **Input lag (>16ms)**: Heavy work in keystroke path → move to debounced callback or background job
+- **Lost updates**: Pending update overwritten by newer user edit → working as intended (user input takes precedence)
+
+### Open Questions
+- **OPEN-1**: Confirm maximum acceptable key→paint latency target per platform (currently 16ms default)
+- **OPEN-2**: Enumerate ALL background processes that may update taskDescription for comprehensive audit
+- **OPEN-3**: Identify specific historical events/timers that caused cursor jumps for targeted regression tests

@@ -18,11 +18,37 @@ export default function robots(): MetadataRoute.Robots {
           '/all-pages', // Internal review page with noindex
         ],
       },
-      // Major search engines (no need for explicit Allow as they inherit from *)
-      // Googlebot, Bingbot, Applebot will follow the default rules above
-      // AI Assistants - inherit base rules (no need for Allow: /)
-      // GPTBot, ChatGPT-User, OAI-SearchBot, ClaudeBot, PerplexityBot
-      // They can access everything except paths in the default disallow list
+      // AI Assistants - Explicit Allow rules for AI crawler visibility
+      {
+        userAgent: 'GPTBot',
+        allow: '/',
+        disallow: ['/api/', '/admin/', '/_next/', '/debug/', '/private/', '/callbacks/', '/auth/', '/billing/'],
+      },
+      {
+        userAgent: 'ChatGPT-User',
+        allow: '/',
+        disallow: ['/api/', '/admin/', '/_next/', '/debug/', '/private/', '/callbacks/', '/auth/', '/billing/'],
+      },
+      {
+        userAgent: 'OAI-SearchBot',
+        allow: '/',
+        disallow: ['/api/', '/admin/', '/_next/', '/debug/', '/private/', '/callbacks/', '/auth/', '/billing/'],
+      },
+      {
+        userAgent: 'ClaudeBot',
+        allow: '/',
+        disallow: ['/api/', '/admin/', '/_next/', '/debug/', '/private/', '/callbacks/', '/auth/', '/billing/'],
+      },
+      {
+        userAgent: 'PerplexityBot',
+        allow: '/',
+        disallow: ['/api/', '/admin/', '/_next/', '/debug/', '/private/', '/callbacks/', '/auth/', '/billing/'],
+      },
+      {
+        userAgent: 'Anthropic-AI',
+        allow: '/',
+        disallow: ['/api/', '/admin/', '/_next/', '/debug/', '/private/', '/callbacks/', '/auth/', '/billing/'],
+      },
       // Block some noisy crawlers
       {
         userAgent: 'CCBot',

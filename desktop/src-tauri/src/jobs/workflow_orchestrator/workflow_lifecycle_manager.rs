@@ -328,7 +328,6 @@ async fn create_abstract_stage_job_with_lock(
         TaskType::RegexFileFilter => WorkflowStage::RegexFileFilter,
         TaskType::FileRelevanceAssessment => WorkflowStage::FileRelevanceAssessment,
         TaskType::ExtendedPathFinder => WorkflowStage::ExtendedPathFinder,
-        TaskType::PathCorrection => WorkflowStage::PathCorrection,
         TaskType::WebSearchPromptsGeneration => WorkflowStage::WebSearchPromptsGeneration,
         TaskType::WebSearchExecution => WorkflowStage::WebSearchExecution,
         _ => {

@@ -128,24 +128,28 @@ struct SelectableTextView: UIViewRepresentable {
                 uiView.text = sanitizedText
             }
         } else {
-            if uiView.text != text {
+            // Only update text if not actively editing to prevent cursor jumps
+            if uiView.text != text && !context.coordinator.isUserEditing && !context.coordinator.isUserTyping {
                 uiView.text = text
             }
         }
 
-        // Update selection if it changed programmatically
-        if uiView.selectedRange.location != selectedRange.location || uiView.selectedRange.length != selectedRange.length {
+        // Update selection if it changed programmatically (not during user editing or typing)
+        // This prevents cursor jumps when remote updates arrive during active typing
+        let coordinator = context.coordinator
+        let shouldPreserveSelection = coordinator.isUserEditing || coordinator.isUserTyping || coordinator.isFocused
+        if !shouldPreserveSelection && (uiView.selectedRange.location != selectedRange.location || uiView.selectedRange.length != selectedRange.length) {
             // Validate range before setting
             let textLength = (uiView.text as NSString).length
             if selectedRange.location != NSNotFound && selectedRange.location <= textLength {
                 let validLength = min(selectedRange.length, textLength - selectedRange.location)
                 uiView.selectedRange = NSRange(location: selectedRange.location, length: validLength)
 
-                // Scroll to make cursor visible
+                // Only scroll for programmatic changes (like undo/redo)
                 DispatchQueue.main.async {
                     if let selectedTextRange = uiView.selectedTextRange {
                         let rect = uiView.caretRect(for: selectedTextRange.start)
-                        uiView.scrollRectToVisible(rect, animated: true)
+                        uiView.scrollRectToVisible(rect, animated: false)
                     }
                 }
             }
@@ -180,6 +184,10 @@ struct SelectableTextView: UIViewRepresentable {
         var parent: SelectableTextView
         weak var textView: UITextView?
         var keyboardHeight: CGFloat = 0
+        var isUserEditing: Bool = false
+        var isFocused: Bool = false
+        var isUserTyping: Bool = false
+        var typingIdleTimer: Timer?
 
         init(_ parent: SelectableTextView) {
             self.parent = parent
@@ -189,6 +197,7 @@ struct SelectableTextView: UIViewRepresentable {
 
         deinit {
             NotificationCenter.default.removeObserver(self)
+            typingIdleTimer?.invalidate()
         }
 
         private func setupKeyboardObservers() {
@@ -274,25 +283,51 @@ struct SelectableTextView: UIViewRepresentable {
 
         func textViewDidChange(_ textView: UITextView) {
             self.textView = textView
+            isUserEditing = true
+            isUserTyping = true
+
+            // Reset typing flag after 200ms idle (matching desktop behavior)
+            typingIdleTimer?.invalidate()
+            typingIdleTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: false) { [weak self] _ in
+                self?.isUserTyping = false
+            }
+
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
                 self.parent.text = textView.text
                 self.parent.onInteraction()
 
-                // Ensure cursor remains visible
-                if let selectedRange = textView.selectedTextRange {
-                    let rect = textView.caretRect(for: selectedRange.start)
-                    textView.scrollRectToVisible(rect, animated: true)
+                // Reset editing flag after update
+                DispatchQueue.main.async {
+                    self.isUserEditing = false
                 }
             }
         }
 
         func textViewDidChangeSelection(_ textView: UITextView) {
             self.textView = textView
+            isUserEditing = true
+
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
                 self.parent.selectedRange = textView.selectedRange
+
+                // Reset flag after update
+                DispatchQueue.main.async {
+                    self.isUserEditing = false
+                }
             }
+        }
+
+        func textViewDidBeginEditing(_ textView: UITextView) {
+            isFocused = true
+        }
+
+        func textViewDidEndEditing(_ textView: UITextView) {
+            isFocused = false
+            isUserTyping = false
+            typingIdleTimer?.invalidate()
+            typingIdleTimer = nil
         }
 
         @objc func dismissKeyboard() {
@@ -309,6 +344,7 @@ public struct TaskInputView: View {
     @StateObject private var voiceService = VoiceDictationService.shared
     @StateObject private var enhancementService = TextEnhancementService.shared
     @StateObject private var settingsService = SettingsDataService()
+    @StateObject private var sessionDataService = SessionDataService()
     @StateObject private var undoRedoManager = UndoRedoManager()
 
     @State private var selectedRange: NSRange = NSRange(location: 0, length: 0)
@@ -323,10 +359,12 @@ public struct TaskInputView: View {
     @State private var transcriptionPrompt: String?
     @State private var transcriptionTemperature: Double?
     @State private var showTerminal = false
-    @State private var terminalJobId: String = ""
+    @State private var terminalJobId: String? = nil
     @State private var showDeepResearch = false
     @State private var lastSavedText: String = ""
     @State private var saveHistoryTimer: Timer?
+    @State private var historySyncTimer: Timer?
+    @State private var initializedForSessionId: String?
 
     let placeholder: String
     let onInteraction: () -> Void
@@ -474,9 +512,11 @@ public struct TaskInputView: View {
         .sheet(isPresented: $showingLanguagePicker) {
             LanguagePickerSheet(selectedLanguage: $selectedLanguage)
         }
-        .sheet(isPresented: $showTerminal) {
-            NavigationStack {
-                RemoteTerminalView(jobId: terminalJobId)
+        .sheet(isPresented: $showTerminal, onDismiss: { terminalJobId = nil }) {
+            if let jobId = terminalJobId {
+                NavigationStack {
+                    RemoteTerminalView(jobId: jobId)
+                }
             }
         }
         .alert("Deep Research", isPresented: $showDeepResearch) {
@@ -503,20 +543,112 @@ public struct TaskInputView: View {
             }
         }
         .onAppear {
-            // Initialize undo/redo manager with current task description
-            if taskDescription != lastSavedText {
-                undoRedoManager.reset(with: taskDescription)
-                lastSavedText = taskDescription
-            }
+            // Initialize undo/redo history from backend
+            initializeHistoryFromBackend()
         }
         .onChange(of: sessionId) { _ in
-            // Reset undo/redo history when session changes
-            undoRedoManager.reset(with: taskDescription)
-            lastSavedText = taskDescription
+            // Stop current sync timer
+            stopHistorySyncTimer()
+
+            // Clear initialization flag to allow reloading for new session
+            initializedForSessionId = nil
+
+            // Load history for new session from backend
+            initializeHistoryFromBackend()
+        }
+        .onDisappear {
+            // Clean up timers when view disappears
+            stopHistorySyncTimer()
+            saveHistoryTimer?.invalidate()
         }
     }
 
     // MARK: - Helper Methods
+
+    // Initialize undo/redo history from backend
+    private func initializeHistoryFromBackend() {
+        // Only initialize once per session
+        guard initializedForSessionId != sessionId else { return }
+
+        Task {
+            do {
+                let history = try await sessionDataService.getTaskDescriptionHistory(sessionId: sessionId)
+
+                await MainActor.run {
+                    if !history.isEmpty {
+                        // If we have history, initialize with it
+                        let currentIndex = history.count - 1
+                        undoRedoManager.initializeHistory(entries: history, currentIndex: currentIndex)
+                    } else if !taskDescription.isEmpty {
+                        // If no history but we have a task description, start with it
+                        undoRedoManager.reset(with: taskDescription)
+                    }
+
+                    initializedForSessionId = sessionId
+                    lastSavedText = taskDescription
+
+                    // Start periodic sync after initialization
+                    startHistorySyncTimer()
+                }
+            } catch {
+                // If fetch fails, initialize with current task description
+                await MainActor.run {
+                    undoRedoManager.reset(with: taskDescription)
+                    initializedForSessionId = sessionId
+                    lastSavedText = taskDescription
+                    print("Failed to load task description history: \(error)")
+
+                    // Still start sync timer even if initial load failed
+                    startHistorySyncTimer()
+                }
+            }
+        }
+    }
+
+    // Sync history to backend (similar to desktop's 2-second sync)
+    private func syncHistoryToBackend() {
+        let currentHistory = undoRedoManager.getHistory()
+
+        // Only sync if we have a session and history
+        guard !sessionId.isEmpty, !currentHistory.isEmpty else { return }
+
+        Task {
+            do {
+                try await sessionDataService.syncTaskDescriptionHistory(sessionId: sessionId, history: currentHistory)
+            } catch {
+                // Silent fail for sync - will retry on next timer tick
+                print("Failed to sync task description history: \(error)")
+            }
+        }
+    }
+
+    // Start periodic history sync timer (similar to desktop)
+    private func startHistorySyncTimer() {
+        // Invalidate existing timer if any
+        historySyncTimer?.invalidate()
+
+        // Create new timer that syncs every 2 seconds
+        historySyncTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak sessionDataService, weak undoRedoManager] _ in
+            guard let undoRedoManager = undoRedoManager else { return }
+
+            let currentHistory = undoRedoManager.getHistory()
+            guard !currentHistory.isEmpty else { return }
+
+            Task {
+                do {
+                    try await sessionDataService?.syncTaskDescriptionHistory(sessionId: sessionId, history: currentHistory)
+                } catch {
+                    print("Failed to sync task description history: \(error)")
+                }
+            }
+        }
+    }
+
+    // Stop history sync timer
+    private func stopHistorySyncTimer() {
+        historySyncTimer?.invalidate()
+        historySyncTimer = nil
+    }
 
     // Enhance the entire task description (not just selection)
     private func enhanceFullText() {

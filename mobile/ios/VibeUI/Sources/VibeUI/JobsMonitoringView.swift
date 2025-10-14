@@ -21,16 +21,25 @@ public struct JobsMonitoringView: View {
         container.jobsService
     }
 
-    private var filteredJobs: [BackgroundJob] {
+    // Base filtered jobs (session + job type filtering, no search)
+    private var baseFilteredJobs: [BackgroundJob] {
         guard let currentSessionId = container.sessionService.currentSession?.id else {
             return []
         }
 
-        let search = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let excludedIds = planJobIdsForCurrentSession
 
+        // Mobile sessions should see all jobs (not filtered by session)
+        let shouldFilterBySession = !currentSessionId.hasPrefix("mobile-session-")
+
         return jobsService.jobs
-            .filter { $0.sessionId == currentSessionId }
+            .filter { job in
+                if shouldFilterBySession {
+                    return job.sessionId == currentSessionId
+                }
+                // Mobile sessions see all jobs
+                return true
+            }
             .filter { job in
                 if job.taskType == "implementation_plan" || job.taskType == "implementation_plan_merge" {
                     return false
@@ -40,6 +49,13 @@ public struct JobsMonitoringView: View {
                 }
                 return true
             }
+    }
+
+    // Filtered jobs with search applied
+    private var filteredJobs: [BackgroundJob] {
+        let search = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+
+        return baseFilteredJobs
             .filter { job in
                 search.isEmpty ||
                 job.taskType.localizedCaseInsensitiveContains(search) ||
@@ -49,17 +65,17 @@ public struct JobsMonitoringView: View {
             .sorted { ($0.updatedAt ?? $0.createdAt) > ($1.updatedAt ?? $1.createdAt) }
     }
 
-    // Summary counts
+    // Summary counts (use baseFilteredJobs to match list filtering)
     private var activeJobs: [BackgroundJob] {
-        jobsService.jobs.filter { $0.jobStatus.isActive }
+        baseFilteredJobs.filter { $0.jobStatus.isActive }
     }
 
     private var completedJobs: [BackgroundJob] {
-        jobsService.jobs.filter { $0.jobStatus == .completed }
+        baseFilteredJobs.filter { $0.jobStatus == .completed }
     }
 
     private var failedJobs: [BackgroundJob] {
-        jobsService.jobs.filter { $0.jobStatus == .failed }
+        baseFilteredJobs.filter { $0.jobStatus == .failed }
     }
 
     public init() {}
@@ -110,19 +126,21 @@ public struct JobsMonitoringView: View {
                     )
 
                     // Summary Cards
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 10) {
-                            SummaryCard(title: "Active", count: activeJobs.count, color: .info)
-                            SummaryCard(title: "Completed", count: completedJobs.count, color: .success)
-                            SummaryCard(title: "Failed", count: failedJobs.count, color: .destructive)
+                    if jobsService.hasLoadedOnce && !jobsService.jobs.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 10) {
+                                SummaryCard(title: "Active", count: activeJobs.count, color: .info)
+                                SummaryCard(title: "Completed", count: completedJobs.count, color: .success)
+                                SummaryCard(title: "Failed", count: failedJobs.count, color: .destructive)
+                            }
+                            .padding(.horizontal, 1)
                         }
-                        .padding(.horizontal, 1)
                     }
                 }
                 .padding()
 
                 // Job List
-                if jobsService.isLoading && jobsService.jobs.isEmpty {
+                if jobsService.isLoading && !jobsService.hasLoadedOnce {
                     VStack(spacing: 16) {
                         Spacer()
                         ProgressView()
@@ -134,7 +152,7 @@ public struct JobsMonitoringView: View {
                         Spacer()
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if filteredJobs.isEmpty {
+                } else if jobsService.hasLoadedOnce && filteredJobs.isEmpty {
                     VStack(spacing: 16) {
                         Spacer()
                         Image(systemName: "tray")
@@ -197,7 +215,7 @@ public struct JobsMonitoringView: View {
             container.setJobsViewActive(true)
 
             // CRITICAL: Do an initial full fetch of ALL jobs (not just active ones)
-            // before starting the sync timer that only monitors active jobs
+            // before starting session-scoped event sync that monitors active jobs
             Task {
                 await loadJobs()
             }
@@ -256,9 +274,12 @@ public struct JobsMonitoringView: View {
 
     private func loadJobs() async {
         // Gate: only fetch when session exists
-        guard let sessionId = container.sessionService.currentSession?.id else {
+        guard let rawSessionId = container.sessionService.currentSession?.id else {
             return
         }
+
+        // Mobile sessions should fetch all jobs (pass nil for sessionId)
+        let sessionId: String? = rawSessionId.hasPrefix("mobile-session-") ? nil : rawSessionId
 
         // Cache-first strategy: only show loading if we have no cached jobs
         let hasCachedJobs = !jobsService.jobs.isEmpty
@@ -268,8 +289,8 @@ public struct JobsMonitoringView: View {
 
         let projectDir = container.sessionService.currentSession?.projectDirectory ?? container.currentProject?.directory
 
-        // Capture session ID for verification
-        let capturedSessionId = sessionId
+        // Capture RAW session ID for verification (not the transformed one)
+        let capturedRawSessionId = rawSessionId
 
         let request = JobListRequest(
             projectDirectory: projectDir,
@@ -286,8 +307,8 @@ public struct JobsMonitoringView: View {
                     self.isLoading = false
                 },
                 receiveValue: { [self] _ in
-                    // Verify session hasn't changed
-                    guard container.sessionService.currentSession?.id == capturedSessionId else {
+                    // Verify session hasn't changed (compare raw IDs)
+                    guard container.sessionService.currentSession?.id == capturedRawSessionId else {
                         return
                     }
 

@@ -233,7 +233,12 @@ public final class FilesDataService: ObservableObject {
 
     /// Convenience overload with default project directory
     public func searchFilesWithDefaultProject(query: String, maxResults: Int = 50, includeContent: Bool = false) async throws -> [FileInfo] {
-        let defaultProjectDirectory = "/path/to/project"
+        guard let defaultProjectDirectory = VibeManagerCore.shared.dataServices?.currentProject?.directory
+                                             ?? AppState.shared.selectedProjectDirectory,
+              !defaultProjectDirectory.isEmpty else {
+            throw DataServiceError.invalidState("No project directory configured")
+        }
+
         return try await searchFiles(
             query: query,
             maxResults: maxResults,
@@ -497,6 +502,13 @@ public final class FilesDataService: ObservableObject {
         self.performSearch(query: self.currentSearchTerm)
 
         guard let session = VibeManagerCore.shared.dataServices?.sessionService.currentSession else { return }
+
+        // Guard against cross-project broadcasts during rapid project switches
+        if let currentProjectDir = VibeManagerCore.shared.dataServices?.currentProject?.directory,
+           session.projectDirectory != currentProjectDir {
+            logger.debug("Suppressing file browser state broadcast: session project mismatch")
+            return
+        }
 
         Task {
             try? await CommandRouter.sessionUpdateFileBrowserState(

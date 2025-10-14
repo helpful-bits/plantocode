@@ -923,7 +923,7 @@ export function ImplementationPlansPanel({
             (() => { try { return JSON.parse(terminalPlan.metadata); } catch { return {}; } })() :
             terminalPlan.metadata) :
           {};
-        const planTitle = parsedMeta?.planTitle || terminalPlan.prompt || "Implementation Plan";
+        const planTitle = parsedMeta?.planTitle || parsedMeta?.generated_title || "Implementation Plan";
 
         return (
           <PlanTerminalModal

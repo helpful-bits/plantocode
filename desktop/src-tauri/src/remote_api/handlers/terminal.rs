@@ -1,9 +1,16 @@
+//! Terminal RPC handlers for remote/mobile access.
+//!
+//! RPC does not stream terminal output inline; instead, clients subscribe to
+//! device-link events (terminal.output with base64 data, terminal.exit) and use
+//! terminal.getLog or initialLog for catch-up/hydration.
+
 use tauri::{AppHandle, Manager};
 use serde_json::{json, Value};
 use crate::remote_api::types::{RpcRequest, RpcResponse};
 use crate::commands::{terminal_commands, settings_commands};
 use base64;
 use uuid;
+use sqlx::Row;
 
 pub async fn dispatch(app_handle: AppHandle, req: RpcRequest) -> RpcResponse {
     match req.method.as_str() {
@@ -98,12 +105,15 @@ async fn handle_set_default_shell(app_handle: AppHandle, req: RpcRequest) -> Rpc
     }
 }
 
+/// Start a terminal session via RPC. Returns session metadata plus an initialLog
+/// snapshot to hydrate mobile clients and avoid missing initial prompt output.
 async fn handle_terminal_start(app_handle: &AppHandle, request: RpcRequest) -> RpcResponse {
     // Extract optional parameters
     let job_id = request
         .params
         .get("jobId")
         .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
         .map(String::from);
 
     let shell = request
@@ -112,14 +122,35 @@ async fn handle_terminal_start(app_handle: &AppHandle, request: RpcRequest) -> R
         .and_then(|v| v.as_str())
         .map(String::from);
 
-    let working_directory = request
-        .params
-        .get("workingDirectory")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-
     // Generate a session ID if not provided in jobId
     let session_id = job_id.unwrap_or_else(|| format!("session-{}", uuid::Uuid::new_v4()));
+
+    // Query working directory from key_value_store table
+    // Desktop app is the authority - mobile must NOT pass working directory
+    let working_directory = if let Some(pool) = app_handle.try_state::<sqlx::SqlitePool>() {
+        match sqlx::query(
+            r#"
+            SELECT value
+            FROM key_value_store
+            WHERE key = ?1
+            "#
+        )
+        .bind("global:global-project-dir")
+        .fetch_optional(pool.inner())
+        .await
+        {
+            Ok(Some(row)) => {
+                match row.try_get::<String, _>("value") {
+                    Ok(dir) => Some(dir),
+                    Err(_) => None,
+                }
+            }
+            Ok(None) => None,
+            Err(_) => None,
+        }
+    } else {
+        None
+    };
 
     match terminal_commands::start_terminal_session_for_rpc_command(
         app_handle.clone(),
@@ -129,15 +160,24 @@ async fn handle_terminal_start(app_handle: &AppHandle, request: RpcRequest) -> R
     )
     .await
     {
-        Ok(session_info) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: Some(json!({
-                "sessionId": session_info.session_id,
-                "workingDirectory": session_info.working_directory,
-                "shell": session_info.shell
-            })),
-            error: None,
-            is_final: true,
+        Ok(session_info) => {
+            // Fetch initial log snapshot to avoid mobile race condition
+            // Cap at 16 KiB to keep response size reasonable
+            let mgr = app_handle.state::<std::sync::Arc<crate::services::TerminalManager>>();
+            let initial_log_json = mgr.get_log_snapshot_entries(&session_info.session_id, Some(16 * 1024)).await;
+            let initial_entries = initial_log_json.get("entries").cloned().unwrap_or(serde_json::json!([]));
+
+            RpcResponse {
+                correlation_id: request.correlation_id,
+                result: Some(json!({
+                    "sessionId": session_info.session_id,
+                    "workingDirectory": session_info.working_directory,
+                    "shell": session_info.shell,
+                    "initialLog": initial_entries
+                })),
+                error: None,
+                is_final: true,
+            }
         },
         Err(error) => RpcResponse {
             correlation_id: request.correlation_id,
@@ -182,36 +222,32 @@ async fn handle_terminal_write(app_handle: &AppHandle, request: RpcRequest) -> R
         }
     };
 
-    let data = match request.params.get("data") {
-        Some(Value::String(data_str)) => {
-            // Check if the string looks like base64 (alphanumeric + / + = padding)
-            if data_str
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=')
-                && data_str.len() % 4 == 0
-            {
-                // Try to decode as base64
-                match base64::decode(data_str) {
-                    Ok(decoded) => decoded,
-                    Err(_) => data_str.as_bytes().to_vec(), // Fall back to raw string if decode fails
-                }
-            } else {
-                data_str.as_bytes().to_vec()
+    // Pure approach: explicit parameter determines how to interpret data
+    // - "text": plain UTF-8 text string
+    // - "data": base64-encoded raw bytes (for keyboard sequences, control codes, etc.)
+    let data = if let Some(text) = request.params.get("text").and_then(|v| v.as_str()) {
+        // Plain text path - direct UTF-8 encoding
+        text.as_bytes().to_vec()
+    } else if let Some(data_b64) = request.params.get("data").and_then(|v| v.as_str()) {
+        // Raw bytes path - base64 decode (transport encoding only)
+        match base64::decode(data_b64) {
+            Ok(decoded) => decoded,
+            Err(e) => {
+                return RpcResponse {
+                    correlation_id: request.correlation_id,
+                    result: None,
+                    error: Some(format!("Invalid base64 data: {}", e)),
+                    is_final: true,
+                };
             }
         }
-        Some(Value::Array(data_arr)) => data_arr
-            .iter()
-            .filter_map(|v| v.as_u64())
-            .map(|u| u as u8)
-            .collect(),
-        _ => {
-            return RpcResponse {
-                correlation_id: request.correlation_id,
-                result: None,
-                error: Some("Missing or invalid data parameter".to_string()),
-                is_final: true,
-            };
-        }
+    } else {
+        return RpcResponse {
+            correlation_id: request.correlation_id,
+            result: None,
+            error: Some("Missing 'text' or 'data' parameter".to_string()),
+            is_final: true,
+        };
     };
 
     match terminal_commands::write_terminal_input_command(app_handle.clone(), session_id, data) {

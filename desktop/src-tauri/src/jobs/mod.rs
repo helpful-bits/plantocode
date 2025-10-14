@@ -29,7 +29,6 @@ use self::processors::{
     GenericLlmStreamProcessor,
     ImplementationPlanMergeProcessor,
     ImplementationPlanProcessor,
-    PathCorrectionProcessor,
     RegexFileFilterProcessor,
     RootFolderSelectionProcessor,
     TaskRefinementProcessor,
@@ -67,7 +66,6 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
 
     // Create processor instances
     let implementation_plan_processor = Arc::new(ImplementationPlanProcessor::new());
-    let path_correction_processor = Arc::new(PathCorrectionProcessor::new());
     let task_refinement_processor = Arc::new(TaskRefinementProcessor::new());
     let text_improvement_processor = Arc::new(TextImprovementProcessor::new());
     let generic_llm_stream_processor = Arc::new(GenericLlmStreamProcessor::new());
@@ -85,7 +83,6 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
 
     // Register processors
     registry.register(implementation_plan_processor).await;
-    registry.register(path_correction_processor).await;
     registry.register(task_refinement_processor).await;
     registry.register(text_improvement_processor).await;
     registry.register(generic_llm_stream_processor).await;

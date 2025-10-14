@@ -26,12 +26,13 @@ public struct LoginView: View {
       VStack {
         Spacer()
 
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
           Text("Vibe Manager")
             .h1()
 
           Text("Sign in with your preferred provider")
             .paragraph()
+            .foregroundColor(Color.mutedForeground)
 
           if let err = errorMessage ?? appState.authError {
             StatusAlertView(variant: .destructive, title: "Error", message: err)
@@ -41,17 +42,23 @@ public struct LoginView: View {
             StatusAlertView(variant: .info, title: "Signing In...", message: "Complete the sign-in in your browser.")
           }
 
-          Divider().padding(.vertical, 4)
+          Divider().padding(.vertical, Theme.Spacing.xs)
 
-          LazyVGrid(columns: columns, spacing: 12) {
+          LazyVGrid(columns: columns, spacing: Theme.Spacing.md) {
             Button(action: { handleSignIn("google-oauth2") }) {
-              HStack(spacing: 12) {
+              HStack(spacing: Theme.Spacing.md) {
                 if loadingProvider == "google-oauth2" {
                   ProgressView()
                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
                     .scaleEffect(0.8)
                 } else {
-                  Image(systemName: "g.circle.fill")
+                  Image("GoogleIcon")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 18, height: 18)
+                    .padding(3)
+                    .background(Color.white)
+                    .clipShape(Circle())
                 }
                 Text("Google")
                 Spacer()
@@ -61,13 +68,17 @@ public struct LoginView: View {
             .disabled(loadingProvider == "google-oauth2")
 
             Button(action: { handleSignIn("github") }) {
-              HStack(spacing: 12) {
+              HStack(spacing: Theme.Spacing.md) {
                 if loadingProvider == "github" {
                   ProgressView()
                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
                     .scaleEffect(0.8)
                 } else {
-                  Image(systemName: "chevron.left.forwardslash.chevron.right")
+                  Image("GitHubIcon")
+                    .resizable()
+                    .renderingMode(.template)
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 20, height: 20)
                 }
                 Text("GitHub")
                 Spacer()
@@ -77,13 +88,16 @@ public struct LoginView: View {
             .disabled(loadingProvider == "github")
 
             Button(action: { handleSignIn("windowslive") }) {
-              HStack(spacing: 12) {
+              HStack(spacing: Theme.Spacing.md) {
                 if loadingProvider == "windowslive" {
                   ProgressView()
                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
                     .scaleEffect(0.8)
                 } else {
-                  Image(systemName: "square.grid.2x2.fill")
+                  Image("MicrosoftIcon")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 20, height: 20)
                 }
                 Text("Microsoft")
                 Spacer()
@@ -93,13 +107,14 @@ public struct LoginView: View {
             .disabled(loadingProvider == "windowslive")
 
             Button(action: { handleSignIn("apple") }) {
-              HStack(spacing: 12) {
+              HStack(spacing: Theme.Spacing.md) {
                 if loadingProvider == "apple" {
                   ProgressView()
                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
                     .scaleEffect(0.8)
                 } else {
                   Image(systemName: "apple.logo")
+                    .font(.system(size: 20))
                 }
                 Text("Apple")
                 Spacer()
@@ -109,41 +124,47 @@ public struct LoginView: View {
             .disabled(loadingProvider == "apple")
           }
 
-          HStack(spacing: 8) {
+          VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
             Text("By signing in you agree to our")
               .small()
-            if let termsURL = URL(string: "https://vibemanager.app/terms") {
-              Link("Terms of Service", destination: termsURL)
+              .foregroundColor(Color.mutedForeground)
+
+            HStack(spacing: Theme.Spacing.xs) {
+              if let termsURL = URL(string: "https://vibemanager.app/terms") {
+                Link("Terms of Service", destination: termsURL)
+                  .small()
+                  .tint(Color.primary)
+              }
+              Text("and")
                 .small()
-            }
-            Text("and")
-              .small()
-            if let privacyURL = URL(string: "https://vibemanager.app/privacy") {
-              Link("Privacy Policy", destination: privacyURL)
-                .small()
+                .foregroundColor(Color.mutedForeground)
+              if let privacyURL = URL(string: "https://vibemanager.app/privacy") {
+                Link("Privacy Policy", destination: privacyURL)
+                  .small()
+                  .tint(Color.primary)
+              }
             }
           }
-          .padding(.top, 8)
+          .padding(.top, Theme.Spacing.sm)
         }
-        .padding(24)
+        .padding(Theme.Spacing.xxl)
         .background(
           Color.background
             .opacity(0.95)
         )
         .overlay(
-          RoundedRectangle(cornerRadius: 20)
+          RoundedRectangle(cornerRadius: Theme.Radii.lg * 2.5)
             .stroke(Color.border.opacity(0.6), lineWidth: 1)
         )
-        .cornerRadius(20)
-        .shadow(color: Color.background.opacity(0.05), radius: 3, x: 0, y: 1)
-        .shadow(color: Color.background.opacity(0.03), radius: 2, x: 0, y: 1)
+        .cornerRadius(Theme.Radii.lg * 2.5)
+        .shadow(color: Color.border.opacity(0.1), radius: 3, x: 0, y: 1)
+        .shadow(color: Color.border.opacity(0.05), radius: 2, x: 0, y: 1)
         .frame(maxWidth: 520)
 
         Spacer()
       }
-      .padding(.horizontal, 16)
+      .padding(.horizontal, Theme.Spacing.lg)
     }
-    .navigationTitle("Sign In")
     .toolbar {
       ToolbarItem(placement: .navigationBarTrailing) {
         Button("Change Region") {

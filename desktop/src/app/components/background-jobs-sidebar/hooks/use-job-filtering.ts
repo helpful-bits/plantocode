@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 
 import { type BackgroundJob } from "@/types/session-types";
 import { createLogger } from "@/utils/logger";
 import { getParsedMetadata } from '../utils';
+import { useUILayout } from "@/contexts/ui-layout-context";
 
 const logger = createLogger({ namespace: "JobFiltering" });
 
@@ -10,7 +11,9 @@ const logger = createLogger({ namespace: "JobFiltering" });
  * Custom hook for filtering and sorting jobs in the background jobs sidebar
  */
 export function useJobFiltering(jobs: BackgroundJob[], isLoading: boolean) {
-  // Keep a cached version of jobs to show during loading
+  const { isUserPresent } = useUILayout();
+  const cachedResult = useRef<{ allJobsSorted: BackgroundJob[], hasJobs: boolean } | null>(null);
+
   const [cachedJobs, setCachedJobs] = useState<BackgroundJob[]>([]);
   const [initialLoad, setInitialLoad] = useState(true);
 
@@ -24,7 +27,10 @@ export function useJobFiltering(jobs: BackgroundJob[], isLoading: boolean) {
 
   // Memoize job filtering to prevent unnecessary recalculations on render
   const { allJobsSorted, hasJobs } = useMemo(() => {
-      // Track start time for performance measurement
+      if (!isUserPresent && cachedResult.current) {
+        return cachedResult.current;
+      }
+
       const startTime = performance.now();
 
       // Use cached jobs during loading to prevent UI flicker
@@ -142,11 +148,15 @@ export function useJobFiltering(jobs: BackgroundJob[], isLoading: boolean) {
         `Sorted ${sortedJobs.length} jobs in ${Math.round(duration)}ms`
       );
 
-      return {
+      const result = {
         allJobsSorted: sortedJobs,
         hasJobs: filteredJobs.length > 0,
       };
-    }, [jobs, cachedJobs, isLoading]);
+
+      cachedResult.current = result;
+
+      return result;
+    }, [jobs, cachedJobs, isLoading, isUserPresent]);
 
   // Show loading only on first load, otherwise show cached content during updates
   const shouldShowLoading = initialLoad && isLoading && cachedJobs.length === 0;

@@ -1,18 +1,36 @@
 "use client";
 
-import React, { useCallback, useState } from "react";
-import { Sparkles, X, Search, HelpCircle } from "lucide-react";
+import React, { useCallback, useState, useRef, useEffect } from "react";
+import { X, Search, HelpCircle } from "lucide-react";
 
 import TaskDescriptionArea from "../_components/task-description";
 import { useCorePromptContext } from "../_contexts/core-prompt-context";
 import { useTaskContext } from "../_contexts/task-context";
-import { 
-  useSessionStateContext, 
-  useSessionActionsContext 
+import {
+  useSessionStateContext,
+  useSessionActionsContext
 } from "@/contexts/session";
 import { Button } from "@/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
 import { usePlausible } from "@/hooks/use-plausible";
+
+/**
+ * External Update Gate Implementation (Cursor Stability)
+ *
+ * This component implements a two-layer defense against cursor jumps and input lag:
+ * 1. External updates to session.taskDescription are deferred while the textarea is focused
+ *    or user is actively typing (200ms idle threshold)
+ * 2. Queued updates are flushed on blur or when typing becomes idle, with selection preserved
+ *
+ * This prevents race conditions where background processes (session sync, web search, video analysis,
+ * text improvement) would overwrite user input and cause the cursor to jump during active typing.
+ *
+ * Key mechanisms:
+ * - Local state (localTaskDescription) provides immediate UI updates without backend latency
+ * - Parent-level gating queues remote updates in pendingRemoteValueRef while user types
+ * - Child component (TaskDescriptionArea) handles fine-grained caret preservation via refs and rAF
+ * - Backend sync remains debounced at 300ms to avoid hot-path overhead
+ */
 
 interface TaskSectionProps {
   disabled?: boolean;
@@ -22,73 +40,199 @@ const TaskSection = React.memo(function TaskSection({
   disabled = false,
 }: TaskSectionProps) {
   const { trackEvent } = usePlausible();
-  
+
   // State for controlling tooltip visibility
   const [showHelpTooltip, setShowHelpTooltip] = useState(false);
-  const [showRefineHelpTooltip, setShowRefineHelpTooltip] = useState(false);
-  
+
   // Get task description from SessionContext
   const sessionState = useSessionStateContext();
   const sessionActions = useSessionActionsContext();
-  
-  
+
+  // Local state for immediate UI updates (prevents lag)
+  const [localTaskDescription, setLocalTaskDescription] = useState(
+    sessionState.currentSession?.taskDescription || ""
+  );
+
+  // External Update Gate: defers session/background taskDescription updates while user is focused or actively typing
+  const sessionTaskDescription = sessionState.currentSession?.taskDescription || "";
+  const currentSessionId = sessionState.currentSession?.id || null;
+
+  useEffect(() => {
+    // Handle session switch - always apply immediately and clear pending
+    if (currentSessionId !== lastSessionIdRef.current) {
+      lastSessionIdRef.current = currentSessionId;
+      setLocalTaskDescription(sessionTaskDescription);
+      pendingRemoteValueRef.current = null;
+      return;
+    }
+
+    // No change - skip
+    if (sessionTaskDescription === localTaskDescription) {
+      return;
+    }
+
+    // Get focus and typing state from child component
+    const handle = taskDescriptionRef.current;
+    const focused = Boolean(handle?.isFocused) || (document.activeElement && (document.activeElement as any).id === "taskDescArea");
+    const typing = isUserTypingRef.current || Boolean(handle?.isTyping);
+
+    // Gate: defer update if focused or typing
+    if (focused || typing) {
+      pendingRemoteValueRef.current = sessionTaskDescription;
+      return;
+    }
+
+    // Apply immediately if not focused and not typing
+    setLocalTaskDescription(sessionTaskDescription);
+    pendingRemoteValueRef.current = null;
+  }, [sessionTaskDescription, currentSessionId, localTaskDescription]);
+
+  // Flush pending remote updates when typing becomes idle
+  useEffect(() => {
+    if (!isUserTypingRef.current && pendingRemoteValueRef.current !== null && pendingRemoteValueRef.current !== localTaskDescription) {
+      const handle = taskDescriptionRef.current;
+      const focused = Boolean(handle?.isFocused);
+
+      if (focused && handle?.setValue) {
+        // Use handle.setValue to preserve selection
+        handle.setValue(pendingRemoteValueRef.current, true);
+      } else {
+        setLocalTaskDescription(pendingRemoteValueRef.current);
+      }
+      pendingRemoteValueRef.current = null;
+    }
+  }, [localTaskDescription]); // Re-check when local changes
+
+  // Debounce timer ref
+  const debounceTimerRef = useRef<number | null>(null);
+
+  // External update gate refs for cursor stability
+  const isUserTypingRef = useRef(false);
+  const typingIdleTimerRef = useRef<number | null>(null);
+  const pendingRemoteValueRef = useRef<string | null>(null);
+  const lastSessionIdRef = useRef<string | null>(null);
+
   // Get the task context for UI state and actions
   const { state: taskState, actions: taskActions } = useTaskContext();
   const { actions: coreActions } = useCorePromptContext();
 
   const {
     taskDescriptionRef,
-    isRefiningTask,
     isDoingWebSearch,
     canUndo,
     canRedo,
-    tokenEstimate,
   } = taskState;
 
-  const { 
+  const {
     // New actions for task refinement and undo/redo
-    handleRefineTask,
     handleWebSearch,
     cancelWebSearch,
     undo,
     redo,
   } = taskActions;
-  
-  // Optimized session update - only update session state, no redundant processing
-  const handleTaskChange = useCallback(async (value: string) => {
-    // Update local session state and mark as modified for persistence
-    sessionActions.updateCurrentSessionFields({ taskDescription: value });
-    sessionActions.setSessionModified(true);
 
-    // Single interaction notification without additional debouncing
-    coreActions.handleInteraction();
+  // Optimized session update with debouncing - prevents lag and cursor jumping
+  const handleTaskChange = useCallback((value: string) => {
+    // Update local state immediately for responsive UI
+    setLocalTaskDescription(value);
 
-    // Call backend to emit relay events for mobile sync
-    // This is already debounced by the task-description component (100 milliseconds)
-    if (sessionState.currentSession?.id) {
-      const { updateSessionFieldsAction } = await import("@/actions");
-      try {
-        await updateSessionFieldsAction(sessionState.currentSession.id, {
-          taskDescription: value,
-        });
-      } catch (error) {
-        console.error("Failed to sync task description to backend:", error);
-      }
+    // Mark user as actively typing
+    isUserTypingRef.current = true;
+    if (typingIdleTimerRef.current) {
+      clearTimeout(typingIdleTimerRef.current);
     }
+    typingIdleTimerRef.current = window.setTimeout(() => {
+      isUserTypingRef.current = false;
+      typingIdleTimerRef.current = null;
+    }, 200); // 200ms idle threshold to match component
+
+    // Clear existing debounce timer
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    // Debounce the expensive session state updates and backend sync
+    debounceTimerRef.current = window.setTimeout(async () => {
+      // Update session state and mark as modified for persistence
+      sessionActions.updateCurrentSessionFields({ taskDescription: value });
+      sessionActions.setSessionModified(true);
+
+      // Single interaction notification
+      coreActions.handleInteraction();
+
+      // Call backend to emit relay events for mobile sync
+      if (sessionState.currentSession?.id) {
+        const { updateSessionFieldsAction } = await import("@/actions");
+        try {
+          await updateSessionFieldsAction(sessionState.currentSession.id, {
+            taskDescription: value,
+          });
+        } catch (error) {
+          console.error("Failed to sync task description to backend:", error);
+        }
+      }
+    }, 300); // 300ms debounce - balances responsiveness with performance
   }, [sessionActions, coreActions, sessionState.currentSession?.id]);
 
+  // Cleanup debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+      if (typingIdleTimerRef.current) {
+        clearTimeout(typingIdleTimerRef.current);
+      }
+    };
+  }, []);
 
-  // Calculate if refine task should be shown based on estimated tokens
-  const shouldShowRefineTask = (tokenEstimate?.totalTokens ?? 0) > 100000;
+  // Handle blur - flush pending changes immediately
+  const handleBlur = useCallback(async () => {
+    // Flush any pending remote updates on blur
+    if (pendingRemoteValueRef.current !== null) {
+      const handle = taskDescriptionRef.current;
+      if (handle?.setValue) {
+        handle.setValue(pendingRemoteValueRef.current, true);
+      }
+      pendingRemoteValueRef.current = null;
+    }
+
+    // Cancel debounce timer and apply changes immediately
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+
+    // Apply any pending changes to session
+    if (localTaskDescription !== sessionState.currentSession?.taskDescription) {
+      sessionActions.updateCurrentSessionFields({ taskDescription: localTaskDescription });
+      sessionActions.setSessionModified(true);
+
+      // Sync to backend
+      if (sessionState.currentSession?.id) {
+        const { updateSessionFieldsAction } = await import("@/actions");
+        try {
+          await updateSessionFieldsAction(sessionState.currentSession.id, {
+            taskDescription: localTaskDescription,
+          });
+        } catch (error) {
+          console.error("Failed to sync task description to backend:", error);
+        }
+      }
+    }
+
+    // Then flush saves to disk
+    await sessionActions.flushSaves();
+  }, [localTaskDescription, sessionState.currentSession?.taskDescription, sessionState.currentSession?.id, sessionActions]);
 
   return (
     <div className="border border-border/60 rounded-lg p-5 bg-card shadow-sm w-full">
       <TaskDescriptionArea
         ref={taskDescriptionRef}
-        value={sessionState.currentSession?.taskDescription || ""}
+        value={localTaskDescription}
         onChange={handleTaskChange}
         onInteraction={coreActions.handleInteraction}
-        onBlur={sessionActions.flushSaves}
+        onBlur={handleBlur}
         disabled={disabled}
         // New props for undo/redo
         canUndo={canUndo}
@@ -110,7 +254,7 @@ const TaskSection = React.memo(function TaskSection({
               handleWebSearch(false);
             }}
             isLoading={isDoingWebSearch}
-            disabled={disabled || isRefiningTask || isDoingWebSearch || !sessionState.currentSession?.taskDescription?.trim()}
+            disabled={disabled || isDoingWebSearch || !sessionState.currentSession?.taskDescription?.trim()}
             variant="secondary"
             size="sm"
             className="flex-1"
@@ -162,57 +306,6 @@ const TaskSection = React.memo(function TaskSection({
         )}
 
       </div>
-
-      {/* AI Refine Task button - only shown when tokens exceed 100,000 */}
-      {shouldShowRefineTask && (
-        <div className="mt-2 flex gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={handleRefineTask}
-            disabled={disabled || isDoingWebSearch}
-            isLoading={isRefiningTask}
-            loadingText="AI is refining..."
-            className="flex-1"
-          >
-            <>
-              <Sparkles className="h-4 w-4 mr-2" />
-              Refine Task
-            </>
-          </Button>
-          
-          <Tooltip open={showRefineHelpTooltip} onOpenChange={setShowRefineHelpTooltip}>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="px-2"
-                disabled={disabled}
-                onClick={() => setShowRefineHelpTooltip(!showRefineHelpTooltip)}
-              >
-                <HelpCircle className="h-5 w-5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <div className="max-w-xs space-y-2">
-                <p>
-                  AI will analyze and optimize your task description to improve clarity and results when working with large contexts
-                </p>
-                {tokenEstimate && (
-                  <div className="text-xs border-t border-primary-foreground/20 pt-2">
-                    <p className="font-medium mb-1">Current token usage ({tokenEstimate.totalTokens.toLocaleString()} total):</p>
-                    <div className="space-y-0.5 opacity-90">
-                      <p>• Files & context: {tokenEstimate.systemPromptTokens.toLocaleString()} tokens</p>
-                      <p>• Task description: {tokenEstimate.userPromptTokens.toLocaleString()} tokens</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </TooltipContent>
-          </Tooltip>
-        </div>
-      )}
-
 
     </div>
   );

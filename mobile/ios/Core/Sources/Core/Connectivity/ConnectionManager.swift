@@ -210,8 +210,10 @@ public class ConnectionManager: ConnectionStrategyCoordinator {
             throw ConnectionStrategyError.networkUnavailable
         }
         // Convert Data to dictionary and send via relay client
-        if let messageDict = try? JSONSerialization.jsonObject(with: message) as? [String: Any] {
-            try await relayClient.sendMessage(messageDict)
+        if let messageDict = try? JSONSerialization.jsonObject(with: message) as? [String: Any],
+           let type = messageDict["type"] as? String {
+            let payload = messageDict["payload"] as? [String: Any]
+            try await relayClient.sendMessage(type: type, payload: payload)
         } else {
             throw ConnectionStrategyError.invalidConfiguration("Invalid message format")
         }
@@ -395,15 +397,12 @@ public class ConnectionManager: ConnectionStrategyCoordinator {
             throw ConnectionStrategyError.networkUnavailable
         }
 
-        var envelope: [String: Any] = [
-            "type": type,
-            "timestamp": Date().timeIntervalSince1970,
-            "payload": payload
-        ]
+        // Add timestamp and id to payload
+        var enrichedPayload = payload
+        enrichedPayload["timestamp"] = Date().timeIntervalSince1970
+        enrichedPayload["id"] = UUID().uuidString
 
-        envelope["id"] = UUID().uuidString
-
-        try await relayClient.sendMessage(envelope)
+        try await relayClient.sendMessage(type: type, payload: enrichedPayload)
     }
 
 }

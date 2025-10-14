@@ -9,7 +9,7 @@ public struct ProjectSelectionHeaderView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var container: AppContainer
 
-    @State private var projectDirectoryInput: String = ""
+    @State private var showingFolderPicker = false
     public var onProjectChanged: (() -> Void)? = nil
 
     public init(onProjectChanged: (() -> Void)? = nil) {
@@ -17,48 +17,109 @@ public struct ProjectSelectionHeaderView: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Active Project").font(.headline)
+        VStack(alignment: .leading, spacing: 12) {
+            // Current project display
             if let current = container.currentProject {
-                Text("Current: \(current.name)").font(.subheadline).foregroundColor(.secondary)
-            } else {
-                Text("No active project selected").font(.subheadline).foregroundColor(.secondary)
-            }
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "folder.fill")
+                            .foregroundColor(Color.accent)
 
-            TextField("Remote project directory", text: $projectDirectoryInput)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled(true)
-                .textContentType(.URL)
-                .textFieldStyle(.roundedBorder)
+                        Text(current.name)
+                            .paragraph()
+                            .foregroundColor(Color.cardForeground)
+                            .fontWeight(.semibold)
 
-            HStack {
-                Button("Set Active Project") {
-                    setActiveProject()
+                        Spacer()
+                    }
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        Text(current.directory)
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundColor(Color.mutedForeground)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                    }
                 }
-                .buttonStyle(PrimaryButtonStyle())
+                .padding(12)
+                .background(Color.card)
+                .cornerRadius(Theme.Radii.base)
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.Radii.base)
+                        .stroke(Color.border, lineWidth: 1)
+                )
+            } else {
+                HStack {
+                    Image(systemName: "folder.badge.questionmark")
+                        .foregroundColor(Color.mutedForeground)
 
-                Spacer()
+                    Text("No project selected")
+                        .paragraph()
+                        .foregroundColor(Color.mutedForeground)
+
+                    Spacer()
+                }
+                .padding(12)
+                .background(Color.card)
+                .cornerRadius(Theme.Radii.base)
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.Radii.base)
+                        .stroke(Color.border, lineWidth: 1)
+                )
             }
+
+            // Select folder button
+            Button(action: { showingFolderPicker = true }) {
+                HStack {
+                    Image(systemName: "folder.badge.gearshape")
+                    Text(container.currentProject == nil ? "Select Project Folder" : "Change Project Folder")
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(PrimaryButtonStyle())
         }
-        .padding()
-        .background(Color(.systemBackground))
-        .onAppear {
-            projectDirectoryInput = appState.selectedProjectDirectory ?? ""
+        .sheet(isPresented: $showingFolderPicker) {
+            FolderPickerView(onFolderSelected: { selectedPath in
+                setActiveProject(path: selectedPath)
+            })
         }
     }
 
-    private func setActiveProject() {
-        let dir = projectDirectoryInput.trimmingCharacters(in: .whitespacesAndNewlines)
+    private func setActiveProject(path: String) {
+        let dir = path.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !dir.isEmpty else { return }
 
-        appState.setSelectedProjectDirectory(dir)
+        Task { @MainActor in
+            appState.setSelectedProjectDirectory(dir)
 
-        let name = URL(fileURLWithPath: dir).lastPathComponent
-        let hash = String(dir.hashValue)
-        let project = ProjectInfo(name: name, directory: dir, hash: hash)
+            let name = URL(fileURLWithPath: dir).lastPathComponent
+            let hash = String(dir.hashValue)
+            let project = ProjectInfo(name: name, directory: dir, hash: hash)
 
-        container.setCurrentProject(project)
+            // Set project locally first for immediate UI update
+            container.setCurrentProject(project)
 
-        onProjectChanged?()
+            // Sync project directory to desktop via RPC and wait for confirmation
+            do {
+                for try await response in CommandRouter.appSetProjectDirectory(dir) {
+                    if let error = response.error {
+                        print("[ProjectSelection] Desktop sync error: \(error.message)")
+                    } else if response.isFinal {
+                        print("[ProjectSelection] Desktop sync confirmed")
+                    }
+                }
+            } catch {
+                print("[ProjectSelection] Failed to sync project directory to desktop: \(error)")
+            }
+
+            // Refresh sessions for new project
+            do {
+                try await container.sessionService.fetchSessions(projectDirectory: dir)
+            } catch {
+                print("[ProjectSelection] Failed to fetch sessions: \(error)")
+            }
+
+            onProjectChanged?()
+        }
     }
 }

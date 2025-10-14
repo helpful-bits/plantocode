@@ -423,10 +423,9 @@ export const JobCard = React.memo(
                         
                         // Handle all file-finding tasks that should show file counts
                         const fileFindingTasks = [
-                          "extended_path_finder", 
+                          "extended_path_finder",
                           "file_relevance_assessment",
-                          "regex_file_filter",
-                          "path_correction"
+                          "regex_file_filter"
                         ];
                         
                         if (fileFindingTasks.includes(job.taskType)) {
@@ -657,9 +656,8 @@ export const JobCard = React.memo(
                       {(() => {
                         // Determine if we should show the Add Files button
                         const fileFindingTasks = [
-                          "extended_path_finder", 
+                          "extended_path_finder",
                           "file_relevance_assessment",
-                          "path_correction",
                           "regex_file_filter"
                         ];
                         

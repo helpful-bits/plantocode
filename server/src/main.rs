@@ -49,6 +49,7 @@ use crate::services::device_connection_manager::DeviceConnectionManager;
 use crate::services::reconciliation_service::ReconciliationService;
 use crate::services::relay_session_store::RelaySessionStore;
 use crate::services::request_tracker::RequestTracker;
+use crate::services::apns_service::ApnsServiceBuilder;
 
 /// Validates AI model configurations at startup to catch misconfigurations early
 async fn validate_ai_model_configurations(
@@ -404,6 +405,52 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
+    // Initialize APNs service for push notifications
+    let apns_service = {
+        let apns_team_id = env::var("APNS_TEAM_ID").ok();
+        let apns_key_id = env::var("APNS_KEY_ID").ok();
+        let apns_private_key = env::var("APNS_PRIVATE_KEY").ok();
+        let apns_bundle_id = env::var("APNS_BUNDLE_ID").ok();
+        let apns_production = env::var("APNS_PRODUCTION")
+            .unwrap_or_else(|_| "false".to_string())
+            .parse::<bool>()
+            .unwrap_or(false);
+
+        // Only initialize if all required APNs credentials are present
+        if let (Some(team_id), Some(key_id), Some(private_key), Some(bundle_id)) =
+            (apns_team_id, apns_key_id, apns_private_key, apns_bundle_id)
+        {
+            let device_repo_for_apns = Arc::new(DeviceRepository::new(Arc::new(db_pools.system_pool.clone())));
+
+            match ApnsServiceBuilder::new()
+                .device_repository(device_repo_for_apns)
+                .team_id(team_id)
+                .key_id(key_id)
+                .private_key(private_key)
+                .bundle_id(bundle_id)
+                .production(apns_production)
+                .build()
+            {
+                Ok(service) => {
+                    log::info!(
+                        "APNs service initialized successfully (environment: {})",
+                        if apns_production { "production" } else { "sandbox" }
+                    );
+                    Some(Arc::new(service))
+                }
+                Err(e) => {
+                    log::error!("Failed to initialize APNs service: {}", e);
+                    log::warn!("Server will start without push notification support");
+                    None
+                }
+            }
+        } else {
+            log::info!("APNs credentials not configured - push notifications disabled");
+            log::info!("Set APNS_TEAM_ID, APNS_KEY_ID, APNS_PRIVATE_KEY, and APNS_BUNDLE_ID to enable");
+            None
+        }
+    };
+
     // Log one-time initialization messages before server creation
     info!("Starting HTTP server factory with shared state initialization");
     info!("Server configured with keep-alive: 5 minutes");
@@ -443,6 +490,7 @@ async fn main() -> std::io::Result<()> {
         let runtime_ai_config = runtime_ai_config.clone();
         let relay_store = relay_store.clone();
         let device_connection_manager = device_connection_manager.clone();
+        let apns_service = apns_service.clone();
 
         // Initialize repositories with appropriate pools
         // User-specific operations use user pool (with RLS)
@@ -554,7 +602,7 @@ async fn main() -> std::io::Result<()> {
             });
 
         // Create the App with common middleware and data
-        App::new()
+        let mut app = App::new()
             .wrap(Logger::new(
                 "%a %t \"%r\" %s %b \"%{Referer}i\" \"%{User-Agent}i\" %T",
             ))
@@ -580,7 +628,14 @@ async fn main() -> std::io::Result<()> {
             )))
             .app_data(web::Data::new(device_repository))
             .app_data(device_connection_manager.clone())
-            .app_data(web::Data::new(relay_store.clone()))
+            .app_data(web::Data::new(relay_store.clone()));
+
+        // Add APNs service if configured
+        if let Some(apns) = apns_service {
+            app = app.app_data(web::Data::new(apns));
+        }
+
+        app
             // Register health check endpoint with IP-based rate limiting
             .service(
                 web::resource("/health")

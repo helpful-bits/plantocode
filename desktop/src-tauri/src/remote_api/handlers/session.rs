@@ -3,6 +3,19 @@ use serde_json::{json, Value};
 use crate::remote_api::types::{RpcRequest, RpcResponse};
 use crate::commands::session_commands;
 use crate::models::CreateSessionRequest;
+use once_cell::sync::Lazy;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+use std::collections::HashMap;
+
+struct CacheEntry {
+    inserted_at: Instant,
+    value: serde_json::Value,
+}
+
+static SESSION_LIST_CACHE: Lazy<Mutex<HashMap<String, CacheEntry>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+const CACHE_TTL: Duration = Duration::from_millis(750);
+const MAX_ENTRIES: usize = 128;
 
 pub async fn dispatch(app_handle: AppHandle, req: RpcRequest) -> RpcResponse {
     match req.method.as_str() {
@@ -100,14 +113,51 @@ pub async fn handle_session_list(app_handle: AppHandle, request: RpcRequest) -> 
         }
     };
 
+    let cache_key = format!("sessions::{}", project_directory);
+
+    // Check cache
+    {
+        let cache = SESSION_LIST_CACHE.lock().unwrap();
+        if let Some(entry) = cache.get(&cache_key) {
+            if entry.inserted_at.elapsed() < CACHE_TTL {
+                return RpcResponse {
+                    correlation_id: request.correlation_id,
+                    result: Some(entry.value.clone()),
+                    error: None,
+                    is_final: true,
+                };
+            }
+        }
+    }
+
+    // Execute actual query
     match session_commands::get_sessions_for_project_command(app_handle, project_directory)
         .await
     {
-        Ok(sessions) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: Some(json!({ "sessions": sessions })),
-            error: None,
-            is_final: true,
+        Ok(sessions) => {
+            let result_value = json!({ "sessions": sessions });
+
+            // Store in cache
+            {
+                let mut cache = SESSION_LIST_CACHE.lock().unwrap();
+                if cache.len() >= MAX_ENTRIES {
+                    // Evict oldest
+                    if let Some(oldest_key) = cache.iter().min_by_key(|(_, v)| v.inserted_at).map(|(k, _)| k.clone()) {
+                        cache.remove(&oldest_key);
+                    }
+                }
+                cache.insert(cache_key, CacheEntry {
+                    inserted_at: Instant::now(),
+                    value: result_value.clone(),
+                });
+            }
+
+            RpcResponse {
+                correlation_id: request.correlation_id,
+                result: Some(result_value),
+                error: None,
+                is_final: true,
+            }
         },
         Err(error) => RpcResponse {
             correlation_id: request.correlation_id,

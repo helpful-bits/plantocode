@@ -1,7 +1,8 @@
 use actix::Addr;
 use dashmap::DashMap;
 use serde_json::Value as JsonValue;
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
@@ -9,6 +10,7 @@ use crate::services::device_link_ws::{DeviceLinkWs, CloseConnection};
 
 /// Message types for device communication
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DeviceMessage {
     pub message_type: String,
     pub payload: JsonValue,
@@ -33,12 +35,14 @@ pub struct DeviceConnection {
 pub struct DeviceConnectionManager {
     // user_id -> device_id -> connection
     connections: Arc<DashMap<Uuid, DashMap<String, DeviceConnection>>>,
+    binary_routes: Arc<RwLock<HashMap<(Uuid, String), String>>>,
 }
 
 impl DeviceConnectionManager {
     pub fn new() -> Self {
         Self {
             connections: Arc::new(DashMap::new()),
+            binary_routes: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -172,6 +176,15 @@ impl DeviceConnectionManager {
             .get_connection(user_id, device_id)
             .ok_or_else(|| format!("Device {} not connected for user {}", device_id, user_id))?;
 
+        // Log with short device id
+        let short_device_id: String = device_id.chars().take(8).collect();
+        debug!(
+            target = "device_link",
+            "Forwarding type={} to device={}…",
+            message.message_type,
+            short_device_id
+        );
+
         // Send message via WebSocket actor
         use crate::services::device_link_ws::RelayMessage;
         use actix::prelude::*;
@@ -190,6 +203,7 @@ impl DeviceConnectionManager {
             user_id = %user_id,
             device_id = %device_id,
             message_type = %message.message_type,
+            message_size = message.payload.to_string().len(),
             "Message sent to device"
         );
 
@@ -381,6 +395,25 @@ impl DeviceConnectionManager {
                 format!("Device {} not connected for user {}", device_id, user_id)
             })?;
 
+        // Extract frame type for logging (if JSON)
+        let frame_type = if let Ok(json) = serde_json::from_str::<serde_json::Value>(raw_json) {
+            json.get("type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+                .to_string()
+        } else {
+            "non-json".to_string()
+        };
+
+        // Log with short device id (first 8 chars)
+        let short_device_id: String = device_id.chars().take(8).collect();
+        debug!(
+            target = "device_link",
+            "Forwarding type={} to device={}…",
+            frame_type,
+            short_device_id
+        );
+
         // Send raw JSON as text frame directly
         use crate::services::device_link_ws::RelayMessage;
         use actix::prelude::*;
@@ -401,6 +434,66 @@ impl DeviceConnectionManager {
         );
 
         Ok(())
+    }
+
+    /// Send raw binary data to a specific device (for terminal I/O)
+    pub fn send_binary_to_device(
+        &self,
+        user_id: &Uuid,
+        device_id: &str,
+        data: Vec<u8>,
+    ) -> Result<(), String> {
+        let connection = self
+            .get_connection(user_id, device_id)
+            .ok_or_else(|| {
+                format!("Device {} not connected for user {}", device_id, user_id)
+            })?;
+
+        use crate::services::device_link_ws::BinaryMessage;
+        use actix::prelude::*;
+
+        connection
+            .ws_addr
+            .try_send(BinaryMessage { data })
+            .map_err(|e| format!("Failed to send binary message to device: {}", e))?;
+
+        Ok(())
+    }
+
+    pub fn set_binary_route(&self, user_id: &Uuid, producer: &str, consumer: &str) {
+        match self.binary_routes.write() {
+            Ok(mut map) => {
+                map.insert((user_id.clone(), producer.to_string()), consumer.to_string());
+            }
+            Err(poisoned) => {
+                warn!("Binary routes lock poisoned, recovering");
+                let mut map = poisoned.into_inner();
+                map.insert((user_id.clone(), producer.to_string()), consumer.to_string());
+            }
+        }
+    }
+
+    pub fn get_binary_consumer(&self, user_id: &Uuid, producer: &str) -> Option<String> {
+        match self.binary_routes.read() {
+            Ok(map) => map.get(&(user_id.clone(), producer.to_string())).cloned(),
+            Err(poisoned) => {
+                warn!("Binary routes lock poisoned during read, recovering");
+                poisoned.into_inner().get(&(user_id.clone(), producer.to_string())).cloned()
+            }
+        }
+    }
+
+    pub fn clear_binary_routes_for_device(&self, user_id: &Uuid, device_id: &str) {
+        match self.binary_routes.write() {
+            Ok(mut map) => {
+                map.retain(|(u, prod), cons| !(u == user_id && (prod == device_id || cons == device_id)));
+            }
+            Err(poisoned) => {
+                warn!("Binary routes lock poisoned, recovering");
+                let mut map = poisoned.into_inner();
+                map.retain(|(u, prod), cons| !(u == user_id && (prod == device_id || cons == device_id)));
+            }
+        }
     }
 }
 

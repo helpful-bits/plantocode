@@ -218,7 +218,6 @@ impl ValidationRule for TaskTypeConfigurationRule {
             TaskType::ImplementationPlanMerge,
             TaskType::VoiceTranscription,
             TaskType::TextImprovement,
-            TaskType::PathCorrection,
             TaskType::TaskRefinement,
             TaskType::GenericLlmStream,
             TaskType::RegexFileFilter,

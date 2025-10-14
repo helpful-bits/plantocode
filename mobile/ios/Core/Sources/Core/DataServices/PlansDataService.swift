@@ -39,6 +39,8 @@ public class PlansDataService: ObservableObject {
     private var relayEventsCancellable: AnyCancellable?
     private var lastBoundDeviceId: UUID?
     private let contentCache = NSCache<NSString, NSString>()
+    private var currentListPlansRequestToken: UUID?
+    @Published public private(set) var hasLoadedOnce = false
 
     // Real-time data publisher
     @Published public private(set) var lastUpdateEvent: RelayEvent?
@@ -652,8 +654,13 @@ public class PlansDataService: ObservableObject {
     }
 
     private func listPlansViaRPC(request: PlanListRequest, cacheKey: String) -> AnyPublisher<PlanListResponse, DataServiceError> {
+        let token = UUID()
         return Future<PlanListResponse, DataServiceError> { [weak self] promise in
             Task {
+                await MainActor.run {
+                    self?.currentListPlansRequestToken = token
+                }
+
                 do {
                     guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
                           let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
@@ -661,16 +668,23 @@ public class PlansDataService: ObservableObject {
                         return
                     }
 
-                    var params: [String: Any] = [:]
-                    if let projectDirectory = request.projectDirectory {
-                        params["projectDirectory"] = projectDirectory
+                    // Build params ensuring at least one identifier is provided
+                    let sessionId = request.sessionId
+                    let projectDirectory = request.projectDirectory
+
+                    // Validate we have at least one identifier
+                    if sessionId == nil && projectDirectory == nil {
+                        promise(.failure(.invalidState("sessionId or projectDirectory required")))
+                        return
                     }
 
-                    if let sessionId = request.sessionId, !sessionId.hasPrefix("mobile-session-") {
+                    var params: [String: Any] = [:]
+                    if let projectDirectory = projectDirectory {
+                        params["projectDirectory"] = projectDirectory
+                    }
+                    // Always include non-ephemeral sessionId
+                    if let sessionId = sessionId, !sessionId.hasPrefix("mobile-session-") {
                         params["sessionId"] = sessionId
-                        self?.logger.debug("Including sessionId in plans.list RPC: \(sessionId)")
-                    } else if let sessionId = request.sessionId {
-                        self?.logger.debug("Omitting mobile-ephemeral sessionId from RPC: \(sessionId)")
                     }
 
                     let rpcRequest = RpcRequest(
@@ -780,9 +794,15 @@ public class PlansDataService: ObservableObject {
                         hasMore: false
                     )
 
-                    self?.plans = response.plans
-                    self?.logger.debug("Loaded \(plansArray.count) plans from RPC for project: \(request.projectDirectory ?? "unknown")")
-                    self?.cacheManager.set(response, forKey: cacheKey, ttl: 600)
+                    if let self = self, self.currentListPlansRequestToken == token {
+                        self.plans = response.plans
+                        self.hasLoadedOnce = true
+                        self.logger.debug("Loaded \(plansArray.count) plans from RPC for project: \(request.projectDirectory ?? "unknown")")
+                        self.cacheManager.set(response, forKey: cacheKey, ttl: 600)
+
+                        // Prefetch top plan contents
+                        self.prefetchTopPlanContents()
+                    }
                     promise(.success(response))
 
                 } catch {
@@ -792,11 +812,20 @@ public class PlansDataService: ObservableObject {
             }
         }
         .handleEvents(
-            receiveOutput: { [weak self] _ in self?.isLoading = false },
+            receiveOutput: { [weak self] _ in
+                guard let self = self else { return }
+                if self.currentListPlansRequestToken == token {
+                    self.isLoading = false
+                }
+            },
             receiveCompletion: { [weak self] completion in
-                self?.isLoading = false
+                guard let self = self else { return }
+                if self.currentListPlansRequestToken == token {
+                    self.isLoading = false
+                    self.hasLoadedOnce = true
+                }
                 if case .failure(let error) = completion {
-                    self?.error = error
+                    self.error = error
                 }
             }
         )
@@ -1018,6 +1047,29 @@ public class PlansDataService: ObservableObject {
             self.plans.removeAll()
             self.lastBoundDeviceId = newId
             self.rebindRelayEvents()
+        }
+    }
+
+    /// Prefetch top plan contents into memory cache
+    @MainActor
+    public func prefetchTopPlanContents(limit: Int = 3) {
+        // Get top plans sorted by recency
+        let topPlans = plans
+            .sorted { p1, p2 in
+                let time1 = p1.updatedAt ?? p1.createdAt
+                let time2 = p2.updatedAt ?? p2.createdAt
+                return time1 > time2
+            }
+            .prefix(limit)
+
+        // Prefetch content for each plan (non-blocking)
+        for plan in topPlans {
+            getFullPlanContent(jobId: plan.jobId)
+                .sink(
+                    receiveCompletion: { _ in },
+                    receiveValue: { _ in }
+                )
+                .store(in: &cancellables)
         }
     }
 

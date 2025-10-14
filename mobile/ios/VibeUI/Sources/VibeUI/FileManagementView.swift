@@ -15,6 +15,8 @@ public struct FileManagementView: View {
     @State private var refreshTrigger = UUID()
     @State private var findFilesError: String? = nil
     @State private var runningWorkflowCount: Int = 0
+    @State private var hasLoadedFiles: Bool = false
+    @State private var lastLoadedProjectDir: String? = nil
 
     public init(filesService: FilesDataService) {
         self.filesService = filesService
@@ -53,10 +55,18 @@ public struct FileManagementView: View {
             connectedView
         }
         .onAppear {
-            if isConnected {
-                loadFiles()
+            // Only load files once per project directory
+            let currentProjectDir = container.sessionService.currentSession?.projectDirectory
+                ?? container.currentProject?.directory
+
+            if !hasLoadedFiles || lastLoadedProjectDir != currentProjectDir {
+                if isConnected {
+                    loadFiles()
+                }
+                lastLoadedProjectDir = currentProjectDir
             }
             updateIncludedFilesNotInList()
+            updateRunningWorkflowCount()
         }
         .onReceive(filesService.$currentSearchTerm) { newValue in
             if newValue != localSearchTerm {
@@ -69,16 +79,17 @@ public struct FileManagementView: View {
         .onChange(of: container.sessionService.currentSession?.includedFiles) { _ in
             updateIncludedFilesNotInList()
         }
-        .onReceive(container.sessionService.$currentSession) { _ in
-            // Force view refresh when session changes
-            refreshTrigger = UUID()
+        .onReceive(container.sessionService.$currentSession) { session in
+            // Only reload files if project directory changed
+            let newProjectDir = session?.projectDirectory
+            if lastLoadedProjectDir != newProjectDir && newProjectDir != nil {
+                lastLoadedProjectDir = newProjectDir
+                loadFiles()
+            }
             updateRunningWorkflowCount()
         }
         .onReceive(container.jobsService.$jobs) { _ in
             // Update workflow count whenever jobs change (real-time updates)
-            updateRunningWorkflowCount()
-        }
-        .onAppear {
             updateRunningWorkflowCount()
         }
     }
@@ -114,8 +125,7 @@ public struct FileManagementView: View {
     @ViewBuilder
     private var searchAndFilterSection: some View {
         VStack(spacing: Theme.Spacing.md) {
-            searchBar
-            filterControls
+            searchBarWithSort
             actionButtons
         }
         .padding(.horizontal)
@@ -124,67 +134,57 @@ public struct FileManagementView: View {
         .background(Color.muted)
     }
 
-    private var searchBar: some View {
-        HStack {
-            Image(systemName: "magnifyingglass")
-                .foregroundColor(.mutedForeground)
-                .frame(width: 20)
+    private var searchBarWithSort: some View {
+        HStack(spacing: Theme.Spacing.sm) {
+            // Search input
+            HStack {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(.mutedForeground)
+                    .frame(width: 20)
 
-            TextField("Filter files...", text: $localSearchTerm)
-                .textFieldStyle(PlainTextFieldStyle())
-                .onChange(of: localSearchTerm) { newValue in
-                    searchDebounceTimer?.invalidate()
-                    searchDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
-                        filesService.currentSearchTerm = newValue
+                TextField("Filter files...", text: $localSearchTerm)
+                    .textFieldStyle(PlainTextFieldStyle())
+                    .onChange(of: localSearchTerm) { newValue in
+                        searchDebounceTimer?.invalidate()
+                        searchDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
+                            filesService.currentSearchTerm = newValue
+                        }
                     }
+
+                if !localSearchTerm.isEmpty {
+                    Button(action: {
+                        localSearchTerm = ""
+                        filesService.currentSearchTerm = ""
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                    }
+                    .buttonStyle(CompactIconButtonStyle())
                 }
-
-            if !localSearchTerm.isEmpty {
-                Button(action: {
-                    localSearchTerm = ""
-                    filesService.currentSearchTerm = ""
-                }) {
-                    Image(systemName: "xmark.circle.fill")
-                }
-                .buttonStyle(CompactIconButtonStyle())
             }
-        }
-        .padding(Theme.Spacing.cardPadding)
-        .background(Color.input)
-        .cornerRadius(10)
-    }
+            .padding(Theme.Spacing.cardPadding)
+            .background(Color.input)
+            .cornerRadius(10)
 
-    private var filterControls: some View {
-        HStack(spacing: Theme.Spacing.md) {
-            // Filter Mode
-            Picker("Filter", selection: $filesService.currentFilterMode) {
-                Text("All").tag("all")
-                Text("Selected").tag("selected")
-            }
-            .pickerStyle(SegmentedPickerStyle())
-            .frame(width: 140)
-
-            Spacer()
-
+            // Sort controls inline
             sortControls
         }
     }
 
     private var sortControls: some View {
-        HStack(spacing: Theme.Spacing.sm) {
+        HStack(spacing: Theme.Spacing.xs) {
             Menu {
                 Button("Name") { filesService.currentSortBy = "name" }
                 Button("Size") { filesService.currentSortBy = "size" }
                 Button("Modified") { filesService.currentSortBy = "modified" }
             } label: {
-                HStack(spacing: Theme.Spacing.xs) {
+                HStack(spacing: 4) {
                     Text(filesService.currentSortBy.capitalized)
-                        .font(.system(size: 14))
+                        .font(.system(size: 13))
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 10))
+                        .font(.system(size: 9))
                 }
                 .foregroundColor(Color.foreground)
-                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.horizontal, Theme.Spacing.sm)
                 .padding(.vertical, Theme.Spacing.itemSpacing)
                 .background(Color.card)
                 .cornerRadius(8)
@@ -194,6 +194,7 @@ public struct FileManagementView: View {
                 filesService.currentSortOrder = filesService.currentSortOrder == "asc" ? "desc" : "asc"
             }) {
                 Image(systemName: filesService.currentSortOrder == "asc" ? "arrow.up" : "arrow.down")
+                    .font(.system(size: 13))
             }
             .buttonStyle(IconButtonStyle())
         }
@@ -265,29 +266,16 @@ public struct FileManagementView: View {
         let includedSet = Set(container.sessionService.currentSession?.includedFiles ?? [])
         let excludedSet = Set(container.sessionService.currentSession?.forceExcludedFiles ?? [])
 
-        let displayedFiles = files
-            .filter { file in
-                let matchesSearch = localSearchTerm.isEmpty || file.path.lowercased().contains(localSearchTerm.lowercased())
-                let matchesFilter = filesService.currentFilterMode == "all" ||
-                                   (filesService.currentFilterMode == "selected" && includedSet.contains(file.path) && !excludedSet.contains(file.path))
-                return matchesSearch && matchesFilter
+        let allFilesCount = files.count + includedFilesNotInList.count
+        let selectedFilesCount = includedSet.count
+
+        return HStack(spacing: Theme.Spacing.sm) {
+            // All/Selected Filter Picker with counts
+            Picker("Filter", selection: $filesService.currentFilterMode) {
+                Text("All (\(allFilesCount))").tag("all")
+                Text("Selected (\(selectedFilesCount))").tag("selected")
             }
-
-        return HStack {
-            Text("\(displayedFiles.count + includedFilesNotInList.count) files")
-                .small()
-                .fontWeight(.semibold)
-
-            Text("•")
-                .small()
-                .foregroundColor(.secondary)
-
-            Text("\(includedSet.count) selected")
-                .small()
-                .foregroundColor(.foreground)
-
-            Spacer()
-                .frame(width: Theme.Spacing.lg)
+            .pickerStyle(SegmentedPickerStyle())
 
             // Find Files Button
             Button(action: {
@@ -387,7 +375,6 @@ public struct FileManagementView: View {
                             .lineLimit(1)
                     }
                 }
-                .frame(maxWidth: .infinity)
             }
             .buttonStyle(PrimaryButtonStyle())
             .disabled(!isConnected || container.sessionService.currentSession == nil)
@@ -520,6 +507,9 @@ public struct FileManagementView: View {
     }
 
     private func loadFiles() {
+        // Prevent concurrent loads
+        guard !isLoading else { return }
+
         // Use session's projectDirectory, then currentProject, then selectedProjectDirectory from AppState
         let projectDirectory = container.sessionService.currentSession?.projectDirectory
             ?? container.currentProject?.directory
@@ -527,6 +517,7 @@ public struct FileManagementView: View {
 
         guard let projectDir = projectDirectory else {
             errorMessage = "No project directory configured. Please select a session or project."
+            hasLoadedFiles = false
             return
         }
 
@@ -548,12 +539,14 @@ public struct FileManagementView: View {
                 await MainActor.run {
                     files = results
                     isLoading = false
+                    hasLoadedFiles = true
                     updateIncludedFilesNotInList()
                 }
             } catch {
                 await MainActor.run {
                     errorMessage = error.localizedDescription
                     isLoading = false
+                    hasLoadedFiles = false
                 }
             }
         }
@@ -764,9 +757,12 @@ public struct FileManagementView: View {
                 return false
             }
 
-            // Check it's a file finder workflow
+            // Check it's a file finder workflow - match actual task types used by the system
             let taskType = job.taskType ?? ""
-            return taskType == "file_finder" || taskType == "fileFinder" || taskType == "find_files"
+            return taskType == "extended_path_finder" ||
+                   taskType == "file_relevance_assessment" ||
+                   taskType == "path_correction" ||
+                   taskType == "regex_file_filter"
         }.count
 
         runningWorkflowCount = count

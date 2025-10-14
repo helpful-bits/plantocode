@@ -244,14 +244,39 @@ impl JobProcessor for ImplementationPlanMergeProcessor {
             ));
         }
 
-        // Use the raw LLM response directly
-
         // Create a simple structured plan for UI compatibility
         let structured_plan = StructuredImplementationPlan {
             agent_instructions: None,
             steps: vec![],
         };
         let human_readable_summary = "Merged implementation plan".to_string();
+
+        // Re-fetch latest metadata before finalization to avoid races
+        let latest_job = repo
+            .get_job_by_id(&job.id)
+            .await?
+            .ok_or_else(|| AppError::JobError(format!("Job not found: {}", job.id)))?;
+
+        let metadata: Option<serde_json::Value> = match &latest_job.metadata {
+            Some(metadata_str) => match serde_json::from_str(metadata_str) {
+                Ok(json) => Some(json),
+                Err(_) => None,
+            },
+            None => None,
+        };
+
+        let final_title = match metadata {
+            Some(ref json) => {
+                if let Some(title) = json.get("planTitle").and_then(|v| v.as_str()) {
+                    title.to_string()
+                } else if let Some(title) = json.get("generated_title").and_then(|v| v.as_str()) {
+                    crate::utils::path_utils::sanitize_filename(title)
+                } else {
+                    format!("Merged Implementation Plan (from {} sources)", payload.source_job_ids.len())
+                }
+            }
+            None => format!("Merged Implementation Plan (from {} sources)", payload.source_job_ids.len()),
+        };
 
         // Extract metadata about the merge operation
         let merge_metadata = json!({
@@ -260,17 +285,7 @@ impl JobProcessor for ImplementationPlanMergeProcessor {
             "source_count": payload.source_job_ids.len(),
             "merged_at": get_timestamp(),
             "planData": serde_json::to_value(structured_plan.clone()).unwrap_or_default(),
-            "planTitle": if let Some(ref task_desc) = session.task_description {
-                // Truncate task description if too long for title
-                let truncated_desc = if task_desc.len() > 60 {
-                    format!("{}...", &task_desc[..57])
-                } else {
-                    task_desc.clone()
-                };
-                format!("{} (Merged from {} plans)", truncated_desc, payload.source_job_ids.len())
-            } else {
-                format!("Merged Implementation Plan (from {} sources)", payload.source_job_ids.len())
-            },
+            "planTitle": final_title.clone(),
             "summary": human_readable_summary.clone(),
             "isStructured": true,
             "sessionName": session.name,
@@ -287,12 +302,7 @@ impl JobProcessor for ImplementationPlanMergeProcessor {
             .and_then(|u| u.cost)
             .unwrap_or(0.0);
 
-        // Return success result with the raw response content as Text data
-        let success_message = format!(
-            "Merged {} implementation plans successfully",
-            payload.source_job_ids.len()
-        );
-        let mut result =
+        Ok(
             JobProcessResult::success(job.id.clone(), JobResultData::Text(response_content))
                 .with_tokens(
                     usage_for_result.as_ref().map(|u| u.prompt_tokens as u32),
@@ -309,11 +319,8 @@ impl JobProcessor for ImplementationPlanMergeProcessor {
                         .map(|u| u.cache_read_tokens as i64),
                 )
                 .with_system_prompt_template(system_prompt_template)
-                .with_actual_cost(actual_cost);
-
-        // Add metadata to the result
-        result.metadata = Some(merge_metadata);
-
-        Ok(result)
+                .with_actual_cost(actual_cost)
+                .with_metadata(merge_metadata),
+        )
     }
 }

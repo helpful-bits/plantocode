@@ -7,6 +7,8 @@ public struct ImplementationPlansView: View {
     @EnvironmentObject private var container: AppContainer
     @StateObject private var multiConnectionManager = MultiConnectionManager.shared
     @StateObject private var settingsService = SettingsDataService()
+    @ObservedObject private var appState = AppState.shared
+    @State private var selectedPlanJobIdForNav: String? = nil
     private let logger = Logger(subsystem: "VibeManager", category: "ImplementationPlansView")
     @State private var selectedPlans: Set<String> = []
     @State private var mergeInstructions = ""
@@ -213,7 +215,7 @@ public struct ImplementationPlansView: View {
             Divider()
 
             // Content Area
-            if isLoading {
+            if isLoading && !container.plansService.hasLoadedOnce {
                 VStack {
                     Spacer()
                     ProgressView()
@@ -281,7 +283,12 @@ public struct ImplementationPlansView: View {
 
                             // Plans in this group
                             ForEach(sessionPlans) { plan in
-                                    NavigationLink(destination: PlanDetailView(plan: plan, allPlans: plans, plansService: container.plansService)) {
+                                    NavigationLink(
+                                        tag: plan.jobId,
+                                        selection: $selectedPlanJobIdForNav
+                                    ) {
+                                        PlanDetailView(plan: plan, allPlans: plans, plansService: container.plansService)
+                                    } label: {
                                         PlanCard(
                                             plan: plan,
                                             isSelected: selectedPlans.contains(plan.jobId),
@@ -456,12 +463,21 @@ public struct ImplementationPlansView: View {
         .refreshable {
             await refreshPlans()
         }
+        .onReceive(appState.$pendingPlanJobIdToOpen) { jobId in
+            guard let jobId else { return }
+            // Open the plan if it exists in our list
+            if plans.contains(where: { $0.jobId == jobId }) {
+                selectedPlanJobIdForNav = jobId
+                appState.setPendingPlanToOpen(nil)
+            }
+        }
         .onAppear {
+            setupRealTimeUpdates()
+            // Always attempt to load plans on appear - loadPlans() will handle cases where session isn't ready
             if isConnected {
                 loadPlans()
                 loadModelSettings()
             }
-            setupRealTimeUpdates()
         }
         .onReceive(multiConnectionManager.$connectionStates) { states in
             guard let activeId = multiConnectionManager.activeDeviceId,
@@ -472,10 +488,14 @@ public struct ImplementationPlansView: View {
                 loadModelSettings()
             }
         }
-        .onReceive(container.sessionService.$currentSession.compactMap { $0 }) { _ in
-            refreshTrigger = UUID()
-            loadPlans()
-            loadModelSettings()
+        .onReceive(container.sessionService.$currentSession) { session in
+            // Trigger on ANY session change, including initial value
+            // This ensures plans load even if session was set before view appeared
+            if session != nil {
+                refreshTrigger = UUID()
+                loadPlans()
+                loadModelSettings()
+            }
         }
     }
 
@@ -530,6 +550,14 @@ public struct ImplementationPlansView: View {
     }
 
     private func loadPlans() {
+        // Guard against nil session - wait for session to be properly synchronized
+        guard let currentSession = container.sessionService.currentSession else {
+            logger.warning("Cannot load plans: no session available yet")
+            // Don't return silently - mark as "loaded" to prevent indefinite waiting
+            // The onReceive for currentSession will trigger again when session is available
+            return
+        }
+
         // Cache-first strategy: only show loading if we have no cached plans
         let hasCachedPlans = !container.plansService.plans.isEmpty
         if !hasCachedPlans {
@@ -538,8 +566,7 @@ public struct ImplementationPlansView: View {
 
         errorMessage = nil
 
-        let currentSession = container.sessionService.currentSession
-        let projectDirectory = currentSession?.projectDirectory ?? container.currentProject?.directory
+        let projectDirectory = currentSession.projectDirectory.isEmpty ? container.currentProject?.directory : currentSession.projectDirectory
 
         guard let projectDir = projectDirectory else {
             isLoading = false
@@ -547,10 +574,7 @@ public struct ImplementationPlansView: View {
             return
         }
 
-        let sessionId: String? = {
-            guard let id = currentSession?.id else { return nil }
-            return id.hasPrefix("mobile-session-") ? nil : id
-        }()
+        let sessionId: String? = currentSession.id
 
         let capturedSessionId = sessionId
 
@@ -591,6 +615,16 @@ public struct ImplementationPlansView: View {
 
                     self.plans = response.plans
                     self.isLoading = false
+
+                    // Prefetch top plan contents
+                    container.plansService.prefetchTopPlanContents(limit: 3)
+
+                    // Check if there's a pending plan to open
+                    if let pending = appState.pendingPlanJobIdToOpen,
+                       response.plans.contains(where: { $0.jobId == pending }) {
+                        selectedPlanJobIdForNav = pending
+                        appState.setPendingPlanToOpen(nil)
+                    }
                 }
             )
             .store(in: &cancellables)
@@ -606,10 +640,7 @@ public struct ImplementationPlansView: View {
                 return
             }
 
-            let sessionId: String? = {
-                guard let id = currentSession?.id else { return nil }
-                return id.hasPrefix("mobile-session-") ? nil : id
-            }()
+            let sessionId: String? = currentSession?.id
 
             let capturedSessionId = sessionId
 
@@ -640,6 +671,9 @@ public struct ImplementationPlansView: View {
                         }
 
                         self.plans = response.plans
+
+                        // Prefetch top plan contents
+                        container.plansService.prefetchTopPlanContents(limit: 3)
                     }
                 )
                 .store(in: &cancellables)

@@ -22,7 +22,6 @@ pub(super) async fn get_stage_model_config(
                 TaskType::RegexFileFilter => "GeneratingRegex_model",
                 TaskType::FileRelevanceAssessment => "FileRelevanceAssessment_model",
                 TaskType::ExtendedPathFinder => "ExtendedPathFinder_model",
-                TaskType::PathCorrection => "PathCorrection_model",
                 TaskType::WebSearchPromptsGeneration => "WebSearchPromptsGeneration_model",
                 TaskType::WebSearchExecution => "WebSearchExecution_model",
                 TaskType::RootFolderSelection => "RootFolderSelection_model",
@@ -95,18 +94,6 @@ fn is_stage_skippable(
 
     // Apply task-specific skipping logic
     match stage_def.task_type {
-        TaskType::PathCorrection => {
-            // PathCorrection can be skipped if there are no unverified paths to correct
-            // Note: extended_unverified_paths should always be initialized, but be defensive
-            let unverified_paths = &workflow_state.intermediate_data.extended_unverified_paths;
-            let can_skip = unverified_paths.is_empty();
-            log::debug!(
-                "PathCorrection stage can be skipped: {} (unverified paths: {})",
-                can_skip,
-                unverified_paths.len()
-            );
-            can_skip
-        }
         TaskType::WebSearchPromptsGeneration => {
             // WebSearchPromptsGeneration cannot be skipped - it's needed to generate prompts
             false
