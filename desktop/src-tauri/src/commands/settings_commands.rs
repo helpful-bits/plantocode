@@ -780,7 +780,21 @@ pub async fn update_device_settings(
         .state::<Arc<SettingsRepository>>()
         .inner()
         .clone();
-    settings_repo.update_device_settings(&settings).await
+    settings_repo.update_device_settings(&settings).await?;
+
+    // Restart device link connection if settings are now enabled
+    if settings.is_discoverable && settings.allow_remote_access {
+        tracing::info!("Device settings enabled, restarting DeviceLinkClient");
+        let app_handle_clone = app_handle.clone();
+        tokio::spawn(async move {
+            // Use the reconnection-enabled initialization
+            if let Err(e) = crate::app_setup::services::initialize_device_link_connection(&app_handle_clone).await {
+                tracing::warn!("Failed to restart DeviceLinkClient after settings update: {:?}", e);
+            }
+        });
+    }
+
+    Ok(())
 }
 
 #[tauri::command]

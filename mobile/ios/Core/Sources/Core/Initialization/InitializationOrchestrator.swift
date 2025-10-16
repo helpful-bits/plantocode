@@ -37,6 +37,9 @@ public final class InitializationOrchestrator: ObservableObject {
 
         await multi.restoreConnections()
 
+        // Start project sync service
+        ProjectSyncService.shared.start()
+
         // Quick check: if no device is configured at all, don't wait for connection
         if multi.activeDeviceId == nil {
             appState.setBootstrapNeedsConfig(.init(projectMissing: true, sessionsEmpty: true, activeSessionMissing: true))
@@ -53,27 +56,61 @@ public final class InitializationOrchestrator: ObservableObject {
         }
 
         do {
-            let projectDir = try await repo.fetchProjectDirectory()
+            log.info("InitializationOrchestrator: fetching project directory via RPC")
+            let projectDir: String?
+            do {
+                projectDir = try await repo.fetchProjectDirectory()
+                log.info("InitializationOrchestrator: project directory fetched successfully")
+            } catch {
+                log.error("InitializationOrchestrator: fetchProjectDirectory failed - \(String(describing: error))")
+                throw error
+            }
             guard let pd = projectDir else {
                 appState.setBootstrapNeedsConfig(.init(projectMissing: true, sessionsEmpty: true, activeSessionMissing: true))
                 log.info("Missing project directory in desktop DB")
                 return
             }
 
-            let sessions = try await repo.fetchSessions(projectDirectory: pd)
-            let activeId = try await repo.fetchActiveSessionId()
-
-            let project = ProjectInfo(name: (pd as NSString).lastPathComponent, directory: pd, hash: String(pd.hashValue))
-            if let manager = VibeManagerCore.shared.dataServices {
-                manager.setCurrentProject(project)
-                await manager.sessionService.setSessions(sessions, activeId: activeId)
-                manager.hasCompletedInitialLoad = true
+            log.info("InitializationOrchestrator: fetching sessions via RPC")
+            let sessions: [Session]
+            do {
+                sessions = try await repo.fetchSessions(projectDirectory: pd)
+                log.info("InitializationOrchestrator: sessions fetched successfully, count=\(sessions.count)")
+            } catch {
+                log.error("InitializationOrchestrator: fetchSessions failed - \(String(describing: error))")
+                throw error
+            }
+            log.info("InitializationOrchestrator: fetching active session ID via RPC")
+            let activeId: String?
+            do {
+                activeId = try await repo.fetchActiveSessionId()
+                log.info("InitializationOrchestrator: active session ID fetched, present=\(activeId != nil)")
+            } catch {
+                log.error("InitializationOrchestrator: fetchActiveSessionId failed - \(String(describing: error))")
+                throw error
             }
 
             if sessions.isEmpty {
                 appState.setBootstrapNeedsConfig(.init(projectMissing: false, sessionsEmpty: true, activeSessionMissing: true))
                 log.info("Project present but sessions empty")
                 return
+            }
+
+            // Auto-select first session if no active session is set
+            let finalActiveId = activeId ?? sessions.first?.id
+            if activeId == nil, let firstId = sessions.first?.id {
+                log.info("No active session set, auto-selecting first session: \(firstId)")
+            }
+
+            let project = ProjectInfo(name: (pd as NSString).lastPathComponent, directory: pd, hash: String(pd.hashValue))
+
+            // Set project directory in AppState for UI routing
+            appState.setSelectedProjectDirectory(pd)
+
+            if let manager = VibeManagerCore.shared.dataServices {
+                manager.setCurrentProject(project)
+                await manager.sessionService.setSessions(sessions, activeId: finalActiveId)
+                manager.hasCompletedInitialLoad = true
             }
 
             // Trigger live bootstrap to prefetch data
@@ -84,7 +121,7 @@ public final class InitializationOrchestrator: ObservableObject {
             }
 
             appState.setBootstrapReady()
-            log.info("Bootstrap ready (project and sessions applied)")
+            log.info("Bootstrap ready (project and sessions applied, activeSessionId=\(finalActiveId ?? "none"))")
         } catch {
             appState.setBootstrapFailed(String(describing: error))
             log.error("Bootstrap failed: \(String(describing: error))")

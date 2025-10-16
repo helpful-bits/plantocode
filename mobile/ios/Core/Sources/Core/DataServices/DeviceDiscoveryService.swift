@@ -28,7 +28,15 @@ public class DeviceDiscoveryService: ObservableObject {
         }
 
         do {
-            self.devices = try await ServerAPIClient.shared.getDevices(deviceType: "desktop")
+            let devices = try await ServerAPIClient.shared.getDevices(deviceType: "desktop")
+            let beforeCount = devices.count
+            let allowedPlatforms = Set(["macos", "windows", "linux"])
+            self.devices = devices.filter { device in
+                device.deviceType.lowercased() == "desktop"
+                    && allowedPlatforms.contains(device.platform.lowercased())
+                    && device.deviceName.lowercased() != "unknown"
+            }
+            self.logger.info("DeviceDiscoveryService: filtered devices before=\(beforeCount) after=\(self.devices.count)")
             self.logger.info("Fetched \(self.devices.count) desktop devices from server at \(Config.serverURL)")
             self.logger.info("Device discovery completed: \(self.devices.count) devices found")
         } catch {

@@ -8,6 +8,7 @@ import { useProject } from "@/contexts/project-context";
 import { useBackgroundJob } from "@/contexts/_hooks/use-background-job";
 import { createImproveTextJobAction } from "@/actions/ai/improve-text";
 import { refineTaskDescriptionAction } from "@/actions/ai/task-refinement.actions";
+import { queueTaskDescriptionUpdate } from "@/actions/session/task-fields.actions";
 import { logError } from "@/utils/error-handling";
 
 interface TextImprovementContextType {
@@ -104,10 +105,31 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
                                          targetElement.closest('[data-task-description]') !== null;
 
             if (isTaskDescriptionField) {
-              // Update session state - this will flow through TaskSection's gate and preserve selection
-              updateCurrentSessionFields({ taskDescription: newValue });
+              // Update DOM directly for immediate UI response
+              const valueSetter = Object.getOwnPropertyDescriptor(targetElement, 'value') ||
+                                Object.getOwnPropertyDescriptor(Object.getPrototypeOf(targetElement), 'value');
+              if (valueSetter && valueSetter.set) {
+                valueSetter.set.call(targetElement, newValue);
+              }
+              targetElement.dispatchEvent(new Event('input', { bubbles: true }));
 
-              // Position cursor at the end of the replaced text after update propagates
+              // Queue to Rust for persistence
+              if (sessionBasicFields.id) {
+                queueTaskDescriptionUpdate(sessionBasicFields.id, newValue).catch(err => {
+                  console.error("Failed to queue task description after improvement:", err);
+                });
+              }
+
+              // Dispatch window event for history tracking
+              window.dispatchEvent(new CustomEvent('task-description-local-change', {
+                detail: {
+                  sessionId: sessionBasicFields.id,
+                  value: newValue,
+                  source: 'improvement'
+                }
+              }));
+
+              // Position cursor at the end of the replaced text
               const newCursorPos = selectionRange.start + improvedText.length;
               requestAnimationFrame(() => {
                 try {
@@ -193,10 +215,31 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
                                          targetElement.closest('[data-task-description]') !== null;
 
             if (isTaskDescriptionField) {
-              // Update session state - this will flow through TaskSection's gate and preserve selection
-              updateCurrentSessionFields({ taskDescription: newValue });
+              // Update DOM directly for immediate UI response
+              const valueSetter = Object.getOwnPropertyDescriptor(targetElement, 'value') ||
+                                Object.getOwnPropertyDescriptor(Object.getPrototypeOf(targetElement), 'value');
+              if (valueSetter && valueSetter.set) {
+                valueSetter.set.call(targetElement, newValue);
+              }
+              targetElement.dispatchEvent(new Event('input', { bubbles: true }));
 
-              // Position cursor at the end of the replaced text after update propagates
+              // Queue to Rust for persistence
+              if (sessionBasicFields.id) {
+                queueTaskDescriptionUpdate(sessionBasicFields.id, newValue).catch(err => {
+                  console.error("Failed to queue task description after refinement:", err);
+                });
+              }
+
+              // Dispatch window event for history tracking
+              window.dispatchEvent(new CustomEvent('task-description-local-change', {
+                detail: {
+                  sessionId: sessionBasicFields.id,
+                  value: newValue,
+                  source: 'refine'
+                }
+              }));
+
+              // Position cursor at the end of the replaced text
               const newCursorPos = selectionRange.start + refinedText.length;
               requestAnimationFrame(() => {
                 try {
@@ -413,6 +456,10 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
     }
 
     try {
+      // CRITICAL: Flush any pending session changes to backend BEFORE creating the job
+      // This ensures the job will see the latest task description and session state
+      await flushSaves();
+
       const result = await createImproveTextJobAction(
         selectedText,
         sessionBasicFields.id,
@@ -429,7 +476,7 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
       console.error("Error triggering text improvement:", error);
       setIsVisible(false);
     }
-  }, [selectedText, sessionBasicFields.id, projectDirectory]);
+  }, [selectedText, sessionBasicFields.id, projectDirectory, flushSaves]);
 
   const triggerRefinement = useCallback(async () => {
     if (!selectedText || !selectedText.trim()) {
@@ -443,6 +490,10 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
     }
 
     try {
+      // CRITICAL: Flush any pending session changes to backend BEFORE creating the job
+      // This ensures the job will see the latest task description and session state
+      await flushSaves();
+
       const result = await refineTaskDescriptionAction({
         taskDescription: selectedText,
         sessionId: sessionBasicFields.id,
@@ -459,7 +510,7 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
       console.error("Error triggering task refinement:", error);
       setIsVisible(false);
     }
-  }, [selectedText, sessionBasicFields.id]);
+  }, [selectedText, sessionBasicFields.id, flushSaves]);
 
   const contextValue = useMemo<TextImprovementContextType>(() => ({
     isVisible,

@@ -93,12 +93,14 @@ impl SettingsRepository {
 
     /// Get the project directory
     pub async fn get_project_directory(&self) -> AppResult<Option<String>> {
-        self.get_value("project_directory").await
+        // Use the same key as the frontend: "global:global-project-dir"
+        self.get_value("global:global-project-dir").await
     }
 
     /// Set the project directory
     pub async fn set_project_directory(&self, directory: &str) -> AppResult<()> {
-        self.set_value("project_directory", directory).await
+        // Use the same key as the frontend: "global:global-project-dir"
+        self.set_value("global:global-project-dir", directory).await
     }
 
     /// Get application settings

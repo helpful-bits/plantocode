@@ -4,8 +4,8 @@ import Core
 /*
  AuthFlowCoordinator routes:
 
- First-time: loading → regionSelection → login → deviceSelection → workspace
- Returning (valid token): loading (restore connections) → workspace OR deviceSelection
+ First-time: loading → regionSelection → login → deviceSelection → projectFolderSelection → workspace
+ Returning (valid token): loading (restore connections) → workspace OR deviceSelection OR projectFolderSelection
  Logout: → login (region preserved)
  Region change: next route derives from region/auth state
 
@@ -17,7 +17,7 @@ public struct AuthFlowCoordinator: View {
   @StateObject private var multiConnectionManager = MultiConnectionManager.shared
 
   private enum FlowRoute {
-    case loading, regionSelection, login, deviceSelection, workspace, missingConfiguration
+    case loading, regionSelection, login, deviceSelection, projectFolderSelection, workspace, missingConfiguration
   }
   @State private var route: FlowRoute = .loading
 
@@ -34,6 +34,8 @@ public struct AuthFlowCoordinator: View {
         LoginView()
       case .deviceSelection:
         DeviceSelectionView()
+      case .projectFolderSelection:
+        ProjectFolderSelectionView()
       case .workspace:
         SessionWorkspaceView(autoPresentDeviceSelection: false)
       case .missingConfiguration:
@@ -55,6 +57,7 @@ public struct AuthFlowCoordinator: View {
       }
     }
     .onChange(of: appState.bootstrapState) { _ in withAnimation { updateRoute() } }
+    .onChange(of: appState.selectedProjectDirectory) { _ in withAnimation { updateRoute() } }
   }
 
   @MainActor
@@ -71,9 +74,19 @@ public struct AuthFlowCoordinator: View {
 
   @MainActor
   private func updateRoute() {
-    guard appState.hasSelectedRegionOnce else { route = .regionSelection; return }
-    guard appState.isAuthenticated else { route = .login; return }
+    // 1. Region check
+    guard appState.hasSelectedRegionOnce else {
+      route = .regionSelection
+      return
+    }
 
+    // 2. Auth check
+    guard appState.isAuthenticated else {
+      route = .login
+      return
+    }
+
+    // 3. Bootstrap state checks
     switch appState.bootstrapState {
     case .idle, .running:
       route = .loading
@@ -81,12 +94,55 @@ public struct AuthFlowCoordinator: View {
     case .failed:
       route = .deviceSelection
       return
-    case .needsConfiguration:
-      route = .missingConfiguration
-      return
+    case .needsConfiguration(let missing):
+      // Map needsConfiguration with projectMissing to onboarding flow
+      if missing.projectMissing {
+        // Check device connection first
+        if multiConnectionManager.activeDeviceId == nil {
+          route = .deviceSelection
+          return
+        }
+        // Check if device is actually connected
+        if let deviceId = multiConnectionManager.activeDeviceId,
+           let state = multiConnectionManager.connectionStates[deviceId],
+           case .connected = state {
+          // Device connected, show project selection
+          route = .projectFolderSelection
+          return
+        } else {
+          // Device not connected, back to device selection
+          route = .deviceSelection
+          return
+        }
+      } else {
+        // Other configuration missing
+        route = .missingConfiguration
+        return
+      }
     case .ready:
-      route = (multiConnectionManager.activeDeviceId != nil) ? .workspace : .deviceSelection
-      return
+      // 4. Device connection check (always before project check)
+      if multiConnectionManager.activeDeviceId == nil {
+        route = .deviceSelection
+        return
+      }
+
+      // Check if device is actually connected
+      if let deviceId = multiConnectionManager.activeDeviceId,
+         let state = multiConnectionManager.connectionStates[deviceId],
+         case .connected = state {
+        // Device connected, check project
+        if appState.selectedProjectDirectory == nil {
+          route = .projectFolderSelection
+          return
+        } else {
+          route = .workspace
+          return
+        }
+      } else {
+        // Device not connected
+        route = .deviceSelection
+        return
+      }
     }
   }
 }

@@ -28,6 +28,9 @@ export function useActiveSessionManager({
     timestamp: number;
   } | undefined>(undefined);
 
+  // Track last persisted ID for additional deduplication
+  const lastPersistedIdRef = useRef<string | null>(null);
+
   // Load the active session ID when the project directory changes
   useEffect(() => {
     if (!projectDirectory) return;
@@ -56,6 +59,11 @@ export function useActiveSessionManager({
 
       // Skip if the current sessionId is already set to the requested value
       if (activeSessionId === sessionId) {
+        return;
+      }
+
+      // Skip if we just persisted this exact ID (additional deduplication)
+      if (sessionId === lastPersistedIdRef.current) {
         return;
       }
 
@@ -88,6 +96,9 @@ export function useActiveSessionManager({
         if (result && !result.isSuccess) {
           console.error("Failed to persist active session:", result.message);
         }
+
+        // Update last persisted ID for deduplication
+        lastPersistedIdRef.current = sessionId;
 
         // Clear the pending operation reference on success
         if (pendingOperationRef.current?.sessionId === sessionId) {

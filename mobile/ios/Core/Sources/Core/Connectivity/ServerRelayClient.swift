@@ -156,7 +156,8 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
                 // Start registration timeout timer (20 seconds)
                 DispatchQueue.main.async { [weak self] in
-                    self?.registrationTimer = Timer.scheduledTimer(withTimeInterval: 20.0, repeats: false) { [weak self] _ in
+                    // Reduced from 20s → 15s to enforce faster definitive connection outcome (FR-5, NFR-1).
+                    self?.registrationTimer = Timer.scheduledTimer(withTimeInterval: 15.0, repeats: false) { [weak self] _ in
                         guard let self = self else { return }
                         if self.registrationPromise != nil {
                             self.logger.error("Registration handshake timeout - no response received")

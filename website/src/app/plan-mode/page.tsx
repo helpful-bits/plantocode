@@ -8,8 +8,9 @@ import { StructuredData } from '@/components/seo/StructuredData';
 import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
+import { FAQ } from '@/components/landing/FAQ';
 import { Code2, Terminal, GitMerge, Search, Zap } from 'lucide-react';
-import type { SoftwareApplication } from 'schema-dts';
+import type { SoftwareApplication, HowTo, FAQPage } from 'schema-dts';
 
 export const metadata: Metadata = {
   title: 'AI Architect for Codex CLI, Claude Code & Cursor | Stop AI Drift in 2025',
@@ -45,6 +46,68 @@ export default function HirePage() {
       price: 0,
       description: 'Free app with pay-as-you-go API usage. $5 free credits on signup.',
     },
+  };
+
+  const howToJsonLd: HowTo = {
+    '@type': 'HowTo',
+    name: 'Architectural planning workflow for AI coding tools',
+    description: 'Generate, merge, and execute implementation plans with multi-model synthesis.',
+    step: [
+      {
+        '@type': 'HowToStep',
+        position: 1,
+        name: 'File Discovery',
+        text: 'Multi-stage workflow surfaces the right files before you plan',
+      },
+      {
+        '@type': 'HowToStep',
+        position: 2,
+        name: 'Generate Plans',
+        text: 'Run models multiple times (e.g., Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet, Grok 4) with token guardrails',
+      },
+      {
+        '@type': 'HowToStep',
+        position: 3,
+        name: 'AI Merges + You Guide',
+        text: 'Provide merge instructions, AI consolidates complementary details from multiple runs',
+      },
+      {
+        '@type': 'HowToStep',
+        position: 4,
+        name: 'Execute',
+        text: 'Run in terminal or paste into Cursor/Windsurf chat',
+      },
+    ],
+  };
+
+  const faqJsonLd: FAQPage = {
+    '@type': 'FAQPage',
+    mainEntity: [
+      {
+        '@type': 'Question',
+        name: 'How is this different from Codex CLI or Claude Code?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: 'Vibe Manager provides architectural pre-planning BEFORE you use Codex, Claude Code, or Cursor. It adds file discovery, multi-model synthesis (GPT-5, Claude, Gemini), and merge instructions that complement the execution phase of those tools.',
+        },
+      },
+      {
+        '@type': 'Question',
+        name: 'Can I use this with my existing AI coding tool?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: 'Yes. Vibe Manager works alongside Codex CLI, Claude Code, Cursor, and Windsurf. Generate plans in Vibe, then execute in your preferred tool with full context.',
+        },
+      },
+      {
+        '@type': 'Question',
+        name: 'What does multi-model synthesis mean?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: 'Run the same task multiple times with different models (e.g., Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet). Each run surfaces different implementation details. Vibe merges them into one comprehensive plan with source attribution.',
+        },
+      },
+    ],
   };
 
   const realCircumstances = [
@@ -101,7 +164,7 @@ export default function HirePage() {
     },
     {
       step: 'Generate Plans',
-      description: 'Run models multiple times (3x GPT-5, 2x Gemini) with token guardrails',
+      description: 'Run models multiple times (e.g., Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet, Grok 4) with token guardrails',
       icon: <Code2 className="w-5 h-5" />
     },
     {
@@ -154,7 +217,7 @@ export default function HirePage() {
 
   return (
     <>
-      <StructuredData data={softwareApplicationJsonLd} />
+      <StructuredData data={{ '@graph': [softwareApplicationJsonLd, howToJsonLd, faqJsonLd] }} />
       <div className="fixed inset-0 -z-20" style={{ background: 'var(--background-gradient)' }} />
       <div className="relative z-0 bg-transparent">
         <Header />
@@ -271,6 +334,25 @@ export default function HirePage() {
                     </GlassCard>
                   ))}
                 </div>
+              </div>
+
+              {/* FAQ */}
+              <div className="mb-16">
+                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">Frequently Asked Questions</h2>
+                <FAQ items={[
+                  {
+                    question: 'How is this different from Codex CLI or Claude Code?',
+                    answer: 'Vibe Manager provides architectural pre-planning BEFORE you use Codex, Claude Code, or Cursor. It adds file discovery, multi-model synthesis (Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet, Grok 4), and merge instructions that complement the execution phase of those tools.',
+                  },
+                  {
+                    question: 'Can I use this with my existing AI coding tool?',
+                    answer: 'Yes. Vibe Manager works alongside Codex CLI, Claude Code, Cursor, and Windsurf. Generate plans in Vibe, then execute in your preferred tool with full context.',
+                  },
+                  {
+                    question: 'What does multi-model synthesis mean?',
+                    answer: 'Run the same task multiple times with different models (Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet, Grok 4, DeepSeek R1). Each run surfaces different implementation details. Vibe merges them into one comprehensive plan with source attribution.',
+                  },
+                ]} />
               </div>
 
               {/* How it works */}

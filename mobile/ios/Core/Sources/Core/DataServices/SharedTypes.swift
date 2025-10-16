@@ -182,6 +182,7 @@ public struct Session: Codable, Identifiable {
     public let name: String
     public let projectDirectory: String
     public let taskDescription: String?
+    public let mergeInstructions: String?
     public let createdAt: Int64
     public let updatedAt: Int64
     public let includedFiles: [String]
@@ -192,6 +193,7 @@ public struct Session: Codable, Identifiable {
         name: String,
         projectDirectory: String,
         taskDescription: String? = nil,
+        mergeInstructions: String? = nil,
         createdAt: Int64,
         updatedAt: Int64,
         includedFiles: [String] = [],
@@ -201,6 +203,7 @@ public struct Session: Codable, Identifiable {
         self.name = name
         self.projectDirectory = projectDirectory
         self.taskDescription = taskDescription
+        self.mergeInstructions = mergeInstructions
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.includedFiles = includedFiles

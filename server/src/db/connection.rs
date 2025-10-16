@@ -215,6 +215,24 @@ async fn create_pool_with_role(
                 let pool_type_label = pool_type_for_closure.clone();
                 let app_name = format!("vibe-manager-{}", pool_type_label.as_str());
                 Box::pin(async move {
+                    // deadlock_timeout is SUSET, so set it while we still hold the original (elevated) role.
+                    if pool_type_label == "system" {
+                        if let Err(err) = sqlx::query("SET deadlock_timeout TO '1000ms'")
+                            .execute(&mut *conn)
+                            .await
+                        {
+                            log::warn!(
+                                "Unable to set deadlock_timeout for {} pool before role switch: {}",
+                                pool_type_label.as_str(),
+                                err
+                            );
+                        }
+                    } else {
+                        log::debug!(
+                            "Skipping deadlock_timeout for {} pool (requires elevated permissions)",
+                            pool_type_label.as_str()
+                        );
+                    }
                     // Execute connection setup as separate statements
                     sqlx::query(&format!("SET ROLE {}", role))
                         .execute(&mut *conn)
@@ -258,28 +276,6 @@ async fn create_pool_with_role(
                             "Unable to set lock_timeout for {} pool: {}",
                             pool_type_label.as_str(),
                             err
-                        );
-                    }
-                    // Only attempt deadlock_timeout for system pool (requires elevated permissions)
-                    if pool_type_label == "system" {
-                        if let Err(err) = sqlx::query("SET deadlock_timeout TO '1000ms'")
-                            .execute(&mut *conn)
-                            .await
-                        {
-                            log::debug!(
-                                "Permission denied setting deadlock_timeout for {} pool: {}",
-                                pool_type_label.as_str(),
-                                err
-                            );
-                            log::info!(
-                                "Skipped deadlock_timeout for {} pool (requires elevated permissions)",
-                                pool_type_label.as_str()
-                            );
-                        }
-                    } else {
-                        log::debug!(
-                            "Skipping deadlock_timeout for {} pool (requires elevated permissions)",
-                            pool_type_label.as_str()
                         );
                     }
                     if let Err(err) = sqlx::query("SET idle_session_timeout TO '600000ms'")

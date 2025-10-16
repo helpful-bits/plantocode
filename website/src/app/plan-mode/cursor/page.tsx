@@ -91,7 +91,7 @@ export default function CursorPlanModePage() {
     {
       title: 'Multi-model plan synthesis',
       description:
-        'Generate plans from GPT-5, Claude, Gemini, and Cursor itself. Merge them into one annotated plan ready for Composer.',
+        'Generate plans from Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet, and other models. Merge them into one annotated plan ready for Composer.',
       icon: <Layers className="w-8 h-8 text-primary" />,
     },
     {
@@ -118,7 +118,7 @@ export default function CursorPlanModePage() {
     {
       step: 'Generate multi-model plans',
       description:
-        'Run GPT-5 and Gemini 2.5 Pro multiple times (e.g., 3x GPT-5, 2x Gemini). Each run finds subtle implementation details the others miss—critical when context is large.',
+        'Run multiple models (e.g., Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet). Each run finds subtle implementation details the others miss—critical when context is large.',
       icon: <Sparkles className="w-5 h-5 text-primary" />,
     },
     {
@@ -144,7 +144,7 @@ export default function CursorPlanModePage() {
     {
       title: 'Plan review',
       cursor: 'Sequential plan runs mean alternative strategies require manual juggling.',
-      vibe: 'Run models multiple times (3x GPT-5, 2x Gemini). Merge complementary implementation details with source attribution before execution.',
+      vibe: 'Run models multiple times (e.g., Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet). Merge complementary implementation details with source attribution before execution.',
     },
     {
       title: 'Execution oversight',
@@ -167,7 +167,7 @@ export default function CursorPlanModePage() {
     {
       title: 'Generate and merge plans',
       description:
-        'Run GPT-5 and Gemini multiple times. Merge complementary implementation details into one Cursor-ready blueprint with annotations and checkpoints.',
+        'Run multiple models (Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet). Merge complementary implementation details into one Cursor-ready blueprint with annotations and checkpoints.',
     },
     {
       title: 'Execute with confidence',

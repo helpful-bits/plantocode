@@ -18,30 +18,13 @@ const FloatingMergeInstructionsComponent: React.FC<FloatingMergeInstructionsProp
   const [position, setPosition] = useState({ x: 20, y: 20 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-  
+
   // State for resizing
   const [height, setHeight] = useState(128); // Default height in pixels (h-32 = 128px)
   const [isResizing, setIsResizing] = useState(false);
   const [resizeStart, setResizeStart] = useState({ y: 0, height: 0 });
-  
-  // Local state for responsive typing (same pattern as MergePlansSection)
-  const [localInstructions, setLocalInstructions] = useState(mergeInstructions);
-  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // Sync local state with prop when it changes externally (e.g., on clear)
-  useEffect(() => {
-    setLocalInstructions(mergeInstructions);
-  }, [mergeInstructions]);
-
-  // Cleanup timer on unmount
-  useEffect(() => {
-    return () => {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
-    };
-  }, []);
 
   // Add enhancement event listeners
   useEffect(() => {
@@ -49,12 +32,8 @@ const FloatingMergeInstructionsComponent: React.FC<FloatingMergeInstructionsProp
     if (!textarea) return;
 
     const handleEnhancementEvent = () => {
-      // Clear debounce and immediately save current text
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-        debounceTimerRef.current = null;
-      }
-      onMergeInstructionsChange(localInstructions);
+      // Immediately flush current text
+      onMergeInstructionsChange(mergeInstructions);
     };
 
     textarea.addEventListener('flush-pending-changes', handleEnhancementEvent);
@@ -64,7 +43,7 @@ const FloatingMergeInstructionsComponent: React.FC<FloatingMergeInstructionsProp
       textarea.removeEventListener('flush-pending-changes', handleEnhancementEvent);
       textarea.removeEventListener('enhancement-applied', handleEnhancementEvent);
     };
-  }, [localInstructions, onMergeInstructionsChange]);
+  }, [mergeInstructions, onMergeInstructionsChange]);
 
   // Get current window dimensions dynamically
   const getWindowDimensions = useCallback(() => {
@@ -87,30 +66,15 @@ const FloatingMergeInstructionsComponent: React.FC<FloatingMergeInstructionsProp
     };
   }, [getWindowDimensions]);
 
-  // Handle input changes with debouncing for responsive typing
+  // Handle input changes - direct call to parent handler
   const handleInstructionsChange = useCallback((value: string) => {
-    // Update local state immediately for responsive UI
-    setLocalInstructions(value);
-
-    // Clear previous timer
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-    }
-
-    // Debounce the parent state update
-    debounceTimerRef.current = setTimeout(() => {
-      onMergeInstructionsChange(value);
-    }, 300);
+    onMergeInstructionsChange(value);
   }, [onMergeInstructionsChange]);
 
   const handleBlur = useCallback(() => {
-    // Clear debounce and immediately save on blur as fallback
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-      debounceTimerRef.current = null;
-    }
-    onMergeInstructionsChange(localInstructions);
-  }, [localInstructions, onMergeInstructionsChange]);
+    // Flush on blur
+    onMergeInstructionsChange(mergeInstructions);
+  }, [mergeInstructions, onMergeInstructionsChange]);
 
   // Drag event handlers with proper offset calculation
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -200,12 +164,12 @@ const FloatingMergeInstructionsComponent: React.FC<FloatingMergeInstructionsProp
   if (!isOpen) return null;
 
   return (
-    <div 
+    <div
       className={`fixed z-[300] w-80 bg-card/95 backdrop-blur-sm border border-border rounded-lg shadow-lg p-4 pointer-events-auto transition-shadow duration-200 ${
         isDragging ? 'shadow-2xl' : 'shadow-lg'
       }`}
-      style={{ 
-        left: `${position.x}px`, 
+      style={{
+        left: `${position.x}px`,
         top: `${position.y}px`,
         cursor: isDragging ? 'grabbing' : 'default'
       }}
@@ -222,7 +186,7 @@ const FloatingMergeInstructionsComponent: React.FC<FloatingMergeInstructionsProp
       <div className="relative">
         <textarea
           ref={textareaRef}
-          value={localInstructions}
+          value={mergeInstructions}
           onChange={(e) => handleInstructionsChange(e.target.value)}
           onBlur={handleBlur}
           placeholder="Add notes about what you like or don't like in this plan..."

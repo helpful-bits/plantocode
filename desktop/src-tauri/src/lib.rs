@@ -129,6 +129,7 @@ pub fn run() {
         .manage(AppState::default())
         .manage(Arc::new(TokenManager::new()))
         .manage(ConfigCache::new(Mutex::new(HashMap::new())))
+        .manage(Arc::new(crate::services::SessionCache::new()))
         .manage(Arc::new(RwLock::new(
             Option::<Arc<crate::api_clients::server_proxy_client::ServerProxyClient>>::None,
         )))
@@ -250,8 +251,18 @@ pub fn run() {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let _ = window.emit("app-will-close", ());
 
-                // Cleanup all terminals before closing
                 let app_handle = window.app_handle();
+
+                // Flush SessionCache before shutdown
+                if let Some(cache) = app_handle.try_state::<Arc<crate::services::SessionCache>>() {
+                    let cache = cache.inner().clone();
+                    tauri::async_runtime::block_on(async {
+                        let _ = cache.flush_all_now(&app_handle).await;
+                    });
+                    info!("SessionCache flushed on shutdown");
+                }
+
+                // Cleanup all terminals before closing
                 if let Some(terminal_manager) =
                     app_handle.try_state::<std::sync::Arc<crate::services::TerminalManager>>()
                 {
@@ -468,6 +479,11 @@ pub fn run() {
             commands::terminal_commands::get_terminal_metadata_command,
             commands::terminal_commands::graceful_exit_terminal_command,
             commands::image_commands::save_pasted_image_command,
+            commands::sync_commands::queue_task_description_update_command,
+            commands::sync_commands::queue_merge_instructions_update_command,
+            commands::sync_commands::queue_start_task_edit_command,
+            commands::sync_commands::queue_end_task_edit_command,
+            commands::sync_commands::queue_external_task_description_update_command,
         ])
         .run(tauri_context)
         .expect("Error while running tauri application");

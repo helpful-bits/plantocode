@@ -596,6 +596,28 @@ public struct CommandRouter {
         return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
     }
 
+    public static func sessionUpdateMergeInstructions(
+        sessionId: String,
+        mergeInstructions: String
+    ) -> AsyncThrowingStream<RpcResponse, Error> {
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: ServerRelayError.notConnected)
+            }
+        }
+
+        let request = RpcRequest(
+            method: "session.updateMergeInstructions",
+            params: [
+                "sessionId": sessionId,
+                "mergeInstructions": mergeInstructions
+            ]
+        )
+
+        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+    }
+
     public static func sessionDelete(
         id: String
     ) -> AsyncThrowingStream<RpcResponse, Error> {

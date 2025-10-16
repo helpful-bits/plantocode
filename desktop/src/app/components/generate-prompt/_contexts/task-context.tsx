@@ -37,6 +37,7 @@ const defaultValue: TaskContextValue = {
     handleWebSearch: async () => Promise.resolve(),
     cancelWebSearch: async () => Promise.resolve(),
     flushPendingTaskChanges: () => null,
+    recordTaskChange: () => {},
     reset: () => {},
     undo: () => {},
     redo: () => {},
@@ -92,6 +93,7 @@ function useProvideTaskContext(taskDescriptionRef: React.RefObject<TaskDescripti
     canRedo,
     undo,
     redo,
+    recordTaskChange,
     webSearchResults,
     applyWebSearchResults,
   } = useTaskDescriptionState({
@@ -323,11 +325,7 @@ function useProvideTaskContext(taskDescriptionRef: React.RefObject<TaskDescripti
     // Task state reset completed
   }, [sessionActions.updateCurrentSessionFields, resetVideoState]);
 
-  // Function to flush pending task changes
   const flushPendingTaskChanges = useCallback(() => {
-    if (taskDescriptionRef.current?.flushPendingChanges) {
-      return taskDescriptionRef.current.flushPendingChanges();
-    }
     return null;
   }, []);
 
@@ -353,6 +351,7 @@ function useProvideTaskContext(taskDescriptionRef: React.RefObject<TaskDescripti
         handleWebSearch,
         cancelWebSearch,
         flushPendingTaskChanges,
+        recordTaskChange,
         reset: resetTaskState,
         undo,
         redo,
@@ -377,6 +376,7 @@ function useProvideTaskContext(taskDescriptionRef: React.RefObject<TaskDescripti
       redo, // memoized with useCallback
       webSearchResults,
       applyWebSearchResults, // memoized with useCallback
+      recordTaskChange,
       isAnalyzingVideo,
       videoAnalysisJobId,
       videoAnalysisPrompt,

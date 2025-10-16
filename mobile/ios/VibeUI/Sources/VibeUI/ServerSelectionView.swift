@@ -73,6 +73,9 @@ public struct ServerSelectionView: View {
               if let s = selected {
                 appState.setActiveRegion(s)
                 appState.markRegionSelectionCompleted()
+                if isModal {
+                  dismiss()
+                }
               }
             } label: {
               Text("Continue")

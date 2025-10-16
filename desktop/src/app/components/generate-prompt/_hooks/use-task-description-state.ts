@@ -6,6 +6,8 @@ import { refineTaskDescriptionAction } from "@/actions/ai/task-refinement.action
 import { startWebSearchWorkflowOrchestratorAction, cancelWorkflowAction } from "@/actions/workflows/workflow.actions";
 import { startWebSearchPromptsGenerationJobAction } from '@/actions/ai/web-search-workflow.actions';
 import { getTaskDescriptionHistoryAction, syncTaskDescriptionHistoryAction } from "@/actions/session";
+import { queueTaskDescriptionUpdate } from "@/actions/session/task-fields.actions";
+import { listen } from '@tauri-apps/api/event';
 import { useBackgroundJob } from "@/contexts/_hooks/use-background-job";
 import { useNotification } from "@/contexts/notification-context";
 import { useProject } from "@/contexts/project-context";
@@ -48,6 +50,8 @@ export function useTaskDescriptionState({
   const [taskRefinementJobId, setTaskRefinementJobId] = useState<
     string | undefined
   >(undefined);
+  // Store original task description when refinement starts for conflict detection
+  const [refinementOriginalTask, setRefinementOriginalTask] = useState<string | null>(null);
   const [isGeneratingPrompts, setIsGeneratingPrompts] = useState(false);
   const [promptsJobId, setPromptsJobId] = useState<string | null>(null);
   
@@ -71,8 +75,11 @@ export function useTaskDescriptionState({
     entries: [sessionTaskDescription || ""],
     currentIndex: 0
   });
-  const isNavigatingHistory = useRef(false);
   const initializedForSessionId = useRef<string | null>(null);
+  const isNavigatingHistoryRef = useRef(false);
+  const lastRecordedHashRef = useRef<string>('');
+  const syncTimerRef = useRef<number | null>(null);
+  const lastSyncedChecksumRef = useRef<string>('');
 
   // External hooks
   const { showNotification } = useNotification();
@@ -204,6 +211,7 @@ export function useTaskDescriptionState({
     setTaskCopySuccess(false);
     setIsRefiningTask(false);
     setTaskRefinementJobId(undefined);
+    setRefinementOriginalTask(null);
     setWebSearchState({
       isLoading: false,
       workflowId: null,
@@ -213,15 +221,38 @@ export function useTaskDescriptionState({
   }, []);
 
 
-  // Debounce timer for user edits ref
-  const debounceTimerRef = useRef<number | null>(null);
-  const historySyncTimerRef = useRef<number | null>(null);
+  const recordTaskChange = useCallback((source: 'typing' | 'paste' | 'voice' | 'improvement' | 'refine' | 'remote', value: string) => {
+    if (isNavigatingHistoryRef.current) return; // Guard undo/redo echoes
+
+    const normalized = value ?? '';
+    const last = historyState.entries[historyState.entries.length - 1] ?? '';
+
+    // Dedupe: skip if same as last entry
+    if (normalized === last) return;
+
+    // Compute hash for additional deduplication
+    const hash = `${source}:${normalized}`;
+    if (hash === lastRecordedHashRef.current) return;
+    lastRecordedHashRef.current = hash;
+
+    setHistoryState(prev => {
+      const newEntries = prev.entries.slice(0, prev.currentIndex + 1);
+      newEntries.push(normalized);
+
+      // Cap at 200 entries
+      const trimmedEntries = newEntries.slice(-200);
+      return {
+        entries: trimmedEntries,
+        currentIndex: trimmedEntries.length - 1
+      };
+    });
+  }, [historyState.entries]);
 
   const saveToHistory = useCallback((description: string) => {
     setHistoryState(prev => {
       const newEntries = prev.entries.slice(0, prev.currentIndex + 1);
       const lastItem = newEntries[newEntries.length - 1];
-      
+
       if (lastItem !== description) {
         newEntries.push(description);
         const trimmedEntries = newEntries.slice(-50); // Keep only last 50 entries
@@ -235,7 +266,7 @@ export function useTaskDescriptionState({
   }, []);
 
 
-  // Task refinement job monitoring
+  // Task refinement job monitoring with conflict detection
   useEffect(() => {
     if (isSwitchingSession || !taskRefinementJobId || !taskRefinementJob.job) return;
 
@@ -246,6 +277,28 @@ export function useTaskDescriptionState({
       if (job.status === "completed" && job.response && job.sessionId === activeSessionId) {
         const refinedTask = String(job.response).trim();
         if (refinedTask) {
+          // CONFLICT DETECTION: Check if task description changed while refinement was running
+          if (refinementOriginalTask !== null && refinementOriginalTask !== sessionTaskDescription) {
+            console.warn(
+              "Task description changed during refinement. Original:",
+              refinementOriginalTask.substring(0, 100),
+              "Current:",
+              sessionTaskDescription.substring(0, 100)
+            );
+
+            showNotification({
+              title: "Task was modified",
+              message: "The task description changed while refinement was running. Refined version not applied to avoid overwriting your changes.",
+              type: "warning",
+            });
+
+            // Clean up state
+            setIsRefiningTask(false);
+            setTaskRefinementJobId(undefined);
+            setRefinementOriginalTask(null);
+            return;
+          }
+
           saveToHistory(sessionTaskDescription);
           // The backend now returns structured content (original + refined)
           // Parse if it's structured, otherwise use the response as-is
@@ -258,22 +311,30 @@ export function useTaskDescriptionState({
           } catch {
             // Not structured JSON, use as-is
           }
-          sessionActions.updateCurrentSessionFields({ taskDescription: finalTaskDescription });
-          sessionActions.setSessionModified(true);
+          if (taskDescriptionRef.current?.setValue) {
+            taskDescriptionRef.current.setValue(finalTaskDescription);
+          }
+          if (activeSessionId) {
+            queueTaskDescriptionUpdate(activeSessionId, finalTaskDescription).catch(err => {
+              console.error("Failed to queue task description after refinement:", err);
+            });
+          }
           onInteraction?.();
           showNotification({ title: "Task refined", message: "Task description has been refined.", type: "success" });
         }
         setIsRefiningTask(false);
         setTaskRefinementJobId(undefined);
+        setRefinementOriginalTask(null);
       } else if ((job.status === "failed" || job.status === "canceled") && job.sessionId === activeSessionId) {
         setIsRefiningTask(false);
         setTaskRefinementJobId(undefined);
+        setRefinementOriginalTask(null);
         showNotification({ title: "Task refinement failed", message: job.errorMessage || "Failed to refine task description.", type: "error" });
       }
     };
 
     handleJobCompletion();
-  }, [taskRefinementJob.job?.status, taskRefinementJobId, isSwitchingSession, activeSessionId, onInteraction, showNotification, saveToHistory, sessionTaskDescription, sessionActions]);
+  }, [taskRefinementJob.job?.status, taskRefinementJobId, isSwitchingSession, activeSessionId, onInteraction, showNotification, saveToHistory, sessionTaskDescription, sessionActions, refinementOriginalTask]);
 
   // Prompts generation job monitoring
   useEffect(() => {
@@ -345,6 +406,10 @@ export function useTaskDescriptionState({
     setIsRefiningTask(true);
 
     try {
+      // CRITICAL: Flush any pending session changes to backend BEFORE creating the job
+      // This ensures the job will see the latest task description and session state
+      await sessionActions.flushSaves();
+
       // Get included files from session context
       const includedFiles = sessionState.currentSession?.includedFiles || [];
 
@@ -357,8 +422,9 @@ export function useTaskDescriptionState({
       });
 
       if (result.isSuccess) {
-        // Store job ID to track progress
+        // Store job ID to track progress and original task for conflict detection
         if (result.data?.jobId) {
+          setRefinementOriginalTask(sessionTaskDescription);
           setTaskRefinementJobId(result.data.jobId);
         }
       } else {
@@ -388,6 +454,7 @@ export function useTaskDescriptionState({
     activeSessionId,
     sessionState.currentSession?.includedFiles,
     projectDirectory,
+    sessionActions,
   ]);
 
   // Handle web search workflow
@@ -424,6 +491,10 @@ export function useTaskDescriptionState({
     }
 
     try {
+      // CRITICAL: Flush any pending session changes to backend BEFORE creating jobs/workflows
+      // This ensures the jobs will see the latest task description and session state
+      await sessionActions.flushSaves();
+
       if (justPrompts) {
         setIsGeneratingPrompts(true);
         const result = await startWebSearchPromptsGenerationJobAction({
@@ -473,6 +544,7 @@ export function useTaskDescriptionState({
     isSwitchingSession,
     activeSessionId,
     projectDirectory,
+    sessionActions,
   ]);
 
   // Handle canceling web search workflow
@@ -500,48 +572,8 @@ export function useTaskDescriptionState({
     });
   }, [webSearchState.workflowId, webSearchState.isLoading, showNotification]);
 
-  useEffect(() => {
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-    }
+  // Removed: debounced saveToHistory effect - now using recordTaskChange with explicit calls from components
 
-    debounceTimerRef.current = window.setTimeout(() => {
-      if (!isNavigatingHistory.current) {
-        const currentHistoryItem = historyState.entries[historyState.currentIndex];
-        if (sessionTaskDescription && sessionTaskDescription !== currentHistoryItem) {
-          saveToHistory(sessionTaskDescription);
-        }
-      }
-    }, 1000);
-
-    return () => {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
-    };
-  }, [sessionTaskDescription, historyState.entries, historyState.currentIndex, saveToHistory]);
-
-  useEffect(() => {
-    if (historySyncTimerRef.current) {
-      clearTimeout(historySyncTimerRef.current);
-    }
-
-    historySyncTimerRef.current = window.setTimeout(async () => {
-      if (activeSessionId && historyState.entries.length > 0) {
-        try {
-          await syncTaskDescriptionHistoryAction(activeSessionId, historyState.entries);
-        } catch (error) {
-          console.error('Failed to sync task description history:', error);
-        }
-      }
-    }, 2000);
-
-    return () => {
-      if (historySyncTimerRef.current) {
-        clearTimeout(historySyncTimerRef.current);
-      }
-    };
-  }, [historyState.entries, activeSessionId]);
 
   useEffect(() => {
     if (!activeSessionId || initializedForSessionId.current === activeSessionId) {
@@ -587,39 +619,141 @@ export function useTaskDescriptionState({
     initializeHistory();
   }, [activeSessionId]);
 
+  // Listen for local changes from decoupled components
+  useEffect(() => {
+    const onLocalChange = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const { sessionId, value, source } = customEvent.detail || {};
+      if (!activeSessionId || sessionId !== activeSessionId) return;
+      recordTaskChange(source ?? 'typing', value ?? '');
+    };
+
+    window.addEventListener('task-description-local-change', onLocalChange);
+
+    return () => {
+      window.removeEventListener('task-description-local-change', onLocalChange);
+    };
+  }, [activeSessionId, recordTaskChange]);
+
+  // Listen for history sync events from backend
+  useEffect(() => {
+    if (!activeSessionId) return;
+
+    let unlisten: (() => void) | undefined;
+
+    const setupListener = async () => {
+      unlisten = await listen<{ sessionId: string; taskDescription: string }>('session-history-synced', async (evt) => {
+        const { sessionId } = evt.payload || {};
+        if (!activeSessionId || sessionId !== activeSessionId) return;
+
+        try {
+          const result = await getTaskDescriptionHistoryAction(activeSessionId);
+          if (result.isSuccess && result.data && result.data.length > 0) {
+            setHistoryState({
+              entries: result.data,
+              currentIndex: result.data.length - 1
+            });
+          }
+        } catch (error) {
+          console.error('Failed to refresh history after sync:', error);
+        }
+      });
+    };
+
+    setupListener();
+
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, [activeSessionId]);
+
+  // Periodic sync to backend (2s interval)
+  useEffect(() => {
+    if (!activeSessionId) return;
+
+    const computeChecksum = (entries: string[]) => {
+      return entries.join('|').slice(0, 100);
+    };
+
+    syncTimerRef.current = window.setInterval(() => {
+      const entries = historyState.entries;
+      if (!entries || entries.length === 0) return;
+
+      const checksum = computeChecksum(entries);
+      if (checksum === lastSyncedChecksumRef.current) return;
+
+      syncTaskDescriptionHistoryAction(activeSessionId, entries)
+        .then(() => {
+          lastSyncedChecksumRef.current = checksum;
+        })
+        .catch(() => {
+          // Swallow transient errors
+        });
+    }, 2000);
+
+    return () => {
+      if (syncTimerRef.current) {
+        clearInterval(syncTimerRef.current);
+        syncTimerRef.current = null;
+      }
+    };
+  }, [activeSessionId, historyState.entries]);
+
   const undo = useCallback(() => {
     if (historyState.currentIndex > 0) {
-      isNavigatingHistory.current = true;
-      
-      const newIndex = historyState.currentIndex - 1;
-      const previousDescription = historyState.entries[newIndex];
-      
-      setHistoryState(prev => ({ ...prev, currentIndex: newIndex }));
-      
-      sessionActions.updateCurrentSessionFields({ taskDescription: previousDescription });
-      sessionActions.setSessionModified(true);
-      onInteraction?.();
-      
-      setTimeout(() => { isNavigatingHistory.current = false; }, 0);
+      isNavigatingHistoryRef.current = true;
+
+      try {
+        const newIndex = historyState.currentIndex - 1;
+        const previousDescription = historyState.entries[newIndex];
+
+        setHistoryState(prev => ({ ...prev, currentIndex: newIndex }));
+
+        if (taskDescriptionRef.current?.setValue) {
+          taskDescriptionRef.current.setValue(previousDescription);
+        }
+        if (activeSessionId) {
+          queueTaskDescriptionUpdate(activeSessionId, previousDescription).catch(err => {
+            console.error("Failed to queue task description after undo:", err);
+          });
+        }
+        onInteraction?.();
+      } finally {
+        // Reset after microtask
+        queueMicrotask(() => {
+          isNavigatingHistoryRef.current = false;
+        });
+      }
     }
-  }, [historyState.currentIndex, historyState.entries, sessionActions, onInteraction]);
+  }, [historyState.currentIndex, historyState.entries, taskDescriptionRef, activeSessionId, onInteraction]);
 
   const redo = useCallback(() => {
     if (historyState.currentIndex < historyState.entries.length - 1) {
-      isNavigatingHistory.current = true;
-      
-      const newIndex = historyState.currentIndex + 1;
-      const nextDescription = historyState.entries[newIndex];
-      
-      setHistoryState(prev => ({ ...prev, currentIndex: newIndex }));
-      
-      sessionActions.updateCurrentSessionFields({ taskDescription: nextDescription });
-      sessionActions.setSessionModified(true);
-      onInteraction?.();
-      
-      setTimeout(() => { isNavigatingHistory.current = false; }, 0);
+      isNavigatingHistoryRef.current = true;
+
+      try {
+        const newIndex = historyState.currentIndex + 1;
+        const nextDescription = historyState.entries[newIndex];
+
+        setHistoryState(prev => ({ ...prev, currentIndex: newIndex }));
+
+        if (taskDescriptionRef.current?.setValue) {
+          taskDescriptionRef.current.setValue(nextDescription);
+        }
+        if (activeSessionId) {
+          queueTaskDescriptionUpdate(activeSessionId, nextDescription).catch(err => {
+            console.error("Failed to queue task description after redo:", err);
+          });
+        }
+        onInteraction?.();
+      } finally {
+        // Reset after microtask
+        queueMicrotask(() => {
+          isNavigatingHistoryRef.current = false;
+        });
+      }
     }
-  }, [historyState.currentIndex, historyState.entries, sessionActions, onInteraction]);
+  }, [historyState.currentIndex, historyState.entries, taskDescriptionRef, activeSessionId, onInteraction]);
 
   // Can undo/redo checks
   const canUndo = historyState.currentIndex > 0;
@@ -672,19 +806,25 @@ ${formattedResults}
 </task_context>`;
     
     // Update the task description
-    sessionActions.updateCurrentSessionFields({ taskDescription: finalTaskDescription });
-    sessionActions.setSessionModified(true);
+    if (taskDescriptionRef.current?.setValue) {
+      taskDescriptionRef.current.setValue(finalTaskDescription);
+    }
+    if (activeSessionId) {
+      queueTaskDescriptionUpdate(activeSessionId, finalTaskDescription).catch(err => {
+        console.error("Failed to queue task description after web search:", err);
+      });
+    }
     onInteraction?.();
-    
+
     // Clear the web search results after applying
     setWebSearchState(prev => ({ ...prev, results: null }));
-    
-    showNotification({ 
-      title: "Research applied", 
-      message: "Web search findings have been added to your task description.", 
-      type: "success" 
+
+    showNotification({
+      title: "Research applied",
+      message: "Web search findings have been added to your task description.",
+      type: "success"
     });
-  }, [sessionTaskDescription, sessionActions, onInteraction, showNotification, saveToHistory, webSearchState.results]);
+  }, [sessionTaskDescription, taskDescriptionRef, activeSessionId, onInteraction, showNotification, saveToHistory, webSearchState.results]);
 
   // Add safety cleanup on component unmount
   useEffect(() => {
@@ -728,6 +868,7 @@ ${formattedResults}
       reset,
       undo,
       redo,
+      recordTaskChange,
       saveToHistory,
       applyWebSearchResults,
     }),
@@ -746,6 +887,7 @@ ${formattedResults}
       reset,
       undo,
       redo,
+      recordTaskChange,
       saveToHistory,
       applyWebSearchResults,
     ]

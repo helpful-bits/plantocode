@@ -49,8 +49,8 @@ const Value = dynamic(() => import('@/components/landing/Value').then(mod => ({ 
 
 
 export const metadata: Metadata = {
-  title: 'Vibe Manager - Experience the true intelligence of GPT-5 and Gemini 2.5 Pro',
-  description: 'Discover relevant files automatically, compare implementation plans from the most powerful AI models, then execute through integrated terminal. The planning workspace that makes AI coding tools work for real codebases.',
+  title: 'AI Planning Workspace: File Discovery + Multi-Model Synthesis | Vibe Manager',
+  description: 'Desktop planning workspace with automatic file discovery, multi-model plan generation (Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet), and integrated terminal. Stop AI breaking your codebase with architectural pre-planning.',
   keywords: [
     'ai plan editor',
     'monaco editor plans',
@@ -76,8 +76,8 @@ export const metadata: Metadata = {
     'desktop ai planning',
   ],
   openGraph: {
-    title: 'Vibe Manager - Stop guessing which files matter in your codebase',
-    description: 'Automatically discover relevant files, experience the true intelligence of GPT, Gemini, and Claude through plan comparison, then execute through integrated terminal. The planning workspace that makes AI coding tools work for real codebases.',
+    title: 'AI Planning Workspace: File Discovery + Multi-Model Synthesis',
+    description: 'Automatic file discovery, multi-model planning (Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet), and integrated terminal execution. Architectural pre-planning that prevents AI from breaking your codebase.',
     url: 'https://www.vibemanager.app',
     siteName: 'Vibe Manager',
     images: [{
@@ -93,8 +93,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Vibe Manager - Stop guessing which files matter in your codebase',
-    description: 'Experience the true intelligence of GPT, Gemini, and Claude with automatic file discovery, plan comparison, and integrated execution.',
+    title: 'AI Planning Workspace: File Discovery + Multi-Model Synthesis',
+    description: 'Automatic file discovery + multi-model planning (Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet) + integrated terminal. Stop AI breaking your codebase.',
     images: [{
       url: cdnUrl('/images/og-image.png'),
       alt: 'Vibe Manager - AI Architect Studio with Integrated Terminal',
@@ -192,7 +192,7 @@ export default function Home() {
     },
     {
       question: 'Which AI models can generate plans?',
-      answer: 'The default configuration ships with OpenAI GPT-5, Gemini 2.5 Pro, Anthropic Claude 4 Sonnet, OpenAI o3, xAI Grok 4, DeepSeek R1, and Moonshot Kimi K2. You can switch models per task from the settings panel before submitting a job.',
+      answer: 'The default configuration ships with Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet, o3, Grok 4, DeepSeek R1, and Kimi K2. You can switch models per task from the settings panel before submitting a job.',
     },
     {
       question: 'What happens to my source code?',
@@ -282,13 +282,13 @@ export default function Home() {
     },
     {
       title: 'Text improvement popover',
-      description: 'Highlight any selection to run the text-improvement job with Claude Sonnet 4 or Gemini 2.5 Flash. The rewrite preserves formatting and applies inside Monaco editors, task inputs, and terminal dictation.',
+      description: 'Highlight any selection to run the text-improvement job with Claude 4.5 Sonnet or Gemini 2.5 Flash. The rewrite preserves formatting and applies inside Monaco editors, task inputs, and terminal dictation.',
       icon: <Sparkles className="w-8 h-8" />,
       href: '/features/text-improvement',
     },
     {
       title: 'Model configuration per task',
-      description: 'Choose from GPT-5, Gemini 2.5 Pro, Claude 4 Sonnet, Grok 4, DeepSeek R1, and Kimi K2 for implementation plans. Settings persist per project.',
+      description: 'Choose from Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet, Grok 4, DeepSeek R1, and Kimi K2 for implementation plans. Settings persist per project.',
       icon: <Globe className="w-8 h-8" />,
       href: '/docs/model-configuration',
     },
@@ -337,7 +337,7 @@ export default function Home() {
     {
       '@type': 'VideoObject',
       name: 'Plan Creation & Merge from Multiple AI Models',
-      description: 'Demonstrates generating implementation plans from configured models such as Gemini 2.5 Pro, GPT-5, and Claude 4 Sonnet, then merging the preferred steps into a single draft.',
+      description: 'Demonstrates generating implementation plans from configured models such as Gemini 2.5 Pro, GPT-5, and Claude 4.5 Sonnet, then merging the preferred steps into a single draft.',
       thumbnailUrl: cdnUrl('/assets/images/step-4-poster.jpg'),
       contentUrl: cdnUrl('/assets/videos/step-4-merge.mp4'),
       uploadDate: '2025-09-20T00:00:00Z',
@@ -454,7 +454,7 @@ export default function Home() {
           {/* SR-only content for better Google snippets */}
           <div className="sr-only">
             <h1>Vibe Manager - AI planning workspace for implementation plans</h1>
-            <p>Generate and edit implementation plans in a Monaco editor, run the staged file discovery workflow, choose from configured models such as Gemini 2.5 Pro, GPT-5, Claude 4 Sonnet, Grok 4, DeepSeek R1, and Kimi K2, and execute through the integrated terminal that launches claude, cursor, codex, or gemini without leaving the app.</p>
+            <p>Generate and edit implementation plans in a Monaco editor, run the staged file discovery workflow, choose from configured models such as Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet, Grok 4, DeepSeek R1, and Kimi K2, and execute through the integrated terminal that launches claude, cursor, codex, or gemini without leaving the app.</p>
           </div>
           <section className="mb-0">
             <HeroSection />

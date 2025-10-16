@@ -322,6 +322,41 @@ impl DeviceRepository {
         Ok(())
     }
 
+    /// Set the active project directory in device capabilities
+    pub async fn set_active_project_directory(
+        &self,
+        device_id: &Uuid,
+        project_directory: &str,
+    ) -> Result<(), AppError> {
+        let result = query!(
+            r#"
+            UPDATE devices
+            SET
+                capabilities = jsonb_set(
+                    COALESCE(capabilities, '{}'::jsonb),
+                    '{activeProjectDirectory}',
+                    to_jsonb($2::text),
+                    true
+                ),
+                updated_at = NOW()
+            WHERE device_id = $1
+            "#,
+            device_id,
+            project_directory
+        )
+        .execute(&*self.db_pool)
+        .await
+        .map_err(|e| {
+            AppError::Database(format!("Failed to set active project directory: {}", e))
+        })?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::NotFound("Device not found".to_string()));
+        }
+
+        Ok(())
+    }
+
     /// Update connection descriptor for secure device communication
     pub async fn update_connection_descriptor(
         &self,
@@ -483,5 +518,26 @@ impl DeviceRepository {
         }
 
         Ok(())
+    }
+
+    /// Clean up invalid devices for a user (wrong platform or "unknown" name)
+    pub async fn cleanup_invalid_devices_for_user(&self, user_id: &Uuid) -> Result<i64, AppError> {
+        let result = sqlx::query!(
+            r#"
+            DELETE FROM devices
+            WHERE user_id = $1
+              AND device_type = 'desktop'
+              AND (
+                lower(platform) NOT IN ('macos', 'windows', 'linux')
+                OR lower(device_name) = 'unknown'
+              )
+            "#,
+            user_id
+        )
+        .execute(&*self.db_pool)
+        .await
+        .map_err(|e| AppError::Database(format!("cleanup_invalid_devices_for_user: {}", e)))?;
+
+        Ok(result.rows_affected() as i64)
     }
 }

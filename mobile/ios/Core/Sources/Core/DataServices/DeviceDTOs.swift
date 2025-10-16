@@ -99,7 +99,8 @@ extension RegisteredDevice {
             supportsTasks: deviceCapabilities?["supports_tasks"] as? Bool ?? false,
             supportsPlans: deviceCapabilities?["supports_plans"] as? Bool ?? false,
             maxConcurrentJobs: deviceCapabilities?["max_concurrent_jobs"] as? UInt32 ?? 5,
-            priorityLevel: deviceCapabilities?["priority_level"] as? UInt8 ?? 5
+            priorityLevel: deviceCapabilities?["priority_level"] as? UInt8 ?? 5,
+            activeProjectDirectory: deviceCapabilities?["activeProjectDirectory"] as? String
         )
 
         // Create health metrics if available

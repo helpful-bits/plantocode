@@ -437,7 +437,8 @@ public class JobsDataService: ObservableObject {
                         if shouldReplace && token == strongSelf.currentListJobsRequestToken {
                             strongSelf.jobs = response.jobs
                             strongSelf.jobsIndex = Dictionary(uniqueKeysWithValues: response.jobs.enumerated().map { ($1.id, $0) })
-                            strongSelf.prefetchTopJobsInternal()
+                            // REMOVED: prefetchTopJobsInternal() - this was causing 8+ second delays
+                            // Job details are fetched on-demand when user taps a job
                             strongSelf.hasLoadedOnce = true
                         }
                     }

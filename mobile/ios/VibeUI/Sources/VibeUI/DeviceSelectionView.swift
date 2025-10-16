@@ -13,14 +13,30 @@ public struct DeviceSelectionView: View {
     @State private var diagnosticsDeviceId: UUID?
 
     private var filteredDevices: [RegisteredDevice] {
-        let filtered = deviceDiscovery.devices.filter {
-            let isDesktop = $0.deviceType.lowercased() == "desktop"
-            let isAvailable = $0.status.isAvailable
-            print("[DeviceSelection] Device: \($0.deviceName) - Type: \($0.deviceType) (isDesktop: \(isDesktop)), Status: \($0.status) (isAvailable: \(isAvailable))")
-            return isDesktop && isAvailable
+        let allowedPlatforms = Set(["macos", "windows", "linux"])
+        let filtered = deviceDiscovery.devices.filter { device in
+            let isDesktop = device.deviceType.lowercased() == "desktop"
+            let isAvailable = device.status.isAvailable
+            let isAllowedPlatform = allowedPlatforms.contains(device.platform.lowercased())
+            let isValidName = device.deviceName.lowercased() != "unknown"
+
+            print("[DeviceSelection] Device: \(device.deviceName) - Type: \(device.deviceType) (isDesktop: \(isDesktop)), Status: \(device.status) (isAvailable: \(isAvailable)), Platform: \(device.platform) (allowed: \(isAllowedPlatform)), Name valid: \(isValidName)")
+
+            return isDesktop && isAvailable && isAllowedPlatform && isValidName
         }
         print("[DeviceSelection] Filtered devices: \(filtered.count) of \(deviceDiscovery.devices.count)")
         return filtered
+    }
+
+    private var identityText: String {
+        if let user = appState.currentUser {
+            let name = (user.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let email = (user.email ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !name.isEmpty && !email.isEmpty { return "\(name) — \(email)" }
+            if !name.isEmpty { return name }
+            if !email.isEmpty { return email }
+        }
+        return ""
     }
 
     public init() {}
@@ -51,15 +67,40 @@ public struct DeviceSelectionView: View {
                         Text("Choose a desktop device to connect to")
                             .paragraph()
                             .foregroundColor(Color.mutedForeground)
+
+                        if appState.isAuthenticated, let user = appState.currentUser {
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: "person.circle")
+                                    .font(.system(size: 16, weight: .regular))
+                                    .foregroundColor(Color.mutedForeground)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    if let name = user.name, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                        Text(name)
+                                            .font(.footnote)
+                                            .foregroundColor(Color.mutedForeground)
+                                            .lineLimit(1)
+                                            .truncationMode(.tail)
+                                    }
+                                    if let email = user.email, !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                        Text(email)
+                                            .font(.footnote)
+                                            .foregroundColor(Color.mutedForeground)
+                                            .lineLimit(1)
+                                            .truncationMode(.tail)
+                                    }
+                                }
+                                Spacer()
+                            }
+                            .padding(.top, 4)
+                        }
                     }
 
                     if let errorMessage = errorMessage {
                         VStack(spacing: 8) {
                             StatusAlertView(variant: .destructive, title: "Connection Error", message: errorMessage)
 
-                            if let deviceId = selectedDeviceId {
+                            if diagnosticsDeviceId != nil {
                                 Button(action: {
-                                    diagnosticsDeviceId = deviceId
                                     showingDiagnostics = true
                                 }) {
                                     HStack {
@@ -210,6 +251,8 @@ public struct DeviceSelectionView: View {
                 print("[DeviceSelection] View appeared with existing connection, resetting local state")
                 isConnecting = false
                 selectedDeviceId = nil
+                errorMessage = nil
+                diagnosticsDeviceId = nil
             }
 
             Task {
@@ -224,9 +267,8 @@ public struct DeviceSelectionView: View {
         }
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
-                if let deviceId = selectedDeviceId, errorMessage != nil {
+                if diagnosticsDeviceId != nil && errorMessage != nil {
                     Button(action: {
-                        diagnosticsDeviceId = deviceId
                         showingDiagnostics = true
                     }) {
                         Image(systemName: "stethoscope")
@@ -235,7 +277,17 @@ public struct DeviceSelectionView: View {
                 }
             }
 
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItemGroup(placement: .navigationBarTrailing) {
+                if appState.isAuthenticated {
+                    Button("Log Out") {
+                        showingRegionSelector = false
+                        showingDiagnostics = false
+                        Task { await appState.signOut() }
+                    }
+                    .accessibilityLabel("Log Out")
+                    .accessibilityHint("Signs out the current user")
+                }
+
                 Button("Change Region") {
                     showingRegionSelector = true
                 }
@@ -250,6 +302,35 @@ public struct DeviceSelectionView: View {
         .sheet(isPresented: $showingDiagnostics) {
             if let deviceId = diagnosticsDeviceId {
                 ConnectionDiagnosticsView(deviceId: deviceId)
+            } else {
+                // Fallback in case deviceId is nil
+                NavigationView {
+                    VStack(spacing: 16) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 48))
+                            .foregroundColor(Color.destructive)
+
+                        Text("Device Not Selected")
+                            .h3()
+                            .foregroundColor(Color.cardForeground)
+
+                        Text("Please select a device before viewing diagnostics")
+                            .paragraph()
+                            .foregroundColor(Color.mutedForeground)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(24)
+                    .navigationTitle("Diagnostics")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button("Close") {
+                                showingDiagnostics = false
+                            }
+                            .buttonStyle(ToolbarButtonStyle())
+                        }
+                    }
+                }
             }
         }
         .onChange(of: multiConnectionManager.connectionStates) { states in
@@ -257,16 +338,35 @@ public struct DeviceSelectionView: View {
             if let deviceId = selectedDeviceId,
                let state = states[deviceId] {
                 switch state {
-                case .connected(_), .failed(_):
-                    // Connection reached a terminal state, reset local UI state
+                case .connected(_):
+                    // Connection successful, reset local UI state and clear any errors
                     if isConnecting {
                         print("[DeviceSelection] Connection reached terminal state, resetting UI")
                         isConnecting = false
                         selectedDeviceId = nil
+                        errorMessage = nil
+                        diagnosticsDeviceId = nil
+                    }
+                case .failed(_):
+                    // Connection failed, reset connecting state but keep error info for diagnostics
+                    if isConnecting {
+                        print("[DeviceSelection] Connection failed, keeping error state for diagnostics")
+                        isConnecting = false
+                        // errorMessage and diagnosticsDeviceId already set in connectToDevice error handler
                     }
                 default:
                     break
                 }
+            }
+        }
+        .onChange(of: appState.isAuthenticated) { isAuth in
+            if isAuth {
+                Task { await deviceDiscovery.refreshDevices() }
+            }
+        }
+        .onChange(of: appState.activeRegion) { _ in
+            if appState.isAuthenticated {
+                Task { await deviceDiscovery.refreshDevices() }
             }
         }
     }
@@ -278,6 +378,10 @@ public struct DeviceSelectionView: View {
             selectedDeviceId = nil
             isConnecting = false
         }
+        // Clear error state when refreshing
+        errorMessage = nil
+        diagnosticsDeviceId = nil
+
         Task {
             await deviceDiscovery.refreshDevices()
         }
@@ -287,15 +391,18 @@ public struct DeviceSelectionView: View {
         guard !isConnecting else { return }
 
         // Validate prerequisites before attempting connection
+        if !device.status.isAvailable {
+            errorMessage = "Desktop device is offline"
+            return
+        }
+
         if !VibeManagerCore.shared.isInitialized {
             errorMessage = "Initialization required. Please restart the app."
-            isConnecting = false
             return
         }
 
         if AuthService.shared.isAuthenticated == false {
-            errorMessage = "Please sign in before connecting."
-            isConnecting = false
+            errorMessage = "Please sign in on mobile before connecting"
             return
         }
 
@@ -303,6 +410,7 @@ public struct DeviceSelectionView: View {
         selectedDeviceId = device.deviceId
         isConnecting = true
         errorMessage = nil
+        diagnosticsDeviceId = nil
 
         Task {
             do {
@@ -314,9 +422,34 @@ public struct DeviceSelectionView: View {
                     // Run bootstrap to initialize project and sessions, which will set state to .ready
                     await InitializationOrchestrator.shared.run()
                     // Note: AuthFlowCoordinator advances to workspace based on connection state and bootstrap state
+
+                    // Watchdog: ensure bootstrap progressed within 8 seconds
+                    let deadline = Date().addingTimeInterval(8.0)
+                    while Date() < deadline {
+                        try? await Task.sleep(nanoseconds: 200_000_000) // 200ms
+                        let state = AppState.shared.bootstrapState
+                        if case .ready = state { break }
+                        if case .needsConfiguration = state { break }
+                    }
+
+                    let finalState = AppState.shared.bootstrapState
+                    switch finalState {
+                    case .ready, .needsConfiguration:
+                        // Bootstrap completed successfully
+                        break
+                    default:
+                        // Bootstrap did not complete - show error
+                        await MainActor.run {
+                            errorMessage = "Desktop did not respond in time. Check that the desktop app is running and signed in with the same account."
+                            isConnecting = false
+                            diagnosticsDeviceId = device.deviceId
+                        }
+                        return
+                    }
+
                     await MainActor.run {
                         appState.selectedDeviceId = device.deviceId
-                        appState.navigateToMainApp()
+                        // AuthFlowCoordinator will handle routing based on device connection and project state
                         // Reset local state now that connection is established
                         isConnecting = false
                         selectedDeviceId = nil
@@ -340,7 +473,8 @@ public struct DeviceSelectionView: View {
                             errorMessage = error.localizedDescription
                         }
                         isConnecting = false
-                        // Keep selectedDeviceId for diagnostics button
+                        // Keep selectedDeviceId and diagnosticsDeviceId for diagnostics button
+                        diagnosticsDeviceId = device.deviceId
                     }
                 }
             }
@@ -376,14 +510,17 @@ private struct DeviceRow: View {
 
                     Spacer()
 
-                    if isConnecting {
+                    // Get effective state from MultiConnectionManager
+                    let effectiveState = multiConnectionManager.effectiveConnectionState(for: device.deviceId)
+
+                    if isConnecting || effectiveState.isConnecting {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: Color.primary))
                             .scaleEffect(0.8)
-                    } else if isSelected {
+                    } else if case .connected = effectiveState {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 24))
-                            .foregroundColor(Color.primary)
+                            .foregroundColor(Color.success)
                     } else {
                         Image(systemName: "arrow.right.circle")
                             .font(.system(size: 24))
@@ -439,6 +576,12 @@ private struct DeviceRow: View {
             statusMessage(
                 text: "Connecting...",
                 detail: "Establishing WebSocket connection to relay server",
+                color: Color.warning
+            )
+        case .handshaking:
+            statusMessage(
+                text: "Verifying connection…",
+                detail: "Completing secure handshake with desktop",
                 color: Color.warning
             )
         case .reconnecting:

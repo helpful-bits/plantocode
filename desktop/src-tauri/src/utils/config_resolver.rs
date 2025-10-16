@@ -7,6 +7,7 @@ use crate::validation::ConfigValidator;
 use heck::ToSnakeCase;
 use log::{error, info, warn};
 use serde_json;
+use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
 /// Validates that resolved settings are valid and consistent
@@ -111,7 +112,7 @@ pub async fn resolve_model_settings(
 
     let project_hash = generate_project_hash(project_directory);
     let task_type_snake = task_type.to_string().to_snake_case();
-    let pool = match app_handle.try_state::<sqlx::SqlitePool>() {
+    let pool = match app_handle.try_state::<Arc<sqlx::SqlitePool>>() {
         Some(pool) => pool.inner().clone(),
         None => {
             return Err(AppError::InitializationError(
@@ -119,7 +120,7 @@ pub async fn resolve_model_settings(
             ));
         }
     };
-    let settings_repo = SettingsRepository::new(std::sync::Arc::new(pool));
+    let settings_repo = SettingsRepository::new(pool.clone());
 
     let model = if let Some(model) = model_override {
         model

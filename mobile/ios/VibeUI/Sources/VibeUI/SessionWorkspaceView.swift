@@ -59,60 +59,50 @@ public struct SessionWorkspaceView: View {
     private func tabsView(for session: Session) -> some View {
         TabView(selection: $selectedTab) {
             // Tab 1: Task Description (Updated with TaskInputView)
-            LazyTabContent(isActive: selectedTab == 0) {
-                TaskTab(
-                    session: session,
-                    taskText: $taskText,
-                    onSessionChange: { showingSessionSelector = true }
-                )
-            }
+            TaskTab(
+                session: session,
+                taskText: $taskText,
+                onSessionChange: { showingSessionSelector = true }
+            )
             .tabItem {
                 Label("Task", systemImage: "square.and.pencil")
             }
             .tag(0)
 
-            // Tab 2: Files
-            LazyTabContent(isActive: selectedTab == 1) {
-                FilesTab(
-                    session: session,
-                    isOfflineMode: isOfflineMode
-                )
-            }
+            // Tab 2: Files - No lazy loading to ensure onReceive handlers fire
+            FilesTab(
+                session: session,
+                isOfflineMode: isOfflineMode
+            )
             .tabItem {
                 Label("Files", systemImage: "doc.text")
             }
             .tag(1)
 
-            // Tab 3: Plans
-            LazyTabContent(isActive: selectedTab == 2) {
-                PlansTab(
-                    session: session,
-                    taskText: taskText,
-                    onCreatePlan: createImplementationPlan,
-                    isOfflineMode: isOfflineMode
-                )
-            }
+            // Tab 3: Plans - No lazy loading to ensure onReceive handlers fire
+            PlansTab(
+                session: session,
+                taskText: taskText,
+                onCreatePlan: createImplementationPlan,
+                isOfflineMode: isOfflineMode
+            )
             .tabItem {
                 Label("Plans", systemImage: "list.bullet.rectangle")
             }
             .tag(2)
 
-            // Tab 4: Jobs
-            LazyTabContent(isActive: selectedTab == 3) {
-                JobsTab(
-                    session: session,
-                    isOfflineMode: isOfflineMode
-                )
-            }
+            // Tab 4: Jobs - No lazy loading to ensure onReceive handlers fire
+            JobsTab(
+                session: session,
+                isOfflineMode: isOfflineMode
+            )
             .tabItem {
                 Label("Jobs", systemImage: "chart.bar.doc.horizontal")
             }
             .tag(3)
 
             // Tab 5: Settings
-            LazyTabContent(isActive: selectedTab == 4) {
-                SettingsView()
-            }
+            SettingsView()
             .tabItem {
                 Label("Settings", systemImage: "gearshape")
             }
@@ -323,18 +313,37 @@ public struct SessionWorkspaceView: View {
     }
 
     private func loadSession(_ session: Session) {
+        // Set the session immediately for UI responsiveness
         currentSession = session
         taskText = session.taskDescription ?? ""
         errorMessage = nil
-
-        // Set current session in SessionDataService for global access
-        container.sessionService.currentSession = session
 
         // Set current project in AppContainer for proper scoping
         let dir = session.projectDirectory
         let name = URL(fileURLWithPath: dir).lastPathComponent
         let hash = String(dir.hashValue)
         container.setCurrentProject(ProjectInfo(name: name, directory: dir, hash: hash))
+
+        // Fetch full session details including includedFiles
+        Task {
+            do {
+                if let fullSession = try await container.sessionService.getSession(id: session.id) {
+                    await MainActor.run {
+                        // Update with full details
+                        currentSession = fullSession
+                        taskText = fullSession.taskDescription ?? taskText
+
+                        // Set current session in SessionDataService for global access
+                        container.sessionService.currentSession = fullSession
+                    }
+                }
+            } catch {
+                // If fetch fails, still use the summary session we have
+                await MainActor.run {
+                    container.sessionService.currentSession = session
+                }
+            }
+        }
     }
 
     private func handleDeepLink(_ route: AppState.DeepLinkRoute) async {
@@ -1101,24 +1110,6 @@ struct ReconnectionSuccessBanner: View {
             }
             .padding(16)
             .background(Color.successBackground)
-        }
-    }
-}
-
-// MARK: - LazyTabContent
-
-/// Wrapper that keeps tab registered but only renders content when active
-struct LazyTabContent<Content: View>: View {
-    let isActive: Bool
-    @ViewBuilder let content: () -> Content
-
-    var body: some View {
-        Group {
-            if isActive {
-                content()
-            } else {
-                Color.clear
-            }
         }
     }
 }

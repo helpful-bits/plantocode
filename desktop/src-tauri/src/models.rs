@@ -53,6 +53,8 @@ pub struct Session {
     pub included_files: Vec<String>,
     pub force_excluded_files: Vec<String>,
     pub video_analysis_prompt: Option<String>,
+    #[serde(rename = "mergeInstructions")]
+    pub merge_instructions: Option<String>,
 }
 
 // Request struct for creating a session - only requires essential fields
@@ -71,6 +73,7 @@ pub struct CreateSessionRequest {
     pub included_files: Vec<String>,
     pub force_excluded_files: Vec<String>,
     pub video_analysis_prompt: Option<String>,
+    pub merge_instructions: Option<String>,
 }
 
 // Job status enum that matches the SQL schema CHECK constraint

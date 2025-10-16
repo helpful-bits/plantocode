@@ -8,6 +8,7 @@ public final class SessionDataService: ObservableObject {
     @Published public var currentSession: Session?
     @Published public var isLoading = false
     @Published public var error: DataServiceError?
+    @Published public private(set) var hasLoadedOnce: Bool = false
     private let offlineQueue = OfflineActionQueue()
     private var sessionsIndex: [String: Int] = [:]
 
@@ -98,15 +99,20 @@ public final class SessionDataService: ObservableObject {
                         let createdAt = ts(from: dict, camel: "createdAt", snake: "created_at")
                         let updatedAt = ts(from: dict, camel: "updatedAt", snake: "updated_at")
 
+                        let includedFiles = dict["includedFiles"] as? [String] ?? []
+                        let forceExcludedFiles = dict["forceExcludedFiles"] as? [String] ?? []
+                        let mergeInstructions = dict["mergeInstructions"] as? String
+
                         return Session(
                             id: id,
                             name: name,
                             projectDirectory: projectDirectory,
                             taskDescription: dict["taskDescription"] as? String,
+                            mergeInstructions: mergeInstructions,
                             createdAt: createdAt,
                             updatedAt: updatedAt,
-                            includedFiles: dict["includedFiles"] as? [String] ?? [],
-                            forceExcludedFiles: dict["forceExcludedFiles"] as? [String] ?? []
+                            includedFiles: includedFiles,
+                            forceExcludedFiles: forceExcludedFiles
                         )
                     }
 
@@ -115,6 +121,7 @@ public final class SessionDataService: ObservableObject {
                         // Build index for fast lookups
                         self.sessionsIndex = Dictionary(uniqueKeysWithValues: sessionList.enumerated().map { ($1.id, $0) })
                         self.isLoading = false
+                        self.hasLoadedOnce = true
                     }
                     let cacheKey = "sessions_\(projectDirectory.replacingOccurrences(of: "/", with: "_"))"
                     CacheManager.shared.set(sessionList, forKey: cacheKey, ttl: 300)
@@ -139,6 +146,7 @@ public final class SessionDataService: ObservableObject {
                 await MainActor.run {
                     self.sessions = cached
                     self.isLoading = false
+                    self.hasLoadedOnce = true
                 }
                 return cached
             }
@@ -209,12 +217,14 @@ public final class SessionDataService: ObservableObject {
 
                         let createdAt = ts(from: sessionDict, camel: "createdAt", snake: "created_at")
                         let updatedAt = ts(from: sessionDict, camel: "updatedAt", snake: "updated_at")
+                        let mergeInstructions = sessionDict["mergeInstructions"] as? String
 
                         let session = Session(
                             id: id,
                             name: name,
                             projectDirectory: projectDirectory,
                             taskDescription: sessionDict["taskDescription"] as? String,
+                            mergeInstructions: mergeInstructions,
                             createdAt: createdAt,
                             updatedAt: updatedAt,
                             includedFiles: sessionDict["includedFiles"] as? [String] ?? [],
@@ -272,12 +282,14 @@ public final class SessionDataService: ObservableObject {
 
                         let createdAt = ts(from: sessionDict, camel: "createdAt", snake: "created_at")
                         let updatedAt = ts(from: sessionDict, camel: "updatedAt", snake: "updated_at")
+                        let mergeInstructions = sessionDict["mergeInstructions"] as? String
 
                         let session = Session(
                             id: id,
                             name: name,
                             projectDirectory: projectDirectory,
                             taskDescription: sessionDict["taskDescription"] as? String,
+                            mergeInstructions: mergeInstructions,
                             createdAt: createdAt,
                             updatedAt: updatedAt,
                             includedFiles: sessionDict["includedFiles"] as? [String] ?? [],
@@ -343,12 +355,14 @@ public final class SessionDataService: ObservableObject {
 
                         let createdAt = ts(from: sessionDict, camel: "createdAt", snake: "created_at")
                         let updatedAt = ts(from: sessionDict, camel: "updatedAt", snake: "updated_at")
+                        let mergeInstructions = sessionDict["mergeInstructions"] as? String
 
                         let session = Session(
                             id: id,
                             name: name,
                             projectDirectory: projectDirectory,
                             taskDescription: sessionDict["taskDescription"] as? String,
+                            mergeInstructions: mergeInstructions,
                             createdAt: createdAt,
                             updatedAt: updatedAt,
                             includedFiles: sessionDict["includedFiles"] as? [String] ?? [],
@@ -459,12 +473,14 @@ public final class SessionDataService: ObservableObject {
 
                         let createdAt = ts(from: sessionDict, camel: "createdAt", snake: "created_at")
                         let updatedAt = ts(from: sessionDict, camel: "updatedAt", snake: "updated_at")
+                        let mergeInstructions = sessionDict["mergeInstructions"] as? String
 
                         let session = Session(
                             id: id,
                             name: name,
                             projectDirectory: projectDirectory,
                             taskDescription: sessionDict["taskDescription"] as? String,
+                            mergeInstructions: mergeInstructions,
                             createdAt: createdAt,
                             updatedAt: updatedAt,
                             includedFiles: sessionDict["includedFiles"] as? [String] ?? [],
@@ -602,12 +618,14 @@ public final class SessionDataService: ObservableObject {
 
                         let createdAt = ts(from: sessionDict, camel: "createdAt", snake: "created_at")
                         let updatedAt = ts(from: sessionDict, camel: "updatedAt", snake: "updated_at")
+                        let mergeInstructions = sessionDict["mergeInstructions"] as? String
 
                         let session = Session(
                             id: id,
                             name: name,
                             projectDirectory: projectDirectory,
                             taskDescription: sessionDict["taskDescription"] as? String,
+                            mergeInstructions: mergeInstructions,
                             createdAt: createdAt,
                             updatedAt: updatedAt,
                             includedFiles: sessionDict["includedFiles"] as? [String] ?? [],
@@ -840,6 +858,7 @@ public final class SessionDataService: ObservableObject {
             name: cs.name,
             projectDirectory: cs.projectDirectory,
             taskDescription: cs.taskDescription,
+            mergeInstructions: cs.mergeInstructions,
             createdAt: cs.createdAt,
             updatedAt: cs.updatedAt,
             includedFiles: includedFiles,
@@ -874,11 +893,13 @@ public final class SessionDataService: ObservableObject {
                    let projDir = sessionDict["projectDirectory"] as? String {
                     let createdAt = ts(from: sessionDict, camel: "createdAt", snake: "created_at")
                     let updatedAt = ts(from: sessionDict, camel: "updatedAt", snake: "updated_at")
+                    let mergeInstructions = sessionDict["mergeInstructions"] as? String
                     let s = Session(
                         id: id,
                         name: name,
                         projectDirectory: projDir,
                         taskDescription: sessionDict["taskDescription"] as? String,
+                        mergeInstructions: mergeInstructions,
                         createdAt: createdAt,
                         updatedAt: updatedAt,
                         includedFiles: sessionDict["includedFiles"] as? [String] ?? [],
@@ -997,6 +1018,7 @@ public final class SessionDataService: ObservableObject {
             name: session.name,
             projectDirectory: session.projectDirectory,
             taskDescription: session.taskDescription,
+            mergeInstructions: session.mergeInstructions,
             createdAt: session.createdAt,
             updatedAt: session.updatedAt,
             includedFiles: includedFiles,
@@ -1024,6 +1046,7 @@ public final class SessionDataService: ObservableObject {
             name: session.name,
             projectDirectory: session.projectDirectory,
             taskDescription: taskDescription,
+            mergeInstructions: session.mergeInstructions,
             createdAt: session.createdAt,
             updatedAt: session.updatedAt,
             includedFiles: session.includedFiles,
@@ -1050,6 +1073,7 @@ public final class SessionDataService: ObservableObject {
             name: session.name,
             projectDirectory: session.projectDirectory,
             taskDescription: session.taskDescription,
+            mergeInstructions: session.mergeInstructions,
             createdAt: session.createdAt,
             updatedAt: session.updatedAt,
             includedFiles: files,
@@ -1071,12 +1095,14 @@ public final class SessionDataService: ObservableObject {
 
         let createdAt = ts(from: dict, camel: "createdAt", snake: "created_at")
         let updatedAt = ts(from: dict, camel: "updatedAt", snake: "updated_at")
+        let mergeInstructions = dict["mergeInstructions"] as? String
 
         return Session(
             id: id,
             name: name,
             projectDirectory: projectDirectory,
             taskDescription: dict["taskDescription"] as? String,
+            mergeInstructions: mergeInstructions,
             createdAt: createdAt,
             updatedAt: updatedAt,
             includedFiles: dict["includedFiles"] as? [String] ?? [],

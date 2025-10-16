@@ -10,6 +10,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
 import { useFileSelection } from "./_hooks/use-file-selection";
 import { useWorkflowState } from "./_hooks/use-workflow-state";
 import { FileItem } from "./_components/file-item";
+import VirtualizedList from "@/ui/virtualized-list";
 
 /**
  * EXTREMELY SIMPLE file browser
@@ -371,16 +372,20 @@ export const FileBrowser = () => {
               </div>
             </div>
           ) : (
-            <div className="p-2">
-              {files.map((file) => (
+            <VirtualizedList
+              items={files}
+              itemHeight={36}
+              overscan={8}
+              getKey={(f) => f.path}
+              renderItem={(file) => (
                 <FileItem
-                  key={file.path}
                   file={file}
                   onToggleSelection={toggleFileSelection}
                   onToggleExclusion={toggleFileExclusion}
                 />
-              ))}
-            </div>
+              )}
+              className="w-full h-full p-2"
+            />
           )}
         </div>
       </div>

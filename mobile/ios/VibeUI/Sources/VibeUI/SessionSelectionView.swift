@@ -93,7 +93,7 @@ public struct SessionSelectionView: View {
                 Divider()
 
                 // Loading State
-                if isLoading {
+                if isLoading && sessions.isEmpty && !(VibeManagerCore.shared.dataServices?.sessionService.hasLoadedOnce ?? false) {
                     VStack {
                         Spacer()
                         HStack {
@@ -247,6 +247,16 @@ public struct SessionSelectionView: View {
                     }
                     return
                 }
+
+                // Cache-first loading: render cached sessions immediately
+                let cached = dataServices.sessionService.sessions
+                if !cached.isEmpty {
+                    await MainActor.run {
+                        self.sessions = cached
+                        self.isLoading = false
+                    }
+                }
+
                 let sessionsList = try await dataServices.sessionService.fetchSessions(projectDirectory: projectDirectory)
                 await MainActor.run {
                     sessions = sessionsList.sorted { $0.updatedAt > $1.updatedAt }
@@ -488,14 +498,11 @@ class SessionListEventMonitor: ObservableObject {
             }
             .store(in: &cancellables)
 
-        // Monitor jobs service for new/updated jobs
-        dataServices.jobsService.$jobs
-            .dropFirst() // Skip initial value
-            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main) // Debounce rapid updates
-            .sink { [weak self] _ in
-                self?.shouldRefresh = true
-            }
-            .store(in: &cancellables)
+        // Note: We intentionally don't monitor jobsService.$jobs here because:
+        // - Jobs update frequently during background processing
+        // - This causes excessive session list refreshes and flickering
+        // - Session metadata (name, taskDescription) doesn't change when jobs complete
+        // - Sessions are already monitored via sessionService.$sessions for actual session changes
     }
 
     func stopMonitoring() {
