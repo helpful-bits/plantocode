@@ -2,6 +2,7 @@ use crate::db_utils::SettingsRepository;
 use crate::remote_api::types::{RpcRequest, RpcResponse, UserContext};
 use crate::remote_api::handlers;
 use log::{debug, error, info, warn};
+use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
 /// Dispatch RPC requests to appropriate handlers
@@ -23,8 +24,18 @@ pub async fn dispatch(
     );
 
     // Check if remote access is allowed
-    let pool = app_handle.state::<sqlx::SqlitePool>().inner().clone();
-    let settings_repo = SettingsRepository::new(std::sync::Arc::new(pool));
+    let pool = match app_handle.try_state::<Arc<sqlx::SqlitePool>>() {
+        Some(p) => p.inner().clone(),
+        None => {
+            return RpcResponse {
+                correlation_id: request.correlation_id,
+                result: None,
+                error: Some("Database not available".to_string()),
+                is_final: true,
+            };
+        }
+    };
+    let settings_repo = SettingsRepository::new(pool.clone());
 
     match settings_repo.get_device_settings().await {
         Ok(device_settings) => {

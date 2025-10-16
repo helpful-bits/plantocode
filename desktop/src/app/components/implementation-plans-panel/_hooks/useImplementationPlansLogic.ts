@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 
 import { useBackgroundJobs } from "@/contexts/background-jobs/useBackgroundJobs";
 import { useProject } from "@/contexts/project-context";
@@ -10,7 +10,9 @@ import { createLogger } from "@/utils/logger";
 import { deleteBackgroundJobAction } from "@/actions/background-jobs/jobs.actions";
 import { createMergedImplementationPlanAction } from "@/actions/ai/implementation-plan.actions";
 import { useTerminalSessions } from "@/contexts/terminal-sessions/useTerminalSessions";
+import { useSessionStateContext, useSessionActionsContext } from "@/contexts/session";
 import { invoke } from "@tauri-apps/api/core";
+import { queueMergeInstructionsUpdate, createDebouncer } from "@/actions/session/task-fields.actions";
 
 const logger = createLogger({ namespace: "ImplPlansLogic" });
 
@@ -37,22 +39,43 @@ export function useImplementationPlansLogic({
   const { projectDirectory } = useProject();
   const { showNotification } = useNotification();
   const { getSession, kill, deleteLog } = useTerminalSessions();
+  const sessionState = useSessionStateContext();
+  const { updateCurrentSessionFields, flushSaves } = useSessionActionsContext();
 
-  // UI state
   const [copiedPlanId, setCopiedPlanId] = useState<string | undefined>(undefined);
   const [jobForModal, setJobForModal] = useState<BackgroundJob | undefined>(undefined);
   const [jobToDelete, setJobToDelete] = useState<BackgroundJob | undefined>(undefined);
   const [isDeleting, setIsDeleting] = useState<Record<string, boolean>>({});
-  
-  // State for selection and merging
+
   const [selectedPlanIds, setSelectedPlanIds] = useState<string[]>([]);
-  const [mergeInstructions, setMergeInstructions] = useState("");
   const [isMerging, setIsMerging] = useState(false);
 
-  // Memoize setMergeInstructions to prevent unnecessary re-renders
-  const handleMergeInstructionsChange = useCallback((value: string) => {
-    setMergeInstructions(value);
+  const mergeInstructions = sessionState.currentSession?.mergeInstructions || "";
+
+  const lastSubmittedMergeInstructionsRef = useRef<string | null>(null);
+  const debouncedQueueUpdateRef = useRef<((sessionId: string, content: string) => void) | null>(null);
+
+  useEffect(() => {
+    if (!debouncedQueueUpdateRef.current) {
+      debouncedQueueUpdateRef.current = createDebouncer(queueMergeInstructionsUpdate, 250);
+    }
+    return () => {
+      debouncedQueueUpdateRef.current = null;
+    };
   }, []);
+
+  const handleMergeInstructionsChange = useCallback((content: string) => {
+    if (!sessionId) return;
+
+    // Immediate local echo for responsive UI
+    updateCurrentSessionFields({ mergeInstructions: content });
+
+    // Only queue backend update if content has changed
+    if (content !== lastSubmittedMergeInstructionsRef.current && debouncedQueueUpdateRef.current) {
+      lastSubmittedMergeInstructionsRef.current = content;
+      debouncedQueueUpdateRef.current(sessionId, content);
+    }
+  }, [sessionId, updateCurrentSessionFields]);
 
   // Filter implementation plans for the current project and optionally session
   const implementationPlans = useMemo(() => {
@@ -119,7 +142,6 @@ export function useImplementationPlansLogic({
     });
   }, []);
   
-  // Handle merge plans
   const handleMergePlans = useCallback(async () => {
     if (!sessionId || selectedPlanIds.length < 2) {
       showNotification({
@@ -129,28 +151,38 @@ export function useImplementationPlansLogic({
       });
       return;
     }
-    
+
     setIsMerging(true);
-    
+
     try {
+      // CRITICAL: Flush any pending session changes to backend BEFORE creating the merge job
+      // This ensures the job will see the latest merge instructions and session state
+      await flushSaves();
+
       const result = await createMergedImplementationPlanAction(
         sessionId,
         selectedPlanIds,
         mergeInstructions || undefined
       );
-      
+
       if (result.isSuccess) {
         showNotification({
           title: "Merge started",
           message: "Your implementation plans are being merged",
           type: "success",
         });
-        
-        // Reset selection and instructions
+
         setSelectedPlanIds([]);
-        setMergeInstructions("");
-        
-        // Refresh jobs to show the new merged plan
+
+        // Clear merge instructions immediately (both local and backend)
+        updateCurrentSessionFields({ mergeInstructions: "" });
+        lastSubmittedMergeInstructionsRef.current = "";
+
+        // Cancel any pending debounced work
+        if (debouncedQueueUpdateRef.current) {
+          debouncedQueueUpdateRef.current = createDebouncer(queueMergeInstructionsUpdate, 250);
+        }
+
         await refreshJobs();
       } else {
         showNotification({
@@ -168,7 +200,7 @@ export function useImplementationPlansLogic({
     } finally {
       setIsMerging(false);
     }
-  }, [sessionId, selectedPlanIds, mergeInstructions, showNotification, refreshJobs]);
+  }, [sessionId, selectedPlanIds, mergeInstructions, showNotification, refreshJobs, flushSaves]);
 
   // Delete implementation plan job
   const handleDeletePlan = useCallback(

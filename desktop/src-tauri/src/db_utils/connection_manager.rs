@@ -2,6 +2,7 @@ use log::{error, info, warn};
 use sqlx::{Executor, Row};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use tauri::Manager;
 
 use crate::constants::{APP_DATA_DIR_NAME, DB_FILENAME};
@@ -134,10 +135,16 @@ pub async fn handle_readonly_database(
 
     // Try to access the database through Tauri plugin
     info!("Attempting to run integrity check on database");
-    let db: sqlx::SqlitePool = app_handle.state::<sqlx::SqlitePool>().inner().clone();
+    let db = app_handle
+        .state::<Arc<sqlx::SqlitePool>>()
+        .inner()
+        .clone();
 
     // Run integrity check
-    match sqlx::query("PRAGMA integrity_check;").fetch_one(&db).await {
+    match sqlx::query("PRAGMA integrity_check;")
+        .fetch_one(&*db)
+        .await
+    {
         Ok(row) => match row.try_get::<'_, String, _>(0) {
             Ok(result) => {
                 if result == "ok" {
@@ -171,7 +178,10 @@ pub async fn handle_readonly_database(
 
             // Try running integrity check again after removing auxiliary files
             info!("Attempting to run integrity check after removing auxiliary files");
-            match sqlx::query("PRAGMA integrity_check;").fetch_one(&db).await {
+            match sqlx::query("PRAGMA integrity_check;")
+                .fetch_one(&*db)
+                .await
+            {
                 Ok(row) => match row.try_get::<'_, String, _>(0) {
                     Ok(result) => {
                         if result == "ok" {

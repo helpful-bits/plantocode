@@ -139,6 +139,10 @@ pub async fn run_critical_initialization(app_handle: &AppHandle) -> Result<(), A
     }
     info!("Core repositories wired successfully");
 
+    // Initialize SessionCache as soon as repositories are ready
+    crate::app_setup::services::initialize_session_cache(app_handle).await?;
+    info!("SessionCache initialized and flush loop started");
+
     // System prompts initialization is deferred (requires API client)
 
     // Initialize file lock manager (moved to critical path)

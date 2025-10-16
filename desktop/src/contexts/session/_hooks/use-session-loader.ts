@@ -148,8 +148,9 @@ export function useSessionLoader({
 
         const session = result.data;
 
-        if (!session.taskDescription && session.taskDescription !== "") {
-          session.taskDescription = session.taskDescription || "";
+        // Defensive: Ensure taskDescription defaults to empty string if null/undefined
+        if (session.taskDescription == null) {
+          session.taskDescription = "";
         }
 
         // **Critical Fix:** Ensure paths from DB are consistently normalized

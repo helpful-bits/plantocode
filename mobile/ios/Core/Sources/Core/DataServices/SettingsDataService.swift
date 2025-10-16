@@ -25,6 +25,9 @@ public final class SettingsDataService: ObservableObject {
     @Published public private(set) var preferredCliTool: String?
     @Published public private(set) var cliAdditionalArgs: String?
     @Published public private(set) var customCliCommand: String?
+    @Published public var notifyFileFinderResultsEnabled: Bool = true
+    @Published public var notifyPlanReadyEnabled: Bool = true
+    @Published public var notifyTerminalInactivityEnabled: Bool = true
 
     // Backward compatibility for read-only settings view
     @Published public private(set) var modelSettings: ServerModelSettings?
@@ -271,6 +274,41 @@ public final class SettingsDataService: ObservableObject {
         self.customCliCommand = command
     }
 
+    public func loadNotificationSettings() async throws {
+        for try await res in CommandRouter.settingsGetAppSetting(key: "notifications.fileFinder.enabled") {
+            if let dict = res.resultDict, let value = dict["value"] {
+                self.notifyFileFinderResultsEnabled = parseBool(value) ?? true
+            }
+        }
+
+        for try await res in CommandRouter.settingsGetAppSetting(key: "notifications.planReady.enabled") {
+            if let dict = res.resultDict, let value = dict["value"] {
+                self.notifyPlanReadyEnabled = parseBool(value) ?? true
+            }
+        }
+
+        for try await res in CommandRouter.settingsGetAppSetting(key: "notifications.terminalInactivity.enabled") {
+            if let dict = res.resultDict, let value = dict["value"] {
+                self.notifyTerminalInactivityEnabled = parseBool(value) ?? true
+            }
+        }
+    }
+
+    public func saveNotifyFileFinderEnabled(_ enabled: Bool) async throws {
+        self.notifyFileFinderResultsEnabled = enabled
+        _ = try await drain(CommandRouter.settingsSetAppSetting(key: "notifications.fileFinder.enabled", value: enabled ? "true" : "false"))
+    }
+
+    public func saveNotifyPlanReadyEnabled(_ enabled: Bool) async throws {
+        self.notifyPlanReadyEnabled = enabled
+        _ = try await drain(CommandRouter.settingsSetAppSetting(key: "notifications.planReady.enabled", value: enabled ? "true" : "false"))
+    }
+
+    public func saveNotifyTerminalInactivityEnabled(_ enabled: Bool) async throws {
+        self.notifyTerminalInactivityEnabled = enabled
+        _ = try await drain(CommandRouter.settingsSetAppSetting(key: "notifications.terminalInactivity.enabled", value: enabled ? "true" : "false"))
+    }
+
     // MARK: - Backward Compatibility
     public func fetchServerDefaultTaskModelSettings() async throws -> ServerModelSettings {
         let defaults = try await fetchServerDefaults()
@@ -328,6 +366,18 @@ public final class SettingsDataService: ObservableObject {
         if let i = v as? Int { return Double(i) }
         if let s = v as? String, let d = Double(s) { return d }
         return 0.0
+    }
+
+    private func parseBool(_ value: Any?) -> Bool? {
+        if let b = value as? Bool { return b }
+        if let s = value as? String {
+            if s == "true" { return true }
+            if s == "false" { return false }
+        }
+        if let n = value as? Int {
+            return n != 0
+        }
+        return nil
     }
 
     // MARK: - Helper

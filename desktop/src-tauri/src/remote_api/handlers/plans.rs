@@ -77,8 +77,18 @@ async fn handle_plans_list(app_handle: &AppHandle, request: RpcRequest) -> RpcRe
     };
 
     // Resolve effective project directory from session - no fallbacks
-    let pool = app_handle.state::<sqlx::SqlitePool>().inner().clone();
-    let session_repo = SessionRepository::new(Arc::new(pool));
+    let pool = match app_handle.try_state::<Arc<sqlx::SqlitePool>>() {
+        Some(p) => p.inner().clone(),
+        None => {
+            return RpcResponse {
+                correlation_id: request.correlation_id,
+                result: None,
+                error: Some("Database not available".to_string()),
+                is_final: true,
+            };
+        }
+    };
+    let session_repo = SessionRepository::new(pool.clone());
     let effective_project_directory = match session_repo.get_session_by_id(&session_id).await {
         Ok(Some(session)) => {
             debug!("Validated session {} with project directory {}", session_id, session.project_directory);

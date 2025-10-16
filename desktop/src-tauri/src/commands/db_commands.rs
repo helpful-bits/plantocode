@@ -3,7 +3,6 @@ use log::{debug, error, info};
 use serde::{Deserialize, Serialize};
 use serde_json::{Number, Value as JsonValue};
 use sqlx::{Column, FromRow, Row, SqlitePool, TypeInfo};
-use std::sync::Arc;
 use tauri::{State, command};
 
 /// Structure for operations in a transaction
@@ -25,11 +24,12 @@ pub struct ExecuteResult {
 /// Execute a SQL query that modifies data
 #[command]
 pub async fn db_execute_query(
-    pool: State<'_, Arc<SqlitePool>>,
+    pool: State<'_, std::sync::Arc<SqlitePool>>,
     sql: String,
     params: Vec<JsonValue>,
 ) -> AppResult<ExecuteResult> {
     debug!("Execute SQL: {}", sql);
+    let pool = pool.inner().as_ref().clone();
 
     // Convert serde_json::Value params to sqlx::query parameters
     let mut query = sqlx::query(&sql);
@@ -41,7 +41,7 @@ pub async fn db_execute_query(
     }
 
     // Execute the query
-    let result = query.execute(&**pool).await.map_err(|e| {
+    let result = query.execute(&pool).await.map_err(|e| {
         error!("SQL execution error: {}", e);
         AppError::DatabaseError(format!("Failed to execute query: {}", e))
     })?;
@@ -55,11 +55,12 @@ pub async fn db_execute_query(
 /// Execute a SQL query that fetches data
 #[command]
 pub async fn db_select_query(
-    pool: State<'_, Arc<SqlitePool>>,
+    pool: State<'_, std::sync::Arc<SqlitePool>>,
     sql: String,
     params: Vec<JsonValue>,
 ) -> AppResult<Vec<JsonValue>> {
     debug!("Select SQL: {}", sql);
+    let pool = pool.inner().as_ref().clone();
 
     // Convert serde_json::Value params to sqlx::query parameters
     let mut query = sqlx::query(&sql);
@@ -71,7 +72,7 @@ pub async fn db_select_query(
     }
 
     // Execute the query
-    let rows = query.fetch_all(&**pool).await.map_err(|e| {
+    let rows = query.fetch_all(&pool).await.map_err(|e| {
         error!("SQL select error: {}", e);
         AppError::DatabaseError(format!("Failed to execute select query: {}", e))
     })?;
@@ -142,10 +143,11 @@ pub async fn db_select_query(
 /// Execute a transaction with multiple statements
 #[command]
 pub async fn db_execute_transaction(
-    pool: State<'_, Arc<SqlitePool>>,
+    pool: State<'_, std::sync::Arc<SqlitePool>>,
     operations: Vec<SqlOperation>,
 ) -> AppResult<()> {
     debug!("Execute transaction with {} operations", operations.len());
+    let pool = pool.inner().as_ref().clone();
 
     // Start transaction
     let mut tx = pool
@@ -185,14 +187,15 @@ pub async fn db_execute_transaction(
 /// Check if a table exists in the database
 #[command]
 pub async fn db_table_exists(
-    pool: State<'_, Arc<SqlitePool>>,
+    pool: State<'_, std::sync::Arc<SqlitePool>>,
     table_name: String,
 ) -> AppResult<bool> {
     debug!("Check if table exists: {}", table_name);
+    let pool = pool.inner().as_ref().clone();
 
     let result = sqlx::query("SELECT name FROM sqlite_master WHERE type='table' AND name=?")
         .bind(table_name)
-        .fetch_optional(&**pool)
+        .fetch_optional(&pool)
         .await
         .map_err(|e| AppError::DatabaseError(format!("Failed to check table existence: {}", e)))?;
 

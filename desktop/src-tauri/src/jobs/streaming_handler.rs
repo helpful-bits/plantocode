@@ -92,7 +92,7 @@ impl StreamedResponseHandler {
         let interval_ms = std::env::var("STREAM_UPDATE_INTERVAL_MS")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
-            .unwrap_or(200); // Default to 200ms if not set or invalid
+            .unwrap_or(350); // Default to 350ms if not set or invalid
 
         let update_interval = Duration::from_millis(interval_ms);
 

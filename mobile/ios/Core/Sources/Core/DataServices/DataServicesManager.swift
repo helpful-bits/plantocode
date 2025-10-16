@@ -71,6 +71,10 @@ public class DataServicesManager: ObservableObject {
         self.settingsService = SettingsDataService()
         self.subscriptionManager = SubscriptionManager()
 
+        Task { [weak settingsService] in
+            try? await settingsService?.loadNotificationSettings()
+        }
+
         setupConnectionMonitoring()
         setupSessionBroadcasting()
 
@@ -231,6 +235,7 @@ public class DataServicesManager: ObservableObject {
 
             let request = PlanListRequest(
                 projectDirectory: self.currentProject?.directory,
+                sessionId: self.sessionService.currentSession?.id,
                 page: 0,
                 pageSize: 20
             )
@@ -369,7 +374,10 @@ public class DataServicesManager: ObservableObject {
                     self.activeDesktopDeviceId = newActive
                     self.plansService.onActiveDeviceChanged(newActive)
                     if let project = self.currentProject {
-                        self.plansService.preloadPlans(for: project.directory)
+                        self.plansService.preloadPlans(
+                            for: project.directory,
+                            sessionId: self.sessionService.currentSession?.id
+                        )
                     }
                     Task { @MainActor in
                         await self.terminalService.bootstrapFromRemote()
@@ -398,7 +406,16 @@ public class DataServicesManager: ObservableObject {
                       let s = session else { return }
 
                 // Enable background event processing for jobs
+                // setActiveSession() already does an internal fetch, no need for duplicate request
                 self.jobsService.setActiveSession(sessionId: s.id, projectDirectory: s.projectDirectory)
+
+                // Unified preloads for immediacy across tabs
+                self.plansService.preloadPlans(for: s.projectDirectory, sessionId: s.id)
+                self.filesService.performSearch(query: self.filesService.currentSearchTerm)
+
+                #if DEBUG
+                self.logger.info("Session changed → preloads: plans/files/jobs initialized for session \(s.id)")
+                #endif
 
                 Task {
                     try? await self.sessionService.broadcastActiveSessionChanged(
@@ -536,7 +553,10 @@ public class DataServicesManager: ObservableObject {
                     return
                 }
 
-                self.plansService.preloadPlans(for: project.directory)
+                self.plansService.preloadPlans(
+                    for: project.directory,
+                    sessionId: self.sessionService.currentSession?.id
+                )
                 self.filesService.performSearch(query: self.filesService.currentSearchTerm)
                 self.taskSyncService.getActiveTasks(request: GetActiveTasksRequest(
                     sessionIds: nil,
@@ -670,7 +690,10 @@ public class DataServicesManager: ObservableObject {
 
     private func preloadProjectData(_ project: ProjectInfo) {
         // Preload plans
-        plansService.preloadPlans(for: project.directory)
+        plansService.preloadPlans(
+            for: project.directory,
+            sessionId: sessionService.currentSession?.id
+        )
 
         // Preload files
         filesService.preloadProjectFiles(projectDirectory: project.directory)

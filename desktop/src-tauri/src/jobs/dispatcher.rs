@@ -404,11 +404,15 @@ async fn handle_job_success(
             // This is the ONLY place auto-apply happens to avoid double-application races
             // Auto-apply discovered files for supported tasks
             if let Some(ref response_json) = serde_json::from_str::<Value>(&response_str).ok() {
-                let pool = Arc::new(app_handle.state::<sqlx::SqlitePool>().inner().clone());
+                let pool = app_handle
+                    .state::<Arc<sqlx::SqlitePool>>()
+                    .inner()
+                    .clone();
                 let session_repo = SessionRepository::new(pool.clone());
                 if let Ok(Some(outcome)) = auto_apply_files_for_job(
                     &pool,
                     &session_repo,
+                    app_handle,
                     &completed_job.session_id,
                     job_id,
                     &completed_job.task_type,

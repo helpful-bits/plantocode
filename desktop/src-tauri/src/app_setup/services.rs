@@ -230,7 +230,10 @@ pub async fn initialize_backup_service(app_handle: &AppHandle) -> AppResult<()> 
     })?;
 
     // Get database pool from app state
-    let db_pool = app_handle.state::<SqlitePool>().inner().clone();
+    let db_pool = app_handle
+        .state::<Arc<SqlitePool>>()
+        .inner()
+        .clone();
 
     // Load backup configuration from database or use default
     let settings_repo = app_handle.state::<Arc<crate::db_utils::SettingsRepository>>();
@@ -245,7 +248,7 @@ pub async fn initialize_backup_service(app_handle: &AppHandle) -> AppResult<()> 
     // Create backup service
     let backup_service = Arc::new(BackupService::new(
         app_data_dir,
-        db_pool,
+        db_pool.as_ref().clone(),
         backup_config.clone(),
     ));
 
@@ -294,10 +297,11 @@ pub async fn initialize_terminal_manager(app_handle: &AppHandle) -> AppResult<()
         .try_state::<std::sync::Arc<crate::services::TerminalManager>>()
         .is_none()
     {
-        let pool = app_handle.state::<sqlx::SqlitePool>().inner().clone();
-        let repo = std::sync::Arc::new(crate::db_utils::TerminalRepository::new(
-            std::sync::Arc::new(pool),
-        ));
+        let pool = app_handle
+            .state::<Arc<sqlx::SqlitePool>>()
+            .inner()
+            .clone();
+        let repo = Arc::new(crate::db_utils::TerminalRepository::new(pool.clone()));
         let mgr = std::sync::Arc::new(crate::services::TerminalManager::new(
             app_handle.clone(),
             repo,
@@ -348,9 +352,15 @@ pub async fn initialize_device_link_connection(
     let token_manager = app_handle.state::<Arc<TokenManager>>();
     if let Some(_token) = token_manager.get().await {
         // Get settings repository to check device settings
-        let pool = app_handle.state::<sqlx::SqlitePool>().inner().clone();
+        let pool = match app_handle.try_state::<Arc<sqlx::SqlitePool>>() {
+            Some(p) => p.inner().clone(),
+            None => {
+                tracing::info!("SqlitePool not yet available; deferring DeviceLinkClient start");
+                return Ok(());
+            }
+        };
         let settings_repo =
-            crate::db_utils::settings_repository::SettingsRepository::new(Arc::new(pool));
+            crate::db_utils::settings_repository::SettingsRepository::new(pool.clone());
         let device_settings = settings_repo.get_device_settings().await?;
 
         if device_settings.is_discoverable && device_settings.allow_remote_access {
@@ -377,13 +387,24 @@ pub async fn initialize_device_link_connection(
             // Manage the client in app state so TerminalManager can access it
             app_handle.manage(client.clone());
 
-            // Start in background task
+            // Start in background task with reconnection loop
             let app_handle_clone = app_handle.clone();
             let server_url_clone = server_url.clone();
             tauri::async_runtime::spawn(async move {
-                let mut client_instance = DeviceLinkClient::new(app_handle_clone, server_url_clone);
-                if let Err(e) = client_instance.start().await {
-                    tracing::warn!(error = ?e, "Failed to start DeviceLinkClient");
+                let mut retry_count = 0;
+                loop {
+                    let mut client_instance = DeviceLinkClient::new(app_handle_clone.clone(), server_url_clone.clone());
+                    match client_instance.start().await {
+                        Ok(_) => {
+                            tracing::info!("DeviceLinkClient completed normally");
+                            break;
+                        }
+                        Err(e) => {
+                            retry_count += 1;
+                            tracing::error!(error = ?e, retry_count, "DeviceLinkClient failed, retrying in 5 seconds");
+                            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                        }
+                    }
                 }
             });
 
@@ -397,5 +418,25 @@ pub async fn initialize_device_link_connection(
         tracing::info!("No authentication token available, skipping DeviceLinkClient");
     }
 
+    Ok(())
+}
+
+pub async fn initialize_session_cache(app_handle: &tauri::AppHandle) -> crate::error::AppResult<()> {
+    let cache = app_handle.state::<std::sync::Arc<crate::services::SessionCache>>().inner().clone();
+    cache.initialize_from_db(app_handle).await?;
+
+    // Spawn non-blocking periodic flush loop
+    let app = app_handle.clone();
+    tauri::async_runtime::spawn(async move {
+        let mut ticker = tokio::time::interval(std::time::Duration::from_millis(680));
+        loop {
+            ticker.tick().await;
+            if let Err(e) = cache.flush_dirty_to_db(&app).await {
+                tracing::warn!("SessionCache flush error: {e}");
+            }
+        }
+    });
+
+    tracing::info!("SessionCache initialized with 680ms periodic flush");
     Ok(())
 }

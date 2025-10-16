@@ -68,14 +68,8 @@ pub async fn generic_llm_stream_command(
             dir
         } else {
             // If empty, derive from session
-            let session_repo = app_handle.state::<Arc<SessionRepository>>().inner().clone();
-            let session = session_repo
-                .get_session_by_id(&args.session_id)
-                .await
-                .map_err(|e| AppError::DatabaseError(format!("Failed to get session: {}", e)))?
-                .ok_or_else(|| {
-                    AppError::NotFoundError(format!("Session not found: {}", args.session_id))
-                })?;
+            let cache = app_handle.state::<std::sync::Arc<crate::services::SessionCache>>().inner().clone();
+            let session = cache.get_session(&app_handle, &args.session_id).await?;
 
             if session.project_directory.is_empty() {
                 return Err(AppError::ValidationError(
@@ -87,14 +81,8 @@ pub async fn generic_llm_stream_command(
         }
     } else {
         // If None, derive from session
-        let session_repo = app_handle.state::<Arc<SessionRepository>>().inner().clone();
-        let session = session_repo
-            .get_session_by_id(&args.session_id)
-            .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to get session: {}", e)))?
-            .ok_or_else(|| {
-                AppError::NotFoundError(format!("Session not found: {}", args.session_id))
-            })?;
+        let cache = app_handle.state::<std::sync::Arc<crate::services::SessionCache>>().inner().clone();
+        let session = cache.get_session(&app_handle, &args.session_id).await?;
 
         if session.project_directory.is_empty() {
             return Err(AppError::ValidationError(
@@ -202,15 +190,8 @@ pub async fn refine_task_description_command(
     }
 
     // Get session to access project directory
-    let background_job_repo = app_handle
-        .state::<Arc<BackgroundJobRepository>>()
-        .inner()
-        .clone();
-    let session_repo = SessionRepository::new(background_job_repo.get_pool());
-    let session = session_repo
-        .get_session_by_id(&session_id)
-        .await?
-        .ok_or_else(|| AppError::JobError(format!("Session {} not found", session_id)))?;
+    let cache = app_handle.state::<std::sync::Arc<crate::services::SessionCache>>().inner().clone();
+    let session = cache.get_session(&app_handle, &session_id).await?;
 
     // Get model configuration for this task using centralized resolver
     let model_settings = crate::utils::config_resolver::resolve_model_settings(

@@ -21,6 +21,7 @@ public class PushNotificationManager: NSObject, ObservableObject {
     // MARK: - Local Notification Identifiers
     static let FILE_FINDER_COMPLETE = "file_finder_complete"
     static let IMPLEMENTATION_PLAN_COMPLETE = "implementation_plan_complete"
+    static let TERMINAL_INACTIVITY_DETECTED = "terminal_inactivity_detected"
 
     // MARK: - Private Properties
     private let notificationCenter = UNUserNotificationCenter.current()
@@ -185,6 +186,10 @@ public class PushNotificationManager: NSObject, ObservableObject {
 
     /// Schedule notification for completed file finder job
     public func scheduleFileFinderCompleted(sessionId: String, projectDirectory: String?) {
+        guard VibeManagerCore.shared.dataServices?.settingsService.notifyFileFinderResultsEnabled ?? true else {
+            return
+        }
+
         scheduleLocalNotification(
             title: "File Finder complete",
             body: "Discovered files are ready in Selected",
@@ -199,6 +204,10 @@ public class PushNotificationManager: NSObject, ObservableObject {
 
     /// Schedule notification for completed implementation plan
     public func scheduleImplementationPlanCompleted(sessionId: String, projectDirectory: String?, jobId: String) {
+        guard VibeManagerCore.shared.dataServices?.settingsService.notifyPlanReadyEnabled ?? true else {
+            return
+        }
+
         scheduleLocalNotification(
             title: "Plan ready",
             body: "An implementation plan has completed",
@@ -209,6 +218,24 @@ public class PushNotificationManager: NSObject, ObservableObject {
                 "jobId": jobId
             ],
             categoryIdentifier: Self.IMPLEMENTATION_PLAN_COMPLETE
+        )
+    }
+
+    public func scheduleTerminalInactivityDetected(sessionId: String, projectDirectory: String?, jobId: String? = nil) {
+        guard VibeManagerCore.shared.dataServices?.settingsService.notifyTerminalInactivityEnabled ?? true else {
+            return
+        }
+
+        scheduleLocalNotification(
+            title: "Terminal inactive",
+            body: "No new terminal output detected.",
+            userInfo: [
+                "type": Self.TERMINAL_INACTIVITY_DETECTED,
+                "sessionId": sessionId,
+                "projectDirectory": projectDirectory ?? "",
+                "jobId": jobId ?? ""
+            ],
+            categoryIdentifier: Self.TERMINAL_INACTIVITY_DETECTED
         )
     }
 
@@ -481,8 +508,30 @@ extension PushNotificationManager: UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        // Show notification even when app is in foreground
-        completionHandler([.alert, .sound, .badge])
+        let userInfo = notification.request.content.userInfo
+
+        if let type = userInfo["type"] as? String {
+            let fileFinderEnabled = VibeManagerCore.shared.dataServices?.settingsService.notifyFileFinderResultsEnabled ?? true
+            let planReadyEnabled = VibeManagerCore.shared.dataServices?.settingsService.notifyPlanReadyEnabled ?? true
+            let terminalInactivityEnabled = VibeManagerCore.shared.dataServices?.settingsService.notifyTerminalInactivityEnabled ?? true
+
+            if type == Self.FILE_FINDER_COMPLETE && !fileFinderEnabled {
+                completionHandler([])
+                return
+            }
+
+            if type == Self.IMPLEMENTATION_PLAN_COMPLETE && !planReadyEnabled {
+                completionHandler([])
+                return
+            }
+
+            if type == Self.TERMINAL_INACTIVITY_DETECTED && !terminalInactivityEnabled {
+                completionHandler([])
+                return
+            }
+        }
+
+        completionHandler([.banner, .sound, .badge])
     }
 
     public func userNotificationCenter(
@@ -511,6 +560,12 @@ extension PushNotificationManager: UNUserNotificationCenterDelegate {
                     case Self.IMPLEMENTATION_PLAN_COMPLETE:
                         if let jobId = userInfo["jobId"] as? String {
                             AppState.shared.deepLinkRoute = .openPlan(sessionId: sessionId, projectDirectory: projectDirectory, jobId: jobId)
+                        }
+
+                    case Self.TERMINAL_INACTIVITY_DETECTED:
+                        let terminalInactivityEnabled = VibeManagerCore.shared.dataServices?.settingsService.notifyTerminalInactivityEnabled ?? true
+                        if terminalInactivityEnabled {
+                            AppState.shared.deepLinkRoute = .filesSelected(sessionId: sessionId, projectDirectory: projectDirectory)
                         }
 
                     default:

@@ -8,6 +8,13 @@ use uuid::Uuid;
 
 use crate::services::device_link_ws::{DeviceLinkWs, CloseConnection};
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum ClientType {
+    Desktop,
+    Mobile,
+    Other(String),
+}
+
 /// Message types for device communication
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -27,6 +34,7 @@ pub struct DeviceConnection {
     pub ws_addr: Addr<DeviceLinkWs>,
     pub connected_at: chrono::DateTime<chrono::Utc>,
     pub last_seen: chrono::DateTime<chrono::Utc>,
+    pub client_type: ClientType,
 }
 
 /// Manages WebSocket connections for devices
@@ -54,13 +62,17 @@ impl DeviceConnectionManager {
         device_id: String,
         device_name: String,
         ws_addr: Addr<DeviceLinkWs>,
+        client_type: ClientType,
     ) {
+        // Normalize device ID to lowercase for case-insensitive comparisons
+        let device_id_lower = device_id.to_lowercase();
+
         // Check if there's an existing connection for this device
         // If so, close it before registering the new one
         {
             let user_devices = self.connections.get(&user_id);
             if let Some(user_devices) = user_devices {
-                if let Some(old_connection) = user_devices.get(&device_id) {
+                if let Some(old_connection) = user_devices.get(&device_id_lower) {
                     warn!(
                         user_id = %user_id,
                         device_id = %device_id,
@@ -75,12 +87,13 @@ impl DeviceConnectionManager {
         }
 
         let connection = DeviceConnection {
-            device_id: device_id.clone(),
+            device_id: device_id_lower.clone(),
             user_id,
             device_name: device_name.clone(),
             ws_addr,
             connected_at: chrono::Utc::now(),
             last_seen: chrono::Utc::now(),
+            client_type,
         };
 
         // Get or create user connections map and insert new connection
@@ -89,7 +102,7 @@ impl DeviceConnectionManager {
                 .connections
                 .entry(user_id)
                 .or_insert_with(DashMap::new);
-            user_devices.insert(device_id.clone(), connection);
+            user_devices.insert(device_id_lower.clone(), connection);
         }
 
         info!(
@@ -115,8 +128,11 @@ impl DeviceConnectionManager {
 
     /// Remove a device connection
     pub fn remove_connection(&self, user_id: &Uuid, device_id: &str) {
+        // Normalize device ID to lowercase for case-insensitive comparisons
+        let device_id_lower = device_id.to_lowercase();
+
         if let Some(user_devices) = self.connections.get(user_id) {
-            if user_devices.remove(device_id).is_some() {
+            if user_devices.remove(&device_id_lower).is_some() {
                 info!(
                     user_id = %user_id,
                     device_id = %device_id,
@@ -135,10 +151,13 @@ impl DeviceConnectionManager {
 
     /// Get a device connection
     pub fn get_connection(&self, user_id: &Uuid, device_id: &str) -> Option<DeviceConnection> {
+        // Normalize device ID to lowercase for case-insensitive comparisons
+        let device_id_lower = device_id.to_lowercase();
+
         let user_devices = self.connections.get(user_id)?;
         let available_devices: Vec<String> = user_devices.iter().map(|e| e.key().clone()).collect();
 
-        let result = user_devices.get(device_id).map(|entry| entry.value().clone());
+        let result = user_devices.get(&device_id_lower).map(|entry| entry.value().clone());
 
         if result.is_none() {
             warn!(
@@ -259,6 +278,9 @@ impl DeviceConnectionManager {
         message: DeviceMessage,
         exclude_device_id: Option<&str>,
     ) -> Result<usize, String> {
+        // Normalize exclude device ID to lowercase for case-insensitive comparisons
+        let exclude_device_id_lower = exclude_device_id.map(|id| id.to_lowercase());
+
         let devices = self.get_user_devices(user_id);
 
         if devices.is_empty() {
@@ -267,8 +289,8 @@ impl DeviceConnectionManager {
 
         let mut success_count = 0usize;
         for device in &devices {
-            if let Some(exclude) = exclude_device_id {
-                if device.device_id == exclude {
+            if let Some(ref exclude) = exclude_device_id_lower {
+                if &device.device_id == exclude {
                     continue;
                 }
             }
@@ -317,8 +339,11 @@ impl DeviceConnectionManager {
 
     /// Update last seen timestamp for a device
     pub fn update_last_seen(&self, user_id: &Uuid, device_id: &str) {
+        // Normalize device ID to lowercase for case-insensitive comparisons
+        let device_id_lower = device_id.to_lowercase();
+
         if let Some(user_devices) = self.connections.get(user_id) {
-            if let Some(mut connection) = user_devices.get_mut(device_id) {
+            if let Some(mut connection) = user_devices.get_mut(&device_id_lower) {
                 connection.last_seen = chrono::Utc::now();
             }
         }
@@ -371,10 +396,26 @@ impl DeviceConnectionManager {
 
     /// Check if a device is currently connected
     pub fn is_device_connected(&self, user_id: &Uuid, device_id: &str) -> bool {
+        // Normalize device ID to lowercase for case-insensitive comparisons
+        let device_id_lower = device_id.to_lowercase();
+
         self.connections
             .get(user_id)
-            .map(|user_devices| user_devices.contains_key(device_id))
+            .map(|user_devices| user_devices.contains_key(&device_id_lower))
             .unwrap_or(false)
+    }
+
+    /// Check if a device is currently connected with a specific client type
+    pub fn is_device_connected_with_type(&self, user_id: &Uuid, device_id: &str, client_type: ClientType) -> bool {
+        // Normalize device ID to lowercase for case-insensitive comparisons
+        let device_id_lower = device_id.to_lowercase();
+
+        if let Some(user_devices) = self.connections.get(user_id) {
+            if let Some(conn) = user_devices.get(&device_id_lower) {
+                return conn.client_type == client_type;
+            }
+        }
+        false
     }
 
     /// Get all connected users
@@ -484,14 +525,17 @@ impl DeviceConnectionManager {
     }
 
     pub fn clear_binary_routes_for_device(&self, user_id: &Uuid, device_id: &str) {
+        // Normalize device ID to lowercase for case-insensitive comparisons
+        let device_id_lower = device_id.to_lowercase();
+
         match self.binary_routes.write() {
             Ok(mut map) => {
-                map.retain(|(u, prod), cons| !(u == user_id && (prod == device_id || cons == device_id)));
+                map.retain(|(u, prod), cons| !(u == user_id && (prod == &device_id_lower || cons == &device_id_lower)));
             }
             Err(poisoned) => {
                 warn!("Binary routes lock poisoned, recovering");
                 let mut map = poisoned.into_inner();
-                map.retain(|(u, prod), cons| !(u == user_id && (prod == device_id || cons == device_id)));
+                map.retain(|(u, prod), cons| !(u == user_id && (prod == &device_id_lower || cons == &device_id_lower)));
             }
         }
     }

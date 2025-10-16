@@ -113,7 +113,11 @@ impl CacheHealthMonitor {
             self.calculate_health_score(cache_size, cache_age_seconds, stale_entries_count);
 
         // Determine if cache is healthy
-        let is_healthy = health_score >= 0.7 && cache_age_seconds <= self.max_cache_age_seconds;
+        let is_healthy = if cache_age_seconds <= self.max_cache_age_seconds {
+            true
+        } else {
+            health_score >= 0.7
+        };
 
         let metrics = CacheHealthMetrics {
             cache_size,

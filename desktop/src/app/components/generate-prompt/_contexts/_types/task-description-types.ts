@@ -29,11 +29,12 @@ export interface TaskContextActions {
   handleWebSearch: (justPrompts?: boolean) => Promise<void>;
   cancelWebSearch: () => Promise<void>;
   flushPendingTaskChanges: () => string | null; // Immediately flush any pending task description changes and return current value
+  recordTaskChange: (source: 'typing' | 'paste' | 'voice' | 'improvement' | 'refine' | 'remote', value: string) => void;
   reset: () => void;
   undo: () => void;
   redo: () => void;
   applyWebSearchResults: (results?: string[]) => void;
-  
+
   // Video analysis actions
   setVideoAnalysisPrompt: (prompt: string) => void;
   startVideoAnalysisRecording: (args: { prompt: string; recordAudio: boolean; audioDeviceId: string; frameRate: number }) => Promise<void>;

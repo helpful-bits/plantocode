@@ -138,8 +138,17 @@ impl DeviceLinkClient {
         );
 
         // Check if device is discoverable
-        let pool = self.app_handle.state::<sqlx::SqlitePool>().inner().clone();
-        let settings_repo = SettingsRepository::new(std::sync::Arc::new(pool));
+        let pool = match self
+            .app_handle
+            .try_state::<Arc<sqlx::SqlitePool>>()
+        {
+            Some(p) => p.inner().clone(),
+            None => {
+                tracing::info!("SqlitePool not yet available; deferring DeviceLinkClient start");
+                return Ok(());
+            }
+        };
+        let settings_repo = SettingsRepository::new(pool.clone());
         let device_settings = settings_repo.get_device_settings().await?;
 
         // Get device ID and token
@@ -509,9 +518,11 @@ impl DeviceLinkClient {
                 interval.tick().await;
 
                 // Check if device is still visible
-                if let Some(pool) = app_handle_for_heartbeat.try_state::<sqlx::SqlitePool>() {
+                if let Some(pool) =
+                    app_handle_for_heartbeat.try_state::<Arc<sqlx::SqlitePool>>()
+                {
                     let pool = pool.inner().clone();
-                    let settings_repo = SettingsRepository::new(std::sync::Arc::new(pool));
+                    let settings_repo = SettingsRepository::new(pool.clone());
                     if let Ok(device_settings) = settings_repo.get_device_settings().await {
                         if !device_settings.is_discoverable || !device_settings.allow_remote_access
                         {
@@ -656,6 +667,23 @@ impl DeviceLinkClient {
         let platform = std::env::consts::OS.to_string();
         let app_version = self.app_handle.package_info().version.to_string();
 
+        // Get project directory if available
+        let mut capabilities_map = serde_json::Map::new();
+        capabilities_map.insert("supports_terminal".to_string(), serde_json::Value::Bool(true));
+        capabilities_map.insert("supports_file_browser".to_string(), serde_json::Value::Bool(true));
+        capabilities_map.insert("supports_implementation_plans".to_string(), serde_json::Value::Bool(true));
+
+        // Include project directory in capabilities if available
+        if let Some(sqlite_pool) = self.app_handle.try_state::<Arc<sqlx::SqlitePool>>() {
+            let settings_repo = crate::db_utils::SettingsRepository::new((*sqlite_pool).clone());
+            if let Ok(Some(dir)) = settings_repo.get_project_directory().await {
+                capabilities_map.insert(
+                    "activeProjectDirectory".to_string(),
+                    serde_json::Value::String(dir),
+                );
+            }
+        }
+
         // Build registration request
         let registration_body = serde_json::json!({
             "device_name": device_name,
@@ -664,11 +692,7 @@ impl DeviceLinkClient {
             "platform_version": std::env::consts::OS,
             "app_version": app_version,
             "relay_eligible": true,
-            "capabilities": {
-                "supports_terminal": true,
-                "supports_file_browser": true,
-                "supports_implementation_plans": true
-            }
+            "capabilities": serde_json::Value::Object(capabilities_map)
         });
 
         // Make HTTP POST request to register device
@@ -748,9 +772,12 @@ impl DeviceLinkClient {
 
     /// Check if device is visible (discoverable and allows remote access)
     pub async fn is_device_visible(&self) -> bool {
-        if let Some(pool) = self.app_handle.try_state::<sqlx::SqlitePool>() {
+        if let Some(pool) = self
+            .app_handle
+            .try_state::<Arc<sqlx::SqlitePool>>()
+        {
             let pool = pool.inner().clone();
-            let settings_repo = SettingsRepository::new(std::sync::Arc::new(pool));
+            let settings_repo = SettingsRepository::new(pool.clone());
             if let Ok(device_settings) = settings_repo.get_device_settings().await {
                 return device_settings.is_discoverable && device_settings.allow_remote_access;
             }

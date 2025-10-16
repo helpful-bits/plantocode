@@ -11,6 +11,7 @@ use crate::commands::{terminal_commands, settings_commands};
 use base64;
 use uuid;
 use sqlx::Row;
+use std::sync::Arc;
 
 pub async fn dispatch(app_handle: AppHandle, req: RpcRequest) -> RpcResponse {
     match req.method.as_str() {
@@ -127,7 +128,10 @@ async fn handle_terminal_start(app_handle: &AppHandle, request: RpcRequest) -> R
 
     // Query working directory from key_value_store table
     // Desktop app is the authority - mobile must NOT pass working directory
-    let working_directory = if let Some(pool) = app_handle.try_state::<sqlx::SqlitePool>() {
+    let working_directory = if let Some(pool) =
+        app_handle.try_state::<Arc<sqlx::SqlitePool>>()
+    {
+        let pool = pool.inner().clone();
         match sqlx::query(
             r#"
             SELECT value
@@ -136,7 +140,7 @@ async fn handle_terminal_start(app_handle: &AppHandle, request: RpcRequest) -> R
             "#
         )
         .bind("global:global-project-dir")
-        .fetch_optional(pool.inner())
+        .fetch_optional(&*pool)
         .await
         {
             Ok(Some(row)) => {

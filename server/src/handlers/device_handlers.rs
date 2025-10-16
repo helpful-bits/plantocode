@@ -88,6 +88,10 @@ pub struct DeviceQuery {
     pub device_type: Option<String>,
 }
 
+fn is_valid_desktop_platform(s: &str) -> bool {
+    matches!(s, "macos" | "windows" | "linux")
+}
+
 /// Register a new device
 pub async fn register_device_handler(
     device_repo: web::Data<DeviceRepository>,
@@ -123,6 +127,66 @@ pub async fn register_device_handler(
         Uuid::new_v4()
     };
 
+    let client_type_header = req.headers()
+        .get("X-Client-Type")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_lowercase())
+        .unwrap_or_default();
+
+    let device_id_header = req.headers()
+        .get("X-Device-ID")
+        .and_then(|v| v.to_str().ok());
+
+    let token_binding_header = req.headers()
+        .get("X-Token-Binding")
+        .and_then(|v| v.to_str().ok());
+
+    if client_type_header.as_str() != "desktop" {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "invalid_client_type"
+        })));
+    }
+
+    let platform = req_body.platform.to_lowercase();
+    if !is_valid_desktop_platform(&platform) {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "invalid_platform"
+        })));
+    }
+
+    if let Some(dt) = &req_body.device_type {
+        if dt.to_lowercase().as_str() != "desktop" {
+            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "error": "invalid_device_type_for_endpoint"
+            })));
+        }
+    }
+
+    let device_name_trimmed = req_body.device_name.trim();
+    if device_name_trimmed.is_empty() || device_name_trimmed.eq_ignore_ascii_case("unknown") {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "invalid_device_name"
+        })));
+    }
+
+    if req_body.app_version.trim().is_empty() {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "invalid_app_version"
+        })));
+    }
+
+    if let (Some(dev_str), Some(tb_str)) = (device_id_header, token_binding_header) {
+        let dev = Uuid::parse_str(dev_str)
+            .map_err(|_| AppError::BadRequest("invalid_device_id_header".into()))?;
+        let tb = Uuid::parse_str(tb_str)
+            .map_err(|_| AppError::BadRequest("invalid_token_binding_header".into()))?;
+        if dev != tb {
+            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "error": "token_binding_mismatch"
+            })));
+        }
+    }
+
     // Convert IP addresses to JSON
     let local_ips = req_body
         .local_ips
@@ -151,7 +215,7 @@ pub async fn register_device_handler(
             .device_type
             .clone()
             .unwrap_or_else(|| "desktop".to_string()),
-        platform: req_body.platform.clone(),
+        platform: platform.clone(),
         platform_version: req_body.platform_version.clone(),
         app_version: req_body.app_version.clone(),
         local_ips,
@@ -193,13 +257,25 @@ pub async fn get_devices_handler(
 ) -> Result<HttpResponse, AppError> {
     let devices = device_repo.list_devices_by_user(&user.user_id).await?;
 
+    let removed = device_repo.cleanup_invalid_devices_for_user(&user.user_id).await.unwrap_or(0);
+    if removed > 0 {
+        info!(
+            user_id = %user.user_id,
+            removed = removed,
+            "Cleaned up invalid devices"
+        );
+    }
+
+    let devices_count_before = devices.len();
+
     let device_infos: Vec<DeviceInfo> = devices
         .into_iter()
         .map(|device| {
-            // Check live connection status from DeviceConnectionManager
-            let is_connected = connection_manager.is_device_connected(
+            use crate::services::device_connection_manager::ClientType;
+            let is_connected = connection_manager.is_device_connected_with_type(
                 &user.user_id,
-                &device.device_id.to_string()
+                &device.device_id.to_string(),
+                ClientType::Desktop
             );
 
             // Use "online" if connected, otherwise use database status (or "offline" if unavailable)
@@ -235,6 +311,22 @@ pub async fn get_devices_handler(
             }
         })
         .collect();
+
+    let allowed_platforms = ["macos", "windows", "linux"];
+    let device_infos: Vec<DeviceInfo> = device_infos
+        .into_iter()
+        .filter(|d| {
+            d.device_type.eq_ignore_ascii_case("desktop")
+                && allowed_platforms.contains(&d.platform.to_lowercase().as_str())
+        })
+        .collect();
+
+    info!(
+        user_id = %user.user_id,
+        before = devices_count_before,
+        after = device_infos.len(),
+        "Filtered devices by platform allowlist"
+    );
 
     // Apply device_type filter if provided
     let device_infos: Vec<DeviceInfo> = if let Some(ref device_type) = query.device_type {
@@ -399,8 +491,18 @@ pub async fn device_link_ws_handler(
         "Starting device WebSocket connection"
     );
 
-    let ws_actor =
-        create_device_link_ws(Some(user_id), connection_manager, device_repo, relay_store);
+    let client_type = req.headers()
+        .get("X-Client-Type")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_lowercase());
+
+    let ws_actor = create_device_link_ws(
+        Some(user_id),
+        connection_manager.clone(),
+        device_repo,
+        relay_store,
+        client_type,
+    );
 
     // Wrap ws::start in match for robust error handling
     // Configure WebSocket with larger frame size (10MB) to handle large session lists

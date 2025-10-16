@@ -27,117 +27,158 @@ impl BackgroundJobRepository {
     ) -> AppResult<()> {
         let now = get_timestamp();
 
-        // Use a transaction to prevent race conditions between parallel streams
-        let mut tx =
-            self.pool.begin().await.map_err(|e| {
-                AppError::DatabaseError(format!("Failed to begin transaction: {}", e))
-            })?;
+        // Retry wrapper for transaction
+        let mut last_error = None;
+        let mut job = None;
+        let mut metadata_json = None;
+        let mut updated_metadata = None;
 
-        // Fetch the job within the transaction with row locking
-        let job_row = sqlx::query("SELECT * FROM background_jobs WHERE id = $1")
-            .bind(job_id)
-            .fetch_optional(&mut *tx)
-            .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to fetch job: {}", e)))?;
+        for attempt in 0..5 {
+            let result = async {
+                // Use a transaction to prevent race conditions between parallel streams
+                let mut tx =
+                    self.pool.begin().await.map_err(|e| {
+                        AppError::DatabaseError(format!("Failed to begin transaction: {}", e))
+                    })?;
 
-        let job = match job_row {
-            Some(row) => row_to_job(&row)?,
-            None => return Err(AppError::NotFoundError(format!("Job {} not found", job_id))),
-        };
+                // Fetch the job within the transaction with row locking
+                let job_row = sqlx::query("SELECT * FROM background_jobs WHERE id = $1")
+                    .bind(job_id)
+                    .fetch_optional(&mut *tx)
+                    .await
+                    .map_err(|e| AppError::DatabaseError(format!("Failed to fetch job: {}", e)))?;
 
-        // Parse existing metadata or create new
-        let mut metadata_json = if let Some(metadata_str) = &job.metadata {
-            serde_json::from_str::<Value>(metadata_str).unwrap_or_else(|_| json!({}))
-        } else {
-            json!({})
-        };
+                let fetched_job = match job_row {
+                    Some(row) => row_to_job(&row)?,
+                    None => return Err(AppError::NotFoundError(format!("Job {} not found", job_id))),
+                };
 
-        // Ensure taskData object exists and update with streaming info
-        if !metadata_json.get("taskData").is_some() {
-            metadata_json["taskData"] = json!({});
-        }
+                // Parse existing metadata or create new
+                let mut parsed_metadata_json = if let Some(metadata_str) = &fetched_job.metadata {
+                    serde_json::from_str::<Value>(metadata_str).unwrap_or_else(|_| json!({}))
+                } else {
+                    json!({})
+                };
 
-        if let Some(task_data) = metadata_json.get_mut("taskData") {
-            if let Some(progress) = stream_progress {
-                task_data["streamProgress"] = json!(progress);
-            }
-            task_data["responseLength"] = json!(accumulated_response.len());
-            task_data["lastStreamUpdateTime"] = json!(now);
+                // Ensure taskData object exists and update with streaming info
+                if !parsed_metadata_json.get("taskData").is_some() {
+                    parsed_metadata_json["taskData"] = json!({});
+                }
 
-            // Add usage info if available
-            if let Some(usage_data) = usage {
-                task_data["tokensReceived"] = json!(usage_data.completion_tokens);
-                task_data["tokensTotal"] = json!(usage_data.total_tokens);
-                if let Some(cost) = usage_data.cost {
-                    task_data["estimatedCost"] = json!(cost);
+                if let Some(task_data) = parsed_metadata_json.get_mut("taskData") {
+                    if let Some(progress) = stream_progress {
+                        task_data["streamProgress"] = json!(progress);
+                    }
+                    task_data["responseLength"] = json!(accumulated_response.len());
+                    task_data["lastStreamUpdateTime"] = json!(now);
+
+                    // Add usage info if available
+                    if let Some(usage_data) = usage {
+                        task_data["tokensReceived"] = json!(usage_data.completion_tokens);
+                        task_data["tokensTotal"] = json!(usage_data.total_tokens);
+                        if let Some(cost) = usage_data.cost {
+                            task_data["estimatedCost"] = json!(cost);
+                        }
+                    }
+                }
+
+                // Serialize metadata back to string
+                let serialized_metadata = serde_json::to_string(&parsed_metadata_json).map_err(|e| {
+                    AppError::SerializationError(format!("Failed to serialize metadata: {}", e))
+                })?;
+
+                // Update job in database with response and metadata
+                let mut query_str =
+                    "UPDATE background_jobs SET response = $1, metadata = $2, updated_at = $3".to_string();
+                let mut param_index = 4;
+
+                // Add usage fields if provided
+                if let Some(usage_data) = usage {
+                    query_str.push_str(&format!(", tokens_sent = ${}", param_index));
+                    param_index += 1;
+                    query_str.push_str(&format!(", tokens_received = ${}", param_index));
+                    param_index += 1;
+                    if let Some(cost) = usage_data.cost {
+                        query_str.push_str(&format!(", actual_cost = ${}", param_index));
+                        param_index += 1;
+                    }
+                    if usage_data.cache_write_tokens > 0 {
+                        query_str.push_str(&format!(", cache_write_tokens = ${}", param_index));
+                        param_index += 1;
+                    }
+                    if usage_data.cache_read_tokens > 0 {
+                        query_str.push_str(&format!(", cache_read_tokens = ${}", param_index));
+                        param_index += 1;
+                    }
+                }
+
+                query_str.push_str(&format!(" WHERE id = ${}", param_index));
+
+                // Build and execute the query
+                let mut query = sqlx::query(&query_str)
+                    .bind(accumulated_response)
+                    .bind(&serialized_metadata)
+                    .bind(now);
+
+                // Bind usage fields if provided
+                if let Some(usage_data) = usage {
+                    query = query.bind(usage_data.prompt_tokens as i64);
+                    query = query.bind(usage_data.completion_tokens as i64);
+                    if let Some(cost) = usage_data.cost {
+                        query = query.bind(cost);
+                    }
+                    if usage_data.cache_write_tokens > 0 {
+                        query = query.bind(usage_data.cache_write_tokens as i64);
+                    }
+                    if usage_data.cache_read_tokens > 0 {
+                        query = query.bind(usage_data.cache_read_tokens as i64);
+                    }
+                }
+
+                query = query.bind(job_id);
+
+                // Execute within the transaction
+                query.execute(&mut *tx).await.map_err(|e| {
+                    AppError::DatabaseError(format!("Failed to update job stream state: {}", e))
+                })?;
+
+                // Commit the transaction
+                tx.commit()
+                    .await
+                    .map_err(|e| AppError::DatabaseError(format!("Failed to commit transaction: {}", e)))?;
+
+                Ok::<(crate::models::BackgroundJob, Value, String), AppError>((fetched_job, parsed_metadata_json, serialized_metadata))
+            }.await;
+
+            match result {
+                Ok((fetched_job, parsed_metadata_json, serialized_metadata)) => {
+                    // Success - store results and break out
+                    job = Some(fetched_job);
+                    metadata_json = Some(parsed_metadata_json);
+                    updated_metadata = Some(serialized_metadata);
+                    break;
+                }
+                Err(e) => {
+                    let msg = e.to_string();
+                    if msg.contains("database is locked") || msg.contains("busy") {
+                        last_error = Some(e);
+                        let delay_ms = 25u64 * (1u64 << attempt);
+                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                        continue;
+                    } else {
+                        // Not a lock error - return immediately
+                        return Err(e);
+                    }
                 }
             }
         }
 
-        // Serialize metadata back to string
-        let updated_metadata = serde_json::to_string(&metadata_json).map_err(|e| {
-            AppError::SerializationError(format!("Failed to serialize metadata: {}", e))
-        })?;
-
-        // Update job in database with response and metadata
-        let mut query_str =
-            "UPDATE background_jobs SET response = $1, metadata = $2, updated_at = $3".to_string();
-        let mut param_index = 4;
-
-        // Add usage fields if provided
-        if let Some(usage_data) = usage {
-            query_str.push_str(&format!(", tokens_sent = ${}", param_index));
-            param_index += 1;
-            query_str.push_str(&format!(", tokens_received = ${}", param_index));
-            param_index += 1;
-            if let Some(cost) = usage_data.cost {
-                query_str.push_str(&format!(", actual_cost = ${}", param_index));
-                param_index += 1;
-            }
-            if usage_data.cache_write_tokens > 0 {
-                query_str.push_str(&format!(", cache_write_tokens = ${}", param_index));
-                param_index += 1;
-            }
-            if usage_data.cache_read_tokens > 0 {
-                query_str.push_str(&format!(", cache_read_tokens = ${}", param_index));
-                param_index += 1;
-            }
+        if let Some(err) = last_error {
+            return Err(err);
         }
 
-        query_str.push_str(&format!(" WHERE id = ${}", param_index));
-
-        // Build and execute the query
-        let mut query = sqlx::query(&query_str)
-            .bind(accumulated_response)
-            .bind(updated_metadata)
-            .bind(now);
-
-        // Bind usage fields if provided
-        if let Some(usage_data) = usage {
-            query = query.bind(usage_data.prompt_tokens as i64);
-            query = query.bind(usage_data.completion_tokens as i64);
-            if let Some(cost) = usage_data.cost {
-                query = query.bind(cost);
-            }
-            if usage_data.cache_write_tokens > 0 {
-                query = query.bind(usage_data.cache_write_tokens as i64);
-            }
-            if usage_data.cache_read_tokens > 0 {
-                query = query.bind(usage_data.cache_read_tokens as i64);
-            }
-        }
-
-        query = query.bind(job_id);
-
-        // Execute within the transaction
-        query.execute(&mut *tx).await.map_err(|e| {
-            AppError::DatabaseError(format!("Failed to update job stream state: {}", e))
-        })?;
-
-        // Commit the transaction
-        tx.commit()
-            .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to commit transaction: {}", e)))?;
+        let job = job.expect("Job should be set after successful transaction");
+        let _metadata_json = metadata_json.expect("Metadata should be set after successful transaction");
 
         // Emit granular events based on changes
         if let Some(ref app_handle) = self.app_handle {
@@ -260,31 +301,60 @@ impl BackgroundJobRepository {
     ) -> AppResult<()> {
         let now = get_timestamp();
 
-        // Perform atomic UPDATE with server-authoritative usage data
-        sqlx::query(
-            r#"
-            UPDATE background_jobs SET
-                tokens_sent = $1,
-                tokens_received = $2,
-                cache_read_tokens = $3,
-                cache_write_tokens = $4,
-                actual_cost = $5,
-                updated_at = $6
-            WHERE id = $7
-            "#,
-        )
-        .bind(usage.tokens_input as i64)
-        .bind(usage.tokens_output as i64)
-        .bind(usage.cache_read_tokens.map(|v| v as i64))
-        .bind(usage.cache_write_tokens.map(|v| v as i64))
-        .bind(usage.estimated_cost)
-        .bind(now)
-        .bind(job_id)
-        .execute(&*self.pool)
-        .await
-        .map_err(|e| {
-            AppError::DatabaseError(format!("Failed to update job stream usage: {}", e))
-        })?;
+        // Retry wrapper for database write
+        let mut last_error = None;
+        for attempt in 0..5 {
+            let result = async {
+                // Perform atomic UPDATE with server-authoritative usage data
+                sqlx::query(
+                    r#"
+                    UPDATE background_jobs SET
+                        tokens_sent = $1,
+                        tokens_received = $2,
+                        cache_read_tokens = $3,
+                        cache_write_tokens = $4,
+                        actual_cost = $5,
+                        updated_at = $6
+                    WHERE id = $7
+                    "#,
+                )
+                .bind(usage.tokens_input as i64)
+                .bind(usage.tokens_output as i64)
+                .bind(usage.cache_read_tokens.map(|v| v as i64))
+                .bind(usage.cache_write_tokens.map(|v| v as i64))
+                .bind(usage.estimated_cost)
+                .bind(now)
+                .bind(job_id)
+                .execute(&*self.pool)
+                .await
+                .map_err(|e| {
+                    AppError::DatabaseError(format!("Failed to update job stream usage: {}", e))
+                })
+            }.await;
+
+            match result {
+                Ok(_) => {
+                    // Success - break out and continue with rest of method
+                    break;
+                }
+                Err(e) => {
+                    let msg = e.to_string();
+                    if msg.contains("database is locked") || msg.contains("busy") {
+                        last_error = Some(e);
+                        let delay_ms = 25u64 * (1u64 << attempt);
+                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                        continue;
+                    } else {
+                        // Not a lock error - return immediately
+                        return Err(e);
+                    }
+                }
+            }
+        }
+
+        if let Some(err) = last_error {
+            return Err(err);
+        }
 
         // Emit granular events
         if let Some(ref app_handle) = self.app_handle {
@@ -371,33 +441,62 @@ impl BackgroundJobRepository {
             AppError::SerializationError(format!("Failed to serialize metadata: {}", e))
         })?;
 
-        // Perform atomic UPDATE with server-authoritative token counts and metadata
-        sqlx::query(
-            r#"
-            UPDATE background_jobs SET
-                tokens_sent = $2,
-                tokens_received = $3,
-                actual_cost = $4,
-                cache_write_tokens = COALESCE($5, cache_write_tokens),
-                cache_read_tokens = COALESCE($6, cache_read_tokens),
-                metadata = $7,
-                updated_at = $8
-            WHERE id = $1
-            "#,
-        )
-        .bind(job_id)
-        .bind(usage_update.tokens_input as i64)
-        .bind(usage_update.tokens_output as i64)
-        .bind(usage_update.estimated_cost)
-        .bind(usage_update.cache_write_tokens.map(|v| v as i64))
-        .bind(usage_update.cache_read_tokens.map(|v| v as i64))
-        .bind(updated_metadata)
-        .bind(now)
-        .execute(&*self.pool)
-        .await
-        .map_err(|e| {
-            AppError::DatabaseError(format!("Failed to update job stream progress: {}", e))
-        })?;
+        // Retry wrapper for database write
+        let mut last_error = None;
+        for attempt in 0..5 {
+            let result = async {
+                // Perform atomic UPDATE with server-authoritative token counts and metadata
+                sqlx::query(
+                    r#"
+                    UPDATE background_jobs SET
+                        tokens_sent = $2,
+                        tokens_received = $3,
+                        actual_cost = $4,
+                        cache_write_tokens = COALESCE($5, cache_write_tokens),
+                        cache_read_tokens = COALESCE($6, cache_read_tokens),
+                        metadata = $7,
+                        updated_at = $8
+                    WHERE id = $1
+                    "#,
+                )
+                .bind(job_id)
+                .bind(usage_update.tokens_input as i64)
+                .bind(usage_update.tokens_output as i64)
+                .bind(usage_update.estimated_cost)
+                .bind(usage_update.cache_write_tokens.map(|v| v as i64))
+                .bind(usage_update.cache_read_tokens.map(|v| v as i64))
+                .bind(&updated_metadata)
+                .bind(now)
+                .execute(&*self.pool)
+                .await
+                .map_err(|e| {
+                    AppError::DatabaseError(format!("Failed to update job stream progress: {}", e))
+                })
+            }.await;
+
+            match result {
+                Ok(_) => {
+                    // Success - break out and continue with rest of method
+                    break;
+                }
+                Err(e) => {
+                    let msg = e.to_string();
+                    if msg.contains("database is locked") || msg.contains("busy") {
+                        last_error = Some(e);
+                        let delay_ms = 25u64 * (1u64 << attempt);
+                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                        continue;
+                    } else {
+                        // Not a lock error - return immediately
+                        return Err(e);
+                    }
+                }
+            }
+        }
+
+        if let Some(err) = last_error {
+            return Err(err);
+        }
 
         // Emit stream progress event
         if let Some(ref app_handle) = self.app_handle {

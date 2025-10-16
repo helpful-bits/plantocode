@@ -54,16 +54,24 @@ public struct FileManagementView: View {
         return VStack(spacing: 0) {
             connectedView
         }
-        .onAppear {
-            // Only load files once per project directory
+        .onReceive(container.sessionService.$currentSession.compactMap { $0 }) { _ in
+            updateIncludedFilesNotInList()
+            updateRunningWorkflowCount()
+        }
+        .onReceive(container.filesService.$files) { newFiles in
+            files = newFiles
+            updateIncludedFilesNotInList()
+        }
+        .task(id: container.sessionService.currentSession?.projectDirectory) {
+            // Runs immediately when view is created AND whenever project directory changes
             let currentProjectDir = container.sessionService.currentSession?.projectDirectory
                 ?? container.currentProject?.directory
 
-            if !hasLoadedFiles || lastLoadedProjectDir != currentProjectDir {
+            if currentProjectDir != nil && (!hasLoadedFiles || lastLoadedProjectDir != currentProjectDir) {
+                lastLoadedProjectDir = currentProjectDir
                 if isConnected {
                     loadFiles()
                 }
-                lastLoadedProjectDir = currentProjectDir
             }
             updateIncludedFilesNotInList()
             updateRunningWorkflowCount()

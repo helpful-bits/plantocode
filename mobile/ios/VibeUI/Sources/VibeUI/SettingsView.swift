@@ -84,6 +84,12 @@ public struct SettingsView: View {
             }
           }
 
+          Section("Notifications") {
+            NavigationLink("Notifications") {
+              NotificationsSettingsView(dataService: container.settingsService)
+            }
+          }
+
           Section("AI Settings") {
             NavigationLink("Configure AI Models") {
               AISettingsView(dataService: container.settingsService)

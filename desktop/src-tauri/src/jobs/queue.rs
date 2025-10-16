@@ -6,7 +6,7 @@ use tokio::sync::{OnceCell, Semaphore, mpsc, oneshot};
 use crate::error::{AppError, AppResult};
 use crate::jobs::types::Job;
 
-const DEFAULT_CONCURRENT_JOBS: usize = 20;
+const DEFAULT_CONCURRENT_JOBS: usize = 8;
 
 /// Priority levels for jobs
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

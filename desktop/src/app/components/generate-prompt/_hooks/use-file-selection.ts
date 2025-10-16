@@ -56,6 +56,10 @@ export function useFileSelection(projectDirectory?: string) {
   const sessionIncluded = useMemo(() => currentSession?.includedFiles || [], [currentSession?.includedFiles]);
   const sessionExcluded = useMemo(() => currentSession?.forceExcludedFiles || [], [currentSession?.forceExcludedFiles]);
 
+  // Memoized sets for fast lookups in toggles
+  const includedSet = useMemo(() => new Set(sessionIncluded), [sessionIncluded]);
+  const excludedSet = useMemo(() => new Set(sessionExcluded), [sessionExcluded]);
+
   const broadcastBrowserState = useCallback(async () => {
     if (!currentSession?.id || !projectDirectory || applyingRemoteRef.current) {
       return;
@@ -386,11 +390,32 @@ export function useFileSelection(projectDirectory?: string) {
 
   // Toggle file inclusion
   const toggleFileSelection = useCallback((path: string) => {
-    const currentFile = files.find(f => f.path === path);
-    if (!currentFile || !currentSession) return;
+    if (!currentSession) return;
 
-    const newIncluded = !currentFile.included;
+    const isCurrentlyIncluded = includedSet.has(path);
+    const newIncluded = !isCurrentlyIncluded;
 
+    // Derive next arrays optimistically
+    let nextIncluded: string[];
+    let nextExcluded: string[];
+
+    if (newIncluded) {
+      // Add to included, remove from excluded
+      nextIncluded = isCurrentlyIncluded ? sessionIncluded : [...sessionIncluded, path];
+      nextExcluded = excludedSet.has(path) ? sessionExcluded.filter(p => p !== path) : sessionExcluded;
+    } else {
+      // Remove from included
+      nextIncluded = sessionIncluded.filter(p => p !== path);
+      nextExcluded = sessionExcluded;
+    }
+
+    // Optimistic update first
+    updateCurrentSessionFields({
+      includedFiles: nextIncluded,
+      forceExcludedFiles: nextExcluded
+    });
+
+    // Then persist
     if (newIncluded) {
       updateSessionFilesAction(currentSession.id, {
         addIncluded: [path],
@@ -401,15 +426,36 @@ export function useFileSelection(projectDirectory?: string) {
         removeIncluded: [path],
       });
     }
-  }, [files, currentSession]);
+  }, [currentSession, includedSet, excludedSet, sessionIncluded, sessionExcluded, updateCurrentSessionFields]);
 
   // Toggle file exclusion
   const toggleFileExclusion = useCallback((path: string) => {
-    const currentFile = files.find(f => f.path === path);
-    if (!currentFile || !currentSession) return;
+    if (!currentSession) return;
 
-    const newExcluded = !currentFile.excluded;
+    const isCurrentlyExcluded = excludedSet.has(path);
+    const newExcluded = !isCurrentlyExcluded;
 
+    // Derive next arrays optimistically
+    let nextIncluded: string[];
+    let nextExcluded: string[];
+
+    if (newExcluded) {
+      // Add to excluded, remove from included
+      nextExcluded = isCurrentlyExcluded ? sessionExcluded : [...sessionExcluded, path];
+      nextIncluded = includedSet.has(path) ? sessionIncluded.filter(p => p !== path) : sessionIncluded;
+    } else {
+      // Remove from excluded
+      nextExcluded = sessionExcluded.filter(p => p !== path);
+      nextIncluded = sessionIncluded;
+    }
+
+    // Optimistic update first
+    updateCurrentSessionFields({
+      includedFiles: nextIncluded,
+      forceExcludedFiles: nextExcluded
+    });
+
+    // Then persist
     if (newExcluded) {
       updateSessionFilesAction(currentSession.id, {
         addExcluded: [path],
@@ -420,7 +466,7 @@ export function useFileSelection(projectDirectory?: string) {
         removeExcluded: [path],
       });
     }
-  }, [files, currentSession]);
+  }, [currentSession, includedSet, excludedSet, sessionIncluded, sessionExcluded, updateCurrentSessionFields]);
 
   // Undo functionality
   const undo = useCallback(() => {
@@ -585,66 +631,104 @@ export function useFileSelection(projectDirectory?: string) {
     if (!currentSession) return;
 
     const filteredPaths = filteredAndSortedFiles.map(f => f.path);
-    const currentIncluded = currentSession.includedFiles || [];
+    const pathsToInclude = filteredPaths.filter(path => !includedSet.has(path));
 
-    const pathsToInclude = filteredPaths.filter(path => !currentIncluded.includes(path));
+    if (pathsToInclude.length === 0) return;
 
-    if (pathsToInclude.length > 0) {
-      updateSessionFilesAction(currentSession.id, {
-        addIncluded: pathsToInclude,
-        removeExcluded: filteredPaths,
-      });
-    }
-  }, [currentSession, filteredAndSortedFiles]);
+    // Compute next arrays optimistically
+    const nextIncluded = [...sessionIncluded, ...pathsToInclude];
+    const pathsToUnexclude = filteredPaths.filter(path => excludedSet.has(path));
+    const nextExcluded = pathsToUnexclude.length > 0
+      ? sessionExcluded.filter(path => !filteredPaths.includes(path))
+      : sessionExcluded;
+
+    // Optimistic update first
+    updateCurrentSessionFields({
+      includedFiles: nextIncluded,
+      forceExcludedFiles: nextExcluded
+    });
+
+    // Then persist
+    updateSessionFilesAction(currentSession.id, {
+      addIncluded: pathsToInclude,
+      removeExcluded: filteredPaths,
+    });
+  }, [currentSession, filteredAndSortedFiles, includedSet, excludedSet, sessionIncluded, sessionExcluded, updateCurrentSessionFields]);
 
   // Deselect filtered files only
   const deselectFiltered = useCallback(() => {
     if (!currentSession) return;
 
     const filteredPaths = filteredAndSortedFiles.map(f => f.path);
-    const currentIncluded = currentSession.includedFiles || [];
+    const pathsToRemove = filteredPaths.filter(path => includedSet.has(path));
 
-    const pathsToRemove = filteredPaths.filter(path => currentIncluded.includes(path));
+    if (pathsToRemove.length === 0) return;
 
-    if (pathsToRemove.length > 0) {
-      updateSessionFilesAction(currentSession.id, {
-        removeIncluded: pathsToRemove,
-      });
-    }
-  }, [currentSession, filteredAndSortedFiles]);
+    // Compute next arrays optimistically
+    const nextIncluded = sessionIncluded.filter(path => !filteredPaths.includes(path));
+
+    // Optimistic update first
+    updateCurrentSessionFields({
+      includedFiles: nextIncluded
+    });
+
+    // Then persist
+    updateSessionFilesAction(currentSession.id, {
+      removeIncluded: pathsToRemove,
+    });
+  }, [currentSession, filteredAndSortedFiles, includedSet, sessionIncluded, updateCurrentSessionFields]);
 
   // Exclude filtered files only
   const excludeFiltered = useCallback(() => {
     if (!currentSession) return;
 
     const filteredPaths = filteredAndSortedFiles.map(f => f.path);
-    const currentExcluded = currentSession.forceExcludedFiles || [];
+    const pathsToExclude = filteredPaths.filter(path => !excludedSet.has(path));
 
-    const pathsToExclude = filteredPaths.filter(path => !currentExcluded.includes(path));
+    if (pathsToExclude.length === 0) return;
 
-    if (pathsToExclude.length > 0) {
-      updateSessionFilesAction(currentSession.id, {
-        addExcluded: filteredPaths,
-        removeIncluded: filteredPaths,
-      });
-    }
-  }, [currentSession, filteredAndSortedFiles]);
+    // Compute next arrays optimistically
+    const nextExcluded = [...sessionExcluded, ...pathsToExclude];
+    const pathsToUninclude = filteredPaths.filter(path => includedSet.has(path));
+    const nextIncluded = pathsToUninclude.length > 0
+      ? sessionIncluded.filter(path => !filteredPaths.includes(path))
+      : sessionIncluded;
+
+    // Optimistic update first
+    updateCurrentSessionFields({
+      includedFiles: nextIncluded,
+      forceExcludedFiles: nextExcluded
+    });
+
+    // Then persist
+    updateSessionFilesAction(currentSession.id, {
+      addExcluded: filteredPaths,
+      removeIncluded: filteredPaths,
+    });
+  }, [currentSession, filteredAndSortedFiles, includedSet, excludedSet, sessionIncluded, sessionExcluded, updateCurrentSessionFields]);
 
   // Unexclude filtered files only
   const unexcludeFiltered = useCallback(() => {
     if (!currentSession) return;
 
     const filteredPaths = filteredAndSortedFiles.map(f => f.path);
-    const currentExcluded = currentSession.forceExcludedFiles || [];
+    const pathsToUnexclude = filteredPaths.filter(path => excludedSet.has(path));
 
-    const pathsToUnexclude = filteredPaths.filter(path => currentExcluded.includes(path));
+    if (pathsToUnexclude.length === 0) return;
 
-    if (pathsToUnexclude.length > 0) {
-      updateSessionFilesAction(currentSession.id, {
-        removeExcluded: pathsToUnexclude,
-      });
-    }
-  }, [currentSession, filteredAndSortedFiles]);
+    // Compute next arrays optimistically
+    const nextExcluded = sessionExcluded.filter(path => !filteredPaths.includes(path));
+
+    // Optimistic update first
+    updateCurrentSessionFields({
+      forceExcludedFiles: nextExcluded
+    });
+
+    // Then persist
+    updateSessionFilesAction(currentSession.id, {
+      removeExcluded: pathsToUnexclude,
+    });
+  }, [currentSession, filteredAndSortedFiles, excludedSet, sessionExcluded, updateCurrentSessionFields]);
 
   useEffect(() => {
     let unlisten: UnlistenFn | null = null;

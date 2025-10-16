@@ -5,7 +5,6 @@ use crate::models::{
 };
 use crate::utils::hash_utils::hash_string;
 use serde_json::{Value, json};
-use std::collections::HashSet;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
 use uuid::Uuid;
@@ -18,6 +17,7 @@ pub async fn create_session_command(
 ) -> AppResult<Session> {
     log::debug!("Creating session with data: {:?}", session_data);
 
+    let cache = app_handle.state::<std::sync::Arc<crate::services::SessionCache>>().inner().clone();
     let repo = app_handle
         .state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
         .inner()
@@ -46,21 +46,16 @@ pub async fn create_session_command(
         included_files: session_data.included_files,
         force_excluded_files: session_data.force_excluded_files,
         video_analysis_prompt: session_data.video_analysis_prompt,
+        merge_instructions: session_data.merge_instructions,
     };
 
     log::debug!("Constructed session object: {:?}", session);
 
-    // Create the session
+    // Create the session in DB first (DB-first for safety)
     repo.create_session(&session).await?;
 
-    let payload = serde_json::json!({ "session": &session });
-    app_handle.emit("session-created", payload.clone())
-        .map_err(|e| crate::error::AppError::from(e))?;
-    app_handle.emit("device-link-event", serde_json::json!({
-        "type": "session-created",
-        "payload": payload
-    }))
-    .map_err(|e| crate::error::AppError::from(e))?;
+    // After DB insert, update cache (cache will emit events)
+    cache.upsert_session(&app_handle, &session).await?;
 
     // Return the created session
     Ok(session)
@@ -72,12 +67,9 @@ pub async fn get_session_command(
     app_handle: AppHandle,
     session_id: String,
 ) -> AppResult<Option<Session>> {
-    let repo = app_handle
-        .state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
-        .inner()
-        .clone();
+    let cache = app_handle.state::<std::sync::Arc<crate::services::SessionCache>>().inner().clone();
 
-    repo.get_session_by_id(&session_id).await
+    Ok(Some(cache.get_session(&app_handle, &session_id).await?))
 }
 
 /// Get all sessions for a project
@@ -108,13 +100,10 @@ pub async fn update_session_command(
 ) -> AppResult<Session> {
     log::debug!("Updating session with data: {:?}", session_data);
 
-    let repo = app_handle
-        .state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
-        .inner()
-        .clone();
+    let cache = app_handle.state::<std::sync::Arc<crate::services::SessionCache>>().inner().clone();
 
-    // Update the session
-    repo.update_session(&session_data).await?;
+    // Update the session via cache (cache emits events)
+    cache.upsert_session(&app_handle, &session_data).await?;
 
     // Return the updated session
     Ok(session_data)
@@ -123,6 +112,7 @@ pub async fn update_session_command(
 /// Delete a session and cancel any related background jobs
 #[tauri::command]
 pub async fn delete_session_command(app_handle: AppHandle, session_id: String) -> AppResult<()> {
+    let cache = app_handle.state::<std::sync::Arc<crate::services::SessionCache>>().inner().clone();
     let session_repo = app_handle
         .state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
         .inner()
@@ -135,9 +125,13 @@ pub async fn delete_session_command(app_handle: AppHandle, session_id: String) -
     // First cancel any active jobs for this session
     job_repo.cancel_session_jobs(&session_id).await?;
 
-    // Then delete the session (this will cascade to related records)
+    // Then delete the session from DB (DB-first for safety)
     session_repo.delete_session(&session_id).await?;
 
+    // Remove from cache
+    cache.remove_session(&session_id).await;
+
+    // Emit session-deleted event
     crate::events::session_events::emit_session_deleted(&app_handle, &session_id)?;
 
     Ok(())
@@ -150,28 +144,10 @@ pub async fn rename_session_command(
     session_id: String,
     name: String,
 ) -> AppResult<()> {
-    let repo = app_handle
-        .state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
-        .inner()
-        .clone();
+    let cache = app_handle.state::<std::sync::Arc<crate::services::SessionCache>>().inner().clone();
 
-    // Get the current session
-    let session = match repo.get_session_by_id(&session_id).await? {
-        Some(s) => s,
-        None => {
-            return Err(crate::error::AppError::NotFoundError(format!(
-                "Session with ID {} not found",
-                session_id
-            )));
-        }
-    };
-
-    // Update with new name
-    let mut updated_session = session;
-    updated_session.name = name;
-
-    // Save the updated session
-    repo.update_session(&updated_session).await
+    // Update via cache using partial update
+    cache.update_fields_partial(&app_handle, &session_id, &serde_json::json!({"name": name})).await
 }
 
 /// Update a session's project directory and hash
@@ -181,29 +157,20 @@ pub async fn update_session_project_directory_command(
     session_id: String,
     project_directory: String,
 ) -> AppResult<()> {
-    let repo = app_handle
-        .state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
-        .inner()
-        .clone();
+    let cache = app_handle.state::<std::sync::Arc<crate::services::SessionCache>>().inner().clone();
 
-    // Get the current session
-    let session = match repo.get_session_by_id(&session_id).await? {
-        Some(s) => s,
-        None => {
-            return Err(crate::error::AppError::NotFoundError(format!(
-                "Session with ID {} not found",
-                session_id
-            )));
-        }
-    };
+    // Compute new hash
+    let new_hash = crate::utils::hash_utils::hash_string(&project_directory);
 
-    // Update with new project directory and hash
-    let mut updated_session = session;
-    updated_session.project_directory = project_directory.clone();
-    updated_session.project_hash = hash_string(&project_directory);
-
-    // Save the updated session
-    repo.update_session(&updated_session).await
+    // Update via cache using partial update
+    cache.update_fields_partial(
+        &app_handle,
+        &session_id,
+        &serde_json::json!({
+            "projectDirectory": project_directory,
+            "projectHash": new_hash
+        })
+    ).await
 }
 
 /// Clear all sessions for a project
@@ -248,149 +215,52 @@ pub async fn update_session_fields_command(
     session_id: String,
     fields_to_update: Value,
 ) -> AppResult<Session> {
+    let cache = app_handle.state::<std::sync::Arc<crate::services::SessionCache>>().inner().clone();
     let repo = app_handle
         .state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
         .inner()
         .clone();
 
-    // Get the current session
-    let session = match repo.get_session_by_id(&session_id).await? {
-        Some(s) => s,
-        None => {
-            return Err(crate::error::AppError::NotFoundError(format!(
-                "Session with ID {} not found",
-                session_id
-            )));
-        }
-    };
-
-    // Create a mutable copy of the session to update
-    let mut updated_session = session.clone();
-
-    // Update the fields based on the provided JSON
-    if let Some(fields) = fields_to_update.as_object() {
-        // Handle name
-        if fields.contains_key("name") {
-            if let Some(name) = fields["name"].as_str() {
-                updated_session.name = name.to_string();
-            }
-        }
-
-        // Handle project_directory (and recalculate project_hash)
-        if fields.contains_key("projectDirectory") {
-            if let Some(project_dir) = fields["projectDirectory"].as_str() {
-                updated_session.project_directory = project_dir.to_string();
-                updated_session.project_hash = hash_string(&project_dir);
-            }
-        }
-
-        // Handle task_description (track changes for history)
-        if fields.contains_key("taskDescription") {
-            if let Some(task_desc) = fields["taskDescription"].as_str() {
-                updated_session.task_description = Some(task_desc.to_string());
-            } else if fields["taskDescription"].is_null() {
-                updated_session.task_description = None;
-            }
-        }
-
-        // Handle search_term
-        if fields.contains_key("searchTerm") {
-            if let Some(search_term) = fields["searchTerm"].as_str() {
-                updated_session.search_term = Some(search_term.to_string());
-            } else if fields["searchTerm"].is_null() {
-                updated_session.search_term = None;
-            }
-        }
-
-        // Handle search_selected_files_only
-        if fields.contains_key("searchSelectedFilesOnly") {
-            if let Some(search_selected_files_only) = fields["searchSelectedFilesOnly"].as_bool() {
-                updated_session.search_selected_files_only = search_selected_files_only;
-            }
-        }
-
-        // Handle model_used
-        if fields.contains_key("modelUsed") {
-            if let Some(model_used) = fields["modelUsed"].as_str() {
-                updated_session.model_used = Some(model_used.to_string());
-            } else if fields["modelUsed"].is_null() {
-                updated_session.model_used = None;
-            }
-        }
-
-        // Handle included_files (maps to selectedFiles from frontend)
-        if fields.contains_key("selectedFiles") || fields.contains_key("includedFiles") {
-            let key = if fields.contains_key("selectedFiles") {
-                "selectedFiles"
-            } else {
-                "includedFiles"
-            };
-            if let Some(included_files_arr) = fields[key].as_array() {
-                let mut included_files = Vec::new();
-                for file in included_files_arr {
-                    if let Some(file_str) = file.as_str() {
-                        included_files.push(file_str.to_string());
-                    }
-                }
-                updated_session.included_files = included_files;
-            } else if fields[key].is_null() {
-                updated_session.included_files = vec![];
-            }
-        }
-
-        // Handle force_excluded_files (maps to forceExcludedFiles from frontend)
-        if fields.contains_key("forceExcludedFiles") {
-            if let Some(force_excluded_files_arr) = fields["forceExcludedFiles"].as_array() {
-                let mut force_excluded_files = Vec::new();
-                for file in force_excluded_files_arr {
-                    if let Some(file_str) = file.as_str() {
-                        force_excluded_files.push(file_str.to_string());
-                    }
-                }
-                updated_session.force_excluded_files = force_excluded_files;
-            } else if fields["forceExcludedFiles"].is_null() {
-                updated_session.force_excluded_files = vec![];
-            }
-        }
-
-        // Handle video_analysis_prompt
-        if fields.contains_key("videoAnalysisPrompt") {
-            if let Some(video_prompt) = fields["videoAnalysisPrompt"].as_str() {
-                updated_session.video_analysis_prompt = Some(video_prompt.to_string());
-            } else if fields["videoAnalysisPrompt"].is_null() {
-                updated_session.video_analysis_prompt = None;
-            }
-        }
-    }
+    // Get the current session to detect changes
+    let session = cache.get_session(&app_handle, &session_id).await?;
 
     // Detect if task description changed
-    let task_description_changed = session.task_description != updated_session.task_description;
+    let task_description_changed = if let Some(fields) = fields_to_update.as_object() {
+        if fields.contains_key("taskDescription") {
+            let new_task_desc = fields["taskDescription"].as_str().map(|s| s.to_string());
+            session.task_description != new_task_desc
+        } else {
+            false
+        }
+    } else {
+        false
+    };
 
-    // Save the updated session
-    repo.update_session(&updated_session).await?;
-
-    // Always emit session-updated for any field change
-    let session_json = serde_json::to_value(&updated_session)
-        .map_err(|e| format!("json err: {e}"))?;
-    crate::events::session_events::emit_session_updated(&app_handle, &session_id, &session_json)?;
+    // Update via cache using partial update (cache emits session-updated)
+    cache.update_fields_partial(&app_handle, &session_id, &fields_to_update).await?;
 
     // Keep history-synced for backward compatibility if task description changed
     if task_description_changed {
-        if let Some(ref new_desc) = updated_session.task_description {
-            let _ = repo.append_task_description_history(&session_id, new_desc).await;
-            let _ = app_handle.emit("session-history-synced", serde_json::json!({
-                "sessionId": &session_id,
-                "taskDescription": new_desc
-            }));
-            let _ = app_handle.emit("device-link-event", serde_json::json!({
-                "type": "session-history-synced",
-                "payload": {
+        if let Some(fields) = fields_to_update.as_object() {
+            if let Some(new_desc) = fields["taskDescription"].as_str() {
+                let _ = repo.append_task_description_history(&session_id, new_desc).await;
+                let _ = app_handle.emit("session-history-synced", serde_json::json!({
                     "sessionId": &session_id,
                     "taskDescription": new_desc
-                }
-            }));
+                }));
+                let _ = app_handle.emit("device-link-event", serde_json::json!({
+                    "type": "session-history-synced",
+                    "payload": {
+                        "sessionId": &session_id,
+                        "taskDescription": new_desc
+                    }
+                }));
+            }
         }
     }
+
+    // Get updated session from cache
+    let updated_session = cache.get_session(&app_handle, &session_id).await?;
 
     Ok(updated_session)
 }
@@ -498,21 +368,14 @@ pub async fn duplicate_session_command(
     source_session_id: String,
     new_name: Option<String>,
 ) -> AppResult<Session> {
+    let cache = app_handle.state::<std::sync::Arc<crate::services::SessionCache>>().inner().clone();
     let repo = app_handle
         .state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
         .inner()
         .clone();
 
-    // Get the source session
-    let source_session = match repo.get_session_by_id(&source_session_id).await? {
-        Some(s) => s,
-        None => {
-            return Err(crate::error::AppError::NotFoundError(format!(
-                "Session with ID {} not found",
-                source_session_id
-            )));
-        }
-    };
+    // Get the source session from cache
+    let source_session = cache.get_session(&app_handle, &source_session_id).await?;
 
     let now = chrono::Utc::now().timestamp_millis();
 
@@ -531,29 +394,14 @@ pub async fn duplicate_session_command(
         included_files: source_session.included_files.clone(),
         force_excluded_files: source_session.force_excluded_files.clone(),
         video_analysis_prompt: source_session.video_analysis_prompt.clone(),
+        merge_instructions: source_session.merge_instructions.clone(),
     };
 
-    // Create the new session
+    // Create the new session in DB first (DB-first for safety)
     repo.create_session(&new_session).await?;
 
-    // Emit session-created event
-    let _ = app_handle.emit(
-        "session-created",
-        serde_json::json!({
-            "session": &new_session
-        }),
-    );
-
-    // Emit device-link event for remote devices
-    let _ = app_handle.emit(
-        "device-link-event",
-        serde_json::json!({
-            "type": "session-created",
-            "payload": {
-                "session": &new_session
-            }
-        }),
-    );
+    // After DB insert, update cache (cache will emit events)
+    cache.upsert_session(&app_handle, &new_session).await?;
 
     Ok(new_session)
 }
@@ -568,66 +416,20 @@ pub async fn update_session_files_command(
     excluded_to_add: Vec<String>,
     excluded_to_remove: Vec<String>,
 ) -> AppResult<Session> {
-    let repo = app_handle
-        .state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
-        .inner()
-        .clone();
+    let cache = app_handle.state::<std::sync::Arc<crate::services::SessionCache>>().inner().clone();
 
-    // Get the current session
-    let session = match repo.get_session_by_id(&session_id).await? {
-        Some(s) => s,
-        None => {
-            return Err(crate::error::AppError::NotFoundError(format!(
-                "Session with ID {} not found",
-                session_id
-            )));
-        }
-    };
-
-    // No-op guard: skip if files unchanged
-    if session.included_files == files_to_add && session.force_excluded_files == excluded_to_add {
-        return Ok(session);
-    }
-
-    // Convert to sets for efficient operations (clone to avoid moving)
-    let mut included_set: HashSet<String> = session.included_files.clone().into_iter().collect();
-    let mut excluded_set: HashSet<String> =
-        session.force_excluded_files.clone().into_iter().collect();
-
-    // Apply delta operations with mutual exclusivity
-    for file in files_to_add {
-        included_set.insert(file.clone());
-        excluded_set.remove(&file); // Remove from excluded if adding to included
-    }
-
-    for file in files_to_remove {
-        included_set.remove(&file);
-    }
-
-    for file in excluded_to_add {
-        excluded_set.insert(file.clone());
-        included_set.remove(&file); // Remove from included if adding to excluded
-    }
-
-    for file in excluded_to_remove {
-        excluded_set.remove(&file);
-    }
-
-    // Convert back to vectors
-    let mut updated_session = session;
-    updated_session.included_files = included_set.into_iter().collect();
-    updated_session.force_excluded_files = excluded_set.into_iter().collect();
-
-    // Update the session
-    repo.update_session(&updated_session).await?;
-
-    // Emit unified session-files-updated event
-    crate::events::session_events::emit_session_files_updated(
+    // Update files via cache (cache emits session-files-updated event)
+    cache.update_files_delta(
         &app_handle,
         &session_id,
-        &updated_session.included_files,
-        &updated_session.force_excluded_files,
-    )?;
+        &files_to_add,
+        &files_to_remove,
+        &excluded_to_add,
+        &excluded_to_remove
+    ).await?;
+
+    // Get updated session from cache
+    let updated_session = cache.get_session(&app_handle, &session_id).await?;
 
     Ok(updated_session)
 }
@@ -671,21 +473,10 @@ pub async fn get_file_relationships_command(
     app_handle: AppHandle,
     session_id: String,
 ) -> AppResult<Value> {
-    let repo = app_handle
-        .state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
-        .inner()
-        .clone();
+    let cache = app_handle.state::<std::sync::Arc<crate::services::SessionCache>>().inner().clone();
 
-    // Get the session
-    let session = match repo.get_session_by_id(&session_id).await? {
-        Some(s) => s,
-        None => {
-            return Err(crate::error::AppError::NotFoundError(format!(
-                "Session with ID {} not found",
-                session_id
-            )));
-        }
-    };
+    // Get the session from cache
+    let session = cache.get_session(&app_handle, &session_id).await?;
 
     // Parse imports from included files
     let project_path = std::path::Path::new(&session.project_directory);
@@ -797,6 +588,7 @@ pub async fn get_session_overview_command(
     app_handle: AppHandle,
     session_id: String,
 ) -> AppResult<Value> {
+    let cache = app_handle.state::<std::sync::Arc<crate::services::SessionCache>>().inner().clone();
     let session_repo = app_handle
         .state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
         .inner()
@@ -806,16 +598,8 @@ pub async fn get_session_overview_command(
         .inner()
         .clone();
 
-    // Get the session
-    let session = match session_repo.get_session_by_id(&session_id).await? {
-        Some(s) => s,
-        None => {
-            return Err(crate::error::AppError::NotFoundError(format!(
-                "Session with ID {} not found",
-                session_id
-            )));
-        }
-    };
+    // Get the session from cache
+    let session = cache.get_session(&app_handle, &session_id).await?;
 
     // Get jobs for this session
     let jobs = job_repo.get_jobs_by_session_id(&session_id).await?;
@@ -869,6 +653,7 @@ pub async fn get_session_contents_command(
     app_handle: AppHandle,
     session_id: String,
 ) -> AppResult<Value> {
+    let cache = app_handle.state::<std::sync::Arc<crate::services::SessionCache>>().inner().clone();
     let session_repo = app_handle
         .state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
         .inner()
@@ -878,16 +663,8 @@ pub async fn get_session_contents_command(
         .inner()
         .clone();
 
-    // Get the session
-    let session = match session_repo.get_session_by_id(&session_id).await? {
-        Some(s) => s,
-        None => {
-            return Err(crate::error::AppError::NotFoundError(format!(
-                "Session with ID {} not found",
-                session_id
-            )));
-        }
-    };
+    // Get the session from cache
+    let session = cache.get_session(&app_handle, &session_id).await?;
 
     // Get jobs for this session
     let jobs = job_repo.get_jobs_by_session_id(&session_id).await?;

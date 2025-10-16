@@ -168,6 +168,28 @@ public struct ConnectionDiagnosticsView: View {
                         }
                         .padding(24)
                     }
+                } else {
+                    // Error state: diagnostics failed to load
+                    VStack(spacing: 16) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 48))
+                            .foregroundColor(Color.destructive)
+
+                        Text("Failed to Load Diagnostics")
+                            .h3()
+                            .foregroundColor(Color.cardForeground)
+
+                        Text("Unable to retrieve diagnostics information")
+                            .paragraph()
+                            .foregroundColor(Color.mutedForeground)
+                            .multilineTextAlignment(.center)
+
+                        Button("Try Again") {
+                            runDiagnostics()
+                        }
+                        .buttonStyle(PrimaryButtonStyle())
+                    }
+                    .padding(24)
                 }
             }
             .navigationTitle("Diagnostics")

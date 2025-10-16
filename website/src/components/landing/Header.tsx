@@ -188,7 +188,10 @@ export function Header() {
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: -10 }}
                             transition={{ duration: 0.2 }}
-                            className="absolute top-full mt-2 w-72 bg-popover backdrop-blur-xl rounded-xl p-2 shadow-xl border border-border/50"
+                            style={{
+                              backgroundColor: 'var(--color-popover)',
+                            }}
+                            className="absolute top-full mt-2 w-72 backdrop-blur-xl rounded-xl p-2 shadow-xl border border-border"
                           >
                             {link.items?.map((item) => {
                               const Icon = item.icon;
@@ -202,8 +205,8 @@ export function Header() {
                                     <Icon className="w-4 h-4 text-primary" />
                                   </div>
                                   <div className="flex-1">
-                                    <div className="font-medium text-sm text-popover-foreground">{item.label}</div>
-                                    <div className="text-xs text-popover-foreground/70 mt-0.5">{item.description}</div>
+                                    <div className="font-medium text-sm text-foreground">{item.label}</div>
+                                    <div className="text-xs text-muted-foreground mt-0.5">{item.description}</div>
                                   </div>
                                 </Link>
                               );

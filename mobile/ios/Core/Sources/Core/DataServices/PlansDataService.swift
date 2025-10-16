@@ -1024,9 +1024,10 @@ public class PlansDataService: ObservableObject {
         cacheManager.invalidatePattern("plan_content_")
     }
 
-    public func preloadPlans(for projectDirectory: String) {
+    public func preloadPlans(for projectDirectory: String, sessionId: String? = nil) {
         let request = PlanListRequest(
             projectDirectory: projectDirectory,
+            sessionId: sessionId,
             page: 0,
             pageSize: 20,
             includeMetadataOnly: true

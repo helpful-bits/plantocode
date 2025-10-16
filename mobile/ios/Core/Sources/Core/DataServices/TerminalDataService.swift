@@ -72,6 +72,7 @@ public class TerminalDataService: ObservableObject {
     private var activeDeviceReconnectCancellable: AnyCancellable?
     private var recentSentChunks: [String: [Data]] = [:]
     private let recentSentChunksLimit = 3
+    private var lastActivityBySession: [String: Date] = [:]
 
     // MARK: - Initialization
     public init() {
@@ -340,6 +341,7 @@ public class TerminalDataService: ObservableObject {
             eventSubscriptions[session.id]?.cancel()
             eventSubscriptions.removeValue(forKey: session.id)
             outputPublishers.removeValue(forKey: session.id)
+            lastActivityBySession.removeValue(forKey: session.id)
             activeSessions.removeValue(forKey: session.id)
 
         } catch {
@@ -491,6 +493,18 @@ public class TerminalDataService: ObservableObject {
             return Empty().eraseToAnyPublisher()
         }
         return ensureBytesPublisher(for: session.id).eraseToAnyPublisher()
+    }
+
+    public func lastActivity(for sessionId: String) -> Date? {
+        return lastActivityBySession[sessionId]
+    }
+
+    public func notifyInactivityDetected(sessionId: String, projectDirectory: String? = nil, jobId: String? = nil) {
+        PushNotificationManager.shared.scheduleTerminalInactivityDetected(
+            sessionId: sessionId,
+            projectDirectory: projectDirectory,
+            jobId: jobId
+        )
     }
 
     /// Get hydrated raw byte stream that replays the ring buffer snapshot before live data.
@@ -771,6 +785,7 @@ public class TerminalDataService: ObservableObject {
                 // Store into ring buffer (persistent across subscriptions)
                 self.outputRings[sessionId, default: ByteRing(maxBytes: 2_000_000)].append(evt.data)
 
+                self.lastActivityBySession[sessionId] = Date()
                 // Forward raw bytes to bytes publisher (always show remote output)
                 bytesSubject.send(evt.data)
 

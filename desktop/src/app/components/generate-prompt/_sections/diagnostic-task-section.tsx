@@ -8,6 +8,7 @@ import TaskDescriptionArea from "../_components/task-description";
 
 interface TaskSectionProps {
   state: {
+    sessionId: string;
     taskDescription: string;
     projectDirectory: string;
     taskDescriptionRef: React.RefObject<TaskDescriptionHandle>;
@@ -30,14 +31,12 @@ const DiagnosticTaskSection = React.memo(function DiagnosticTaskSection({
   // Context is no longer needed here as we're using props instead
 
   // Get task description with fallbacks to ensure it's never undefined
-  const { taskDescriptionRef } = state;
+  const { taskDescriptionRef, sessionId } = state;
 
   // Use the task description from the state prop
   const taskDescription = state.taskDescription || "";
 
   const {
-    handleTaskChange,
-    handleInteraction,
     triggerSave,
   } = actions;
 
@@ -46,10 +45,9 @@ const DiagnosticTaskSection = React.memo(function DiagnosticTaskSection({
       <h3 className="text-lg font-medium mb-4 text-foreground">Task Description</h3>
       <TaskDescriptionArea
         ref={taskDescriptionRef}
-        value={taskDescription}
-        onChange={handleTaskChange}
-        onInteraction={handleInteraction}
-        onBlur={triggerSave}
+        sessionId={sessionId}
+        initialValue={taskDescription}
+        onBlurExtra={triggerSave}
         disabled={disabled}
       />
 

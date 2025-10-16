@@ -3,6 +3,7 @@ use log::{error, info, warn};
 use serde_json;
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
 use crate::app_setup;
@@ -73,12 +74,15 @@ pub async fn check_database_health_command(app_handle: AppHandle) -> AppResult<D
         }
 
         // Try to check database integrity
-        let conn = app_handle.state::<sqlx::SqlitePool>().inner();
+        let pool = app_handle
+            .state::<Arc<sqlx::SqlitePool>>()
+            .inner()
+            .clone();
         health_data.setup_success = true;
 
         // Run integrity check
         match sqlx::query_scalar::<_, String>("PRAGMA integrity_check")
-            .fetch_one(conn)
+            .fetch_one(&*pool)
             .await
         {
             Ok(result) => {
@@ -172,10 +176,13 @@ pub async fn repair_database_command(app_handle: AppHandle) -> AppResult<serde_j
     }
 
     // 2. Try to connect and run basic recovery
-    let conn = app_handle.state::<sqlx::SqlitePool>().inner();
+    let pool = app_handle
+        .state::<Arc<sqlx::SqlitePool>>()
+        .inner()
+        .clone();
     {
         // Try to run vacuum to clean up the database
-        match sqlx::query("VACUUM").execute(conn).await {
+        match sqlx::query("VACUUM").execute(&*pool).await {
             Ok(_) => {
                 repair_attempts.push("Database vacuum completed".to_string());
                 log::info!("[DatabaseMaintenance] Database vacuum completed successfully");
@@ -187,7 +194,7 @@ pub async fn repair_database_command(app_handle: AppHandle) -> AppResult<serde_j
         }
 
         // Try to run reindex
-        match sqlx::query("REINDEX").execute(conn).await {
+        match sqlx::query("REINDEX").execute(&*pool).await {
             Ok(_) => {
                 repair_attempts.push("Database reindex completed".to_string());
                 log::info!("[DatabaseMaintenance] Database reindex completed successfully");
@@ -200,7 +207,7 @@ pub async fn repair_database_command(app_handle: AppHandle) -> AppResult<serde_j
 
         // Check integrity again
         match sqlx::query_scalar::<_, String>("PRAGMA integrity_check")
-            .fetch_one(conn)
+            .fetch_one(&*pool)
             .await
         {
             Ok(result) => {

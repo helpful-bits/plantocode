@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useCallback } from "react";
 import { Merge, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/ui/button";
 import { Card, CardContent } from "@/ui/card";
@@ -25,70 +25,14 @@ export const MergePlansSection = React.memo(function MergePlansSection({
   onClearSelection,
 }: MergePlansSectionProps) {
   const [isOpen, setIsOpen] = useState(true);
-  const [localInstructions, setLocalInstructions] = useState(mergeInstructions);
-  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Sync local state with prop when it changes externally (e.g., on clear)
-  useEffect(() => {
-    setLocalInstructions(mergeInstructions);
-  }, [mergeInstructions]);
+  const handleInstructionsChange = useCallback((value: string) => {
+    onMergeInstructionsChange(value);
+  }, [onMergeInstructionsChange]);
 
-  // Cleanup timer on unmount
-  useEffect(() => {
-    return () => {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
-    };
-  }, []);
-
-  // Add enhancement event listeners
-  useEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    const handleEnhancementEvent = () => {
-      // Clear debounce and immediately save current text
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-        debounceTimerRef.current = null;
-      }
-      onMergeInstructionsChange(localInstructions);
-    };
-
-    textarea.addEventListener('flush-pending-changes', handleEnhancementEvent);
-    textarea.addEventListener('enhancement-applied', handleEnhancementEvent);
-
-    return () => {
-      textarea.removeEventListener('flush-pending-changes', handleEnhancementEvent);
-      textarea.removeEventListener('enhancement-applied', handleEnhancementEvent);
-    };
-  }, [localInstructions, onMergeInstructionsChange]);
-
-  const handleInstructionsChange = (value: string) => {
-    // Update local state immediately for responsive UI
-    setLocalInstructions(value);
-
-    // Clear previous timer
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-    }
-
-    // Debounce the parent state update
-    debounceTimerRef.current = setTimeout(() => {
-      onMergeInstructionsChange(value);
-    }, 300);
-  };
-
-  const handleBlur = () => {
-    // Clear debounce and immediately save on blur as fallback
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-      debounceTimerRef.current = null;
-    }
-    onMergeInstructionsChange(localInstructions);
-  };
+  const handleBlur = useCallback(() => {
+    onMergeInstructionsChange(mergeInstructions);
+  }, [mergeInstructions, onMergeInstructionsChange]);
 
   return (
     <Card className="bg-primary/5 border-primary/20 mb-4">
@@ -118,10 +62,9 @@ export const MergePlansSection = React.memo(function MergePlansSection({
                   Merge Instructions (optional)
                 </label>
                 <Textarea
-                  ref={textareaRef}
                   id="merge-instructions"
                   placeholder="Provide specific instructions for how to merge these plans..."
-                  value={localInstructions}
+                  value={mergeInstructions}
                   onChange={(e) => handleInstructionsChange(e.target.value)}
                   onBlur={handleBlur}
                   className="min-h-[80px] resize-y"

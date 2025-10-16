@@ -2,6 +2,7 @@ use serde_json::Value;
 use sqlx::SqlitePool;
 use std::collections::BTreeSet;
 use std::sync::Arc;
+use tauri::Manager;
 
 use crate::db_utils::session_repository::SessionRepository;
 use crate::error::{AppError, AppResult};
@@ -35,6 +36,7 @@ fn extract_files_from_response(response: &Value) -> Vec<String> {
 pub async fn auto_apply_files_for_job(
     pool: &Arc<SqlitePool>,
     session_repo: &SessionRepository,
+    app_handle: &tauri::AppHandle,
     session_id: &str,
     job_id: &str,
     task_type: &str,
@@ -71,17 +73,11 @@ pub async fn auto_apply_files_for_job(
         files_to_add.len()
     );
 
-    // Use atomic merge operation that respects exclusions to avoid race conditions
-    // and ensure user manual selections (exclusions) are never overridden
-    let actually_applied = session_repo
-        .atomic_merge_included_files_respecting_exclusions(session_id, &files_to_add)
-        .await
-        .map_err(|e| {
-            AppError::DatabaseError(format!(
-                "Failed to atomically merge files (respecting exclusions) for session {}: {}",
-                session_id, e
-            ))
-        })?;
+    // Use cache to merge files respecting exclusions
+    let cache = app_handle.state::<std::sync::Arc<crate::services::SessionCache>>().inner().clone();
+    let actually_applied = cache
+        .merge_included_respecting_exclusions(app_handle, session_id, &files_to_add)
+        .await?;
 
     // Only return outcome if we actually applied new files
     if actually_applied.is_empty() {

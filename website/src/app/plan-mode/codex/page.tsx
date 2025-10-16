@@ -29,9 +29,9 @@ import {
 import type { SoftwareApplication, HowTo, FAQPage } from 'schema-dts';
 
 export const metadata: Metadata = {
-  title: 'OpenAI Codex CLI: Pre-Plan & Review Before Execution (2025 Guide) | Vibe Manager',
+  title: 'Codex CLI: See Every File Before Execution | Vibe Manager 2025',
   description:
-    'See every file Codex will touch before it runs. Discover impacted files, merge GPT-5 & Claude plans, execute with Codex approval modes. Architectural pre-planning for OpenAI Codex CLI teams.',
+    'Stop Codex breaking your codebase. Discover every file, dependency, and service BEFORE Codex runs. Multi-model planning (Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet) prevents surprise regressions.',
   keywords: [
     'codex cli planning workflow',
     'openai codex cli architectural planning',
@@ -43,7 +43,7 @@ export const metadata: Metadata = {
     'vibe manager codex',
   ],
   openGraph: {
-    title: 'OpenAI Codex CLI: Pre-Plan & Review Before Execution (2025)',
+    title: 'Codex CLI: See Every File Before Execution',
     description:
       'See every file Codex will touch before it runs. Discover impacted files, merge GPT-5 & Claude plans, execute with Codex approval modes. Architectural pre-planning for Codex CLI teams.',
     url: 'https://www.vibemanager.app/plan-mode/codex',
@@ -93,7 +93,7 @@ export default function CodexPlanModePage() {
     {
       title: 'Multi-model plan synthesis',
       description:
-        'Generate plans from GPT-5, Claude, and native Codex prompts. Vibe Manager\'s architect merges them with your guidance into one bulletproof blueprint.',
+        'Generate plans from Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet, and Codex. Vibe Manager\'s architect merges them with your guidance into one bulletproof blueprint.',
       icon: <Layers className="w-8 h-8 text-primary" />,
     },
     {
@@ -145,7 +145,7 @@ export default function CodexPlanModePage() {
     },
     {
       title: 'Multi-model synthesis',
-      codex: 'Codex executes with GPT-5-Codex only. Comparing approaches from Claude or Gemini requires separate sessions and manual synthesis.',
+      codex: 'Codex executes with GPT-5-Codex only. Comparing approaches from Claude 4.5 Sonnet or Gemini requires separate sessions and manual synthesis.',
       vibe: 'Run GPT-5 and Gemini multiple times (e.g., 3x GPT-5, 2x Gemini). Each run surfaces complementary implementation details—merged with full source attribution.',
     },
     {
@@ -169,7 +169,7 @@ export default function CodexPlanModePage() {
     {
       title: 'Generate and merge multi-model plans',
       description:
-        'Run GPT-5 and Gemini multiple times (e.g., 3x GPT-5, 2x Gemini). Each run finds complementary details. Use merge instructions to synthesize a comprehensive plan with full attribution.',
+        'Run multiple models (e.g., Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet). Each run finds complementary details. Use merge instructions to synthesize a comprehensive plan with full attribution.',
     },
     {
       title: 'Execute or hand back to Codex',
@@ -295,7 +295,7 @@ export default function CodexPlanModePage() {
                   Planning Workflow for OpenAI Codex CLI
                 </h1>
                 <p className="text-lg sm:text-xl md:text-2xl text-foreground/80 max-w-3xl mx-auto leading-relaxed">
-                  Give Codex CLI a curated architecture brief before execution. Discover the scope, merge multi-model plans, and run with Codex approval modes.
+                  Stop Codex breaking downstream services. See every file, dependency, and impact BEFORE execution. Multi-model architectural planning prevents regressions.
                 </p>
                 <p className="text-base sm:text-lg text-foreground/70 max-w-2xl mx-auto">
                   Vibe Manager provides pre-planning with file discovery, multi-model synthesis, and reviewable plans—then you execute in Codex with Read-Only, Auto, or Full Access approval modes.

@@ -6,7 +6,7 @@ use crate::services::config_cache_service::ConfigCache;
 use crate::services::system_prompt_cache_service::SystemPromptCacheService;
 use tauri::{AppHandle, Manager};
 
-const MAX_TITLE_CHARS: usize = 70;
+const MAX_TITLE_CHARS: usize = 140;
 
 async fn resolve_model_defaults(app_handle: &AppHandle) -> AppResult<(String, f32, u32)> {
     let cache = app_handle.state::<ConfigCache>().inner();
@@ -40,12 +40,12 @@ async fn load_system_prompt(app_handle: &AppHandle) -> String {
         }
     }
 
-    "You are a naming assistant that generates concise, descriptive titles for software implementation plans.
+    "You are a naming assistant that generates descriptive titles for software implementation plans.
 Constraints:
-- Output a single line, ≤70 characters.
+- Output a single line, ≤140 characters.
 - No surrounding quotes, backticks, markdown, or code formatting.
 - Sentence/title case; avoid trailing punctuation.
-- Prefer meaningful domain keywords; be specific; no emojis.".to_string()
+- Be specific and descriptive; include key technical details when helpful; no emojis.".to_string()
 }
 
 pub async fn generate_plan_title(
