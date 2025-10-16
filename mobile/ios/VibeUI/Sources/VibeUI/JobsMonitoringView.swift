@@ -7,8 +7,7 @@ public struct JobsMonitoringView: View {
     @StateObject private var multiConnectionManager = MultiConnectionManager.shared
     @Environment(\.colorScheme) var colorScheme
     @State private var searchQuery: String = ""
-    @State private var selectedJobId: String? = nil
-    @State private var showingJobDetails = false
+    @State private var selectedJobId: IdentifiableString? = nil
     @State private var isLoading = false
     @State private var cancellingJobs = Set<String>()
     @State private var deletingJobs = Set<String>()
@@ -140,7 +139,9 @@ public struct JobsMonitoringView: View {
                 .padding()
 
                 // Job List
-                if jobsService.isLoading && !jobsService.hasLoadedOnce {
+                // Show loading if we're loading AND have no jobs for current session
+                // (Don't rely on hasLoadedOnce - it's global across all sessions)
+                if isLoading || (jobsService.isLoading && filteredJobs.isEmpty) {
                     VStack(spacing: 16) {
                         Spacer()
                         ProgressView()
@@ -152,7 +153,7 @@ public struct JobsMonitoringView: View {
                         Spacer()
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if jobsService.hasLoadedOnce && filteredJobs.isEmpty {
+                } else if filteredJobs.isEmpty {
                     VStack(spacing: 16) {
                         Spacer()
                         Image(systemName: "tray")
@@ -181,8 +182,7 @@ public struct JobsMonitoringView: View {
                                     onCancel: job.jobStatus.isActive ? cancelJob : nil,
                                     onDelete: !job.jobStatus.isActive ? deleteJob : nil,
                                     onSelect: {
-                                        selectedJobId = job.id
-                                        showingJobDetails = true
+                                        selectedJobId = IdentifiableString(value: job.id)
                                     },
                                     onApplyFiles: applyFilesFromJob,
                                     onContinueWorkflow: continueWorkflow,
@@ -202,11 +202,13 @@ public struct JobsMonitoringView: View {
             .background(Color(.systemBackground))
         }
         .navigationTitle("Background Jobs")
-        .sheet(isPresented: $showingJobDetails) {
-            if let jobId = selectedJobId {
-                JobDetailsSheet(jobId: jobId)
-                    .environmentObject(container)
-            }
+        .sheet(item: $selectedJobId) { identifiableJobId in
+            JobDetailsSheet(jobId: identifiableJobId.value)
+                .environmentObject(container)
+        }
+        .onReceive(container.sessionService.$currentSession.compactMap { $0 }) { newSession in
+            selectedJobId = nil
+            Task { await loadJobs() }
         }
         .onAppear {
             guard let session = container.sessionService.currentSession else { return }
@@ -281,9 +283,9 @@ public struct JobsMonitoringView: View {
         // Mobile sessions should fetch all jobs (pass nil for sessionId)
         let sessionId: String? = rawSessionId.hasPrefix("mobile-session-") ? nil : rawSessionId
 
-        // Cache-first strategy: only show loading if we have no cached jobs
-        let hasCachedJobs = !jobsService.jobs.isEmpty
-        if !hasCachedJobs {
+        // Show loading if we have no jobs for the CURRENT session (not just any jobs)
+        let hasCachedJobsForCurrentSession = !baseFilteredJobs.isEmpty
+        if !hasCachedJobsForCurrentSession {
             isLoading = true
         }
 
@@ -548,6 +550,13 @@ private struct SummaryCard: View {
         )
         .shadow(color: Color.black.opacity(0.03), radius: 3, x: 0, y: 1)
     }
+}
+
+// MARK: - Helper Types
+
+struct IdentifiableString: Identifiable {
+    let id = UUID()
+    let value: String
 }
 
 #Preview {

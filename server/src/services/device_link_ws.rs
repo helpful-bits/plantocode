@@ -29,6 +29,8 @@ pub struct DeviceLinkWs {
     pub device_id: Option<String>,
     /// Device name
     pub device_name: Option<String>,
+    /// Client type (desktop, mobile, etc.)
+    pub client_type: Option<String>,
     /// Session ID for relay session management
     pub session_id: Option<String>,
     /// Resume token for session resumption
@@ -52,6 +54,7 @@ impl DeviceLinkWs {
             user_id: None,
             device_id: None,
             device_name: None,
+            client_type: None,
             session_id: None,
             resume_token: None,
             expires_at: None,
@@ -722,34 +725,18 @@ impl Handler<HandleRegisterMessage> for DeviceLinkWs {
             "Preparing registration response"
         );
 
-        self.device_id = Some(device_id.clone());
+        // Normalize device_id to lowercase for consistent lookups
+        let normalized_device_id = device_id.to_lowercase();
+        self.device_id = Some(normalized_device_id.clone());
         self.device_name = Some(device_name.clone());
 
-        // Register device and set online status
-        if let (Some(device_repo), Some(user_id)) = (&self.device_repository, self.user_id) {
+        // Set device online (device should already be registered via HTTP)
+        if let Some(device_repo) = &self.device_repository {
             if let Ok(device_uuid) = Uuid::parse_str(&device_id) {
                 let device_repo_clone = device_repo.clone();
-                let ctx_addr = ctx.address();
                 ctx.spawn(
                     async move {
-                        // Ensure device exists in DB
-                        let register_req = crate::db::repositories::device_repository::RegisterDeviceRequest {
-                            device_id: device_uuid,
-                            user_id,
-                            device_name: "Unknown".to_string(),
-                            device_type: "desktop".to_string(),
-                            platform: "unknown".to_string(),
-                            platform_version: None,
-                            app_version: "ws".to_string(),
-                            local_ips: None,
-                            public_ip: None,
-                            relay_eligible: true,
-                            available_ports: None,
-                            capabilities: serde_json::json!({}),
-                        };
-                        let _ = device_repo_clone.register_device(register_req).await;
-
-                        // Set online
+                        // Just set online - HTTP registration already happened with correct device info
                         if let Err(e) = device_repo_clone.set_online(&device_uuid).await {
                             warn!("Failed to set device online: {}", e);
                         }
@@ -847,11 +834,20 @@ impl Handler<HandleRegisterMessage> for DeviceLinkWs {
         // Register with connection manager
         // STEP 3.6: Handle connection_manager failure gracefully
         if let Some(connection_manager) = &self.connection_manager {
+            // Normalize UUID to lowercase for consistent lookups
+            let normalized_device_id = device_id.to_lowercase();
+            let mapped_client_type = match self.client_type.as_deref() {
+                Some("desktop") => crate::services::device_connection_manager::ClientType::Desktop,
+                Some("mobile") => crate::services::device_connection_manager::ClientType::Mobile,
+                Some(other) => crate::services::device_connection_manager::ClientType::Other(other.to_string()),
+                None => crate::services::device_connection_manager::ClientType::Other("unknown".into()),
+            };
             connection_manager.register_connection(
                 user_id,
-                device_id.clone(),
+                normalized_device_id.clone(),
                 device_name.clone(),
                 ctx.address(),
+                mapped_client_type,
             );
 
             // STEP 1.7: Log connection manager registration
@@ -1280,6 +1276,23 @@ impl Handler<HandleEventMessage> for DeviceLinkWs {
             }
         };
 
+        // Persist project directory updates to database
+        if event_type == "project-directory-updated" {
+            if let Some(dir) = event_payload.get("projectDirectory").and_then(|v| v.as_str()) {
+                if let (Some(device_id_str), Some(device_repo)) = (&self.device_id, &self.device_repository) {
+                    if let Ok(dev_id) = Uuid::parse_str(device_id_str) {
+                        let repo = device_repo.clone();
+                        let directory = dir.to_string();
+                        actix::spawn(async move {
+                            if let Err(e) = repo.set_active_project_directory(&dev_id, &directory).await {
+                                tracing::warn!("Failed to persist activeProjectDirectory: {:?}", e);
+                            }
+                        });
+                    }
+                }
+            }
+        }
+
         if let Some(connection_manager) = &self.connection_manager {
             let event_message = DeviceMessage {
                 message_type: event_type.clone(),
@@ -1433,12 +1446,14 @@ pub fn create_device_link_ws(
     connection_manager: actix_web::web::Data<DeviceConnectionManager>,
     device_repository: actix_web::web::Data<DeviceRepository>,
     relay_store: actix_web::web::Data<RelaySessionStore>,
+    client_type: Option<String>,
 ) -> DeviceLinkWs {
     DeviceLinkWs {
         connection_id: Uuid::new_v4(),
         user_id,
         device_id: None,
         device_name: None,
+        client_type,
         session_id: None,
         resume_token: None,
         expires_at: None,

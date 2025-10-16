@@ -215,6 +215,7 @@ public struct ImplementationPlansView: View {
             Divider()
 
             // Content Area
+            // Avoid repeated full-screen spinner after first load
             if isLoading && !container.plansService.hasLoadedOnce {
                 VStack {
                     Spacer()
@@ -471,10 +472,10 @@ public struct ImplementationPlansView: View {
                 appState.setPendingPlanToOpen(nil)
             }
         }
-        .onAppear {
+        .task(id: container.sessionService.currentSession?.id) {
+            // Runs immediately when view is created AND whenever session ID changes
             setupRealTimeUpdates()
-            // Always attempt to load plans on appear - loadPlans() will handle cases where session isn't ready
-            if isConnected {
+            if isConnected, container.sessionService.currentSession != nil {
                 loadPlans()
                 loadModelSettings()
             }

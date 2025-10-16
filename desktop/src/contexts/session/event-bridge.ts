@@ -10,17 +10,20 @@ type Handlers = {
   onActiveSessionChanged?: (sessionId: string, projectDirectory: string) => void;
   onRemoteSessionCreated?: (session: { id: string; projectDirectory: string }) => void;
   onSessionListInvalidate?: (projectDirectory: string) => void;
+  onSessionUpdated?: (session: any) => void;
 };
 
 let initialized = false;
-let unlisten: UnlistenFn | null = null;
+let unlistenDeviceLink: UnlistenFn | null = null;
+let unlistenSessionUpdated: UnlistenFn | null = null;
 const handlers = new Set<Handlers>();
 const lastAppliedSwitch = { sessionId: null as null | string };
 
 export async function initSessionEventBridge() {
   if (initialized) return;
   initialized = true;
-  unlisten = await listen("device-link-event", (event) => {
+
+  unlistenDeviceLink = await listen("device-link-event", (event) => {
     const data = event.payload as DeviceLinkEvent;
     if (!data || typeof data !== "object") return;
 
@@ -54,6 +57,11 @@ export async function initSessionEventBridge() {
       return;
     }
   });
+
+  unlistenSessionUpdated = await listen("session-updated", (event) => {
+    const payload = event.payload as { sessionId: string; session: any };
+    handlers.forEach(h => h.onSessionUpdated?.(payload.session));
+  });
 }
 
 export function registerSessionEventHandlers(h: Handlers) {
@@ -64,9 +72,13 @@ export function registerSessionEventHandlers(h: Handlers) {
 }
 
 export async function disposeSessionEventBridge() {
-  if (unlisten) {
-    await unlisten();
-    unlisten = null;
+  if (unlistenDeviceLink) {
+    await unlistenDeviceLink();
+    unlistenDeviceLink = null;
+  }
+  if (unlistenSessionUpdated) {
+    await unlistenSessionUpdated();
+    unlistenSessionUpdated = null;
   }
   handlers.clear();
   initialized = false;

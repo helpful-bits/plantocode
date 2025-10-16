@@ -28,6 +28,7 @@ pub async fn dispatch(app_handle: AppHandle, req: RpcRequest) -> RpcResponse {
         "session.getTaskDescriptionHistory" => handle_session_get_task_description_history(app_handle, req).await,
         "session.syncTaskDescriptionHistory" => handle_session_sync_task_description_history(app_handle, req).await,
         "session.updateTaskDescription" => handle_session_update_task_description(app_handle, req).await,
+        "session.updateMergeInstructions" => handle_session_update_merge_instructions(app_handle, req).await,
         "session.updateFiles" => handle_session_update_files(app_handle, req).await,
         "session.getFileRelationships" => handle_session_get_file_relationships(app_handle, req).await,
         "session.getOverview" => handle_session_get_overview(app_handle, req).await,
@@ -335,7 +336,7 @@ pub async fn handle_session_sync_task_description_history(
         }
     };
 
-    let history = match request.params.get("history") {
+    let history: Vec<String> = match request.params.get("history") {
         Some(Value::Array(arr)) => arr
             .iter()
             .filter_map(|v| v.as_str().map(String::from))
@@ -351,17 +352,36 @@ pub async fn handle_session_sync_task_description_history(
     };
 
     match session_commands::sync_task_description_history_command(
-        app_handle,
-        session_id,
-        history,
+        app_handle.clone(),
+        session_id.clone(),
+        history.clone(),
     )
     .await
     {
-        Ok(_) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: Some(json!({ "success": true })),
-            error: None,
-            is_final: true,
+        Ok(_) => {
+            let last_entry = history.last().cloned().unwrap_or_default();
+            let payload = json!({
+                "sessionId": session_id,
+                "taskDescription": last_entry
+            });
+
+            if let Err(e) = app_handle.emit("session-history-synced", payload.clone()) {
+                eprintln!("Failed to emit session-history-synced event: {}", e);
+            }
+
+            if let Err(e) = app_handle.emit("device-link-event", json!({
+                "type": "session-history-synced",
+                "payload": payload
+            })) {
+                eprintln!("Failed to emit device-link event: {}", e);
+            }
+
+            RpcResponse {
+                correlation_id: request.correlation_id,
+                result: Some(json!({ "success": true })),
+                error: None,
+                is_final: true,
+            }
         },
         Err(error) => RpcResponse {
             correlation_id: request.correlation_id,
@@ -385,7 +405,7 @@ pub async fn handle_session_update_task_description(app_handle: AppHandle, reque
         }
     };
 
-    let task_description = match request.params.get("taskDescription") {
+    let content = match request.params.get("taskDescription") {
         Some(Value::String(desc)) => desc.clone(),
         _ => {
             return RpcResponse {
@@ -397,28 +417,71 @@ pub async fn handle_session_update_task_description(app_handle: AppHandle, reque
         }
     };
 
-    // Create update data JSON to only update the taskDescription field
-    let update_data = json!({
-        "taskDescription": task_description
-    });
-
-    match session_commands::update_session_fields_command(
-        app_handle,
+    match crate::services::task_update_sequencer::TaskUpdateSequencer::enqueue_external_task_description_update(
+        &app_handle,
         session_id,
-        update_data,
+        content,
+        crate::services::task_update_sequencer::UpdateSource::Remote,
     )
     .await
     {
-        Ok(session) => RpcResponse {
+        Ok(_) => RpcResponse {
             correlation_id: request.correlation_id,
-            result: Some(json!({ "ok": true, "session": session })),
+            result: Some(json!({ "success": true })),
             error: None,
             is_final: true,
         },
         Err(error) => RpcResponse {
             correlation_id: request.correlation_id,
             result: None,
-            error: Some(error.to_string()),
+            error: Some(format!("Failed to enqueue: {}", error)),
+            is_final: true,
+        },
+    }
+}
+
+pub async fn handle_session_update_merge_instructions(app_handle: AppHandle, request: RpcRequest) -> RpcResponse {
+    let session_id = match request.params.get("sessionId") {
+        Some(Value::String(id)) => id.clone(),
+        _ => {
+            return RpcResponse {
+                correlation_id: request.correlation_id,
+                result: None,
+                error: Some("Missing or invalid sessionId parameter".to_string()),
+                is_final: true,
+            };
+        }
+    };
+
+    let merge_instructions = match request.params.get("mergeInstructions") {
+        Some(Value::String(mi)) => mi.clone(),
+        _ => {
+            return RpcResponse {
+                correlation_id: request.correlation_id,
+                result: None,
+                error: Some("Missing or invalid mergeInstructions parameter".to_string()),
+                is_final: true,
+            };
+        }
+    };
+
+    match crate::services::task_update_sequencer::TaskUpdateSequencer::enqueue_merge_instructions(
+        &app_handle,
+        session_id,
+        merge_instructions,
+    )
+    .await
+    {
+        Ok(_) => RpcResponse {
+            correlation_id: request.correlation_id,
+            result: Some(json!({ "success": true })),
+            error: None,
+            is_final: true,
+        },
+        Err(error) => RpcResponse {
+            correlation_id: request.correlation_id,
+            result: None,
+            error: Some(format!("Failed to enqueue: {}", error)),
             is_final: true,
         },
     }

@@ -110,4 +110,15 @@ export const FileItem = React.memo(function SimpleFileItem({
       </div>
     </div>
   );
+}, (prevProps, nextProps) => {
+  // Return true to skip update (props are equal)
+  return (
+    prevProps.file.path === nextProps.file.path &&
+    prevProps.file.included === nextProps.file.included &&
+    prevProps.file.excluded === nextProps.file.excluded &&
+    prevProps.file.size === nextProps.file.size &&
+    prevProps.file.modifiedAt === nextProps.file.modifiedAt &&
+    prevProps.onToggleSelection === nextProps.onToggleSelection &&
+    prevProps.onToggleExclusion === nextProps.onToggleExclusion
+  );
 });

@@ -279,7 +279,7 @@ public struct FolderPickerView: View {
 
 // MARK: - Supporting Types
 
-struct FolderItem: Identifiable {
+private struct FolderItem: Identifiable {
     let id = UUID()
     let name: String
     let path: String

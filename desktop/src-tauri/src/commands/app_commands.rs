@@ -23,8 +23,10 @@ pub fn get_config_load_error(app_state: State<'_, AppState>) -> AppResult<Option
 #[command]
 pub async fn get_database_info_command(app_handle: AppHandle) -> AppResult<DatabaseInfo> {
     info!("Fetching database information");
-    let db: sqlx::SqlitePool = app_handle.state::<sqlx::SqlitePool>().inner().clone();
-    let db_arc = Arc::new(db);
+    let db_arc = app_handle
+        .state::<Arc<sqlx::SqlitePool>>()
+        .inner()
+        .clone();
 
     db_utils::get_database_info(db_arc)
         .await

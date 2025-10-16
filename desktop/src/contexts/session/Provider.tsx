@@ -75,6 +75,8 @@ export function SessionProvider({ children }: SessionProviderProps) {
   });
 
   // Memoize the onNeedsSave callback for useSessionLoader
+  // On session change, persist current session if modified (safety net with blur flush).
+  // This guarantees durability even if debounce window has not elapsed.
   const handleNeedsSave = useCallback(async (sessionId: string) => {
     window.dispatchEvent(new CustomEvent('flush-file-selection-history'));
     if (
@@ -172,6 +174,8 @@ export function SessionProvider({ children }: SessionProviderProps) {
   }, [projectDirectory, currentSessionId, sessionLoader, isUserPresent]);
 
   // Memoize individual session fields to reduce re-renders
+  // Provider exposes memoized slices (e.g., sessionBasicFields, sessionFileFields) to reduce global re-render impact.
+  // Combined with throttled startTransition updates, this keeps typing responsiveness high.
   const sessionBasicFields = useMemo(() => ({
     id: sessionStateHook.currentSession?.id,
     name: sessionStateHook.currentSession?.name,
@@ -427,6 +431,86 @@ export function SessionProvider({ children }: SessionProviderProps) {
       }
     };
   }, [sessionStateHook.currentSession?.id, sessionActions, isUserPresent]);
+
+  // Handle session-updated through event bridge with typing protection
+  useEffect(() => {
+    const unregister = registerSessionEventHandlers({
+      onSessionUpdated: (session) => {
+        if (!sessionStateHook.currentSession?.id || session.id !== sessionStateHook.currentSession.id) {
+          return;
+        }
+
+        if (!isUserPresent) return;
+
+        const editorFocused = (window as any).__taskDescriptionEditorFocused;
+
+        // Shallow-compare non-task fields to detect meaningful changes
+        const { taskDescription, includedFiles, forceExcludedFiles, ...otherFields } = session;
+        const currentOtherFields = (({ taskDescription, includedFiles, forceExcludedFiles, ...rest }) => rest)(sessionStateHook.currentSession);
+
+        const hasOtherChanges = Object.keys(otherFields).some(
+          key => otherFields[key as keyof typeof otherFields] !== currentOtherFields[key as keyof typeof currentOtherFields]
+        );
+
+        // If editor is focused and only taskDescription changed, skip update
+        if (editorFocused && !hasOtherChanges) {
+          return;
+        }
+
+        // Apply update - preserve taskDescription during focused editing
+        if (editorFocused) {
+          sessionStateHook.setCurrentSession({
+            ...session,
+            taskDescription: sessionStateHook.currentSession.taskDescription,
+          } as any);
+        } else {
+          // Always apply the update when editor is not focused
+          // This ensures task description changes from jobs, mobile, etc. are reflected
+          sessionStateHook.setCurrentSession(session);
+        }
+
+        sessionStateHook.setSessionModified(false);
+      },
+    });
+
+    return unregister;
+  }, [sessionStateHook, isUserPresent]);
+
+  // Dev-only: Listen for session-field-validated events to verify synchronization
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+
+    let unlisten: (() => void) | null = null;
+
+    const setupListener = async () => {
+      try {
+        unlisten = await listen<{
+          sessionId: string;
+          field: string;
+          checksum: string;
+          length: number;
+        }>("session-field-validated", (e) => {
+          const p = e.payload;
+
+          if (!sessionStateHook.currentSession?.id || p.sessionId !== sessionStateHook.currentSession.id) {
+            return;
+          }
+
+          console.debug(`[SessionValidation] ${p.field} validated - checksum: ${p.checksum.substring(0, 8)}, length: ${p.length}`);
+        });
+      } catch (err) {
+        console.error("Failed to setup session-field-validated listener:", err);
+      }
+    };
+
+    setupListener();
+
+    return () => {
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, [sessionStateHook.currentSession?.id]);
 
   useEffect(() => {
     const wasPresent = prevPresentRef.current;

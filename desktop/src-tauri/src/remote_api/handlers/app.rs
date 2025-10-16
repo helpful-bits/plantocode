@@ -9,7 +9,7 @@ use log::info;
 
 /// Helper function to get SettingsRepository from AppHandle
 fn get_settings_repo(app_handle: &AppHandle, correlation_id: String) -> Result<SettingsRepository, RpcResponse> {
-    let pool = match app_handle.try_state::<sqlx::SqlitePool>() {
+    let pool = match app_handle.try_state::<Arc<sqlx::SqlitePool>>() {
         Some(pool) => pool.inner().clone(),
         None => {
             return Err(RpcResponse {
@@ -20,7 +20,7 @@ fn get_settings_repo(app_handle: &AppHandle, correlation_id: String) -> Result<S
             });
         }
     };
-    Ok(SettingsRepository::new(Arc::new(pool)))
+    Ok(SettingsRepository::new(pool.clone()))
 }
 
 pub async fn dispatch(app_handle: AppHandle, req: RpcRequest) -> RpcResponse {
@@ -68,8 +68,8 @@ async fn handle_set_project_directory(app_handle: AppHandle, request: RpcRequest
         Err(response) => return response,
     };
 
-    // Persist the project directory
-    match settings_repo.set_value("global:global-project-dir", &dir).await {
+    // Persist the project directory using the correct key
+    match settings_repo.set_project_directory(&dir).await {
         Ok(_) => {
             info!("Project directory updated: {}", dir);
 
@@ -104,8 +104,8 @@ async fn handle_get_project_directory(app_handle: AppHandle, request: RpcRequest
         Err(response) => return response,
     };
 
-    // Read the project directory
-    match settings_repo.get_value("global:global-project-dir").await {
+    // Read the project directory using the correct key
+    match settings_repo.get_project_directory().await {
         Ok(Some(dir)) => RpcResponse {
             correlation_id: request.correlation_id,
             result: Some(json!({"projectDirectory": dir})),

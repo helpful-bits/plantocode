@@ -12,6 +12,8 @@ public final class MultiConnectionManager: ObservableObject {
     private let activeDeviceKey = "ActiveDesktopDeviceId"
     private var cancellables = Set<AnyCancellable>()
     private var connectingTasks: [UUID: Task<Result<UUID, Error>, Never>] = [:]
+    private var verifyingDevices = Set<UUID>()
+    private var relayHandshakeByDevice = [UUID: ConnectionHandshake]()
 
     private init() {
         loadPersistedActiveDeviceId()
@@ -33,6 +35,41 @@ public final class MultiConnectionManager: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             self?.removeAllConnections()
+        }
+    }
+
+    private func verifyDesktopConnection(deviceId: UUID, timeoutSeconds: Int = 5) async throws {
+        guard let relayClient = storage[deviceId] else {
+            throw MultiConnectionError.connectionFailed("Relay client not found")
+        }
+
+        guard relayClient.isConnected else {
+            throw MultiConnectionError.connectionFailed("Relay not connected")
+        }
+
+        do {
+            var receivedResponse = false
+            for try await response in relayClient.invoke(
+                targetDeviceId: deviceId.uuidString,
+                request: RpcRequest(method: "ping", params: [:]),
+                timeout: TimeInterval(timeoutSeconds)
+            ) {
+                receivedResponse = true
+                if let error = response.error {
+                    throw MultiConnectionError.connectionFailed("Desktop refused the connection: \(error.message)")
+                }
+                if response.isFinal {
+                    return
+                }
+            }
+
+            if !receivedResponse {
+                throw MultiConnectionError.connectionFailed("Desktop did not respond in time.")
+            }
+        } catch is ServerRelayError {
+            throw MultiConnectionError.connectionFailed("Desktop did not respond in time.")
+        } catch {
+            throw error
         }
     }
 
@@ -123,24 +160,70 @@ public final class MultiConnectionManager: ObservableObject {
 
                 print("[MultiConnectionManager] Connecting to relay...")
                 try await relayClient.connect(jwtToken: authToken).asyncValue()
-                print("[MultiConnectionManager] Relay connection established")
+                print("[MultiConnectionManager] Relay connection established, starting verification")
 
                 await MainActor.run {
                     self.storage[deviceId] = relayClient
+                    self.connectionStates[deviceId] = .handshaking
+                    self.verifyingDevices.insert(deviceId)
+                }
 
+                await MainActor.run {
                     relayClient.$connectionState
                         .sink { [weak self] state in
                             guard let self = self else { return }
                             Task { @MainActor in
-                                self.connectionStates[deviceId] = state
-                                if case .connected(_) = state {
-                                    self.persistConnectedDevice(deviceId)
+                                switch state {
+                                case .connected(let handshake):
+                                    self.relayHandshakeByDevice[deviceId] = handshake
+                                    if self.verifyingDevices.contains(deviceId) {
+                                        self.connectionStates[deviceId] = .handshaking
+                                    } else {
+                                        self.connectionStates[deviceId] = .connected(handshake)
+                                        self.persistConnectedDevice(deviceId)
+                                    }
+                                case .reconnecting:
+                                    self.connectionStates[deviceId] = .reconnecting
+                                    self.verifyingDevices.insert(deviceId)
+                                case .failed(let e):
+                                    self.connectionStates[deviceId] = .failed(e)
+                                    self.verifyingDevices.remove(deviceId)
+                                case .disconnected:
+                                    self.connectionStates[deviceId] = .disconnected
+                                    self.verifyingDevices.remove(deviceId)
+                                    self.relayHandshakeByDevice.removeValue(forKey: deviceId)
+                                default:
+                                    break
                                 }
                             }
                         }
                         .store(in: &self.cancellables)
+                }
 
-                    self.setActive(deviceId)
+                do {
+                    try await self.verifyDesktopConnection(deviceId: deviceId, timeoutSeconds: 5)
+
+                    await MainActor.run {
+                        let handshake = self.relayHandshakeByDevice[deviceId] ?? ConnectionHandshake(
+                            sessionId: UUID().uuidString,
+                            clientId: DeviceManager.shared.getOrCreateDeviceID(),
+                            transport: "relay"
+                        )
+                        self.connectionStates[deviceId] = .connected(handshake)
+                        self.persistConnectedDevice(deviceId)
+                        self.setActive(deviceId)
+                        self.verifyingDevices.remove(deviceId)
+                    }
+
+                    print("[MultiConnectionManager] Verification successful, connection fully established")
+                } catch {
+                    print("[MultiConnectionManager] Verification failed: \(error.localizedDescription)")
+                    await MainActor.run {
+                        self.connectionStates[deviceId] = .failed(error)
+                        self.verifyingDevices.remove(deviceId)
+                    }
+                    relayClient.disconnect()
+                    throw error
                 }
 
                 print("[MultiConnectionManager] Connection successful for device: \(deviceId)")
@@ -161,6 +244,8 @@ public final class MultiConnectionManager: ObservableObject {
     }
 
     public func removeConnection(deviceId: UUID) {
+        verifyingDevices.remove(deviceId)
+        relayHandshakeByDevice.removeValue(forKey: deviceId)
         // Disconnect and remove relay connection
         if let relayClient = storage[deviceId] {
             relayClient.disconnect()
@@ -181,6 +266,8 @@ public final class MultiConnectionManager: ObservableObject {
         }
         storage.removeAll()
         connectionStates.removeAll()
+        verifyingDevices.removeAll()
+        relayHandshakeByDevice.removeAll()
         activeDeviceId = nil
         UserDefaults.standard.removeObject(forKey: connectedDevicesKey)
         UserDefaults.standard.removeObject(forKey: activeDeviceKey)
@@ -220,6 +307,34 @@ public final class MultiConnectionManager: ObservableObject {
             return true
         }
         return false
+    }
+
+    public func effectiveConnectionState(for deviceId: UUID) -> ConnectionState {
+        let relayState = connectionStates[deviceId]
+        if verifyingDevices.contains(deviceId) {
+            return .handshaking
+        }
+        switch relayState {
+        case .connected(let hs):
+            return verifyingDevices.contains(deviceId) ? .handshaking : .connected(hs)
+        case .reconnecting:
+            return .reconnecting
+        case .failed(let e):
+            return .failed(e)
+        case .connecting:
+            return .connecting
+        default:
+            return relayState ?? .disconnected
+        }
+    }
+
+    public var activeDeviceIsFullyConnected: Bool {
+        guard let id = activeDeviceId else { return false }
+        if case .connected = effectiveConnectionState(for: id) {
+            return true
+        } else {
+            return false
+        }
     }
 
     // MARK: - Private Helper Methods

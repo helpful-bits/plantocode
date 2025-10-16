@@ -119,7 +119,7 @@ public struct MissingConfigurationView: View {
         .background(Color(.systemGroupedBackground))
     }
 
-    private func configurationView(missing: MissingConfig) -> some View {
+    private func configurationView(missing: AppState.MissingConfig) -> some View {
         VStack(spacing: 24) {
             Spacer()
 

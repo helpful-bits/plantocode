@@ -1,4 +1,4 @@
-import { useEffect, type RefObject, useCallback } from "react";
+import { useEffect, type RefObject, useCallback, useRef } from "react";
 
 // Hook to automatically resize a textarea based on its content
 export function useTextareaResize(
@@ -15,6 +15,8 @@ export function useTextareaResize(
     maxHeight = 600,
     extraHeight = 24, // Extra height for padding and to prevent scrollbar flashing
   } = options;
+
+  const rafIdRef = useRef<number | null>(null);
 
   // Function to adjust the height of the textarea - memoized to avoid dependency cycles
   const adjustHeight = useCallback(() => {
@@ -39,9 +41,25 @@ export function useTextareaResize(
   }, [textareaRef, minHeight, maxHeight, extraHeight]);
 
 
-  // Adjust height whenever content changes
+  // Adjust height whenever content changes, but batch DOM updates with requestAnimationFrame
   useEffect(() => {
-    adjustHeight();
+    // Cancel any pending resize
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current);
+    }
+
+    // Schedule resize for next animation frame
+    rafIdRef.current = requestAnimationFrame(() => {
+      adjustHeight();
+      rafIdRef.current = null;
+    });
+
+    return () => {
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+    };
   }, [content, adjustHeight]);
 
   // Also adjust when window resizes (which affects text wrapping)

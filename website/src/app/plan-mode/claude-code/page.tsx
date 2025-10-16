@@ -64,7 +64,7 @@ export default function ClaudeCodePlanModePage() {
     {
       title: 'Plan Mode limits you to one model',
       description:
-        'Claude Code\'s native Plan Mode uses only Claude Sonnet. Comparing strategies from GPT-5, Gemini, and Claude requires manual switching and reconciliation.',
+        'Claude Code\'s native Plan Mode uses only Claude 4.5 Sonnet. Comparing strategies from Gemini 2.5 Pro, GPT-5, and Claude 4.5 Sonnet requires manual switching and reconciliation.',
       icon: <GitMerge className="w-5 h-5 text-primary" />,
     },
     {
@@ -91,7 +91,7 @@ export default function ClaudeCodePlanModePage() {
     {
       title: 'Multi-model plan synthesis',
       description:
-        'Run GPT-5 and Gemini multiple times. Each run surfaces implementation details others miss. Merge instructions consolidate complementary insights with full source attribution.',
+        'Run Gemini 2.5 Pro, GPT-5, and other models multiple times. Each run surfaces implementation details others miss. Merge instructions consolidate complementary insights with full source attribution.',
       icon: <Layers className="w-8 h-8 text-primary" />,
     },
     {
@@ -144,7 +144,7 @@ export default function ClaudeCodePlanModePage() {
     {
       title: 'Plan flexibility',
       claude: 'Plan mode produces responses sequentially, so reconciling variations takes manual editing.',
-      vibe: 'Run models multiple times (3x GPT-5, 2x Gemini). Each run finds complementary details—merged with step-level source attribution.',
+      vibe: 'Run models multiple times (e.g., Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet). Each run finds complementary details—merged with step-level source attribution.',
     },
     {
       title: 'Execution oversight',
@@ -167,7 +167,7 @@ export default function ClaudeCodePlanModePage() {
     {
       title: 'Generate and merge plans',
       description:
-        'Create plans with Claude Sonnet and supporting models (GPT-5, Gemini), then merge them using instructions tailored to your architectural requirements.',
+        'Create plans with Claude 4.5 Sonnet and supporting models (Gemini 2.5 Pro, GPT-5), then merge them using instructions tailored to your architectural requirements.',
     },
     {
       title: 'Use with Claude Code Plan Mode or execute in Vibe',
@@ -200,7 +200,7 @@ export default function ClaudeCodePlanModePage() {
   const outcomeHighlights = [
     {
       title: 'Multi-model plans without rework',
-      detail: 'Run models multiple times (3x GPT-5, 2x Gemini). Merge instructions consolidate complementary implementation details into a single, comprehensive plan.',
+      detail: 'Run models multiple times (e.g., Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet). Merge instructions consolidate complementary implementation details into a single, comprehensive plan.',
     },
     {
       title: 'Shared context for reviewers',

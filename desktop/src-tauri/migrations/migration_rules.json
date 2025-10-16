@@ -80,6 +80,19 @@
       "description": "Upgrade terminal_sessions table with new columns for session persistence and enhanced status tracking",
       "required": true,
       "priority": 5
+    },
+    {
+      "id": "add_merge_instructions",
+      "from_version": "*",
+      "to_version": ">=1.0.0",
+      "migration_file": "migrations/features/add_merge_instructions.sql",
+      "description": "Add merge_instructions column to sessions table",
+      "required": false,
+      "priority": 40,
+      "run_if_absent_column": {
+        "table": "sessions",
+        "column": "merge_instructions"
+      }
     }
   ]
 }

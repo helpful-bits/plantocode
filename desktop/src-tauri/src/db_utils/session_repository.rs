@@ -58,6 +58,9 @@ impl SessionRepository {
         let video_analysis_prompt: Option<String> =
             row.try_get("video_analysis_prompt").ok().flatten();
 
+        let merge_instructions: Option<String> =
+            row.try_get("merge_instructions").ok().flatten();
+
         Ok(Session {
             id,
             name,
@@ -72,6 +75,7 @@ impl SessionRepository {
             included_files,
             force_excluded_files,
             video_analysis_prompt,
+            merge_instructions,
         })
     }
 
@@ -142,11 +146,11 @@ impl SessionRepository {
         let result = sqlx::query(
             r#"
             INSERT INTO sessions (
-                id, name, project_directory, project_hash, 
+                id, name, project_directory, project_hash,
                 task_description, search_term, search_selected_files_only, model_used,
                 included_files, force_excluded_files,
-                created_at, updated_at, video_analysis_prompt
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                created_at, updated_at, video_analysis_prompt, merge_instructions
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             "#,
         )
         .bind(&session.id)
@@ -188,6 +192,7 @@ impl SessionRepository {
             .bind(session.created_at)
             .bind(session.updated_at)
             .bind(&session.video_analysis_prompt)
+            .bind(&session.merge_instructions)
             .execute(&mut *tx)
             .await;
 
@@ -391,8 +396,9 @@ impl SessionRepository {
                 included_files = $8,
                 force_excluded_files = $9,
                 updated_at = $10,
-                video_analysis_prompt = $11
-            WHERE id = $12
+                video_analysis_prompt = $11,
+                merge_instructions = $12
+            WHERE id = $13
             "#,
         )
         .bind(&session.name)
@@ -408,8 +414,9 @@ impl SessionRepository {
         .bind(&session.model_used)
         .bind(&included_final)
         .bind(&excluded_final)
-        .bind(date_utils::get_timestamp()) // Use current timestamp, not client's
+        .bind(date_utils::get_timestamp())
         .bind(&session.video_analysis_prompt)
+        .bind(&session.merge_instructions)
         .bind(&session.id)
         .execute(&mut *conn)
         .await;
@@ -764,6 +771,79 @@ impl SessionRepository {
             .map_err(|e| AppError::DatabaseError(format!("Failed to append task description history: {}", e)))?;
 
         Ok(())
+    }
+
+    pub async fn update_session_fields(
+        &self,
+        session_id: &str,
+        task_description: Option<&str>,
+        merge_instructions: Option<&str>,
+    ) -> AppResult<()> {
+        let mut conn = self.pool.acquire().await.map_err(|e| {
+            AppError::DatabaseError(format!("Failed to acquire connection: {}", e))
+        })?;
+
+        sqlx::query("BEGIN IMMEDIATE")
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                AppError::DatabaseError(format!("Failed to begin immediate transaction: {}", e))
+            })?;
+
+        let mut updates = Vec::new();
+        let mut param_index = 1;
+
+        if task_description.is_some() {
+            updates.push(format!("task_description = ${}", param_index));
+            param_index += 1;
+        }
+
+        if merge_instructions.is_some() {
+            updates.push(format!("merge_instructions = ${}", param_index));
+            param_index += 1;
+        }
+
+        updates.push(format!("updated_at = ${}", param_index));
+
+        let sql = format!(
+            "UPDATE sessions SET {} WHERE id = ${}",
+            updates.join(", "),
+            param_index + 1
+        );
+
+        let now = date_utils::get_timestamp();
+        let mut query = sqlx::query(&sql);
+
+        if let Some(desc) = task_description {
+            query = query.bind(desc);
+        }
+
+        if let Some(instr) = merge_instructions {
+            query = query.bind(instr);
+        }
+
+        query = query.bind(now).bind(session_id);
+
+        let result = query.execute(&mut *conn).await;
+
+        match result {
+            Ok(_) => {
+                sqlx::query("COMMIT")
+                    .execute(&mut *conn)
+                    .await
+                    .map_err(|e| {
+                        AppError::DatabaseError(format!("Failed to commit transaction: {}", e))
+                    })?;
+                Ok(())
+            }
+            Err(e) => {
+                let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
+                Err(AppError::DatabaseError(format!(
+                    "Failed to update session fields: {}",
+                    e
+                )))
+            }
+        }
     }
 
     pub async fn get_file_selection_history(

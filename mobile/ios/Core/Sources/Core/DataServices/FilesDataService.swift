@@ -529,7 +529,7 @@ public final class FilesDataService: ObservableObject {
                 guard let project = VibeManagerCore.shared.dataServices?.currentProject else { return }
                 let results = try await searchFiles(
                     query: query,
-                    maxResults: 1000,
+                    maxResults: 10000,
                     includeContent: false,
                     projectDirectory: project.directory
                 )

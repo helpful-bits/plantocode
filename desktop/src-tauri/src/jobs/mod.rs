@@ -113,7 +113,10 @@ async fn wait_for_core_services(app_handle: &AppHandle) -> AppResult<()> {
         let mut missing_services = Vec::new();
 
         // Check for database pool
-        if app_handle.try_state::<sqlx::SqlitePool>().is_none() {
+        if app_handle
+            .try_state::<Arc<sqlx::SqlitePool>>()
+            .is_none()
+        {
             missing_services.push("SqlitePool");
         }
 
@@ -157,7 +160,10 @@ async fn wait_for_core_services(app_handle: &AppHandle) -> AppResult<()> {
 
     // Determine which services are still missing for error message
     let mut missing_services = Vec::new();
-    if app_handle.try_state::<sqlx::SqlitePool>().is_none() {
+    if app_handle
+        .try_state::<Arc<sqlx::SqlitePool>>()
+        .is_none()
+    {
         missing_services.push("SqlitePool");
     }
     if app_handle

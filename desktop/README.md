@@ -204,3 +204,14 @@ This logs key-to-paint latency for any keystrokes over 16ms, helping identify pe
 - **OPEN-1**: Confirm maximum acceptable key→paint latency target per platform (currently 16ms default)
 - **OPEN-2**: Enumerate ALL background processes that may update taskDescription for comprehensive audit
 - **OPEN-3**: Identify specific historical events/timers that caused cursor jumps for targeted regression tests
+
+## Performance Optimization
+
+This desktop application has been optimized for responsiveness and efficiency. Key optimizations include:
+
+- **Virtualized File Browser**: Only visible rows are rendered, enabling smooth handling of projects with 1000+ files
+- **Optimistic Updates**: File selections and text inputs update immediately with debounced persistence
+- **Memoization**: Components skip unnecessary re-renders using React.memo with custom comparators
+- **Single-source Debouncing**: Centralized debouncing prevents redundant backend calls
+
+For detailed validation procedures, see [PERFORMANCE_VALIDATION.md](./PERFORMANCE_VALIDATION.md).

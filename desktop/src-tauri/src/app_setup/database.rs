@@ -43,10 +43,26 @@ pub async fn initialize_database_light(app_handle: &AppHandle) -> Result<(), App
         .max_connections(10)
         .after_connect(|conn, _meta| {
             Box::pin(async move {
-                // Enable foreign key constraints for this connection
+                // Enable foreign key constraints
                 sqlx::query("PRAGMA foreign_keys = ON")
-                    .execute(conn)
+                    .execute(&mut *conn)
                     .await?;
+
+                // Enable WAL mode for better concurrency
+                let _ = sqlx::query("PRAGMA journal_mode = WAL")
+                    .execute(&mut *conn)
+                    .await;
+
+                // Set busy timeout to 5 seconds (5000ms)
+                let _ = sqlx::query("PRAGMA busy_timeout = 5000")
+                    .execute(&mut *conn)
+                    .await;
+
+                // Use NORMAL synchronous mode for better performance with WAL
+                let _ = sqlx::query("PRAGMA synchronous = NORMAL")
+                    .execute(&mut *conn)
+                    .await;
+
                 Ok(())
             })
         })
@@ -104,8 +120,8 @@ pub async fn initialize_database_light(app_handle: &AppHandle) -> Result<(), App
     }
 
     // Manage the pool as state immediately
-    app_handle.manage(db.clone());
     let pool_arc = Arc::new(db);
+    app_handle.manage(pool_arc.clone());
 
     // Wire TerminalRepository if not already managed
     if app_handle
@@ -180,8 +196,10 @@ pub async fn wire_core_job_repositories(app_handle: &AppHandle) -> Result<(), Ap
     use std::sync::Arc;
 
     // Get database pool from app state
-    let db = app_handle.state::<SqlitePool>().inner().clone();
-    let pool_arc = Arc::new(db);
+    let pool_arc = app_handle
+        .state::<Arc<SqlitePool>>()
+        .inner()
+        .clone();
 
     // Wire SessionRepository if not already managed
     if app_handle
@@ -221,8 +239,10 @@ pub async fn run_deferred_db_tasks(
     info!("Deferred DB: starting integrity check.");
 
     // Retrieve pool from app state
-    let db = app_handle.state::<SqlitePool>().inner().clone();
-    let pool_arc = Arc::new(db);
+    let pool_arc = app_handle
+        .state::<Arc<SqlitePool>>()
+        .inner()
+        .clone();
 
     // Health check with PRAGMA integrity_check
     match check_database_health(&*pool_arc).await {
@@ -362,9 +382,16 @@ async fn attempt_automatic_recovery(
     // Check if backup service is available in app state
     // Since we're in database initialization, backup service might not be ready yet
     // So we'll create a temporary backup service instance
-    let db_pool = app_handle.state::<SqlitePool>().inner().clone();
+    let db_pool = app_handle
+        .state::<Arc<SqlitePool>>()
+        .inner()
+        .clone();
     let backup_config = crate::services::BackupConfig::default();
-    let backup_service = BackupService::new(app_data_dir.to_path_buf(), db_pool, backup_config);
+    let backup_service = BackupService::new(
+        app_data_dir.to_path_buf(),
+        db_pool.as_ref().clone(),
+        backup_config,
+    );
 
     match backup_service.auto_restore_latest_backup().await {
         Ok(Some(restored_backup)) => {

@@ -15,7 +15,7 @@ struct CacheEntry {
 }
 
 static JOB_LIST_CACHE: Lazy<Mutex<HashMap<String, CacheEntry>>> = Lazy::new(|| Mutex::new(HashMap::new()));
-const CACHE_TTL: Duration = Duration::from_millis(750);
+const CACHE_TTL: Duration = Duration::from_secs(5);
 const MAX_ENTRIES: usize = 128;
 
 // Job list filtering architecture:
@@ -75,9 +75,43 @@ async fn handle_job_list(app_handle: &AppHandle, request: RpcRequest) -> RpcResp
         }
     };
 
+    // OPTIMIZATION: Check cache BEFORE session validation to avoid DB lookup
+    // Build preliminary cache key using session_id directly
+    let preliminary_cache_key = format!(
+        "jobs::session::{}",
+        session_id
+    );
+
+    // Fast path: return cached result without DB lookup
+    {
+        let cache = JOB_LIST_CACHE.lock().unwrap();
+        if let Some(entry) = cache.get(&preliminary_cache_key) {
+            if entry.inserted_at.elapsed() < CACHE_TTL {
+                log::debug!("Cache hit for session {}, skipping DB validation", session_id);
+                return RpcResponse {
+                    correlation_id: request.correlation_id,
+                    result: Some(entry.value.clone()),
+                    error: None,
+                    is_final: true,
+                };
+            }
+        }
+    }
+
+    // Cache miss: validate session and fetch jobs
     // Resolve effective project directory from session - no fallbacks
-    let pool = app_handle.state::<sqlx::SqlitePool>().inner().clone();
-    let session_repo = SessionRepository::new(Arc::new(pool));
+    let pool = match app_handle.try_state::<Arc<sqlx::SqlitePool>>() {
+        Some(p) => p.inner().clone(),
+        None => {
+            return RpcResponse {
+                correlation_id: request.correlation_id,
+                result: None,
+                error: Some("Database not available".to_string()),
+                is_final: true,
+            };
+        }
+    };
+    let session_repo = SessionRepository::new(pool.clone());
     let effective_project_directory = match session_repo.get_session_by_id(&session_id).await {
         Ok(Some(session)) => {
             log::debug!("Validated session {} with project directory {}", session_id, session.project_directory);
@@ -101,28 +135,6 @@ async fn handle_job_list(app_handle: &AppHandle, request: RpcRequest) -> RpcResp
         }
     };
 
-    // Build cache key
-    let cache_key = format!(
-        "jobs::{}::{}",
-        effective_project_directory.as_deref().unwrap_or(""),
-        session_id
-    );
-
-    // Check cache
-    {
-        let cache = JOB_LIST_CACHE.lock().unwrap();
-        if let Some(entry) = cache.get(&cache_key) {
-            if entry.inserted_at.elapsed() < CACHE_TTL {
-                return RpcResponse {
-                    correlation_id: request.correlation_id,
-                    result: Some(entry.value.clone()),
-                    error: None,
-                    is_final: true,
-                };
-            }
-        }
-    }
-
     // Execute actual query
     match job_commands::get_all_visible_jobs_command_with_content(
         effective_project_directory,
@@ -133,7 +145,7 @@ async fn handle_job_list(app_handle: &AppHandle, request: RpcRequest) -> RpcResp
         Ok(jobs) => {
             let result_value = json!({ "jobs": jobs });
 
-            // Store in cache
+            // Store in cache using preliminary key (no project_directory needed)
             {
                 let mut cache = JOB_LIST_CACHE.lock().unwrap();
                 if cache.len() >= MAX_ENTRIES {
@@ -142,7 +154,7 @@ async fn handle_job_list(app_handle: &AppHandle, request: RpcRequest) -> RpcResp
                         cache.remove(&oldest_key);
                     }
                 }
-                cache.insert(cache_key, CacheEntry {
+                cache.insert(preliminary_cache_key, CacheEntry {
                     inserted_at: Instant::now(),
                     value: result_value.clone(),
                 });

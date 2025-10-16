@@ -161,6 +161,7 @@ public struct DeviceCapabilities: Codable, Equatable {
     public let supportsPlans: Bool
     public let maxConcurrentJobs: UInt32
     public let priorityLevel: UInt8 // 1-10, higher is better
+    public let activeProjectDirectory: String?
 
     public init(
         supportsVoice: Bool = true,
@@ -170,7 +171,8 @@ public struct DeviceCapabilities: Codable, Equatable {
         supportsTasks: Bool = true,
         supportsPlans: Bool = true,
         maxConcurrentJobs: UInt32 = 5,
-        priorityLevel: UInt8 = 5
+        priorityLevel: UInt8 = 5,
+        activeProjectDirectory: String? = nil
     ) {
         self.supportsVoice = supportsVoice
         self.supportsMerge = supportsMerge
@@ -180,6 +182,7 @@ public struct DeviceCapabilities: Codable, Equatable {
         self.supportsPlans = supportsPlans
         self.maxConcurrentJobs = maxConcurrentJobs
         self.priorityLevel = priorityLevel
+        self.activeProjectDirectory = activeProjectDirectory
     }
 
     /// Get list of supported feature names

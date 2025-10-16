@@ -38,7 +38,11 @@ pub fn get_database_instance(
 
     // Get the database using the Tauri v2 API
     info!("Retrieving database instance using Tauri v2 API");
-    let db: sqlx::SqlitePool = app_handle.state::<sqlx::SqlitePool>().inner().clone();
+    let db_arc = app_handle
+        .state::<Arc<sqlx::SqlitePool>>()
+        .inner()
+        .clone();
+    let db: sqlx::SqlitePool = db_arc.as_ref().clone();
 
     // Ensure database permissions
     let app_data_root_dir = app_handle.path().app_local_data_dir().map_err(|e| {

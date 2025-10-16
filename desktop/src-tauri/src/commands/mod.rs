@@ -12,6 +12,7 @@ pub mod job_commands;
 pub mod regex_commands;
 pub mod session_commands;
 pub mod settings_commands;
+pub mod sync_commands;
 
 // New modular task command modules
 pub mod backup_commands;
@@ -213,5 +214,14 @@ pub use terminal_commands::{
 
 // Re-exports from image commands module
 pub use image_commands::save_pasted_image_command;
+
+// Re-exports from sync commands module
+pub use sync_commands::{
+    queue_task_description_update_command,
+    queue_merge_instructions_update_command,
+    queue_start_task_edit_command,
+    queue_end_task_edit_command,
+    queue_external_task_description_update_command,
+};
 
 // All command functions will return AppResult<T> directly
