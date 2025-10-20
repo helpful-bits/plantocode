@@ -1,4 +1,4 @@
-# MSIX Package Verification Script for Vibe Manager
+# MSIX Package Verification Script for PlanToCode
 # Verifies the structure and contents of an MSIX package
 
 param(

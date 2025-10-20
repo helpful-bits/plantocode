@@ -13,11 +13,14 @@ public struct RemoteTerminalView: View {
     @State private var errorMessage: String?
     @State private var isSessionActive = false
     @State private var showCompose = false
+    @State private var composeAutoStartRecording = false
     @StateObject private var settingsService = SettingsDataService()
     @StateObject private var terminalController = SwiftTermController()
 
     @State private var shouldShowKeyboard = false
     @State private var outputCancellable: AnyCancellable?
+    @State private var hasInitialResize = false
+    @State private var pendingTerminalInput = "" // Track input that hasn't been sent yet
 
     private let outputBufferLimit = 1000
 
@@ -25,6 +28,7 @@ public struct RemoteTerminalView: View {
     @State private var planContentForJob: String = ""
     @State private var didAutoPaste: Bool = false
     @State private var initialCopyButtonId: String? = nil
+    @State private var isActionsExpanded: Bool = false
 
     public init(jobId: String, initialCopyButtonId: String? = nil) {
         self.jobId = jobId
@@ -82,56 +86,89 @@ public struct RemoteTerminalView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            // Compose + Copy buttons toolbar
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    Button("Compose") {
-                        showCompose = true
-                    }
-                    .buttonStyle(PrimaryButtonStyle())
+            // Compose + Copy buttons toolbar - only visible when Actions is expanded
+            if isActionsExpanded {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        Button("Compose") {
+                            openCompose()
+                        }
+                        .buttonStyle(PrimaryButtonStyle())
 
-                    if !copyButtons.isEmpty && !planContentForJob.isEmpty {
-                        ForEach(copyButtons, id: \.id) { btn in
-                            Button(btn.label) {
-                                Task { await paste(using: btn, jobId: jobId) }
+                        if !copyButtons.isEmpty && !planContentForJob.isEmpty {
+                            ForEach(copyButtons, id: \.id) { btn in
+                                Button(btn.label) {
+                                    Task { await paste(using: btn, jobId: jobId) }
+                                }
+                                .buttonStyle(SecondaryButtonStyle())
+                                .disabled(planContentForJob.isEmpty)
                             }
-                            .buttonStyle(SecondaryButtonStyle())
-                            .disabled(planContentForJob.isEmpty)
                         }
                     }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .background(Color(.systemGroupedBackground))
+                .transition(.move(edge: .top).combined(with: .opacity))
             }
-            .background(Color(.systemGroupedBackground))
 
             // SwiftTerm terminal view - handles input, output, and keyboard accessories
             SwiftTerminalView(controller: terminalController, shouldShowKeyboard: $shouldShowKeyboard)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.black)
-                .onTapGesture {
-                    // Toggle keyboard
-                    shouldShowKeyboard.toggle()
-                }
         }
         .background(Color.background)
         .navigationTitle("Terminal")
         .navigationBarTitleDisplayMode(.inline)
-        .fullScreenCover(isPresented: $showCompose) {
-            TerminalComposeView(jobId: jobId)
+        .fullScreenCover(isPresented: $showCompose, onDismiss: {
+            composeAutoStartRecording = false
+        }) {
+            TerminalComposeView(jobId: jobId, autoStartRecording: composeAutoStartRecording)
                 .environmentObject(container)
         }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 HStack(spacing: 12) {
-                    if isSessionActive {
-                        Button("Ctrl+C") {
-                            sendCtrlC()
-                        }
-                        .buttonStyle(CompactDestructiveButtonStyle())
-                        .accessibilityLabel("Send Ctrl+C")
-                        .accessibilityHint("Sends interrupt signal to the running process")
+                    // Microphone button - quick access to voice compose
+                    Button(action: {
+                        openComposeWithVoice()
+                    }) {
+                        Image(systemName: "mic.circle.fill")
+                            .font(.system(size: 20))
+                    }
+                    .buttonStyle(ToolbarButtonStyle())
+                    .accessibilityLabel("Voice Compose")
+                    .accessibilityHint("Opens compose view and starts voice recording")
 
+                    if shouldShowKeyboard {
+                        Button(action: {
+                            shouldShowKeyboard = false
+                        }) {
+                            Image(systemName: "keyboard.chevron.compact.down")
+                                .font(.system(size: 16))
+                        }
+                        .buttonStyle(ToolbarButtonStyle())
+                        .accessibilityLabel("Hide Keyboard")
+                        .accessibilityHint("Dismisses the on-screen keyboard")
+                    }
+
+                    Button(action: {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            isActionsExpanded.toggle()
+                        }
+                    }) {
+                        HStack(spacing: 4) {
+                            Text("Actions")
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 12, weight: .medium))
+                                .rotationEffect(.degrees(isActionsExpanded ? 180 : 0))
+                        }
+                    }
+                    .buttonStyle(ToolbarButtonStyle())
+                    .accessibilityLabel(isActionsExpanded ? "Hide Actions" : "Show Actions")
+                    .accessibilityHint("Toggle terminal actions toolbar")
+
+                    if isSessionActive {
                         Button("Stop") {
                             killSession()
                         }
@@ -140,11 +177,12 @@ public struct RemoteTerminalView: View {
                         .accessibilityHint("Terminates the current process")
                     }
 
-                    Button("Done") {
+                    Button("Close") {
+                        cleanupSession()
                         dismiss()
                     }
                     .buttonStyle(ToolbarButtonStyle())
-                    .accessibilityLabel("Done")
+                    .accessibilityLabel("Close")
                     .accessibilityHint("Closes the terminal view")
                 }
             }
@@ -180,9 +218,6 @@ public struct RemoteTerminalView: View {
 
                 startTerminalSession()
             }
-        }
-        .onDisappear {
-            cleanupSession()
         }
     }
 
@@ -261,9 +296,18 @@ public struct RemoteTerminalView: View {
                 let terminalService = container.terminalService
                 let capturedJobId = jobId
 
+                // Build explicit context binding
+                let appSid = container.sessionService.currentSession?.id ?? ""
+                let contextBinding = TerminalContextBinding(
+                    appSessionId: appSid,
+                    contextType: .implementationPlan,
+                    jobId: capturedJobId
+                )
+
                 let session = try await terminalService.startSession(
                     jobId: capturedJobId,
-                    shell: preferredShell
+                    shell: preferredShell,
+                    context: contextBinding
                 )
                 await MainActor.run {
                     terminalSession = session
@@ -284,18 +328,58 @@ public struct RemoteTerminalView: View {
                     // Propagate terminal size changes to remote PTY
                     terminalController.onResize = { cols, rows in
                         Task {
-                            try? await terminalService.resize(jobId: capturedJobId, cols: cols, rows: rows)
+                            do {
+                                print("[Terminal] Sending resize: \(cols)x\(rows) (initial=\(!hasInitialResize))")
+                                try await terminalService.resize(jobId: capturedJobId, cols: cols, rows: rows)
+
+                                if !hasInitialResize {
+                                    hasInitialResize = true
+                                    print("[Terminal] First resize complete")
+                                }
+                            } catch {
+                                print("[Terminal] Failed to resize: \(error)")
+                            }
                         }
                     }
 
+                    // Start output stream immediately to receive live data
+                    print("[Terminal] Subscribing to hydrated output stream for session \(capturedJobId)")
                     outputCancellable = terminalService
                         .getHydratedRawOutputStream(for: capturedJobId)
                         .receive(on: DispatchQueue.main)
                         .sink { data in
+                            print("[Terminal] feedBytes called with \(data.count) bytes for session \(capturedJobId)")
                             terminalController.feedBytes(data: data)
+                            DispatchQueue.main.async {
+                                // UI flush barrier after feedBytes
+                            }
                         }
 
-                    terminalService.attachLiveBinary(for: capturedJobId, includeSnapshot: true)
+                    // CRITICAL: Manually trigger first resize immediately!
+                    // sizeChanged may have already fired before onResize was set up
+                    // This ensures we always send the correct terminal size to desktop
+                    if let termView = terminalController.terminalView {
+                        let terminal = termView.getTerminal()
+                        let cols = terminal.cols
+                        let rows = terminal.rows
+
+                        // ONLY resize if we have valid dimensions (not 0x0)
+                        if cols > 0 && rows > 0 {
+                            print("[Terminal] Manual initial resize: \(cols)x\(rows)")
+
+                            Task {
+                                do {
+                                    try await terminalService.resize(jobId: capturedJobId, cols: cols, rows: rows)
+                                    hasInitialResize = true
+                                    print("[Terminal] Manual resize complete")
+                                } catch {
+                                    print("[Terminal] Failed manual resize: \(error)")
+                                }
+                            }
+                        } else {
+                            print("[Terminal] Skipping manual resize - terminal not yet sized (\(cols)x\(rows))")
+                        }
+                    }
 
                     // Enable keyboard after setup
                     shouldShowKeyboard = true
@@ -311,6 +395,50 @@ public struct RemoteTerminalView: View {
                     errorMessage = error.localizedDescription
                     isSessionActive = false
                     isLoading = false
+                }
+            }
+        }
+    }
+
+    private func openCompose() {
+        // Clear the current terminal input line by sending Ctrl+U (clear line before cursor)
+        // This ensures no duplicate text between terminal and compose view
+        Task {
+            do {
+                try await container.terminalService.write(jobId: jobId, bytes: [0x15]) // Ctrl+U
+                // Small delay to ensure the terminal processes the clear before showing compose
+                try await Task.sleep(nanoseconds: 50_000_000) // 50ms
+                await MainActor.run {
+                    composeAutoStartRecording = false
+                    showCompose = true
+                }
+            } catch {
+                // If clearing fails, still show compose
+                await MainActor.run {
+                    composeAutoStartRecording = false
+                    showCompose = true
+                }
+            }
+        }
+    }
+
+    private func openComposeWithVoice() {
+        // Clear the current terminal input line by sending Ctrl+U (clear line before cursor)
+        // This ensures no duplicate text between terminal and compose view
+        Task {
+            do {
+                try await container.terminalService.write(jobId: jobId, bytes: [0x15]) // Ctrl+U
+                // Small delay to ensure the terminal processes the clear before showing compose
+                try await Task.sleep(nanoseconds: 50_000_000) // 50ms
+                await MainActor.run {
+                    composeAutoStartRecording = true
+                    showCompose = true
+                }
+            } catch {
+                // If clearing fails, still show compose
+                await MainActor.run {
+                    composeAutoStartRecording = true
+                    showCompose = true
                 }
             }
         }
@@ -344,13 +472,9 @@ public struct RemoteTerminalView: View {
     }
 
     private func cleanupSession() {
+        // Do not detach binary binding here; binding is session-scoped and finalized on real teardown.
         outputCancellable?.cancel()
         outputCancellable = nil
-
-        Task {
-            container.terminalService.detachLiveBinary(for: jobId)
-            try? await container.terminalService.detach(jobId: jobId)
-        }
     }
 }
 
@@ -360,6 +484,7 @@ class SwiftTermController: ObservableObject {
     weak var terminalView: TerminalView?
     var onSend: (([UInt8]) -> Void)?
     var onResize: ((Int, Int) -> Void)?
+    var isFirstResize = true
 
     func feed(data: String) {
         guard let terminalView = terminalView else {
@@ -369,11 +494,12 @@ class SwiftTermController: ObservableObject {
         let buffer = ArraySlice([UInt8](data.utf8))
         terminalView.feed(byteArray: buffer)
 
-        // Force display update
-        DispatchQueue.main.async {
-            terminalView.setNeedsDisplay()
-            terminalView.layoutIfNeeded()
-        }
+        // Force IMMEDIATE display update (we're already on main thread)
+        terminalView.setNeedsDisplay()
+        terminalView.layoutIfNeeded()
+
+        // Notify SwiftUI that the view needs updating
+        objectWillChange.send()
     }
 
     func feedBytes(data: Data) {
@@ -384,11 +510,15 @@ class SwiftTermController: ObservableObject {
         let buffer = ArraySlice([UInt8](data))
         terminalView.feed(byteArray: buffer)
 
-        // Force display update
-        DispatchQueue.main.async {
-            terminalView.setNeedsDisplay()
-            terminalView.layoutIfNeeded()
-        }
+        // Force IMMEDIATE display update (we're already on main thread from sink)
+        // Note: SwiftTerm's feed() method automatically handles cursor visibility
+        // and scrolling through its internal ensureCaretIsVisible() call
+        terminalView.setNeedsDisplay()
+        terminalView.layoutIfNeeded()
+
+        // CRITICAL: Notify SwiftUI that the view needs updating
+        // This triggers updateUIView() which refreshes the SwiftUI wrapper
+        objectWillChange.send()
     }
 
     func send(data: [UInt8]) {
@@ -409,12 +539,26 @@ extension SwiftTermController: TerminalViewDelegate {
     }
 
     func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) {
-        // Debounce resize events (keyboard show/hide, rotation) with 200ms delay
-        resizeDebouncer?.cancel()
-        resizeDebouncer = DispatchWorkItem { [weak self] in
-            self?.onResize?(newCols, newRows)
+        // Skip invalid sizes (0x0 or unreasonably small)
+        guard newCols > 10 && newRows > 5 else {
+            print("[Terminal] Skipping invalid resize: \(newCols)x\(newRows)")
+            return
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: resizeDebouncer!)
+
+        // First resize must be immediate to set correct PTY size before output rendering
+        // Subsequent resizes are debounced to handle keyboard show/hide and rotation smoothly
+        if isFirstResize {
+            isFirstResize = false
+            print("[Terminal] Immediate first resize: \(newCols)x\(newRows)")
+            onResize?(newCols, newRows)
+        } else {
+            // Debounce subsequent resize events with 200ms delay
+            resizeDebouncer?.cancel()
+            resizeDebouncer = DispatchWorkItem { [weak self] in
+                self?.onResize?(newCols, newRows)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: resizeDebouncer!)
+        }
     }
 
     func setTerminalTitle(source: TerminalView, title: String) {
@@ -459,13 +603,21 @@ struct SwiftTerminalView: UIViewRepresentable {
     @Binding var shouldShowKeyboard: Bool
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(controller: controller)
+        Coordinator(controller: controller, shouldShowKeyboard: $shouldShowKeyboard)
     }
 
     func makeUIView(context: Context) -> TerminalView {
         let terminalView = TerminalView(frame: .zero)
         terminalView.terminalDelegate = controller
-        terminalView.font = UIFont.monospacedSystemFont(ofSize: 14, weight: .regular)
+
+        // Use Menlo font for better emoji and wide character support
+        // Menlo has better rendering characteristics for Unicode/emoji than default monospace
+        if let menloFont = UIFont(name: "Menlo-Regular", size: 14) {
+            terminalView.font = menloFont
+        } else {
+            // Fallback to system monospace if Menlo is unavailable
+            terminalView.font = UIFont.monospacedSystemFont(ofSize: 14, weight: .regular)
+        }
 
         // Set dark color scheme
         terminalView.nativeForegroundColor = UIColor.white
@@ -485,11 +637,35 @@ struct SwiftTerminalView: UIViewRepresentable {
             terminalView.setValue(true, forKey: "applicationCursor")
         }
 
+        // Note: SwiftTerm handles cursor visibility through ensureCaretIsVisible()
+        // which we call after each feed operation in feedBytes()
+
         // Enable keyboard input
         terminalView.isUserInteractionEnabled = true
 
         // Store reference to terminal view in controller
         controller.terminalView = terminalView
+
+        // Observe keyboard notifications to sync state bidirectionally
+        NotificationCenter.default.addObserver(
+            forName: UIResponder.keyboardWillShowNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            if terminalView.isFirstResponder {
+                context.coordinator.updateKeyboardState(true)
+            }
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: UIResponder.keyboardWillHideNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            if !terminalView.isFirstResponder {
+                context.coordinator.updateKeyboardState(false)
+            }
+        }
 
         return terminalView
     }
@@ -521,9 +697,17 @@ struct SwiftTerminalView: UIViewRepresentable {
     class Coordinator {
         var didBecomeFirstResponder = false
         let controller: SwiftTermController
+        var shouldShowKeyboard: Binding<Bool>
 
-        init(controller: SwiftTermController) {
+        init(controller: SwiftTermController, shouldShowKeyboard: Binding<Bool>) {
             self.controller = controller
+            self.shouldShowKeyboard = shouldShowKeyboard
+        }
+
+        func updateKeyboardState(_ isShowing: Bool) {
+            DispatchQueue.main.async {
+                self.shouldShowKeyboard.wrappedValue = isShowing
+            }
         }
     }
 }

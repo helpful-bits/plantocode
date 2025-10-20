@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>AUTH0_API_AUDIENCE</key>
-	<string>https://vibemanager.app</string>
+	<string>https://plantocode.com</string>
 	<key>AUTH0_DOMAIN</key>
 	<string>vibemanager.us.auth0.com</string>
 	<key>AUTH0_NATIVE_CLIENT_ID</key>
@@ -15,7 +15,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Vibe Manager</string>
+	<string>PlanToCode</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -23,7 +23,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Vibe Manager</string>
+	<string>PlanToCode</string>
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
@@ -41,17 +41,17 @@
 	<string>1</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>Vibe Manager needs access to your local network to discover and connect to your desktop devices.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_http._tcp</string>
 		<string>_ws._tcp</string>
 	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>PlanToCode needs access to your local network to discover and connect to your desktop devices.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>We need microphone access to capture your voice for dictation.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Vibe Manager uses speech recognition to transcribe your voice for tasks and commands.</string>
+	<string>PlanToCode uses speech recognition to transcribe your voice for tasks and commands.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
@@ -74,9 +74,9 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<key>WS_EVENTS_PATH</key>
-	<string>/ws/events</string>
 	<key>WS_DEVICE_LINK_PATH</key>
 	<string>/ws/device-link</string>
+	<key>WS_EVENTS_PATH</key>
+	<string>/ws/events</string>
 </dict>
 </plist>

@@ -153,7 +153,7 @@ public struct DeviceSelectionView: View {
                                                 .paragraph()
                                                 .foregroundColor(Color.mutedForeground)
                                                 .frame(width: 20, alignment: .leading)
-                                            Text("Open Vibe Manager on your desktop")
+                                            Text("Open PlanToCode on your desktop")
                                                 .paragraph()
                                                 .foregroundColor(Color.mutedForeground)
                                         }

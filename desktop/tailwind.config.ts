@@ -1,7 +1,7 @@
 import type { Config } from "tailwindcss";
 
 /**
- * Tailwind CSS v4 configuration for Vibe Manager Desktop
+ * Tailwind CSS v4 configuration for PlanToCode Desktop
  * Most theme configuration has been moved to @theme directive in globals.css
  */
 const config: Config = {

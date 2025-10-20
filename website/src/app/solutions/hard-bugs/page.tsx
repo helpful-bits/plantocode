@@ -6,19 +6,19 @@ import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { AlertTriangle, ListChecks, TerminalSquare, AudioWaveform, FileSearch } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'Resolve Hard Bugs with Reproducible Context',
+  title: 'Resolve hard bugs with reproducible context - PlanToCode',
   description:
-    'How Vibe Manager captures plan history, terminal logs, and live transcripts so tricky production issues can be reproduced without guesswork.',
+    'How PlanToCode captures plan history, terminal logs, and live transcripts so tricky production issues can be reproduced without guesswork.',
   openGraph: {
-    title: 'Resolve Hard Bugs with Reproducible Context',
+    title: 'Resolve hard bugs with reproducible context - PlanToCode',
     description:
-      'Use Vibe Manager to capture plan history, persistent terminal output, and searchable transcripts when investigating complex defects.',
-    url: 'https://www.vibemanager.app/solutions/hard-bugs',
-    siteName: 'Vibe Manager',
+      'Use PlanToCode to capture plan history, persistent terminal output, and searchable transcripts when investigating complex defects.',
+    url: 'https://www.plantocode.com/solutions/hard-bugs',
+    siteName: 'PlanToCode',
     type: 'website',
   },
   alternates: {
-    canonical: 'https://www.vibemanager.app/solutions/hard-bugs',
+    canonical: 'https://www.plantocode.com/solutions/hard-bugs',
   },
 };
 
@@ -42,7 +42,7 @@ export default function HardBugsPage() {
                   Resolve hard bugs with preserved context
                 </h1>
                 <p className="text-lg text-foreground/80 max-w-3xl mx-auto leading-relaxed">
-                  Vibe Manager keeps every plan, terminal session, and spoken note attached to the job you are debugging. Instead of repeating ad-hoc investigations, reopen the exact commands, token budgets, and plan revisions used to isolate an issue.
+                  PlanToCode keeps every plan, terminal session, and spoken note attached to the job you are debugging. Reopen the exact commands, token budgets, and plan revisions used to isolate an issue.
                 </p>
               </header>
 
@@ -104,7 +104,7 @@ export default function HardBugsPage() {
                 <h2 className="text-2xl sm:text-3xl font-bold mb-4">Debug Production Issues with Confidence</h2>
                 <p className="text-lg text-foreground/80 mb-8 max-w-2xl mx-auto">
                   Preserve every investigation, reproduce every step, never lose context.
-                  This is how production debugging should work - disciplined, reproducible, complete.
+                  This is how production debugging should work: disciplined, reproducible, complete.
                 </p>
                 <PlatformDownloadSection location="solutions_hard_bugs" />
                 <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4 text-sm text-foreground/60">

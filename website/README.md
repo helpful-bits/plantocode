@@ -1,6 +1,6 @@
-# Vibe Manager Website
+# PlanToCode Website
 
-The official landing page for Vibe Manager - a desktop application that helps developers organize and manage their projects with AI-powered assistance.
+The official landing page for PlanToCode - a desktop application that helps developers plan and ship code changes with AI-powered assistance.
 
 ## Modern Tech Stack
 
@@ -349,26 +349,26 @@ Set `NODE_ENV=development` for detailed error messages
 
 The following legal items have been implemented with default values:
 
-- [x] Official contact email: legal@vibemanager.app (handles privacy, legal, and DPO inquiries)
+- [x] Official contact email: legal@plantocode.com (handles privacy, legal, and DPO inquiries)
 - [x] Governing law: German law with Munich courts jurisdiction
-- [x] Data Protection Officer: legal@vibemanager.app
+- [x] Data Protection Officer: legal@plantocode.com
 - [x] Data retention durations defined:
   - Account data: Duration of account plus 30 days
   - Transaction records: 7 years (tax/accounting compliance)
   - Usage logs: 12 months (service improvement/security)
 - [x] Analytics: Google Analytics with GDPR/CPRA consent management
 - [x] Refund policy: Non-refundable except for service defects or as required by law
-- [x] DMCA agent: legal@vibemanager.app
+- [x] DMCA agent: legal@plantocode.com
 - [x] Third-party provider policies linked: OpenAI, Google AI, xAI, OpenRouter
 
-**Note:** All legal content is ready for production use. The legal@vibemanager.app email should be configured in your email system before launch.
+**Note:** All legal content is ready for production use. The legal@plantocode.com email should be configured in your email system before launch.
 
 ## Go-Live Checklist
 
 ### Legal Compliance
 - [x] Governing law: Germany; venue: Munich; consumer carve-outs "to the extent permitted by law"
 - [x] Controller published in Privacy Policy (helpful bits GmbH + address); About page minimized
-- [x] Privacy requests via legal@vibemanager.app; no DPO appointed
+- [x] Privacy requests via legal@plantocode.com; no DPO appointed
 - [x] "We do not sell or share personal information" (CPRA) and anchors present (#opt-out-withdraw, #do-not-sell)
 
 ### Brand Identity
@@ -532,7 +532,7 @@ This project uses Plausible Analytics with server-side tracking to bypass ad blo
 
 ```bash
 # Domain as configured in Plausible dashboard
-NEXT_PUBLIC_PLAUSIBLE_DOMAIN=vibemanager.app
+NEXT_PUBLIC_PLAUSIBLE_DOMAIN=plantocode.com
 
 # Enable debug mode for troubleshooting
 PLAUSIBLE_DEBUG=false
@@ -554,4 +554,4 @@ The application tracks these custom events (configure matching Goals in Plausibl
 
 ## License
 
-Copyright (c) 2024 Vibe Manager. All rights reserved.
+Copyright (c) 2024 PlanToCode. All rights reserved.

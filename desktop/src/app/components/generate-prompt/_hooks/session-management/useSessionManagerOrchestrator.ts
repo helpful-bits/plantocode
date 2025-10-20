@@ -44,6 +44,7 @@ export function useSessionManagerOrchestrator({
     deletedSessionIdsRef,
     searchQuery,
     setSearchQuery,
+    sessionListVersion,
   } = useSessionListState();
 
   const { loadSessions } = useSessionQueries({
@@ -71,6 +72,7 @@ export function useSessionManagerOrchestrator({
     sessionNameInput,
     setSessionNameInput,
     editSessionNameInput,
+    setEditSessionNameInput,
     setEditingSessionId,
     deletedSessionIdsRef,
   });
@@ -103,6 +105,13 @@ export function useSessionManagerOrchestrator({
   // This effect depends on projectDirectory and loadSessions.
   // setSessions is a stable setter and hasLoadedOnceRef is a ref - both don't need to be dependencies.
   }, [projectDirectory, loadSessions]);
+
+  useEffect(() => {
+    if (!projectDirectory) return;
+    if (!hasLoadedOnceRef.current) return;
+
+    loadSessions(false);
+  }, [sessionListVersion, projectDirectory, loadSessions]);
 
   // Adapter for compatibility with existing components
   const startEditingSessionWrapper = (

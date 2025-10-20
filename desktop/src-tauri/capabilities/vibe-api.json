@@ -1,12 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "vibe-api",
-  "description": "Capability for Vibe Manager API access",
+  "description": "Capability for PlanToCode API access",
   "windows": ["main"],
   "permissions": [
     {
       "identifier": "http:default",
       "allow": [
+        { "url": "https://api-eu.plantocode.com/*" },
+        { "url": "https://api-us.plantocode.com/*" },
         { "url": "https://api.eu.vibemanager.app/*" },
         { "url": "https://api.us.vibemanager.app/*" }
       ]

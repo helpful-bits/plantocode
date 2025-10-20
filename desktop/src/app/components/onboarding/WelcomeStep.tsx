@@ -27,10 +27,10 @@ export function WelcomeStep({ onGetStarted }: WelcomeStepProps) {
               <CheckCircle className="w-10 h-10 text-success" />
             </div>
             <H1 className="text-center text-foreground text-2xl font-semibold">
-              Welcome to Vibe Manager
+              Welcome to PlanToCode
             </H1>
             <P className="text-muted-foreground text-center text-sm leading-relaxed">
-              You're all set! Vibe Manager is ready to supercharge your AI development workflow with secure credential storage.
+              You're all set! PlanToCode is ready to supercharge your AI development workflow with secure credential storage.
             </P>
           </div>
           

@@ -23,7 +23,7 @@ import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Button } from '@/components/ui/button';
 
 export const metadata: Metadata = {
-  title: 'How It Works - AI planning workflow | Vibe Manager',
+  title: 'How it works - PlanToCode',
   description: 'Step-by-step workflow: surface the right files, generate implementation plans from configured models, edit in the Monaco workspace, and execute through the integrated terminal.',
   keywords: [
     'ai workflow',
@@ -43,13 +43,13 @@ export const metadata: Metadata = {
   ],
   openGraph: {
     title: 'How It Works - Professional AI Planning Workflow',
-    description: 'Generate → Edit → Merge → Execute. The complete workflow for professional AI-assisted development. Monaco editor, multi-model planning, integrated terminal.',
-    url: 'https://www.vibemanager.app/how-it-works',
-    siteName: 'Vibe Manager',
+    description: 'Generate, Edit, Merge, Execute. The complete workflow for professional AI-assisted development. Monaco editor, multi-model planning, integrated terminal.',
+    url: 'https://www.plantocode.com/how-it-works',
+    siteName: 'PlanToCode',
     type: 'website',
   },
   alternates: {
-    canonical: 'https://www.vibemanager.app/how-it-works',
+    canonical: 'https://www.plantocode.com/how-it-works',
   },
 };
 
@@ -188,11 +188,10 @@ export default function HowItWorksPage() {
                   <span>Professional AI Planning Workflow</span>
                 </div>
                 <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-6 bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent">
-                  How It Works
+                  How it works
                 </h1>
                 <p className="text-lg sm:text-xl md:text-2xl text-foreground/80 max-w-4xl mx-auto leading-relaxed">
-                  From idea to implementation: Generate plans from multiple AI models, edit in Monaco editor,
-                  merge with custom instructions, execute in integrated terminal. Built for engineers who need control.
+                  Describe your task, find the right files, generate and merge plans, then execute - all in one place.
                 </p>
               </div>
 

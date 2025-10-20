@@ -9,7 +9,7 @@ import { DesktopCard, DesktopCardContent } from '../desktop-ui/DesktopCard';
 import { DesktopButton } from '../desktop-ui/DesktopButton';
 import { useTypewriter } from '../hooks';
 
-const systemPromptText = `You are Vibe Manager, an AI assistant specialized in helping developers manage their codebase efficiently. Your capabilities include:
+const systemPromptText = `You are PlanToCode, an AI assistant specialized in helping developers manage their codebase efficiently. Your capabilities include:
 
 1. Code Analysis & Understanding
    - Analyze code structure and patterns

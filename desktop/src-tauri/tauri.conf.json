@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "identifier": "app.vibemanager",
-  "productName": "Vibe Manager",
-  "version": "1.1.0",
+  "identifier": "app.plantocode",
+  "productName": "PlanToCode",
+  "version": "1.2.0",
 
   "build": {
     "devUrl": "http://localhost:1420",
@@ -25,7 +25,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Vibe Manager",
+        "title": "PlanToCode",
         "width": 1200,
         "height": 800,
         "resizable": true,
@@ -39,8 +39,8 @@
     "createUpdaterArtifacts": true,
     "targets": ["app", "dmg", "msi", "nsis"],
     "category": "Productivity",
-    "shortDescription": "Vibe Manager - AI-powered productivity and content management",
-    "longDescription": "Vibe Manager is a comprehensive productivity application that helps you manage content, streamline workflows, and boost productivity with AI-powered features.",
+    "shortDescription": "PlanToCode - AI-powered development workflow manager",
+    "longDescription": "PlanToCode is a comprehensive development tool that helps you manage complex coding tasks, streamline workflows, and boost productivity with AI-powered features.",
     "copyright": "Copyright © 2025 helpful bits GmbH",
     "licenseFile": "../LICENSE",
     "icon": [

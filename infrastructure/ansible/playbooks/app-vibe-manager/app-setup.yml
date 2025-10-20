@@ -1,9 +1,9 @@
 ---
-# Complete Application Setup for Vibe Manager
+# Complete Application Setup for PlanToCode
 # This is the master playbook for all app-specific operations
 # Prerequisites: Base infrastructure must be installed (PostgreSQL, Redis, etc.)
 
-- name: Vibe Manager Application Setup
+- name: PlanToCode Application Setup
   hosts: all
   become: yes
   vars:
@@ -14,7 +14,7 @@
     - name: Display setup plan
       debug:
         msg:
-          - "=== VIBE MANAGER APPLICATION SETUP ==="
+          - "=== PLANTOCODE APPLICATION SETUP ==="
           - "This playbook will:"
           - "1. Create application database and user"
           - "2. Run database migrations"

@@ -1,6 +1,6 @@
 # App Store Submission Checklist
 
-Complete this checklist before submitting Vibe Manager for iOS to App Review.
+Complete this checklist before submitting PlanToCode for iOS to App Review.
 
 ---
 
@@ -8,8 +8,8 @@ Complete this checklist before submitting Vibe Manager for iOS to App Review.
 
 ### 1. App Store Connect Metadata
 
-- [ ] **App name** entered (≤30 characters): "Vibe Manager"
-- [ ] **Subtitle** entered (≤30 characters): "Control Vibe Manager remotely"
+- [ ] **App name** entered (≤30 characters): "PlanToCode"
+- [ ] **Subtitle** entered (≤30 characters): "Control PlanToCode remotely"
 - [ ] **Description** pasted from `app-information.md` (≤4000 characters)
 - [ ] **Keywords** entered (≤100 characters, comma-separated)
 - [ ] **Primary category** selected: Productivity
@@ -22,20 +22,20 @@ Complete this checklist before submitting Vibe Manager for iOS to App Review.
   - [ ] 11" iPad Pro (if supporting iPad)
 - [ ] **App Preview videos** uploaded (optional but recommended)
 - [ ] **Promotional text** entered (≤170 characters, updateable without new build)
-- [ ] **Support URL** entered: `https://vibemanager.app/support`
-- [ ] **Marketing URL** entered (optional): `https://vibemanager.app`
-- [ ] **Privacy Policy URL** verified live: `https://vibemanager.app/privacy`
+- [ ] **Support URL** entered: `https://plantocode.com/support`
+- [ ] **Marketing URL** entered (optional): `https://plantocode.com`
+- [ ] **Privacy Policy URL** verified live: `https://plantocode.com/privacy`
 
 ### 2. App Review Information
 
 - [ ] **Demo account** created with:
-  - [ ] Username/email: `demo@vibemanager.app`
+  - [ ] Username/email: `demo@plantocode.com`
   - [ ] Password: `<DEMO_PASSWORD>` (stored securely)
   - [ ] Account **does not expire**
   - [ ] Account has full feature access
 - [ ] **Review notes** pasted from `app-review-notes.md`
 - [ ] **Demo environment** verified working:
-  - [ ] Mac mini (or demo host) running Vibe Manager desktop
+  - [ ] Mac mini (or demo host) running PlanToCode desktop
   - [ ] Seeded with sample data (tasks, files, plans, terminal output)
   - [ ] Network accessible 24/7
   - [ ] Connection tested from iOS Simulator and real device
@@ -224,7 +224,7 @@ Complete this checklist before submitting Vibe Manager for iOS to App Review.
 - [ ] **Terms of Service** accessible (if applicable)
 - [ ] **Privacy Policy** accessible and accurate
 - [ ] **Open Source Licenses** disclosed (if using OSS libraries)
-- [ ] **Copyright notices** correct (© 2025 Vibe Manager)
+- [ ] **Copyright notices** correct (© 2025 PlanToCode)
 - [ ] **No trademarked content** without permission (logos, brand names)
 - [ ] **No offensive content** in sample data, screenshots, or code
 
@@ -265,7 +265,7 @@ Complete this checklist before submitting Vibe Manager for iOS to App Review.
   - [ ] Automatic release (app goes live immediately after approval)
 - [ ] **Phased release** enabled (optional, rolls out to 1% → 100% over 7 days)
 - [ ] **Version information** filled:
-  - [ ] Copyright: © 2025 Vibe Manager
+  - [ ] Copyright: © 2025 PlanToCode
   - [ ] What's New in This Version (release notes)
 - [ ] **Pricing & availability:**
   - [ ] Free (or price tier selected)

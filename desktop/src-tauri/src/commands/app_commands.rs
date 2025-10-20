@@ -9,7 +9,7 @@ use tauri::{AppHandle, Manager, State, command};
 
 #[command]
 pub fn get_app_info() -> String {
-    "Vibe Manager Desktop".to_string()
+    "PlanToCode Desktop".to_string()
 }
 
 #[command]

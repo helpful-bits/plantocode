@@ -1,6 +1,6 @@
 import Foundation
 
-/// Main entry point for the Vibe Manager Core library
+/// Main entry point for the PlanToCode Core library
 public final class VibeManagerCore {
 
     /// Shared instance for easy access
@@ -34,7 +34,7 @@ public final class VibeManagerCore {
     private func setupLogging(level: LogLevel) {
         // Setup logging framework
         // For now, just print configuration
-        print("VibeManagerCore initialized with log level: \(level)")
+        print("PlanToCode Core initialized with log level: \(level)")
     }
 }
 

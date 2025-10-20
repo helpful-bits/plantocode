@@ -62,7 +62,7 @@ public struct Config {
         return "http://192.168.0.38:8080"
         #else
         // Use production US server for Auth0 authentication
-        return "https://api.us.vibemanager.app"
+        return "https://api-us.plantocode.com"
         #endif
     }
 

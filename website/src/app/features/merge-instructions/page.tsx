@@ -6,7 +6,7 @@ import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { GitMerge, MessageSquare, CheckCircle2, Layers, Target, Brain } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'Architectural Plan Synthesis - Intelligent Multi-Plan Merging | Vibe Manager',
+  title: 'Architectural Plan Synthesis - Intelligent Multi-Plan Merging | PlanToCode',
   description: 'Advanced architectural synthesis that goes beyond simple merging. AI analyzes multiple implementation plans, resolves conflicts using SOLID principles, and creates emergent solutions with full source traceability.',
   keywords: [
     'architectural synthesis',
@@ -22,12 +22,12 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Architectural Synthesis - Beyond Simple Plan Merging',
     description: 'AI performs deep architectural analysis, resolves conflicts using SOLID principles, and synthesizes emergent solutions with complete source traceability.',
-    url: 'https://www.vibemanager.app/features/merge-instructions',
-    siteName: 'Vibe Manager',
+    url: 'https://www.plantocode.com/features/merge-instructions',
+    siteName: 'PlanToCode',
     type: 'website',
   },
   alternates: {
-    canonical: 'https://www.vibemanager.app/features/merge-instructions',
+    canonical: 'https://www.plantocode.com/features/merge-instructions',
   },
 };
 

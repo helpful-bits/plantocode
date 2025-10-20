@@ -9,7 +9,7 @@ public struct ImplementationPlansView: View {
     @StateObject private var settingsService = SettingsDataService()
     @ObservedObject private var appState = AppState.shared
     @State private var selectedPlanJobIdForNav: String? = nil
-    private let logger = Logger(subsystem: "VibeManager", category: "ImplementationPlansView")
+    private let logger = Logger(subsystem: "PlanToCode", category: "ImplementationPlansView")
     @State private var selectedPlans: Set<String> = []
     @State private var mergeInstructions = ""
     @FocusState private var isMergeInstructionsFocused: Bool
@@ -160,34 +160,6 @@ public struct ImplementationPlansView: View {
                         .cornerRadius(Theme.Radii.sm)
                     }
 
-                    // Action Buttons Row
-                    HStack(spacing: Theme.Spacing.sm) {
-                        // View Prompt Button
-                        Button(action: viewPrompt) {
-                            HStack(spacing: Theme.Spacing.xs) {
-                                Image(systemName: "eye")
-                                    .small()
-                                Text("View")
-                                    .small()
-                                    .fontWeight(.medium)
-                            }
-                        }
-                        .buttonStyle(SecondaryButtonStyle())
-
-                        // Copy Prompt Button
-                        Button(action: copyPrompt) {
-                            HStack(spacing: Theme.Spacing.xs) {
-                                Image(systemName: "doc.on.doc")
-                                    .small()
-                                Text("Copy")
-                                    .small()
-                                    .fontWeight(.medium)
-                            }
-                        }
-                        .buttonStyle(SecondaryButtonStyle())
-
-                        Spacer()
-                    }
                 }
 
                 // Create Plan Button - Primary Action
@@ -250,34 +222,6 @@ public struct ImplementationPlansView: View {
             else if !plans.isEmpty {
                 ScrollView {
                     LazyVStack(spacing: Theme.Spacing.sm) {
-                        // Plans count header
-                        HStack {
-                            Text("\(plans.count) plan\(plans.count == 1 ? "" : "s")")
-                                .small()
-                                .fontWeight(.semibold)
-
-                            if !selectedPlans.isEmpty {
-                                Text("•")
-                                    .small()
-                                    .foregroundColor(Color.mutedForeground)
-
-                                Text("\(selectedPlans.count) selected")
-                                    .small()
-                                    .foregroundColor(Color.mutedForeground)
-
-                                Spacer()
-
-                                Button("Clear") {
-                                    selectedPlans.removeAll()
-                                }
-                                .buttonStyle(LinkButtonStyle())
-                            } else {
-                                Spacer()
-                            }
-                        }
-                        .padding(.horizontal)
-                        .padding(.vertical, Theme.Spacing.md)
-
                         // Show all plans (grouped by session but without visual headers)
                         ForEach(Array(groupedPlans.keys.sorted()), id: \.self) { sessionId in
                             let sessionPlans = groupedPlans[sessionId] ?? []

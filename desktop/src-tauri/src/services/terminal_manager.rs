@@ -62,6 +62,7 @@ impl TerminalManager {
         rows: Option<u16>,
         output: Option<Channel<Vec<u8>>>,
     ) -> AppResult<()> {
+        log::info!("🚀 Starting terminal session: id={} dir={:?}", session_id, working_dir);
         let now = now_secs();
         self.repo
             .ensure_session(&session_id, now, working_dir.clone())
@@ -86,6 +87,10 @@ impl TerminalManager {
             .await
             .ok()
             .flatten();
+        log::info!(
+            "terminal.auto_cli preference {:?}",
+            preferred_cli.as_deref().unwrap_or("unset")
+        );
         let additional_args = settings_repo
             .get_value("terminal.additional_args")
             .await
@@ -273,7 +278,7 @@ impl TerminalManager {
 
                         // Send raw binary to mobile via device link client
                         if let Some(client) = app.try_state::<Arc<crate::services::device_link_client::DeviceLinkClient>>() {
-                            let _ = client.send_terminal_output_binary(&chunk);
+                            let _ = client.send_terminal_output_binary(&sid, &chunk);
                         }
 
                         // Incremental flush logic
@@ -396,6 +401,8 @@ impl TerminalManager {
 
     pub fn write_input(&self, session_id: &str, data: Vec<u8>) -> AppResult<()> {
         if let Some(h) = self.sessions.get(session_id) {
+            log::debug!("📝 Writing input: session={} bytes={} has_writer={}",
+                session_id, data.len(), h.writer.lock().unwrap().is_some());
             if let Some(writer) = h.writer.lock().unwrap().as_mut() {
                 writer.write_all(&data).map_err(|e| {
                     AppError::ExternalServiceError(format!("Failed to write to terminal: {}", e))
@@ -407,6 +414,8 @@ impl TerminalManager {
                     ))
                 })?;
             }
+        } else {
+            log::warn!("❌ Write input failed: session {} not found", session_id);
         }
         Ok(())
     }

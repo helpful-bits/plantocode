@@ -143,7 +143,7 @@ export const Value = memo(function Value({ propositions = defaultPropositions }:
     <section
       className="relative py-12 sm:py-16 md:py-20 lg:py-24 px-4 overflow-hidden"
       id="value"
-      aria-label="Development workflow benefits with Vibe Manager"
+      aria-label="Development workflow benefits with PlanToCode"
     >
       <div className="container mx-auto relative z-10">
         {/* Header */}

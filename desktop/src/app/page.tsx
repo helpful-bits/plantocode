@@ -51,15 +51,12 @@ function HomeContent() {
     fetchCurrentModel();
   }, [projectDirectory]);
 
-  // Wrapper function that includes enableWebSearch and includeProjectStructure parameters
   const handleCreatePlanWithOptions = async (
-    taskDescription: string,
-    includedPaths: string[],
     selectedRootDirectories?: string[] | null,
     enableWebSearch?: boolean,
     includeProjectStructure?: boolean
   ) => {
-    return planActions.handleCreateImplementationPlan(taskDescription, includedPaths, selectedRootDirectories, enableWebSearch, includeProjectStructure);
+    return planActions.handleCreateImplementationPlan(selectedRootDirectories, enableWebSearch, includeProjectStructure);
   };
 
   return (

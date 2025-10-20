@@ -1,5 +1,5 @@
 #!/bin/bash
-# Local Build and Deploy Script for Vibe Manager Website
+# Local Build and Deploy Script for PlanToCode Website
 # This script builds Next.js locally and prepares artifacts for deployment
 
 set -e
@@ -57,4 +57,4 @@ echo ""
 echo "2. The deployment will:"
 echo "   - Sync deploy/ folder to server"
 echo "   - Build Docker image from pre-built artifacts"
-echo "   - Start Traefik and Next.js containers"
+echo "   - Start Next.js containers with Nginx"

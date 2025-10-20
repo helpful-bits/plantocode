@@ -12,8 +12,8 @@ pub async fn detect_user_region_command() -> Result<GeoDetectionResponse, String
     let client = reqwest::Client::new();
 
     let response = client
-        .head("https://vibemanager.app/api/geo")
-        .header("User-Agent", "VibeManager-Desktop/1.0")
+        .head("https://plantocode.com/api/geo")
+        .header("User-Agent", "PlanToCode-Desktop/1.0")
         .send()
         .await
         .map_err(|e| format!("Failed to call geo API: {}", e))?;

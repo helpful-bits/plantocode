@@ -1,5 +1,5 @@
 /**
- * Server Selection Page Component for Vibe Manager Desktop
+ * Server Selection Page Component for PlanToCode Desktop
  */
 
 import { useState } from "react";

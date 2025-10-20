@@ -10,7 +10,7 @@ public class DeviceDiscoveryService: ObservableObject {
     @Published public private(set) var isLoading: Bool = false
     @Published public private(set) var errorMessage: String? = nil
 
-    private let logger = Logger(subsystem: "com.vibemanager.app", category: "DeviceDiscovery")
+    private let logger = Logger(subsystem: "com.plantocode.app", category: "DeviceDiscovery")
 
     private init() {}
 

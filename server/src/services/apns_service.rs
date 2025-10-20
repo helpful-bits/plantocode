@@ -400,7 +400,7 @@ impl ApnsService {
 
         let notification = NotificationRequest {
             title: "Test Notification".to_string(),
-            body: "This is a test notification from Vibe Manager.".to_string(),
+            body: "This is a test notification from PlanToCode.".to_string(),
             subtitle: Some("Testing APNs Integration".to_string()),
             badge: Some(1),
             category: Some("test".to_string()),

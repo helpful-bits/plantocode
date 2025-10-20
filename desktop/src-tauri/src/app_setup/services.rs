@@ -188,18 +188,17 @@ pub async fn reinitialize_api_clients(app_handle: &AppHandle, server_url: String
     app_state.set_api_clients_ready(true);
     info!("API clients reinitialized and registered in app state.");
 
-    // Start new DeviceLinkClient with updated server URL
-    // The old client will be cleaned up when its Arc is dropped after being replaced in app state
-    let new_client = Arc::new(crate::services::device_link_client::DeviceLinkClient::new(app_handle.clone(), server_url.clone()));
-    app_handle.manage(new_client);
-
-    // Auto-start if token is available
+    // Auto-start DeviceLinkClient if token is available
+    // start_device_link_client will create and manage the new instance
     if token_manager.get().await.is_some() {
         let app_for_restart = app_handle.clone();
-        let restart_url = server_url.clone();
         tokio::spawn(async move {
-            let mut client = crate::services::device_link_client::DeviceLinkClient::new(app_for_restart.clone(), restart_url);
-            if let Err(e) = client.start().await {
+            if let Err(e) = crate::services::device_link_client::start_device_link_client(
+                app_for_restart.clone(),
+                server_url.clone(),
+            )
+            .await
+            {
                 tracing::warn!("Failed to restart DeviceLinkClient: {:?}", e);
             }
         });
@@ -373,11 +372,11 @@ pub async fn initialize_device_link_connection(
                     proxy_client.base_url().to_string()
                 } else {
                     std::env::var("SERVER_URL")
-                        .unwrap_or_else(|_| "https://api.vibemanager.app".to_string())
+                        .unwrap_or_else(|_| "https://api.plantocode.com".to_string())
                 }
             } else {
                 std::env::var("SERVER_URL")
-                    .unwrap_or_else(|_| "https://api.vibemanager.app".to_string())
+                    .unwrap_or_else(|_| "https://api.plantocode.com".to_string())
             };
 
             tracing::info!("Using server URL for DeviceLinkClient: {}", server_url);
@@ -391,20 +390,13 @@ pub async fn initialize_device_link_connection(
             let app_handle_clone = app_handle.clone();
             let server_url_clone = server_url.clone();
             tauri::async_runtime::spawn(async move {
-                let mut retry_count = 0;
-                loop {
-                    let mut client_instance = DeviceLinkClient::new(app_handle_clone.clone(), server_url_clone.clone());
-                    match client_instance.start().await {
-                        Ok(_) => {
-                            tracing::info!("DeviceLinkClient completed normally");
-                            break;
-                        }
-                        Err(e) => {
-                            retry_count += 1;
-                            tracing::error!(error = ?e, retry_count, "DeviceLinkClient failed, retrying in 5 seconds");
-                            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-                        }
-                    }
+                if let Err(e) = crate::services::device_link_client::start_device_link_client(
+                    app_handle_clone.clone(),
+                    server_url_clone.clone(),
+                )
+                .await
+                {
+                    tracing::error!("DeviceLinkClient error: {:?}", e);
                 }
             });
 

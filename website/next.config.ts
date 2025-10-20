@@ -1,5 +1,4 @@
 import type { NextConfig } from "next";
-import { withPlausibleProxy } from "next-plausible";
 
 const nextConfig: NextConfig = {
   // Enable standalone output for Docker deployment
@@ -148,7 +147,7 @@ const nextConfig: NextConfig = {
             value: 'http',
           },
         ],
-        destination: 'https://www.vibemanager.app/:path*',
+        destination: 'https://www.plantocode.com/:path*',
         permanent: true,
       },
       // Fix non-www to www redirect chains
@@ -157,10 +156,10 @@ const nextConfig: NextConfig = {
         has: [
           {
             type: 'host',
-            value: 'vibemanager.app',
+            value: 'plantocode.com',
           },
         ],
-        destination: 'https://www.vibemanager.app/:path*',
+        destination: 'https://www.plantocode.com/:path*',
         permanent: true,
       },
     ];
@@ -378,5 +377,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-// Use withPlausibleProxy to handle script injection and proxying
-export default withPlausibleProxy()(nextConfig);
+export default nextConfig;

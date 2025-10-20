@@ -13,7 +13,7 @@ export function FounderProof() {
           <GlassCard>
             <div className="p-4 sm:p-6">
               <p className="text-center text-base sm:text-lg lg:text-xl font-medium text-foreground/90 mb-4 leading-relaxed">
-                "I built Vibe Manager because my models kept losing the plot in big repos - now I use it daily." - Kiri, creator of Vibe Manager
+                "I built PlanToCode because my models kept losing the plot in big repos - now I use it daily." - Kiri, creator of PlanToCode
               </p>
               
               {/* Story - Hidden by default, expandable */}
@@ -23,7 +23,7 @@ export function FounderProof() {
                     <div className="absolute inset-0 bg-gradient-to-r from-primary/[0.01] via-transparent to-primary/[0.01] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                     <div className="relative px-4 py-3 flex items-center justify-center gap-2">
                       <span className="text-sm font-medium text-foreground/80 group-hover:text-foreground/90 transition-colors duration-200">
-                        The story behind Vibe Manager
+                        The story behind PlanToCode
                       </span>
                       <div className="flex items-center justify-center w-5 h-5 rounded-full bg-primary/10 group-hover:bg-primary/20 transition-all duration-200 group-open:rotate-180">
                         <svg className="w-3 h-3 text-primary/60 group-hover:text-primary/70 transition-colors duration-200" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
@@ -49,7 +49,7 @@ export function FounderProof() {
                         irrelevant files, missing the crucial ones, or trying to understand everything at once.
                       </p>
                       <p className="font-medium text-foreground/90">
-                        Vibe Manager was born from hitting that wall. Hard. Agents don't need more rules - they need the right files, 
+                        PlanToCode was born from hitting that wall. Hard. Agents don't need more rules - they need the right files,
                         real context, and clear tasks.
                       </p>
                     </div>
@@ -79,7 +79,7 @@ export function FounderProof() {
                             ? "https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1009288&theme=dark&t=1757410274822"
                             : "https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1009288&theme=light&t=1757410294950"
                         } 
-                        alt="Vibe Manager - Context control for AI coding sessions | Product Hunt" 
+                        alt="PlanToCode - Context control for AI coding sessions | Product Hunt" 
                         width="200" 
                         height="43"
                         style={{ width: '200px', height: '43px' }}

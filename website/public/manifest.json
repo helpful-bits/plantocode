@@ -1,7 +1,7 @@
 {
-  "name": "Vibe Manager",
-  "short_name": "Vibe Manager",
-  "description": "An AI coding assistant that seamlessly integrates internet knowledge with your codebase to create actionable implementation plans.",
+  "name": "PlanToCode",
+  "short_name": "PlanToCode",
+  "description": "Plan code changes - find files, generate and merge AI plans, run them in a terminal.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "oklch(0.18 0.02 206)",

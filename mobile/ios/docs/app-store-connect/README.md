@@ -1,14 +1,14 @@
 # App Store Connect Documentation
 
-Complete submission guide for **Vibe Manager for iOS** to the Apple App Store.
+Complete submission guide for **PlanToCode for iOS** to the Apple App Store.
 
 ---
 
 ## Overview
 
-This directory contains all documentation needed to submit Vibe Manager iOS to App Store Connect for review. The documents are organized by App Store Connect sections and compliance requirements.
+This directory contains all documentation needed to submit PlanToCode iOS to App Store Connect for review. The documents are organized by App Store Connect sections and compliance requirements.
 
-**App Type:** Companion controller for Vibe Manager desktop app (macOS)
+**App Type:** Companion controller for PlanToCode desktop app (macOS)
 **Primary Function:** Remote control and management of development workflows
 **Architecture:** Native iOS/SwiftUI app, no UI streaming/mirroring
 
@@ -189,21 +189,21 @@ Before submission, find and replace these placeholders throughout all documents:
 - `<YOUR NAME>` → Your name or company contact name
 - `<YOUR EMAIL>` → Support/contact email address
 - `<YOUR PHONE>` → Phone number for App Review contact
-- `<DEMO_PASSWORD>` → Password for demo@vibemanager.app account
+- `<DEMO_PASSWORD>` → Password for demo@plantocode.com account
 - `<LINK TO 60-90s DEMO VIDEO>` → YouTube/Vimeo link to demo video
 - `_vibemanager._tcp` → Your actual Bonjour service type (if different)
 
 **URLs to verify live:**
-- `https://vibemanager.app` → Marketing website
-- `https://vibemanager.app/support` → Support/help page
-- `https://vibemanager.app/privacy` → Privacy policy (required)
+- `https://plantocode.com` → Marketing website
+- `https://plantocode.com/support` → Support/help page
+- `https://plantocode.com/privacy` → Privacy policy (required)
 
 ---
 
-## Special Considerations for Vibe Manager
+## Special Considerations for PlanToCode
 
 ### 1. Companion App Architecture
-Vibe Manager iOS is a **companion controller**, NOT a remote desktop client. It sends commands to the desktop app and displays text responses. No UI streaming. Clarify this in review notes to avoid Guideline 4.2.7 confusion.
+PlanToCode iOS is a **companion controller**, NOT a remote desktop client. It sends commands to the desktop app and displays text responses. No UI streaming. Clarify this in review notes to avoid Guideline 4.2.7 confusion.
 
 ### 2. Sign in with Apple Requirement
 **Action Required:** Determine if your app uses Google, GitHub, or other OAuth providers. If YES, you MUST implement Sign in with Apple per Guideline 4.8. See [`compliance.md`](./compliance.md) § 3 for full details.
@@ -234,7 +234,7 @@ App Review will test your demo account. **Critical:** Keep demo Mac mini running
 **Solution:** Screenshots must show actual app in use. No mockups, no unimplemented features. See [`app-information.md`](./app-information.md) → Screenshot Guidance.
 
 ### Issue: "Privacy Policy Inaccessible"
-**Solution:** Ensure `https://vibemanager.app/privacy` returns HTTP 200, not 404. Must be accessible without login.
+**Solution:** Ensure `https://plantocode.com/privacy` returns HTTP 200, not 404. Must be accessible without login.
 
 ---
 
@@ -265,7 +265,7 @@ App Review will test your demo account. **Critical:** Keep demo Mac mini running
 1. **App Store Connect Analytics:** Downloads, crashes, usage
 2. **User Reviews:** Respond professionally within 24-48 hours
 3. **Crash Reports:** Check weekly, fix critical crashes immediately
-4. **Support Email:** Monitor `support@vibemanager.app` daily
+4. **Support Email:** Monitor `support@plantocode.com` daily
 5. **Server Logs:** Monitor backend for errors from iOS app
 
 ### Planning Next Release
@@ -288,7 +288,7 @@ App Review will test your demo account. **Critical:** Keep demo Mac mini running
 - **Xcode Project:** `/mobile/ios/App/` (or your path)
 - **Info.plist:** `/mobile/ios/App/Info.plist` (or your path)
 - **Assets:** `/mobile/ios/App/Assets.xcassets/`
-- **Marketing Site:** `https://vibemanager.app`
+- **Marketing Site:** `https://plantocode.com`
 
 ### Support Contacts
 - **App Review Questions:** Use Resolution Center in App Store Connect
@@ -325,9 +325,9 @@ App Review will test your demo account. **Critical:** Keep demo Mac mini running
 
 ## License
 
-These documentation files are part of the Vibe Manager project.
+These documentation files are part of the PlanToCode project.
 
-© 2025 Vibe Manager. All rights reserved.
+© 2025 PlanToCode. All rights reserved.
 
 ---
 

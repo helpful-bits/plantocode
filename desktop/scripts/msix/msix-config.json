@@ -1,13 +1,13 @@
 {
   "identity": {
-    "name": "helpfulbitsGmbH.VibeManager",
+    "name": "helpfulbitsGmbH.PlanToCode",
     "publisher": "CN=CB633740-D90E-4813-8294-FB8FB5AC3481",
     "publisherDisplayName": "helpful bits GmbH"
   },
   "application": {
-    "id": "VibeManager",
-    "displayName": "Vibe Manager",
-    "description": "AI-powered productivity and content management application",
+    "id": "PlanToCode",
+    "displayName": "PlanToCode",
+    "description": "AI-powered development workflow management application",
     "backgroundColor": "transparent"
   },
   "dependencies": {

@@ -1,6 +1,6 @@
 # Info.plist Permission Strings
 
-This document contains all required `Info.plist` permission keys and usage descriptions for Vibe Manager iOS.
+This document contains all required `Info.plist` permission keys and usage descriptions for PlanToCode iOS.
 
 Apple requires clear, user-facing explanations for all privacy-sensitive permissions. These strings appear in system permission dialogs.
 
@@ -10,13 +10,13 @@ Apple requires clear, user-facing explanations for all privacy-sensitive permiss
 
 ### 1. Local Network Access (Bonjour Discovery)
 
-**Purpose:** Discover and connect to Vibe Manager desktop app on the local network.
+**Purpose:** Discover and connect to PlanToCode desktop app on the local network.
 
 **Keys to Add:**
 
 ```xml
 <key>NSLocalNetworkUsageDescription</key>
-<string>Vibe Manager uses your local network to discover and connect to the Vibe Manager app running on your Mac.</string>
+<string>PlanToCode uses your local network to discover and connect to the PlanToCode app running on your Mac.</string>
 
 <key>NSBonjourServices</key>
 <array>
@@ -29,7 +29,7 @@ Apple requires clear, user-facing explanations for all privacy-sensitive permiss
 - Required if you use `NWBrowser` or `NetService` for local discovery
 - Must declare specific Bonjour service types in the array
 - iOS 14+ requires explicit permission for local network access
-- User sees: "Vibe Manager would like to find and connect to devices on your local network"
+- User sees: "PlanToCode would like to find and connect to devices on your local network"
 
 **References:**
 - [NSLocalNetworkUsageDescription](https://developer.apple.com/documentation/bundleresources/information-property-list/nslocalnetworkusagedescription)
@@ -51,7 +51,7 @@ Apple requires clear, user-facing explanations for all privacy-sensitive permiss
 
 **Notes:**
 - Required if using `SFSpeechRecognizer` for on-device or server speech recognition
-- User sees: "Vibe Manager would like to access Speech Recognition"
+- User sees: "PlanToCode would like to access Speech Recognition"
 - Apple encourages on-device recognition (`requiresOnDeviceRecognition = true`)
 
 **Implementation Note:**
@@ -82,7 +82,7 @@ SFSpeechRecognizer.requestAuthorization { status in
 
 **Notes:**
 - Required if speech recognition uses live audio input
-- User sees: "Vibe Manager would like to access the Microphone"
+- User sees: "PlanToCode would like to access the Microphone"
 - Only requested when user initiates dictation feature
 
 **Implementation Note:**
@@ -253,7 +253,7 @@ UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound
 **Add to Xcode:**
 - Project → Target → Signing & Capabilities → + Capability → Background Modes
 
-**Common Modes for Vibe Manager:**
+**Common Modes for PlanToCode:**
 
 ```xml
 <key>UIBackgroundModes</key>
@@ -283,7 +283,7 @@ UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound
 <dict>
     <!-- App Information -->
     <key>CFBundleDisplayName</key>
-    <string>Vibe Manager</string>
+    <string>PlanToCode</string>
 
     <key>CFBundleIdentifier</key>
     <string>com.vibemanager.ios</string>
@@ -296,7 +296,7 @@ UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound
 
     <!-- Privacy Permissions -->
     <key>NSLocalNetworkUsageDescription</key>
-    <string>Vibe Manager uses your local network to discover and connect to the Vibe Manager app running on your Mac.</string>
+    <string>PlanToCode uses your local network to discover and connect to the PlanToCode app running on your Mac.</string>
 
     <key>NSBonjourServices</key>
     <array>
@@ -396,7 +396,7 @@ UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound
 
 ## Summary
 
-**Minimal Required Set (for Vibe Manager v1.0):**
+**Minimal Required Set (for PlanToCode v1.0):**
 - ✓ `NSLocalNetworkUsageDescription` + `NSBonjourServices`
 - ✓ `NSSpeechRecognitionUsageDescription` (if using dictation)
 - ✓ `NSMicrophoneUsageDescription` (if using dictation)

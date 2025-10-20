@@ -13,7 +13,7 @@ pub const AUTH0_API_AUDIENCE: Option<&str> = option_env!("AUTH0_API_AUDIENCE");
 
 // HTTP Headers for API requests
 pub const APP_HTTP_REFERER: &str = "https://github.com/vibe-manager/vibe-manager";
-pub const APP_X_TITLE: &str = "Vibe Manager Desktop";
+pub const APP_X_TITLE: &str = "PlanToCode Desktop";
 
 // Binary file extensions that shouldn't be processed
 pub static BINARY_EXTENSIONS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
@@ -84,7 +84,7 @@ pub const KV_PROJECT_DIRECTORY: &str = "project_directory";
 
 // Authentication keys
 // Note: TOKEN_KEY is primarily used when USE_SESSION_STORAGE is false (for keyring operations)
-pub const TOKEN_KEY: &str = "app.vibemanager.auth.token.v1";
+pub const TOKEN_KEY: &str = "app.plantocode.auth.token.v1";
 
 // Storage mode configuration
 // Development: Use in-memory session storage. Production: Use OS keyring.
@@ -125,8 +125,8 @@ pub static EXCLUDED_DIRS_FOR_SCAN: [&str; 20] = [
 // No fallback constants - server configuration is required
 
 // Directory and file constants
-pub const APP_DATA_DIR_NAME: &str = "app.vibemanager";
-pub const APP_TEMP_SUBDIR_NAME: &str = "app.vibemanager/temp";
+pub const APP_DATA_DIR_NAME: &str = "app.plantocode";
+pub const APP_TEMP_SUBDIR_NAME: &str = "app.plantocode/temp";
 pub const DB_FILENAME: &str = "appdata.db";
 
 // ====================================

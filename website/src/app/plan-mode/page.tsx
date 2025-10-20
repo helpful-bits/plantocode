@@ -28,19 +28,18 @@ export const metadata: Metadata = {
     'claude code cli planning',
     'ai architectural planning',
     'multi-model plan synthesis',
-    'file discovery for cli tools',
-    'vibe manager'
+    'file discovery for cli tools'
   ],
 };
 
 export default function HirePage() {
   const softwareApplicationJsonLd: SoftwareApplication = {
     '@type': 'SoftwareApplication',
-    name: 'Vibe Manager',
+    name: 'PlanToCode',
     applicationCategory: 'DeveloperApplication',
     operatingSystem: ['Windows 10+', 'macOS 11.0+'],
-    url: 'https://www.vibemanager.app/plan-mode',
-    description: 'Desktop planning workspace that helps you generate, merge, and execute implementation plans—then run them in an integrated terminal.',
+    url: 'https://www.plantocode.com/plan-mode',
+    description: 'Desktop planning workspace that helps you generate, merge, and execute implementation plans - then run them in an integrated terminal.',
     offers: {
       '@type': 'Offer',
       price: 0,
@@ -88,7 +87,7 @@ export default function HirePage() {
         name: 'How is this different from Codex CLI or Claude Code?',
         acceptedAnswer: {
           '@type': 'Answer',
-          text: 'Vibe Manager provides architectural pre-planning BEFORE you use Codex, Claude Code, or Cursor. It adds file discovery, multi-model synthesis (GPT-5, Claude, Gemini), and merge instructions that complement the execution phase of those tools.',
+          text: 'PlanToCode provides architectural pre-planning BEFORE you use Codex, Claude Code, or Cursor. It adds file discovery, multi-model synthesis (GPT-5, Claude, Gemini), and merge instructions that complement the execution phase of those tools.',
         },
       },
       {
@@ -96,7 +95,7 @@ export default function HirePage() {
         name: 'Can I use this with my existing AI coding tool?',
         acceptedAnswer: {
           '@type': 'Answer',
-          text: 'Yes. Vibe Manager works alongside Codex CLI, Claude Code, Cursor, and Windsurf. Generate plans in Vibe, then execute in your preferred tool with full context.',
+          text: 'Yes. PlanToCode works alongside Codex CLI, Claude Code, Cursor, and Windsurf. Generate plans in PlanToCode, then execute in your preferred tool with full context.',
         },
       },
       {
@@ -104,7 +103,7 @@ export default function HirePage() {
         name: 'What does multi-model synthesis mean?',
         acceptedAnswer: {
           '@type': 'Answer',
-          text: 'Run the same task multiple times with different models (e.g., Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet). Each run surfaces different implementation details. Vibe merges them into one comprehensive plan with source attribution.',
+          text: 'Run the same task multiple times with different models (e.g., Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet). Each run surfaces different implementation details. PlanToCode merges them into one comprehensive plan with source attribution.',
         },
       },
     ],
@@ -245,7 +244,7 @@ export default function HirePage() {
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                   <Button variant="cta" size="lg" asChild>
                     <Link href="/downloads">
-                      Install Vibe Manager
+                      Install PlanToCode
                     </Link>
                   </Button>
                   <VideoButton />
@@ -342,15 +341,15 @@ export default function HirePage() {
                 <FAQ items={[
                   {
                     question: 'How is this different from Codex CLI or Claude Code?',
-                    answer: 'Vibe Manager provides architectural pre-planning BEFORE you use Codex, Claude Code, or Cursor. It adds file discovery, multi-model synthesis (Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet, Grok 4), and merge instructions that complement the execution phase of those tools.',
+                    answer: 'PlanToCode provides architectural pre-planning BEFORE you use Codex, Claude Code, or Cursor. It adds file discovery, multi-model synthesis (Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet, Grok 4), and merge instructions that complement the execution phase of those tools.',
                   },
                   {
                     question: 'Can I use this with my existing AI coding tool?',
-                    answer: 'Yes. Vibe Manager works alongside Codex CLI, Claude Code, Cursor, and Windsurf. Generate plans in Vibe, then execute in your preferred tool with full context.',
+                    answer: 'Yes. PlanToCode works alongside Codex CLI, Claude Code, Cursor, and Windsurf. Generate plans in PlanToCode, then execute in your preferred tool with full context.',
                   },
                   {
                     question: 'What does multi-model synthesis mean?',
-                    answer: 'Run the same task multiple times with different models (Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet, Grok 4, DeepSeek R1). Each run surfaces different implementation details. Vibe merges them into one comprehensive plan with source attribution.',
+                    answer: 'Run the same task multiple times with different models (Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet, Grok 4, DeepSeek R1). Each run surfaces different implementation details. PlanToCode merges them into one comprehensive plan with source attribution.',
                   },
                 ]} />
               </div>

@@ -7,14 +7,14 @@ import Cookies from 'js-cookie';
  * GDPR-Compliant Cookie Consent Banner
  *
  * Manages user consent for non-essential cookies (X/Twitter Pixel).
- * Styled to match the Vibe Manager design system (OKLCH colors, glass effects).
+ * Styled to match the PlanToCode design system (OKLCH colors, glass effects).
  *
- * Cookie: vibe_cookie_consent
+ * Cookie: plantocode_cookie_consent
  * Values: 'accepted' | 'rejected' | undefined
  * Expiry: 365 days
  */
 
-const COOKIE_NAME = 'vibe_cookie_consent';
+const COOKIE_NAME = 'plantocode_cookie_consent';
 const COOKIE_EXPIRY_DAYS = 365;
 
 export function CookieConsent() {

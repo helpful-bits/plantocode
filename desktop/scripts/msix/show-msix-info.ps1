@@ -25,7 +25,7 @@ if (-not $MsixPath -or -not (Test-Path $MsixPath)) {
     Write-Host "=== Current MSIX Build Configuration ===" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "Identity Parameters:" -ForegroundColor Yellow
-    Write-Host "  Package Name: helpfulbitsGmbH.VibeManager" -ForegroundColor White
+    Write-Host "  Package Name: helpfulbitsGmbH.PlanToCode" -ForegroundColor White
     Write-Host "  Publisher CN: CN=58806E05-BC90-4351-94F9-CF7626A0F3D6" -ForegroundColor White
     Write-Host "    (This is a Microsoft Partner Center publisher ID)" -ForegroundColor Gray
     Write-Host ""

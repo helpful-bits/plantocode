@@ -48,10 +48,10 @@ export function HeroSection() {
             backgroundClip: 'text',
           }}
         >
-          Experience the true intelligence of GPT-5 and Gemini 2.5 Pro
+          Plan software changes before you code
         </h1>
         <p className="mt-6 text-lg sm:text-xl text-foreground/80 max-w-4xl mx-auto">
-          Discover relevant files automatically, compare implementation plans from the most powerful AI models, then execute through integrated terminal.
+          Find the right files, generate implementation steps from multiple models, then run them in an integrated terminal with logs.
         </p>
       </div>
 

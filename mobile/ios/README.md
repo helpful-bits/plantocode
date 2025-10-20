@@ -1,4 +1,4 @@
-# Vibe Manager iOS
+# PlanToCode iOS
 
 ## Setup Instructions
 
@@ -28,7 +28,7 @@ Configure these keys in `ios/App/Info.plist`:
 
 - **AUTH0_DOMAIN**: Your Auth0 tenant domain (e.g., `your-tenant.auth0.com`)
 - **AUTH0_NATIVE_CLIENT_ID**: Auth0 Native Application client ID for mobile
-- **AUTH0_API_AUDIENCE**: API audience identifier (e.g., `https://vibemanager.app`)
+- **AUTH0_API_AUDIENCE**: API audience identifier (e.g., `https://plantocode.com`)
 
 ### Desktop Environment Mapping
 

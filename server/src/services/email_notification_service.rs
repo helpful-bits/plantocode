@@ -70,7 +70,7 @@ impl EmailNotificationService {
                 <p>Hi there,</p>
                 <p>We've successfully added <strong>{} {}</strong> to your account.</p>
                 <p>You can now use these credits for AI services.</p>
-                <p>Thank you for using Vibe Manager!</p>
+                <p>Thank you for using PlanToCode!</p>
             </body>
             </html>
             "#,

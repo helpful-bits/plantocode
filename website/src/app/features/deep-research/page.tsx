@@ -7,7 +7,7 @@ import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Search, Globe, Database, Brain, Zap, Shield, CheckCircle2, Network, TrendingUp, FileText, Filter, Clock } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'Deep Research - AI-Powered Web Search & Information Synthesis | Vibe Manager',
+  title: 'Deep research - web search for developers | PlanToCode',
   description: 'AI-powered research assistant that generates sophisticated research queries and executes parallel research tasks. Context-aware analysis with project integration for comprehensive, development-focused insights.',
   keywords: [
     'ai web search',
@@ -26,12 +26,12 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Deep Research - Intelligent Web Search for Development',
     description: 'AI-powered research assistant with intelligent query generation and parallel research execution. Transform your development workflow with context-aware research insights.',
-    url: 'https://www.vibemanager.app/features/deep-research',
-    siteName: 'Vibe Manager',
+    url: 'https://www.plantocode.com/features/deep-research',
+    siteName: 'PlanToCode',
     type: 'website',
   },
   alternates: {
-    canonical: 'https://www.vibemanager.app/features/deep-research',
+    canonical: 'https://www.plantocode.com/features/deep-research',
   },
 };
 
@@ -53,11 +53,10 @@ export default function DeepResearchPage() {
                   <span>AI-Powered Research Intelligence</span>
                 </div>
                 <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-6 bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent">
-                  Deep Research: From Query to Insight
+                  Deep research - from query to insight
                 </h1>
                 <p className="text-lg sm:text-xl md:text-2xl text-foreground/80 max-w-3xl mx-auto leading-relaxed">
-                  AI research assistant that analyzes your task, generates sophisticated research queries, and executes
-                  parallel research to provide comprehensive, project-aware insights for your development workflow.
+                  Generate smart queries, run searches, and pull relevant findings into your task - no fluff.
                 </p>
               </div>
 

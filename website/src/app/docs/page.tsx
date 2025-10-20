@@ -44,10 +44,10 @@ export default function DocsPage() {
         {/* Hero Section */}
         <div className="text-center mb-12 sm:mb-16">
           <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-6 sm:mb-8 leading-tight bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent">
-            Vibe Manager Documentation
+            PlanToCode documentation
           </h1>
           <p className="text-lg text-muted-foreground max-w-3xl mx-auto leading-relaxed mb-8">
-            Explore the desktop app&rsquo;s verified capabilities, including text improvement, implementation plans, the file discovery workflow, terminal sessions, model configuration, and voice transcription.
+            Learn how to plan and ship code changes with PlanToCode: file discovery, implementation plans, terminal sessions, model guardrails, and voice.
           </p>
           
           {/* Search docs */}
@@ -123,7 +123,7 @@ export default function DocsPage() {
               Ready to try these workflows?
             </h2>
             <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto leading-relaxed">
-              Download Vibe Manager to access the implementation planner, model guardrails, terminal sessions, and transcription features described in this documentation.
+              Download PlanToCode to access the implementation planner, model guardrails, terminal sessions, and transcription features described in this documentation.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <PlatformDownloadSection 

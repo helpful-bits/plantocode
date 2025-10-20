@@ -21,7 +21,7 @@ import {
 import type { SoftwareApplication, HowTo, FAQPage } from 'schema-dts';
 
 export const metadata: Metadata = {
-  title: 'AI Text Improvement: Instant Task Description Refinement | Vibe Manager',
+  title: 'AI text improvement - refine tasks quickly | PlanToCode',
   description:
     'Select any text, click to improve. AI refines task descriptions with full project context. Customizable prompts capture your mental model accurately. Used by teams who ship fast.',
   keywords: [
@@ -31,18 +31,18 @@ export const metadata: Metadata = {
     'claude text improvement',
     'context-aware text refinement',
     'task clarity ai',
-    'vibe manager text improvement',
+    'plantocode text improvement',
   ],
   openGraph: {
     title: 'AI Text Improvement: Instant Task Description Refinement',
     description:
       'Select text, click improve. AI refines with project context. Capture mental models accurately.',
-    url: 'https://www.vibemanager.app/features/text-improvement',
-    siteName: 'Vibe Manager',
+    url: 'https://www.plantocode.com/features/text-improvement',
+    siteName: 'PlanToCode',
     type: 'website',
   },
   alternates: {
-    canonical: 'https://www.vibemanager.app/features/text-improvement',
+    canonical: 'https://www.plantocode.com/features/text-improvement',
   },
 };
 
@@ -165,10 +165,10 @@ export default function TextImprovementPage() {
 
   const softwareApplicationJsonLd: SoftwareApplication = {
     '@type': 'SoftwareApplication',
-    name: 'Vibe Manager - Text Improvement',
+    name: 'PlanToCode - Text Improvement',
     applicationCategory: 'DeveloperApplication',
     operatingSystem: ['Windows 10+', 'macOS 11.0+'],
-    url: 'https://www.vibemanager.app/features/text-improvement',
+    url: 'https://www.plantocode.com/features/text-improvement',
     description:
       'AI-powered text improvement for task descriptions. Select text, click improve. Context-aware refinement with customizable prompts.',
     offers: {
@@ -223,17 +223,17 @@ export default function TextImprovementPage() {
                   <span>AI Text Improvement • Context-Aware Refinement</span>
                 </div>
                 <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold leading-tight bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent">
-                  Instant AI Text Improvement
+                  Instant AI text improvement
                 </h1>
                 <p className="text-lg sm:text-xl md:text-2xl text-foreground/80 max-w-3xl mx-auto leading-relaxed">
-                  Select any text. Click improve. AI refines with full project context. Capture your mental model accurately without rewriting.
+                  Highlight text. Click improve. Get clearer task descriptions with project context.
                 </p>
                 <p className="text-base sm:text-lg text-foreground/70 max-w-2xl mx-auto">
                   Context-aware refinement with customizable prompts. Works in task descriptions and code editors. Used by teams who ship fast.
                 </p>
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                   <Button variant="cta" size="lg" asChild>
-                    <Link href="/downloads">Install Vibe Manager</Link>
+                    <Link href="/downloads">Install PlanToCode</Link>
                   </Button>
                   <VideoButton />
                 </div>

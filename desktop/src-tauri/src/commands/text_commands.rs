@@ -2,7 +2,8 @@ use crate::db_utils::{BackgroundJobRepository, SessionRepository};
 use crate::error::AppError;
 use crate::error::AppResult;
 use crate::jobs::types::JobPayload;
-use crate::models::{JobCommandResponse, JobStatus};
+use crate::models::{JobCommandResponse, JobStatus, TaskType};
+use crate::utils::job_creation_utils;
 use log::info;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -15,6 +16,16 @@ pub struct ImproveTextArgs {
     pub session_id: String,
     pub text_to_improve: String,
     pub original_transcription_job_id: Option<String>,
+    pub project_directory: Option<String>,
+}
+
+// Request arguments for text refinement command
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RefineTextArgs {
+    pub session_id: String,
+    pub task_description: String,
+    pub relevant_files: Option<Vec<String>>,
     pub project_directory: Option<String>,
 }
 
@@ -97,6 +108,64 @@ pub async fn improve_text_command(
     info!("Created text improvement job: {}", job_id);
 
     // Return the job ID
+    Ok(JobCommandResponse { job_id })
+}
+
+/// Command to refine a task description with additional context from relevant files
+#[command]
+pub async fn refine_text_command(
+    session_id: String,
+    task_description: String,
+    relevant_files: Option<Vec<String>>,
+    project_directory: Option<String>,
+    app_handle: AppHandle,
+) -> AppResult<JobCommandResponse> {
+    // Validate inputs
+    if session_id.is_empty() || task_description.trim().is_empty() {
+        return Err(AppError::ValidationError("Invalid input".to_string()));
+    }
+
+    // Get session to access project directory
+    let cache = app_handle.state::<std::sync::Arc<crate::services::SessionCache>>().inner().clone();
+    let session = cache.get_session(&app_handle, &session_id).await?;
+
+    // Get model configuration for this task using centralized resolver
+    let model_settings = crate::utils::config_resolver::resolve_model_settings(
+        &app_handle,
+        TaskType::TaskRefinement,
+        &session.project_directory,
+        None,
+        None,
+        None,
+    )
+    .await?;
+
+    // Create TaskRefinementPayload
+    let task_refinement_payload = crate::jobs::types::TaskRefinementPayload {
+        task_description: task_description.clone(),
+        relevant_files: relevant_files.unwrap_or_default(),
+    };
+
+    // Use the job creation utility to create and queue the job
+    let job_id = job_creation_utils::create_and_queue_background_job(
+        &session_id,
+        &project_directory.unwrap_or_else(|| session.project_directory.clone()),
+        "openrouter",
+        TaskType::TaskRefinement,
+        "TASK_REFINEMENT",
+        &task_description,
+        model_settings,
+        JobPayload::TaskRefinement(task_refinement_payload),
+        2,    // Higher priority for task refinement
+        None, // No workflow_id
+        None, // No workflow_stage
+        None, // No additional metadata
+        &app_handle,
+    )
+    .await?;
+
+    info!("Created task refinement job: {}", job_id);
+
     Ok(JobCommandResponse { job_id })
 }
 

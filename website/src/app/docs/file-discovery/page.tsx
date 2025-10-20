@@ -4,15 +4,16 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 
 export const metadata: Metadata = {
-  title: 'File Discovery Workflow',
+  title: 'File discovery workflow - PlanToCode',
   description: 'Comprehensive technical guide to the 5-stage AI workflow that identifies and filters relevant files for task execution.',
   alternates: {
-    canonical: 'https://www.vibemanager.app/docs/file-discovery',
+    canonical: 'https://www.plantocode.com/docs/file-discovery',
   },
   openGraph: {
-    title: 'File Discovery Workflow',
+    title: 'File discovery workflow - PlanToCode',
     description: 'Technical documentation for the multi-stage file discovery workflow architecture.',
-    url: 'https://www.vibemanager.app/docs/file-discovery',
+    url: 'https://www.plantocode.com/docs/file-discovery',
+    siteName: 'PlanToCode',
     type: 'article',
   },
 };
@@ -27,9 +28,7 @@ export default function FileDiscoveryDocPage() {
       category="Technical Guide"
     >
       <p className="text-base text-muted-foreground leading-relaxed mb-6">
-        The File Discovery Workflow is a sophisticated 5-stage AI pipeline that intelligently identifies and filters relevant files
-        from your repository before generating prompts or implementation plans. This comprehensive system combines git integration,
-        binary file detection, AI-powered relevance assessment, and path correction to ensure optimal context selection.
+        PlanToCode identifies the right files before you plan or run commands. The 5-stage workflow narrows scope and keeps context tight.
       </p>
 
       <section className="space-y-6 mb-12">

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useWebAuth } from '../auth/WebAuthProvider';
+import { FEATUREBASE_ORG, FEATUREBASE_BASE_URL } from '@/lib/brand';
 
 interface FeatureBaseSSOProps {
   className?: string;
@@ -56,17 +57,16 @@ export function FeatureBaseSSOButton({ className = '', children, returnTo }: Fea
       }
       
       // Construct secure FeatureBase SSO URL
-      const featureBaseOrg = 'vibemanager';
-      const finalReturnTo = returnTo || `https://${featureBaseOrg}.featurebase.app`;
-      const ssoUrl = `https://${featureBaseOrg}.featurebase.app/api/v1/auth/access/jwt?jwt=${encodeURIComponent(token)}&return_to=${encodeURIComponent(finalReturnTo)}`;
+      const featureBaseOrg = FEATUREBASE_ORG;
+      const finalReturnTo = returnTo || FEATUREBASE_BASE_URL;
+      const ssoUrl = `${FEATUREBASE_BASE_URL}/api/v1/auth/access/jwt?jwt=${encodeURIComponent(token)}&return_to=${encodeURIComponent(finalReturnTo)}`;
       
       // Open FeatureBase with SSO token in secure way
       window.open(ssoUrl, '_blank', 'noopener,noreferrer');
     } catch (error) {
       console.error('SSO login failed:', error);
       // Secure fallback: direct FeatureBase login (no sensitive data exposed)
-      const featureBaseOrg = 'vibemanager';
-      window.open(`https://${featureBaseOrg}.featurebase.app`, '_blank', 'noopener,noreferrer');
+      window.open(FEATUREBASE_BASE_URL, '_blank', 'noopener,noreferrer');
     } finally {
       setIsLoading(false);
     }
@@ -98,14 +98,14 @@ interface FeatureBaseLinkProps {
   target?: '_blank' | '_self';
 }
 
-export function FeatureBaseLink({ 
-  href = 'help', 
-  className = '', 
-  children, 
-  target = '_blank' 
+export function FeatureBaseLink({
+  href = 'help',
+  className = '',
+  children,
+  target = '_blank'
 }: FeatureBaseLinkProps) {
-  const baseUrl = 'https://vibemanager.featurebase.app';
-  
+  const baseUrl = FEATUREBASE_BASE_URL;
+
   const urls = {
     help: baseUrl,
     roadmap: `${baseUrl}/roadmap`,
