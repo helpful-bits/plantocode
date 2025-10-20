@@ -142,7 +142,7 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
         setIsOnboardingNeeded(false);
         showNotification({
           title: "Setup Complete",
-          message: "Vibe Manager is ready to use!",
+          message: "PlanToCode is ready to use!",
           type: "success"
         });
       } catch (e) {

@@ -40,7 +40,7 @@ export function WindowsStoreButton({
       rel="noopener noreferrer"
       className={`${className} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded`}
       style={{ display: 'inline-block', lineHeight: 0, minHeight: '44px' }}
-      aria-label="Download Vibe Manager from Microsoft Store"
+      aria-label="Download PlanToCode from Microsoft Store"
     >
       <img 
         src={badgeUrl}

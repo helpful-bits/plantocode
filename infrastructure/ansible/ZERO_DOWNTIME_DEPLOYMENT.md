@@ -1,6 +1,6 @@
 # Zero-Downtime Deployment System
 
-This system enables true zero-downtime deployments with support for long-running streaming connections.
+This system enables true zero-downtime deployments for PlanToCode with support for long-running streaming connections.
 
 ## Key Features
 
@@ -109,7 +109,7 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/health/deployment
 ### Start a Long Stream
 ```bash
 # Terminal 1: Start a 20-minute SSE stream
-curl -N "http://api.vibemanager.app/stream/test?duration=1200"
+curl -N "http://api.plantocode.com/stream/test?duration=1200"
 ```
 
 ### Deploy While Streaming

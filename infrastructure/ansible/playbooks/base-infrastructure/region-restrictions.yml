@@ -1,5 +1,5 @@
 ---
-# Region Restrictions and Geolocation Setup
+# Region Restrictions and Geolocation Setup for PlanToCode
 # ========================================
 # This playbook configures region-based access restrictions
 # to ensure compliance with territorial restrictions as per
@@ -125,7 +125,7 @@
       copy:
         dest: /etc/nginx/conf.d/geoip.conf
         content: |
-          # GeoIP Configuration for Region Restrictions
+          # GeoIP Configuration for Region Restrictions (PlanToCode)
           # Load GeoIP module (may already be loaded)
           load_module modules/ngx_http_geoip_module.so;
           
@@ -289,7 +289,7 @@
               <div class="container">
                   <h1>Service Not Available in Your Region</h1>
                   <p>
-                      We're sorry, but Vibe Manager is currently not available in your region.
+                      We're sorry, but PlanToCode is currently not available in your region.
                   </p>
                   <div class="regions">
                       <h3>Currently Available In:</h3>
@@ -304,7 +304,7 @@
                       Please check back later for updates on availability.
                   </p>
                   <div class="contact">
-                      For questions, please contact: legal@vibemanager.app
+                      For questions, please contact: legal@plantocode.com
                   </div>
               </div>
           </body>

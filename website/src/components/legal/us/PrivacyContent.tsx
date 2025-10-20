@@ -7,7 +7,7 @@ export default function USPrivacyContent() {
       <blockquote className="border-l-4 border-primary/50 pl-6 py-4 my-6 bg-muted/30 dark:bg-muted/20 rounded-lg">
         <h3 className="font-semibold mb-2">Key Information Summary</h3>
         <p className="text-sm text-muted-foreground">
-          We employ a hybrid data processing model combining local storage with cloud-based AI services. While based in Germany, we comply with US state privacy laws including CCPA/CPRA. We utilize consent-based analytics and do not sell or share your personal information as defined under applicable law. Contact legal@vibemanager.app to exercise your privacy rights.
+          We employ a hybrid data processing model combining local storage with cloud-based AI services. While based in Germany, we comply with US state privacy laws including CCPA/CPRA. We utilize consent-based analytics and do not sell or share your personal information as defined under applicable law. Contact legal@plantocode.com to exercise your privacy rights.
         </p>
       </blockquote>
 
@@ -31,11 +31,11 @@ export default function USPrivacyContent() {
           Südliche Münchner Straße 55<br />
           82031 Grünwald, Germany<br />
           (Operating in the United States)<br />
-          Email: legal@vibemanager.app<br />
+          Email: legal@plantocode.com<br />
           Phone: Available upon request
         </address>
         <p className="mt-4">
-          <strong>Privacy Officer:</strong> For privacy inquiries and rights requests, please contact our Privacy Officer at <a href="mailto:legal@vibemanager.app" className="link-primary">legal@vibemanager.app</a>.
+          <strong>Privacy Officer:</strong> For privacy inquiries and rights requests, please contact our Privacy Officer at <a href="mailto:legal@plantocode.com" className="link-primary">legal@plantocode.com</a>.
         </p>
       </section>
 
@@ -286,27 +286,27 @@ export default function USPrivacyContent() {
               <tr>
                 <td className="border border-gray-300 p-3"><strong>California</strong></td>
                 <td className="border border-gray-300 p-3">Know, Delete, Correct, Opt-out of Sale/Share, Non-discrimination</td>
-                <td className="border border-gray-300 p-3">Email legal@vibemanager.app or use GPC</td>
+                <td className="border border-gray-300 p-3">Email legal@plantocode.com or use GPC</td>
               </tr>
               <tr className="bg-muted/30">
                 <td className="border border-gray-300 p-3"><strong>Virginia</strong></td>
                 <td className="border border-gray-300 p-3">Access, Delete, Correct, Opt-out of Sale, Profiling opt-out</td>
-                <td className="border border-gray-300 p-3">Email legal@vibemanager.app</td>
+                <td className="border border-gray-300 p-3">Email legal@plantocode.com</td>
               </tr>
               <tr>
                 <td className="border border-gray-300 p-3"><strong>Colorado</strong></td>
                 <td className="border border-gray-300 p-3">Access, Delete, Correct, Opt-out of Sale, Profiling opt-out</td>
-                <td className="border border-gray-300 p-3">Email legal@vibemanager.app</td>
+                <td className="border border-gray-300 p-3">Email legal@plantocode.com</td>
               </tr>
               <tr className="bg-muted/30">
                 <td className="border border-gray-300 p-3"><strong>Connecticut</strong></td>
                 <td className="border border-gray-300 p-3">Access, Delete, Correct, Opt-out of Sale, Profiling opt-out</td>
-                <td className="border border-gray-300 p-3">Email legal@vibemanager.app</td>
+                <td className="border border-gray-300 p-3">Email legal@plantocode.com</td>
               </tr>
               <tr>
                 <td className="border border-gray-300 p-3"><strong>Nevada</strong></td>
                 <td className="border border-gray-300 p-3">Opt-out of Sale of covered information</td>
-                <td className="border border-gray-300 p-3">Email legal@vibemanager.app</td>
+                <td className="border border-gray-300 p-3">Email legal@plantocode.com</td>
               </tr>
             </tbody>
           </table>
@@ -384,7 +384,7 @@ export default function USPrivacyContent() {
       <section>
         <h2 id="nevada-privacy-rights" className="text-2xl font-semibold mb-4">Nevada Privacy Rights</h2>
         <p>
-          Nevada residents have the right to opt-out of the sale of covered information under Nevada Senate Bill 220. <strong>We do not sell covered information</strong> as defined by Nevada law. However, if our practices change, Nevada residents may opt-out by emailing us at legal@vibemanager.app.
+          Nevada residents have the right to opt-out of the sale of covered information under Nevada Senate Bill 220. <strong>We do not sell covered information</strong> as defined by Nevada law. However, if our practices change, Nevada residents may opt-out by emailing us at legal@plantocode.com.
         </p>
       </section>
 
@@ -402,7 +402,7 @@ export default function USPrivacyContent() {
           <li>Report any unauthorized use by minors</li>
         </ul>
         <p className="mt-4">
-          Parents or guardians with concerns should contact us immediately at legal@vibemanager.app.
+          Parents or guardians with concerns should contact us immediately at legal@plantocode.com.
         </p>
       </section>
 
@@ -457,7 +457,7 @@ export default function USPrivacyContent() {
         </p>
         
         <div className="bg-muted/30 dark:bg-muted/20 p-4 rounded-lg mt-4">
-          <p><strong>Email:</strong> <a href="mailto:legal@vibemanager.app" className="link-primary">legal@vibemanager.app</a></p>
+          <p><strong>Email:</strong> <a href="mailto:legal@plantocode.com" className="link-primary">legal@plantocode.com</a></p>
           <p><strong>Subject Line:</strong> "Privacy Rights Request"</p>
           <p><strong>Mail:</strong></p>
           <address className="not-italic ml-4">
@@ -509,7 +509,7 @@ export default function USPrivacyContent() {
           While we do not currently sell or share personal information, you may still exercise opt-out rights using these methods:
         </p>
         <ul className="list-disc list-inside space-y-2 mt-2">
-          <li><strong>Email:</strong> Send a request to legal@vibemanager.app</li>
+          <li><strong>Email:</strong> Send a request to legal@plantocode.com</li>
           <li><strong>Global Privacy Control (GPC):</strong> Enable GPC in your browser settings, which we will honor</li>
         </ul>
       </section>
@@ -572,7 +572,7 @@ export default function USPrivacyContent() {
             Privacy Officer<br />
             Südliche Münchner Straße 55<br />
             82031 Grünwald, Germany<br />
-            Email: <a href="mailto:legal@vibemanager.app" className="link-primary">legal@vibemanager.app</a><br />
+            Email: <a href="mailto:legal@plantocode.com" className="link-primary">legal@plantocode.com</a><br />
             Subject: "Privacy Inquiry"
           </address>
         </div>

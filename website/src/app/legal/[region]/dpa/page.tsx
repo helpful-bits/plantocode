@@ -44,7 +44,7 @@ export default async function DPAPage({ params }: DPAPageProps) {
     >
       <section>
         <h2 className="text-2xl font-semibold mb-4">1. Definitions and Interpretation</h2>
-        <p>This Data Processing Addendum ("DPA") forms part of the Terms of Service between helpful bits GmbH ("Processor") and the Customer ("Controller") for the use of Vibe Manager services.</p>
+        <p>This Data Processing Addendum ("DPA") forms part of the Terms of Service between helpful bits GmbH ("Processor") and the Customer ("Controller") for the use of PlanToCode services.</p>
         <ul className="list-disc list-inside space-y-2 mt-4">
           <li><strong>"Personal Data"</strong> means any information relating to an identified or identifiable natural person processed through the Service</li>
           <li><strong>"Processing"</strong> has the meaning given in the GDPR</li>
@@ -79,7 +79,7 @@ export default async function DPAPage({ params }: DPAPageProps) {
       <section>
         <h2 className="text-2xl font-semibold mb-4">3. Sub-processors</h2>
         <h3 className="text-xl font-medium mb-3">3.1 Authorized Sub-processors</h3>
-        <p>Controller consents to the Sub-processors listed at <a href="/legal/{region}/subprocessors" className="link-primary">vibemanager.app/legal/{region}/subprocessors</a></p>
+        <p>Controller consents to the Sub-processors listed at <a href="/legal/{region}/subprocessors" className="link-primary">plantocode.com/legal/{region}/subprocessors</a></p>
         
         <h3 className="text-xl font-medium mb-3 mt-6">3.2 New Sub-processors</h3>
         <p>Processor shall notify Controller at least 30 days before engaging any new Sub-processor. Controller may object within 14 days of notification. If Controller reasonably objects, the parties will work in good faith to resolve the objection.</p>
@@ -144,7 +144,7 @@ export default async function DPAPage({ params }: DPAPageProps) {
         <p className="font-semibold mb-4">Execution</p>
         <p>This DPA is deemed executed when Customer accepts the Terms of Service or continues using the Service after this DPA becomes effective.</p>
         <p className="mt-4">
-          <strong>Data Protection Contact:</strong> <a href="mailto:legal@vibemanager.app" className="link-primary">legal@vibemanager.app</a>
+          <strong>Data Protection Contact:</strong> <a href="mailto:legal@plantocode.com" className="link-primary">legal@plantocode.com</a>
         </p>
       </div>
     </LegalContent>

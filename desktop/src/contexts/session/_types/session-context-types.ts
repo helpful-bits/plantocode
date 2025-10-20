@@ -14,6 +14,8 @@ export interface SessionStateContextType {
   activeSessionId: string | null;
   // Session error
   sessionError: Error | null;
+  // Session list version for reactive updates
+  sessionListVersion: number;
   // Memoized session field accessors to reduce re-renders
   sessionBasicFields: {
     id?: string;
@@ -36,6 +38,9 @@ export interface SessionActionsContextType {
 
   // Session field updates
   updateCurrentSessionFields: (fields: Partial<Session>) => void;
+
+  // Session list invalidation
+  invalidateSessionList: () => void;
 
   // Session operations
   saveCurrentSession: () => Promise<boolean>;

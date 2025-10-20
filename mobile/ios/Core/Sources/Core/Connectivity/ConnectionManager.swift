@@ -13,7 +13,7 @@ public class ConnectionManager: ConnectionStrategyCoordinator {
     // MARK: - Properties
 
     /// Logger for debugging and monitoring
-    private let logger = Logger(subsystem: "VibeManager", category: "ConnectionManager")
+    private let logger = Logger(subsystem: "PlanToCode", category: "ConnectionManager")
 
     /// Relay-first architecture enforcement - disable direct connections
     private let serverRelayOnly = true

@@ -96,7 +96,7 @@ export function LegalSettings() {
   const handleViewDocument = async (url: string) => {
     try {
       // Open the document URL in the default browser
-      await open(`https://vibemanager.app${url}`);
+      await open(`https://plantocode.com${url}`);
     } catch (error) {
       await logError(error, "Legal.handleViewDocument");
       showNotification({
@@ -134,7 +134,7 @@ export function LegalSettings() {
         <AlertDescription>
           <p className="font-medium mb-1 text-foreground">Legal Compliance Required</p>
           <p className="text-muted-foreground">
-            You must accept our Terms of Service and Privacy Policy to continue using Vibe Manager.
+            You must accept our Terms of Service and Privacy Policy to continue using PlanToCode.
             These documents outline your rights and our commitments to protecting your data.
           </p>
         </AlertDescription>

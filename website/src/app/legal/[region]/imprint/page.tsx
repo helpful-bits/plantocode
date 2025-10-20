@@ -19,7 +19,7 @@ export async function generateMetadata({ params }: ImprintPageProps): Promise<Me
 
   return {
     title: 'Imprint (Impressum)',
-    description: 'Legal imprint and company information for helpful bits GmbH, operator of Vibe Manager.',
+    description: 'Legal imprint and company information for helpful bits GmbH, operator of PlanToCode.',
     robots: {
       index: true,
       follow: true,
@@ -59,7 +59,7 @@ export default async function ImprintPage({ params }: ImprintPageProps) {
       <section>
         <h2 className="text-2xl font-semibold mb-4">Contact Information</h2>
         <div className="space-y-2">
-          <p><strong>Email:</strong> <a href="mailto:legal@vibemanager.app" className="link-primary">legal@vibemanager.app</a></p>
+          <p><strong>Email:</strong> <a href="mailto:legal@plantocode.com" className="link-primary">legal@plantocode.com</a></p>
           <p><strong>Phone:</strong> +49 89 122237960</p>
           <p><strong>Rapid Communication:</strong> For urgent matters, please use email as the fastest communication channel</p>
         </div>

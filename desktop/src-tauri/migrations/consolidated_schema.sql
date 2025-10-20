@@ -1,4 +1,4 @@
--- Consolidated SQL Schema for Vibe Manager
+-- Consolidated SQL Schema for PlanToCode
 -- This file standardizes the database schema between the desktop and core applications
 
 -- Enable foreign key support

@@ -46,7 +46,7 @@ export const brand = {
     border: '1px solid rgba(108,92,231,0.35)'
   },
   watermark: {
-    text: 'Vibe Manager',
+    text: 'PlanToCode',
     opacity: 0.08,
     position: 'bottom-right' as const,
     color: colors.tealLight

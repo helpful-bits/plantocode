@@ -19,7 +19,7 @@ export async function generateMetadata({ params }: WithdrawalPolicyPageProps): P
 
   return {
     title: 'Consumer Right of Withdrawal',
-    description: 'Information about consumer withdrawal rights for Vibe Manager services according to EU and German consumer protection law.',
+    description: 'Information about consumer withdrawal rights for PlanToCode services according to EU and German consumer protection law.',
     robots: {
       index: true,
       follow: true,
@@ -63,9 +63,9 @@ export default async function WithdrawalPolicyPage({ params }: WithdrawalPolicyP
 
         <h3 className="text-xl font-medium mb-3 mt-6">How to Exercise Your Right of Withdrawal</h3>
         <p>
-          To exercise the right of withdrawal, you must inform us (helpful bits GmbH, Südliche Münchner Straße 55, 
-          82031 Grünwald, Germany, email: <a href="mailto:legal@vibemanager.app" className="link-primary">legal@vibemanager.app</a>) 
-          of your decision to withdraw from this contract by an unequivocal statement 
+          To exercise the right of withdrawal, you must inform us (helpful bits GmbH, Südliche Münchner Straße 55,
+          82031 Grünwald, Germany, email: <a href="mailto:legal@plantocode.com" className="link-primary">legal@plantocode.com</a>)
+          of your decision to withdraw from this contract by an unequivocal statement
           (e.g., a letter sent by post or email).
         </p>
 
@@ -138,7 +138,7 @@ export default async function WithdrawalPolicyPage({ params }: WithdrawalPolicyP
           <div className="space-y-4 text-sm">
             <p>
               <strong>To:</strong> helpful bits GmbH, Südliche Münchner Straße 55, 82031 Grünwald, Germany<br/>
-              <strong>Email:</strong> <a href="mailto:legal@vibemanager.app" className="link-primary">legal@vibemanager.app</a>
+              <strong>Email:</strong> <a href="mailto:legal@plantocode.com" className="link-primary">legal@plantocode.com</a>
             </p>
             
             <p>
@@ -201,7 +201,7 @@ export default async function WithdrawalPolicyPage({ params }: WithdrawalPolicyP
         </p>
         
         <div className="mt-4 space-y-2">
-          <p><strong>Email:</strong> <a href="mailto:legal@vibemanager.app" className="link-primary">legal@vibemanager.app</a></p>
+          <p><strong>Email:</strong> <a href="mailto:legal@plantocode.com" className="link-primary">legal@plantocode.com</a></p>
           <p><strong>Postal Address:</strong><br/>
           helpful bits GmbH<br/>
           Südliche Münchner Straße 55<br/>

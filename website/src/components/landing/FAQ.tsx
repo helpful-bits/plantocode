@@ -34,7 +34,7 @@ export function FAQ({ items }: FAQProps) {
             Frequently Asked Questions
           </Reveal>
           <Reveal as="p" className="text-lg sm:text-xl max-w-2xl mx-auto leading-relaxed font-medium text-foreground/80" delay={0.05}>
-            Everything you need to know about Vibe Manager
+            Everything you need to know about PlanToCode
           </Reveal>
         </div>
 

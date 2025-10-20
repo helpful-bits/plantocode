@@ -270,3 +270,19 @@ export async function renameSessionAction(
     return handleActionError(error) as ActionState<null>;
   }
 }
+
+/**
+ * Duplicate a session
+ */
+export async function duplicateSessionAction(sourceSessionId: string, newName?: string): Promise<ActionState<Session>> {
+  try {
+    if (!sourceSessionId) {
+      return { isSuccess: false, message: "Missing sourceSessionId" };
+    }
+    const newSession = await invoke<Session>("duplicate_session_command", { sourceSessionId, newName });
+    return { isSuccess: true, data: newSession, message: "Session duplicated successfully" };
+  } catch (err) {
+    logger.error("Failed to duplicate session:", err);
+    return handleActionError(err) as ActionState<Session>;
+  }
+}

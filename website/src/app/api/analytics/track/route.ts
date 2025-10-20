@@ -26,13 +26,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Event name is required' }, { status: 400 });
     }
 
-    const trackingUrl = url || referer || 'https://www.vibemanager.app';
+    const trackingUrl = url || referer || 'https://www.plantocode.com';
 
     // Track with Plausible (server-side) - handles all event types
     // Domain should match what's configured in Plausible dashboard (typically without www)
-    const plausibleDomain = process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN || 'vibemanager.app';
+    const plausibleDomain = process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN || 'plantocode.com';
     // Use the actual canonical URL (with www) for the URL field
-    const canonicalOrigin = 'https://www.vibemanager.app';
+    const canonicalOrigin = 'https://www.plantocode.com';
 
     // Make URL absolute
     let plausibleUrl = trackingUrl;

@@ -1,10 +1,10 @@
 # App Privacy – Data Collection Disclosure
 
-This document outlines the data collection practices for Vibe Manager iOS app as required by Apple's App Privacy "nutrition labels."
+This document outlines the data collection practices for PlanToCode iOS app as required by Apple's App Privacy "nutrition labels."
 
 ## Overview
 
-Vibe Manager for iOS collects minimal data necessary for account operation, security, and app reliability. **No file contents or terminal output from your Mac are uploaded or stored by the iOS app.**
+PlanToCode for iOS collects minimal data necessary for account operation, security, and app reliability. **No file contents or terminal output from your Mac are uploaded or stored by the iOS app.**
 
 ## Privacy Stance Summary
 
@@ -118,7 +118,7 @@ Given the minimal data collection and no sensitive content:
 
 ## Privacy Policy
 
-**URL:** `https://vibemanager.app/privacy`
+**URL:** `https://plantocode.com/privacy`
 
 **Must Include:**
 - What data is collected (match this document)

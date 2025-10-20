@@ -474,14 +474,6 @@ class SessionListEventMonitor: ObservableObject {
 
         guard let dataServices = VibeManagerCore.shared.dataServices else { return }
 
-        // Monitor session service events for session changes
-        dataServices.sessionService.$sessions
-            .dropFirst() // Skip initial value
-            .sink { [weak self] _ in
-                self?.shouldRefresh = true
-            }
-            .store(in: &cancellables)
-
         // Monitor plans service events for new/updated plans
         dataServices.plansService.$lastUpdateEvent
             .compactMap { $0 }
@@ -498,11 +490,11 @@ class SessionListEventMonitor: ObservableObject {
             }
             .store(in: &cancellables)
 
-        // Note: We intentionally don't monitor jobsService.$jobs here because:
-        // - Jobs update frequently during background processing
-        // - This causes excessive session list refreshes and flickering
-        // - Session metadata (name, taskDescription) doesn't change when jobs complete
-        // - Sessions are already monitored via sessionService.$sessions for actual session changes
+        // Note: We intentionally don't monitor sessionService.$sessions or jobsService.$jobs here because:
+        // - These update frequently during background processing and when this view calls loadSessions()
+        // - This causes excessive session list refreshes and flickering (reactive loop)
+        // - Session list updates are triggered by server events via plansService.$lastUpdateEvent
+        // - Direct user actions (create/delete session) update the UI immediately without needing refresh
     }
 
     func stopMonitoring() {

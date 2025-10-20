@@ -71,7 +71,14 @@ const FloatingMergeInstructionsComponent: React.FC<FloatingMergeInstructionsProp
     onMergeInstructionsChange(value);
   }, [onMergeInstructionsChange]);
 
+  const handleFocus = useCallback(() => {
+    // Set global flag to prevent backend updates while editing
+    (window as any).__mergeInstructionsEditorFocused = true;
+  }, []);
+
   const handleBlur = useCallback(() => {
+    // Clear global flag
+    (window as any).__mergeInstructionsEditorFocused = false;
     // Flush on blur
     onMergeInstructionsChange(mergeInstructions);
   }, [mergeInstructions, onMergeInstructionsChange]);
@@ -146,8 +153,18 @@ const FloatingMergeInstructionsComponent: React.FC<FloatingMergeInstructionsProp
       setPosition(smartPosition);
       // Reset height to default
       setHeight(128);
+    } else {
+      // Clear focus flag when closing
+      (window as any).__mergeInstructionsEditorFocused = false;
     }
   }, [isOpen, getWindowDimensions, constrainPosition]);
+
+  // Cleanup focus flag on unmount
+  useEffect(() => {
+    return () => {
+      (window as any).__mergeInstructionsEditorFocused = false;
+    };
+  }, []);
 
   // Handle window resize to keep floating window in bounds
   useEffect(() => {
@@ -188,6 +205,7 @@ const FloatingMergeInstructionsComponent: React.FC<FloatingMergeInstructionsProp
           ref={textareaRef}
           value={mergeInstructions}
           onChange={(e) => handleInstructionsChange(e.target.value)}
+          onFocus={handleFocus}
           onBlur={handleBlur}
           placeholder="Add notes about what you like or don't like in this plan..."
           className="w-full resize-none border border-border rounded-md px-3 py-2 text-sm bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"

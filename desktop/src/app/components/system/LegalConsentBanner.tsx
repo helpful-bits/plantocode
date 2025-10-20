@@ -175,7 +175,7 @@ export function LegalConsentBanner() {
       const userRegion = await getUserRegion();
       
       // Map document type and region to the correct URL
-      const baseUrl = 'https://vibemanager.app/legal';
+      const baseUrl = 'https://plantocode.com/legal';
       const regionPath = userRegion.toLowerCase(); // 'us' or 'eu'
       const docPath = documentType === 'privacy' ? 'privacy' : 'terms';
       const documentUrl = `${baseUrl}/${regionPath}/${docPath}`;
@@ -297,7 +297,7 @@ export function LegalConsentBanner() {
                 <DialogHeader>
                   <DialogTitle className="text-center text-2xl">Legal Consent Required</DialogTitle>
                   <DialogDescription className="text-center">
-                    You must review and accept our updated legal documents to continue using Vibe Manager.
+                    You must review and accept our updated legal documents to continue using PlanToCode.
                   </DialogDescription>
                 </DialogHeader>
               </div>

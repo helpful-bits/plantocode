@@ -278,7 +278,7 @@ To add support for a new advertising platform:
 
 ## 📝 License
 
-This tool is part of the Vibe Manager project.
+This tool is part of the PlanToCode project.
 
 ## 🆘 Support
 

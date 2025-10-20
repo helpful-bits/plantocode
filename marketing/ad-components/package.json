@@ -1,7 +1,7 @@
 {
   "name": "vibe-manager-ad-components",
   "version": "1.0.0",
-  "description": "Marketing ad components for Vibe Manager",
+  "description": "Marketing ad components for PlanToCode",
   "main": "index.js",
   "scripts": {
     "dev": "serve .",
@@ -20,7 +20,7 @@
     "tsx",
     "vibe-manager"
   ],
-  "author": "Vibe Manager Team",
+  "author": "PlanToCode Team",
   "license": "MIT",
   "devDependencies": {
     "serve": "^14.2.1",

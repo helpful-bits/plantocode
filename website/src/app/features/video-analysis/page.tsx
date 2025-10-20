@@ -7,7 +7,7 @@ import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Video, Upload, Eye, Settings, Zap, FileVideo, Target, CheckCircle2, Clock, DollarSign, Sparkles, AlertCircle, FileText, Camera } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'AI Video Analysis: Screen Record → Instant Context | Vibe Manager',
+  title: 'Video analysis - record, analyze, attach context | PlanToCode',
   description: 'Record screen, AI analyzes with Gemini Vision. Extract errors, UI states, patterns. Auto-attach to tasks. Used by teams who debug fast.',
   keywords: [
     'video analysis',
@@ -22,14 +22,14 @@ export const metadata: Metadata = {
     'automated documentation',
   ],
   openGraph: {
-    title: 'AI Video Analysis: Screen Record → Instant Context',
+    title: 'AI Video Analysis: Screen Record - Instant Context',
     description: 'Screen recording with Gemini Vision AI analysis. Automatically extract errors, UI states, and patterns from videos. Perfect for bug reports and documentation.',
-    url: 'https://www.vibemanager.app/features/video-analysis',
-    siteName: 'Vibe Manager',
+    url: 'https://www.plantocode.com/features/video-analysis',
+    siteName: 'PlanToCode',
     type: 'website',
   },
   alternates: {
-    canonical: 'https://www.vibemanager.app/features/video-analysis',
+    canonical: 'https://www.plantocode.com/features/video-analysis',
   },
 };
 
@@ -76,7 +76,7 @@ export default function VideoAnalysisPage() {
         "name": "Which video formats are supported?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Vibe Manager supports MP4, WebM, MOV, and AVI video formats. Videos are processed locally and frames are extracted based on your FPS settings before being sent to Gemini Vision for analysis."
+          "text": "PlanToCode supports MP4, WebM, MOV, and AVI video formats. Videos are processed locally and frames are extracted based on your FPS settings before being sent to Gemini Vision for analysis."
         }
       },
       {
@@ -109,7 +109,7 @@ export default function VideoAnalysisPage() {
   const softwareSchema = {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
-    "name": "Vibe Manager Video Analysis",
+    "name": "PlanToCode Video Analysis",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Windows, macOS, Linux",
     "offers": {
@@ -161,10 +161,10 @@ export default function VideoAnalysisPage() {
                   <span>Gemini Vision-Powered Video Analysis</span>
                 </div>
                 <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-6 bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent">
-                  Screen Record. AI Analyzes. Instant Context.
+                  Screen record. AI analyzes. Instant context.
                 </h1>
                 <p className="text-lg sm:text-xl md:text-2xl text-foreground/80 max-w-3xl mx-auto leading-relaxed">
-                  Record your screen or upload videos, and let Gemini Vision AI extract errors, UI states, patterns, and suggestions. Auto-attach comprehensive analysis to your task descriptions for faster debugging and documentation.
+                  Record or upload a video and extract the key details for your task.
                 </p>
               </div>
 
@@ -516,7 +516,7 @@ export default function VideoAnalysisPage() {
                       Which video formats are supported?
                     </h3>
                     <p className="text-foreground/80">
-                      Vibe Manager supports MP4, WebM, MOV, and AVI video formats. Videos are processed locally and frames are extracted based on your FPS settings before being sent to Gemini Vision for analysis. Most screen recording tools output compatible formats by default.
+                      PlanToCode supports MP4, WebM, MOV, and AVI video formats. Videos are processed locally and frames are extracted based on your FPS settings before being sent to Gemini Vision for analysis. Most screen recording tools output compatible formats by default.
                     </p>
                   </GlassCard>
 

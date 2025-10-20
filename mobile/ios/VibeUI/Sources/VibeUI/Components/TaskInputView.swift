@@ -341,6 +341,8 @@ struct SelectableTextView: UIViewRepresentable {
 public struct TaskInputView: View {
     @Binding var taskDescription: String
 
+    @EnvironmentObject private var container: AppContainer
+
     @StateObject private var voiceService = VoiceDictationService.shared
     @StateObject private var enhancementService = TextEnhancementService.shared
     @StateObject private var settingsService = SettingsDataService()
@@ -350,11 +352,7 @@ public struct TaskInputView: View {
     @State private var selectedRange: NSRange = NSRange(location: 0, length: 0)
     @State private var showingLanguagePicker = false
     @State private var selectedLanguage = "en-US"
-    @State private var recordingDuration: TimeInterval = 0
-    @State private var timer: Timer?
     @State private var selectionRect: CGRect = .zero
-    @State private var isEnhancingSelection = false
-    @State private var isEnhancingFullText = false
     @State private var transcriptionModel: String?
     @State private var transcriptionPrompt: String?
     @State private var transcriptionTemperature: Double?
@@ -412,29 +410,23 @@ public struct TaskInputView: View {
 
             // Action Buttons Row - New Order: Voice, Language, Sparkles, Undo, Redo, Menu
             HStack(spacing: 12) {
-                // 1. Voice Recording Button
-                Button(action: toggleRecording) {
-                    HStack(spacing: 6) {
-                        Image(systemName: voiceService.isRecording ? "stop.circle.fill" : "mic.circle.fill")
-                            .font(.system(size: 18))
-
-                        if voiceService.isRecording {
-                            Text(formatDuration(recordingDuration))
-                                .font(.system(.caption, design: .monospaced))
-
-                            // Simple audio level visualization
-                            HStack(spacing: 2) {
-                                ForEach(0..<5, id: \.self) { _ in
-                                    Capsule()
-                                        .fill(voiceService.isRecording ? Color.white : Color.red)
-                                        .frame(width: 2, height: CGFloat.random(in: 4...12))
-                                }
-                            }
-                        }
+                // 1. Voice Recording Button (using reusable component)
+                VoiceRecordingButton(
+                    text: $taskDescription,
+                    selectedRange: $selectedRange,
+                    selectedLanguage: $selectedLanguage,
+                    voiceService: voiceService,
+                    transcriptionModel: transcriptionModel,
+                    transcriptionPrompt: transcriptionPrompt,
+                    transcriptionTemperature: transcriptionTemperature,
+                    onError: { error in
+                        print("Voice dictation error: \(error)")
+                    },
+                    onTranscriptionComplete: {
+                        saveToUndoHistory()
+                        onInteraction()
                     }
-                    .frame(maxWidth: voiceService.isRecording ? .infinity : nil)
-                }
-                .buttonStyle(RecordingButtonStyle(isRecording: voiceService.isRecording))
+                )
 
                 if !voiceService.isRecording {
                     // 2. Language Picker
@@ -448,10 +440,10 @@ public struct TaskInputView: View {
                     }
                     .buttonStyle(UtilityButtonStyle())
 
-                    // 3. Sparkles - Enhance ENTIRE task description
-                    Button(action: enhanceFullText) {
+                    // 3. Sparkles - Enhance selected text or all
+                    Button(action: { enhanceSelectedOrAll() }) {
                         HStack(spacing: 4) {
-                            if isEnhancingFullText {
+                            if enhancementService.isEnhancing {
                                 ProgressView()
                                     .progressViewStyle(CircularProgressViewStyle())
                                     .scaleEffect(0.7)
@@ -462,9 +454,27 @@ public struct TaskInputView: View {
                         }
                     }
                     .buttonStyle(UtilityButtonStyle())
-                    .disabled(isEnhancingFullText || taskDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .accessibilityLabel("Enhance task description")
-                    .accessibilityHint("Improve the quality and clarity of the entire task description")
+                    .disabled(taskDescription.isEmpty || enhancementService.isEnhancing)
+                    .accessibilityLabel("Enhance text")
+                    .accessibilityHint("Enhance selected text or full task description")
+
+                    // 3b. Wand - Refine selected text or all
+                    Button(action: { refineSelectedOrAll() }) {
+                        HStack(spacing: 4) {
+                            if enhancementService.isEnhancing {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle())
+                                    .scaleEffect(0.7)
+                            } else {
+                                Image(systemName: "wand.and.stars")
+                                    .font(.system(size: 16))
+                            }
+                        }
+                    }
+                    .buttonStyle(UtilityButtonStyle())
+                    .disabled(taskDescription.isEmpty || enhancementService.isEnhancing)
+                    .accessibilityLabel("Refine text")
+                    .accessibilityHint("Refine selected text or full task description")
 
                     // 4. Undo Button
                     Button(action: performUndo) {
@@ -565,6 +575,78 @@ public struct TaskInputView: View {
 
     // MARK: - Helper Methods
 
+    private func enhanceSelectedOrAll() {
+        let ns = taskDescription as NSString
+        let length = ns.length
+        let range = NSIntersectionRange(selectedRange, NSRange(location: 0, length: length))
+        let targetText = range.length > 0 ? ns.substring(with: range) : taskDescription
+
+        guard !targetText.isEmpty else { return }
+
+        Task {
+            do {
+                guard let session = container.sessionService.currentSession else { return }
+
+                let improved = try await enhancementService.enhance(
+                    text: targetText,
+                    sessionId: session.id,
+                    projectDirectory: session.projectDirectory
+                )
+
+                await MainActor.run {
+                    applyReplacement(
+                        range: range.length > 0 ? range : NSRange(location: 0, length: length),
+                        with: improved
+                    )
+                }
+            } catch {
+                print("Enhancement failed: \(error)")
+            }
+        }
+    }
+
+    private func refineSelectedOrAll() {
+        let ns = taskDescription as NSString
+        let length = ns.length
+        let range = NSIntersectionRange(selectedRange, NSRange(location: 0, length: length))
+        let targetText = range.length > 0 ? ns.substring(with: range) : taskDescription
+
+        guard !targetText.isEmpty else { return }
+
+        Task {
+            do {
+                guard let session = container.sessionService.currentSession else { return }
+
+                let refined = try await enhancementService.refine(
+                    text: targetText,
+                    sessionId: session.id,
+                    projectDirectory: session.projectDirectory
+                )
+
+                await MainActor.run {
+                    applyReplacement(
+                        range: range.length > 0 ? range : NSRange(location: 0, length: length),
+                        with: refined
+                    )
+                }
+            } catch {
+                print("Refinement failed: \(error)")
+            }
+        }
+    }
+
+    private func applyReplacement(range: NSRange, with newText: String) {
+        let ns = taskDescription as NSString
+        let before = ns.substring(to: range.location)
+        let after = ns.substring(from: range.location + range.length)
+        let newAll = before + newText + after
+        taskDescription = newAll
+        let cursorPos = before.count + newText.count
+        selectedRange = NSRange(location: cursorPos, length: 0)
+        undoRedoManager.saveState(newAll)
+        onInteraction()
+    }
+
     // Initialize undo/redo history from backend
     private func initializeHistoryFromBackend() {
         // Only initialize once per session
@@ -650,42 +732,6 @@ public struct TaskInputView: View {
         historySyncTimer = nil
     }
 
-    // Enhance the entire task description (not just selection)
-    private func enhanceFullText() {
-        let textToEnhance = taskDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !textToEnhance.isEmpty else { return }
-
-        isEnhancingFullText = true
-
-        Task {
-            do {
-                // Save current state to history before enhancement
-                await MainActor.run {
-                    undoRedoManager.saveState(taskDescription)
-                }
-
-                let enhanced = try await enhancementService.enhance(
-                    text: textToEnhance,
-                    context: "task_description",
-                    sessionId: sessionId,
-                    projectDirectory: projectDirectory
-                )
-
-                await MainActor.run {
-                    taskDescription = enhanced
-                    undoRedoManager.saveState(enhanced)
-                    isEnhancingFullText = false
-                    onInteraction()
-                }
-            } catch {
-                await MainActor.run {
-                    isEnhancingFullText = false
-                    print("Enhancement error: \(error)")
-                }
-            }
-        }
-    }
-
     // Undo/Redo handlers
     private func performUndo() {
         guard let previousText = undoRedoManager.undo() else { return }
@@ -710,82 +756,6 @@ public struct TaskInputView: View {
         Task { @MainActor in
             self.saveHistoryTimer = newTimer
         }
-    }
-
-    private func toggleRecording() {
-        Task {
-            do {
-                if voiceService.isRecording {
-                    // Stop recording
-                    voiceService.stopRecording()
-                    timer?.invalidate()
-                    timer = nil
-                    recordingDuration = 0
-
-                    // Wait a bit for file writes to complete
-                    try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
-
-                    // Transcribe the recording
-                    // Convert "en-US" to "en" for Whisper API
-                    let languageCode = String(selectedLanguage.prefix(2))
-
-                    for try await text in voiceService.transcribe(
-                        model: transcriptionModel,
-                        language: languageCode,
-                        prompt: transcriptionPrompt,
-                        temperature: transcriptionTemperature
-                    ) {
-                        await MainActor.run {
-                            let nsString = taskDescription as NSString
-
-                            let validRange: NSRange
-                            if selectedRange.location == NSNotFound || selectedRange.location > nsString.length {
-                                validRange = NSRange(location: nsString.length, length: 0)
-                            } else if selectedRange.location + selectedRange.length > nsString.length {
-                                validRange = NSRange(location: selectedRange.location, length: nsString.length - selectedRange.location)
-                            } else {
-                                validRange = selectedRange
-                            }
-
-                            let beforeCursor = nsString.substring(to: validRange.location)
-                            let afterCursor = nsString.substring(from: validRange.location + validRange.length)
-
-                            let prefix = beforeCursor.isEmpty ? "" : (beforeCursor.hasSuffix(" ") || beforeCursor.hasSuffix("\n") ? "" : " ")
-                            let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-
-                            taskDescription = beforeCursor + prefix + trimmedText + afterCursor
-
-                            let newCursorPosition = (beforeCursor as NSString).length + (prefix as NSString).length + (trimmedText as NSString).length
-                            selectedRange = NSRange(location: newCursorPosition, length: 0)
-                        }
-                    }
-                } else {
-                    try await voiceService.startRecording()
-
-                    // Start timer for duration display
-                    await MainActor.run {
-                        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
-                            recordingDuration += 0.1
-                        }
-                    }
-                }
-            } catch VoiceDictationError.permissionDenied {
-                print("Voice dictation error: Microphone permission denied")
-                await MainActor.run {
-                    // Could show an alert here
-                }
-            } catch VoiceDictationError.recordingInProgress {
-                print("Voice dictation error: Recording already in progress")
-            } catch {
-                print("Voice dictation error: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    private func formatDuration(_ duration: TimeInterval) -> String {
-        let minutes = Int(duration) / 60
-        let seconds = Int(duration) % 60
-        return String(format: "%d:%02d", minutes, seconds)
     }
 
     private func languageCode(_ code: String) -> String {

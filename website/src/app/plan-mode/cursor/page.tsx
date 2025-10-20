@@ -28,9 +28,9 @@ import {
 import type { SoftwareApplication, HowTo, FAQPage } from 'schema-dts';
 
 export const metadata: Metadata = {
-  title: 'Planning Workflow for Cursor Composer & Agent | Vibe Manager',
+  title: 'PlanToCode + Cursor - pre-planning for Composer and Agent',
   description:
-    'Add architectural pre-planning to Cursor Composer and Agent mode. Vibe Manager discovers impacted files, merges multi-model plans, providing context Cursor needs before Agent mode executes.',
+    'Add architectural pre-planning to Cursor Composer and Agent mode. PlanToCode discovers impacted files, merges multi-model plans, providing context Cursor needs before Agent mode executes.',
   keywords: [
     'cursor planning workflow',
     'cursor composer planning',
@@ -38,18 +38,18 @@ export const metadata: Metadata = {
     'cursor architectural planning',
     'cursor agent pre-planning',
     'cursor composer context',
-    'vibe manager cursor',
+    'plantocode cursor',
   ],
   openGraph: {
-    title: 'Planning Workflow for Cursor Composer & Agent',
+    title: 'PlanToCode + Cursor - pre-planning for Composer and Agent',
     description:
       'Give Cursor Agent mode the architectural context it needs. File discovery, merged AI plans, and execution guardrails for Windows, macOS, and WSL.',
-    url: 'https://www.vibemanager.app/plan-mode/cursor',
-    siteName: 'Vibe Manager',
+    url: 'https://www.plantocode.com/plan-mode/cursor',
+    siteName: 'PlanToCode',
     type: 'website',
   },
   alternates: {
-    canonical: 'https://www.vibemanager.app/plan-mode/cursor',
+    canonical: 'https://www.plantocode.com/plan-mode/cursor',
   },
 };
 
@@ -85,7 +85,7 @@ export default function CursorPlanModePage() {
     {
       title: 'Architectural discovery before Cursor plans',
       description:
-        'Run Vibe\'s multi-stage file discovery to map every impacted file and dependency. Hand Cursor a complete context package.',
+        'Run PlanToCode\'s multi-stage file discovery to map every impacted file and dependency. Hand Cursor a complete context package.',
       icon: <Search className="w-8 h-8 text-primary" />,
     },
     {
@@ -103,7 +103,7 @@ export default function CursorPlanModePage() {
     {
       title: 'Execution guardrails with WSL support',
       description:
-        'Run plans in Vibe\'s terminal (macOS, Windows, WSL). Health monitoring, approvals, and searchable transcripts keep teams aligned.',
+        'Run plans in PlanToCode\'s terminal (macOS, Windows, WSL). Health monitoring, approvals, and searchable transcripts keep teams aligned.',
       icon: <ShieldCheck className="w-8 h-8 text-primary" />,
     },
   ];
@@ -112,13 +112,13 @@ export default function CursorPlanModePage() {
     {
       step: 'Discover and scope the change',
       description:
-        'Point Vibe at your repo. File discovery highlights the directories, services, and configs Cursor needs to know about.',
+        'Point PlanToCode at your repo. File discovery highlights the directories, services, and configs Cursor needs to know about.',
       icon: <Compass className="w-5 h-5 text-primary" />,
     },
     {
       step: 'Generate multi-model plans',
       description:
-        'Run multiple models (e.g., Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet). Each run finds subtle implementation details the others miss—critical when context is large.',
+        'Run multiple models (e.g., Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet). Each run finds subtle implementation details the others miss - critical when context is large.',
       icon: <Sparkles className="w-5 h-5 text-primary" />,
     },
     {
@@ -130,7 +130,7 @@ export default function CursorPlanModePage() {
     {
       step: 'Execute or paste into Cursor',
       description:
-        'Run the plan in Vibe\'s terminal (with approvals) or paste the annotated context into Cursor Composer or Agent mode.',
+        'Run the plan in PlanToCode\'s terminal (with approvals) or paste the annotated context into Cursor Composer or Agent mode.',
       icon: <Terminal className="w-5 h-5 text-primary" />,
     },
   ];
@@ -155,14 +155,14 @@ export default function CursorPlanModePage() {
 
   const quickstartSteps = [
     {
-      title: 'Install Vibe Manager on the same machine as Cursor',
+      title: 'Install PlanToCode on the same machine as Cursor',
       description:
-        'macOS, Windows, or WSL—connect Vibe to your repo so it can share context with Cursor.',
+        'macOS, Windows, or WSL - connect PlanToCode to your repo so it can share context with Cursor.',
     },
     {
       title: 'Run file discovery for your task',
       description:
-        'Generate a focused set of files and dependencies. Keep it in Vibe or paste it into Cursor\'s context window.',
+        'Generate a focused set of files and dependencies. Keep it in PlanToCode or paste it into Cursor\'s context window.',
     },
     {
       title: 'Generate and merge plans',
@@ -172,7 +172,7 @@ export default function CursorPlanModePage() {
     {
       title: 'Execute with confidence',
       description:
-        'Paste the plan into Cursor or run it in Vibe\'s terminal with approvals, WSL support, and full transcripts.',
+        'Paste the plan into Cursor or run it in PlanToCode\'s terminal with approvals, WSL support, and full transcripts.',
     },
   ];
 
@@ -180,13 +180,13 @@ export default function CursorPlanModePage() {
     {
       title: 'Bug triage on Windows + WSL',
       description:
-        'Keep Cursor\'s fixes from missing the root cause. Discovery highlights cross-service impacts, while Vibe\'s terminal records every WSL command.',
+        'Keep Cursor\'s fixes from missing the root cause. Discovery highlights cross-service impacts, while PlanToCode\'s terminal records every WSL command.',
       icon: <Bug className="w-5 h-5 text-primary" />,
     },
     {
       title: 'Large features with multi-file diffs',
       description:
-        'Design the implementation in Vibe, then paste the plan into Cursor so Composer can apply changes with full context.',
+        'Design the implementation in PlanToCode, then paste the plan into Cursor so Composer can apply changes with full context.',
       icon: <Laptop className="w-5 h-5 text-primary" />,
     },
     {
@@ -216,26 +216,26 @@ export default function CursorPlanModePage() {
     {
       question: 'Does Cursor have a plan mode feature?',
       answer:
-        'No. Cursor has Composer and Agent mode, which plan internally during execution but don\'t offer a separate user-controlled planning phase. Vibe Manager adds that pre-planning layer—giving you file discovery, multi-model synthesis, and reviewable architectural context BEFORE Cursor Agent executes.',
+        'No. Cursor has Composer and Agent mode, which plan internally during execution but don\'t offer a separate user-controlled planning phase. PlanToCode adds that pre-planning layer - giving you file discovery, multi-model synthesis, and reviewable architectural context BEFORE Cursor Agent executes.',
     },
     {
-      question: 'How do I use Vibe Manager plans with Cursor?',
+      question: 'How do I use PlanToCode plans with Cursor?',
       answer:
-        'After creating a merged plan in Vibe Manager, you can either: 1) Paste the context and instructions into Cursor Composer or Agent mode for execution, or 2) Execute directly in Vibe\'s terminal with full logging, then sync results back to your Cursor workspace.',
+        'After creating a merged plan in PlanToCode, you can either: 1) Paste the context and instructions into Cursor Composer or Agent mode for execution, or 2) Execute directly in PlanToCode\'s terminal with full logging, then sync results back to your Cursor workspace.',
     },
     {
       question: 'Does this work on Windows and WSL?',
       answer:
-        'Yes. Vibe Manager supports Windows 10+, WSL, and macOS. The integrated terminal provides persistent logging and approvals that complement Cursor\'s terminal integration.',
+        'Yes. PlanToCode supports Windows 10+, WSL, and macOS. The integrated terminal provides persistent logging and approvals that complement Cursor\'s terminal integration.',
     },
   ];
 
   const softwareApplicationJsonLd: SoftwareApplication = {
     '@type': 'SoftwareApplication',
-    name: 'Vibe Manager',
+    name: 'PlanToCode',
     applicationCategory: 'DeveloperApplication',
     operatingSystem: ['macOS 11.0+', 'Windows 10+'],
-    url: 'https://www.vibemanager.app/plan-mode/cursor',
+    url: 'https://www.plantocode.com/plan-mode/cursor',
     description:
       'Pre-planning workflow for Cursor Composer and Agent mode. Discover impacted files, merge multi-model plans, and execute with approvals across macOS, Windows, and WSL.',
     offers: {
@@ -248,7 +248,7 @@ export default function CursorPlanModePage() {
 
   const howToJsonLd: HowTo = {
     '@type': 'HowTo',
-    name: 'Use Vibe Manager with Cursor Composer and Agent mode',
+    name: 'Use PlanToCode with Cursor Composer and Agent mode',
     description: 'Prepare and run Cursor plans with complete architectural context.',
     step: quickstartSteps.map((step, index) => ({
       '@type': 'HowToStep',
@@ -290,17 +290,17 @@ export default function CursorPlanModePage() {
                   <span>Cursor • Pre-planning for Composer & Agent</span>
                 </div>
                 <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold leading-tight bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent">
-                  Planning Workflow for Cursor
+                  Planning workflow for Cursor
                 </h1>
                 <p className="text-lg sm:text-xl md:text-2xl text-foreground/80 max-w-3xl mx-auto leading-relaxed">
-                  Cursor Agent mode plans internally during execution. Vibe Manager adds architectural pre-planning BEFORE Agent runs—discovering scope, merging multi-model insights, and providing reviewable context.
+                  Give Cursor the context it needs - discover scope, merge AI plans, and run with approvals in a persistent terminal.
                 </p>
                 <p className="text-base sm:text-lg text-foreground/70 max-w-2xl mx-auto">
-                  Ideal for Windows + WSL users, large features, and teams that need full architectural context before Cursor Composer or Agent mode executes.
+                  Cursor Agent mode plans internally during execution. PlanToCode adds architectural pre-planning BEFORE Agent runs - discovering scope, merging multi-model insights, and providing reviewable context.
                 </p>
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                   <Button variant="cta" size="lg" asChild>
-                    <Link href="/downloads">Install Vibe Manager</Link>
+                    <Link href="/downloads">Install PlanToCode</Link>
                   </Button>
                   <VideoButton />
                 </div>
@@ -325,7 +325,7 @@ export default function CursorPlanModePage() {
               </div>
 
               <div className="space-y-8">
-                <h2 className="text-2xl sm:text-3xl font-bold text-center">What Vibe Manager adds to Cursor</h2>
+                <h2 className="text-2xl sm:text-3xl font-bold text-center">What PlanToCode adds to Cursor</h2>
                 <div className="grid md:grid-cols-2 gap-6">
                   {capabilities.map((item, index) => (
                     <GlassCard key={index} className="p-6 h-full" highlighted>
@@ -338,7 +338,7 @@ export default function CursorPlanModePage() {
               </div>
 
               <div className="space-y-8">
-                <h2 className="text-2xl sm:text-3xl font-bold text-center">Cursor + Vibe workflow</h2>
+                <h2 className="text-2xl sm:text-3xl font-bold text-center">Cursor + PlanToCode workflow</h2>
                 <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   {workflow.map((item, index) => (
                     <GlassCard key={index} className="p-6 h-full" highlighted>
@@ -356,7 +356,7 @@ export default function CursorPlanModePage() {
               </div>
 
               <div className="space-y-6">
-                <h2 className="text-2xl sm:text-3xl font-bold text-center">Why Cursor teams bring in Vibe</h2>
+                <h2 className="text-2xl sm:text-3xl font-bold text-center">Why Cursor teams bring in PlanToCode</h2>
                 <div className="space-y-4">
                   {comparisons.map((item, index) => (
                     <GlassCard key={index} className="p-6">
@@ -370,7 +370,7 @@ export default function CursorPlanModePage() {
                           <p className="leading-relaxed">{item.cursor}</p>
                         </div>
                         <div className="rounded-xl border border-primary/40 p-4 bg-primary/5">
-                          <div className="font-semibold text-foreground mb-1">With Vibe Manager</div>
+                          <div className="font-semibold text-foreground mb-1">With PlanToCode</div>
                           <p className="leading-relaxed">{item.vibe}</p>
                         </div>
                       </div>
@@ -410,7 +410,7 @@ export default function CursorPlanModePage() {
               </div>
 
               <div className="space-y-8">
-                <h2 className="text-2xl sm:text-3xl font-bold text-center">How Cursor teams rely on Vibe Manager</h2>
+                <h2 className="text-2xl sm:text-3xl font-bold text-center">How Cursor teams rely on PlanToCode</h2>
                 <div className="grid md:grid-cols-3 gap-6">
                   {useCases.map((item, index) => (
                     <GlassCard key={index} className="p-6 h-full">

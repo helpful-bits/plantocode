@@ -1,7 +1,7 @@
 {
-  "name": "vibe-manager-server",
+  "name": "plantocode-server",
   "version": "0.1.0",
-  "description": "Vibe Manager Server Component",
+  "description": "PlanToCode Server Component",
   "scripts": {
     "server:run": "bash -c 'mkdir -p gen && cargo run 2>&1 | tee gen/server.log'",
     "server:check": "cargo check",

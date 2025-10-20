@@ -1,7 +1,9 @@
 use actix::prelude::*;
 use actix_web_actors::{ws, ws::Message};
 use serde_json::Value as JsonValue;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
@@ -18,6 +20,11 @@ const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 
 /// How long before lack of client response causes a timeout
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Rate limiter for binary routing warnings: tracks last warning time per producer
+lazy_static::lazy_static! {
+    static ref BINARY_ROUTE_WARNINGS: Mutex<HashMap<String, Instant>> = Mutex::new(HashMap::new());
+}
 
 /// WebSocket actor for device communication
 pub struct DeviceLinkWs {
@@ -372,8 +379,35 @@ impl StreamHandler<Result<Message, ws::ProtocolError>> for DeviceLinkWs {
                 // Headerless binary forwarding via pairing
                 if let (Some(user_id), Some(device_id), Some(connection_manager)) =
                     (self.user_id.as_ref(), self.device_id.as_deref(), &self.connection_manager) {
+                    let bin_len = bin.len();
+
                     if let Some(target) = connection_manager.get_binary_consumer(user_id, device_id) {
                         let _ = connection_manager.send_binary_to_device(user_id, &target, bin.to_vec());
+                    } else {
+                        // Rate-limited warning: max 1 per minute per producer
+                        let should_warn = {
+                            let mut warnings = BINARY_ROUTE_WARNINGS.lock().unwrap();
+                            let now = Instant::now();
+                            let last_warn = warnings.get(device_id);
+
+                            match last_warn {
+                                Some(last) if now.duration_since(*last) < Duration::from_secs(60) => false,
+                                _ => {
+                                    warnings.insert(device_id.to_string(), now);
+                                    true
+                                }
+                            }
+                        };
+
+                        if should_warn {
+                            warn!(
+                                producer = %device_id,
+                                user_id = %user_id,
+                                len = bin_len,
+                                "No binary consumer found for producer={}, user={}, len={}. Verify bind message sent and device ID normalization.",
+                                device_id, user_id, bin_len
+                            );
+                        }
                     }
                 }
             }
@@ -468,18 +502,24 @@ impl Handler<HandleRegisterMessage> for DeviceLinkWs {
     type Result = ();
 
     fn handle(&mut self, msg: HandleRegisterMessage, ctx: &mut Self::Context) -> Self::Result {
-        // Extract the nested payload object from the message
-        let payload = match msg.payload.get("payload") {
+        // Access payload fields directly (single-level structure)
+        let payload = match msg.payload.get("payload").and_then(|v| v.as_object()) {
             Some(p) => p,
             None => {
-                warn!(
-                    connection_id = %self.connection_id,
-                    log_stage = "register:early_return",
-                    code = "missing_payload",
-                    "Registration failed: missing payload field"
-                );
-                self.send_error("missing_payload", "Missing payload field in register message", ctx);
-                return;
+                // Payload is at root level - use root directly
+                match msg.payload.as_object() {
+                    Some(p) => p,
+                    None => {
+                        warn!(
+                            connection_id = %self.connection_id,
+                            log_stage = "register:early_return",
+                            code = "invalid_payload",
+                            "Registration failed: invalid payload structure"
+                        );
+                        self.send_error("invalid_payload", "Invalid payload structure in register message", ctx);
+                        return;
+                    }
+                }
             }
         };
 
@@ -1294,15 +1334,16 @@ impl Handler<HandleEventMessage> for DeviceLinkWs {
         }
 
         if let Some(connection_manager) = &self.connection_manager {
+            let source_device_id = self.device_id.clone();
             let event_message = DeviceMessage {
                 message_type: event_type.clone(),
                 payload: event_payload,
                 target_device_id: None,
+                source_device_id: source_device_id.clone(),
                 timestamp: chrono::Utc::now(),
             };
 
             let connection_manager = connection_manager.clone();
-            let source_device_id = self.device_id.clone();
 
             ctx.spawn(
                 async move {
@@ -1358,28 +1399,52 @@ impl Handler<HandleTerminalBinaryBind> for DeviceLinkWs {
             }
         };
 
-        let producer_device_id = match msg.payload.get("producerDeviceId").and_then(|v| v.as_str()) {
-            Some(id) => id,
+        // Extract payload - try nested structure first, fall back to root (flexible like HandleRelayMessageInternal)
+        let payload = msg.payload.get("payload")
+            .and_then(|v| v.as_object())
+            .or_else(|| msg.payload.as_object());
+
+        let payload = match payload {
+            Some(p) => p,
+            None => {
+                self.send_error("missing_payload", "Missing or invalid payload in terminal.binary.bind message", ctx);
+                return;
+            }
+        };
+
+        let producer_device_id_original = match payload.get("producerDeviceId").and_then(|v| v.as_str()) {
+            Some(id) => id.to_string(),
             None => {
                 self.send_error("missing_producer_device_id", "Missing producerDeviceId in bind request", ctx);
                 return;
             }
         };
 
+        let producer_device_id = producer_device_id_original.to_lowercase();
+
+        // Extract sessionId parameter (required - tells desktop which session to stream)
+        let session_id = match payload.get("sessionId").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => {
+                self.send_error("missing_session_id", "Missing sessionId in bind request", ctx);
+                return;
+            }
+        };
+
         // Extract includeSnapshot parameter (defaults to true for backward compatibility)
-        let include_snapshot = msg.payload.get("includeSnapshot")
+        let include_snapshot = payload.get("includeSnapshot")
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
 
         // Verify producer belongs to same user and is connected
         if let Some(connection_manager) = &self.connection_manager {
-            if !connection_manager.is_device_connected(&user_id, producer_device_id) {
+            if !connection_manager.is_device_connected(&user_id, &producer_device_id) {
                 self.send_error("producer_not_connected", "Producer device not connected", ctx);
                 return;
             }
 
             // Verify producer belongs to same user by checking connection
-            if let Some(producer_conn) = connection_manager.get_connection(&user_id, producer_device_id) {
+            if let Some(producer_conn) = connection_manager.get_connection(&user_id, &producer_device_id) {
                 if producer_conn.user_id != user_id {
                     self.send_error("unauthorized", "Producer device belongs to different user", ctx);
                     return;
@@ -1391,25 +1456,32 @@ impl Handler<HandleTerminalBinaryBind> for DeviceLinkWs {
 
             // Set the binary route
             if let Some(consumer_device_id) = &self.device_id {
-                connection_manager.set_binary_route(&user_id, producer_device_id, consumer_device_id);
+                let consumer_device_id_normalized = consumer_device_id.to_lowercase();
+
+                connection_manager.set_binary_route(&user_id, &producer_device_id, consumer_device_id);
                 info!(
                     user_id = %user_id,
                     producer = %producer_device_id,
                     consumer = %consumer_device_id,
-                    include_snapshot = %include_snapshot,
-                    "Binary route established"
+                    session_id = %session_id,
+                    "Binary route established: {} -> {} (session: {})",
+                    producer_device_id, consumer_device_id, session_id
                 );
 
-                // Forward the bind request to the producer (desktop) with include_snapshot parameter
+                // Forward the bind request to the producer (desktop) with sessionId and includeSnapshot
+                // Desktop expects RelayEnvelope format with nested payload
                 let bind_message = serde_json::json!({
                     "type": "terminal.binary.bind",
-                    "consumerDeviceId": consumer_device_id,
-                    "includeSnapshot": include_snapshot
+                    "payload": {
+                        "consumerDeviceId": consumer_device_id,
+                        "sessionId": session_id,
+                        "includeSnapshot": include_snapshot
+                    }
                 });
 
                 if let Err(e) = connection_manager.send_raw_to_device(
                     &user_id,
-                    producer_device_id,
+                    &producer_device_id,
                     &bind_message.to_string(),
                 ) {
                     warn!(
@@ -1430,6 +1502,36 @@ impl Handler<HandleTerminalBinaryUnbind> for DeviceLinkWs {
     fn handle(&mut self, _msg: HandleTerminalBinaryUnbind, _ctx: &mut Self::Context) -> Self::Result {
         if let (Some(user_id), Some(device_id), Some(connection_manager)) =
             (self.user_id, &self.device_id, &self.connection_manager) {
+
+            // Before clearing routes, notify all affected producers (desktops) to unbind
+            // This ensures desktop clears its bound_session_id state
+            let affected_routes = connection_manager.get_binary_routes_for_device(&user_id, device_id);
+            for (producer, consumer) in affected_routes {
+                // Send unbind notification to the producer
+                let unbind_msg = serde_json::json!({
+                    "type": "terminal.binary.unbind",
+                    "payload": {}
+                });
+                if let Err(e) = connection_manager.send_raw_to_device(
+                    &user_id,
+                    &producer,
+                    &unbind_msg.to_string(),
+                ) {
+                    warn!(
+                        producer = %producer,
+                        error = %e,
+                        "Failed to forward unbind notification to producer"
+                    );
+                } else {
+                    debug!(
+                        producer = %producer,
+                        consumer = %consumer,
+                        "Forwarded unbind notification to producer"
+                    );
+                }
+            }
+
+            // Now clear the routes
             connection_manager.clear_binary_routes_for_device(&user_id, device_id);
             info!(
                 user_id = %user_id,

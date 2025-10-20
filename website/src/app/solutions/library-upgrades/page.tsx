@@ -6,19 +6,19 @@ import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { PackageSearch, ClipboardCheck, ShieldCheck, FileOutput, GitBranch } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'Upgrade Libraries with Guardrails',
+  title: 'Upgrade Libraries with Guardrails - PlanToCode',
   description:
     'Plan migrations, monitor terminal output, and keep transcripts when updating frameworks or dependencies.',
   openGraph: {
-    title: 'Upgrade Libraries with Guardrails',
+    title: 'Upgrade Libraries with Guardrails - PlanToCode',
     description:
-      'Use Vibe Manager to scope changes, review plans, and capture execution history during library upgrades.',
-    url: 'https://www.vibemanager.app/solutions/library-upgrades',
-    siteName: 'Vibe Manager',
+      'Use PlanToCode to scope changes, review plans, and capture execution history during library upgrades.',
+    url: 'https://www.plantocode.com/solutions/library-upgrades',
+    siteName: 'PlanToCode',
     type: 'website',
   },
   alternates: {
-    canonical: 'https://www.vibemanager.app/solutions/library-upgrades',
+    canonical: 'https://www.plantocode.com/solutions/library-upgrades',
   },
 };
 
@@ -42,7 +42,7 @@ export default function LibraryUpgradesPage() {
                   Upgrade libraries with guardrails
                 </h1>
                 <p className="text-lg text-foreground/80 max-w-3xl mx-auto leading-relaxed">
-                  Modernising dependencies often spans multiple repositories and teams. Vibe Manager helps you scope the work, document each step, and keep an auditable trail of what changed.
+                  Modernising dependencies often spans multiple repositories and teams. PlanToCode helps you scope the work, document each step, and keep an auditable trail of what changed.
                 </p>
               </header>
 
@@ -104,7 +104,7 @@ export default function LibraryUpgradesPage() {
                 <h2 className="text-2xl sm:text-3xl font-bold mb-4">Upgrade Dependencies Without Fear</h2>
                 <p className="text-lg text-foreground/80 mb-8 max-w-2xl mx-auto">
                   Audit every change, track every migration, maintain full control.
-                  This is how library upgrades should work - safe, auditable, reversible.
+                  This is how library upgrades should work: safe, auditable, reversible.
                 </p>
                 <PlatformDownloadSection location="solutions_library_upgrades" />
                 <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4 text-sm text-foreground/60">

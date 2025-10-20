@@ -179,7 +179,7 @@ public class SecurityManager: ObservableObject {
 
     /// Authenticate user
     public func authenticate(reason: String? = nil) async -> Bool {
-        let authReason = reason ?? "Authenticate to access Vibe Manager"
+        let authReason = reason ?? "Authenticate to access PlanToCode"
 
         if configuration.securityLevel.requiresBiometrics && biometricManager.isAvailable {
             let options = BiometricAuthManager.AuthenticationOptions(
@@ -221,7 +221,7 @@ public class SecurityManager: ObservableObject {
 
     /// Unlock the application
     public func unlockApplication() async -> Bool {
-        return await authenticate(reason: "Unlock Vibe Manager")
+        return await authenticate(reason: "Unlock PlanToCode")
     }
 
     /// Handle app going to background

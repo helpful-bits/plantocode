@@ -13,6 +13,7 @@ pub struct TranscriptionMultipartData {
     pub language: Option<String>,
     pub prompt: Option<String>,
     pub temperature: Option<f32>,
+    pub mime_type: String,
 }
 
 pub async fn process_transcription_multipart(
@@ -25,6 +26,7 @@ pub async fn process_transcription_multipart(
     let mut language: Option<String> = None;
     let mut prompt: Option<String> = None;
     let mut temperature: Option<f32> = None;
+    let mut mime_type = "audio/webm".to_string();
 
     while let Some(item) = payload.next().await {
         let mut field = item?;
@@ -40,6 +42,9 @@ pub async fn process_transcription_multipart(
             "file" => {
                 if let Some(fname) = content_disposition.get_filename() {
                     filename = fname.to_string();
+                }
+                if let Some(content_type) = field.content_type() {
+                    mime_type = content_type.to_string();
                 }
                 while let Some(chunk) = field.next().await {
                     audio_data.extend_from_slice(&chunk?);
@@ -132,6 +137,7 @@ pub async fn process_transcription_multipart(
         language,
         prompt,
         temperature,
+        mime_type,
     })
 }
 

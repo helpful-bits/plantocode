@@ -5,6 +5,7 @@ import { BackgroundJobsContext } from "@/contexts/background-jobs";
 import { useSessionStateContext } from "@/contexts/session";
 import { JOB_STATUSES } from "@/types/session-types";
 import { startFileFinderWorkflowAction, cancelWorkflowAction } from "@/actions/workflows";
+import { getSessionAction } from "@/actions/session/crud.actions";
 
 export function useWorkflowState() {
   const { jobs } = useContext(BackgroundJobsContext);
@@ -56,19 +57,27 @@ export function useWorkflowState() {
   }, [fileFinderWorkflowJob]);
 
   const triggerFind = useCallback(async () => {
-    if (!currentSession?.id || !currentSession?.taskDescription || !currentSession?.projectDirectory) {
-      throw new Error("Missing required session data");
+    const sessionId = currentSession?.id;
+    if (!sessionId) {
+      throw new Error("Missing session ID to start workflow");
     }
 
     try {
+      const freshResult = await getSessionAction(sessionId);
+      const fresh = freshResult?.isSuccess && freshResult.data ? freshResult.data : currentSession;
+
+      if (!fresh?.taskDescription || !fresh?.projectDirectory) {
+        throw new Error("Missing required session data to start workflow");
+      }
+
       const result = await startFileFinderWorkflowAction({
-        sessionId: currentSession.id,
-        taskDescription: currentSession.taskDescription,
-        projectDirectory: currentSession.projectDirectory,
-        excludedPaths: currentSession.forceExcludedFiles || [],
+        sessionId: fresh.id,
+        taskDescription: fresh.taskDescription,
+        projectDirectory: fresh.projectDirectory,
+        excludedPaths: fresh.forceExcludedFiles || [],
         timeoutMs: 300000
       });
-      
+
       if (!result.isSuccess) {
         throw new Error(result.message || "Failed to start workflow");
       }

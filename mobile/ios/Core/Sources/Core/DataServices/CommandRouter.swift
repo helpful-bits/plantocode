@@ -481,6 +481,36 @@ public struct CommandRouter {
         return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
     }
 
+    public static func textRefine(
+        text: String,
+        sessionId: String,
+        projectDirectory: String?,
+        relevantFiles: [String] = []
+    ) -> AsyncThrowingStream<RpcResponse, Error> {
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: ServerRelayError.notConnected)
+            }
+        }
+
+        var params: [String: Any] = [
+            "text": text,
+            "sessionId": sessionId,
+            "relevantFiles": relevantFiles
+        ]
+        if let projectDirectory = projectDirectory {
+            params["projectDirectory"] = projectDirectory
+        }
+
+        let request = RpcRequest(
+            method: "text.refine",
+            params: params
+        )
+
+        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+    }
+
     public static func sessionCreate(
         name: String,
         projectDirectory: String,

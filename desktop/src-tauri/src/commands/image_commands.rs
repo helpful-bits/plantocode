@@ -25,7 +25,7 @@ fn derive_extension(file_name: &Option<String>, mime_type: &Option<String>) -> S
 /// Build a unique filename with timestamp
 fn build_image_filename(extension: &str) -> String {
     let timestamp = chrono::Utc::now().timestamp_millis();
-    format!("vibe-image-{}.{}", timestamp, extension)
+    format!("plantocode-image-{}.{}", timestamp, extension)
 }
 
 #[command]
@@ -61,7 +61,7 @@ pub async fn save_pasted_image_command(
     };
 
     let images_dir = working_directory
-        .join(".vibe-manager")
+        .join(".plantocode")
         .join("pasted-images");
 
     fs::create_dir_all(&images_dir).await.map_err(|e| {

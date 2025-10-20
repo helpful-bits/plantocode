@@ -2,7 +2,7 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: '451 - Service Not Available in Your Region | Vibe Manager',
+  title: '451 - Service Not Available in Your Region | PlanToCode',
   description: 'This service is not available in your geographic region.',
   robots: {
     index: false,
@@ -28,7 +28,7 @@ export default function RestrictedRegionPage() {
               Service Not Available in Your Region
             </h1>
             <p className="text-foreground/80 mb-6">
-              Vibe Manager is currently only available in select regions.
+              PlanToCode is currently only available in select regions.
             </p>
           </div>
 
@@ -63,7 +63,7 @@ export default function RestrictedRegionPage() {
 
           <div className="flex flex-col items-center gap-4 w-full mt-4">
             <Button asChild variant="default" size="lg" className="w-full sm:w-auto">
-              <Link href="mailto:legal@vibemanager.app?subject=Regional%20Access%20Issue">
+              <Link href="mailto:legal@plantocode.com?subject=Regional%20Access%20Issue">
                 Contact Support
               </Link>
             </Button>

@@ -7,7 +7,7 @@ import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Code2, Edit3, Save, FileText, CheckCircle2, Terminal, Layers, Brain, Zap, Copy, AlertCircle } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'Implementation Plans - Complete AI-Powered Development Planning | Vibe Manager',
+  title: 'Implementation Plans - Plan and execute code changes | PlanToCode',
   description: 'Generate, edit, execute, and merge implementation plans. Full Monaco editor, terminal integration, multi-model support, real-time streaming, and intelligent file context. The complete implementation planning system.',
   keywords: [
     'implementation plans',
@@ -24,12 +24,12 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Implementation Plans - From Generation to Execution',
     description: 'Complete implementation planning system with AI generation, Monaco editing, terminal execution, and architectural synthesis. Not just an editor - a full planning platform.',
-    url: 'https://www.vibemanager.app/features/plan-mode',
-    siteName: 'Vibe Manager',
+    url: 'https://www.plantocode.com/features/plan-mode',
+    siteName: 'PlanToCode',
     type: 'website',
   },
   alternates: {
-    canonical: 'https://www.vibemanager.app/features/plan-mode',
+    canonical: 'https://www.plantocode.com/features/plan-mode',
   },
 };
 
@@ -72,11 +72,10 @@ export default function ImplementationPlansPage() {
                   <span>Complete Implementation Planning System</span>
                 </div>
                 <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-6 bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent">
-                  Implementation Plans: Generate → Edit → Execute
+                  Implementation plans: generate - edit - execute
                 </h1>
                 <p className="text-lg sm:text-xl md:text-2xl text-foreground/80 max-w-3xl mx-auto leading-relaxed">
-                  AI generates structured XML plans with full file context. Edit in Monaco, execute in terminal,
-                  merge multiple approaches. Real-time streaming, no truncation, complete control.
+                  Load full context, generate plans, merge approaches, and run in the terminal - all in one place.
                 </p>
               </div>
 

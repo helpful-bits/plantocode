@@ -7,7 +7,7 @@ import OSLog
 public final class WorkflowNotificationCoordinator: ObservableObject {
     public static let shared = WorkflowNotificationCoordinator()
 
-    private let logger = Logger(subsystem: "VibeManager", category: "WorkflowNotificationCoordinator")
+    private let logger = Logger(subsystem: "PlanToCode", category: "WorkflowNotificationCoordinator")
     private var cancellables = Set<AnyCancellable>()
     private var lastStatuses = [String: String]() // jobId -> last known status
 

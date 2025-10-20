@@ -1,5 +1,5 @@
 ---
-# Region Restriction Monitoring and Alerting
+# Region Restriction Monitoring and Alerting for PlanToCode
 # ========================================
 # This playbook sets up monitoring and alerting for
 # region restriction violations and suspicious access patterns
@@ -213,7 +213,7 @@
         dest: /etc/systemd/system/region-monitor.service
         content: |
           [Unit]
-          Description=Vibe Manager Region Restriction Monitor
+          Description=PlanToCode Region Restriction Monitor
           After=network.target nginx.service
           
           [Service]
@@ -266,14 +266,14 @@
           from prometheus_client import start_http_server, Gauge, Counter
           
           # Define metrics
-          blocked_access_total = Counter('vibe_manager_blocked_access_total', 
+          blocked_access_total = Counter('plantocode_blocked_access_total',
                                         'Total blocked access attempts',
                                         ['country', 'reason'])
-          
-          blocked_ips_gauge = Gauge('vibe_manager_blocked_unique_ips',
+
+          blocked_ips_gauge = Gauge('plantocode_blocked_unique_ips',
                                    'Number of unique blocked IPs in last hour')
-          
-          violation_rate = Gauge('vibe_manager_violation_rate',
+
+          violation_rate = Gauge('plantocode_violation_rate',
                                 'Access violations per minute')
           
           def parse_nginx_log(log_file, time_window_minutes=60):
@@ -339,7 +339,7 @@
         dest: /etc/systemd/system/region-metrics-exporter.service
         content: |
           [Unit]
-          Description=Vibe Manager Region Metrics Exporter
+          Description=PlanToCode Region Metrics Exporter
           After=network.target
           
           [Service]

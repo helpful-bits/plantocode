@@ -1,4 +1,4 @@
-# MSIX Store Submission Validator for Vibe Manager
+# MSIX Store Submission Validator for PlanToCode
 # Validates MSIX package against Microsoft Store requirements
 # Based on 2025 Microsoft Store certification requirements
 

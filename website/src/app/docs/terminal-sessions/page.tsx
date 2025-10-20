@@ -3,15 +3,16 @@ import { DocsArticle } from '@/components/docs/DocsArticle';
 import { GlassCard } from '@/components/ui/GlassCard';
 
 export const metadata: Metadata = {
-  title: 'Terminal Sessions and Agent Attention',
-  description: 'How the PTY terminal runs inside Vibe Manager, detects agent inactivity, and manages session persistence.',
+  title: 'Terminal sessions - PlanToCode',
+  description: 'How the PTY terminal runs inside PlanToCode, detects agent inactivity, and manages session persistence.',
   alternates: {
-    canonical: 'https://www.vibemanager.app/docs/terminal-sessions',
+    canonical: 'https://www.plantocode.com/docs/terminal-sessions',
   },
   openGraph: {
-    title: 'Terminal Sessions and Agent Attention',
+    title: 'Terminal sessions - PlanToCode',
     description: 'Understand session persistence, agent attention detection, and recovery in the plan terminal.',
-    url: 'https://www.vibemanager.app/docs/terminal-sessions',
+    url: 'https://www.plantocode.com/docs/terminal-sessions',
+    siteName: 'PlanToCode',
     type: 'article',
   },
 };
@@ -26,9 +27,7 @@ export default function TerminalSessionsDocPage() {
       category="Product Guide"
     >
       <p className="text-base text-muted-foreground leading-relaxed mb-6">
-        The plan terminal lets you run commands without leaving the app. Sessions are backed by the desktop PTY service, which
-        records output in the local database, monitors agent activity, and integrates with voice transcription for hands-free
-        input.
+        Run commands in a persistent PTY with health checks and logging. Voice transcription is available when you need it.
       </p>
 
       <section className="space-y-6 mb-12">

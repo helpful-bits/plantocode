@@ -8,7 +8,7 @@ import { Mic, Settings, Terminal, AudioWaveform, Shield, Languages, Thermometer,
 import type { SoftwareApplication, HowTo, FAQPage } from 'schema-dts';
 
 export const metadata: Metadata = {
-  title: 'Voice-to-Text for Developers: Faster Task Input | Vibe Manager',
+  title: 'Voice to text for developers - faster task input | PlanToCode',
   description: 'Speak your task descriptions. AI transcribes with smart text insertion (prevents word concatenation). 5 languages, customizable per project. Audio level feedback. Used by teams who move fast.',
   keywords: [
     'voice transcription',
@@ -25,22 +25,22 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Voice-to-Text for Developers: Faster Task Input',
     description: 'Speak your task descriptions naturally. OpenAI Whisper transcribes with smart text insertion that prevents word concatenation. 5 languages, temperature control, real-time audio monitoring. The voice input system developers actually want.',
-    url: 'https://www.vibemanager.app/features/voice-transcription',
-    siteName: 'Vibe Manager',
+    url: 'https://www.plantocode.com/features/voice-transcription',
+    siteName: 'PlanToCode',
     type: 'website',
   },
   alternates: {
-    canonical: 'https://www.vibemanager.app/features/voice-transcription',
+    canonical: 'https://www.plantocode.com/features/voice-transcription',
   },
 };
 
 export default function VoiceTranscriptionFeaturePage() {
   const softwareApplicationJsonLd: SoftwareApplication = {
     '@type': 'SoftwareApplication',
-    name: 'Vibe Manager Voice Transcription',
+    name: 'PlanToCode Voice Transcription',
     applicationCategory: 'DeveloperApplication',
     operatingSystem: ['Windows 10+', 'macOS 11.0+'],
-    url: 'https://www.vibemanager.app/features/voice-transcription',
+    url: 'https://www.plantocode.com/features/voice-transcription',
     description: 'Voice transcription system for developers powered by OpenAI Whisper (GPT-4o-transcribe). Speak task descriptions and terminal commands with language selection, temperature control, real-time audio monitoring, and per-project configuration.',
     featureList: [
       'OpenAI Whisper GPT-4o-transcribe',
@@ -94,7 +94,7 @@ export default function VoiceTranscriptionFeaturePage() {
         name: 'Which languages are supported for voice transcription?',
         acceptedAnswer: {
           '@type': 'Answer',
-          text: 'Vibe Manager supports 5 languages: English (EN), Spanish (ES), French (FR), German (DE), and Chinese (ZH). You can configure the default language per project.',
+          text: 'PlanToCode supports 5 languages: English (EN), Spanish (ES), French (FR), German (DE), and Chinese (ZH). You can configure the default language per project.',
         },
       },
       {
@@ -232,12 +232,10 @@ export default function VoiceTranscriptionFeaturePage() {
                   <span>OpenAI Whisper GPT-4o-transcribe</span>
                 </div>
                 <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-6 bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent">
-                  Voice-to-Text That Actually Works for Developers
+                  Voice to text that works for developers
                 </h1>
                 <p className="text-lg sm:text-xl md:text-2xl text-foreground/80 max-w-3xl mx-auto leading-relaxed">
-                  Speak your task descriptions naturally. AI transcribes with smart text insertion that prevents word concatenation.
-                  5 languages, temperature control, real-time audio monitoring.
-                  The voice input system developers actually want.
+                  Speak your task or command. PlanToCode transcribes and inserts clean text with proper spacing.
                 </p>
               </div>
 
@@ -481,7 +479,7 @@ export default function VoiceTranscriptionFeaturePage() {
               <div className="mb-16">
                 <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">Frequently Asked Questions</h2>
                 <div className="space-y-4 max-w-3xl mx-auto">
-                  {faqJsonLd.mainEntity?.map((item, index) => (
+                  {(Array.isArray(faqJsonLd.mainEntity) ? faqJsonLd.mainEntity : []).map((item, index) => (
                     <GlassCard key={index} className="p-6">
                       <h3 className="font-semibold text-lg mb-3 text-primary">{item.name}</h3>
                       <p className="text-foreground/80">{item.acceptedAnswer?.text}</p>

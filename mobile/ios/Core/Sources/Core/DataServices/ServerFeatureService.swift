@@ -139,6 +139,84 @@ public class ServerFeatureService: ObservableObject {
         }
     }
 
+    public func refineText(
+        _ text: String,
+        sessionId: String,
+        projectDirectory: String?,
+        relevantFiles: [String] = [],
+        timeoutSeconds: Double = 120
+    ) async throws -> TextEnhancementResponse {
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw DataServiceError.invalidRequest("Text cannot be empty")
+        }
+
+        guard !sessionId.isEmpty else {
+            throw DataServiceError.invalidRequest("Missing sessionId")
+        }
+
+        isLoading = true
+        defer { isLoading = false }
+
+        let startTime = Date()
+
+        // Relay-first: call text.refine
+        let stream = CommandRouter.textRefine(
+            text: text,
+            sessionId: sessionId,
+            projectDirectory: projectDirectory,
+            relevantFiles: relevantFiles
+        )
+
+        // Get jobId from initial response
+        var jobId: String?
+        for try await response in stream {
+            if let result = response.result?.value as? [String: Any],
+               let id = result["jobId"] as? String {
+                jobId = id
+                break
+            }
+            if let error = response.error {
+                throw DataServiceError.serverError(error.message)
+            }
+        }
+
+        guard let jobId = jobId else {
+            throw DataServiceError.serverError("Failed to get jobId from text.refine")
+        }
+
+        // Poll job.get until completed/failed/canceled or timeout
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
+
+        while Date() < deadline {
+            let jobStream = CommandRouter.jobGet(jobId: jobId)
+
+            for try await chunk in jobStream {
+                if let result = chunk.result?.value as? [String: Any],
+                   let job = result["job"] as? [String: Any],
+                   let status = job["status"] as? String {
+
+                    if status == "completed" {
+                        let refinedText = job["response"] as? String ?? text
+                        let elapsed = Date().timeIntervalSince(startTime)
+                        return TextEnhancementResponse(
+                            originalText: text,
+                            enhancedText: refinedText,
+                            improvements: [],
+                            processingTimeMs: Int(elapsed * 1000)
+                        )
+                    } else if status == "failed" || status == "canceled" {
+                        let errorMsg = job["error"] as? String ?? "Refinement \(status)"
+                        throw DataServiceError.serverError(errorMsg)
+                    }
+                }
+            }
+
+            try await Task.sleep(nanoseconds: 800_000_000) // 800ms poll interval
+        }
+
+        throw DataServiceError.timeout
+    }
+
     // MARK: - Audio Transcription
 
     /// Transcribe audio data using server HTTP endpoint (desktop doesn't support RPC transcription)
@@ -232,8 +310,8 @@ public class ServerFeatureService: ObservableObject {
 
         bodyData.append("--\(boundary)--\r\n")
 
-        let baseURL = Config.serverURL
-        guard let url = URL(string: "\(baseURL)/api/audio/transcriptions") else {
+        let cleanedBase = Config.serverURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard let url = URL(string: "\(cleanedBase)/api/audio/transcriptions") else {
             throw DataServiceError.invalidRequest("Invalid transcription URL")
         }
 

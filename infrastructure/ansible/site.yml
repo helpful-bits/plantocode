@@ -1,5 +1,5 @@
 ---
-# Master Ansible Playbook for Vibe Manager Infrastructure
+# Master Ansible Playbook for PlanToCode Infrastructure
 # ========================================
 # MODULAR INFRASTRUCTURE MANAGEMENT
 # ========================================
@@ -11,7 +11,7 @@
 #    - Run: ansible-playbook -i inventory/hosts.yml site-base.yml
 #
 # 2. APPLICATION DEPLOYMENT (site-app.yml)
-#    - Vibe Manager specific setup and deployment
+#    - PlanToCode specific setup and deployment
 #    - Database migrations, app configuration, service management
 #    - Run: ansible-playbook -i inventory/hosts.yml site-app.yml
 #

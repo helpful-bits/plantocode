@@ -7,7 +7,7 @@ import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Copy, Settings, Terminal, Edit3, Zap, GripVertical, CheckCircle2, Code2, Layers } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'Copy Buttons - Configurable Workflow Automation | Vibe Manager',
+  title: 'Copy buttons - turn prompts into one-click workflows | PlanToCode',
   description: 'Transform any prompt into a reusable button. Server-configured templates with smart placeholders, drag-drop reordering, and terminal integration. Stop copy-pasting - automate your workflows.',
   keywords: [
     'copy buttons',
@@ -24,12 +24,12 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Copy Buttons - Any Prompt Becomes a Workflow',
     description: 'Server-configured buttons with smart templates and placeholders. Drag-drop reordering, terminal integration, and one-click automation. Your best tricks, always ready.',
-    url: 'https://www.vibemanager.app/features/copy-buttons',
-    siteName: 'Vibe Manager',
+    url: 'https://www.plantocode.com/features/copy-buttons',
+    siteName: 'PlanToCode',
     type: 'website',
   },
   alternates: {
-    canonical: 'https://www.vibemanager.app/features/copy-buttons',
+    canonical: 'https://www.plantocode.com/features/copy-buttons',
   },
 };
 
@@ -51,11 +51,10 @@ export default function CopyButtonsPage() {
                   <span>Configurable Workflow Automation System</span>
                 </div>
                 <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-6 bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent">
-                  Workflows. One Click.
+                  Workflows. One click.
                 </h1>
                 <p className="text-lg sm:text-xl md:text-2xl text-foreground/80 max-w-3xl mx-auto leading-relaxed">
-                  That Claude prompt that always works? That agent setup you perfected? Button it. Ship it. Stop copy-pasting.
-                  Server-configured templates with smart placeholders and drag-drop reordering.
+                  Save your best prompts as buttons. Substitute plan content and run them in the terminal.
                 </p>
               </div>
 
@@ -429,7 +428,7 @@ export default function CopyButtonsPage() {
                   <GlassCard className="p-6 sm:p-8 border-green-500/20 bg-green-500/5" highlighted>
                     <h3 className="text-xl font-bold mb-6 text-green-500 flex items-center gap-2">
                       <span className="text-2xl">✓</span>
-                      Vibe Manager Copy Buttons
+                      PlanToCode Copy Buttons
                     </h3>
                     <ul className="space-y-4">
                       <li className="flex items-start gap-3">

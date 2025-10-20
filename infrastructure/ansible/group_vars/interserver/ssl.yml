@@ -1,5 +1,12 @@
 ---
-# SSL/TLS Configuration for InterServer US region
-# Update this with your US-specific domain
-ssl_domain: api.us.vibemanager.app  # Example: US-specific subdomain
-ssl_email: admin@vibemanager.app
+# SSL/TLS Configuration for US region (InterServer)
+# Primary domain: plantocode.com
+# Legacy support: vibemanager.app (kept for backward compatibility with existing apps)
+ssl_domain: api-us.plantocode.com
+ssl_additional_domains:
+  - api.us.vibemanager.app
+ssl_email: admin@plantocode.com
+ssl_base_domain: api-us.plantocode.com
+# Could use wildcard cert (*.plantocode.com covers api-us.plantocode.com)
+# Using specific cert (HTTP-01) for now, but wildcard is an option
+ssl_use_wildcard: false

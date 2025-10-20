@@ -356,7 +356,7 @@ extension BiometricAuthManager {
     /// Authentication for app unlock
     public func authenticateForAppUnlock() async -> AuthenticationResult {
         let options = AuthenticationOptions(
-            reason: "Unlock Vibe Manager",
+            reason: "Unlock PlanToCode",
             fallbackTitle: "Use Passcode",
             allowDevicePasscode: true,
             biometricPolicy: .deviceOwnerAuthentication

@@ -121,7 +121,7 @@ public struct ProjectFolderSelectionView: View {
                 .h1()
                 .foregroundColor(Color.cardForeground)
 
-            Text("Choose the project folder where your code lives. This helps Vibe Manager understand your workspace.")
+            Text("Choose the project folder where your code lives. This helps PlanToCode understand your workspace.")
                 .paragraph()
                 .foregroundColor(Color.mutedForeground)
                 .multilineTextAlignment(.center)

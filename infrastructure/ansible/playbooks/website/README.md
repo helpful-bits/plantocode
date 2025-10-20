@@ -1,4 +1,4 @@
-# Website Deployment Playbooks
+# PlanToCode Website Deployment Playbooks
 
 ## Current Deployment (USE THIS)
 
@@ -70,7 +70,7 @@ After deployment, use the management script on the server:
 
 ```bash
 # On the server
-cd /opt/vibe-website
+cd /opt/plantocode-website
 ./manage.sh status   # Check status
 ./manage.sh logs     # View logs
 ./manage.sh restart  # Restart container

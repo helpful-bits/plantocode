@@ -5,7 +5,7 @@ import OSLog
 /// Service for accessing background jobs data from desktop
 @MainActor
 public class JobsDataService: ObservableObject {
-    private let logger = Logger(subsystem: "VibeManager", category: "JobsDataService")
+    private let logger = Logger(subsystem: "PlanToCode", category: "JobsDataService")
 
     // MARK: - Published Properties
     @Published public var jobs: [BackgroundJob] = []

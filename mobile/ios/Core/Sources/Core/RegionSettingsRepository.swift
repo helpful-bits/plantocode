@@ -109,13 +109,13 @@ public class RegionSettingsRepository {
         #if DEBUG
         return [
             ("Local Development", "http://192.168.0.38:8080"),
-            ("United States", "https://api.us.vibemanager.app"),
-            ("European Union", "https://api.eu.vibemanager.app")
+            ("United States", "https://api-us.plantocode.com"),
+            ("European Union", "https://api-eu.plantocode.com")
         ]
         #else
         return [
-            ("United States", "https://api.us.vibemanager.app"),
-            ("European Union", "https://api.eu.vibemanager.app")
+            ("United States", "https://api-us.plantocode.com"),
+            ("European Union", "https://api-eu.plantocode.com")
         ]
         #endif
     }
@@ -171,7 +171,7 @@ public class RegionSettingsRepository {
         // Server runs on port 8080
         return ("Local Development", "http://192.168.0.38:8080")
         #else
-        return ("United States", "https://api.us.vibemanager.app")
+        return ("United States", "https://api-us.plantocode.com")
         #endif
     }
 

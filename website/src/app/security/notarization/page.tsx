@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
   title: 'macOS Notarization & Security',
-  description: 'Vibe Manager is signed and notarized by Apple for secure distribution on macOS. Learn about our security measures and Gatekeeper compliance.',
+  description: 'PlanToCode is signed and notarized by Apple for secure distribution on macOS. Learn about our security measures and Gatekeeper compliance.',
   keywords: ['macOS security', 'Apple notarization', 'Gatekeeper', 'code signing', 'secure distribution'],
 };
 

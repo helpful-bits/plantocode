@@ -1,6 +1,6 @@
-# Vibe Manager Server
+# PlanToCode Server
 
-This is the backend server for Vibe Manager, built with Rust and Actix Web.
+This is the backend server for PlanToCode, built with Rust and Actix Web.
 
 ## Features
 
@@ -80,7 +80,7 @@ cargo run
 
 ## Authentication Flow
 
-Vibe Manager uses Firebase Authentication for OAuth sign-in:
+PlanToCode uses Firebase Authentication for OAuth sign-in:
 
 1. The client authenticates with Firebase using one of the supported providers (Google, GitHub, Apple, Microsoft)
 2. The client sends the Firebase ID token to the server endpoint `/auth/firebase/token`

@@ -244,8 +244,8 @@ impl OpenRouterClient {
             .client
             .post(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("HTTP-Referer", "https://vibe-manager.app")
-            .header("X-Title", "Vibe Manager")
+            .header("HTTP-Referer", "https://plantocode.com")
+            .header("X-Title", "PlanToCode")
             .header("Content-Type", "application/json")
             .header("X-Request-ID", request_id.to_string())
             .json(&request_with_usage)
@@ -341,8 +341,8 @@ impl OpenRouterClient {
             let response = client
                 .post(&url)
                 .header("Authorization", format!("Bearer {}", api_key))
-                .header("HTTP-Referer", "https://vibe-manager.app")
-                .header("X-Title", "Vibe Manager")
+                .header("HTTP-Referer", "https://plantocode.com")
+                .header("X-Title", "PlanToCode")
                 .header("Content-Type", "application/json")
                 .header("X-Request-ID", request_id.to_string())
                 .json(&streaming_request)

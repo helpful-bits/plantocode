@@ -15,13 +15,13 @@ export function DocsLayoutJsonLd() {
         '@type': 'ListItem',
         position: 1,
         name: 'Docs',
-        item: 'https://www.vibemanager.app/docs'
+        item: 'https://www.plantocode.com/docs'
       },
       ...breadcrumbs.map((crumb, index) => ({
         '@type': 'ListItem',
         position: index + 2,
         name: crumb.title,
-        item: `https://www.vibemanager.app${crumb.slug}`
+        item: `https://www.plantocode.com${crumb.slug}`
       }))
     ]
   };

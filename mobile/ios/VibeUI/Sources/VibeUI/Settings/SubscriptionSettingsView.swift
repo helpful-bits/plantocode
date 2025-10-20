@@ -106,13 +106,13 @@ public struct SubscriptionSettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
 
                     HStack(spacing: Theme.Spacing.sm) {
-                        if let termsURL = URL(string: "https://vibemanager.app/terms") {
+                        if let termsURL = URL(string: "https://plantocode.com/terms") {
                             Link("Terms", destination: termsURL)
                                 .foregroundColor(Color.primary)
                         }
                         Text("•")
                             .foregroundColor(Color.mutedForeground)
-                        if let privacyURL = URL(string: "https://vibemanager.app/privacy") {
+                        if let privacyURL = URL(string: "https://plantocode.com/privacy") {
                             Link("Privacy", destination: privacyURL)
                                 .foregroundColor(Color.primary)
                         }

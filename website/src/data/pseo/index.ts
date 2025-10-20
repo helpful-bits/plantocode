@@ -26,7 +26,7 @@ export interface PseoPage {
   comparison_table?: {
     features: Array<{
       name: string;
-      vibe_manager: string;
+      plantocode: string;
       competitor: string;
     }>;
   };

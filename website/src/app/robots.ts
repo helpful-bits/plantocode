@@ -78,9 +78,9 @@ export default function robots(): MetadataRoute.Robots {
       },
     ],
     sitemap: [
-      'https://www.vibemanager.app/sitemap.xml',
-      'https://www.vibemanager.app/sitemap-video.xml',
-      'https://www.vibemanager.app/sitemap-image.xml',
+      'https://www.plantocode.com/sitemap.xml',
+      'https://www.plantocode.com/sitemap-video.xml',
+      'https://www.plantocode.com/sitemap-image.xml',
     ],
   };
 }

@@ -4,7 +4,7 @@ import OSLog
 @MainActor
 public final class InitializationOrchestrator: ObservableObject {
     public static let shared = InitializationOrchestrator()
-    private let log = Logger(subsystem: "VibeManager", category: "Initialization")
+    private let log = Logger(subsystem: "PlanToCode", category: "Initialization")
 
     // MARK: - Performance Targets (OPEN Items for Product Confirmation)
     //

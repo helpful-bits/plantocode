@@ -4,6 +4,7 @@ import Combine
 
 public struct TerminalComposeView: View {
     let jobId: String
+    let autoStartRecording: Bool
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var container: AppContainer
@@ -25,10 +26,36 @@ public struct TerminalComposeView: View {
     @State private var selectedLanguage = "en-US"
 
     @State private var transcriptionModel: String?
+    @State private var transcriptionPrompt: String?
     @State private var transcriptionTemperature: Double?
 
-    public init(jobId: String) {
+    @State private var hasAutoStarted = false
+
+    public init(jobId: String, autoStartRecording: Bool = false) {
         self.jobId = jobId
+        self.autoStartRecording = autoStartRecording
+    }
+
+    // Persistent storage key for composed text
+    private var storageKey: String {
+        "terminal_compose_\(jobId)"
+    }
+
+    private func loadComposedText() {
+        if let saved = UserDefaults.standard.string(forKey: storageKey), !saved.isEmpty {
+            composedText = saved
+            undoRedoManager.reset(with: saved)
+            lastSavedText = saved
+        }
+    }
+
+    private func saveComposedText() {
+        UserDefaults.standard.set(composedText, forKey: storageKey)
+    }
+
+    private func clearComposedText() {
+        composedText = ""
+        UserDefaults.standard.removeObject(forKey: storageKey)
     }
 
     public var body: some View {
@@ -39,7 +66,21 @@ public struct TerminalComposeView: View {
                     text: $composedText,
                     selectedRange: $selectedRange,
                     placeholder: "Compose text to send to terminal...",
-                    onInteraction: { saveToUndoHistory() }
+                    onInteraction: {
+                        saveToUndoHistory()
+                        saveComposedText()
+                    },
+                    textColor: UIColor { traitCollection in
+                        traitCollection.userInterfaceStyle == .dark
+                            ? UIColor(Color(red: 0.90, green: 0.90, blue: 0.90))
+                            : UIColor(Color(red: 0.95, green: 0.95, blue: 0.95))
+                    },
+                    backgroundColor: UIColor { traitCollection in
+                        traitCollection.userInterfaceStyle == .dark
+                            ? UIColor(Color(red: 0.001, green: 0.029, blue: 0.035))
+                            : UIColor(Color(red: 0.06, green: 0.09, blue: 0.16))
+                    },
+                    font: UIFont.monospacedSystemFont(ofSize: 15, weight: .regular)
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -63,56 +104,91 @@ public struct TerminalComposeView: View {
                     }
 
                     HStack(spacing: 12) {
-                        // Mic button
-                        Button(action: toggleRecording) {
-                            HStack(spacing: 6) {
-                                Image(systemName: voiceDictationService.isRecording ? "mic.fill" : "mic")
-                                Text(voiceDictationService.isRecording ? "Stop" : "Mic")
+                        // 1. Voice Recording Button (using reusable component)
+                        VoiceRecordingButton(
+                            text: $composedText,
+                            selectedRange: $selectedRange,
+                            selectedLanguage: $selectedLanguage,
+                            voiceService: voiceDictationService,
+                            transcriptionModel: transcriptionModel,
+                            transcriptionPrompt: transcriptionPrompt,
+                            transcriptionTemperature: transcriptionTemperature,
+                            onError: { error in
+                                errorMessage = error
+                            },
+                            onTranscriptionComplete: {
+                                undoRedoManager.saveState(composedText)
                             }
-                        }
-                        .buttonStyle(RecordingButtonStyle(isRecording: voiceDictationService.isRecording))
+                        )
 
-                        // Language picker button
-                        Button(action: { showingLanguagePicker = true }) {
-                            Image(systemName: "globe")
-                        }
-                        .buttonStyle(UtilityButtonStyle())
-                        .accessibilityLabel("Language")
-                        .accessibilityHint("Select transcription language")
-
-                        // Sparkles button for AI enhancement
-                        Button(action: enhanceText) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "sparkles")
-                                Text("Enhance")
+                        if !voiceDictationService.isRecording {
+                            // 2. Language Picker
+                            Button(action: { showingLanguagePicker = true }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "globe")
+                                        .font(.system(size: 16))
+                                    Text(languageCode(selectedLanguage))
+                                        .font(.system(size: 12))
+                                }
                             }
-                        }
-                        .buttonStyle(CompactSuccessButtonStyle())
-                        .disabled(textToEnhance.isEmpty || textEnhancementService.isEnhancing)
+                            .buttonStyle(UtilityButtonStyle())
 
-                        if textEnhancementService.isEnhancing {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: Color.foreground))
-                                .scaleEffect(0.7)
-                        }
+                            // 3. Sparkles - Enhance text
+                            Button(action: enhanceText) {
+                                HStack(spacing: 4) {
+                                    if textEnhancementService.isEnhancing {
+                                        ProgressView()
+                                            .progressViewStyle(CircularProgressViewStyle())
+                                            .scaleEffect(0.7)
+                                    } else {
+                                        Image(systemName: "sparkles")
+                                            .font(.system(size: 16))
+                                    }
+                                }
+                            }
+                            .buttonStyle(UtilityButtonStyle())
+                            .disabled(textEnhancementService.isEnhancing || composedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            .accessibilityLabel("Enhance text")
+                            .accessibilityHint("Improve the quality and clarity of the text")
 
-                        // Undo button
-                        Button(action: { performUndo() }) {
-                            Image(systemName: "arrow.uturn.backward")
-                        }
-                        .buttonStyle(UtilityButtonStyle())
-                        .opacity(undoRedoManager.canUndo ? 1.0 : 0.4)
-                        .disabled(!undoRedoManager.canUndo)
-                        .accessibilityLabel("Undo")
+                            // 3b. Wand - Refine text
+                            Button(action: refineText) {
+                                HStack(spacing: 4) {
+                                    if textEnhancementService.isEnhancing {
+                                        ProgressView()
+                                            .progressViewStyle(CircularProgressViewStyle())
+                                            .scaleEffect(0.7)
+                                    } else {
+                                        Image(systemName: "wand.and.stars")
+                                            .font(.system(size: 16))
+                                    }
+                                }
+                            }
+                            .buttonStyle(UtilityButtonStyle())
+                            .disabled(textEnhancementService.isEnhancing || composedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            .accessibilityLabel("Refine text")
+                            .accessibilityHint("Refine and improve the selected text or full content")
 
-                        // Redo button
-                        Button(action: { performRedo() }) {
-                            Image(systemName: "arrow.uturn.forward")
+                            // 4. Undo Button
+                            Button(action: performUndo) {
+                                Image(systemName: "arrow.uturn.backward")
+                                    .font(.system(size: 16))
+                            }
+                            .buttonStyle(UtilityButtonStyle())
+                            .disabled(!undoRedoManager.canUndo)
+                            .opacity(undoRedoManager.canUndo ? 1.0 : 0.4)
+                            .accessibilityLabel("Undo")
+
+                            // 5. Redo Button
+                            Button(action: performRedo) {
+                                Image(systemName: "arrow.uturn.forward")
+                                    .font(.system(size: 16))
+                            }
+                            .buttonStyle(UtilityButtonStyle())
+                            .disabled(!undoRedoManager.canRedo)
+                            .opacity(undoRedoManager.canRedo ? 1.0 : 0.4)
+                            .accessibilityLabel("Redo")
                         }
-                        .buttonStyle(UtilityButtonStyle())
-                        .opacity(undoRedoManager.canRedo ? 1.0 : 0.4)
-                        .disabled(!undoRedoManager.canRedo)
-                        .accessibilityLabel("Redo")
 
                         Spacer()
                     }
@@ -126,10 +202,10 @@ public struct TerminalComposeView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: { dismiss() }) {
-                        Text("Cancel")
-                            .foregroundColor(Color.foreground)
+                    Button("Cancel") {
+                        dismiss()
                     }
+                    .foregroundColor(Color.foreground)
                 }
 
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -143,9 +219,20 @@ public struct TerminalComposeView: View {
                 }
             }
             .onAppear {
+                loadComposedText()
                 if composedText != lastSavedText {
                     undoRedoManager.reset(with: composedText)
                     lastSavedText = composedText
+                }
+
+                // Auto-start recording if requested
+                if autoStartRecording && !hasAutoStarted && !voiceDictationService.isRecording {
+                    hasAutoStarted = true
+                    Task {
+                        // Small delay to ensure view is fully loaded
+                        try? await Task.sleep(nanoseconds: 300_000_000) // 0.3s
+                        await startRecording()
+                    }
                 }
             }
             .task {
@@ -156,6 +243,7 @@ public struct TerminalComposeView: View {
                         if let settings = settingsService.projectTaskSettings["voiceTranscription"] {
                             transcriptionModel = settings.model
                             transcriptionTemperature = settings.temperature
+                            // Note: prompt is not in TaskModelSettings, but could be added if needed
                         }
                     }
                 } catch {
@@ -165,19 +253,6 @@ public struct TerminalComposeView: View {
             .sheet(isPresented: $showingLanguagePicker) {
                 LanguagePickerSheet(selectedLanguage: $selectedLanguage)
             }
-        }
-    }
-
-    private var textToEnhance: String {
-        let nsString = composedText as NSString
-        let textLength = nsString.length
-
-        if selectedRange.length > 0 && selectedRange.location != NSNotFound && selectedRange.location < textLength {
-            let validLength = min(selectedRange.length, textLength - selectedRange.location)
-            let validRange = NSRange(location: selectedRange.location, length: validLength)
-            return nsString.substring(with: validRange).trimmingCharacters(in: .whitespacesAndNewlines)
-        } else {
-            return composedText.trimmingCharacters(in: .whitespacesAndNewlines)
         }
     }
 
@@ -192,11 +267,25 @@ public struct TerminalComposeView: View {
     private func performUndo() {
         guard let text = undoRedoManager.undo() else { return }
         composedText = text
+        saveComposedText()
     }
 
     private func performRedo() {
         guard let text = undoRedoManager.redo() else { return }
         composedText = text
+        saveComposedText()
+    }
+
+    private func startRecording() async {
+        guard !voiceDictationService.isRecording else { return }
+
+        do {
+            try await voiceDictationService.startRecording()
+        } catch {
+            await MainActor.run {
+                errorMessage = "Failed to start recording: \(error.localizedDescription)"
+            }
+        }
     }
 
     private func sendToTerminal() {
@@ -216,6 +305,7 @@ public struct TerminalComposeView: View {
 
                 await MainActor.run {
                     isSending = false
+                    clearComposedText() // Clear saved text after successful send
                     dismiss()
                 }
             } catch {
@@ -225,86 +315,6 @@ public struct TerminalComposeView: View {
                 }
             }
         }
-    }
-
-    private func toggleRecording() {
-        if voiceDictationService.isRecording {
-            stopRecording()
-        } else {
-            startRecording()
-        }
-    }
-
-    private func startRecording() {
-        Task {
-            do {
-                try await voiceDictationService.startRecording()
-            } catch {
-                await MainActor.run {
-                    errorMessage = error.localizedDescription
-                }
-            }
-        }
-    }
-
-    private func stopRecording() {
-        voiceDictationService.stopRecording()
-
-        Task {
-            do {
-                // Wait for file writes to complete
-                try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
-
-                // Transcribe the recording
-                // Convert BCP-47 to 2-letter code for Whisper API
-                for try await transcribedText in voiceDictationService.transcribe(
-                    model: transcriptionModel,
-                    language: String(selectedLanguage.prefix(2)),
-                    prompt: nil,
-                    temperature: transcriptionTemperature
-                ) {
-                    await MainActor.run {
-                        applyInsertionOrReplacement(transcribedText)
-                        undoRedoManager.saveState(composedText)
-                    }
-                }
-            } catch {
-                await MainActor.run {
-                    errorMessage = "Transcription failed: \(error.localizedDescription)"
-                }
-            }
-        }
-    }
-
-    private func applyInsertionOrReplacement(_ text: String) {
-        let nsString = composedText as NSString
-        let textLength = nsString.length
-
-        let validRange: NSRange
-        if selectedRange.location == NSNotFound || selectedRange.location > textLength {
-            validRange = NSRange(location: textLength, length: 0)
-        } else if selectedRange.location + selectedRange.length > textLength {
-            validRange = NSRange(location: selectedRange.location, length: textLength - selectedRange.location)
-        } else {
-            validRange = selectedRange
-        }
-
-        let beforeRange = nsString.substring(to: validRange.location)
-        let afterRange = nsString.substring(from: validRange.location + validRange.length)
-
-        let needsSpaceBefore = !beforeRange.isEmpty && !beforeRange.hasSuffix(" ") && !beforeRange.hasSuffix("\n")
-        let needsSpaceAfter = !afterRange.isEmpty && !afterRange.hasPrefix(" ") && !afterRange.hasPrefix("\n")
-
-        let prefix = needsSpaceBefore ? " " : ""
-        let suffix = needsSpaceAfter ? " " : ""
-
-        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let insertionText = prefix + trimmedText + suffix
-
-        composedText = beforeRange + insertionText + afterRange
-
-        let newLocation = (beforeRange as NSString).length + (insertionText as NSString).length
-        selectedRange = NSRange(location: newLocation, length: 0)
     }
 
     private func enhanceText() {
@@ -352,6 +362,7 @@ public struct TerminalComposeView: View {
                         selectedRange = NSRange(location: (enhancedText as NSString).length, length: 0)
                     }
                     undoRedoManager.saveState(composedText)
+                    saveComposedText()
                 }
             } catch {
                 await MainActor.run {
@@ -360,10 +371,78 @@ public struct TerminalComposeView: View {
             }
         }
     }
+
+    private func refineText() {
+        let nsString = composedText as NSString
+        let textLength = nsString.length
+
+        let textToRefine: String
+        let isPartialRefinement: Bool
+
+        if selectedRange.length > 0 && selectedRange.location != NSNotFound && selectedRange.location < textLength {
+            let validLength = min(selectedRange.length, textLength - selectedRange.location)
+            let validRange = NSRange(location: selectedRange.location, length: validLength)
+            textToRefine = nsString.substring(with: validRange)
+            isPartialRefinement = true
+        } else {
+            textToRefine = composedText.trimmingCharacters(in: .whitespacesAndNewlines)
+            isPartialRefinement = false
+        }
+
+        guard !textToRefine.isEmpty else { return }
+
+        Task {
+            do {
+                guard let session = container.sessionService.currentSession else {
+                    await MainActor.run {
+                        errorMessage = "No active session"
+                    }
+                    return
+                }
+
+                let refinedText = try await textEnhancementService.refine(
+                    text: textToRefine,
+                    sessionId: session.id,
+                    projectDirectory: session.projectDirectory
+                )
+
+                await MainActor.run {
+                    if isPartialRefinement {
+                        let validLength = min(selectedRange.length, textLength - selectedRange.location)
+                        let validRange = NSRange(location: selectedRange.location, length: validLength)
+                        let before = nsString.substring(to: validRange.location)
+                        let after = nsString.substring(from: validRange.location + validRange.length)
+                        composedText = before + refinedText + after
+                        let newCursorPos = before.count + refinedText.count
+                        selectedRange = NSRange(location: newCursorPos, length: 0)
+                    } else {
+                        composedText = refinedText
+                        selectedRange = NSRange(location: refinedText.count, length: 0)
+                    }
+                    undoRedoManager.saveState(composedText)
+                    saveComposedText()
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = "Refinement failed: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    private func languageCode(_ code: String) -> String {
+        switch code {
+        case "en-US": return "EN"
+        case "es-ES": return "ES"
+        case "fr-FR": return "FR"
+        case "de-DE": return "DE"
+        default: return "EN"
+        }
+    }
 }
 
 #Preview {
-    TerminalComposeView(jobId: "sample-job-id")
+    TerminalComposeView(jobId: "sample-job-id", autoStartRecording: false)
         .environmentObject(AppContainer(
             baseURL: URL(string: "http://localhost:3000")!,
             deviceId: "preview-device"
