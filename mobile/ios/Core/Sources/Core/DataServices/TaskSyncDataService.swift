@@ -20,7 +20,7 @@ public class TaskSyncDataService: ObservableObject {
     private let deviceId: String
     private var cancellables = Set<AnyCancellable>()
     private var syncTimer: Timer?
-    private let logger = Logger(subsystem: "VibeManager", category: "TaskSync")
+    private let logger = Logger(subsystem: "PlanToCode", category: "TaskSync")
 
     // Debouncing
     private var updateTaskSubject = PassthroughSubject<(taskId: String, content: String, expectedVersion: UInt32?), Never>()

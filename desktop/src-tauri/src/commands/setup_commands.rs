@@ -43,7 +43,7 @@ pub fn trigger_initial_keychain_access() -> Result<(), String> {
         }
         Err(keyring::Error::NoStorageAccess(_)) => {
             warn!("Onboarding: User denied keychain access during initial setup.");
-            Err("Keychain access was denied. Vibe Manager needs this to securely store your session.".to_string())
+            Err("Keychain access was denied. PlanToCode needs this to securely store your session.".to_string())
         }
         Err(e) => {
             error!("Onboarding: Keychain interaction (set) failed: {}", e);

@@ -129,7 +129,7 @@ export function Header() {
                     : 'text-foreground hover:text-primary drop-shadow-lg',
                 )}
                 href="/"
-                aria-label="Vibe Manager home page"
+                aria-label="PlanToCode home page"
               >
                 <motion.div
                   className={cn(
@@ -143,7 +143,7 @@ export function Header() {
                   <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 lg:w-5 lg:h-5 text-primary-foreground" />
                 </motion.div>
                 <span className="bg-gradient-to-r from-current to-primary bg-clip-text whitespace-nowrap">
-                  Vibe Manager
+                  PlanToCode
                 </span>
               </Link>
             </motion.div>

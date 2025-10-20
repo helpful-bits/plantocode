@@ -5,17 +5,18 @@ import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection
 import { StructuredData } from '@/components/seo/StructuredData';
 
 export const metadata: Metadata = {
-  title: 'Text Improvement in Vibe Manager',
+  title: 'Text improvement - PlanToCode',
   description:
     'How the desktop workspace rewrites highlighted text, preserves formatting, and links the feature to voice and video inputs.',
   alternates: {
-    canonical: 'https://www.vibemanager.app/docs/text-improvement',
+    canonical: 'https://www.plantocode.com/docs/text-improvement',
   },
   openGraph: {
-    title: 'Text Improvement in Vibe Manager',
+    title: 'Text improvement - PlanToCode',
     description:
       'Understand the selection popover, job queue, model configuration, and integrations that power text improvement.',
-    url: 'https://www.vibemanager.app/docs/text-improvement',
+    url: 'https://www.plantocode.com/docs/text-improvement',
+    siteName: 'PlanToCode',
     type: 'article',
   },
 };
@@ -23,7 +24,7 @@ export const metadata: Metadata = {
 const structuredData = {
   '@context': 'https://schema.org',
   '@type': 'Article',
-  headline: 'Text Improvement in Vibe Manager',
+  headline: 'Text improvement - PlanToCode',
   description:
     'Documentation for the selection-driven text improvement workflow, including model selection, Monaco integration, and voice/video inputs.',
 };
@@ -35,16 +36,13 @@ export default function TextImprovementDocPage() {
 
       <DocsArticle
         title="Text Improvement"
-        description="How Vibe Manager rewrites highlighted text without changing formatting and links the result back to your workspace."
+        description="How PlanToCode rewrites highlighted text without changing formatting and links the result back to your workspace."
         date="2025-09-21"
         readTime="7 min"
         category="Product Guide"
       >
         <p className="text-base text-muted-foreground leading-relaxed mb-6">
-          Text improvement is available everywhere you edit copy in the desktop app. Selecting text inside the Monaco editors or
-          task inputs raises a floating action button that sends the selection through a dedicated background job. The job uses
-          the text-improvement task configuration, rewrites the content while preserving whitespace, and then replaces the
-          original selection in place.
+          Refine text with AI context. Select text in any editor, trigger a background job, and get improved content that keeps your formatting intact.
         </p>
 
         <GlassCard className="p-6 mb-10">
@@ -128,7 +126,7 @@ export default function TextImprovementDocPage() {
           <GlassCard className="p-6" highlighted>
             <h2 className="text-xl font-semibold mb-3">Try text improvement in the desktop app</h2>
             <p className="text-muted-foreground leading-relaxed mb-4">
-              Download Vibe Manager to combine voice capture, video context, and inline rewriting before you generate
+              Download PlanToCode to combine voice capture, video context, and inline rewriting before you generate
               implementation plans.
             </p>
             <PlatformDownloadSection location="docs_text_improvement" />

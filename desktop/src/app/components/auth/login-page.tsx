@@ -1,5 +1,5 @@
 /**
- * Login Page Component for Vibe Manager Desktop
+ * Login Page Component for PlanToCode Desktop
  */
 
 import { useState, useEffect, useRef } from "react";
@@ -16,7 +16,7 @@ const logger = createLogger({ namespace: "LoginPage" });
 export default function LoginPage() {
   const { trackEvent } = usePlausible();
   const { signIn, loading, error } = useAuth();
-  const appName = "Vibe Manager";
+  const appName = "PlanToCode";
   const [authInProgress, setAuthInProgress] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
   const pollingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -187,14 +187,14 @@ export default function LoginPage() {
             <p className="text-sm text-muted-foreground text-center">
               By continuing, you agree to our{' '}
               <button
-                onClick={() => open('https://vibemanager.app/terms')}
+                onClick={() => open('https://plantocode.com/terms')}
                 className="underline hover:text-foreground transition-colors"
               >
                 Terms of Service
               </button>{' '}
               and{' '}
               <button
-                onClick={() => open('https://vibemanager.app/privacy')}
+                onClick={() => open('https://plantocode.com/privacy')}
                 className="underline hover:text-foreground transition-colors"
               >
                 Privacy Policy

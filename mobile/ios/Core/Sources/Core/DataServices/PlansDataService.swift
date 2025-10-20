@@ -24,7 +24,7 @@ public struct PromptResponse: Codable {
 /// Service for accessing implementation plans data from desktop
 @MainActor
 public class PlansDataService: ObservableObject {
-    private let logger = Logger(subsystem: "VibeManager", category: "PlansDataService")
+    private let logger = Logger(subsystem: "PlanToCode", category: "PlansDataService")
 
     // MARK: - Published Properties
     @Published public var plans: [PlanSummary] = []

@@ -485,7 +485,7 @@ export default function AccountPage() {
             <div className="flex items-center justify-center gap-3 text-muted-foreground">
               <Info className="h-4 w-4" />
               <p className="text-sm">
-                Vibe Manager {appVersion ? `v${appVersion}` : 'Loading...'}
+                PlanToCode {appVersion ? `v${appVersion}` : 'Loading...'}
               </p>
             </div>
           </CardContent>

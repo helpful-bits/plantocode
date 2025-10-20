@@ -163,7 +163,7 @@ pub fn run() {
 
     builder
         .setup(|app| {
-            info!("Starting Vibe Manager Desktop application");
+            info!("Starting PlanToCode Desktop application");
             info!("App identifier: {}", app.config().identifier);
 
             #[cfg(target_os = "macos")]
@@ -276,16 +276,12 @@ pub fn run() {
                 }
 
                 // Shutdown DeviceLinkClient before closing
-                if let Some(client_state) =
-                    app_handle.try_state::<Arc<
-                        tokio::sync::Mutex<crate::services::device_link_client::DeviceLinkClient>,
-                    >>()
+                if let Some(client) =
+                    app_handle.try_state::<Arc<crate::services::device_link_client::DeviceLinkClient>>()
                 {
-                    let client_state = client_state.inner().clone();
+                    let client = client.inner().clone();
                     tauri::async_runtime::spawn(async move {
-                        if let Ok(mut client) = client_state.try_lock() {
-                            client.shutdown().await;
-                        }
+                        client.shutdown().await;
                     });
                 }
             }
@@ -437,6 +433,7 @@ pub fn run() {
             commands::session_commands::update_session_command,
             commands::session_commands::delete_session_command,
             commands::session_commands::rename_session_command,
+            commands::session_commands::duplicate_session_command,
             commands::session_commands::update_session_project_directory_command,
             commands::session_commands::clear_all_project_sessions_command,
             commands::session_commands::update_session_fields_command,

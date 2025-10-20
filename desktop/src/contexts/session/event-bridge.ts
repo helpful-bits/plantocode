@@ -1,5 +1,13 @@
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 
+/**
+ * Event Bridge for Session Events
+ *
+ * All event payloads are guaranteed to be in camelCase format by explicit
+ * Rust payload structs with #[serde(rename_all = "camelCase")] in:
+ * desktop/src-tauri/src/events/session_events.rs
+ */
+
 type DeviceLinkEvent = {
   type: string;
   payload: any;
@@ -11,11 +19,14 @@ type Handlers = {
   onRemoteSessionCreated?: (session: { id: string; projectDirectory: string }) => void;
   onSessionListInvalidate?: (projectDirectory: string) => void;
   onSessionUpdated?: (session: any) => void;
+  onSessionDeleted?: (sessionId: string) => void;
+  onSessionCreated?: (session: any) => void;
 };
 
 let initialized = false;
 let unlistenDeviceLink: UnlistenFn | null = null;
 let unlistenSessionUpdated: UnlistenFn | null = null;
+let unlistenSessionDeleted: UnlistenFn | null = null;
 const handlers = new Set<Handlers>();
 const lastAppliedSwitch = { sessionId: null as null | string };
 
@@ -44,6 +55,7 @@ export async function initSessionEventBridge() {
         if (lastAppliedSwitch.sessionId !== session.id) {
           handlers.forEach(h => h.onRemoteSessionCreated?.(session));
         }
+        handlers.forEach(h => h.onSessionCreated?.(session));
         handlers.forEach(h => h.onSessionListInvalidate?.(session.projectDirectory));
       }
       return;
@@ -60,7 +72,31 @@ export async function initSessionEventBridge() {
 
   unlistenSessionUpdated = await listen("session-updated", (event) => {
     const payload = event.payload as { sessionId: string; session: any };
+
+    // Dev-only warning: detect snake_case keys (should never happen)
+    if (process.env.NODE_ENV === "development") {
+      const payloadObj = payload as any;
+      if ("session_id" in payloadObj || "project_directory" in payloadObj) {
+        console.error("[event-bridge] CRITICAL: Detected snake_case keys in session-updated payload. Expected camelCase only.", payloadObj);
+      }
+    }
+
     handlers.forEach(h => h.onSessionUpdated?.(payload.session));
+    handlers.forEach(h => h.onSessionListInvalidate?.(payload.session.projectDirectory));
+  });
+
+  unlistenSessionDeleted = await listen("session-deleted", (event) => {
+    const payload = event.payload as { sessionId: string };
+
+    // Dev-only warning: detect snake_case keys (should never happen)
+    if (process.env.NODE_ENV === "development") {
+      const payloadObj = payload as any;
+      if ("session_id" in payloadObj) {
+        console.error("[event-bridge] CRITICAL: Detected snake_case keys in session-deleted payload. Expected camelCase only.", payloadObj);
+      }
+    }
+
+    handlers.forEach(h => h.onSessionDeleted?.(payload.sessionId));
   });
 }
 
@@ -79,6 +115,10 @@ export async function disposeSessionEventBridge() {
   if (unlistenSessionUpdated) {
     await unlistenSessionUpdated();
     unlistenSessionUpdated = null;
+  }
+  if (unlistenSessionDeleted) {
+    await unlistenSessionDeleted();
+    unlistenSessionDeleted = null;
   }
   handlers.clear();
   initialized = false;

@@ -156,11 +156,11 @@ public struct SettingsView: View {
 
 
           Section("Legal") {
-            if let termsURL = URL(string: "https://vibemanager.app/terms") {
+            if let termsURL = URL(string: "https://plantocode.com/terms") {
               Link("Terms of Service", destination: termsURL)
                 .tint(Color.primary)
             }
-            if let privacyURL = URL(string: "https://vibemanager.app/privacy") {
+            if let privacyURL = URL(string: "https://plantocode.com/privacy") {
               Link("Privacy Policy", destination: privacyURL)
                 .tint(Color.primary)
             }

@@ -3,15 +3,16 @@ import { DocsArticle } from '@/components/docs/DocsArticle';
 import { GlassCard } from '@/components/ui/GlassCard';
 
 export const metadata: Metadata = {
-  title: 'Voice Transcription',
-  description: 'How Vibe Manager records audio, streams transcripts into prompts, and respects project settings.',
+  title: 'Voice transcription - PlanToCode',
+  description: 'How PlanToCode records audio, streams transcripts into prompts, and respects project settings.',
   alternates: {
-    canonical: 'https://www.vibemanager.app/docs/voice-transcription',
+    canonical: 'https://www.plantocode.com/docs/voice-transcription',
   },
   openGraph: {
-    title: 'Voice Transcription',
+    title: 'Voice transcription - PlanToCode',
     description: 'Learn how the recording hook manages devices, permissions, and streaming text.',
-    url: 'https://www.vibemanager.app/docs/voice-transcription',
+    url: 'https://www.plantocode.com/docs/voice-transcription',
+    siteName: 'PlanToCode',
     type: 'article',
   },
 };
@@ -46,8 +47,8 @@ export default function VoiceTranscriptionDocPage() {
         <h2 className="text-2xl font-bold">Project-aware settings</h2>
         <GlassCard className="p-6">
           <p className="text-muted-foreground leading-relaxed">
-            When a recording session starts, the hook looks up the active project&rsquo;s transcription configuration. Language codes,
-            preferred models, and other settings are retrieved before capturing audio so recordings follow the project&rsquo;s
+            When a recording session starts, the hook looks up the active project's transcription configuration. Language codes,
+            preferred models, and other settings are retrieved before capturing audio so recordings follow the project's
             preferences.
           </p>
         </GlassCard>

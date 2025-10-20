@@ -6,19 +6,19 @@ import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Layers, Workflow, Merge, ClipboardList, Settings } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'Ship Large Features with Traceable Plans',
+  title: 'Ship Large Features with Traceable Plans - PlanToCode',
   description:
-    'Use Vibe Manager to coordinate implementation plans, model selections, and background workflows when delivering multi-step features.',
+    'Use PlanToCode to coordinate implementation plans, model selections, and background workflows when delivering multi-step features.',
   openGraph: {
-    title: 'Ship Large Features with Traceable Plans',
+    title: 'Ship Large Features with Traceable Plans - PlanToCode',
     description:
       'Organise multi-step implementation work with plan history, model guardrails, and reusable workflows.',
-    url: 'https://www.vibemanager.app/solutions/large-features',
-    siteName: 'Vibe Manager',
+    url: 'https://www.plantocode.com/solutions/large-features',
+    siteName: 'PlanToCode',
     type: 'website',
   },
   alternates: {
-    canonical: 'https://www.vibemanager.app/solutions/large-features',
+    canonical: 'https://www.plantocode.com/solutions/large-features',
   },
 };
 
@@ -42,7 +42,7 @@ export default function LargeFeaturesPage() {
                   Ship large features with traceable plans
                 </h1>
                 <p className="text-lg text-foreground/80 max-w-3xl mx-auto leading-relaxed">
-                  Multi-stage delivery depends on consistent scope, reviewable plans, and predictable token usage. Vibe Manager keeps these signals connected from the first workflow run to the final terminal session.
+                  Multi-stage delivery depends on consistent scope, reviewable plans, and predictable token usage. PlanToCode keeps these signals connected from the first workflow run to the final terminal session.
                 </p>
               </header>
 
@@ -104,7 +104,7 @@ export default function LargeFeaturesPage() {
                 <h2 className="text-2xl sm:text-3xl font-bold mb-4">Ship Complex Features with Confidence</h2>
                 <p className="text-lg text-foreground/80 mb-8 max-w-2xl mx-auto">
                   From first workflow to final deployment, maintain perfect traceability.
-                  This is how feature delivery should work - coordinated, predictable, traceable.
+                  This is how feature delivery should work: coordinated, predictable, traceable.
                 </p>
                 <PlatformDownloadSection location="solutions_large_features" />
                 <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4 text-sm text-foreground/60">

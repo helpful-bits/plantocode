@@ -6,19 +6,19 @@ import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Wrench, ClipboardList, GaugeCircle, History, Files } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'Maintain Systems with Repeatable Workflows',
+  title: 'Maintain systems with repeatable workflows - PlanToCode',
   description:
-    'Use Vibe Manager to document ongoing maintenance tasks, keep an audit trail, and prevent regressions.',
+    'Use PlanToCode to document ongoing maintenance tasks, keep an audit trail, and prevent regressions.',
   openGraph: {
-    title: 'Maintain Systems with Repeatable Workflows',
+    title: 'Maintain systems with repeatable workflows - PlanToCode',
     description:
       'Capture reusable plans, model guardrails, and persistent logs for technical debt work.',
-    url: 'https://www.vibemanager.app/solutions/maintenance-enhancements',
-    siteName: 'Vibe Manager',
+    url: 'https://www.plantocode.com/solutions/maintenance-enhancements',
+    siteName: 'PlanToCode',
     type: 'website',
   },
   alternates: {
-    canonical: 'https://www.vibemanager.app/solutions/maintenance-enhancements',
+    canonical: 'https://www.plantocode.com/solutions/maintenance-enhancements',
   },
 };
 
@@ -42,7 +42,7 @@ export default function MaintenanceEnhancementsPage() {
                   Maintain systems with repeatable workflows
                 </h1>
                 <p className="text-lg text-foreground/80 max-w-3xl mx-auto leading-relaxed">
-                  Maintenance work slows down when teams lose track of scope or repeat the same investigations. Vibe Manager keeps the context, plans, and execution history needed to apply fixes safely.
+                  Maintenance work slows down when teams lose track of scope or repeat the same investigations. PlanToCode keeps the context, plans, and execution history needed to apply fixes safely.
                 </p>
               </header>
 
@@ -103,7 +103,7 @@ export default function MaintenanceEnhancementsPage() {
               <GlassCard className="p-8 sm:p-12 max-w-3xl mx-auto text-center" highlighted>
                 <h2 className="text-2xl sm:text-3xl font-bold mb-4">Transform Maintenance into Strategic Advantage</h2>
                 <p className="text-lg text-foreground/80 mb-8 max-w-2xl mx-auto">
-                  Stop reactive fire-fighting and build systematic maintenance workflows.
+                  Build systematic maintenance workflows.
                   Preserved context, reusable plans, and model guardrails turn technical debt into manageable, repeatable processes.
                 </p>
                 <PlatformDownloadSection location="solutions_maintenance" />

@@ -11,7 +11,7 @@ import Core
 public class PushNotificationManager: NSObject, ObservableObject {
     public static let shared = PushNotificationManager()
 
-    private let logger = Logger(subsystem: "VibeManager", category: "PushNotifications")
+    private let logger = Logger(subsystem: "PlanToCode", category: "PushNotifications")
 
     // MARK: - Published Properties
     @Published public private(set) var authorizationStatus: UNAuthorizationStatus = .notDetermined

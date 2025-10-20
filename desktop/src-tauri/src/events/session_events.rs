@@ -2,6 +2,20 @@ use serde::Serialize;
 use serde_json;
 use tauri::{AppHandle, Emitter};
 
+/// Explicit payload structs guarantee camelCase serialization end-to-end
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionUpdatedEventPayload<'a> {
+    session_id: &'a str,
+    session: &'a serde_json::Value,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionDeletedEventPayload<'a> {
+    session_id: &'a str,
+}
+
 /// Emitted when session files are updated (unified event for all file selection changes)
 /// event: "session-files-updated"
 /// payload: { sessionId, includedFiles, forceExcludedFiles }
@@ -29,11 +43,17 @@ pub fn emit_session_files_updated(
 }
 
 pub fn emit_session_updated(app: &AppHandle, session_id: &str, session_obj: &serde_json::Value) -> Result<(), String> {
-    app.emit("session-updated", serde_json::json!({ "sessionId": session_id, "session": session_obj }))
+    let payload = SessionUpdatedEventPayload {
+        session_id,
+        session: session_obj,
+    };
+    let payload_value = serde_json::to_value(&payload).map_err(|e| format!("serialization failed: {e}"))?;
+
+    app.emit("session-updated", &payload_value)
         .map_err(|e| format!("local emit failed: {e}"))?;
     app.emit("device-link-event", serde_json::json!({
         "type": "session-updated",
-        "payload": { "sessionId": session_id, "session": session_obj }
+        "payload": payload_value
     })).map_err(|e| format!("relay emit failed: {e}"))?;
     Ok(())
 }
@@ -69,11 +89,16 @@ pub fn emit_session_field_validated(
 }
 
 pub fn emit_session_deleted(app: &AppHandle, session_id: &str) -> Result<(), String> {
-    app.emit("session-deleted", serde_json::json!({ "sessionId": session_id }))
+    let payload = SessionDeletedEventPayload {
+        session_id,
+    };
+    let payload_value = serde_json::to_value(&payload).map_err(|e| format!("serialization failed: {e}"))?;
+
+    app.emit("session-deleted", &payload_value)
         .map_err(|e| format!("local emit failed: {e}"))?;
     app.emit("device-link-event", serde_json::json!({
         "type": "session-deleted",
-        "payload": { "sessionId": session_id }
+        "payload": payload_value
     })).map_err(|e| format!("relay emit failed: {e}"))?;
     Ok(())
 }

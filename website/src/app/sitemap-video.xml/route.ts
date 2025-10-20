@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
 const CDN_BASE = 'https://d2tyb0wucqqf48.cloudfront.net';
-const SITE_URL = 'https://www.vibemanager.app';
+const SITE_URL = 'https://www.plantocode.com';
 
 interface Video {
   loc: string;
@@ -18,8 +18,8 @@ const videos: Video[] = [
   {
     loc: SITE_URL,
     contentLoc: `${CDN_BASE}/assets/videos/hero-section.mp4`,
-    title: 'Vibe Manager - AI-Powered Context Curation Demo',
-    description: 'Watch how Vibe Manager enhances Claude Code, Cursor, and OpenAI Codex with multi-model planning. Generate implementation plans from GPT-5, Claude Sonnet 4, and Gemini 2.5 Pro.',
+    title: 'PlanToCode - AI planning tool with integrated terminal',
+    description: 'Watch how PlanToCode helps you plan and ship code changes - find the right files, generate and merge AI plans, then run them in a persistent terminal.',
     thumbnailLoc: `${CDN_BASE}/assets/images/hero-thumbnail.jpg`,
     duration: 60,
     publicationDate: '2025-09-20T00:00:00Z'

@@ -36,14 +36,14 @@ export default function RegionalLegalLayout({
       <header className="border-b border-border/40">
         <div className="container mx-auto max-w-3xl px-6 py-4">
           <div className="flex justify-between items-center">
-            <Link 
-              href="/" 
+            <Link
+              href="/"
               className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
               <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
               </svg>
-              Back to Vibe Manager
+              Back to PlanToCode
             </Link>
             
             <DropdownMenu>

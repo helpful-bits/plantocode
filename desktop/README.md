@@ -1,6 +1,6 @@
-# Vibe Manager Desktop
+# PlanToCode Desktop
 
-This is the desktop version of Vibe Manager, built using Tauri.
+This is the desktop version of PlanToCode, built using Tauri.
 
 ## Terminal Restoration
 

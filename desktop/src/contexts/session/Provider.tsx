@@ -204,6 +204,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
       isSessionLoading: sessionStateHook.isSessionLoading,
       isSessionModified: sessionStateHook.isSessionModified,
       sessionError: sessionStateHook.sessionError,
+      sessionListVersion: sessionStateHook.sessionListVersion,
 
       // Memoized session field accessors
       sessionBasicFields,
@@ -216,6 +217,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
       sessionStateHook.isSessionLoading,
       sessionStateHook.isSessionModified,
       sessionStateHook.sessionError,
+      sessionStateHook.sessionListVersion,
       sessionBasicFields,
       sessionFileFields,
     ]
@@ -231,6 +233,9 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
       // Session field updates
       updateCurrentSessionFields: sessionActions.updateCurrentSessionFields,
+
+      // Session list invalidation
+      invalidateSessionList: () => sessionStateHook.setSessionListVersion((v) => v + 1),
 
       // Session operations
       saveCurrentSession: sessionActions.saveCurrentSession,
@@ -249,6 +254,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
       sessionStateHook.setCurrentSession,
       sessionStateHook.setSessionLoading,
       sessionStateHook.setSessionModified,
+      sessionStateHook.setSessionListVersion,
       // Destructure sessionActions to individual stable callbacks
       sessionActions.setActiveSessionId,
       sessionActions.updateCurrentSessionFields,
@@ -436,40 +442,40 @@ export function SessionProvider({ children }: SessionProviderProps) {
   useEffect(() => {
     const unregister = registerSessionEventHandlers({
       onSessionUpdated: (session) => {
-        if (!sessionStateHook.currentSession?.id || session.id !== sessionStateHook.currentSession.id) {
-          return;
+        // Always invalidate list when any session updates
+        sessionStateHook.setSessionListVersion((v) => v + 1);
+
+        // Only update current session if it matches
+        if (sessionStateHook.currentSession?.id === session.id) {
+          if (!isUserPresent) return;
+
+          const taskDescEditorFocused = (window as any).__taskDescriptionEditorFocused;
+          const mergeInstrEditorFocused = (window as any).__mergeInstructionsEditorFocused;
+
+          sessionStateHook.setCurrentSession((prev) => {
+            if (!prev) return session;
+
+            return {
+              ...session,
+              taskDescription: taskDescEditorFocused ? prev.taskDescription : session.taskDescription,
+              mergeInstructions: mergeInstrEditorFocused ? prev.mergeInstructions : session.mergeInstructions,
+            };
+          });
+          sessionStateHook.setSessionModified(false);
         }
+      },
+      onSessionDeleted: (sessionId) => {
+        // Invalidate list
+        sessionStateHook.setSessionListVersion((v) => v + 1);
 
-        if (!isUserPresent) return;
-
-        const editorFocused = (window as any).__taskDescriptionEditorFocused;
-
-        // Shallow-compare non-task fields to detect meaningful changes
-        const { taskDescription, includedFiles, forceExcludedFiles, ...otherFields } = session;
-        const currentOtherFields = (({ taskDescription, includedFiles, forceExcludedFiles, ...rest }) => rest)(sessionStateHook.currentSession);
-
-        const hasOtherChanges = Object.keys(otherFields).some(
-          key => otherFields[key as keyof typeof otherFields] !== currentOtherFields[key as keyof typeof currentOtherFields]
-        );
-
-        // If editor is focused and only taskDescription changed, skip update
-        if (editorFocused && !hasOtherChanges) {
-          return;
+        // Clear current session if it was deleted
+        if (sessionStateHook.currentSession?.id === sessionId) {
+          sessionStateHook.setCurrentSession(null);
         }
-
-        // Apply update - preserve taskDescription during focused editing
-        if (editorFocused) {
-          sessionStateHook.setCurrentSession({
-            ...session,
-            taskDescription: sessionStateHook.currentSession.taskDescription,
-          } as any);
-        } else {
-          // Always apply the update when editor is not focused
-          // This ensures task description changes from jobs, mobile, etc. are reflected
-          sessionStateHook.setCurrentSession(session);
-        }
-
-        sessionStateHook.setSessionModified(false);
+      },
+      onSessionCreated: () => {
+        // Invalidate list when new session created
+        sessionStateHook.setSessionListVersion((v) => v + 1);
       },
     });
 

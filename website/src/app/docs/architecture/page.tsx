@@ -3,15 +3,16 @@ import { DocsArticle } from '@/components/docs/DocsArticle';
 import { GlassCard } from '@/components/ui/GlassCard';
 
 export const metadata: Metadata = {
-  title: 'Vibe Manager Architecture Overview',
+  title: 'PlanToCode architecture overview',
   description: 'Desktop, orchestration, and persistence layers that power implementation plans, workflows, and terminal sessions.',
   alternates: {
-    canonical: 'https://www.vibemanager.app/docs/vibe-manager-architecture',
+    canonical: 'https://www.plantocode.com/docs/vibe-manager-architecture',
   },
   openGraph: {
-    title: 'Vibe Manager Architecture Overview',
+    title: 'PlanToCode architecture overview',
     description: 'Learn how the React front end, Tauri commands, and background services cooperate inside the desktop app.',
-    url: 'https://www.vibemanager.app/docs/vibe-manager-architecture',
+    url: 'https://www.plantocode.com/docs/vibe-manager-architecture',
+    siteName: 'PlanToCode',
     type: 'article',
   },
 };
@@ -19,14 +20,14 @@ export const metadata: Metadata = {
 export default function VibeManagerArchitecturePage() {
   return (
     <DocsArticle
-      title="Vibe Manager Architecture"
+      title="PlanToCode Architecture"
       description="How the desktop shell, background workflows, and shared services are organised."
       date="2025-09-19"
       readTime="7 min"
       category="Architecture"
     >
       <p className="text-base text-muted-foreground leading-relaxed mb-6">
-        Vibe Manager is a Tauri desktop application with a React front end. The UI renders implementation plans, terminals, and
+        PlanToCode is a Tauri desktop application with a React front end. The UI renders implementation plans, terminals, and
         configuration controls, while the Rust backend exposes commands for workflows, token estimation, and persistent terminal
         sessions. This overview summarises how those pieces fit together.
       </p>

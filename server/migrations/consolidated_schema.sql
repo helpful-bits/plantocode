@@ -1,4 +1,4 @@
--- Initial database schema for Vibe Manager Server
+-- Initial database schema for PlanToCode Server
 
 -- Users table for authentication
 CREATE TABLE IF NOT EXISTS users (

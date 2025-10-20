@@ -8,22 +8,22 @@ export default function DeveloperOverview() {
           Enhancing Claude Code & Cursor Workflows
         </h2>
         <p className="text-base text-muted-foreground leading-relaxed mb-6">
-          Vibe Manager is a desktop companion that supercharges your AI coding experience by providing context preparation, planning, and research capabilities before you start coding.
+          PlanToCode is a desktop companion that supercharges your AI coding experience by providing context preparation, planning, and research capabilities before you start coding.
         </p>
       </header>
 
       <div className="space-y-12">
-        {/* How Vibe Manager Complements Claude Code/Cursor */}
+        {/* How PlanToCode Complements Claude Code/Cursor */}
         <div className="border rounded-lg p-6 bg-muted/30">
           <h3 className="text-xl font-semibold mb-6">The Perfect Companion for AI Coding</h3>
           <p className="text-base text-muted-foreground mb-6 leading-relaxed">
-            While Claude Code and Cursor excel at writing code with the context you provide, Vibe Manager handles the crucial preparatory work - finding relevant files, researching solutions, and creating implementation plans that you can then execute in your AI coding environment.
+            While Claude Code and Cursor excel at writing code with the context you provide, PlanToCode handles the crucial preparatory work - finding relevant files, researching solutions, and creating implementation plans that you can then execute in your AI coding environment.
           </p>
           <div className="space-y-6">
             <div>
               <h4 className="text-lg font-semibold">Context Preparation Layer</h4>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                Instead of manually searching for relevant files or spending time crafting the perfect prompt, Vibe Manager intelligently gathers and organizes the context your AI coding tool needs to be most effective. Use voice dictation to describe your needs naturally - speak your requirements and let the system understand what you're trying to build, making context preparation effortless.
+                Instead of manually searching for relevant files or spending time crafting the perfect prompt, PlanToCode intelligently gathers and organizes the context your AI coding tool needs to be most effective. Use voice dictation to describe your needs naturally - speak your requirements and let the system understand what you're trying to build, making context preparation effortless.
               </p>
             </div>
             <div>
@@ -103,7 +103,7 @@ export default function DeveloperOverview() {
         <div className="border rounded-lg p-6 bg-muted/30">
           <h3 className="text-xl font-semibold mb-6">Background Processing</h3>
           <p className="text-base text-muted-foreground mb-6 leading-relaxed">
-            While you're coding in Claude Code or Cursor, Vibe Manager can work in the background preparing context for your next task or researching related topics.
+            While you're coding in Claude Code or Cursor, PlanToCode can work in the background preparing context for your next task or researching related topics.
           </p>
           <div className="space-y-6">
             <div>

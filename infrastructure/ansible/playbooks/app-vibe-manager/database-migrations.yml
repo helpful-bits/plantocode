@@ -1,9 +1,9 @@
 ---
-# Database Migrations for Vibe Manager Application
+# Database Migrations for PlanToCode Application
 # This playbook manages database schema and data migrations
 # It should be run after base PostgreSQL is installed but before app deployment
 
-- name: Vibe Manager Database Migrations
+- name: PlanToCode Database Migrations
   hosts: all
   become: yes
   vars:

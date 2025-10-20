@@ -41,7 +41,7 @@ export default function SchedulePage() {
                 Talk to an Architect
               </h1>
               <p className="text-lg sm:text-xl text-foreground/80 max-w-3xl mx-auto leading-relaxed">
-                Get expert guidance on using Vibe Manager for your team's specific needs. We'll discuss architecture patterns, integration strategies, and deployment options.
+                Get expert guidance on using PlanToCode for your team's specific needs. We'll discuss architecture patterns, integration strategies, and deployment options.
               </p>
             </div>
 
@@ -52,7 +52,7 @@ export default function SchedulePage() {
                   <h3 className="text-lg font-semibold">30-Minute Session</h3>
                 </div>
                 <p className="text-foreground/80">
-                  Focused consultation on your team's requirements and how Vibe Manager can help.
+                  Focused consultation on your team's requirements and how PlanToCode can help.
                 </p>
               </GlassCard>
 
@@ -87,8 +87,8 @@ export default function SchedulePage() {
               {/* Cal.com embed container */}
               <div className="cal-container">
                 <div
-                  data-cal-namespace="vibemanager"
-                  data-cal-link="vibemanager/architect-consultation"
+                  data-cal-namespace="plantocode"
+                  data-cal-link="plantocode/architect-consultation"
                   data-cal-config='{"layout":"month_view"}'
                   style={{ width: '100%', height: '700px', overflow: 'scroll' }}
                   className="rounded-lg overflow-hidden"
@@ -98,8 +98,8 @@ export default function SchedulePage() {
               <div className="mt-8 text-center">
                 <p className="text-sm text-foreground/60">
                   Can't find a suitable time? Email us at{' '}
-                  <a href="mailto:architects@vibemanager.app" className="text-primary hover:underline">
-                    architects@vibemanager.app
+                  <a href="mailto:architects@plantocode.com" className="text-primary hover:underline">
+                    architects@plantocode.com
                   </a>
                 </p>
               </div>

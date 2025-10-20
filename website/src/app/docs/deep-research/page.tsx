@@ -5,17 +5,18 @@ import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection
 import { StructuredData } from '@/components/seo/StructuredData';
 
 export const metadata: Metadata = {
-  title: 'Deep Research & Web Search in Vibe Manager',
+  title: 'Deep research - PlanToCode',
   description:
     'Technical documentation for the web search workflow: API integration, query optimization, result processing, and development workflow integration.',
   alternates: {
-    canonical: 'https://www.vibemanager.app/docs/deep-research',
+    canonical: 'https://www.plantocode.com/docs/deep-research',
   },
   openGraph: {
-    title: 'Deep Research & Web Search in Vibe Manager',
+    title: 'Deep research - PlanToCode',
     description:
-      'Understand how web search operates within Vibe Manager: from query generation to result processing and integration with development workflows.',
-    url: 'https://www.vibemanager.app/docs/deep-research',
+      'Understand how web search operates within PlanToCode: from query generation to result processing and integration with development workflows.',
+    url: 'https://www.plantocode.com/docs/deep-research',
+    siteName: 'PlanToCode',
     type: 'article',
   },
 };
@@ -23,7 +24,7 @@ export const metadata: Metadata = {
 const structuredData = {
   '@context': 'https://schema.org',
   '@type': 'Article',
-  headline: 'Deep Research & Web Search in Vibe Manager',
+  headline: 'Deep research - PlanToCode',
   description:
     'Technical documentation for the web search feature, including architecture, workflow stages, API integration, and best practices.',
 };
@@ -35,13 +36,13 @@ export default function DeepResearchDocPage() {
 
       <DocsArticle
         title="Deep Research & Web Search"
-        description="How Vibe Manager performs web searches, processes results, and integrates findings into development workflows."
+        description="How PlanToCode performs web searches, processes results, and integrates findings into development workflows."
         date="2025-09-20"
         readTime="8 min"
         category="Technical Reference"
       >
         <p className="text-base text-muted-foreground leading-relaxed mb-6">
-          The Deep Research feature enables Vibe Manager to perform intelligent web searches, gather up-to-date information,
+          The Deep Research feature enables PlanToCode to perform intelligent web searches, gather up-to-date information,
           and integrate findings directly into development workflows. This system combines query optimization, result processing,
           and contextual integration to enhance code generation and problem-solving capabilities.
         </p>
@@ -355,7 +356,7 @@ Results integrated as:
           <GlassCard className="p-6" highlighted>
             <h2 className="text-xl font-semibold mb-3">Ready to use Deep Research?</h2>
             <p className="text-muted-foreground leading-relaxed mb-4">
-              The Deep Research and Web Search features are available in the Vibe Manager desktop application. Download
+              The Deep Research and Web Search features are available in the PlanToCode desktop application. Download
               the build for your platform to start integrating web research into your development workflow.
             </p>
             <PlatformDownloadSection location="docs_deep_research" />

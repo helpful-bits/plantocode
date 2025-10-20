@@ -29,7 +29,7 @@ import {
 import type { SoftwareApplication, HowTo, FAQPage } from 'schema-dts';
 
 export const metadata: Metadata = {
-  title: 'Codex CLI: See Every File Before Execution | Vibe Manager 2025',
+  title: 'PlanToCode + Codex CLI - plan before you run',
   description:
     'Stop Codex breaking your codebase. Discover every file, dependency, and service BEFORE Codex runs. Multi-model planning (Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet) prevents surprise regressions.',
   keywords: [
@@ -40,18 +40,18 @@ export const metadata: Metadata = {
     'codex planning workflow',
     'gpt-5-codex planning',
     'codex cli file discovery',
-    'vibe manager codex',
+    'plantocode codex',
   ],
   openGraph: {
-    title: 'Codex CLI: See Every File Before Execution',
+    title: 'PlanToCode + Codex CLI - plan before you run',
     description:
       'See every file Codex will touch before it runs. Discover impacted files, merge GPT-5 & Claude plans, execute with Codex approval modes. Architectural pre-planning for Codex CLI teams.',
-    url: 'https://www.vibemanager.app/plan-mode/codex',
-    siteName: 'Vibe Manager',
+    url: 'https://www.plantocode.com/plan-mode/codex',
+    siteName: 'PlanToCode',
     type: 'website',
   },
   alternates: {
-    canonical: 'https://www.vibemanager.app/plan-mode/codex',
+    canonical: 'https://www.plantocode.com/plan-mode/codex',
   },
 };
 
@@ -66,7 +66,7 @@ export default function CodexPlanModePage() {
     {
       title: 'Codex executes without a separate planning phase',
       description:
-        'Unlike Claude Code\'s Plan Mode, Codex doesn\'t have a review-before-execution feature. It creates task lists and executes immediately—you can\'t compare multiple architectural approaches before committing.',
+        'Unlike Claude Code\'s Plan Mode, Codex doesn\'t have a review-before-execution feature. It creates task lists and executes immediately - you can\'t compare multiple architectural approaches before committing.',
       icon: <EyeOff className="w-5 h-5 text-primary" />,
     },
     {
@@ -93,7 +93,7 @@ export default function CodexPlanModePage() {
     {
       title: 'Multi-model plan synthesis',
       description:
-        'Generate plans from Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet, and Codex. Vibe Manager\'s architect merges them with your guidance into one bulletproof blueprint.',
+        'Generate plans from Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet, and Codex. PlanToCode\'s architect merges them with your guidance into one bulletproof blueprint.',
       icon: <Layers className="w-8 h-8 text-primary" />,
     },
     {
@@ -105,7 +105,7 @@ export default function CodexPlanModePage() {
     {
       title: 'Prompt kits tuned for Codex CLI',
       description:
-        'Copy buttons deliver consistent Codex instructions—plan, implement, verify. Stop re-typing “make it idempotent” for the twentieth time.',
+        'Copy buttons deliver consistent Codex instructions - plan, implement, verify. Stop re-typing "make it idempotent" for the twentieth time.',
       icon: <ClipboardCheck className="w-8 h-8 text-primary" />,
     },
   ];
@@ -114,13 +114,13 @@ export default function CodexPlanModePage() {
     {
       step: 'Scope the blast radius',
       description:
-        'Run file discovery against your repo. Vibe highlights entry points, downstream services, and shared configs Codex needs to respect.',
+        'Run file discovery against your repo. PlanToCode highlights entry points, downstream services, and shared configs Codex needs to respect.',
       icon: <Compass className="w-5 h-5 text-primary" />,
     },
     {
       step: 'Generate multiple plans',
       description:
-        'Run GPT-5 and Gemini 2.5 Pro multiple times. Each run surfaces different implementation details—tackling the LLM attention problem when context includes many full files.',
+        'Run GPT-5 and Gemini 2.5 Pro multiple times. Each run surfaces different implementation details - tackling the LLM attention problem when context includes many full files.',
       icon: <Sparkles className="w-5 h-5 text-primary" />,
     },
     {
@@ -132,7 +132,7 @@ export default function CodexPlanModePage() {
     {
       step: 'Execute with confidence',
       description:
-        'Run the merged plan in Vibe\'s terminal or paste it into Codex CLI with full scope visibility and logging.',
+        'Run the merged plan in PlanToCode terminal or paste it into Codex CLI with full scope visibility and logging.',
       icon: <Terminal className="w-5 h-5 text-primary" />,
     },
   ];
@@ -146,7 +146,7 @@ export default function CodexPlanModePage() {
     {
       title: 'Multi-model synthesis',
       codex: 'Codex executes with GPT-5-Codex only. Comparing approaches from Claude 4.5 Sonnet or Gemini requires separate sessions and manual synthesis.',
-      vibe: 'Run GPT-5 and Gemini multiple times (e.g., 3x GPT-5, 2x Gemini). Each run surfaces complementary implementation details—merged with full source attribution.',
+      vibe: 'Run GPT-5 and Gemini multiple times (e.g., 3x GPT-5, 2x Gemini). Each run surfaces complementary implementation details - merged with full source attribution.',
     },
     {
       title: 'Execution auditability',
@@ -157,14 +157,14 @@ export default function CodexPlanModePage() {
 
   const quickstartSteps = [
     {
-      title: 'Install Vibe Manager and connect your repo',
+      title: 'Install PlanToCode and connect your repo',
       description:
         'Download the desktop app for macOS or Windows, point it at the same workspace you use with Codex CLI, and let it index the project.',
     },
     {
       title: 'Run file discovery for your task',
       description:
-        'Describe the change once. Vibe builds a scoped file list and impact map you can feed straight into Codex prompts.',
+        'Describe the change once. PlanToCode builds a scoped file list and impact map you can feed straight into Codex prompts.',
     },
     {
       title: 'Generate and merge multi-model plans',
@@ -174,7 +174,7 @@ export default function CodexPlanModePage() {
     {
       title: 'Execute or hand back to Codex',
       description:
-        'Run inside Vibe\'s persistent terminal with approvals or copy the validated plan into Codex CLI when you\'re ready.',
+        'Run inside PlanToCode\'s persistent terminal with approvals or copy the validated plan into Codex CLI when you\'re ready.',
     },
   ];
 
@@ -216,28 +216,28 @@ export default function CodexPlanModePage() {
 
   const faqs = [
     {
-      question: 'Does Vibe Manager replace Codex CLI?',
+      question: 'Does PlanToCode replace Codex CLI?',
       answer:
-        'No. Vibe Manager adds architectural pre-planning, file discovery, and multi-model synthesis that happens BEFORE you use Codex CLI. You still use Codex CLI for execution—now with better context and reviewable plans. Use Codex Read-Only or Auto approval modes for maximum safety.',
+        'No. PlanToCode adds architectural pre-planning, file discovery, and multi-model synthesis that happens BEFORE you use Codex CLI. You still use Codex CLI for execution - now with better context and reviewable plans. Use Codex Read-Only or Auto approval modes for maximum safety.',
     },
     {
-      question: 'How do Codex approval modes work with Vibe Manager?',
+      question: 'How do Codex approval modes work with PlanToCode?',
       answer:
-        'Codex CLI has three approval modes (/approvals command): Read-Only (requires approval for all actions), Auto (default - workspace freedom, approval outside), and Full Access (no approvals). Most teams plan in Vibe, then execute in Codex with Read-Only or Auto mode for safe iteration.',
+        'Codex CLI has three approval modes (/approvals command): Read-Only (requires approval for all actions), Auto (default - workspace freedom, approval outside), and Full Access (no approvals). Most teams plan in PlanToCode, then execute in Codex with Read-Only or Auto mode for safe iteration.',
     },
     {
       question: 'Which platforms are supported?',
       answer:
-        'Vibe Manager runs on macOS 11+, Windows 10+, and works great with remote containers. The workflow integrates seamlessly with Codex CLI approval modes and whichever shell you prefer.',
+        'PlanToCode runs on macOS 11+, Windows 10+, and works great with remote containers. The workflow integrates seamlessly with Codex CLI approval modes and whichever shell you prefer.',
     },
   ];
 
   const softwareApplicationJsonLd: SoftwareApplication = {
     '@type': 'SoftwareApplication',
-    name: 'Vibe Manager',
+    name: 'PlanToCode',
     applicationCategory: 'DeveloperApplication',
     operatingSystem: ['macOS 11.0+', 'Windows 10+'],
-    url: 'https://www.vibemanager.app/plan-mode/codex',
+    url: 'https://www.plantocode.com/plan-mode/codex',
     description:
       'Pre-planning workflow for OpenAI Codex CLI. Discover impacted files, merge multi-model plans, then execute in Codex with approval modes in persistent terminals.',
     offers: {
@@ -250,7 +250,7 @@ export default function CodexPlanModePage() {
 
   const howToJsonLd: HowTo = {
     '@type': 'HowTo',
-    name: 'Use Vibe Manager planning workflow with OpenAI Codex CLI',
+    name: 'Use PlanToCode planning workflow with OpenAI Codex CLI',
     description: 'Generate and review architectural plans before running Codex CLI commands.',
     step: quickstartSteps.map((step, index) => ({
       '@type': 'HowToStep',
@@ -292,17 +292,17 @@ export default function CodexPlanModePage() {
                   <span>Codex CLI • Pre-planning before execution</span>
                 </div>
                 <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold leading-tight bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent">
-                  Planning Workflow for OpenAI Codex CLI
+                  Plan Codex CLI runs before you execute
                 </h1>
                 <p className="text-lg sm:text-xl md:text-2xl text-foreground/80 max-w-3xl mx-auto leading-relaxed">
-                  Stop Codex breaking downstream services. See every file, dependency, and impact BEFORE execution. Multi-model architectural planning prevents regressions.
+                  See impacted files, merge multi-model plans, then run Codex with approvals in a terminal that keeps logs.
                 </p>
                 <p className="text-base sm:text-lg text-foreground/70 max-w-2xl mx-auto">
-                  Vibe Manager provides pre-planning with file discovery, multi-model synthesis, and reviewable plans—then you execute in Codex with Read-Only, Auto, or Full Access approval modes.
+                  PlanToCode provides pre-planning with file discovery, multi-model synthesis, and reviewable plans - then you execute in Codex with Read-Only, Auto, or Full Access approval modes.
                 </p>
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                   <Button variant="cta" size="lg" asChild>
-                    <Link href="/downloads">Install Vibe Manager</Link>
+                    <Link href="/downloads">Install PlanToCode</Link>
                   </Button>
                   <VideoButton />
                 </div>
@@ -327,7 +327,7 @@ export default function CodexPlanModePage() {
               </div>
 
               <div className="space-y-8">
-                <h2 className="text-2xl sm:text-3xl font-bold text-center">What Vibe Manager layers on top of Codex</h2>
+                <h2 className="text-2xl sm:text-3xl font-bold text-center">What PlanToCode layers on top of Codex</h2>
                 <div className="grid md:grid-cols-2 gap-6">
                   {capabilities.map((item, index) => (
                     <GlassCard key={index} className="p-6 h-full" highlighted>
@@ -340,7 +340,7 @@ export default function CodexPlanModePage() {
               </div>
 
               <div className="space-y-8">
-                <h2 className="text-2xl sm:text-3xl font-bold text-center">How the Codex + Vibe workflow runs</h2>
+                <h2 className="text-2xl sm:text-3xl font-bold text-center">How the Codex + PlanToCode workflow runs</h2>
                 <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   {workflow.map((item, index) => (
                     <GlassCard key={index} className="p-6 h-full" highlighted>
@@ -358,7 +358,7 @@ export default function CodexPlanModePage() {
               </div>
 
               <div className="space-y-6">
-                <h2 className="text-2xl sm:text-3xl font-bold text-center">Why teams add Vibe Manager pre-planning to Codex CLI</h2>
+                <h2 className="text-2xl sm:text-3xl font-bold text-center">Why teams add PlanToCode pre-planning to Codex CLI</h2>
                 <div className="space-y-4">
                   {comparisons.map((item, index) => (
                     <GlassCard key={index} className="p-6">
@@ -372,7 +372,7 @@ export default function CodexPlanModePage() {
                           <p className="leading-relaxed">{item.codex}</p>
                         </div>
                         <div className="rounded-xl border border-primary/40 p-4 bg-primary/5">
-                          <div className="font-semibold text-foreground mb-1">With Vibe Manager</div>
+                          <div className="font-semibold text-foreground mb-1">With PlanToCode</div>
                           <p className="leading-relaxed">{item.vibe}</p>
                         </div>
                       </div>
@@ -412,7 +412,7 @@ export default function CodexPlanModePage() {
               </div>
 
               <div className="space-y-8">
-                <h2 className="text-2xl sm:text-3xl font-bold text-center">Where Codex teams rely on Vibe Manager</h2>
+                <h2 className="text-2xl sm:text-3xl font-bold text-center">Where Codex teams rely on PlanToCode</h2>
                 <div className="grid md:grid-cols-3 gap-6">
                   {useCases.map((item, index) => (
                     <GlassCard key={index} className="p-6 h-full">

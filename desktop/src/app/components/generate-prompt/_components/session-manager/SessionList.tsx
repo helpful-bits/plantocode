@@ -117,6 +117,7 @@ const SessionList = ({
                 }}
                 className="h-8 text-sm"
                 disabled={globalIsSwitching || isLoading || disabled}
+                autoFocus
               />
               <div className="flex items-center gap-1 ml-2">
                 <Button

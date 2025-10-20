@@ -3,10 +3,10 @@ import { Header } from '@/components/landing/Header';
 import { ScreenshotGallery } from '@/components/demo/ScreenshotGallery';
 
 export const metadata: Metadata = {
-  title: 'Screenshots - Vibe Manager in Action',
-  description: 'See Vibe Manager in action with real screenshots from actual workflows. File discovery, implementation plans, terminal integration, and more.',
+  title: 'Screenshots - PlanToCode in action',
+  description: 'See PlanToCode in action with real screenshots from actual workflows. File discovery, implementation plans, terminal integration, and more.',
   keywords: [
-    'vibe manager screenshots',
+    'plantocode screenshots',
     'ai planning interface',
     'implementation plan examples',
     'file discovery workflow',
@@ -16,14 +16,14 @@ export const metadata: Metadata = {
     'voice transcription interface',
   ],
   openGraph: {
-    title: 'Screenshots - See Vibe Manager in Action',
+    title: 'Screenshots - See PlanToCode in Action',
     description: 'Real screenshots from actual workflows showing file discovery, implementation planning, and terminal execution.',
-    url: 'https://www.vibemanager.app/screenshots',
-    siteName: 'Vibe Manager',
+    url: 'https://www.plantocode.com/screenshots',
+    siteName: 'PlanToCode',
     type: 'website',
   },
   alternates: {
-    canonical: 'https://www.vibemanager.app/screenshots',
+    canonical: 'https://www.plantocode.com/screenshots',
   },
 };
 
@@ -45,8 +45,7 @@ export default function ScreenshotsPage() {
                   Screenshots
                 </h1>
                 <p className="text-lg sm:text-xl text-foreground/80 max-w-3xl mx-auto">
-                  Real screenshots from actual workflows - no mockups, no marketing fluff.
-                  See exactly how Vibe Manager helps you plan and execute implementation work.
+                  Real screenshots from planning and execution - file discovery, plans, terminal.
                 </p>
               </div>
             </div>

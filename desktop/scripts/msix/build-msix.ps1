@@ -1,4 +1,4 @@
-# MSIX Package Builder for Vibe Manager Microsoft Store
+# MSIX Package Builder for PlanToCode Microsoft Store
 # Builds an MSIX package from the Tauri release executable
 
 param(
@@ -14,8 +14,8 @@ $projectRoot = (Get-Item $scriptDir).Parent.Parent.FullName
 $workDir = "$env:TEMP\vibe_manager_msix_build_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
 $targetDir = Join-Path $projectRoot "src-tauri\target\x86_64-pc-windows-msvc\release"
 $bundleDir = Join-Path $targetDir "bundle\msix"
-$outputPath = Join-Path $bundleDir "VibeManager_${Version}_${Architecture}.msix"
-$appExePath = Join-Path $targetDir "vibe-manager.exe"
+$outputPath = Join-Path $bundleDir "PlanToCode_${Version}_${Architecture}.msix"
+$appExePath = Join-Path $targetDir "plantocode.exe"
 
 # Windows SDK paths (try multiple versions)
 $windowsKitPaths = @(
@@ -39,7 +39,7 @@ if (-not $makeappx) {
     exit 1
 }
 
-Write-Host "=== Vibe Manager MSIX Package Builder ===" -ForegroundColor Cyan
+Write-Host "=== PlanToCode MSIX Package Builder ===" -ForegroundColor Cyan
 Write-Host "Version: $Version" -ForegroundColor Gray
 Write-Host "Architecture: $Architecture" -ForegroundColor Gray
 Write-Host "Using SDK: $makeappx" -ForegroundColor Gray
@@ -60,7 +60,7 @@ Write-Host "   [OK] Work directory created" -ForegroundColor Green
 
 # Step 2: Create package structure
 Write-Host "Step 2: Creating package structure..." -ForegroundColor Yellow
-$vfsDir = Join-Path $workDir "VFS\ProgramFilesX64\Vibe Manager"
+$vfsDir = Join-Path $workDir "VFS\ProgramFilesX64\PlanToCode"
 $assetsDir = Join-Path $workDir "Assets"
 New-Item $vfsDir -ItemType Directory -Force | Out-Null
 New-Item $assetsDir -ItemType Directory -Force | Out-Null
@@ -68,9 +68,9 @@ Write-Host "   [OK] Directory structure created" -ForegroundColor Green
 
 # Step 3: Copy executable and dependencies
 Write-Host "Step 3: Copying executable and dependencies..." -ForegroundColor Yellow
-Copy-Item $appExePath "$vfsDir\vibe-manager.exe" -Force
-$exeSize = [math]::Round((Get-Item "$vfsDir\vibe-manager.exe").Length / 1MB, 2)
-Write-Host "   [OK] Copied vibe-manager.exe ($exeSize MB)" -ForegroundColor Green
+Copy-Item $appExePath "$vfsDir\plantocode.exe" -Force
+$exeSize = [math]::Round((Get-Item "$vfsDir\plantocode.exe").Length / 1MB, 2)
+Write-Host "   [OK] Copied plantocode.exe ($exeSize MB)" -ForegroundColor Green
 
 # Copy WebView2Loader.dll if exists
 $webViewDll = Join-Path $targetDir "WebView2Loader.dll"
@@ -129,13 +129,13 @@ if (Test-Path $configPath) {
     # Default configuration
     $msixConfig = @{
         identity = @{
-            name = "helpfulbitsGmbH.VibeManager"
+            name = "helpfulbitsGmbH.PlanToCode"
             publisher = "CN=58806E05-BC90-4351-94F9-CF7626A0F3D6"
             publisherDisplayName = "helpful bits GmbH"
         }
         application = @{
-            id = "VibeManager"
-            displayName = "Vibe Manager"
+            id = "PlanToCode"
+            displayName = "PlanToCode"
             description = "AI-powered productivity and content management application"
             backgroundColor = "transparent"
         }
@@ -221,7 +221,7 @@ $manifestContent = @"
   
   <Applications>
     <Application Id="$($msixConfig.application.id)"
-                 Executable="VFS\ProgramFilesX64\Vibe Manager\vibe-manager.exe"
+                 Executable="VFS\ProgramFilesX64\PlanToCode\plantocode.exe"
                  EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
         DisplayName="$($msixConfig.application.displayName)"

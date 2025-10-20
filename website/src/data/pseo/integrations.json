@@ -7,8 +7,8 @@
       "feature": "terminal",
       "headline": "Run Claude Code in a Real Terminal",
       "subhead": "Bring Claude Code's actions into persistent PTY sessions with review and recording",
-      "meta_title": "Claude Code Terminal Integration - Direct Execution | Vibe Manager",
-      "meta_description": "Run Claude Code inside Vibe Manager's persistent terminal sessions. Copy commands, require approval, and keep a searchable session record with health monitoring.",
+      "meta_title": "Claude Code Terminal Integration - Direct Execution | PlanToCode",
+      "meta_description": "Run Claude Code inside PlanToCode's persistent terminal sessions. Copy commands, require approval, and keep a searchable session record with health monitoring.",
       "primary_cta": "Install Terminal Integration",
       "publish": true,
       "priority": 1,
@@ -27,9 +27,9 @@
         }
       ],
       "workflow_steps": [
-        "Open Vibe Manager terminal (persistent PTY)",
+        "Open PlanToCode terminal (persistent PTY)",
         "Generate or discuss changes in Claude Code",
-        "Copy commands or plan steps to Vibe Manager terminal",
+        "Copy commands or plan steps to PlanToCode terminal",
         "Review and approve before execution",
         "Persist output and continue later"
       ],
@@ -38,7 +38,7 @@
         "Voice transcription input",
         "Session health monitoring",
         "SQLite activity recording",
-        "Default command approvals remain in Claude Code; Vibe Manager adds persistence and health indicators."
+        "Default command approvals remain in Claude Code; PlanToCode adds persistence and health indicators."
       ]
     },
     {
@@ -47,7 +47,7 @@
       "feature": "terminal-agent",
       "headline": "OpenAI o3 as Your Terminal Agent",
       "subhead": "Run o3 reasoning models directly in persistent terminal sessions",
-      "meta_title": "OpenAI o3 Terminal Agent - Direct Execution | Vibe Manager",
+      "meta_title": "OpenAI o3 Terminal Agent - Direct Execution | PlanToCode",
       "meta_description": "Execute OpenAI o3 reasoning directly in terminal. Reasoning summaries via the Responses API (raw internal chains are not exposed), persistent sessions, voice input. The missing o3 terminal interface.",
       "primary_cta": "Run o3 in Terminal",
       "publish": true,
@@ -67,13 +67,13 @@
         }
       ],
       "workflow_steps": [
-        "Connect o3 to Vibe Manager",
+        "Connect o3 to PlanToCode",
         "Stream reasoning to terminal",
         "Review generated commands",
         "Execute with full visibility"
       ],
       "key_features": [
-        "Reasoning summaries available (Responses API) — raw internal chains withheld",
+        "Reasoning summaries available (Responses API) - raw internal chains withheld",
         "Persistent session context via Responses API threads/objects (no raw chain-of-thought; reasoning summaries only)",
         "Voice-controlled execution"
       ]
@@ -84,7 +84,7 @@
       "feature": "composer-mode",
       "headline": "Cursor Composer with Architectural Context",
       "subhead": "Give Cursor's Composer the system-wide awareness it needs",
-      "meta_title": "Cursor Composer Mode + Architectural Planning | Vibe Manager",
+      "meta_title": "Cursor Composer Mode + Architectural Planning | PlanToCode",
       "meta_description": "Enhance Cursor Composer with full codebase context. File discovery, dependency mapping, impact analysis before Composer executes.",
       "primary_cta": "Enhance Cursor Composer",
       "publish": true,
@@ -96,7 +96,7 @@
         },
         {
           "problem": "Limited context window for large changes",
-          "solution": "Vibe Manager handles unlimited file context"
+          "solution": "PlanToCode handles unlimited file context"
         },
         {
           "problem": "Can't review Composer's full scope",
@@ -121,7 +121,7 @@
       "feature": "terminal",
       "headline": "Run Aider Sessions with Plan Guidance",
       "subhead": "Transform Aider's collaborative coding with structured implementation plans",
-      "meta_title": "Aider Terminal Integration - Guided Collaborative Coding | Vibe Manager",
+      "meta_title": "Aider Terminal Integration - Guided Collaborative Coding | PlanToCode",
       "meta_description": "Run Aider with implementation plans and terminal execution. Voice input, session recording, and structured guidance for collaborative AI coding.",
       "primary_cta": "Start Guided Aider Sessions",
       "publish": true,
@@ -150,7 +150,7 @@
         "Plan-guided Aider sessions (architect + editor workflow)",
         "Automated file context selection via repo map",
         "Voice-to-code (/voice) for spoken instructions",
-        "Session save/export (/save) and shareable transcripts — not a hosted continuous cloud recording"
+        "Session save/export (/save) and shareable transcripts - not a hosted continuous cloud recording"
       ]
     },
     {
@@ -159,7 +159,7 @@
       "feature": "monorepo-awareness",
       "headline": "Claude with Full Monorepo Context",
       "subhead": "Give Claude complete understanding of your monorepo structure and dependencies",
-      "meta_title": "Claude Monorepo Integration - Full Context Awareness | Vibe Manager",
+      "meta_title": "Claude Monorepo Integration - Full Context Awareness | PlanToCode",
       "meta_description": "Enhance Claude with monorepo-wide context. File discovery, dependency mapping, cross-package awareness for better architectural decisions.",
       "primary_cta": "Enable Monorepo Context",
       "publish": true,
@@ -197,8 +197,8 @@
       "feature": "terminal-bridge",
       "headline": "Bridge Cursor Outputs to Terminal Execution",
       "subhead": "Execute Cursor's generated commands safely in persistent terminal sessions",
-      "meta_title": "Cursor Terminal Bridge - Safe Command Execution | Vibe Manager",
-      "meta_description": "Bridge Cursor IDE to Vibe Manager's terminal. Review generated commands, execute with voice control, and leverage Vibe Manager's persistent sessions and health monitoring.",
+      "meta_title": "Cursor Terminal Bridge - Safe Command Execution | PlanToCode",
+      "meta_description": "Bridge Cursor IDE to PlanToCode's terminal. Review generated commands, execute with voice control, and leverage PlanToCode's persistent sessions and health monitoring.",
       "primary_cta": "Bridge Cursor to Terminal",
       "publish": true,
       "priority": 1,
@@ -209,24 +209,24 @@
         },
         {
           "problem": "Foreground terminal sessions may not persist across app reloads; Shell Mode commands do not persist state",
-          "solution": "Editor-embedded terminals are tied to the editor/agent lifecycle; bridging to Vibe Manager adds persistent PTY sessions with ring-buffered history."
+          "solution": "Editor-embedded terminals are tied to the editor/agent lifecycle; bridging to PlanToCode adds persistent PTY sessions with ring-buffered history."
         },
         {
           "problem": "Limited built-in process health insights in editor terminals",
-          "solution": "Bridge adds real-time terminal health indicators and monitoring in Vibe Manager"
+          "solution": "Bridge adds real-time terminal health indicators and monitoring in PlanToCode"
         }
       ],
       "workflow_steps": [
         "Generate commands in Cursor IDE",
-        "Bridge to Vibe Manager terminal",
+        "Bridge to PlanToCode terminal",
         "Review commands in safe execution mode",
         "Execute with voice control and monitoring"
       ],
       "key_features": [
-        "Safe command review before execution (user approval) — provided by Vibe Manager",
-        "Persistent sessions with full history recording — provided by Vibe Manager",
-        "Voice-controlled execution — provided by Vibe Manager",
-        "Real-time terminal health monitoring — provided by Vibe Manager"
+        "Safe command review before execution (user approval) - provided by PlanToCode",
+        "Persistent sessions with full history recording - provided by PlanToCode",
+        "Voice-controlled execution - provided by PlanToCode",
+        "Real-time terminal health monitoring - provided by PlanToCode"
       ]
     },
     {
@@ -235,7 +235,7 @@
       "feature": "reasoning-synthesis",
       "headline": "Synthesize o3 Reasoning into Plans",
       "subhead": "Transform o3's complex reasoning outputs into executable implementation plans",
-      "meta_title": "OpenAI o3 Reasoning Synthesis - Executable Plans | Vibe Manager",
+      "meta_title": "OpenAI o3 Reasoning Synthesis - Executable Plans | PlanToCode",
       "meta_description": "Convert o3's reasoning outputs (summaries; raw internal chains are not exposed) into structured implementation plans. File discovery, dependency analysis, and terminal execution from o3 insights.",
       "primary_cta": "Synthesize o3 Reasoning",
       "publish": true,
@@ -273,7 +273,7 @@
       "feature": "plan-validation",
       "headline": "Validate Plans in GitHub Actions",
       "subhead": "Run implementation plan validation as part of your CI/CD pipeline",
-      "meta_title": "GitHub Actions Plan Validation - CI/CD Integration | Vibe Manager",
+      "meta_title": "GitHub Actions Plan Validation - CI/CD Integration | PlanToCode",
       "meta_description": "Validate implementation plans in GitHub Actions. Pre-merge plan review, impact analysis, and automated plan execution in CI/CD workflows.",
       "primary_cta": "Add Plan Validation to CI/CD",
       "publish": true,
@@ -311,7 +311,7 @@
       "feature": "error-to-plan",
       "headline": "Convert Sentry Errors to Fix Plans",
       "subhead": "Transform error reports into structured implementation plans for rapid resolution",
-      "meta_title": "Sentry Error to Implementation Plan - Automated Fixes | Vibe Manager",
+      "meta_title": "Sentry Error to Implementation Plan - Automated Fixes | PlanToCode",
       "meta_description": "Convert Sentry errors into implementation plans. Stack trace analysis, file discovery, and structured fix plans with terminal execution.",
       "primary_cta": "Generate Fix Plans from Errors",
       "publish": true,
@@ -349,7 +349,7 @@
       "feature": "performance-plans",
       "headline": "Performance Fixes from APM Data",
       "subhead": "Transform Datadog APM insights into executable performance optimization plans",
-      "meta_title": "Datadog APM Performance Plans - Optimization Automation | Vibe Manager",
+      "meta_title": "Datadog APM Performance Plans - Optimization Automation | PlanToCode",
       "meta_description": "Convert Datadog APM data into performance optimization plans. Trace analysis, bottleneck identification, and structured improvement execution.",
       "primary_cta": "Generate Performance Plans",
       "publish": true,
@@ -387,7 +387,7 @@
       "feature": "migration-planning",
       "headline": "Plan Prisma Schema Changes Safely",
       "subhead": "Generate comprehensive migration plans with impact analysis and rollback strategies",
-      "meta_title": "Prisma Migration Planning - Safe Schema Changes | Vibe Manager",
+      "meta_title": "Prisma Migration Planning - Safe Schema Changes | PlanToCode",
       "meta_description": "Plan Prisma schema migrations safely. Impact analysis, rollback strategies, and structured migration execution with terminal integration.",
       "primary_cta": "Plan Safe Migrations",
       "publish": true,
@@ -425,7 +425,7 @@
       "feature": "blast-radius-analysis",
       "headline": "Analyze Terraform Change Impacts",
       "subhead": "Understand the full blast radius of infrastructure changes before applying",
-      "meta_title": "Terraform Blast Radius Analysis - Safe Infrastructure Changes | Vibe Manager",
+      "meta_title": "Terraform Blast Radius Analysis - Safe Infrastructure Changes | PlanToCode",
       "meta_description": "Analyze Terraform change impacts before applying. Resource dependency mapping, blast radius visualization, and safe execution plans.",
       "primary_cta": "Analyze Infrastructure Changes",
       "publish": true,
@@ -463,7 +463,7 @@
       "feature": "feature-lifecycle",
       "headline": "Full Feature Flag Lifecycle Planning",
       "subhead": "Plan, implement, test, and cleanup feature flags with structured lifecycle management",
-      "meta_title": "LaunchDarkly Feature Lifecycle Planning - Flag Management | Vibe Manager",
+      "meta_title": "LaunchDarkly Feature Lifecycle Planning - Flag Management | PlanToCode",
       "meta_description": "Manage LaunchDarkly feature flag lifecycle with implementation plans. Flag creation, testing, rollout, and cleanup with terminal execution.",
       "primary_cta": "Plan Feature Flag Lifecycle",
       "publish": true,

@@ -1,4 +1,4 @@
-//! Vibe Manager Server Library
+//! PlanToCode Server Library
 //!
 //! This library exports the core modules used by both the server binary
 //! and utility binaries like the migration runner.

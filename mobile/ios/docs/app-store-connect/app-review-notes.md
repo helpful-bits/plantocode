@@ -1,6 +1,6 @@
 # App Review Information
 
-This document contains all information needed for the App Review team to test Vibe Manager for iOS.
+This document contains all information needed for the App Review team to test PlanToCode for iOS.
 
 ## Sign-in Required
 
@@ -11,7 +11,7 @@ This document contains all information needed for the App Review team to test Vi
 **IMPORTANT:** Demo credentials must not expire during review.
 
 **Demo Account Credentials:**
-- Username/Email: `demo@vibemanager.app`
+- Username/Email: `demo@plantocode.com`
 - Password: `<DEMO_PASSWORD>`
 
 **OAuth Providers (if applicable):**
@@ -21,13 +21,13 @@ This document contains all information needed for the App Review team to test Vi
 ## Notes for Reviewers
 
 ```
-This is a companion controller for the Vibe Manager desktop app. No desktop UI is streamed; the iOS app issues commands to the host Vibe Manager and receives lightweight status/terminal text.
+This is a companion controller for the PlanToCode desktop app. No desktop UI is streamed; the iOS app issues commands to the host PlanToCode and receives lightweight status/terminal text.
 
 **To review:**
 
 1. Launch the app and sign in with the **demo account** above.
 2. Tap **Connect** → **Demo Host**.
-3. The app connects to our review-only Mac mini running Vibe Manager with a seeded SQLite workspace.
+3. The app connects to our review-only Mac mini running PlanToCode with a seeded SQLite workspace.
 4. Try: create/edit tasks, toggle files, start/stop timers, dictate a note, and view terminal output.
 5. No purchase or additional hardware required.
 
@@ -79,7 +79,7 @@ We've ensured the demo account doesn't expire, and backend services are enabled 
 ## Demo Environment Details
 
 **Backend Services:**
-- Review-only Mac mini with Vibe Manager desktop app
+- Review-only Mac mini with PlanToCode desktop app
 - Seeded SQLite workspace with sample data
 - Available 24/7 during review period
 - Monitored for uptime

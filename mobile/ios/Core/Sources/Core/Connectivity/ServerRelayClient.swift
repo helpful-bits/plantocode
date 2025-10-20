@@ -5,7 +5,7 @@ import Security
 
 /// WebSocket client for connecting to server relay endpoint for device-to-device communication
 public class ServerRelayClient: NSObject, ObservableObject {
-    private let logger = Logger(subsystem: "VibeManager", category: "ServerRelayClient")
+    private let logger = Logger(subsystem: "PlanToCode", category: "ServerRelayClient")
 
     // MARK: - Published Properties
     @Published public private(set) var connectionState: ConnectionState = .disconnected
@@ -26,6 +26,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
     // RPC and event handling
     private var pendingRPCCalls: [String: RpcResponseSubject] = [:]
     private let rpcQueue = DispatchQueue(label: "rpc-queue")
+    private let rpcQueueKey = DispatchSpecificKey<Bool>()
     private var eventPublisher = PassthroughSubject<RelayEvent, Never>()
     private var registrationPromise: ((Result<Void, ServerRelayError>) -> Void)?
 
@@ -38,6 +39,13 @@ public class ServerRelayClient: NSObject, ObservableObject {
     public struct TerminalBytesEvent {
         public let data: Data
         public let timestamp: Date
+        public let sessionId: String?
+
+        public init(data: Data, timestamp: Date, sessionId: String? = nil) {
+            self.data = data
+            self.timestamp = timestamp
+            self.sessionId = sessionId
+        }
     }
     private let terminalBytesSubject = PassthroughSubject<TerminalBytesEvent, Never>()
     public var terminalBytes: AnyPublisher<TerminalBytesEvent, Never> {
@@ -52,6 +60,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
     private var reconnectAttempts = 0
     private let maxReconnectAttempts = 0  // 0 = unlimited reconnection attempts
 
+    private var currentBinaryBind: (sessionId: String, producerDeviceId: String)?
     private var cancellables = Set<AnyCancellable>()
 
     // MARK: - Public Interface
@@ -76,6 +85,9 @@ public class ServerRelayClient: NSObject, ObservableObject {
         self.urlSession = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
 
         super.init()
+
+        // Mark the rpcQueue so we can detect if we're already on it
+        rpcQueue.setSpecific(key: rpcQueueKey, value: true)
 
         setupApplicationLifecycleObservers()
 
@@ -195,7 +207,8 @@ public class ServerRelayClient: NSObject, ObservableObject {
         webSocketTask = nil
 
         // Fail all pending RPC calls
-        rpcQueue.sync {
+        // Use safe execution to avoid deadlock when called from rpcQueue (e.g., during deinit)
+        executeSafelyOnRpcQueue {
             let subjects = Array(self.pendingRPCCalls.values)
             self.pendingRPCCalls.removeAll()
 
@@ -206,6 +219,17 @@ public class ServerRelayClient: NSObject, ObservableObject {
     }
 
     // MARK: - RPC Calls
+
+    /// Safely executes a block on rpcQueue, avoiding deadlock if already on the queue
+    private func executeSafelyOnRpcQueue(_ block: @escaping () -> Void) {
+        if DispatchQueue.getSpecific(key: rpcQueueKey) == true {
+            // Already on rpcQueue, execute immediately
+            block()
+        } else {
+            // Not on rpcQueue, use sync
+            rpcQueue.sync(execute: block)
+        }
+    }
 
     /// Invoke an RPC method on a target device
     ///
@@ -304,7 +328,11 @@ public class ServerRelayClient: NSObject, ObservableObject {
             ]
 
             // 5. Validate encodability
-            Task {
+            Task { [weak self] in
+                guard let self = self else {
+                    continuation.finish(throwing: ServerRelayError.invalidState("Client deallocated"))
+                    return
+                }
                 do {
                     // Validate JSON serializability using existing encodeForWebSocket
                     let envelope: [String: Any] = [
@@ -461,6 +489,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
     public func sendMessage(type: String, payload: [String: Any]?) async throws {
         guard let webSocketTask = webSocketTask else {
+            logger.error("❌ sendMessage FAILED: webSocketTask is nil (type=\(type))")
             throw ServerRelayError.notConnected
         }
 
@@ -473,7 +502,12 @@ public class ServerRelayClient: NSObject, ObservableObject {
         let jsonString = try encodeForWebSocket(envelope)
 
         // Use webSocketTask.send(.string(json)) exclusively (no .data frames)
-        try await webSocketTask.send(.string(jsonString))
+        do {
+            try await webSocketTask.send(.string(jsonString))
+        } catch {
+            logger.error("WebSocket send failed for type=\(type): \(error)")
+            throw error
+        }
     }
 
     // Relay event publisher for ephemeral cross-device signals
@@ -487,27 +521,37 @@ public class ServerRelayClient: NSObject, ObservableObject {
     }
 
     /// Send control message to bind this mobile device to a desktop producer for binary terminal output
-    public func sendBinaryBind(producerDeviceId: String, includeSnapshot: Bool = true) {
+    public func sendBinaryBind(producerDeviceId: String, sessionId: String, includeSnapshot: Bool = true) async throws {
+        // Track current binding locally for frame annotation
+        self.currentBinaryBind = (sessionId, producerDeviceId)
+
+        // Relay server needs producerDeviceId for routing to the correct desktop
+        // Desktop needs sessionId to know which terminal session to stream
+        // includeSnapshot tells desktop whether to send buffer snapshot
         let payload: [String: Any] = [
             "producerDeviceId": producerDeviceId,
+            "sessionId": sessionId,
             "includeSnapshot": includeSnapshot
         ]
-        Task {
-            do {
-                try await self.sendMessage(type: "terminal.binary.bind", payload: payload)
-                logger.info("Binary bind request sent for producer: \(producerDeviceId)")
-            } catch {
-                logger.error("Failed to send binary bind: \(error)")
-            }
-        }
+
+        try await self.sendMessage(type: "terminal.binary.bind", payload: payload)
     }
 
     /// Send control message to unbind binary terminal output
-    public func sendBinaryUnbind() {
-        Task {
+    public func sendBinaryUnbind(sessionId: String? = nil) {
+        Task { [weak self] in
+            guard let self = self else { return }
             do {
-                try await self.sendMessage(type: "terminal.binary.unbind", payload: nil)
-                logger.info("Binary unbind request sent")
+                let payload = sessionId.map { ["sessionId": $0] }
+                try await self.sendMessage(type: "terminal.binary.unbind", payload: payload)
+
+                if let current = self.currentBinaryBind, let sid = sessionId {
+                    if current.sessionId == sid {
+                        self.currentBinaryBind = nil
+                    }
+                } else {
+                    self.currentBinaryBind = nil
+                }
             } catch {
                 logger.error("Failed to send binary unbind: \(error)")
             }
@@ -538,7 +582,8 @@ public class ServerRelayClient: NSObject, ObservableObject {
             handleTextMessage(text)
         case .data(let data):
             // Binary frames are raw terminal output - publish as-is without inspection
-            terminalBytesSubject.send(TerminalBytesEvent(data: data, timestamp: Date()))
+            let sessionId = self.currentBinaryBind?.sessionId
+            terminalBytesSubject.send(TerminalBytesEvent(data: data, timestamp: Date(), sessionId: sessionId))
         @unknown default:
             break
         }
@@ -932,7 +977,8 @@ public class ServerRelayClient: NSObject, ObservableObject {
     }
 
     private func sendHeartbeat() {
-        Task {
+        Task { [weak self] in
+            guard let self = self else { return }
             do {
                 try await self.sendMessage(type: "heartbeat", payload: nil)
             } catch {

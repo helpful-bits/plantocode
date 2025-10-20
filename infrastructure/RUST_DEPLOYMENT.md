@@ -1,6 +1,6 @@
 # Rust Binary Deployment Guide
 
-This guide explains how to build and deploy your Rust binary to the Ubuntu server.
+This guide explains how to build and deploy the PlanToCode Rust binary to the Ubuntu server.
 
 ## Prerequisites
 

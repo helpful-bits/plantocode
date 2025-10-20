@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
 const CDN_BASE = 'https://d2tyb0wucqqf48.cloudfront.net';
-const SITE_URL = 'https://www.vibemanager.app';
+const SITE_URL = 'https://www.plantocode.com';
 
 interface ImageEntry {
   pageUrl: string;
@@ -29,7 +29,7 @@ const imageEntries: ImageEntry[] = [
       { loc: `${CDN_BASE}/assets/images/step-5-poster.jpg` },
       // OG and social images
       { loc: `${CDN_BASE}/images/og-image.png` },
-      { loc: 'https://www.vibemanager.app/images/icon.png' },
+      { loc: 'https://www.plantocode.com/images/icon.png' },
     ],
   },
   // Demo page screenshots

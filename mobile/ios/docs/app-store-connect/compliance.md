@@ -21,7 +21,7 @@ Apple requires disclosure about encryption usage to comply with U.S. export regu
 
 ### Exemption Details
 
-Vibe Manager iOS qualifies for the **"Standard Encryption Exemption"** because:
+PlanToCode iOS qualifies for the **"Standard Encryption Exemption"** because:
 - Uses only iOS-provided HTTPS/TLS (URLSession with ATS)
 - No custom cryptographic algorithms
 - No VPN/NEPacketTunnel provider
@@ -146,8 +146,8 @@ import AuthenticationServices
 - Government/industry-backed citizen ID or electronic ID system
 - Your app uses only its own proprietary account system (no third-party logins)
 
-**Vibe Manager Status:**
-- [ ] **Review:** Does Vibe Manager use Google/GitHub/other OAuth?
+**PlanToCode Status:**
+- [ ] **Review:** Does PlanToCode use Google/GitHub/other OAuth?
   - **YES** → Implement Sign in with Apple
   - **NO** (proprietary accounts only) → Not required
 
@@ -177,13 +177,13 @@ import AuthenticationServices
 ### Overview
 Apple has specific rules for apps that provide remote desktop functionality.
 
-### Is Vibe Manager a "Remote Desktop Client"?
+### Is PlanToCode a "Remote Desktop Client"?
 
-**NO** – Vibe Manager iOS is a **companion controller**, not a screen-mirroring client.
+**NO** – PlanToCode iOS is a **companion controller**, not a screen-mirroring client.
 
 **Key Distinctions:**
 
-| Remote Desktop Client | Vibe Manager iOS |
+| Remote Desktop Client | PlanToCode iOS |
 |----------------------|------------------|
 | Mirrors desktop screen | Native iOS UI (SwiftUI) |
 | Shows external store UI | No store UI shown |
@@ -193,16 +193,16 @@ Apple has specific rules for apps that provide remote desktop functionality.
 **From Guideline 4.2.7:**
 > "Remote Desktop Clients: If your remote desktop app acts as a mirror or remote access to a host device, it must comply with [...] the software must be owned and fully paid for by the user, or requires a subscription with authentication."
 
-**Vibe Manager Compliance:**
+**PlanToCode Compliance:**
 - ✓ Does not mirror UI
 - ✓ Does not expose external software stores
 - ✓ Requires authentication (user owns the desktop software)
-- ✓ All software (desktop Vibe Manager) is fully owned by the user
+- ✓ All software (desktop PlanToCode) is fully owned by the user
 
 ### Reviewer Clarification
 
 **If asked, explain:**
-> "Vibe Manager iOS is not a remote desktop client. It does not mirror or stream the desktop UI. Instead, it provides a native iOS interface to send commands to the Vibe Manager desktop app (create task, toggle file, etc.) and receive lightweight text responses (task status, terminal output text). All UI is native SwiftUI. The desktop app is separately installed and owned by the user."
+> "PlanToCode iOS is not a remote desktop client. It does not mirror or stream the desktop UI. Instead, it provides a native iOS interface to send commands to the PlanToCode desktop app (create task, toggle file, etc.) and receive lightweight text responses (task status, terminal output text). All UI is native SwiftUI. The desktop app is separately installed and owned by the user."
 
 ### References
 - [App Review Guidelines § 4.2.7](https://developer.apple.com/app-store/review/guidelines/#minimum-functionality)
@@ -267,7 +267,7 @@ Complete the **Age Rating Questionnaire** in App Store Connect honestly:
 
 ## Summary Checklist
 
-**For Vibe Manager iOS v1.0:**
+**For PlanToCode iOS v1.0:**
 
 - [x] Encryption: Standard TLS only → **Exempt**
 - [x] IDFA: Not used → **No tracking**

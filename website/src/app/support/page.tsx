@@ -5,11 +5,11 @@ import { Button } from '@/components/ui/button';
 import { Mail, HelpCircle } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'Vibe Manager Support - Get Help, Report Issues, Request Features',
-  description: 'Get instant help with Vibe Manager installation and usage. Troubleshooting for Claude Code, Cursor, OpenAI Codex integration. Feature requests welcome. Response within 24h.',
+  title: 'PlanToCode Support',
+  description: 'Get instant help with PlanToCode installation and usage. Troubleshooting for Claude Code, Cursor, OpenAI Codex integration. Feature requests welcome. Response within 24h.',
   keywords: [
-    'vibe manager support',
-    'vibe manager help',
+    'plantocode support',
+    'plantocode help',
     'claude code help',
     'cursor integration help',
     'installation support',
@@ -21,7 +21,7 @@ export const metadata: Metadata = {
     follow: true,
   },
   alternates: {
-    canonical: 'https://www.vibemanager.app/support',
+    canonical: 'https://www.plantocode.com/support',
   },
 };
 
@@ -37,20 +37,20 @@ export default function SupportPage() {
             </div>
             <h1 className="text-3xl font-bold text-foreground">Support</h1>
             <p className="text-muted-foreground">
-              Get help with Vibe Manager
+              Get help with PlanToCode
             </p>
           </header>
 
           <div className="space-y-6">
             <div className="text-center">
               <Button variant="cta" size="lg" asChild className="w-full">
-                <a href="mailto:support@vibemanager.app" className="flex items-center gap-2">
+                <a href="mailto:support@plantocode.com" className="flex items-center gap-2">
                   <Mail className="w-5 h-5" />
                   Contact Support
                 </a>
               </Button>
               <p className="text-sm text-muted-foreground mt-2">
-                support@vibemanager.app
+                support@plantocode.com
               </p>
             </div>
 

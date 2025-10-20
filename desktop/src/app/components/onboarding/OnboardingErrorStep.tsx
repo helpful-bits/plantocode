@@ -51,7 +51,7 @@ export function OnboardingErrorStep({ errorMessage, onRetry }: OnboardingErrorSt
                   <ul className="space-y-1 ml-1">
                     <li className="text-sm text-warning/80 flex items-start">
                       <span className="mr-2">•</span>
-                      <span>You'll need to log in every time you open Vibe Manager</span>
+                      <span>You'll need to log in every time you open PlanToCode</span>
                     </li>
                     <li className="text-sm text-warning/80 flex items-start">
                       <span className="mr-2">•</span>

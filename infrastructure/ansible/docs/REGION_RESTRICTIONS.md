@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the comprehensive region restriction system implemented for Vibe Manager to ensure compliance with territorial restrictions as outlined in the Terms of Service. The service is only available in:
+This document describes the comprehensive region restriction system implemented for PlanToCode to ensure compliance with territorial restrictions as outlined in the Terms of Service. The service is only available in:
 
 - **European Union / European Economic Area** (30 countries)
 - **United Kingdom**
@@ -93,15 +93,15 @@ LOG_BLOCKED_ACCESS=true
 3. **Brute force**: Repeated violations from same IP address
 
 ### Alert Channels
-- **Email**: Sent to `admin@vibemanager.app`
-- **Logs**: 
+- **Email**: Sent to `admin@plantocode.com`
+- **Logs**:
   - `/var/log/nginx/blocked_access.log` (sanctioned countries)
   - `/var/log/nginx/restricted_access.log` (non-approved regions)
 
 ### Metrics Available
-- `vibe_manager_blocked_access_total`: Total blocked attempts by country and reason
-- `vibe_manager_blocked_unique_ips`: Unique blocked IPs in last hour
-- `vibe_manager_violation_rate`: Violations per minute
+- `plantocode_blocked_access_total`: Total blocked attempts by country and reason
+- `plantocode_blocked_unique_ips`: Unique blocked IPs in last hour
+- `plantocode_violation_rate`: Violations per minute
 
 ## Deployment Instructions
 
@@ -252,5 +252,5 @@ systemctl reload nginx
 
 For questions or issues related to region restrictions:
 - Technical issues: Contact DevOps team
-- Legal/Compliance questions: legal@vibemanager.app
-- Security incidents: security@vibemanager.app
+- Legal/Compliance questions: legal@plantocode.com
+- Security incidents: security@plantocode.com

@@ -24,9 +24,9 @@ export default function LegalRegionSelector() {
             <div className="text-sm">
               <p className="font-semibold mb-2">Service Availability Notice</p>
               <p className="text-muted-foreground">
-                Vibe Manager is <strong>only available</strong> to residents of and users accessing from the European Union/EEA, 
-                United Kingdom, and United States. Access from all other regions is <strong>restricted</strong>. 
-                We use IP geolocation, payment verification, and other methods to enforce these restrictions. 
+                PlanToCode is <strong>only available</strong> to residents of and users accessing from the European Union/EEA,
+                United Kingdom, and United States. Access from all other regions is <strong>restricted</strong>.
+                We use IP geolocation, payment verification, and other methods to enforce these restrictions.
                 VPN or proxy use to circumvent regional restrictions is prohibited.
               </p>
             </div>

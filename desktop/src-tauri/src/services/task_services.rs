@@ -1,7 +1,6 @@
 //! Service functions for creating and managing tasks.
 
 use crate::commands::text_commands::ImproveTextArgs;
-use crate::db_utils::SessionRepository;
 use crate::error::AppResult;
 use crate::jobs::types::{JobPayload, RegexFileFilterPayload};
 use crate::models::{JobCommandResponse, PathFinderRequestArgs};
@@ -46,16 +45,16 @@ pub async fn create_path_finder_job_service(
         }
         dir
     } else {
-        // Try to get project directory from session
-        let session_repo = app_handle.state::<Arc<SessionRepository>>().inner().clone();
+        // Get project directory from session via cache (avoid stale DB reads)
+        let cache = app_handle
+            .state::<Arc<crate::services::SessionCache>>()
+            .inner()
+            .clone();
 
-        let session = session_repo
-            .get_session_by_id(&args.session_id)
+        let session = cache
+            .get_session(app_handle, &args.session_id)
             .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to get session: {}", e)))?
-            .ok_or_else(|| {
-                AppError::NotFoundError(format!("Session not found: {}", args.session_id))
-            })?;
+            .map_err(|e| AppError::NotFoundError(format!("Session not found: {}", e)))?;
 
         if session.project_directory.is_empty() {
             return Err(AppError::ValidationError(

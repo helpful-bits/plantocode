@@ -497,6 +497,22 @@ impl SessionCache {
     pub async fn flush_all_now(&self, app: &tauri::AppHandle) -> AppResult<()> {
         self.flush_dirty_to_db(app).await
     }
+
+    /// Flush a specific session to DB if it has dirty fields or files
+    pub async fn flush_session_if_dirty(&self, app: &tauri::AppHandle, session_id: &str) -> AppResult<()> {
+        let needs_flush = {
+            let map = self.map.read().await;
+            map.get(session_id)
+                .map(|cached| cached.dirty_fields || cached.dirty_files)
+                .unwrap_or(false)
+        };
+
+        if needs_flush {
+            self.flush_dirty_to_db(app).await?;
+        }
+
+        Ok(())
+    }
 }
 
 impl Default for SessionCache {

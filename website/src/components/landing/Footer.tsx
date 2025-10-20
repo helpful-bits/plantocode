@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { BRAND_X_URL, FEATUREBASE_BASE_URL } from '@/lib/brand';
 
 export function Footer() {
 
@@ -20,11 +21,11 @@ export function Footer() {
             <div className="md:col-span-5 lg:col-span-6">
               <Link className="inline-block mb-4" href="/">
                 <h3 className="text-2xl font-bold text-primary-emphasis">
-                  Vibe Manager
+                  PlanToCode
                 </h3>
               </Link>
               <p className="text-foreground/60 dark:text-foreground/50 mb-6 max-w-md text-sm leading-relaxed">
-                Planning assistant for Claude Code. Find the right files, merge plans from multiple models, and ship correct changes with multi-model intelligence.
+                Plan and ship code changes - find files, generate and merge AI plans, run them in a persistent terminal.
               </p>
 
               {/* Social Links */}
@@ -32,7 +33,7 @@ export function Footer() {
                 <a
                   aria-label="X"
                   className="group relative w-10 h-10 rounded-lg glass border border-primary/20 flex items-center justify-center hover:border-primary/40"
-                  href="https://x.com/vibemanagerapp"
+                  href={BRAND_X_URL}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
@@ -97,14 +98,14 @@ export function Footer() {
                     </Link>
                   </li>
                   <li>
-                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/docs/vibe-manager-architecture">
+                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/docs/architecture">
                       Architecture
                     </Link>
                   </li>
                   <li>
                     <a
                       className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline"
-                      href="https://vibemanager.featurebase.app"
+                      href={FEATUREBASE_BASE_URL}
                       target="_blank"
                       rel="noopener noreferrer"
                     >
@@ -156,7 +157,7 @@ export function Footer() {
                 Not affiliated with Anthropic, Cursor, OpenAI, or Cline.
               </p>
               <p className="text-muted-foreground text-xs">
-                © 2025 helpful bits GmbH
+                © {new Date().getFullYear()} helpful bits GmbH
               </p>
             </div>
           </div>

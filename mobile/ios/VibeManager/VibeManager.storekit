@@ -64,7 +64,7 @@
       "localizations" : [
 
       ],
-      "name" : "Vibe Manager Pro",
+      "name" : "PlanToCode Pro",
       "subscriptions" : [
         {
           "adHocOffers" : [
@@ -85,8 +85,8 @@
           },
           "localizations" : [
             {
-              "description" : "Monthly subscription to Vibe Manager Pro",
-              "displayName" : "Vibe Manager Pro Monthly",
+              "description" : "Monthly subscription to PlanToCode Pro",
+              "displayName" : "PlanToCode Pro Monthly",
               "locale" : "en_US"
             }
           ],
@@ -115,8 +115,8 @@
           },
           "localizations" : [
             {
-              "description" : "Annual subscription to Vibe Manager Pro",
-              "displayName" : "Vibe Manager Pro Annual",
+              "description" : "Annual subscription to PlanToCode Pro",
+              "displayName" : "PlanToCode Pro Annual",
               "locale" : "en_US"
             }
           ],

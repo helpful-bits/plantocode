@@ -22,7 +22,7 @@ export async function generateMetadata({ params }: SubprocessorsPageProps): Prom
   
   return {
     title: 'Sub-processors',
-    description: `List of third-party sub-processors used by Vibe Manager for providing our AI-powered workflow automation services. Applicable to ${regionName} users.`,
+    description: `List of third-party sub-processors used by PlanToCode for providing our AI-powered workflow automation services. Applicable to ${regionName} users.`,
     robots: {
       index: true,
       follow: true,
@@ -50,9 +50,9 @@ export default async function SubprocessorsPage({ params }: SubprocessorsPagePro
       <section>
         <h2 className="text-2xl font-semibold mb-4">Introduction</h2>
         <p>
-          This page lists the third-party sub-processors that helpful bits GmbH uses to provide 
-          the Vibe Manager service to users in the {regionName}. We will provide advance notice of any material changes to 
-          our sub-processor arrangements, including the addition of new sub-processors or changes 
+          This page lists the third-party sub-processors that helpful bits GmbH uses to provide
+          the PlanToCode service to users in the {regionName}. We will provide advance notice of any material changes to
+          our sub-processor arrangements, including the addition of new sub-processors or changes
           to existing ones that may affect the processing of your personal data.
         </p>
         <p className="mt-4">
@@ -91,8 +91,8 @@ export default async function SubprocessorsPage({ params }: SubprocessorsPagePro
           including updates to this page and direct notification where required by applicable law.
         </p>
         <p className="mt-4">
-          If you have questions about our sub-processor arrangements or data processing practices, 
-          please contact us at <a href="mailto:legal@vibemanager.app" className="link-primary">legal@vibemanager.app</a>.
+          If you have questions about our sub-processor arrangements or data processing practices,
+          please contact us at <a href="mailto:legal@plantocode.com" className="link-primary">legal@plantocode.com</a>.
         </p>
       </section>
 

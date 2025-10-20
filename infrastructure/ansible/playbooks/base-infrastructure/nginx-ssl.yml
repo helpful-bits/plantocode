@@ -5,11 +5,9 @@
 - name: Nginx and SSL Configuration
   hosts: all
   become: yes
+  vars_files:
+    - "{{ playbook_dir }}/../../group_vars/{{ group_names[0] }}/secrets.yml"
   vars:
-    domain_name: "{{ ssl_domain | default('example.com') }}"
-    base_domain: "{{ ssl_base_domain | default('vibemanager.app') }}"
-    use_wildcard: "{{ ssl_use_wildcard | default(false) }}"
-    email_address: "{{ ssl_email | default('admin@example.com') }}"
     app_port: 8080
     nginx_ssl_protocols: "TLSv1.2 TLSv1.3"
     nginx_ssl_ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384"
@@ -17,8 +15,27 @@
     proxy_connect_timeout: "{{ nginx_proxy_connect_timeout | default('180s') }}"
     proxy_send_timeout: "{{ nginx_proxy_send_timeout | default('1800s') }}"
     proxy_read_timeout: "{{ nginx_proxy_read_timeout | default('1800s') }}"
-    
+
   tasks:
+    # ========================================
+    # VARIABLE SETUP
+    # ========================================
+    - name: Set SSL configuration variables
+      set_fact:
+        domain_name: "{{ ssl_domain }}"
+        additional_domains: "{{ ssl_additional_domains }}"
+        base_domain: "{{ ssl_base_domain }}"
+        use_wildcard: "{{ ssl_use_wildcard }}"
+        email_address: "{{ ssl_email }}"
+
+    - name: Set all_domains list
+      set_fact:
+        all_domains: "{{ [domain_name] + additional_domains }}"
+
+    - name: Debug SSL configuration
+      debug:
+        msg: "domain_name={{ domain_name }}, use_wildcard={{ use_wildcard }}, base_domain={{ base_domain }}, email={{ email_address }}"
+
     # ========================================
     # NGINX INSTALLATION
     # ========================================
@@ -54,13 +71,13 @@
           server {
               listen 80;
               listen [::]:80;
-              server_name {{ domain_name }};
-              
+              server_name {{ all_domains | join(' ') }};
+
               # Allow certbot challenges
               location /.well-known/acme-challenge/ {
                   root /var/www/html;
               }
-              
+
               # Redirect all other traffic to HTTPS
               location / {
                   return 301 https://$server_name$request_uri;
@@ -124,7 +141,7 @@
         --non-interactive
         --agree-tos
         --email {{ email_address }}
-        --domains "*.{{ base_domain }},{{ base_domain }}"
+        --domains "*.{{ base_domain }},{{ base_domain }},*.plantocode.com,plantocode.com"
         --cert-name {{ base_domain }}
       when: use_wildcard and cloudflare_api_token is defined and not (wildcard_cert.stat.exists | default(false))
       
@@ -139,8 +156,9 @@
         certbot certonly --nginx
         --non-interactive
         --agree-tos
+        --expand
         --email {{ email_address }}
-        --domains {{ domain_name }}
+        --domains {{ all_domains | join(',') }}
       when: not use_wildcard and not (ssl_cert.stat.exists | default(false))
       
     # ========================================
@@ -159,22 +177,22 @@
           server {
               listen 80;
               listen [::]:80;
-              server_name {{ domain_name }};
-              
+              server_name {{ all_domains | join(' ') }};
+
               location /.well-known/acme-challenge/ {
                   root /var/www/html;
               }
-              
+
               location / {
                   return 301 https://$server_name$request_uri;
               }
           }
-          
+
           # HTTPS server
           server {
               listen 443 ssl http2;
               listen [::]:443 ssl http2;
-              server_name {{ domain_name }};
+              server_name {{ all_domains | join(' ') }};
               
               # SSL Configuration
               ssl_certificate /etc/letsencrypt/live/{{ base_domain if use_wildcard else domain_name }}/fullchain.pem;
@@ -239,7 +257,7 @@
                   access_log off;
               }
           }
-      when: ssl_cert.stat.exists
+      when: (use_wildcard and wildcard_cert.stat.exists) or (not use_wildcard and ssl_cert.stat.exists)
       notify: reload nginx
       
     - name: Enable HTTPS site
@@ -247,14 +265,14 @@
         src: /etc/nginx/sites-available/vibe-manager-ssl
         dest: /etc/nginx/sites-enabled/vibe-manager-ssl
         state: link
-      when: ssl_cert.stat.exists
+      when: (use_wildcard and wildcard_cert.stat.exists) or (not use_wildcard and ssl_cert.stat.exists)
       notify: reload nginx
-      
+
     - name: Remove HTTP-only site when SSL is active
       file:
         path: /etc/nginx/sites-enabled/vibe-manager
         state: absent
-      when: ssl_cert.stat.exists
+      when: (use_wildcard and wildcard_cert.stat.exists) or (not use_wildcard and ssl_cert.stat.exists)
       notify: reload nginx
       
     # ========================================
@@ -280,7 +298,7 @@
     - name: Test certificate renewal
       command: certbot renew --dry-run
       changed_when: false
-      when: ssl_cert.stat.exists
+      when: (use_wildcard and wildcard_cert.stat.exists) or (not use_wildcard and ssl_cert.stat.exists)
       
   handlers:
     - name: reload nginx

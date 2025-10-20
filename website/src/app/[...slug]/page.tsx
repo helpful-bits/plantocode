@@ -38,7 +38,7 @@ interface PseoPage {
   comparison_table?: {
     features: Array<{
       name: string;
-      vibe_manager: string;
+      plantocode: string;
       competitor: string;
     }>;
   };
@@ -91,12 +91,12 @@ export async function generateMetadata(
     openGraph: {
       title: pageData.headline,
       description: pageData.meta_description,
-      url: `https://www.vibemanager.app/${slugString}`,
-      siteName: 'Vibe Manager',
+      url: `https://www.plantocode.com/${slugString}`,
+      siteName: 'PlanToCode',
       type: 'website',
     },
     alternates: {
-      canonical: `https://www.vibemanager.app/${slugString}`,
+      canonical: `https://www.plantocode.com/${slugString}`,
     },
   };
 }
@@ -155,10 +155,10 @@ export default async function PseoPage({ params }: { params: Promise<PageParams>
   // Generate structured data
   const structuredData: any = {
     '@type': ['SoftwareApplication', 'HowTo'],
-    name: 'Vibe Manager',
+    name: 'PlanToCode',
     applicationCategory: 'DeveloperApplication',
     operatingSystem: pageData.os ? [formatOS(pageData.os)] : ['Windows 10+', 'macOS 11.0+'],
-    url: `https://www.vibemanager.app/${slugString}`,
+    url: `https://www.plantocode.com/${slugString}`,
     description: pageData.meta_description,
     offers: {
       '@type': 'Offer',
@@ -310,7 +310,7 @@ export default async function PseoPage({ params }: { params: Promise<PageParams>
                       <thead>
                         <tr className="border-b border-foreground/10">
                           <th className="text-left py-4 px-4 font-semibold">Feature</th>
-                          <th className="text-left py-4 px-4 font-semibold text-primary">Vibe Manager</th>
+                          <th className="text-left py-4 px-4 font-semibold text-primary">PlanToCode</th>
                           <th className="text-left py-4 px-4 font-semibold text-foreground/60">
                             {formatToolName(pageData.comparison_table.features[0]?.competitor || 'Alternative')}
                           </th>
@@ -321,7 +321,7 @@ export default async function PseoPage({ params }: { params: Promise<PageParams>
                           <tr key={i} className="border-b border-foreground/5">
                             <td className="py-4 px-4 font-medium">{feature.name}</td>
                             <td className="py-4 px-4">
-                              <span className="text-primary font-medium">{feature.vibe_manager}</span>
+                              <span className="text-primary font-medium">{feature.plantocode}</span>
                             </td>
                             <td className="py-4 px-4 text-foreground/60">{feature.competitor}</td>
                           </tr>
@@ -425,7 +425,7 @@ export default async function PseoPage({ params }: { params: Promise<PageParams>
                         <ul className="space-y-2 text-foreground/70">
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
-                            <span>OpenAI GPT‑5 family (GPT‑5 and GPT‑5 Thinking/Pro), historical o‑series (e.g., o3 variants); Anthropic Claude Sonnet 4 and Opus 4.1; Google Gemini 2.5 Pro — availability and features vary by plan and endpoint (ChatGPT vs API).</span>
+                            <span>OpenAI GPT‑5 family (GPT‑5 and GPT‑5 Thinking/Pro), historical o‑series (e.g., o3 variants); Anthropic Claude Sonnet 4 and Opus 4.1; Google Gemini 2.5 Pro - availability and features vary by plan and endpoint (ChatGPT vs API).</span>
                           </li>
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
@@ -457,7 +457,7 @@ export default async function PseoPage({ params }: { params: Promise<PageParams>
                         1
                       </div>
                       <div>
-                        <h3 className="font-semibold mb-1">Install Vibe Manager</h3>
+                        <h3 className="font-semibold mb-1">Install PlanToCode</h3>
                         <p className="text-foreground/70">
                           Download for {pageData.os ? formatOS(pageData.os) : 'your platform'}.
                           Launches in seconds, no complex setup.
@@ -496,7 +496,7 @@ export default async function PseoPage({ params }: { params: Promise<PageParams>
                   <div className="mt-8 flex flex-col items-center gap-4">
                     <Button variant="cta" size="lg" asChild>
                       <Link href="/downloads">
-                        Download Vibe Manager
+                        Download PlanToCode
                       </Link>
                     </Button>
                     <p className="text-sm text-foreground/60">
@@ -592,7 +592,7 @@ export default async function PseoPage({ params }: { params: Promise<PageParams>
                   <GlassCard className="p-6">
                     <h3 className="font-semibold mb-2">Architecture</h3>
                     <p className="text-sm text-foreground/70 mb-4">
-                      Deep dive into how Vibe Manager works
+                      Deep dive into how PlanToCode works
                     </p>
                     <LinkWithArrow href="/docs/vibe-manager-architecture" className="text-sm">
                       Learn more

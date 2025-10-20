@@ -27,7 +27,7 @@ export function LoadingScreen({
   const defaultMessage = {
     login: "Authenticating...",
     configuration: "Loading Configuration...",
-    initializing: "Initializing Vibe Manager...",
+    initializing: "Initializing PlanToCode...",
   }[mappedLoadingType];
 
   const displayMessage = message || defaultMessage;

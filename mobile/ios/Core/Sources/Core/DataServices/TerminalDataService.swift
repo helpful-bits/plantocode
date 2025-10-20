@@ -33,26 +33,26 @@ private struct ByteRing {
     }
 
     mutating func append(_ data: Data) {
-        storage.append(data)
-        if storage.count > maxBytes {
-            let overflow = storage.count - maxBytes
-            storage.removeFirst(overflow)
+        self.storage.append(data)
+        if self.storage.count > self.maxBytes {
+            let overflow = self.storage.count - self.maxBytes
+            self.storage.removeFirst(overflow)
         }
     }
 
     func snapshot() -> Data {
-        return storage
+        return self.storage
     }
 
     var isEmpty: Bool {
-        return storage.isEmpty
+        return self.storage.isEmpty
     }
 }
 
 /// Service for managing terminal sessions via RPC calls to connected desktop devices
 @MainActor
 public class TerminalDataService: ObservableObject {
-    private let logger = Logger(subsystem: "VibeManager", category: "TerminalDataService")
+    private let logger = Logger(subsystem: "PlanToCode", category: "TerminalDataService")
 
     // MARK: - Published Properties
     @Published public private(set) var activeSessions: [String: TerminalSession] = [:]
@@ -73,12 +73,19 @@ public class TerminalDataService: ObservableObject {
     private var recentSentChunks: [String: [Data]] = [:]
     private let recentSentChunksLimit = 3
     private var lastActivityBySession: [String: Date] = [:]
+    private let bindingStore = TerminalBindingStore.shared
+    private var currentBoundSessionId: String?
+    private var globalBinarySubscription: AnyCancellable?
+    private var binarySubscriptionDeviceId: UUID?
+    private var firstResizeCompleted = Set<String>() // Tracks session.id keys
+    private var bindingRefCount = [String: Int]() // session.id -> refcount
+    private var pendingUnbindTasks: [String: Task<Void, Never>] = [:]
 
     // MARK: - Initialization
     public init() {
-        setupEventSubscriptions()
+        self.setupEventSubscriptions()
 
-        connectionStateCancellable = MultiConnectionManager.shared.$connectionStates
+        self.connectionStateCancellable = MultiConnectionManager.shared.$connectionStates
             .sink { [weak self] states in
                 guard let self = self else { return }
                 let isConnected = states.values.contains { state in
@@ -95,23 +102,32 @@ public class TerminalDataService: ObservableObject {
                                 self.subscribeToSessionOutputIfNeeded(sessionId: sessionId, deviceId: deviceId)
                             }
                         }
+
+                        // Re-subscribe to binary stream on connect
+                        self.ensureGlobalBinarySubscriptionForActiveDevice()
                     }
                 }
             }
 
-        activeDeviceReconnectCancellable = MultiConnectionManager.shared.$connectionStates
+        self.activeDeviceReconnectCancellable = MultiConnectionManager.shared.$connectionStates
             .sink { [weak self] (states: [UUID: ConnectionState]) in
                 guard let self = self else { return }
                 guard let activeId = self.connectionManager.activeDeviceId else { return }
 
                 if case .connected = states[activeId] {
                     Task { @MainActor in
+                        // Re-subscribe to binary stream on reconnect
+                        self.ensureGlobalBinarySubscriptionForActiveDevice()
+
                         for sessionId in self.boundSessions {
                             if let relayClient = self.connectionManager.relayConnection(for: activeId),
                                relayClient.isConnected {
-                                // Note: includeSnapshot parameter will be added to sendBinaryBind in Step 2
-                                relayClient.sendBinaryBind(producerDeviceId: activeId.uuidString)
-                                self.logger.info("Rebound session \(sessionId) after reconnect")
+                                do {
+                                    self.logger.info("terminal.reconnect.rebind sid=\(sessionId)")
+                                    try await relayClient.sendBinaryBind(producerDeviceId: activeId.uuidString, sessionId: sessionId, includeSnapshot: true)
+                                } catch {
+                                    self.logger.error("Failed to rebind session \(sessionId): \(error)")
+                                }
                             }
                         }
                     }
@@ -120,20 +136,20 @@ public class TerminalDataService: ObservableObject {
     }
 
     deinit {
-        eventSubscriptions.values.forEach { $0.cancel() }
+        self.eventSubscriptions.values.forEach { $0.cancel() }
     }
 
     // MARK: - Terminal Session Management
 
     /// Start a new terminal session for the given job
-    public func startSession(jobId: String, shell: String? = nil) async throws -> TerminalSession {
-        guard let deviceId = connectionManager.activeDeviceId,
-              let relayClient = connectionManager.relayConnection(for: deviceId) else {
+    public func startSession(jobId: String, shell: String? = nil, context: TerminalContextBinding) async throws -> TerminalSession {
+        guard let deviceId = self.connectionManager.activeDeviceId,
+              let relayClient = self.connectionManager.relayConnection(for: deviceId) else {
             throw DataServiceError.connectionError("No active device connection")
         }
 
-        isLoading = true
-        defer { isLoading = false }
+        self.isLoading = true
+        defer { self.isLoading = false }
 
         var params: [String: Any] = ["jobId": jobId]
 
@@ -178,28 +194,37 @@ public class TerminalDataService: ObservableObject {
                 shell: data["shell"] as? String ?? "default"
             )
 
-            activeSessions[sessionId] = session
-            jobToSessionId[jobId] = sessionId
+            self.activeSessions[sessionId] = session
+            self.jobToSessionId[jobId] = sessionId
+
+            // Save binding to persistent store
+            let binding = TerminalBinding(
+                terminalSessionId: session.id,
+                appSessionId: context.appSessionId,
+                contextType: context.contextType,
+                jobId: context.jobId,
+                createdAt: Date()
+            )
+            self.bindingStore.save(binding)
+            self.logger.info("Saved terminal binding: sessionId=\(session.id) appSessionId=\(context.appSessionId) contextType=\(context.contextType.rawValue) jobId=\(context.jobId ?? "nil")")
 
             // Subscribe to terminal output events for this session
-            subscribeToSessionOutput(sessionId: sessionId, deviceId: deviceId)
+            self.subscribeToSessionOutput(sessionId: sessionId, deviceId: deviceId)
 
-            // Check for initialLog in response and hydrate
-            if let initialLog = data["initialLog"] as? [[String: Any]], !initialLog.isEmpty {
-                if let publisher = outputPublishers[sessionId] {
-                    for entry in initialLog {
-                        if let output = parseTerminalOutputFromEntry(entry, sessionId: sessionId) {
-                            publisher.send(output)
-                        }
-                    }
-                }
-            }
+            // IMPORTANT: We intentionally DO NOT hydrate initialLog here because:
+            // 1. initialLog is formatted for desktop PTY's default size (24x80)
+            // 2. Mobile terminal has a different size (e.g., 30x60)
+            // 3. Absolute cursor positioning escape sequences in initialLog would be wrong
+            // 4. Instead, we rely on attachLiveBinary(includeSnapshot=true) which sends
+            //    a fresh snapshot AFTER mobile terminal size is synced with desktop PTY
+            //
+            // This ensures all output is rendered with correct terminal dimensions.
 
-            logger.info("Terminal session started: \(sessionId) for job \(jobId)")
+            self.logger.info("Terminal session started: \(sessionId) for job \(jobId)")
             return session
 
         } catch {
-            lastError = error as? DataServiceError ?? DataServiceError.networkError(error)
+            self.lastError = error as? DataServiceError ?? DataServiceError.networkError(error)
             throw error
         }
     }
@@ -229,21 +254,21 @@ public class TerminalDataService: ObservableObject {
     /// transport boundary to avoid any lossy conversions.
     public func write(jobId: String, data: Data) async throws {
         // Fast path: if session exists and publisher is ready, skip ensureSession
-        if let existingSession = activeSessions.values.first(where: { $0.jobId == jobId }),
-           outputPublishers[existingSession.id] != nil {
-            try await writeViaRelay(session: existingSession, data: data)
+        if let existingSession = self.activeSessions.values.first(where: { $0.jobId == jobId }),
+           self.outputPublishers[existingSession.id] != nil {
+            try await self.writeViaRelay(session: existingSession, data: data)
             return
         }
 
-        let session = try await ensureSession(jobId: jobId, autostartIfNeeded: true)
-        try await writeViaRelay(session: session, data: data)
+        let session = try await self.ensureSession(jobId: jobId, autostartIfNeeded: true)
+        try await self.writeViaRelay(session: session, data: data)
     }
 
     /// Send large text to terminal in chunks to avoid overwhelming the PTY
     public func sendLargeText(jobId: String, text: String, appendCarriageReturn: Bool = true, chunkSize: Int = 4096) async throws {
         guard !text.isEmpty else { return }
 
-        let session = try await ensureSession(jobId: jobId, autostartIfNeeded: true)
+        let session = try await self.ensureSession(jobId: jobId, autostartIfNeeded: true)
 
         let finalText = appendCarriageReturn ? text + "\n" : text
         let data = Data(finalText.utf8)
@@ -253,7 +278,7 @@ public class TerminalDataService: ObservableObject {
             let endIndex = min(offset + chunkSize, data.count)
             let chunk = data[offset..<endIndex]
 
-            try await writeViaRelay(session: session, data: Data(chunk))
+            try await self.writeViaRelay(session: session, data: Data(chunk))
 
             offset = endIndex
             await Task.yield()
@@ -272,14 +297,18 @@ public class TerminalDataService: ObservableObject {
                 }
             }
         } catch {
-            lastError = error as? DataServiceError ?? DataServiceError.networkError(error)
+            self.lastError = error as? DataServiceError ?? DataServiceError.networkError(error)
             throw error
         }
     }
 
     private func writeViaRelay(session: TerminalSession, data: Data) async throws {
-        guard connectionManager.activeDeviceId != nil,
-              connectionManager.relayConnection(for: session.deviceId) != nil else {
+        if let binding = self.bindingStore.getByTerminalSessionId(session.id) {
+            self.logger.info("terminal.write sessionId=\(session.id) appSessionId=\(binding.appSessionId) contextType=\(binding.contextType.rawValue) jobId=\(binding.jobId ?? "nil") bytes=\(data.count)")
+        }
+
+        guard self.connectionManager.activeDeviceId != nil,
+              self.connectionManager.relayConnection(for: session.deviceId) != nil else {
             throw DataServiceError.connectionError("No active relay connection")
         }
 
@@ -294,7 +323,7 @@ public class TerminalDataService: ObservableObject {
                 }
             }
         } catch {
-            lastError = error as? DataServiceError ?? DataServiceError.networkError(error)
+            self.lastError = error as? DataServiceError ?? DataServiceError.networkError(error)
             throw error
         }
     }
@@ -302,6 +331,10 @@ public class TerminalDataService: ObservableObject {
     /// Resize terminal window
     public func resize(jobId: String, cols: Int, rows: Int) async throws {
         let session = try await ensureSession(jobId: jobId, autostartIfNeeded: true)
+
+        if let binding = bindingStore.getByJobId(jobId) {
+            self.logger.info("terminal.resize sessionId=\(session.id) appSessionId=\(binding.appSessionId) contextType=\(binding.contextType.rawValue) jobId=\(binding.jobId ?? "nil") cols=\(cols) rows=\(rows)")
+        }
 
         do {
             for try await response in CommandRouter.terminalResize(sessionId: session.id, cols: cols, rows: rows) {
@@ -312,8 +345,16 @@ public class TerminalDataService: ObservableObject {
                     break
                 }
             }
+
+            // Trigger first-resize binding
+            let sessionId = session.id
+            if !firstResizeCompleted.contains(sessionId) && cols > 10 && rows > 5 {
+                self.logger.info("first_resize.bind sid=\(sessionId)")
+                attachLiveBinary(for: jobId, includeSnapshot: true)
+                firstResizeCompleted.insert(sessionId)
+            }
         } catch {
-            lastError = error as? DataServiceError ?? DataServiceError.networkError(error)
+            self.lastError = error as? DataServiceError ?? DataServiceError.networkError(error)
             throw error
         }
     }
@@ -335,7 +376,16 @@ public class TerminalDataService: ObservableObject {
             // Update session state
             activeSessions[session.id]?.isActive = false
 
-            logger.info("Terminal session killed: \(session.id)")
+            self.logger.info("Terminal session killed: \(session.id)")
+
+            // Finalize binding cleanup
+            finalizeBinding(sessionId: session.id)
+
+            // Remove binding from persistent store
+            if let sid = jobToSessionId[jobId] {
+                bindingStore.delete(terminalSessionId: sid)
+                self.logger.info("Deleted binding for killed session: \(sid)")
+            }
 
             // Clean up subscriptions and publishers
             eventSubscriptions[session.id]?.cancel()
@@ -345,7 +395,7 @@ public class TerminalDataService: ObservableObject {
             activeSessions.removeValue(forKey: session.id)
 
         } catch {
-            lastError = error as? DataServiceError ?? DataServiceError.networkError(error)
+            self.lastError = error as? DataServiceError ?? DataServiceError.networkError(error)
             throw error
         }
     }
@@ -365,7 +415,7 @@ public class TerminalDataService: ObservableObject {
         // Route all operations through relay
         try await detachViaRelay(session: session)
 
-        logger.info("Terminal session detached: \(session.id) for job \(jobId)")
+        self.logger.info("Terminal session detached: \(session.id) for job \(jobId)")
     }
 
 
@@ -373,16 +423,14 @@ public class TerminalDataService: ObservableObject {
     private func detachViaRelay(session: TerminalSession) async throws {
         detachLiveBinary(for: session.jobId)
 
-        // Send unbind control message
-        if let relayClient = connectionManager.relayConnection(for: session.deviceId) {
-            relayClient.sendBinaryUnbind()
-        }
+        // DO NOT send unbind here - binding should persist for session lifetime, not view lifetime
+        // Unbind only happens on actual session termination (see finalizeBinding)
 
         do {
             for try await response in CommandRouter.terminalDetach(sessionId: session.id) {
                 if let error = response.error {
                     // Log but don't throw for detach errors - it's a cleanup operation
-                    logger.warning("Terminal detach error (non-fatal): \(error)")
+                    self.logger.warning("Terminal detach error (non-fatal): \(error)")
                 }
                 if response.isFinal {
                     break
@@ -390,9 +438,20 @@ public class TerminalDataService: ObservableObject {
             }
         } catch {
             // Don't propagate detach errors - log and continue
-            logger.warning("Terminal detach failed (non-fatal): \(error)")
+            self.logger.warning("Terminal detach failed (non-fatal): \(error)")
         }
     }
+
+    /// Check if a session is currently bound
+    ///
+    /// - Parameter sessionId: The terminal session ID
+    /// - Returns: true if the session is bound, false otherwise
+    public func isBound(sessionId: String) -> Bool {
+        return boundSessions.contains(sessionId)
+    }
+
+    // Binding is session-scoped and persists until finalizeBinding(); view lifecycle does not affect binding.
+    // Reconnect flow rebinds all bound sessions with includeSnapshot=true to restore stream safely.
 
     /// Attach to live binary terminal output for a session.
     ///
@@ -411,46 +470,135 @@ public class TerminalDataService: ObservableObject {
     ///   - includeSnapshot: Whether to include ring buffer snapshot in the bind call (default true)
     public func attachLiveBinary(for jobId: String, includeSnapshot: Bool = true) {
         guard let session = activeSessions.values.first(where: { $0.jobId == jobId }) else {
-            logger.warning("Cannot attach: no session for job \(jobId)")
+            self.logger.warning("Cannot attach: no session for job \(jobId)")
             return
         }
 
         let sessionId = session.id
 
-        // Already bound
-        if boundSessions.contains(sessionId) {
-            logger.debug("Session \(sessionId) already bound")
+        if let pending = pendingUnbindTasks.removeValue(forKey: sessionId) {
+            pending.cancel()
+            self.logger.info("Cancelled deferred unbind for session \(sessionId)")
+        }
+
+        // Increment ref count
+        bindingRefCount[sessionId, default: 0] += 1
+
+        // If already bound OR multiple attach calls, skip binding
+        if boundSessions.contains(sessionId) || bindingRefCount[sessionId]! > 1 {
+            self.logger.info("Already bound to session \(sessionId)")
             return
         }
 
-        guard let deviceId = connectionManager.activeDeviceId,
-              let relayClient = connectionManager.relayConnection(for: deviceId) else {
-            logger.warning("Cannot attach: no active relay connection")
-            return
-        }
-
-        // CRITICAL ORDER: Ensure publishers and ring exist BEFORE binding
+        // Ensure publishers and ring exist BEFORE binding
         _ = ensureBytesPublisher(for: sessionId)
         if outputRings[sessionId] == nil {
             outputRings[sessionId] = ByteRing(maxBytes: 2_000_000)
         }
 
-        // Now safe to bind - incoming frames have a destination
-        // Note: ServerRelayClient.sendBinaryBind will be updated to accept includeSnapshot in Step 2
-        relayClient.sendBinaryBind(producerDeviceId: deviceId.uuidString, includeSnapshot: includeSnapshot)
+        // Bind to this session (enforces single active bind)
+        bindBinary(to: sessionId, includeSnapshot: includeSnapshot)
         boundSessions.insert(sessionId)
 
-        logger.info("Attached binary stream for session \(sessionId) with includeSnapshot=\(includeSnapshot)")
+        self.logger.info("Attached binary stream for session \(sessionId) with includeSnapshot=\(includeSnapshot)")
     }
 
-    /// Detach from live binary terminal output.
-    ///
-    /// This sends terminal.binary.unbind but keeps the ring buffer and publishers intact.
-    /// This allows instant re-attachment without losing historical output.
-    ///
-    /// Call this when dismissing the terminal view to free server resources.
-    ///
-    /// - Parameter jobId: The terminal job ID
+    private func bindBinary(to sessionId: String, includeSnapshot: Bool) {
+        guard let deviceId = connectionManager.activeDeviceId,
+              let relayClient = connectionManager.relayConnection(for: deviceId) else {
+            self.logger.warning("Cannot bind: no active relay connection")
+            return
+        }
+
+        // Don't send unbind - let the new bind overwrite the old route on server
+        // Sending unbind here causes a race where it clears ALL routes, including the new one being established
+        if let current = currentBoundSessionId, current != sessionId {
+            self.logger.info("Switching bind from session \(current) to \(sessionId) - server will overwrite route")
+        }
+
+        // Set new binding
+        currentBoundSessionId = sessionId
+        ensureGlobalBinarySubscription(relayClient: relayClient, deviceId: deviceId)
+
+        // Send binary bind synchronously  to ensure it's sent before returning
+        Task {
+            do {
+                try await relayClient.sendBinaryBind(producerDeviceId: deviceId.uuidString, sessionId: sessionId, includeSnapshot: includeSnapshot)
+            } catch {
+                self.logger.error("Failed to send binary bind: \(error)")
+            }
+        }
+        self.logger.info("Bound binary stream to session: \(sessionId)")
+    }
+
+    private func ensureGlobalBinarySubscription(relayClient: ServerRelayClient, deviceId: UUID) {
+        // Check if we need to re-subscribe (device changed or first subscription)
+        if let existingDeviceId = binarySubscriptionDeviceId, existingDeviceId == deviceId, globalBinarySubscription != nil {
+            self.logger.info("Global binary subscription already exists for device \(deviceId), skipping setup")
+            return
+        }
+
+        // Cancel old subscription if device changed
+        if let existingDeviceId = binarySubscriptionDeviceId, existingDeviceId != deviceId {
+            self.logger.info("Device changed from \(existingDeviceId) to \(deviceId), re-subscribing")
+            globalBinarySubscription?.cancel()
+            globalBinarySubscription = nil
+        }
+
+        globalBinarySubscription = relayClient.terminalBytes
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] evt in
+                guard let self = self else { return }
+
+                // Resolve session ID with event priority
+                let sid = evt.sessionId ?? self.currentBoundSessionId
+                guard let sid = sid else {
+                    self.logger.debug("Dropping binary bytes: no sessionId in event or binding")
+                    return
+                }
+
+                // Ensure ByteRing exists before appending
+                if self.outputRings[sid] == nil {
+                    self.outputRings[sid] = ByteRing(maxBytes: 2_000_000)
+                }
+                self.outputRings[sid]!.append(evt.data)
+
+                // Ensure bytes publisher exists before sending
+                let pub = self.outputBytesPublishers[sid] ?? self.ensureBytesPublisher(for: sid)
+                pub.send(evt.data)
+
+                // Update activity tracking
+                self.lastActivityBySession[sid] = Date()
+
+                // Also decode to text for backward compatibility
+                if let decoded = String(data: evt.data, encoding: .utf8),
+                   let textPublisher = self.outputPublishers[sid] {
+                    let output = TerminalOutput(
+                        sessionId: sid,
+                        data: decoded,
+                        timestamp: evt.timestamp,
+                        outputType: .stdout
+                    )
+                    textPublisher.send(output)
+                }
+            }
+
+        binarySubscriptionDeviceId = deviceId
+        self.logger.info("Global binary subscription established for device \(deviceId)")
+    }
+
+    private func ensureGlobalBinarySubscriptionForActiveDevice() {
+        // Resolve active device/relay from MultiConnectionManager
+        guard let activeDeviceId = connectionManager.activeDeviceId,
+              let activeRelay = connectionManager.relayConnection(for: activeDeviceId) else {
+            return
+        }
+
+        ensureGlobalBinarySubscription(relayClient: activeRelay, deviceId: activeDeviceId)
+    }
+
+    // Binding is session-scoped and persists until finalizeBinding(sessionId:) runs on real teardown (exit/kill).
+    // View detachment MUST NOT alter binding state or send unbind. Only decrement local refcount for diagnostics.
     public func detachLiveBinary(for jobId: String) {
         guard let session = activeSessions.values.first(where: { $0.jobId == jobId }) else {
             return
@@ -458,18 +606,56 @@ public class TerminalDataService: ObservableObject {
 
         let sessionId = session.id
 
-        guard boundSessions.contains(sessionId) else {
+        // Decrement ref count
+        let updatedCount = max(0, bindingRefCount[sessionId, default: 0] - 1)
+        if updatedCount == 0 {
+            bindingRefCount.removeValue(forKey: sessionId)
+        } else {
+            bindingRefCount[sessionId] = updatedCount
+        }
+
+        // DO NOT unbind - binding lifecycle is managed by finalizeBinding
+        self.logger.info("Detached binary stream for session \(sessionId), refCount=\(self.bindingRefCount[sessionId, default: 0])")
+    }
+
+    /// Finalize binding cleanup - called when a session exits or is killed
+    private func finalizeBinding(sessionId: String) {
+        if let pending = pendingUnbindTasks.removeValue(forKey: sessionId) {
+            pending.cancel()
+        }
+
+        // Clear all binding state at the top of the function
+        boundSessions.remove(sessionId)
+        bindingRefCount.removeValue(forKey: sessionId)
+        firstResizeCompleted.remove(sessionId)
+        if currentBoundSessionId == sessionId {
+            currentBoundSessionId = nil
+        }
+
+        guard let deviceId = connectionManager.activeDeviceId,
+              let relayClient = connectionManager.relayConnection(for: deviceId) else {
             return
         }
 
-        if let deviceId = connectionManager.activeDeviceId,
-           let relayClient = connectionManager.relayConnection(for: deviceId) {
-            relayClient.sendBinaryUnbind()
+        let task = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 1_000_000_000) // Allow rebinding to occur first
+            await MainActor.run {
+                guard let self else { return }
+
+                if self.boundSessions.contains(sessionId) || self.bindingRefCount[sessionId] != nil {
+                    self.logger.info("Deferred unbind skipped for session \(sessionId) - session rebound before timeout")
+                    self.pendingUnbindTasks.removeValue(forKey: sessionId)
+                    return
+                }
+
+                self.logger.info("terminal.teardown.unbind sid=\(sessionId) (reason=exit/kill, deferred=1s)")
+                self.pendingUnbindTasks.removeValue(forKey: sessionId)
+                relayClient.sendBinaryUnbind(sessionId: sessionId)
+            }
         }
 
-        boundSessions.remove(sessionId)
+        pendingUnbindTasks[sessionId] = task
 
-        logger.info("Detached binary stream for session \(sessionId)")
     }
 
     /// Get terminal output stream for a specific job
@@ -589,7 +775,7 @@ public class TerminalDataService: ObservableObject {
                 )
             }
         } catch {
-            lastError = error as? DataServiceError ?? DataServiceError.networkError(error)
+            self.lastError = error as? DataServiceError ?? DataServiceError.networkError(error)
             throw error
         }
     }
@@ -604,7 +790,7 @@ public class TerminalDataService: ObservableObject {
             var sessionIds: [String] = []
             for try await response in CommandRouter.terminalGetActiveSessions() {
                 if let error = response.error {
-                    logger.warning("Failed to get active sessions: \(error)")
+                    self.logger.warning("Failed to get active sessions: \(error)")
                     return
                 }
                 if let result = response.result?.value as? [String: Any],
@@ -626,7 +812,7 @@ public class TerminalDataService: ObservableObject {
                         if response.isFinal { break }
                     }
                 } catch {
-                    logger.warning("Failed to get metadata for \(sessionId): \(error)")
+                    self.logger.warning("Failed to get metadata for \(sessionId): \(error)")
                     continue
                 }
 
@@ -641,10 +827,10 @@ public class TerminalDataService: ObservableObject {
                 activeSessions[sessionId] = session
                 jobToSessionId[sessionId] = sessionId
 
-                logger.info("Bootstrapped session: \(sessionId)")
+                self.logger.info("Bootstrapped session: \(sessionId)")
             }
         } catch {
-            logger.warning("Bootstrap failed: \(error)")
+            self.logger.warning("Bootstrap failed: \(error)")
         }
     }
 
@@ -721,7 +907,7 @@ public class TerminalDataService: ObservableObject {
                 if response.isFinal { break }
             }
         } catch {
-            logger.warning("Failed to get status for \(sessionId), will try to start: \(error)")
+            self.logger.warning("Failed to get status for \(sessionId), will try to start: \(error)")
         }
 
         if let status = statusData?["status"] as? String {
@@ -735,7 +921,7 @@ public class TerminalDataService: ObservableObject {
                         if response.isFinal { break }
                     }
                 } catch {
-                    logger.warning("Failed to get metadata: \(error)")
+                    self.logger.warning("Failed to get metadata: \(error)")
                 }
 
                 let session = rebuildSessionFromMetadata(
@@ -748,7 +934,23 @@ public class TerminalDataService: ObservableObject {
                 jobToSessionId[jobId] = sessionId
 
                 if status == "restored" && autostartIfNeeded {
-                    _ = try await startSession(jobId: jobId, shell: shell)
+                    // Check for existing binding or create default context for autostart
+                    let context: TerminalContextBinding
+                    if let existingBinding = bindingStore.getByJobId(jobId) {
+                        context = TerminalContextBinding(
+                            appSessionId: existingBinding.appSessionId,
+                            contextType: existingBinding.contextType,
+                            jobId: existingBinding.jobId
+                        )
+                    } else {
+                        // Default context for autostart recovery
+                        context = TerminalContextBinding(
+                            appSessionId: "",
+                            contextType: .implementationPlan,
+                            jobId: jobId
+                        )
+                    }
+                    _ = try await startSession(jobId: jobId, shell: shell, context: context)
                 }
 
                 return session
@@ -756,7 +958,23 @@ public class TerminalDataService: ObservableObject {
         }
 
         if autostartIfNeeded {
-            return try await startSession(jobId: jobId, shell: shell)
+            // Check for existing binding or create default context for autostart
+            let context: TerminalContextBinding
+            if let existingBinding = bindingStore.getByJobId(jobId) {
+                context = TerminalContextBinding(
+                    appSessionId: existingBinding.appSessionId,
+                    contextType: existingBinding.contextType,
+                    jobId: existingBinding.jobId
+                )
+            } else {
+                // Default context for autostart
+                context = TerminalContextBinding(
+                    appSessionId: "",
+                    contextType: .implementationPlan,
+                    jobId: jobId
+                )
+            }
+            return try await startSession(jobId: jobId, shell: shell, context: context)
         } else {
             throw DataServiceError.invalidState("Session \(jobId) is stopped and autostart disabled")
         }
@@ -770,36 +988,12 @@ public class TerminalDataService: ObservableObject {
             return
         }
 
-        // Bind is now controlled by attachLiveBinary - don't bind here
+        // Binary subscription is now global - do not subscribe per session
 
         let outputSubject = PassthroughSubject<TerminalOutput, Never>()
         outputPublishers[sessionId] = outputSubject
 
         let bytesSubject = ensureBytesPublisher(for: sessionId)
-
-        // Subscribe to raw binary frames
-        let binarySubscription = relayClient.terminalBytes
-            .sink { [weak self] evt in
-                guard let self = self else { return }
-
-                // Store into ring buffer (persistent across subscriptions)
-                self.outputRings[sessionId, default: ByteRing(maxBytes: 2_000_000)].append(evt.data)
-
-                self.lastActivityBySession[sessionId] = Date()
-                // Forward raw bytes to bytes publisher (always show remote output)
-                bytesSubject.send(evt.data)
-
-                // Also decode to text for text-based output publisher (backward compat)
-                if let decoded = String(data: evt.data, encoding: .utf8) {
-                    let output = TerminalOutput(
-                        sessionId: sessionId,
-                        data: decoded,
-                        timestamp: evt.timestamp,
-                        outputType: .stdout
-                    )
-                    outputSubject.send(output)
-                }
-            }
 
         // Keep terminal.exit subscription for session termination
         let exitSubscription = relayClient.events
@@ -813,8 +1007,8 @@ public class TerminalDataService: ObservableObject {
                 let line = code != nil ? "[Session exited (code \(code!))]" : "[Session exited]"
                 self.activeSessions[sid]?.isActive = false
 
-                // Send unbind on exit
-                relayClient.sendBinaryUnbind()
+                // Finalize binding on exit
+                self.finalizeBinding(sessionId: sid)
 
                 return TerminalOutput(sessionId: sid, data: line, timestamp: Date(), outputType: .system)
             }
@@ -822,12 +1016,7 @@ public class TerminalDataService: ObservableObject {
                 outputSubject.send(output)
             }
 
-        // Store both subscriptions
-        let combinedSubscription = AnyCancellable {
-            binarySubscription.cancel()
-            exitSubscription.cancel()
-        }
-        eventSubscriptions[sessionId] = combinedSubscription
+        eventSubscriptions[sessionId] = exitSubscription
     }
 
     private func parseTerminalOutput(from event: [String: Any], sessionId: String) -> TerminalOutput? {

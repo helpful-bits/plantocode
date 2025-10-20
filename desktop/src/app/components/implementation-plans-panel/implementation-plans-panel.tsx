@@ -54,7 +54,7 @@ interface ImplementationPlansPanelProps {
   includedPaths?: string[];
   isCreatingPlan?: boolean;
   planCreationState?: "idle" | "submitting" | "submitted";
-  onCreatePlan?: (taskDescription: string, includedPaths: string[], selectedRootDirectories?: string[] | null, enableWebSearch?: boolean, includeProjectStructure?: boolean) => Promise<void>;
+  onCreatePlan?: (selectedRootDirectories?: string[] | null, enableWebSearch?: boolean, includeProjectStructure?: boolean) => Promise<void>;
   // Web search toggle props
   enableWebSearch?: boolean;
   onWebSearchToggle?: (enabled: boolean) => void;
@@ -581,7 +581,7 @@ export function ImplementationPlansPanel({
         location: 'implementation_plans_panel'
       });
       
-      await onCreatePlan(finalTaskDescription, finalIncludedPaths, selectedRootDirectories, enableWebSearch, includeProjectStructure);
+      await onCreatePlan(selectedRootDirectories, enableWebSearch, includeProjectStructure);
     } catch (error) {
       showNotification({
         title: "Implementation Plan Creation Failed",

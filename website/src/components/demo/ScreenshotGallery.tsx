@@ -211,7 +211,7 @@ export function ScreenshotGallery() {
                 </div>
 
                 <p className="text-lg text-muted-foreground leading-relaxed mb-8">
-                  Watch how Vibe Manager transforms your workflow. From idea to implementation in under 2 minutes.
+                  Watch how PlanToCode transforms your workflow. From idea to implementation in under 2 minutes.
                 </p>
 
                 <ul className="space-y-3 mb-8">

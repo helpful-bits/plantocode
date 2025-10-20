@@ -6,23 +6,23 @@ This document contains all metadata for the App Store Connect product page.
 
 **App Name (≤30 characters):**
 ```
-Vibe Manager
+PlanToCode
 ```
 
 **Subtitle (≤30 characters):**
 ```
-Control Vibe Manager remotely
+Control PlanToCode remotely
 ```
 
 **Promotional Text (≤170 characters):**
 ```
-Control your desktop Vibe Manager from iPhone/iPad. Queue tasks, toggle files, edit descriptions, plan sprints, and dictate notes—fast, secure, no streaming UI.
+Control your desktop PlanToCode from iPhone/iPad. Queue tasks, toggle files, edit descriptions, plan sprints, and dictate notes—fast, secure, no streaming UI.
 ```
 
 ## Description (≤4000 characters)
 
 ```
-Vibe Manager for iOS is the companion app for the Vibe Manager desktop client. It lets you control your development workflow from your phone or tablet—without mirroring a desktop screen.
+PlanToCode for iOS is the companion app for the PlanToCode desktop client. It lets you control your development workflow from your phone or tablet—without mirroring a desktop screen.
 
 **What you can do**
 
@@ -35,7 +35,7 @@ Vibe Manager for iOS is the companion app for the Vibe Manager desktop client. I
 
 **How it works**
 
-1. Install Vibe Manager on your Mac.
+1. Install PlanToCode on your Mac.
 2. Pair the iOS app with your Mac over LAN or secure remote connection.
 3. Control your projects from anywhere. No cloud copy of your files—your Mac stays the source of truth.
 
@@ -47,11 +47,11 @@ Vibe Manager for iOS is the companion app for the Vibe Manager desktop client. I
 
 **Requirements**
 
-* Vibe Manager desktop app on macOS
+* PlanToCode desktop app on macOS
 * Network connectivity between iPhone/iPad and your Mac
 
 **Support & docs**
-Visit vibemanager.app/support
+Visit plantocode.com/support
 ```
 
 **Note:** Avoid pricing/keyword stuffing in metadata per [Apple's App Review Guidelines](https://developer.apple.com/app-store/review/guidelines/).
@@ -71,7 +71,7 @@ remote control, dev productivity, task manager, planning, desktop companion, ter
 
 **Copyright:**
 ```
-© 2025 Vibe Manager
+© 2025 PlanToCode
 ```
 
 **License Agreement:**
@@ -86,17 +86,17 @@ Use Apple's Standard EULA (recommended) or provide custom EULA URL.
 
 **Support URL:**
 ```
-https://vibemanager.app/support
+https://plantocode.com/support
 ```
 
 **Marketing URL (optional):**
 ```
-https://vibemanager.app
+https://plantocode.com
 ```
 
 **Privacy Policy URL:**
 ```
-https://vibemanager.app/privacy
+https://plantocode.com/privacy
 ```
 
 ## Release Notes Template ("What's New")

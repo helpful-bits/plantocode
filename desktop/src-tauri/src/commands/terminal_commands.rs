@@ -135,11 +135,11 @@ pub async fn start_terminal_session_for_rpc_command(
 ) -> Result<TerminalSessionInfo, String> {
     let mgr = app.state::<std::sync::Arc<crate::services::TerminalManager>>();
 
-    // Check if session already exists and is not stopped
+    // Check if session already exists and is actively running (not restored)
     let status = mgr.status(&session_id);
     if let Some(status_str) = status.get("status").and_then(|v| v.as_str()) {
-        if status_str == "running" || status_str == "restored" {
-            // Session already exists, return its info without spawning new PTY
+        if status_str == "running" {
+            // Session is actively running with live PTY, return its info
             let wd = mgr.get_session_working_directory(&session_id)
                 .or(working_directory.clone())
                 .or_else(|| std::env::current_dir().ok().and_then(|p| p.to_str().map(String::from)));
@@ -150,6 +150,7 @@ pub async fn start_terminal_session_for_rpc_command(
                 shell,
             });
         }
+        // If restored or stopped, fall through to start new PTY session below
     }
     // If stopped or doesn't exist, proceed to start new session below...
 

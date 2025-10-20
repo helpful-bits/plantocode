@@ -5,15 +5,16 @@ import { listen } from '@tauri-apps/api/event';
 
 import { type TaskDescriptionHandle } from "../_components/task-description";
 import { useTaskDescriptionState } from "./use-task-description-state";
-import { 
-  useSessionStateContext, 
-  useSessionActionsContext 
+import {
+  useSessionStateContext,
+  useSessionActionsContext
 } from "@/contexts/session";
 import { useScreenRecording } from "@/contexts/screen-recording";
 import { useBackgroundJob } from "@/contexts/_hooks/use-background-job";
 import { cancelBackgroundJobAction } from "@/actions/background-jobs/jobs.actions";
 import { useNotification } from "@/contexts/notification-context";
 import type { VideoAnalysisJobResult } from "@/types/video-analysis-types";
+import { getSessionAction } from "@/actions/session/crud.actions";
 
 export interface UseGeneratePromptTaskStateProps {
   taskDescriptionRef: React.RefObject<TaskDescriptionHandle | null>;
@@ -90,43 +91,49 @@ export function useGeneratePromptTaskState({
   
   // Handle video analysis recording start
   const startVideoAnalysisRecording = useCallback(async (args: { prompt: string; recordAudio: boolean; audioDeviceId: string; frameRate: number }) => {
-    if (!sessionState.currentSession) return;
-    
-    // Prevent duplicate analysis if one is already in progress
+    if (!sessionState.currentSession?.id) return;
+
     if (isAnalyzingVideo) {
       console.warn('Video analysis already in progress, ignoring duplicate request');
       return;
     }
-    
+
     try {
-      const sessionId = sessionState.currentSession.id;
-      const projectDirectory = sessionState.currentSession.projectDirectory;
-      
-      // Call screenRecording.startRecording with analysis metadata
+      const freshResult = await getSessionAction(sessionState.currentSession.id);
+      const fresh = freshResult?.isSuccess && freshResult.data ? freshResult.data : null;
+
+      if (!fresh) {
+        showNotification({
+          title: "Recording Failed",
+          message: "Session not found. Please try again.",
+          type: "error",
+        });
+        return;
+      }
+
       await screenRecording.startRecording({
         recordAudio: args.recordAudio,
         audioDeviceId: args.audioDeviceId,
         frameRate: args.frameRate
       }, {
-        sessionId,
-        projectDirectory,
+        sessionId: fresh.id,
+        projectDirectory: fresh.projectDirectory,
         prompt: args.prompt
       });
-      
+
       setIsRecordingVideo(true);
-      setIsAnalyzingVideo(false); // Not analyzing yet, just recording
-      analysisMetadataRef.current = true; // Mark that we have analysis metadata
+      setIsAnalyzingVideo(false);
+      analysisMetadataRef.current = true;
     } catch (error) {
       console.error('Failed to start video analysis recording:', error);
-      
-      // Show error notification
+
       showNotification({
         title: "Recording Failed",
         message: "Failed to start screen recording. Please try again.",
         type: "error",
       });
     }
-  }, [sessionState.currentSession, screenRecording, showNotification, isAnalyzingVideo]);
+  }, [sessionState.currentSession?.id, screenRecording, showNotification, isAnalyzingVideo]);
   
   // Listen for video-analysis-started event
   useEffect(() => {

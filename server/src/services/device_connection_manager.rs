@@ -22,6 +22,7 @@ pub struct DeviceMessage {
     pub message_type: String,
     pub payload: JsonValue,
     pub target_device_id: Option<String>,
+    pub source_device_id: Option<String>,
     pub timestamp: chrono::DateTime<chrono::Utc>,
 }
 
@@ -502,24 +503,95 @@ impl DeviceConnectionManager {
     }
 
     pub fn set_binary_route(&self, user_id: &Uuid, producer: &str, consumer: &str) {
+        let p = producer.to_lowercase();
+        let c = consumer.to_lowercase();
+
         match self.binary_routes.write() {
             Ok(mut map) => {
-                map.insert((user_id.clone(), producer.to_string()), consumer.to_string());
+                map.insert((user_id.clone(), p.clone()), c.clone());
+                debug!(
+                    user_id = %user_id,
+                    producer = %p,
+                    consumer = %c,
+                    "Binary route established: producer={} -> consumer={}",
+                    p, c
+                );
             }
             Err(poisoned) => {
                 warn!("Binary routes lock poisoned, recovering");
                 let mut map = poisoned.into_inner();
-                map.insert((user_id.clone(), producer.to_string()), consumer.to_string());
+                map.insert((user_id.clone(), p.clone()), c.clone());
+                debug!(
+                    user_id = %user_id,
+                    producer = %p,
+                    consumer = %c,
+                    "Binary route established: producer={} -> consumer={}",
+                    p, c
+                );
             }
         }
     }
 
     pub fn get_binary_consumer(&self, user_id: &Uuid, producer: &str) -> Option<String> {
-        match self.binary_routes.read() {
-            Ok(map) => map.get(&(user_id.clone(), producer.to_string())).cloned(),
+        let p = producer.to_lowercase();
+
+        let result = match self.binary_routes.read() {
+            Ok(map) => {
+                let consumer = map.get(&(user_id.clone(), p.clone())).cloned();
+                debug!(
+                    user_id = %user_id,
+                    producer = %p,
+                    found = %consumer.is_some(),
+                    map_size = map.len(),
+                    "Binary route lookup: producer={}, hit={}, map_size={}",
+                    p, consumer.is_some(), map.len()
+                );
+                consumer
+            }
             Err(poisoned) => {
                 warn!("Binary routes lock poisoned during read, recovering");
-                poisoned.into_inner().get(&(user_id.clone(), producer.to_string())).cloned()
+                let map = poisoned.into_inner();
+                let consumer = map.get(&(user_id.clone(), p.clone())).cloned();
+                debug!(
+                    user_id = %user_id,
+                    producer = %p,
+                    found = %consumer.is_some(),
+                    map_size = map.len(),
+                    "Binary route lookup: producer={}, hit={}, map_size={}",
+                    p, consumer.is_some(), map.len()
+                );
+                consumer
+            }
+        };
+
+        result
+    }
+
+    /// Get all binary routes involving a specific device (as producer or consumer)
+    /// Returns a vector of (producer_device_id, consumer_device_id) tuples
+    pub fn get_binary_routes_for_device(&self, user_id: &Uuid, device_id: &str) -> Vec<(String, String)> {
+        let device_id_lower = device_id.to_lowercase();
+
+        match self.binary_routes.read() {
+            Ok(map) => {
+                let mut routes = Vec::new();
+                for ((u, prod), cons) in map.iter() {
+                    if u == user_id && (prod == &device_id_lower || cons == &device_id_lower) {
+                        routes.push((prod.clone(), cons.clone()));
+                    }
+                }
+                routes
+            }
+            Err(poisoned) => {
+                warn!("Binary routes lock poisoned during read, recovering");
+                let map = poisoned.into_inner();
+                let mut routes = Vec::new();
+                for ((u, prod), cons) in map.iter() {
+                    if u == user_id && (prod == &device_id_lower || cons == &device_id_lower) {
+                        routes.push((prod.clone(), cons.clone()));
+                    }
+                }
+                routes
             }
         }
     }
@@ -585,6 +657,7 @@ mod tests {
             message_type: "test".to_string(),
             payload: serde_json::json!({"key": "value"}),
             target_device_id: Some("device-123".to_string()),
+            source_device_id: Some("device-456".to_string()),
             timestamp: chrono::Utc::now(),
         };
 
@@ -593,5 +666,6 @@ mod tests {
 
         assert_eq!(message.message_type, deserialized.message_type);
         assert_eq!(message.target_device_id, deserialized.target_device_id);
+        assert_eq!(message.source_device_id, deserialized.source_device_id);
     }
 }

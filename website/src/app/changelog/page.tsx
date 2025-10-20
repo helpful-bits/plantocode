@@ -3,14 +3,14 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { Calendar, Sparkles, Zap, Bug, Trash2 } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'Changelog - Latest Updates | Vibe Manager',
-  description: 'Latest features and improvements in Vibe Manager. Multi-model AI planning updates for Claude Code, Cursor, and OpenAI Codex integration.',
+  title: 'Changelog - Latest Updates | PlanToCode',
+  description: 'Latest features and improvements in PlanToCode. Multi-model AI planning updates for Claude Code, Cursor, and OpenAI Codex integration.',
   robots: {
     index: true,
     follow: true,
   },
   alternates: {
-    canonical: 'https://www.vibemanager.app/changelog',
+    canonical: 'https://www.plantocode.com/changelog',
   },
 };
 
@@ -309,7 +309,7 @@ export default function ChangelogPage() {
             Changelog
           </h1>
           <p className="text-lg text-muted-foreground max-w-3xl mx-auto leading-relaxed">
-            Stay updated with the latest features, improvements, and fixes in Vibe Manager. Track our journey as we enhance your Claude Code and Cursor workflows.
+            Stay updated with the latest features, improvements, and fixes in PlanToCode. Track our journey as we enhance your Claude Code and Cursor workflows.
           </p>
         </div>
 
@@ -383,18 +383,18 @@ export default function ChangelogPage() {
               Want to be notified about new releases and features?
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-              <a 
-                href="https://x.com/vibemanagerapp" 
+              <a
+                href="https://x.com/plantocodeapp"
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-medium"
-                target="_blank" 
+                target="_blank"
                 rel="noopener noreferrer"
               >
                 Follow us on X
               </a>
-              <a 
-                href="https://vibemanager.featurebase.app" 
+              <a
+                href="https://plantocode.featurebase.app"
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-medium"
-                target="_blank" 
+                target="_blank"
                 rel="noopener noreferrer"
               >
                 Join our Community

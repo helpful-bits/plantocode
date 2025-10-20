@@ -67,7 +67,7 @@ public struct EventFilters: Codable {
 
 /// WebSocket client for bidirectional real-time communication
 public class WebSocketClient: NSObject, ObservableObject {
-    private let logger = Logger(subsystem: "VibeManager", category: "WebSocket")
+    private let logger = Logger(subsystem: "PlanToCode", category: "WebSocket")
 
     // MARK: - Published Properties
     @Published public private(set) var connectionState: ConnectionState = .disconnected

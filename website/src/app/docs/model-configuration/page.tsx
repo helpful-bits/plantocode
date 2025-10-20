@@ -3,15 +3,16 @@ import { DocsArticle } from '@/components/docs/DocsArticle';
 import { GlassCard } from '@/components/ui/GlassCard';
 
 export const metadata: Metadata = {
-  title: 'Model Configuration and Guardrails',
-  description: 'How Vibe Manager lets you pick allowed models per task and keeps prompts within the active context window.',
+  title: 'Model configuration and guardrails - PlanToCode',
+  description: 'How PlanToCode lets you pick allowed models per task and keeps prompts within the active context window.',
   alternates: {
-    canonical: 'https://www.vibemanager.app/docs/model-configuration',
+    canonical: 'https://www.plantocode.com/docs/model-configuration',
   },
   openGraph: {
-    title: 'Model Configuration and Guardrails',
+    title: 'Model configuration and guardrails - PlanToCode',
     description: 'Learn how task-level model settings, selector toggles, and token estimates work together.',
-    url: 'https://www.vibemanager.app/docs/model-configuration',
+    url: 'https://www.plantocode.com/docs/model-configuration',
+    siteName: 'PlanToCode',
     type: 'article',
   },
 };
@@ -26,7 +27,7 @@ export default function ModelConfigurationDocPage() {
       category="Product Guide"
     >
       <p className="text-base text-muted-foreground leading-relaxed mb-6">
-        Vibe Manager treats model selection as a task-level decision. Each workflow ships with a default model and an allowed
+        PlanToCode treats model selection as a task-level decision. Each workflow ships with a default model and an allowed
         list, and the desktop client exposes these options through a toggle that prevents sending prompts that exceed the active
         context window.
       </p>
@@ -48,7 +49,7 @@ export default function ModelConfigurationDocPage() {
           <p className="text-muted-foreground leading-relaxed mb-4">
             The Implementation Plans panel renders allowed models with the <code className="px-1.5 py-0.5 rounded bg-muted text-sm font-mono">ModelSelectorToggle</code>.
             The toggle displays each allowed model, tracks the active selection, and checks whether the estimated prompt plus
-            planned output tokens fit within the model&rsquo;s advertised context window before allowing a switch.
+            planned output tokens fit within the model's advertised context window before allowing a switch.
           </p>
           <p className="text-muted-foreground leading-relaxed">
             If a model cannot support the total token requirement, the toggle disables the button and surfaces a tooltip with the

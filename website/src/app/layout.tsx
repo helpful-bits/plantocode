@@ -14,16 +14,16 @@ import { XPixel } from '@/components/analytics/XPixel';
 import { CookieConsent } from '@/components/analytics/CookieConsent';
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://www.vibemanager.app'),
+  metadataBase: new URL('https://www.plantocode.com'),
   title: {
-    template: '%s | Vibe Manager',
-    default: 'Vibe Manager - AI planning workspace with integrated terminal',
+    template: '%s | PlanToCode',
+    default: 'PlanToCode - plan and ship code changes',
   },
-  description: 'Plan implementation work with a Monaco editor, staged file discovery, and an integrated terminal for claude, cursor, codex, and gemini. Configure models per task and keep sessions persistent on Windows and macOS.',
-  keywords: ['vibe manager', 'vibe code cleanup specialist', 'claude code install', 'install claude code', 'claudecode', 'claude code planning', 'claude code agents', 'claude code mcp', 'claude code cli', 'claude code vs cursor', 'claude code github', 'claude code vscode', 'claude code windows', 'claude code router', 'claude code subagents', 'claude code sdk', 'claude code hooks', 'claude code docs', 'AI coding assistant', 'multi-model planning', 'implementation plan', 'file discovery'],
-  authors: [{ name: 'Vibe Manager Team' }],
-  creator: 'Vibe Manager',
-  publisher: 'Vibe Manager',
+  description: 'PlanToCode helps you plan and ship code changes - find the right files, generate and merge AI plans, then run them in a persistent terminal.',
+  keywords: ['plan to code', 'ai planning workspace', 'implementation planning tool', 'find files before coding', 'merge ai plans', 'persistent terminal sessions', 'claude code install', 'install claude code', 'claudecode', 'claude code planning', 'claude code agents', 'claude code mcp', 'claude code cli', 'claude code vs cursor', 'claude code github', 'claude code vscode', 'claude code windows', 'claude code router', 'claude code subagents', 'claude code sdk', 'claude code hooks', 'claude code docs', 'AI coding assistant', 'multi-model planning', 'implementation plan', 'file discovery'],
+  authors: [{ name: 'PlanToCode Team' }],
+  creator: 'PlanToCode',
+  publisher: 'PlanToCode',
   category: 'Developer Tools',
   classification: 'AI Development Assistant',
   formatDetection: {
@@ -32,18 +32,18 @@ export const metadata: Metadata = {
     telephone: false,
   },
   alternates: {
-    canonical: 'https://www.vibemanager.app/',
+    canonical: 'https://www.plantocode.com/',
   },
   openGraph: {
-    title: 'Vibe Manager - AI planning workspace | Integrated terminal for CLI tools',
-    description: 'Generate and edit implementation plans, run the file discovery workflow, and execute commands from the integrated terminal for claude, cursor, codex, and gemini. Configure models like GPT-5, Claude 4 Sonnet, Gemini 2.5 Pro, Grok 4, DeepSeek R1, and Kimi K2.',
-    url: 'https://www.vibemanager.app/',
-    siteName: 'Vibe Manager',
+    title: 'PlanToCode - plan and ship code changes',
+    description: 'Find impacted files, generate and merge AI plans, run in a persistent terminal.',
+    url: 'https://www.plantocode.com/',
+    siteName: 'PlanToCode',
     images: [{
       url: cdnUrl('/images/og-image.png'),
       width: 1200,
       height: 630,
-      alt: 'Vibe Manager - AI Architect Studio with Integrated Terminal',
+      alt: 'PlanToCode - AI planning tool with integrated terminal',
       type: 'image/png',
     }],
     locale: 'en_US',
@@ -51,16 +51,16 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Vibe Manager - Multi-model implementation planning',
-    description: 'Monaco plan editing, staged file discovery, and an integrated terminal for claude, cursor, codex, and gemini. Choose models per task and keep sessions persistent.',
+    title: 'PlanToCode - plan and ship code changes',
+    description: 'Find impacted files, generate and merge AI plans, run in a persistent terminal.',
     images: [{
       url: cdnUrl('/images/og-image.png'),
-      alt: 'Vibe Manager - AI Architect Studio with Integrated Terminal',
+      alt: 'PlanToCode - AI planning tool with integrated terminal',
       width: 1200,
       height: 630,
     }],
-    creator: '@vibemanagerapp',
-    site: '@vibemanagerapp',
+    creator: '@plantocode',
+    site: '@plantocode',
   },
   robots: {
     index: true,
@@ -78,11 +78,11 @@ export const metadata: Metadata = {
   verification: {
     google: process.env.GOOGLE_SITE_VERIFICATION_CODE || '',
   },
-  applicationName: 'Vibe Manager',
+  applicationName: 'PlanToCode',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'Vibe Manager',
+    title: 'PlanToCode',
   },
   icons: {
     icon: [
@@ -107,10 +107,10 @@ export const metadata: Metadata = {
   },
   manifest: '/site.webmanifest',
   other: {
-    'apple-mobile-web-app-title': 'Vibe Manager',
-    'application-name': 'Vibe Manager',
+    'apple-mobile-web-app-title': 'PlanToCode',
+    'application-name': 'PlanToCode',
     'msapplication-TileColor': 'oklch(0.18 0.02 206)',
-    'msapplication-tooltip': 'Vibe Manager - AI-Powered Context Curation',
+    'msapplication-tooltip': 'PlanToCode - plan and ship code changes',
     'mobile-web-app-capable': 'yes',
   },
 };
@@ -129,13 +129,13 @@ export const viewport: Viewport = {
 
 const websiteJsonLd: WebSite = {
   '@type': 'WebSite',
-  name: 'Vibe Manager',
-  alternateName: 'VibeManager',
-  url: 'https://www.vibemanager.app',
-  description: 'Desktop planning workspace with a Monaco editor, file discovery workflow, and integrated terminal for claude, cursor, codex, and gemini. Generate implementation plans from configured models and keep sessions persistent.',
+  name: 'PlanToCode',
+  alternateName: 'PlanToCode',
+  url: 'https://www.plantocode.com',
+  description: 'PlanToCode helps you plan and ship code changes - find the right files, generate and merge AI plans, then run them in a persistent terminal.',
   potentialAction: {
     '@type': 'SearchAction',
-    target: 'https://www.vibemanager.app/search?q={search_term_string}',
+    target: 'https://www.plantocode.com/search?q={search_term_string}',
     // @ts-ignore - query-input is a valid schema.org property but not in the TypeScript types
     'query-input': 'required name=search_term_string'
   }
@@ -143,19 +143,19 @@ const websiteJsonLd: WebSite = {
 
 const organizationJsonLd: Organization = {
   '@type': 'Organization',
-  name: 'Vibe Manager',
-  url: 'https://www.vibemanager.app',
+  name: 'PlanToCode',
+  url: 'https://www.plantocode.com',
   logo: {
     '@type': 'ImageObject',
-    url: 'https://www.vibemanager.app/images/icon.webp',
+    url: 'https://www.plantocode.com/images/icon.webp',
     width: '512',
     height: '512'
   },
   sameAs: [
-    'https://twitter.com/vibemanagerapp',
-    'https://github.com/vibemanager'
+    'https://x.com/plantocode',
+    'https://github.com/plantocode'
   ],
-  description: 'Vibe Manager - AI planning workspace with a Monaco editor, file discovery workflow, and integrated terminal for claude, cursor, codex, and gemini. Configure models like GPT-5, Claude 4 Sonnet, Gemini 2.5 Pro, Grok 4, DeepSeek R1, and Kimi K2.'
+  description: 'PlanToCode helps you plan and ship code changes - find the right files, generate and merge AI plans, then run them in a persistent terminal.'
 };
 
 export default function RootLayout({
@@ -173,7 +173,11 @@ export default function RootLayout({
         {/* Preconnect to CloudFront CDN for faster image loading */}
         <link rel="preconnect" href="https://d2tyb0wucqqf48.cloudfront.net" crossOrigin="anonymous" />
         <link rel="dns-prefetch" href="https://d2tyb0wucqqf48.cloudfront.net" />
-        {/* No analytics - 100% cookie-free and GDPR compliant */}
+        {/* Privacy-friendly analytics by Plausible */}
+        <script async src="https://plausible.io/js/pa-OwEhgpe8qgYykGAXbW94Z.js"></script>
+        <script dangerouslySetInnerHTML={{
+          __html: `window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};plausible.init()`
+        }} />
       </head>
       <body className={`${fontClasses.sans} bg-transparent overflow-x-hidden`}>
         {/* <ConditionalBackground /> */}

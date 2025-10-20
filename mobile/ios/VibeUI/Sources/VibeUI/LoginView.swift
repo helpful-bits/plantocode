@@ -27,22 +27,25 @@ public struct LoginView: View {
         Spacer()
 
         VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
-          Text("Vibe Manager")
+          Text("PlanToCode")
             .h1()
 
           Text("Sign in with your preferred provider")
             .paragraph()
             .foregroundColor(Color.mutedForeground)
 
+          // Show status messages when needed with smooth animation
           if let err = errorMessage ?? appState.authError {
             StatusAlertView(variant: .destructive, title: "Error", message: err)
-          }
-
-          if loadingProvider != nil {
+              .transition(.move(edge: .top).combined(with: .opacity))
+          } else if loadingProvider != nil {
             StatusAlertView(variant: .info, title: "Signing In...", message: "Complete the sign-in in your browser.")
+              .transition(.move(edge: .top).combined(with: .opacity))
           }
 
-          Divider().padding(.vertical, Theme.Spacing.xs)
+          if errorMessage != nil || appState.authError != nil || loadingProvider != nil {
+            Divider().padding(.vertical, Theme.Spacing.xs)
+          }
 
           LazyVGrid(columns: columns, spacing: Theme.Spacing.md) {
             Button(action: { handleSignIn("google-oauth2") }) {
@@ -130,7 +133,7 @@ public struct LoginView: View {
               .foregroundColor(Color.mutedForeground)
 
             HStack(spacing: Theme.Spacing.xs) {
-              if let termsURL = URL(string: "https://vibemanager.app/terms") {
+              if let termsURL = URL(string: "https://plantocode.com/terms") {
                 Link("Terms of Service", destination: termsURL)
                   .small()
                   .tint(Color.primary)
@@ -138,7 +141,7 @@ public struct LoginView: View {
               Text("and")
                 .small()
                 .foregroundColor(Color.mutedForeground)
-              if let privacyURL = URL(string: "https://vibemanager.app/privacy") {
+              if let privacyURL = URL(string: "https://plantocode.com/privacy") {
                 Link("Privacy Policy", destination: privacyURL)
                   .small()
                   .tint(Color.primary)
@@ -178,15 +181,21 @@ public struct LoginView: View {
   }
 
   private func handleSignIn(_ provider: String) {
-    errorMessage = nil
-    loadingProvider = provider
+    withAnimation(.easeInOut(duration: 0.3)) {
+      errorMessage = nil
+      loadingProvider = provider
+    }
     Task {
       do {
         try await appState.signIn(providerHint: provider)
       } catch {
-        errorMessage = error.localizedDescription
+        withAnimation(.easeInOut(duration: 0.3)) {
+          errorMessage = error.localizedDescription
+        }
       }
-      loadingProvider = nil
+      withAnimation(.easeInOut(duration: 0.3)) {
+        loadingProvider = nil
+      }
     }
   }
 }

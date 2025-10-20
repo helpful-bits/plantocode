@@ -23,7 +23,7 @@ export default function Auth0LoggedOutPage() {
               Successfully Logged Out
             </h1>
             <p className="text-foreground/80">
-              You have been logged out from Vibe Manager. This window will close automatically.
+              You have been logged out from PlanToCode. This window will close automatically.
             </p>
           </div>
         </div>

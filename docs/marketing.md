@@ -10,8 +10,8 @@
 
 * **Who:** Individual devs / indie teams on macOS who use AI coding tools (Cursor, Windsurf, Claude Code, Cline) and work in **growing codebases/monorepos**.
 * **Pain:** AI agents create files/folders in wrong places, duplicate functions, or get stuck in loops while editing across files.
-* **Job-to-be-done:** “When I ask an AI to implement a change, I want it to **touch the right files** and **only the right files**, so I ship quickly without cleanup.”
-* **Positioning:** *Vibe Manager = implementation‑plan‑first coding agent* (no diffs), with bold strategies to deduplicate, pick correct files, and edit precisely.
+* **Job-to-be-done:** "When I ask an AI to implement a change, I want it to **touch the right files** and **only the right files**, so I ship quickly without cleanup."
+* **Positioning:** *PlanToCode = implementation‑plan‑first coding agent* (no diffs), with bold strategies to deduplicate, pick correct files, and edit precisely.
 
 ---
 
@@ -23,9 +23,9 @@
 
 **One‑liner examples:**
 
-* “Ship features without file chaos. Vibe Manager edits **exactly** where it should.”
-* “Your AI can code. Vibe makes it **place**.”
-* “From plan → precise edits. No diff floods.”
+* "Ship features without file chaos. PlanToCode edits **exactly** where it should."
+* "Your AI can code. PlanToCode makes it **place**."
+* "From plan → precise edits. No diff floods."
 
 ---
 
@@ -47,7 +47,7 @@
 
 **Assets to ship for 5MFW:**
 
-* Sample repo (GitHub public) with `README: Try Vibe Manager in 5 minutes`.
+* Sample repo (GitHub public) with `README: Try PlanToCode in 5 minutes`.
 * 45s video: cold open (problem), click‑through (plan→edits), end card (Download for macOS).
 * Troubleshooting note: Rosetta, permissions, or Gatekeeper steps if needed.
 

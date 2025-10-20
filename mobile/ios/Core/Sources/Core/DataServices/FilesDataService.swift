@@ -24,7 +24,7 @@ public enum FindFilesEvent: Equatable {
 /// Service for accessing file system data from desktop
 @MainActor
 public final class FilesDataService: ObservableObject {
-    private let logger = Logger(subsystem: "VibeManager", category: "FilesDataService")
+    private let logger = Logger(subsystem: "PlanToCode", category: "FilesDataService")
 
     // MARK: - Published Properties
     @Published public var files: [FileInfo] = []

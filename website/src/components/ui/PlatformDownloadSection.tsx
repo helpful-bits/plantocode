@@ -64,7 +64,7 @@ export function PlatformDownloadSection({
         <Button variant="cta" size="lg" asChild>
           <Link href="/downloads" className="flex items-center gap-2">
             <Download className="w-4 h-4" />
-            Download Vibe Manager
+            Download PlanToCode
           </Link>
         </Button>
       </div>

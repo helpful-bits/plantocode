@@ -1,6 +1,6 @@
-# MSIX Build Scripts for Vibe Manager
+# MSIX Build Scripts for PlanToCode
 
-This directory contains scripts for building Microsoft Store MSIX packages for Vibe Manager.
+This directory contains scripts for building Microsoft Store MSIX packages for PlanToCode.
 
 ## Prerequisites
 
@@ -19,7 +19,7 @@ This directory contains scripts for building Microsoft Store MSIX packages for V
 
 All MSIX package identity and metadata is stored in `msix-config.json`:
 
-- **identity.name**: Package name in Microsoft Store (e.g., "helpfulbitsGmbH.VibeManager")
+- **identity.name**: Package name in Microsoft Store (e.g., "helpfulbitsGmbH.PlanToCode")
 - **identity.publisher**: Publisher certificate CN (Microsoft Partner Center ID)
 - **identity.publisherDisplayName**: Company name shown in Store
 - **application**: App metadata (display name, description, etc.)
@@ -41,7 +41,7 @@ pnpm msix:build
 powershell -ExecutionPolicy Bypass -File scripts/msix/build-msix.ps1 -Version 1.0.22.0
 ```
 
-**Output**: `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msix/VibeManager_x.x.x.0_x64.msix`
+**Output**: `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msix/PlanToCode_x.x.x.0_x64.msix`
 
 ### verify-msix.ps1
 

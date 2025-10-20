@@ -1,6 +1,6 @@
 {
-  "name": "Vibe Manager",
-  "short_name": "VibeMgr",
+  "name": "PlanToCode",
+  "short_name": "PlanCode",
   "icons": [
     {
       "src": "android-chrome-192x192.png",

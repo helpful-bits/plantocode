@@ -2,12 +2,12 @@
   "category": "comparisons",
   "pages": [
     {
-      "slug": "vibe-manager-vs-tmux-script-asciinema",
+      "slug": "plantocode-vs-tmux-script-asciinema",
       "competitor": "tmux-script-asciinema",
-      "headline": "Vibe Manager vs tmux, script & asciinema",
+      "headline": "PlanToCode vs tmux, script & asciinema",
       "subhead": "Why modern AI workflows need more than Unix recording tools",
-      "meta_title": "Vibe Manager vs tmux, script, asciinema - Terminal Recording Comparison",
-      "meta_description": "Compare Vibe Manager's AI-integrated terminal with tmux, script, and asciinema. Voice input, plan execution, persistent sessions, rich playback.",
+      "meta_title": "PlanToCode vs tmux, script, asciinema - Terminal Recording Comparison",
+      "meta_description": "Compare PlanToCode's AI-integrated terminal with tmux, script, and asciinema. Voice input, plan execution, persistent sessions, rich playback.",
       "primary_cta": "Try Modern Terminal Recording",
       "publish": true,
       "priority": 2,
@@ -15,27 +15,27 @@
         "features": [
           {
             "name": "AI Integration",
-            "vibe_manager": "Native Claude Code, Cursor support",
+            "plantocode": "Native Claude Code, Cursor support",
             "competitor": "None"
           },
           {
             "name": "Voice Input",
-            "vibe_manager": "Built-in transcription",
+            "plantocode": "Built-in transcription",
             "competitor": "Not supported"
           },
           {
             "name": "Session Persistence",
-            "vibe_manager": "SQLite + hot reload",
+            "plantocode": "SQLite + hot reload",
             "competitor": "No built-in cross-reboot persistence (tmux needs plugins; script/asciinema record to files)"
           },
           {
             "name": "Playback",
-            "vibe_manager": "Rich UI with search",
+            "plantocode": "Rich UI with search",
             "competitor": "Terminal replay only"
           },
           {
             "name": "Plan Execution",
-            "vibe_manager": "Direct from AI tools",
+            "plantocode": "Direct from AI tools",
             "competitor": "Manual copy-paste"
           }
         ]
@@ -62,12 +62,12 @@
       ]
     },
     {
-      "slug": "vibe-manager-vs-warp-ai-terminal",
+      "slug": "plantocode-vs-warp-ai-terminal",
       "competitor": "warp",
-      "headline": "Vibe Manager vs Warp AI Terminal",
+      "headline": "PlanToCode vs Warp AI Terminal",
       "subhead": "Architectural awareness vs terminal suggestions",
-      "meta_title": "Vibe Manager vs Warp - AI Terminal Comparison for Developers",
-      "meta_description": "Compare Vibe Manager's architectural AI planning with Warp's terminal AI. File discovery, multi-model plans, implementation workflows.",
+      "meta_title": "PlanToCode vs Warp - AI Terminal Comparison for Developers",
+      "meta_description": "Compare PlanToCode's architectural AI planning with Warp's terminal AI. File discovery, multi-model plans, implementation workflows.",
       "primary_cta": "Try Architectural AI",
       "publish": true,
       "priority": 1,
@@ -75,27 +75,27 @@
         "features": [
           {
             "name": "AI Scope",
-            "vibe_manager": "Full codebase awareness",
+            "plantocode": "Full codebase awareness",
             "competitor": "Terminal commands only"
           },
           {
             "name": "Planning",
-            "vibe_manager": "Multi-model implementation plans",
+            "plantocode": "Multi-model implementation plans",
             "competitor": "Command suggestions"
           },
           {
             "name": "File Discovery",
-            "vibe_manager": "AI-powered dependency mapping",
+            "plantocode": "AI-powered dependency mapping",
             "competitor": "Not available"
           },
           {
             "name": "Integration",
-            "vibe_manager": "Claude Code, Cursor, Codex CLI",
+            "plantocode": "Claude Code, Cursor, Codex CLI",
             "competitor": "Built-in Warp AI (no native integration with Cursor or Claude Code)"
           },
           {
             "name": "Pricing",
-            "vibe_manager": "$5 credits, pay-as-you-go",
+            "plantocode": "$5 credits, pay-as-you-go",
             "competitor": "Free, Pro, Turbo, Business, Lightspeed (as of 2025‑09‑26)."
           }
         ]
@@ -103,7 +103,7 @@
       "pain_points": [
         {
           "problem": "Warp AI only knows terminal context, not your codebase",
-          "solution": "Vibe Manager understands your entire architecture"
+          "solution": "PlanToCode understands your entire architecture"
         },
         {
           "problem": "Command suggestions don't prevent breaking changes",
@@ -122,12 +122,12 @@
       ]
     },
     {
-      "slug": "vibe-manager-vs-raycast-ai",
+      "slug": "plantocode-vs-raycast-ai",
       "competitor": "raycast",
-      "headline": "Vibe Manager vs Raycast AI",
+      "headline": "PlanToCode vsRaycast AI",
       "subhead": "Deep code understanding vs quick AI commands",
-      "meta_title": "Vibe Manager vs Raycast AI - Developer Tool Comparison",
-      "meta_description": "Compare Vibe Manager's deep architectural planning with Raycast AI's quick commands. File discovery, multi-model planning, terminal integration.",
+      "meta_title": "PlanToCode vsRaycast AI - Developer Tool Comparison",
+      "meta_description": "Compare PlanToCode'sdeep architectural planning with Raycast AI's quick commands. File discovery, multi-model planning, terminal integration.",
       "primary_cta": "Try Deep AI Planning",
       "publish": true,
       "priority": 2,
@@ -135,29 +135,29 @@
         "features": [
           {
             "name": "Focus",
-            "vibe_manager": "Code architecture & planning",
+            "plantocode": "Code architecture & planning",
             "competitor": "Quick AI interactions"
           },
           {
             "name": "Context",
-            "vibe_manager": "Full codebase awareness",
+            "plantocode": "Full codebase awareness",
             "competitor": "AI Commands/Chat and AI Extensions with BYOK; productivity launcher focus; not an architectural planning tool or integrated PTY terminal."
           },
           {
             "name": "Terminal",
-            "vibe_manager": "Integrated persistent sessions",
+            "plantocode": "Integrated persistent sessions",
             "competitor": "Basic script commands"
           }
         ]
       }
     },
     {
-      "slug": "vibe-manager-vs-aider",
+      "slug": "plantocode-vs-aider",
       "competitor": "aider",
-      "headline": "Vibe Manager vs Aider",
+      "headline": "PlanToCode vsAider",
       "subhead": "Plan-first terminal vs agent-first CLI",
-      "meta_title": "Vibe Manager vs Aider - AI Development Tool Comparison",
-      "meta_description": "Compare Vibe Manager's plan-first approach with Aider's agent-first CLI. Planning workflow, file discovery, session persistence, multi-model support.",
+      "meta_title": "PlanToCode vsAider - AI Development Tool Comparison",
+      "meta_description": "Compare PlanToCode'splan-first approach with Aider's agent-first CLI. Planning workflow, file discovery, session persistence, multi-model support.",
       "primary_cta": "Try Plan-First Development",
       "publish": true,
       "priority": 1,
@@ -165,27 +165,27 @@
         "features": [
           {
             "name": "Planning Approach",
-            "vibe_manager": "Generate & review plans before execution",
+            "plantocode": "Generate & review plans before execution",
             "competitor": "Direct agent execution"
           },
           {
             "name": "File Discovery",
-            "vibe_manager": "AI-powered dependency mapping",
+            "plantocode": "AI-powered dependency mapping",
             "competitor": "Git-based file tracking"
           },
           {
             "name": "Session Persistence",
-            "vibe_manager": "SQLite with hot reload",
+            "plantocode": "SQLite with hot reload",
             "competitor": "Chat history only"
           },
           {
             "name": "Multi-Model Support",
-            "vibe_manager": "Claude, GPT-4, multiple providers",
+            "plantocode": "Claude, GPT-4, multiple providers",
             "competitor": "OpenAI, Anthropic (Claude), Google Gemini, DeepSeek, OpenRouter (many providers), and local models (Ollama/OpenAI‑compatible)"
           },
           {
             "name": "Execution Safety",
-            "vibe_manager": "Plan review before changes",
+            "plantocode": "Plan review before changes",
             "competitor": "Direct file modifications"
           }
         ]
@@ -212,12 +212,12 @@
       ]
     },
     {
-      "slug": "vibe-manager-vs-cursor-agents",
+      "slug": "plantocode-vs-cursor-agents",
       "competitor": "cursor-agents",
-      "headline": "Vibe Manager vs Cursor Agents",
+      "headline": "PlanToCode vsCursor Agents",
       "subhead": "Architectural planning vs editor-first AI",
-      "meta_title": "Vibe Manager vs Cursor Agents - AI Planning Tool Comparison",
-      "meta_description": "Compare Vibe Manager's architectural planning with Cursor Agents' editor-first approach. Context awareness, execution control, plan review.",
+      "meta_title": "PlanToCode vsCursor Agents - AI Planning Tool Comparison",
+      "meta_description": "Compare PlanToCode'sarchitectural planning with Cursor Agents' editor-first approach. Context awareness, execution control, plan review.",
       "primary_cta": "Try Architectural Planning",
       "publish": true,
       "priority": 2,
@@ -225,27 +225,27 @@
         "features": [
           {
             "name": "Context Awareness",
-            "vibe_manager": "Full project architecture mapping",
+            "plantocode": "Full project architecture mapping",
             "competitor": "Indexed codebase context (Codebase Indexing), multi-file edits, Agent Terminal and Shell Mode with approvals/allowlists."
           },
           {
             "name": "Execution Control",
-            "vibe_manager": "Plan review and approval workflow",
+            "plantocode": "Plan review and approval workflow",
             "competitor": "Autonomous edits and terminal execution with review/diff flow and optional approvals/allowlists."
           },
           {
             "name": "Plan Review",
-            "vibe_manager": "Multi-step plan generation and review",
+            "plantocode": "Multi-step plan generation and review",
             "competitor": "Review/diff UI, checkpoints, and apply workflow for multi-file changes"
           },
           {
             "name": "Cross-File Changes",
-            "vibe_manager": "Coordinated multi-file planning",
+            "plantocode": "Coordinated multi-file planning",
             "competitor": "Agent/tool-driven multi-file edits"
           },
           {
             "name": "Terminal Integration",
-            "vibe_manager": "Native terminal with AI plans",
+            "plantocode": "Native terminal with AI plans",
             "competitor": "Shared agent terminal and Shell/Agent modes; background agents can run in remote environments (tmux). Persistence behavior depends on agent/editor context."
           }
         ]
@@ -272,12 +272,12 @@
       ]
     },
     {
-      "slug": "vibe-manager-vs-claude-code-standalone",
+      "slug": "plantocode-vs-claude-code-standalone",
       "competitor": "claude-code-standalone",
-      "headline": "Vibe Manager vs Claude Code (Standalone)",
+      "headline": "PlanToCode vsClaude Code (Standalone)",
       "subhead": "Multi-model synthesis vs single-model sessions",
-      "meta_title": "Vibe Manager vs Claude Code Standalone - AI Development Comparison",
-      "meta_description": "Compare Vibe Manager's multi-model approach with standalone Claude Code. Plan merging, file discovery, session recording advantages.",
+      "meta_title": "PlanToCode vsClaude Code Standalone - AI Development Comparison",
+      "meta_description": "Compare PlanToCode'smulti-model approach with standalone Claude Code. Plan merging, file discovery, session recording advantages.",
       "primary_cta": "Try Multi-Model Development",
       "publish": true,
       "priority": 1,
@@ -285,27 +285,27 @@
         "features": [
           {
             "name": "Plan Merging",
-            "vibe_manager": "Combine plans from multiple AI models",
+            "plantocode": "Combine plans from multiple AI models",
             "competitor": "Single Claude session only"
           },
           {
             "name": "File Discovery",
-            "vibe_manager": "Enhanced dependency mapping",
+            "plantocode": "Enhanced dependency mapping",
             "competitor": "Basic file system awareness"
           },
           {
             "name": "Session Recording",
-            "vibe_manager": "Rich terminal recording with playback",
+            "plantocode": "Rich terminal recording with playback",
             "competitor": "Text-based conversation log"
           },
           {
             "name": "Model Selection",
-            "vibe_manager": "Switch between Claude, GPT-4, others",
+            "plantocode": "Switch between Claude, GPT-4, others",
             "competitor": "Anthropic Claude models (e.g., Sonnet 4, Opus 4.1); not multi-provider"
           },
           {
             "name": "Voice Integration",
-            "vibe_manager": "Voice input with transcription",
+            "plantocode": "Voice input with transcription",
             "competitor": "Text input only"
           }
         ]
@@ -332,12 +332,12 @@
       ]
     },
     {
-      "slug": "vibe-manager-vs-vscode-tasks",
+      "slug": "plantocode-vs-vscode-tasks",
       "competitor": "vscode-tasks",
-      "headline": "Vibe Manager vs VS Code Tasks",
+      "headline": "PlanToCode vsVS Code Tasks",
       "subhead": "Dynamic AI plans vs static task runners",
-      "meta_title": "Vibe Manager vs VS Code Tasks - Development Workflow Comparison",
-      "meta_description": "Compare Vibe Manager's dynamic AI planning with VS Code's static task system. AI generation, adaptability, context awareness.",
+      "meta_title": "PlanToCode vsVS Code Tasks - Development Workflow Comparison",
+      "meta_description": "Compare PlanToCode'sdynamic AI planning with VS Code's static task system. AI generation, adaptability, context awareness.",
       "primary_cta": "Try Dynamic AI Planning",
       "publish": true,
       "priority": 2,
@@ -345,27 +345,27 @@
         "features": [
           {
             "name": "AI Generation",
-            "vibe_manager": "AI generates plans based on project context",
+            "plantocode": "AI generates plans based on project context",
             "competitor": "Manual task configuration required"
           },
           {
             "name": "Adaptability",
-            "vibe_manager": "Plans adapt to changing project needs",
+            "plantocode": "Plans adapt to changing project needs",
             "competitor": "Static task definitions"
           },
           {
             "name": "Context Awareness",
-            "vibe_manager": "Full codebase understanding",
+            "plantocode": "Full codebase understanding",
             "competitor": "Basic file path awareness"
           },
           {
             "name": "Error Handling",
-            "vibe_manager": "AI analyzes failures and suggests fixes",
+            "plantocode": "AI analyzes failures and suggests fixes",
             "competitor": "Basic error output only"
           },
           {
             "name": "Cross-Project Learning",
-            "vibe_manager": "Learns patterns across projects",
+            "plantocode": "Learns patterns across projects",
             "competitor": "Project-specific configurations"
           }
         ]
@@ -392,12 +392,12 @@
       ]
     },
     {
-      "slug": "vibe-manager-vs-github-copilot-cli",
+      "slug": "plantocode-vs-github-copilot-cli",
       "competitor": "github-copilot-cli",
-      "headline": "Vibe Manager vs GitHub Copilot CLI",
+      "headline": "PlanToCode vsGitHub Copilot CLI",
       "subhead": "Full architectural awareness vs command suggestions",
-      "meta_title": "Vibe Manager vs GitHub Copilot CLI - AI Terminal Comparison",
-      "meta_description": "Compare Vibe Manager's architectural planning with GitHub Copilot CLI's command suggestions. Planning depth, file context, execution safety.",
+      "meta_title": "PlanToCode vsGitHub Copilot CLI - AI Terminal Comparison",
+      "meta_description": "Compare PlanToCode'sarchitectural planning with GitHub Copilot CLI's command suggestions. Planning depth, file context, execution safety.",
       "primary_cta": "Try Architectural AI",
       "publish": true,
       "priority": 1,
@@ -405,27 +405,27 @@
         "features": [
           {
             "name": "Planning Depth",
-            "vibe_manager": "Multi-step implementation plans",
+            "plantocode": "Multi-step implementation plans",
             "competitor": "Single command suggestions"
           },
           {
             "name": "File Context",
-            "vibe_manager": "Full codebase awareness and mapping",
+            "plantocode": "Full codebase awareness and mapping",
             "competitor": "Current directory context only"
           },
           {
             "name": "Execution Safety",
-            "vibe_manager": "Plan review before execution",
+            "plantocode": "Plan review before execution",
             "competitor": "Direct command execution"
           },
           {
             "name": "Voice Integration",
-            "vibe_manager": "Voice-to-plan with transcription",
+            "plantocode": "Voice-to-plan with transcription",
             "competitor": "Text-based interaction only"
           },
           {
             "name": "Session Persistence",
-            "vibe_manager": "Rich session recording and replay",
+            "plantocode": "Rich session recording and replay",
             "competitor": "Command history only"
           }
         ]

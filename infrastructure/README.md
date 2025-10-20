@@ -4,10 +4,10 @@ All infrastructure management is consolidated under Ansible. This is the **ONLY*
 
 ## System Overview
 
-This Ansible setup automates the deployment of the Vibe Manager application and its underlying infrastructure. It follows a robust, two-layer architecture:
+This Ansible setup automates the deployment of the PlanToCode application and its underlying infrastructure. It follows a robust, two-layer architecture:
 
 1. **Base Infrastructure (`site-base.yml`):** Provisions and hardens the server. This layer is application-agnostic and includes setting up PostgreSQL, Redis, UFW firewall, SSH hardening, and automated security updates.
-2. **Application Deployment (`site-app.yml`):** Manages the Vibe Manager application specifically. This includes creating the database schema, running migrations, managing application secrets via Ansible Vault, and performing zero-downtime deployments of the Rust binary using a symlink strategy.
+2. **Application Deployment (`site-app.yml`):** Manages the PlanToCode application specifically. This includes creating the database schema, running migrations, managing application secrets via Ansible Vault, and performing zero-downtime deployments of the Rust binary using a symlink strategy.
 
 The entire configuration is idempotent, modular, and leverages Ansible Vault for all sensitive data, ensuring a secure and repeatable process for managing the infrastructure as code.
 
@@ -54,7 +54,7 @@ Generic server setup that is application-agnostic and reusable:
 **Run:** `ansible-playbook -i inventory/hosts.yml site-base.yml`
 
 ### 2. Application Deployment (`site-app.yml`)
-Vibe Manager specific setup and deployment:
+PlanToCode specific setup and deployment:
 - Application database and user creation
 - Database migrations
 - Application secrets management
@@ -388,11 +388,11 @@ The deployment will:
 - Sync pre-built artifacts from `website/deploy/`
 - Create `.env.production` from encrypted secrets
 - Start Docker containers with pre-built Next.js application
-- Configure Traefik with Let's Encrypt SSL via Cloudflare DNS-01
+- Configure Nginx with Let's Encrypt SSL via Cloudflare DNS-01
 
 ## Cloudflare Setup Checklist (Let's Encrypt via DNS-01)
 
-When migrating to Cloudflare with Traefik and Let's Encrypt using DNS-01 challenge, follow this comprehensive setup checklist:
+When migrating to Cloudflare with Nginx and Let's Encrypt using DNS-01 challenge, follow this comprehensive setup checklist:
 
 ### DNS Configuration
 - [ ] **DNS Records Setup**
@@ -414,7 +414,7 @@ When migrating to Cloudflare with Traefik and Let's Encrypt using DNS-01 challen
   - Create token with the following permissions:
     - **Zone:Zone:Read** (for all zones or specific zone)
     - **Zone:DNS:Edit** (for all zones or specific zone)
-  - Note the token securely - it will be used by Traefik for DNS-01 challenge
+  - Note the token securely - it will be used for DNS-01 challenge
   - Test the token using Cloudflare API before deployment
 
 ### Cache Rules Configuration
@@ -437,7 +437,7 @@ Configure cache rules to bypass specific paths to prevent API and analytics inte
 - [ ] **Cache Level Configuration**
   - Go to Caching > Configuration
   - Set Cache Level to "Respect Existing Headers"
-  - This ensures Traefik and application cache headers are honored
+  - This ensures Nginx and application cache headers are honored
   - Alternative: Use "Standard" if you want Cloudflare to be more aggressive
 
 ### Security Settings

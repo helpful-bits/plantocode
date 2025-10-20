@@ -34,7 +34,7 @@ public class DataServicesManager: ObservableObject {
     private let deviceId: String
     private var cancellables = Set<AnyCancellable>()
     private var relayEventsCancellable: AnyCancellable?
-    private let logger = Logger(subsystem: "VibeManager", category: "DataServicesManager")
+    private let logger = Logger(subsystem: "PlanToCode", category: "DataServicesManager")
     private var isApplyingRemoteActiveSession = false
 
     // MARK: - Initialization
@@ -348,15 +348,8 @@ public class DataServicesManager: ObservableObject {
     // MARK: - Private Methods
 
     private func setupConnectionMonitoring() {
-        Timer.publish(every: 30, on: .main, in: .common)
-            .autoconnect()
-            .sink { [weak self] _ in
-                guard let self else { return }
-                self.testConnection()
-                    .sink { _ in }
-                    .store(in: &self.cancellables)
-            }
-            .store(in: &cancellables)
+        // Removed redundant 30-second polling timer that called terminal.getDefaultShell
+        // Connection status is already monitored via MultiConnectionManager.$connectionStates publisher below
 
         MultiConnectionManager.shared.$connectionStates
             .sink { [weak self] states in

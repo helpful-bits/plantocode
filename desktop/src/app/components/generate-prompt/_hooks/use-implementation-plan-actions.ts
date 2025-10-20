@@ -6,6 +6,7 @@ import { useState, useCallback, useMemo } from "react";
 import { useNotification } from "@/contexts/notification-context";
 import { useProject } from "@/contexts/project-context";
 import { useSessionStateContext, useSessionActionsContext } from "@/contexts/session";
+import { getSessionAction } from "@/actions/session/crud.actions";
 
 /**
  * Hook for managing implementation plan UI interactions
@@ -23,37 +24,37 @@ export function useImplementationPlanActions() {
   >("idle");
   const isCreatingPlan = planCreationState === "submitting";
 
-  /**
-   * Create an implementation plan based on task description and selected files
-   * Uses direct Tauri command invocation for backend processing
-   * @param selectedRootDirectories - Optional array of root directories to scope the directory tree
-   * @param enableWebSearch - Optional flag to enable web search for latest docs and examples
-   * @param includeProjectStructure - Optional flag to include project directory tree in the prompt
-   */
   const handleCreateImplementationPlan = useCallback(
     async (
-      taskDescription: string,
-      includedPaths: string[],
       selectedRootDirectories?: string[] | null,
       enableWebSearch?: boolean,
       includeProjectStructure?: boolean
     ) => {
-      // Input validation
-      if (!projectDirectory || !taskDescription.trim() || !activeSessionId) {
+      if (!activeSessionId) {
         showNotification({
           title: "Cannot Create Implementation Plan",
-          message:
-            "Please ensure you have a project directory and task description.",
+          message: "No active session found.",
           type: "error",
         });
         return;
       }
 
-      if (!includedPaths || includedPaths.length === 0) {
+      const freshResult = await getSessionAction(activeSessionId);
+      const fresh = freshResult?.isSuccess && freshResult.data ? freshResult.data : null;
+
+      if (!fresh?.taskDescription?.trim()) {
         showNotification({
           title: "Cannot Create Implementation Plan",
-          message:
-            "Please select at least one file to include in the implementation plan.",
+          message: "Please provide a task description.",
+          type: "error",
+        });
+        return;
+      }
+
+      if (!fresh.includedFiles || fresh.includedFiles.length === 0) {
+        showNotification({
+          title: "Cannot Create Implementation Plan",
+          message: "Please select at least one file to include in the implementation plan.",
           type: "error",
         });
         return;
@@ -73,16 +74,16 @@ export function useImplementationPlanActions() {
           "create_implementation_plan_command",
           {
             sessionId: activeSessionId,
-            taskDescription,
-            projectDirectory: projectDirectory || "",
-            relevantFiles: includedPaths,
+            taskDescription: fresh.taskDescription,
+            projectDirectory: fresh.projectDirectory,
+            relevantFiles: fresh.includedFiles,
             selectedRootDirectories: selectedRootDirectories || undefined,
             projectStructure: undefined,
             model: undefined,
             temperature: undefined,
             maxTokens: undefined,
             enableWebSearch: enableWebSearch || false,
-            includeProjectStructure: includeProjectStructure !== false, // Default to true if undefined
+            includeProjectStructure: includeProjectStructure !== false,
           }
         );
 

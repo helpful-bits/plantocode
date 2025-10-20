@@ -81,7 +81,7 @@ export default function EUTermsContent() {
           <strong>Withdrawal Period:</strong> The withdrawal period expires 14 days after the day of the conclusion of the contract (for service contracts) or delivery (for goods).
         </p>
         <p className="mt-4">
-          <strong>Exercise of Withdrawal Right:</strong> To exercise your right of withdrawal, you must inform us at legal@vibemanager.app of your decision to withdraw by means of a clear statement. You may use the withdrawal form available at{' '}
+          <strong>Exercise of Withdrawal Right:</strong> To exercise your right of withdrawal, you must inform us at legal@plantocode.com of your decision to withdraw by means of a clear statement. You may use the withdrawal form available at{' '}
           <a href="/legal/eu/withdrawal-policy" className="link-primary">
             /legal/eu/withdrawal-policy
           </a>
@@ -151,7 +151,7 @@ export default function EUTermsContent() {
           <li><strong>High-Stakes Decisions:</strong> Employment screening, credit decisions, housing applications, insurance underwriting, or legal proceedings</li>
         </ul>
         <p className="mt-4">
-          If you require the Service for any of these high-risk applications, please contact legal@vibemanager.app to discuss a specialized agreement with appropriate safeguards, liability provisions, and compliance requirements.
+          If you require the Service for any of these high-risk applications, please contact legal@plantocode.com to discuss a specialized agreement with appropriate safeguards, liability provisions, and compliance requirements.
         </p>
       </section>
 
@@ -327,7 +327,7 @@ export default function EUTermsContent() {
       <section>
         <h2 id="ip-notice-takedown" className="text-2xl font-semibold mb-4">IP Notice & Takedown</h2>
         <p>
-          We respect intellectual property rights and respond to valid takedown notices under applicable laws, including the US DMCA and EU Copyright Directive. If you believe your intellectual property rights have been infringed, please contact us at legal@vibemanager.app with the following information:
+          We respect intellectual property rights and respond to valid takedown notices under applicable laws, including the US DMCA and EU Copyright Directive. If you believe your intellectual property rights have been infringed, please contact us at legal@plantocode.com with the following information:
         </p>
         <ul className="list-disc list-inside space-y-2 mt-4">
           <li>Identification of the copyrighted work or other intellectual property claimed to be infringed</li>
@@ -376,7 +376,7 @@ export default function EUTermsContent() {
       <section>
         <h2 id="dispute-resolution" className="text-2xl font-semibold mb-4">Dispute Resolution</h2>
         <p>
-          <strong>Informal Resolution:</strong> Before initiating any formal dispute resolution, you agree to attempt to resolve any dispute informally by contacting us at legal@vibemanager.app and allowing us 30 days to address your concern.
+          <strong>Informal Resolution:</strong> Before initiating any formal dispute resolution, you agree to attempt to resolve any dispute informally by contacting us at legal@plantocode.com and allowing us 30 days to address your concern.
         </p>
         
         <h3 className="text-xl font-medium mb-3 mt-6">Business Customers (B2B)</h3>
@@ -441,7 +441,7 @@ export default function EUTermsContent() {
       <section>
         <h2 id="contact" className="text-2xl font-semibold mb-4">Contact</h2>
         <p>
-          If you have questions about these Terms, please contact us at legal@vibemanager.app. We are committed to addressing your concerns promptly and fairly.
+          If you have questions about these Terms, please contact us at legal@plantocode.com. We are committed to addressing your concerns promptly and fairly.
         </p>
       </section>
     </>

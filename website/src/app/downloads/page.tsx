@@ -7,10 +7,10 @@ import { CheckCircle2, Shield, Smartphone, Tablet } from 'lucide-react';
 import { Header } from '@/components/landing/Header';
 
 export const metadata: Metadata = {
-  title: 'Download - Vibe Manager planning workspace',
-  description: 'Download Vibe Manager for macOS and Windows. Generate implementation plans, run the file discovery workflow, and launch claude, cursor, codex, or gemini from the integrated terminal.',
+  title: 'Download PlanToCode',
+  description: 'Download PlanToCode for macOS and Windows - plan code changes, find files, merge plans, and run them in a terminal.',
   keywords: [
-    'vibe manager download',
+    'plantocode download',
     'ai architect studio',
     'integrated terminal download',
     'claude terminal',
@@ -20,14 +20,14 @@ export const metadata: Metadata = {
     'heavy coding agent users',
   ],
   openGraph: {
-    title: 'Download Vibe Manager - AI planning workspace',
-    description: 'Download Vibe Manager for Windows and macOS. Multi-model planning with an integrated terminal for claude, cursor, codex, and gemini. Available on Microsoft Store.',
-    url: 'https://www.vibemanager.app/download',
-    siteName: 'Vibe Manager',
+    title: 'Download PlanToCode',
+    description: 'Download PlanToCode for Windows and macOS. Multi-model planning with an integrated terminal for claude, cursor, codex, and gemini. Available on Microsoft Store.',
+    url: 'https://www.plantocode.com/downloads',
+    siteName: 'PlanToCode',
     type: 'website',
   },
   alternates: {
-    canonical: 'https://www.vibemanager.app/download',
+    canonical: 'https://www.plantocode.com/downloads',
   },
 };
 
@@ -45,10 +45,10 @@ export default function DownloadPage() {
             <div className="container mx-auto max-w-4xl">
               <div className="text-center mb-12">
                 <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-6 bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent">
-                  Download Vibe Manager
+                  Download PlanToCode
                 </h1>
                 <p className="text-lg sm:text-xl md:text-2xl mb-8 text-foreground/80 max-w-3xl mx-auto leading-relaxed">
-                  Plan implementation work with Monaco editing, file discovery, and an integrated terminal for claude, cursor, codex, and gemini.
+                  Plan code changes with one tool - find relevant files, generate and merge plans, and run commands in a persistent terminal.
                 </p>
               </div>
 

@@ -46,7 +46,7 @@ Write-Host "Found signtool: $signtool" -ForegroundColor Gray
 Write-Host ""
 Write-Host "Step 1: Creating test certificate..." -ForegroundColor Yellow
 
-$certName = "VibeManagerTestCert"
+$certName = "PlanToCodeTestCert"
 $certPath = "$env:TEMP\$certName.pfx"
 $certPassword = "TestPassword123!"
 
@@ -62,7 +62,7 @@ if ($existingCert) {
         -Type Custom `
         -Subject "CN=CB633740-D90E-4813-8294-FB8FB5AC3481" `
         -KeyUsage DigitalSignature `
-        -FriendlyName "Vibe Manager Test Certificate" `
+        -FriendlyName "PlanToCode Test Certificate" `
         -CertStoreLocation "Cert:\CurrentUser\My" `
         -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
     

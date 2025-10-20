@@ -49,8 +49,8 @@ const Value = dynamic(() => import('@/components/landing/Value').then(mod => ({ 
 
 
 export const metadata: Metadata = {
-  title: 'AI Planning Workspace: File Discovery + Multi-Model Synthesis | Vibe Manager',
-  description: 'Desktop planning workspace with automatic file discovery, multi-model plan generation (Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet), and integrated terminal. Stop AI breaking your codebase with architectural pre-planning.',
+  title: 'PlanToCode - plan and ship code changes',
+  description: 'PlanToCode helps you plan and ship code changes - find the right files, generate and merge implementation plans, then run them in a persistent terminal.',
   keywords: [
     'ai plan editor',
     'monaco editor plans',
@@ -76,15 +76,15 @@ export const metadata: Metadata = {
     'desktop ai planning',
   ],
   openGraph: {
-    title: 'AI Planning Workspace: File Discovery + Multi-Model Synthesis',
-    description: 'Automatic file discovery, multi-model planning (Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet), and integrated terminal execution. Architectural pre-planning that prevents AI from breaking your codebase.',
-    url: 'https://www.vibemanager.app',
-    siteName: 'Vibe Manager',
+    title: 'PlanToCode - plan and ship code changes',
+    description: 'Find impacted files, generate and merge AI plans, run in a persistent terminal.',
+    url: 'https://www.plantocode.com',
+    siteName: 'PlanToCode',
     images: [{
       url: cdnUrl('/images/og-image.png'),
       width: 1200,
       height: 630,
-      alt: 'Vibe Manager - AI Architect Studio with Integrated Terminal',
+      alt: 'PlanToCode - AI Architect Studio with Integrated Terminal',
       type: 'image/png',
     }],
     locale: 'en_US',
@@ -93,64 +93,65 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'AI Planning Workspace: File Discovery + Multi-Model Synthesis',
-    description: 'Automatic file discovery + multi-model planning (Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet) + integrated terminal. Stop AI breaking your codebase.',
+    title: 'PlanToCode - plan and ship code changes',
+    description: 'Find impacted files, generate and merge AI plans, run in a persistent terminal.',
     images: [{
       url: cdnUrl('/images/og-image.png'),
-      alt: 'Vibe Manager - AI Architect Studio with Integrated Terminal',
+      alt: 'PlanToCode - AI Architect Studio with Integrated Terminal',
       width: 1200,
       height: 630,
     }],
   },
   alternates: {
-    canonical: 'https://www.vibemanager.app',
+    canonical: 'https://www.plantocode.com',
   },
 };
 
 export default function Home() {
   const organizationJsonLd: Organization = {
     '@type': 'Organization',
-    name: 'Vibe Manager',
-    url: 'https://www.vibemanager.app',
-    logo: 'https://www.vibemanager.app/images/icon.png',
-    description: 'Desktop planning workspace for AI-powered implementation plans with file discovery, multi-model synthesis, and integrated terminal execution.',
+    name: 'PlanToCode',
+    url: 'https://www.plantocode.com',
+    logo: 'https://www.plantocode.com/images/icon.png',
+    description: 'Plan and ship code changes - find files, generate and merge AI plans, run them in a persistent terminal.',
     foundingDate: '2024',
     contactPoint: {
       '@type': 'ContactPoint',
       contactType: 'Customer Support',
-      url: 'https://www.vibemanager.app/support',
+      url: 'https://www.plantocode.com/support',
     },
   };
 
   const websiteJsonLd: WebSite = {
     '@type': 'WebSite',
-    name: 'Vibe Manager',
-    url: 'https://www.vibemanager.app',
-    description: 'Desktop planning workspace with file discovery, multi-model plan synthesis, and integrated terminal for AI coding tools like Claude Code, Cursor, and OpenAI Codex.',
+    name: 'PlanToCode',
+    url: 'https://www.plantocode.com',
+    description: 'Plan and ship code changes - find files, generate and merge AI plans from multiple models, run them in a persistent terminal.',
     inLanguage: 'en-US',
     potentialAction: {
       '@type': 'SearchAction',
       target: {
         '@type': 'EntryPoint',
-        urlTemplate: 'https://www.vibemanager.app/docs?q={search_term_string}',
+        urlTemplate: 'https://www.plantocode.com/docs?q={search_term_string}',
       },
+      // @ts-ignore - query-input is a valid schema.org property but not in the TypeScript types
       'query-input': 'required name=search_term_string',
     },
   };
 
   const softwareApplicationJsonLd: SoftwareApplication = {
     '@type': 'SoftwareApplication',
-    name: 'Vibe Manager',
+    name: 'PlanToCode',
     applicationCategory: 'DeveloperApplication',
     operatingSystem: ['Windows 10+', 'macOS 11.0+'],
-    url: 'https://www.vibemanager.app',
-    description: 'Desktop planning workspace with a Monaco editor for implementation plans. Generate approaches from configured models, merge them with custom instructions, and execute from the integrated terminal that launches claude, cursor, codex, or gemini without context switching. Available for Windows and macOS.',
+    url: 'https://www.plantocode.com',
+    description: 'Plan and ship code changes. Find the right files, generate and merge implementation plans from multiple AI models, then run them in a persistent terminal. Available for Windows and macOS.',
     offers: {
       '@type': 'Offer',
       price: 0, // Numeric 0 for free apps, no priceCurrency needed per Google guidance
       description: 'Free app with pay-as-you-go API usage. $5 free credits on signup.',
     },
-    downloadUrl: 'https://www.vibemanager.app/downloads',
+    downloadUrl: 'https://www.plantocode.com/downloads',
     softwareVersion: '1.0.23',
     // @ts-ignore - isRelatedTo is a valid schema.org property but not in the TypeScript types
     isRelatedTo: [
@@ -184,7 +185,7 @@ export default function Home() {
   const faqItems = [
     {
       question: 'How is this different from chat-based coding agents?',
-      answer: 'Vibe Manager is a desktop planning workspace. You run the file discovery workflow, review implementation plans in a Monaco editor, adjust prompts, and then launch the terminal from the same session. Chat tools hand you a single reply; here you stage the work before anything runs.',
+      answer: 'PlanToCode is a desktop planning workspace. You run the file discovery workflow, review implementation plans in a Monaco editor, adjust prompts, and then launch the terminal from the same session. Chat tools hand you a single reply; here you stage the work before anything runs.',
     },
     {
       question: 'Do I need to know how to code?',
@@ -394,16 +395,16 @@ export default function Home() {
   const imageStructuredData: ImageObject[] = [
     {
       '@type': 'ImageObject',
-      name: 'Vibe Manager App Icon',
-      description: 'Vibe Manager logo featuring a compass navigation symbol in a white circle with mountain silhouettes at the bottom, on a teal-blue gradient background',
-      contentUrl: 'https://www.vibemanager.app/images/icon.webp',
-      thumbnailUrl: 'https://www.vibemanager.app/images/icon.webp',
+      name: 'PlanToCode App Icon',
+      description: 'PlanToCode logo featuring a compass navigation symbol in a white circle with mountain silhouettes at the bottom, on a teal-blue gradient background',
+      contentUrl: 'https://www.plantocode.com/images/icon.webp',
+      thumbnailUrl: 'https://www.plantocode.com/images/icon.webp',
       width: '512',
       height: '512',
     },
     {
       '@type': 'ImageObject',
-      name: 'Vibe Manager File Discovery Screenshot',
+      name: 'PlanToCode File Discovery Screenshot',
       description: 'Screenshot showing the AI-powered file discovery interface with generated search patterns and relevance ranking.',
       contentUrl: cdnUrl('/assets/images/demo-file-finder.jpg'),
       thumbnailUrl: cdnUrl('/assets/images/demo-file-finder.jpg'),
@@ -453,8 +454,8 @@ export default function Home() {
         <main className="flex-grow">
           {/* SR-only content for better Google snippets */}
           <div className="sr-only">
-            <h1>Vibe Manager - AI planning workspace for implementation plans</h1>
-            <p>Generate and edit implementation plans in a Monaco editor, run the staged file discovery workflow, choose from configured models such as Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet, Grok 4, DeepSeek R1, and Kimi K2, and execute through the integrated terminal that launches claude, cursor, codex, or gemini without leaving the app.</p>
+            <h1>Plan software changes before you code</h1>
+            <p>PlanToCode helps you find the right files, generate and merge implementation plans, then run them in a persistent terminal. You see scope before you run anything. Plans are editable and traceable.</p>
           </div>
           <section className="mb-0">
             <HeroSection />

@@ -1,6 +1,6 @@
 ---
-# Vibe Manager Website Deployment - Consolidated Playbook
-# 
+# PlanToCode Website Deployment - Consolidated Playbook
+#
 # USAGE:
 #   ansible-playbook deploy.yml -i inventory/hosts
 #   ansible-playbook deploy.yml -i inventory/hosts --tags docker
@@ -10,15 +10,19 @@
 #   1. Build locally first: cd website && ./build-and-deploy.sh
 #   2. Configure secrets in group_vars/[region]/secrets.yml
 
-- name: Deploy Vibe Manager Website
+- name: Deploy PlanToCode Website
   hosts: all
   become: yes
-  
+
   vars:
-    deployment_dir: /opt/vibe-website
+    deployment_dir: /opt/plantocode-website
     website_deploy_source: "{{ playbook_dir }}/../../../../website/deploy"
-    domain_name: vibemanager.app
-    container_name: vibe-website
+    domain_name: plantocode.com
+    legacy_domain: vibemanager.app
+    additional_domains:
+      - vibemanager.app
+    all_domains: "{{ [domain_name] + additional_domains }}"
+    container_name: plantocode-website
     container_port: 3000
     
   # Auto-load region-specific secrets

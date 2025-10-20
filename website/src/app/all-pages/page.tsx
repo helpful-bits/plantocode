@@ -10,7 +10,7 @@ import pseoData from '@/data/pseo';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'All Pages - pSEO Review | Vibe Manager',
+  title: 'All Pages - pSEO Review | PlanToCode',
   description: 'Internal review page for all programmatic SEO pages',
   robots: 'noindex, nofollow'
 };
@@ -41,7 +41,7 @@ export default function PseoReviewPage() {
     comparisons: {
       icon: <Layers className="w-5 h-5" />,
       color: 'text-blue-500',
-      description: 'Vibe Manager vs alternatives'
+      description: 'PlanToCode vs alternatives'
     },
     'use-cases': {
       icon: <Brain className="w-5 h-5" />,
@@ -191,8 +191,8 @@ export default function PseoReviewPage() {
                   <strong>Popular Pages:</strong>
                   <ul className="mt-1 space-y-1">
                     <li>
-                      <Link href="/vibe-manager-vs-aider" className="text-primary hover:underline">
-                        /vibe-manager-vs-aider
+                      <Link href="/plantocode-vs-aider" className="text-primary hover:underline">
+                        /plantocode-vs-aider
                       </Link>
                     </li>
                     <li>

@@ -7,7 +7,7 @@ use futures_util::{SinkExt, StreamExt};
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU64, Ordering};
 use tauri::{AppHandle, Emitter, Listener, Manager};
 use tokio::sync::mpsc;
@@ -19,6 +19,9 @@ use url::Url;
 
 // Rate limiting for warnings
 static LAST_WARN_MS: AtomicU64 = AtomicU64::new(0);
+
+// Maximum pending bytes per terminal session before trimming
+const MAX_PENDING_BYTES: usize = 1_048_576; // 1 MiB cap
 
 #[derive(Deserialize)]
 struct RelayEnvelope {
@@ -114,9 +117,11 @@ pub enum ServerMessage {
 pub struct DeviceLinkClient {
     app_handle: AppHandle,
     server_url: String,
-    sender: Option<mpsc::UnboundedSender<DeviceLinkMessage>>,
-    binary_sender: Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>,
-    event_listener_id: std::sync::Mutex<Option<tauri::EventId>>,
+    sender: Mutex<Option<mpsc::UnboundedSender<DeviceLinkMessage>>>,
+    binary_sender: Mutex<Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>>,
+    event_listener_id: Mutex<Option<tauri::EventId>>,
+    bound_session_id: Mutex<Option<String>>,
+    pending_binary_by_session: Mutex<std::collections::HashMap<String, Vec<u8>>>,
 }
 
 impl DeviceLinkClient {
@@ -124,14 +129,16 @@ impl DeviceLinkClient {
         Self {
             app_handle,
             server_url,
-            sender: None,
-            binary_sender: None,
-            event_listener_id: std::sync::Mutex::new(None),
+            sender: Mutex::new(None),
+            binary_sender: Mutex::new(None),
+            event_listener_id: Mutex::new(None),
+            bound_session_id: Mutex::new(None),
+            pending_binary_by_session: Mutex::new(std::collections::HashMap::new()),
         }
     }
 
     /// Start the device link client and connect to the server
-    pub async fn start(&mut self) -> Result<(), AppError> {
+    pub async fn start(self: Arc<Self>) -> Result<(), AppError> {
         info!(
             "Starting DeviceLinkClient connection to {}",
             self.server_url
@@ -225,11 +232,11 @@ impl DeviceLinkClient {
 
         // Create message channel
         let (tx, mut rx) = mpsc::unbounded_channel::<DeviceLinkMessage>();
-        self.sender = Some(tx.clone());
+        *self.sender.lock().unwrap() = Some(tx.clone());
 
         // Create binary channel for terminal output
         let (bin_tx, mut bin_rx) = mpsc::unbounded_channel::<Vec<u8>>();
-        self.binary_sender = Some(bin_tx.clone());
+        *self.binary_sender.lock().unwrap() = Some(bin_tx.clone());
 
         // Unlisten any previous listener to prevent leaks
         if let Ok(mut listener_guard) = self.event_listener_id.lock() {
@@ -354,6 +361,7 @@ impl DeviceLinkClient {
         let app_handle = self.app_handle.clone();
         let tx_for_receiver = tx.clone();
         let bin_tx_for_receiver = bin_tx.clone();
+        let this = Arc::clone(&self);
         let receiver_handle = tokio::spawn(async move {
             while let Some(msg) = ws_receiver.next().await {
                 match msg {
@@ -389,29 +397,57 @@ impl DeviceLinkClient {
                         if let Ok(env) = serde_json::from_str::<RelayEnvelope>(&text) {
                             // Route based on event type
                             if env.kind == "terminal.binary.bind" {
-                                // Handle terminal binary bind request from mobile via server
-                                if let Some(terminal_mgr) = app_handle.try_state::<std::sync::Arc<crate::services::TerminalManager>>() {
-                                    let consumer_device_id = env.payload.get("consumerDeviceId").and_then(|v| v.as_str());
-                                    let include_snapshot = env.payload.get("includeSnapshot").and_then(|v| v.as_bool()).unwrap_or(true);
+                                let session_id_opt = env.payload.get("sessionId").and_then(|v| v.as_str());
+                                let include_snapshot = env.payload.get("includeSnapshot").and_then(|v| v.as_bool()).unwrap_or(true);
 
-                                    info!(
-                                        "Received terminal.binary.bind request: consumer={:?} include_snapshot={}",
-                                        consumer_device_id, include_snapshot
-                                    );
+                                if let Some(session_id_str) = session_id_opt {
+                                    let session_id = session_id_str.to_string();
 
-                                    // If include_snapshot is requested, emit snapshot for all active sessions
+                                    // 1) Mark bound immediately so further chunks are sent directly, not added to pending
+                                    if let Ok(mut bound) = this.bound_session_id.lock() {
+                                        *bound = Some(session_id.clone());
+                                        info!("Bound terminal output to session: {}", session_id);
+                                    }
+
+                                    // 2) Optionally send snapshot from TerminalManager
                                     if include_snapshot {
-                                        let active_sessions = terminal_mgr.get_active_sessions();
-                                        for session_id in active_sessions {
+                                        if let Some(terminal_mgr) = app_handle.try_state::<std::sync::Arc<crate::services::TerminalManager>>() {
                                             if let Some(snapshot) = terminal_mgr.get_buffer_snapshot(&session_id, None) {
-                                                info!(
-                                                    "Emitting terminal snapshot for session {}: {} bytes",
-                                                    session_id, snapshot.len()
-                                                );
-                                                let _ = bin_tx_for_receiver.send(snapshot);
+                                                if !snapshot.is_empty() {
+                                                    info!("Binary uplink: sending snapshot for session {}, {} bytes", session_id, snapshot.len());
+                                                    let _ = bin_tx_for_receiver.send(snapshot);
+                                                }
                                             }
                                         }
                                     }
+
+                                    // 3) Resolve pending deterministically to avoid duplicates or loss
+                                    let mut pending = this.pending_binary_by_session.lock().unwrap();
+                                    if let Some(buffer) = pending.remove(&session_id) {
+                                        if include_snapshot {
+                                            // Snapshot already contains this data - drop pending to avoid duplication
+                                            if !buffer.is_empty() {
+                                                info!("Binary uplink: dropping {} pending bytes for session {} (covered by snapshot)", buffer.len(), session_id);
+                                            }
+                                        } else {
+                                            // No snapshot - flush pending to ensure no data loss
+                                            if !buffer.is_empty() {
+                                                info!("Binary uplink: flushing {} pending bytes for session {}", buffer.len(), session_id);
+                                                let _ = bin_tx_for_receiver.send(buffer);
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    warn!("Binary uplink: no sessionId provided in bind request");
+                                }
+                            } else if env.kind == "terminal.binary.unbind" {
+                                // Handle terminal binary unbind request
+                                let session_id = env.payload.get("sessionId").and_then(|v| v.as_str());
+                                info!("Bound terminal: unbind requested for sessionId={:?}", session_id);
+
+                                if let Ok(mut bound) = this.bound_session_id.lock() {
+                                    *bound = None;
+                                    info!("Bound terminal: cleared bound session");
                                 }
                             } else if env.kind.starts_with("job:") {
                                 // Forward job events to local event bus
@@ -736,24 +772,65 @@ impl DeviceLinkClient {
     }
 
     /// Send raw terminal output bytes without any header or encoding
-    pub fn send_terminal_output_binary(&self, data: &[u8]) -> Result<(), AppError> {
-        if let Some(tx) = &self.binary_sender {
-            tx.send(data.to_vec())
-                .map_err(|_| AppError::NetworkError("Binary uplink channel closed".into()))
-        } else {
-            Err(AppError::NetworkError("Device link client not connected".into()))
+    /// Buffers output if session is not bound; sends immediately if bound
+    pub fn send_terminal_output_binary(&self, session_id: &str, data: &[u8]) -> Result<(), AppError> {
+        // Check if this session is bound for binary streaming
+        let bound = self.bound_session_id.lock().unwrap();
+        let bound_id = bound.as_deref();
+
+        if bound_id != Some(session_id) {
+            // Not the bound session - buffer the data
+            drop(bound);
+
+            let mut pending = self.pending_binary_by_session.lock().unwrap();
+            let buffer = pending.entry(session_id.to_string()).or_insert_with(Vec::new);
+            buffer.extend_from_slice(data);
+            let total = buffer.len();
+            debug!("Binary uplink: buffered {} bytes (pending_total={}) for session {}", data.len(), total, session_id);
+
+            // Trim from head if buffer exceeds max size (keep newest data)
+            if buffer.len() > MAX_PENDING_BYTES {
+                let trim = buffer.len() - MAX_PENDING_BYTES;
+                buffer.drain(0..trim);
+                debug!(
+                    "Binary uplink: trimmed {} bytes from head for session '{}', kept {} bytes",
+                    trim, session_id, buffer.len()
+                );
+            }
+
+            return Ok(());
+        }
+        drop(bound);
+
+        // Session is bound - send immediately
+        let sender = self.binary_sender.lock().unwrap();
+        match sender.as_ref() {
+            Some(tx) => {
+                tx.send(data.to_vec())
+                    .map_err(|_| {
+                        warn!("Binary uplink: channel closed for session {}", session_id);
+                        AppError::NetworkError("Binary uplink channel closed".into())
+                    })?;
+                debug!("Binary uplink: enqueued {} bytes for session {}", data.len(), session_id);
+                Ok(())
+            }
+            None => {
+                debug!("Binary uplink: no channel available for session {}", session_id);
+                Err(AppError::NetworkError("Device link client not connected".into()))
+            }
         }
     }
 
     /// Send an event to the server
     pub async fn send_event(&self, event_type: String, payload: Value) -> Result<(), AppError> {
-        if let Some(sender) = &self.sender {
+        let sender = self.sender.lock().unwrap();
+        if let Some(tx) = sender.as_ref() {
             let msg = DeviceLinkMessage::Event {
                 event_type: event_type,
                 payload,
             };
 
-            sender
+            tx
                 .send(msg)
                 .map_err(|_| AppError::NetworkError("Device link channel closed".to_string()))?;
 
@@ -767,7 +844,7 @@ impl DeviceLinkClient {
 
     /// Check if the client is connected
     pub fn is_connected(&self) -> bool {
-        self.sender.is_some()
+        self.sender.lock().unwrap().is_some()
     }
 
     /// Check if device is visible (discoverable and allows remote access)
@@ -785,7 +862,7 @@ impl DeviceLinkClient {
         false
     }
 
-    pub async fn shutdown(&mut self) {
+    pub async fn shutdown(&self) {
         tracing::info!("Shutting down DeviceLinkClient");
 
         if let Ok(mut listener_guard) = self.event_listener_id.lock() {
@@ -794,8 +871,20 @@ impl DeviceLinkClient {
             }
         }
 
-        if let Some(sender) = self.sender.take() {
-            drop(sender);
+        if let Ok(mut sender) = self.sender.lock() {
+            if let Some(tx) = sender.take() {
+                drop(tx);
+            }
+        }
+
+        if let Ok(mut binary_sender) = self.binary_sender.lock() {
+            if let Some(tx) = binary_sender.take() {
+                drop(tx);
+            }
+        }
+
+        if let Ok(mut bound) = self.bound_session_id.lock() {
+            *bound = None;
         }
     }
 
@@ -811,11 +900,12 @@ pub async fn start_device_link_client(
 ) -> Result<(), AppError> {
     info!("Starting device link client for server: {}", server_url);
 
-    let mut client = DeviceLinkClient::new(app_handle, server_url);
+    let client = Arc::new(DeviceLinkClient::new(app_handle.clone(), server_url));
+    app_handle.manage(client.clone());
 
     // This will run indefinitely, reconnecting as needed
     loop {
-        match client.start().await {
+        match client.clone().start().await {
             Ok(_) => {
                 info!("Device link client completed normally");
                 break;

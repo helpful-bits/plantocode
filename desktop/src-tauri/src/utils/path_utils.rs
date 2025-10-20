@@ -278,7 +278,7 @@ pub async fn get_app_output_files_directory(app_handle: &tauri::AppHandle) -> Ap
 /// Get the output files directory for a specific project (async version)
 pub async fn get_project_output_files_directory(project_dir: &Path) -> AppResult<PathBuf> {
     let mut output_dir = project_dir.to_path_buf();
-    output_dir.push(".vibe_manager");
+    output_dir.push(".plantocode");
     output_dir.push("output_files");
 
     // Create the directory if it doesn't exist
@@ -292,7 +292,7 @@ pub async fn get_project_output_files_directory(project_dir: &Path) -> AppResult
 /// Get the implementation plans directory for a specific project (async version)
 pub async fn get_project_implementation_plans_directory(project_dir: &Path) -> AppResult<PathBuf> {
     let mut plans_dir = project_dir.to_path_buf();
-    plans_dir.push(".vibe_manager");
+    plans_dir.push(".plantocode");
     plans_dir.push("implementation_plans");
 
     // Create the directory if it doesn't exist
@@ -303,13 +303,13 @@ pub async fn get_project_implementation_plans_directory(project_dir: &Path) -> A
     Ok(plans_dir)
 }
 
-/// Create a custom directory under the project's .vibe_manager directory (async version)
+/// Create a custom directory under the project's .plantocode directory (async version)
 pub async fn get_project_custom_directory(
     project_dir: &Path,
     dir_name: &str,
 ) -> AppResult<PathBuf> {
     let mut custom_dir = project_dir.to_path_buf();
-    custom_dir.push(".vibe_manager");
+    custom_dir.push(".plantocode");
     custom_dir.push(dir_name);
 
     // Create the directory if it doesn't exist
@@ -449,9 +449,9 @@ pub async fn create_unique_output_filepath(
             if target_dir == crate::constants::IMPLEMENTATION_PLANS_DIR_NAME {
                 get_project_implementation_plans_directory(project_dir).await?
             } else {
-                // Create a more generic folder under .vibe_manager/
+                // Create a more generic folder under .plantocode/
                 let mut dir = project_dir.to_path_buf();
-                dir.push(".vibe_manager");
+                dir.push(".plantocode");
                 dir.push(target_dir);
                 if !fs_utils::path_exists(&dir).await? {
                     fs_utils::create_directory(&dir).await?;

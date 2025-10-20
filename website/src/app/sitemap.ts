@@ -2,7 +2,7 @@ import type { MetadataRoute } from 'next';
 import pseoData from '@/data/pseo';
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = 'https://www.vibemanager.app';
+  const baseUrl = 'https://www.plantocode.com';
   const now = new Date();
 
   // Generate pSEO pages entries

@@ -1,4 +1,4 @@
-# Vibe Manager Desktop Source
+# PlanToCode Desktop Source
 
 This directory contains the source code for the desktop application, including shared UI components, styles, and utilities.
 

@@ -6,7 +6,7 @@ import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Search, Workflow, Target, DollarSign, GitBranch, CheckCircle2, Brain, Layers, Zap } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'AI File Discovery - Intelligent Repository Navigation | Vibe Manager',
+  title: 'AI file discovery - find impacted files | PlanToCode',
   description:
     'AI-powered multi-stage workflow that intelligently discovers and selects relevant files from your codebase. Cost-effective operation at ~$0.10-0.15 per workflow with real-time progress tracking.',
   keywords: [
@@ -25,12 +25,12 @@ export const metadata: Metadata = {
     title: 'AI File Discovery - From Repository to Relevant Context',
     description:
       'Multi-stage AI workflow that discovers relevant files, filters intelligently, and optimizes for implementation planning. Real-time progress tracking with cost-effective operation.',
-    url: 'https://www.vibemanager.app/features/file-discovery',
-    siteName: 'Vibe Manager',
+    url: 'https://www.plantocode.com/features/file-discovery',
+    siteName: 'PlanToCode',
     type: 'website',
   },
   alternates: {
-    canonical: 'https://www.vibemanager.app/features/file-discovery',
+    canonical: 'https://www.plantocode.com/features/file-discovery',
   },
 };
 
@@ -55,8 +55,7 @@ export default function FileDiscoveryFeaturePage() {
                   Find what matters in your codebase automatically
                 </h1>
                 <p className="text-lg sm:text-xl md:text-2xl text-foreground/80 max-w-3xl mx-auto leading-relaxed">
-                  AI-powered 5-stage workflow that discovers relevant files, filters intelligently, and optimizes your
-                  codebase for implementation planning. From thousands of files to focused context.
+                  PlanToCode maps impacted files before you run anything. You get a focused context you can trust.
                 </p>
               </div>
 

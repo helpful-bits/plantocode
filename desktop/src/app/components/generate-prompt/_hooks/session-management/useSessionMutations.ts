@@ -10,6 +10,7 @@ import {
 import { type Session } from "@/types/session-types";
 import { normalizePath } from "@/utils/path-utils";
 import { generateUUID } from "@/utils/string-utils";
+import { duplicateSessionAction } from "@/actions/session";
 
 interface UseSessionMutationsProps {
   projectDirectory: string | null;
@@ -19,6 +20,7 @@ interface UseSessionMutationsProps {
   sessionNameInput: string;
   setSessionNameInput: (name: string) => void;
   editSessionNameInput: string;
+  setEditSessionNameInput: (name: string) => void;
   setEditingSessionId: (id: string | null) => void;
   deletedSessionIdsRef: React.MutableRefObject<Set<string>>;
 }
@@ -34,6 +36,7 @@ export function useSessionMutations({
   sessionNameInput,
   setSessionNameInput,
   editSessionNameInput,
+  setEditSessionNameInput,
   setEditingSessionId,
   deletedSessionIdsRef,
 }: UseSessionMutationsProps) {
@@ -340,31 +343,25 @@ export function useSessionMutations({
       // Generate clone name
       const cloneName = `${session.name || "Untitled"} (Copy)`;
 
-      // Create clone data from the existing session
-      const cloneData: Partial<Session> = {
-        name: cloneName,
-        projectDirectory: session.projectDirectory,
-        taskDescription: session.taskDescription,
-        searchTerm: session.searchTerm,
-        includedFiles: session.includedFiles,
-        forceExcludedFiles: session.forceExcludedFiles,
-        searchSelectedFilesOnly: session.searchSelectedFilesOnly,
-      };
-
-      // Create the cloned session
-      const newSessionId = await createNewSession(cloneName, cloneData);
-
-      if (newSessionId) {
-        // Force refresh the session list to show the new clone
+      const res = await duplicateSessionAction(session.id, cloneName);
+      if (res.isSuccess && res.data) {
         await loadSessions(true);
+
+        // Auto-focus the cloned session name for editing
+        setEditingSessionId(res.data.id);
+        setEditSessionNameInput(res.data.name);
 
         showNotification({
           title: "Success",
-          message: `Session cloned successfully as "${cloneName}"`,
+          message: `Cloned as ${res.data.name}`,
           type: "success",
         });
       } else {
-        throw new Error("Failed to clone session");
+        showNotification({
+          title: "Error",
+          message: res.message ?? "Clone failed",
+          type: "error",
+        });
       }
     } catch (error) {
       // Error cloning session
@@ -377,7 +374,7 @@ export function useSessionMutations({
     } finally {
       // Loading state managed by SessionContext
     }
-  }, [createNewSession, loadSessions, showNotification]);
+  }, [loadSessions, setEditingSessionId, setEditSessionNameInput, showNotification]);
 
   /**
    * Load a session's details

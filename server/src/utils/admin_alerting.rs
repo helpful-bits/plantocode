@@ -333,7 +333,7 @@ impl AdminAlertingService {
             body.push_str("⚠️ This alert requires immediate attention!\n\n");
         }
 
-        body.push_str("This is an automated notification from Vibe Manager admin alerting system.");
+        body.push_str("This is an automated notification from PlanToCode admin alerting system.");
 
         body
     }

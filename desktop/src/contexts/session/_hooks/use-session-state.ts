@@ -21,6 +21,9 @@ export function useSessionState() {
   // Track errors that occur during session operations
   const [sessionError, setSessionError] = useState<Error | null>(null);
 
+  // Track session list version for reactive updates
+  const [sessionListVersion, setSessionListVersion] = useState<number>(0);
+
   return useMemo(
     () => ({
       // States - these will be part of SessionStateContext
@@ -28,22 +31,26 @@ export function useSessionState() {
       isSessionLoading,
       isSessionModified,
       sessionError,
+      sessionListVersion,
 
       // State setters - these will be used internally and in SessionActionsContext
       setCurrentSession,
       setSessionLoading,
       setSessionModified,
       setSessionError,
+      setSessionListVersion,
     }),
     [
       currentSession,
       isSessionLoading,
       isSessionModified,
       sessionError,
+      sessionListVersion,
       setCurrentSession,
       setSessionLoading,
       setSessionModified,
       setSessionError,
+      setSessionListVersion,
     ]
   );
 }

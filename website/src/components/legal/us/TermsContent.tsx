@@ -96,7 +96,7 @@ export default function USTermsContent() {
           <li><strong>High-Stakes Decisions:</strong> Employment screening, credit decisions, housing applications, insurance underwriting, or legal proceedings</li>
         </ul>
         <p className="mt-4">
-          If you require the Service for any of these high-risk applications, please contact legal@vibemanager.app to discuss a specialized agreement with appropriate safeguards, liability provisions, and compliance requirements.
+          If you require the Service for any of these high-risk applications, please contact legal@plantocode.com to discuss a specialized agreement with appropriate safeguards, liability provisions, and compliance requirements.
         </p>
       </section>
 
@@ -250,7 +250,7 @@ export default function USTermsContent() {
             DMCA Agent<br />
             Südliche Münchner Straße 55<br />
             82031 Grünwald, Germany<br />
-            Email: legal@vibemanager.app<br />
+            Email: legal@plantocode.com<br />
             Subject Line: "DMCA Takedown Notice"
           </address>
         </div>
@@ -398,7 +398,7 @@ export default function USTermsContent() {
       <section>
         <h2 id="arbitration-class-action-waiver" className="text-2xl font-semibold mb-4">Arbitration and Class Action Waiver</h2>
         <p>
-          <strong>Informal Resolution:</strong> Before initiating any formal dispute resolution, you agree to attempt to resolve any dispute informally by contacting us at legal@vibemanager.app and allowing us 30 days to address your concern.
+          <strong>Informal Resolution:</strong> Before initiating any formal dispute resolution, you agree to attempt to resolve any dispute informally by contacting us at legal@plantocode.com and allowing us 30 days to address your concern.
         </p>
         
         <h3 className="text-xl font-medium mb-3 mt-6">Binding Arbitration</h3>
@@ -453,7 +453,7 @@ export default function USTermsContent() {
           helpful bits GmbH<br />
           Südliche Münchner Straße 55<br />
           82031 Grünwald, Germany<br />
-          Email: legal@vibemanager.app
+          Email: legal@plantocode.com
         </address>
       </section>
     </>

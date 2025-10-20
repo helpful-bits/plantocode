@@ -516,7 +516,7 @@ pub async fn get_available_regions_command(
     }
 
     // Try US region first
-    let us_url = "https://api.us.vibemanager.app/config/regions";
+    let us_url = "https://api-us.plantocode.com/config/regions";
     if let Ok(response) = client.get(us_url).send().await {
         if response.status().is_success() {
             if let Ok(regions) = response.json::<Vec<ServerRegionInfo>>().await {
@@ -526,7 +526,7 @@ pub async fn get_available_regions_command(
     }
 
     // Fallback to EU region
-    let eu_url = "https://api.eu.vibemanager.app/config/regions";
+    let eu_url = "https://api-eu.plantocode.com/config/regions";
     if let Ok(response) = client.get(eu_url).send().await {
         if response.status().is_success() {
             if let Ok(regions) = response.json::<Vec<ServerRegionInfo>>().await {
@@ -539,11 +539,11 @@ pub async fn get_available_regions_command(
     Ok(vec![
         ServerRegionInfo {
             label: "US (Default)".to_string(),
-            url: "https://api.us.vibemanager.app".to_string(),
+            url: "https://api-us.plantocode.com".to_string(),
         },
         ServerRegionInfo {
             label: "EU".to_string(),
-            url: "https://api.eu.vibemanager.app".to_string(),
+            url: "https://api-eu.plantocode.com".to_string(),
         },
     ])
 }

@@ -96,8 +96,8 @@ public final class AppState: ObservableObject {
   @Published public private(set) var voiceTranscriptionAttempts: Int = 0
 
   public let availableRegions: [Region] = [
-    Region(id: "us", name: "United States", baseURL: URL(string: "https://api.us.vibemanager.app")!),
-    Region(id: "eu", name: "European Union", baseURL: URL(string: "https://api.eu.vibemanager.app")!)
+    Region(id: "us", name: "United States", baseURL: URL(string: "https://api-us.plantocode.com")!),
+    Region(id: "eu", name: "European Union", baseURL: URL(string: "https://api-eu.plantocode.com")!)
   ]
 
   public let authService = AuthService.shared

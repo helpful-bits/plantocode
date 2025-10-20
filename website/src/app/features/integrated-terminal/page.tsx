@@ -6,7 +6,7 @@ import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Terminal, Mic, Save, History, Zap, Heart, AlertCircle, Shield, Database, Activity, Cpu } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'Job-Centric Terminal - Smart PTY Sessions with Health Monitoring | Vibe Manager',
+  title: 'Terminal for plans - persistent PTY sessions | PlanToCode',
   description: 'Professional terminal with automatic health monitoring, session recovery, attention detection, and voice transcription. PTY-based sessions persist across restarts with 5MB ring buffer. Built for AI development workflows.',
   keywords: [
     'pty terminal',
@@ -23,12 +23,12 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Job-Centric Terminal with Automatic Health Monitoring',
     description: 'PTY-based terminal with health monitoring, auto-recovery, attention detection, and voice transcription. Sessions persist with 5MB ring buffer. Built for AI workflows.',
-    url: 'https://www.vibemanager.app/features/integrated-terminal',
-    siteName: 'Vibe Manager',
+    url: 'https://www.plantocode.com/features/integrated-terminal',
+    siteName: 'PlanToCode',
     type: 'website',
   },
   alternates: {
-    canonical: 'https://www.vibemanager.app/features/integrated-terminal',
+    canonical: 'https://www.plantocode.com/features/integrated-terminal',
   },
 };
 
@@ -50,11 +50,10 @@ export default function IntegratedTerminalPage() {
                   <span>PTY Terminal with Health Monitoring & Auto-Recovery</span>
                 </div>
                 <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-6 bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent">
-                  Job-Centric Terminal That Never Loses Context
+                  Job-centric terminal that keeps context
                 </h1>
                 <p className="text-lg sm:text-xl md:text-2xl text-foreground/80 max-w-3xl mx-auto leading-relaxed">
-                  Every terminal is tied to a job. PTY sessions with health monitoring detect agent inactivity
-                  and connection issues. Two-level attention system alerts when agents need guidance. 5MB persistent ring buffer.
+                  Run your plan in a persistent terminal. Health checks, recovery, and logging built in.
                 </p>
               </div>
 
@@ -499,7 +498,7 @@ export default function IntegratedTerminalPage() {
                   <GlassCard className="p-6 sm:p-8 border-green-500/20 bg-green-500/5" highlighted>
                     <h3 className="text-xl font-bold mb-6 text-green-500 flex items-center gap-2">
                       <span className="text-2xl">✓</span>
-                      Vibe Manager Terminal
+                      PlanToCode Terminal
                     </h3>
                     <ul className="space-y-4">
                       <li className="flex items-start gap-3">

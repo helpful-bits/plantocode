@@ -4,7 +4,7 @@ use keyring::{Entry, Error as KeyringError};
 use log::{debug, error};
 
 // Constants for token storage
-pub const SERVICE_NAME_FOR_KEYRING: &str = "vibe-manager";
+pub const SERVICE_NAME_FOR_KEYRING: &str = "plantocode";
 // Account name for storing the app's primary auth token in the keyring
 pub const ACCOUNT_NAME_FOR_KEYRING: &str = "default";
 

@@ -54,6 +54,31 @@ public final class TextEnhancementService: ObservableObject {
             throw TextEnhancementError.enhancementFailed(error)
         }
     }
+
+    public func refine(
+        text: String,
+        sessionId: String,
+        projectDirectory: String?,
+        relevantFiles: [String] = [],
+        timeoutSeconds: Double = 120
+    ) async throws -> String {
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw TextEnhancementError.emptyText
+        }
+
+        isEnhancing = true
+        defer { isEnhancing = false }
+
+        let response = try await serverFeatureService.refineText(
+            text,
+            sessionId: sessionId,
+            projectDirectory: projectDirectory,
+            relevantFiles: relevantFiles,
+            timeoutSeconds: timeoutSeconds
+        )
+
+        return response.enhancedText
+    }
 }
 
 // MARK: - Error Types

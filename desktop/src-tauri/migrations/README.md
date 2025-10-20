@@ -1,6 +1,6 @@
 # Database Migrations
 
-This directory contains database migrations for Vibe Manager Desktop.
+This directory contains database migrations for PlanToCode Desktop.
 
 ## Structure
 

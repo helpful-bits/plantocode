@@ -28,9 +28,9 @@ import {
 import type { SoftwareApplication, HowTo, FAQPage } from 'schema-dts';
 
 export const metadata: Metadata = {
-  title: 'Enhance Claude Code Plan Mode | Vibe Manager',
+  title: 'PlanToCode + Claude Code - plan before you execute',
   description:
-    'Enhance Claude Code\'s native Plan Mode (Shift+Tab) with multi-model synthesis and file discovery. Vibe Manager adds architectural pre-planning to complement Claude Code CLI\'s built-in planning feature.',
+    'Enhance Claude Code\'s native Plan Mode (Shift+Tab) with multi-model synthesis and file discovery. PlanToCode adds architectural pre-planning to complement Claude Code CLI\'s built-in planning feature.',
   keywords: [
     'claude code plan mode enhancement',
     'claude code shift+tab planning',
@@ -38,18 +38,18 @@ export const metadata: Metadata = {
     'enhance claude code plan mode',
     'claude code file discovery',
     'claude code planning workflow',
-    'vibe manager claude code',
+    'plantocode claude code',
   ],
   openGraph: {
-    title: 'Enhance Claude Code Plan Mode with Vibe Manager',
+    title: 'PlanToCode + Claude Code - plan before you execute',
     description:
       'Complement Claude Code\'s native Plan Mode with file discovery, multi-model synthesis, and merge instructions for superior architectural planning.',
-    url: 'https://www.vibemanager.app/plan-mode/claude-code',
-    siteName: 'Vibe Manager',
+    url: 'https://www.plantocode.com/plan-mode/claude-code',
+    siteName: 'PlanToCode',
     type: 'website',
   },
   alternates: {
-    canonical: 'https://www.vibemanager.app/plan-mode/claude-code',
+    canonical: 'https://www.plantocode.com/plan-mode/claude-code',
   },
 };
 
@@ -85,7 +85,7 @@ export default function ClaudeCodePlanModePage() {
     {
       title: 'Claude-ready file discovery',
       description:
-        'Run Vibe\'s multi-stage discovery to surface every file Claude should consider. Export scoped directories straight into Claude plan mode.',
+        'Run PlanToCode\'s multi-stage discovery to surface every file Claude should consider. Export scoped directories straight into Claude plan mode.',
       icon: <Search className="w-8 h-8 text-primary" />,
     },
     {
@@ -103,7 +103,7 @@ export default function ClaudeCodePlanModePage() {
     {
       title: 'Execution guardrails beyond the editor',
       description:
-        'Run plans in Vibe\'s persistent terminal, keep searchable logs, and sync the results back to your Claude workspace when you\'re done.',
+        'Run plans in PlanToCode\'s persistent terminal, keep searchable logs, and sync the results back to your Claude workspace when you\'re done.',
       icon: <ShieldCheck className="w-8 h-8 text-primary" />,
     },
   ];
@@ -112,25 +112,25 @@ export default function ClaudeCodePlanModePage() {
     {
       step: 'Discover the real project scope',
       description:
-        'Point Vibe at your Claude Code workspace. File discovery builds a focused context package you can reuse across sessions.',
+        'Point PlanToCode at your Claude Code workspace. File discovery builds a focused context package you can reuse across sessions.',
       icon: <Compass className="w-5 h-5 text-primary" />,
     },
     {
       step: 'Generate plans with multiple models',
       description:
-        'Run GPT-5 and Gemini 2.5 Pro multiple times. When context includes many full files, LLMs miss details—multiple runs surface complementary implementation insights.',
+        'Run GPT-5 and Gemini 2.5 Pro multiple times. When context includes many full files, LLMs miss details - multiple runs surface complementary implementation insights.',
       icon: <Sparkles className="w-5 h-5 text-primary" />,
     },
     {
       step: 'Guide the merge with your expertise',
       description:
-        'Tell the merge AI what to emphasize across the runs—certain file patterns, edge cases, or architectural constraints. Consolidate complementary details into one comprehensive plan.',
+        'Tell the merge AI what to emphasize across the runs - certain file patterns, edge cases, or architectural constraints. Consolidate complementary details into one comprehensive plan.',
       icon: <GitMerge className="w-5 h-5 text-primary" />,
     },
     {
       step: 'Execute with Claude Code Plan Mode',
       description:
-        'Use the merged plan in Claude Code\'s native Plan Mode (Shift+Tab) or execute directly from Vibe\'s terminal with full approvals and logging.',
+        'Use the merged plan in Claude Code\'s native Plan Mode (Shift+Tab) or execute directly from PlanToCode\'s terminal with full approvals and logging.',
       icon: <Terminal className="w-5 h-5 text-primary" />,
     },
   ];
@@ -144,7 +144,7 @@ export default function ClaudeCodePlanModePage() {
     {
       title: 'Plan flexibility',
       claude: 'Plan mode produces responses sequentially, so reconciling variations takes manual editing.',
-      vibe: 'Run models multiple times (e.g., Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet). Each run finds complementary details—merged with step-level source attribution.',
+      vibe: 'Run models multiple times (e.g., Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet). Each run finds complementary details - merged with step-level source attribution.',
     },
     {
       title: 'Execution oversight',
@@ -155,14 +155,14 @@ export default function ClaudeCodePlanModePage() {
 
   const quickstartSteps = [
     {
-      title: 'Install Vibe Manager alongside Claude Code',
+      title: 'Install PlanToCode alongside Claude Code',
       description:
         'Download the desktop app for macOS or Windows, sign in, and connect it to the same repo you open in Claude.',
     },
     {
       title: 'Run file discovery on your feature or bug',
       description:
-        'Generate a scoped list of files and dependencies. Paste it into Claude or keep it inside Vibe for future prompts.',
+        'Generate a scoped list of files and dependencies. Paste it into Claude or keep it inside PlanToCode for future prompts.',
     },
     {
       title: 'Generate and merge plans',
@@ -170,9 +170,9 @@ export default function ClaudeCodePlanModePage() {
         'Create plans with Claude 4.5 Sonnet and supporting models (Gemini 2.5 Pro, GPT-5), then merge them using instructions tailored to your architectural requirements.',
     },
     {
-      title: 'Use with Claude Code Plan Mode or execute in Vibe',
+      title: 'Use with Claude Code Plan Mode or execute in PlanToCode',
       description:
-        'Feed the merged plan into Claude Code\'s native Plan Mode (Shift+Tab), or run the validated plan directly in Vibe\'s terminal with full auditability.',
+        'Feed the merged plan into Claude Code\'s native Plan Mode (Shift+Tab), or run the validated plan directly in PlanToCode\'s terminal with full auditability.',
     },
   ];
 
@@ -180,7 +180,7 @@ export default function ClaudeCodePlanModePage() {
     {
       title: 'Large refactors on macOS',
       description:
-        'Pair Claude with Vibe\'s discovery and terminal to ship multi-service refactors safely on your Mac.',
+        'Pair Claude with PlanToCode\'s discovery and terminal to ship multi-service refactors safely on your Mac.',
       icon: <LayoutDashboard className="w-5 h-5 text-primary" />,
     },
     {
@@ -214,14 +214,14 @@ export default function ClaudeCodePlanModePage() {
 
   const faqs = [
     {
-      question: 'Does Vibe Manager replace Claude Code\'s Plan Mode?',
+      question: 'Does PlanToCode replace Claude Code\'s Plan Mode?',
       answer:
-        'No. Claude Code already has Plan Mode (Shift+Tab) built-in. Vibe Manager enhances it by adding multi-model synthesis, file discovery, and merge instructions BEFORE you use Claude Code\'s native planning feature. You get better architectural context going into Plan Mode.',
+        'No. Claude Code already has Plan Mode (Shift+Tab) built-in. PlanToCode enhances it by adding multi-model synthesis, file discovery, and merge instructions BEFORE you use Claude Code\'s native planning feature. You get better architectural context going into Plan Mode.',
     },
     {
       question: 'How do I use the merged plan with Claude Code?',
       answer:
-        'After merging plans in Vibe Manager, you can either: 1) Feed the context and plan to Claude Code\'s Plan Mode (Shift+Tab) for review before execution, or 2) Execute directly in Vibe\'s terminal with full logging and approvals.',
+        'After merging plans in PlanToCode, you can either: 1) Feed the context and plan to Claude Code\'s Plan Mode (Shift+Tab) for review before execution, or 2) Execute directly in PlanToCode\'s terminal with full logging and approvals.',
     },
     {
       question: 'What operating systems are supported?',
@@ -232,10 +232,10 @@ export default function ClaudeCodePlanModePage() {
 
   const softwareApplicationJsonLd: SoftwareApplication = {
     '@type': 'SoftwareApplication',
-    name: 'Vibe Manager',
+    name: 'PlanToCode',
     applicationCategory: 'DeveloperApplication',
     operatingSystem: ['macOS 11.0+', 'Windows 10+'],
-    url: 'https://www.vibemanager.app/plan-mode/claude-code',
+    url: 'https://www.plantocode.com/plan-mode/claude-code',
     description:
       'Enhance Claude Code CLI\'s native Plan Mode with multi-model synthesis, file discovery, and merge instructions for superior architectural planning.',
     offers: {
@@ -248,7 +248,7 @@ export default function ClaudeCodePlanModePage() {
 
   const howToJsonLd: HowTo = {
     '@type': 'HowTo',
-    name: 'Use Vibe Manager with Claude Code plan mode',
+    name: 'Use PlanToCode with Claude Code plan mode',
     description: 'Prepare and execute Claude Code plans with full architectural context.',
     step: quickstartSteps.map((step, index) => ({
       '@type': 'HowToStep',
@@ -293,14 +293,14 @@ export default function ClaudeCodePlanModePage() {
                   Enhance Claude Code Plan Mode
                 </h1>
                 <p className="text-lg sm:text-xl md:text-2xl text-foreground/80 max-w-3xl mx-auto leading-relaxed">
-                  Claude Code already has Plan Mode (Shift+Tab). Vibe Manager enhances it with multi-model synthesis, file discovery, and merge instructions for superior architectural planning.
+                  Find impacted files, compare and merge plans, then execute with confidence.
                 </p>
                 <p className="text-base sm:text-lg text-foreground/70 max-w-2xl mx-auto">
-                  Pre-plan with multiple models, then use Claude Code's Plan Mode to execute with confidence. Every command and decision stays on record.
+                  Claude Code already has Plan Mode (Shift+Tab). PlanToCode enhances it with multi-model synthesis, file discovery, and merge instructions for superior architectural planning.
                 </p>
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                   <Button variant="cta" size="lg" asChild>
-                    <Link href="/downloads">Install Vibe Manager</Link>
+                    <Link href="/downloads">Install PlanToCode</Link>
                   </Button>
                   <VideoButton />
                 </div>
@@ -325,7 +325,7 @@ export default function ClaudeCodePlanModePage() {
               </div>
 
               <div className="space-y-8">
-                <h2 className="text-2xl sm:text-3xl font-bold text-center">What Vibe Manager adds to Claude Code</h2>
+                <h2 className="text-2xl sm:text-3xl font-bold text-center">What PlanToCode adds to Claude Code</h2>
                 <div className="grid md:grid-cols-2 gap-6">
                   {capabilities.map((item, index) => (
                     <GlassCard key={index} className="p-6 h-full" highlighted>
@@ -338,7 +338,7 @@ export default function ClaudeCodePlanModePage() {
               </div>
 
               <div className="space-y-8">
-                <h2 className="text-2xl sm:text-3xl font-bold text-center">Claude + Vibe workflow</h2>
+                <h2 className="text-2xl sm:text-3xl font-bold text-center">Claude + PlanToCode workflow</h2>
                 <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   {workflow.map((item, index) => (
                     <GlassCard key={index} className="p-6 h-full" highlighted>
@@ -356,7 +356,7 @@ export default function ClaudeCodePlanModePage() {
               </div>
 
               <div className="space-y-6">
-                <h2 className="text-2xl sm:text-3xl font-bold text-center">Why teams pair Vibe with Claude Code</h2>
+                <h2 className="text-2xl sm:text-3xl font-bold text-center">Why teams pair PlanToCode with Claude Code</h2>
                 <div className="space-y-4">
                   {comparisons.map((item, index) => (
                     <GlassCard key={index} className="p-6">
@@ -370,7 +370,7 @@ export default function ClaudeCodePlanModePage() {
                           <p className="leading-relaxed">{item.claude}</p>
                         </div>
                         <div className="rounded-xl border border-primary/40 p-4 bg-primary/5">
-                          <div className="font-semibold text-foreground mb-1">With Vibe Manager</div>
+                          <div className="font-semibold text-foreground mb-1">With PlanToCode</div>
                           <p className="leading-relaxed">{item.vibe}</p>
                         </div>
                       </div>
@@ -410,7 +410,7 @@ export default function ClaudeCodePlanModePage() {
               </div>
 
               <div className="space-y-8">
-                <h2 className="text-2xl sm:text-3xl font-bold text-center">How Claude teams use Vibe Manager</h2>
+                <h2 className="text-2xl sm:text-3xl font-bold text-center">How Claude teams use PlanToCode</h2>
                 <div className="grid md:grid-cols-3 gap-6">
                   {useCases.map((item, index) => (
                     <GlassCard key={index} className="p-6 h-full">

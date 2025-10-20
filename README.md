@@ -1,6 +1,6 @@
-# Vibe Manager
+# PlanToCode
 
-Vibe Manager is a powerful AI coding assistant that helps you write and manage code.
+PlanToCode is a powerful AI coding assistant that helps you write and manage code.
 
 ## Project Structure
 
@@ -146,7 +146,7 @@ The application follows a modular architecture:
 
 ### AI Integration Architecture
 
-Vibe Manager uses a server-proxy architecture for all AI model access:
+PlanToCode uses a server-proxy architecture for all AI model access:
 
 1. The desktop application communicates with the server through a `ServerProxyClient`
 2. The server handles authentication, billing, and rate limiting

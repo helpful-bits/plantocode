@@ -1,6 +1,6 @@
 # Website Text Variants
 
-This document explores various text options for the Vibe Manager website, focusing on maintaining a consistent conversational, empathetic tone throughout.
+This document explores various text options for the PlanToCode website, focusing on maintaining a consistent conversational, empathetic tone throughout.
 
 ## Hero Section Variants
 
@@ -13,7 +13,7 @@ That magic moment is gone. Now you're a babysitter writing novels of documentati
 
 Here's the thing: your code IS the documentation. It evolves fast. Every refactor, every new feature - your codebase tells its own story. But AI has limited context. It wastes time searching through irrelevant files, missing the crucial ones, or worse - trying to understand everything at once.
 
-Vibe Manager was born from hitting that wall. Hard. Agents don't need more rules - they need the right files, real context, and clear tasks. Simple as that.
+PlanToCode was born from hitting that wall. Hard. Agents don't need more rules - they need the right files, real context, and clear tasks. Simple as that.
 
 ### Example Refined Version
 **Context for Lost AI Agents**
@@ -24,7 +24,7 @@ That magical moment? Vanished. Now you're a babysitter, chained to endless docum
 
 But here's the truth: your code *is* your documentation. It evolves rapidly. Every refactor, every feature tells its own story, but AI's limited context leaves it stuck, wasting time chasing irrelevant details or missing the essentials entirely.
 
-Vibe Manager was born from hitting that wall—hard. Your AI doesn't need more rules; it just needs the right files, clear tasks, and real context.
+PlanToCode was born from hitting that wall—hard. Your AI doesn't need more rules; it just needs the right files, clear tasks, and real context.
 
 **Take Back Your Weekend.**
 
@@ -120,7 +120,7 @@ Let's be frank: with heavy use, this can cost $300+ a month. But this investment
 Let's be frank: with heavy use, LLM API tokens can cost $100+ a month. But this investment pays for itself in productivity and peace of mind. Every operation reports its exact token cost in real-time, so you are always in control.
 
 ### Example Refined Version
-Let's be clear: extensive LLM API usage can get expensive, sometimes topping $100 a month. But this investment quickly pays off in productivity gains. Vibe Manager transparently tracks token usage in real-time—you're always in full control.
+Let's be clear: extensive LLM API usage can get expensive, sometimes topping $100 a month. But this investment quickly pays off in productivity gains. PlanToCode transparently tracks token usage in real-time—you're always in full control.
 
 ## Style Transformation Examples
 

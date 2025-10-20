@@ -1,9 +1,9 @@
 ---
-# Vibe Manager Application Deployment
+# PlanToCode Application Deployment
 # This playbook handles all application-specific setup and deployment
 # Prerequisites: Run site-base.yml first to set up infrastructure
 
-- name: Vibe Manager Application Deployment
+- name: PlanToCode Application Deployment
   hosts: all
   become: yes
   

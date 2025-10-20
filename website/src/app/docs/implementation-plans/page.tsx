@@ -6,17 +6,18 @@ import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { StructuredData } from '@/components/seo/StructuredData';
 
 export const metadata: Metadata = {
-  title: 'Implementation Plans in Vibe Manager',
+  title: 'Implementation plans in PlanToCode',
   description:
     'How the desktop app organises, reviews, and streams implementation plans using the Monaco-based plan viewer and plan history.',
   alternates: {
-    canonical: 'https://www.vibemanager.app/docs/implementation-plans',
+    canonical: 'https://www.plantocode.com/docs/implementation-plans',
   },
   openGraph: {
-    title: 'Implementation Plans in Vibe Manager',
+    title: 'Implementation plans in PlanToCode',
     description:
       'Understand how plan generation, Monaco-based review, and plan history work together inside the Implementation Plans panel.',
-    url: 'https://www.vibemanager.app/docs/implementation-plans',
+    url: 'https://www.plantocode.com/docs/implementation-plans',
+    siteName: 'PlanToCode',
     type: 'article',
   },
 };
@@ -24,7 +25,7 @@ export const metadata: Metadata = {
 const structuredData = {
   '@context': 'https://schema.org',
   '@type': 'Article',
-  headline: 'Implementation Plans in Vibe Manager',
+  headline: 'Implementation plans in PlanToCode',
   description:
     'Documentation for the Implementation Plans panel, including plan storage, Monaco review features, and navigation.',
 };
@@ -36,14 +37,13 @@ export default function ImplementationPlansDocPage() {
 
       <DocsArticle
         title="Implementation Plans"
-        description="How Vibe Manager collects plan jobs, streams content into the Monaco viewer, and keeps a navigable plan history."
+        description="How PlanToCode collects plan jobs, streams content into the Monaco viewer, and keeps a navigable plan history."
         date="2025-09-19"
         readTime="6 min"
         category="Product Guide"
       >
         <p className="text-base text-muted-foreground leading-relaxed mb-6">
-          The Implementation Plans panel is where every generated plan is collected. Plans stream in from background jobs,
-          appear in a sortable list, and can be opened in a Monaco-powered modal for detailed review before prompting an agent.
+          See and edit every plan in one place. Plans stream in from jobs and open in a Monaco viewer for quick review before you run anything.
         </p>
 
         <GlassCard className="p-6 mb-10">
@@ -103,7 +103,7 @@ export default function ImplementationPlansDocPage() {
           <GlassCard className="p-6" highlighted>
             <h2 className="text-xl font-semibold mb-3">Need the desktop app?</h2>
             <p className="text-muted-foreground leading-relaxed mb-4">
-              Implementation plans are available inside the Vibe Manager desktop application. Download the build for your
+              Implementation plans are available inside the PlanToCode desktop application. Download the build for your
               platform to try the workflow end to end.
             </p>
             <PlatformDownloadSection location="docs_implementation_plans" />

@@ -4,14 +4,14 @@ import { Header } from '@/components/landing/Header';
 import { Building, Globe, Mail, Brain, Terminal, Layers, FileText, Zap, Copy } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'About Vibe Manager - AI-Powered Development Planning Platform',
-  description: 'Vibe Manager is a comprehensive development planning environment with multi-model AI integration, persistent terminal sessions, voice transcription, and architectural synthesis capabilities.',
+  title: 'About PlanToCode - development planning tool',
+  description: 'PlanToCode is a comprehensive development planning environment with multi-model AI integration, persistent terminal sessions, voice transcription, and architectural synthesis capabilities.',
   robots: {
     index: true,
     follow: true,
   },
   alternates: {
-    canonical: 'https://www.vibemanager.app/about',
+    canonical: 'https://www.plantocode.com/about',
   },
 };
 
@@ -29,10 +29,10 @@ export default function AboutPage() {
               {/* Hero */}
               <div className="text-center mb-16">
                 <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-6 bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent">
-                  About Vibe Manager
+                  About PlanToCode
                 </h1>
                 <p className="text-lg sm:text-xl md:text-2xl text-foreground/80 max-w-3xl mx-auto leading-relaxed">
-                  AI-powered development planning platform that bridges ideation to implementation through intelligent automation and context-aware assistance.
+                  PlanToCode helps developers plan and ship code changes by finding impacted files, generating and merging plans, and running them in a terminal.
                 </p>
               </div>
 
@@ -41,7 +41,7 @@ export default function AboutPage() {
                 <GlassCard className="p-8 sm:p-12" highlighted>
                   <h2 className="text-2xl sm:text-3xl font-bold mb-6 text-center">What We Built</h2>
                   <p className="text-lg text-foreground/80 mb-8 leading-relaxed">
-                    Vibe Manager is a comprehensive development planning environment designed for serious development work where context, traceability, and professional tooling matter more than quick AI interactions. We've built a system for complex, multi-step implementations where traditional AI tools fall short.
+                    PlanToCode is a comprehensive development planning environment designed for serious development work where context, traceability, and professional tooling matter more than quick AI interactions. We've built a system for complex, multi-step implementations where traditional AI tools fall short.
                   </p>
 
                   <div className="grid md:grid-cols-2 gap-8">
@@ -178,7 +178,7 @@ export default function AboutPage() {
 
                 <GlassCard className="p-8 bg-black/50">
                   <div className="font-mono text-sm">
-                    <div className="text-gray-500 mb-4"># Vibe Manager Architecture</div>
+                    <div className="text-gray-500 mb-4"># PlanToCode Architecture</div>
 
                     <div className="mb-6">
                       <div className="text-green-400 mb-2">## Frontend</div>
@@ -243,8 +243,8 @@ export default function AboutPage() {
                       <Mail className="w-8 h-8 text-primary flex-shrink-0" />
                       <div>
                         <p className="text-sm text-muted-foreground">Contact</p>
-                        <a href="mailto:support@vibemanager.app" className="text-primary hover:underline font-medium text-lg">
-                          support@vibemanager.app
+                        <a href="mailto:support@plantocode.com" className="text-primary hover:underline font-medium text-lg">
+                          support@plantocode.com
                         </a>
                       </div>
                     </div>

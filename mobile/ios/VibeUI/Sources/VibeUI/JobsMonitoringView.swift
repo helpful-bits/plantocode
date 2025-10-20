@@ -64,19 +64,6 @@ public struct JobsMonitoringView: View {
             .sorted { ($0.updatedAt ?? $0.createdAt) > ($1.updatedAt ?? $1.createdAt) }
     }
 
-    // Summary counts (use baseFilteredJobs to match list filtering)
-    private var activeJobs: [BackgroundJob] {
-        baseFilteredJobs.filter { $0.jobStatus.isActive }
-    }
-
-    private var completedJobs: [BackgroundJob] {
-        baseFilteredJobs.filter { $0.jobStatus == .completed }
-    }
-
-    private var failedJobs: [BackgroundJob] {
-        baseFilteredJobs.filter { $0.jobStatus == .failed }
-    }
-
     public init() {}
 
     public var body: some View {
@@ -123,18 +110,6 @@ public struct JobsMonitoringView: View {
                         RoundedRectangle(cornerRadius: Theme.Radii.base)
                             .stroke(Color.border, lineWidth: 1)
                     )
-
-                    // Summary Cards
-                    if jobsService.hasLoadedOnce && !jobsService.jobs.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 10) {
-                                SummaryCard(title: "Active", count: activeJobs.count, color: .info)
-                                SummaryCard(title: "Completed", count: completedJobs.count, color: .success)
-                                SummaryCard(title: "Failed", count: failedJobs.count, color: .destructive)
-                            }
-                            .padding(.horizontal, 1)
-                        }
-                    }
                 }
                 .padding()
 
@@ -521,34 +496,6 @@ public struct JobsMonitoringView: View {
                 // Silent error handling
             }
         }
-    }
-}
-
-// Summary Card Component
-private struct SummaryCard: View {
-    let title: String
-    let count: Int
-    let color: Color
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(Color.mutedForeground)
-            Text("\(count)")
-                .h2()
-                .foregroundColor(color)
-        }
-        .frame(minWidth: 100, alignment: .leading)
-        .padding(.horizontal, 18)
-        .padding(.vertical, 14)
-        .background(Color.card)
-        .cornerRadius(Theme.Radii.base)
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.Radii.base)
-                .stroke(Color.border, lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.03), radius: 3, x: 0, y: 1)
     }
 }
 

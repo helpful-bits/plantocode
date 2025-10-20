@@ -1436,8 +1436,7 @@ pub async fn transcription_handler(
     let validated_temperature =
         validate_server_temperature(temperature).map_err(|e| AppError::from(e))?;
 
-    let cleaned_mime_type = "audio/webm".to_string();
-    let file_extension = mime_type_to_extension(&cleaned_mime_type);
+    let file_extension = mime_type_to_extension(&multipart_data.mime_type);
 
     // Update filename if it's the default
     let mut final_filename = filename;
@@ -1447,7 +1446,7 @@ pub async fn transcription_handler(
 
     // Validate audio file
     let _validated_audio =
-        validate_server_audio_file(&final_filename, &cleaned_mime_type, file_data.len())
+        validate_server_audio_file(&final_filename, &multipart_data.mime_type, file_data.len())
             .map_err(|e| AppError::from(e))?;
 
     // Use OpenAI client for transcription
@@ -1462,7 +1461,7 @@ pub async fn transcription_handler(
             validated_language.as_deref(),
             validated_prompt.as_deref(),
             validated_temperature,
-            &cleaned_mime_type,
+            &multipart_data.mime_type,
         )
         .await?;
 

@@ -1,6 +1,6 @@
 # Deployment Token Setup
 
-The zero-downtime deployment system uses an API token to authenticate with the `/health/deployment` endpoint. This endpoint exposes sensitive metrics (active requests, streams) that should not be publicly accessible.
+The PlanToCode zero-downtime deployment system uses an API token to authenticate with the `/health/deployment` endpoint. This endpoint exposes sensitive metrics (active requests, streams) that should not be publicly accessible.
 
 ## Initial Setup
 

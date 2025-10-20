@@ -7,10 +7,7 @@ export interface PlanContextState {
 }
 
 export interface PlanContextActions {
-  // Implementation plan actions
   handleCreateImplementationPlan: (
-    taskDescription: string,
-    includedPaths: string[],
     selectedRootDirectories?: string[] | null,
     enableWebSearch?: boolean,
     includeProjectStructure?: boolean

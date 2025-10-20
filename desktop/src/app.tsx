@@ -1,5 +1,5 @@
 /**
- * Main App Component for Vibe Manager Desktop
+ * Main App Component for PlanToCode Desktop
  *
  * This component serves as the entry point for the desktop application.
  * It wraps the core app with desktop-specific functionality:
