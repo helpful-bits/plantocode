@@ -1,5 +1,5 @@
 [Unit]
-Description={{ app_name }} Rust Service (Green)
+Description={{ app_name }} Rust Service
 After=network.target postgresql@17-main.service
 Wants=postgresql@17-main.service
 
@@ -11,11 +11,6 @@ WorkingDirectory={{ app_dir }}
 
 # Binary path
 ExecStart={{ app_dir }}/bin/server
-
-# Environment override for green instance
-Environment="SERVER_PORT=8081"
-Environment="DEPLOYMENT_COLOR=green"
-Environment="VIBE_DEPLOYMENT_TOKEN={{ vault_vibe_deployment_token }}"
 
 # Graceful reload using symlink switch
 ExecReload=/bin/kill -s HUP $MAINPID
@@ -34,14 +29,11 @@ ReadWritePaths={{ app_dir }}/logs /var/log/{{ app_name }}
 # Resource limits
 LimitNOFILE=65535
 
-# Environment file (contains all other env vars)
+# Environment
 EnvironmentFile={{ app_dir }}/config/app.env
 
-# Graceful shutdown timeout matching application
-TimeoutStopSec=130
-KillMode=mixed
-KillSignal=SIGTERM
-SendSIGKILL=yes
+# Health check disabled - using Type=simple
+# WatchdogSec=10s
 
 [Install]
 WantedBy=multi-user.target

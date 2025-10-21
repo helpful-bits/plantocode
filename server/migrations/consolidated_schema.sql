@@ -1338,9 +1338,9 @@ CREATE TABLE IF NOT EXISTS server_regions (
 );
 
 -- Insert default regions
-INSERT INTO server_regions (label, url, is_default) VALUES 
-    ('United States', 'https://api.us.vibemanager.app', TRUE),
-    ('European Union', 'https://api.eu.vibemanager.app', FALSE)
+INSERT INTO server_regions (label, url, is_default) VALUES
+    ('United States', 'https://api-us.plantocode.com', TRUE),
+    ('European Union', 'https://api-eu.plantocode.com', FALSE)
 ON CONFLICT (url) DO NOTHING;
 
 -- Create indexes for server regions

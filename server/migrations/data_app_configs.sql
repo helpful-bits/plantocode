@@ -55,7 +55,7 @@ VALUES (
         "model": "google/gemini-2.5-flash",
         "allowed_models": ["google/gemini-2.5-flash", "openai/o4-mini"],
         "max_tokens": 16384,
-        "temperature": 0.3
+        "temperature": 0.4
       },
       "extended_path_finder": {
         "model": "openai/gpt-5-mini",

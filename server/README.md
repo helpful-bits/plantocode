@@ -197,19 +197,19 @@ This will automatically trigger re-consent for users who have accepted a previou
 #### Get Current Documents
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
-  "https://api.vibemanager.app/api/consent/documents/current?region=eu"
+  "https://api-eu.plantocode.com/api/consent/documents/current?region=eu"
 ```
 
 #### Check User Status
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
-  "https://api.vibemanager.app/api/consent/status?region=eu"
+  "https://api-eu.plantocode.com/api/consent/status?region=eu"
 ```
 
 #### Verify Consent
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
-  "https://api.vibemanager.app/api/consent/verify?region=eu"
+  "https://api-eu.plantocode.com/api/consent/verify?region=eu"
 ```
 
 #### Accept Consent
@@ -217,13 +217,13 @@ curl -H "Authorization: Bearer $TOKEN" \
 curl -X POST -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"doc_type":"terms","region":"eu"}' \
-  "https://api.vibemanager.app/api/consent/accept"
+  "https://api-eu.plantocode.com/api/consent/accept"
 ```
 
 #### Admin Report (requires admin role)
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
-  "https://api.vibemanager.app/api/consent/admin/report?format=csv&region=eu"
+  "https://api-eu.plantocode.com/api/consent/admin/report?format=csv&region=eu"
 ```
 
 ### Re-consent Semantics

@@ -8,9 +8,7 @@
       "identifier": "http:default",
       "allow": [
         { "url": "https://api-eu.plantocode.com/*" },
-        { "url": "https://api-us.plantocode.com/*" },
-        { "url": "https://api.eu.vibemanager.app/*" },
-        { "url": "https://api.us.vibemanager.app/*" }
+        { "url": "https://api-us.plantocode.com/*" }
       ]
     }
   ]

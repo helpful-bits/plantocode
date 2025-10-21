@@ -67,13 +67,13 @@ ansible interserver-us -i inventory/hosts.yml -m shell -a "sudo -u postgres psql
 #### Service Management
 ```bash
 # Restart application
-ansible interserver-us -i inventory/hosts.yml -m systemd -a "name=vibe-manager state=restarted" --become
+ansible interserver-us -i inventory/hosts.yml -m systemd -a "name=plantocode state=restarted" --vault-password-file .vault_pass --become
 
 # Check service status
-ansible interserver-us -i inventory/hosts.yml -m systemd -a "name=vibe-manager" --become
+ansible interserver-us -i inventory/hosts.yml -m systemd -a "name=plantocode" --vault-password-file .vault_pass --become
 
 # View application logs
-ansible interserver-us -i inventory/hosts.yml -m shell -a "journalctl -u vibe-manager -n 100 --no-pager" --become
+ansible interserver-us -i inventory/hosts.yml -m shell -a "journalctl -u plantocode -n 100 --no-pager" --vault-password-file .vault_pass --become
 ```
 
 #### Health Checks
