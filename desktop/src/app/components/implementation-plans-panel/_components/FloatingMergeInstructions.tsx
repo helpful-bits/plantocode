@@ -14,6 +14,9 @@ const FloatingMergeInstructionsComponent: React.FC<FloatingMergeInstructionsProp
   onMergeInstructionsChange,
   isOpen,
 }) => {
+  // Local state for immediate UI responsiveness
+  const [localValue, setLocalValue] = useState(mergeInstructions);
+
   // State for natural drag positioning
   const [position, setPosition] = useState({ x: 20, y: 20 });
   const [isDragging, setIsDragging] = useState(false);
@@ -26,6 +29,11 @@ const FloatingMergeInstructionsComponent: React.FC<FloatingMergeInstructionsProp
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Sync local value when prop changes from outside
+  useEffect(() => {
+    setLocalValue(mergeInstructions);
+  }, [mergeInstructions]);
+
   // Add enhancement event listeners
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -33,7 +41,7 @@ const FloatingMergeInstructionsComponent: React.FC<FloatingMergeInstructionsProp
 
     const handleEnhancementEvent = () => {
       // Immediately flush current text
-      onMergeInstructionsChange(mergeInstructions);
+      onMergeInstructionsChange(localValue);
     };
 
     textarea.addEventListener('flush-pending-changes', handleEnhancementEvent);
@@ -43,7 +51,7 @@ const FloatingMergeInstructionsComponent: React.FC<FloatingMergeInstructionsProp
       textarea.removeEventListener('flush-pending-changes', handleEnhancementEvent);
       textarea.removeEventListener('enhancement-applied', handleEnhancementEvent);
     };
-  }, [mergeInstructions, onMergeInstructionsChange]);
+  }, [localValue, onMergeInstructionsChange]);
 
   // Get current window dimensions dynamically
   const getWindowDimensions = useCallback(() => {
@@ -66,10 +74,10 @@ const FloatingMergeInstructionsComponent: React.FC<FloatingMergeInstructionsProp
     };
   }, [getWindowDimensions]);
 
-  // Handle input changes - direct call to parent handler
+  // Handle input changes - update local state only for instant feedback
   const handleInstructionsChange = useCallback((value: string) => {
-    onMergeInstructionsChange(value);
-  }, [onMergeInstructionsChange]);
+    setLocalValue(value);
+  }, []);
 
   const handleFocus = useCallback(() => {
     // Set global flag to prevent backend updates while editing
@@ -79,9 +87,9 @@ const FloatingMergeInstructionsComponent: React.FC<FloatingMergeInstructionsProp
   const handleBlur = useCallback(() => {
     // Clear global flag
     (window as any).__mergeInstructionsEditorFocused = false;
-    // Flush on blur
-    onMergeInstructionsChange(mergeInstructions);
-  }, [mergeInstructions, onMergeInstructionsChange]);
+    // Flush on blur - send to parent
+    onMergeInstructionsChange(localValue);
+  }, [localValue, onMergeInstructionsChange]);
 
   // Drag event handlers with proper offset calculation
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -203,7 +211,7 @@ const FloatingMergeInstructionsComponent: React.FC<FloatingMergeInstructionsProp
       <div className="relative">
         <textarea
           ref={textareaRef}
-          value={mergeInstructions}
+          value={localValue}
           onChange={(e) => handleInstructionsChange(e.target.value)}
           onFocus={handleFocus}
           onBlur={handleBlur}
