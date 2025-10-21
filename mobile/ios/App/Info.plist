@@ -5,9 +5,9 @@
 	<key>AUTH0_API_AUDIENCE</key>
 	<string>https://plantocode.com</string>
 	<key>AUTH0_DOMAIN</key>
-	<string>vibemanager.us.auth0.com</string>
+	<string>plantocode.eu.auth0.com</string>
 	<key>AUTH0_NATIVE_CLIENT_ID</key>
-	<string>cKFTdfxE1uPjUvDFZsnmo6021oaxHTw0</string>
+	<string>32Q1UC2LfKttGUeT0DJINTxEBM8sqJVU</string>
 	<key>AUTH_CALLBACK_SCHEME</key>
 	<string>vibe-manager</string>
 	<key>AUTH_SCOPE</key>

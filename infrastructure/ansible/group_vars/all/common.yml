@@ -1,8 +1,8 @@
 ---
 # Common configuration for all servers
-app_name: vibe-manager
-app_user: vibe-manager
-app_dir: /opt/vibe-manager
+app_name: plantocode
+app_user: plantocode
+app_dir: /opt/plantocode
 
 # PostgreSQL defaults
 postgresql_version: 17

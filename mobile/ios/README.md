@@ -50,7 +50,7 @@ Update `ios/App/Info.plist` with your Auth0 settings:
 <key>AUTH0_NATIVE_CLIENT_ID</key>
 <string>your_auth0_native_client_id</string>
 <key>AUTH0_API_AUDIENCE</key>
-<string>https://api.vibemanager.app</string>
+<string>https://api-us.plantocode.com</string>
 ```
 
 These values are read by `Core/Sources/Core/Config.swift` at runtime.
@@ -69,12 +69,12 @@ Region settings are persisted using `RegionSettingsRepository` with SQLite stora
 
 | Region | Base URL | Description |
 |--------|----------|-------------|
-| United States | `https://api.us.vibemanager.app` | Default region |
-| European Union | `https://api.eu.vibemanager.app` | EU data residency |
+| United States | `https://api-us.plantocode.com` | Default region |
+| European Union | `https://api-eu.plantocode.com` | EU data residency |
 
 ### Region Behavior
 
-- **Default**: United States region (`https://api.us.vibemanager.app`)
+- **Default**: United States region (`https://api-us.plantocode.com`)
 - **API Impact**: All API endpoints use the selected region's base URL
 - **Persistence**: Region selection survives app restarts and updates
 - **Configuration**: Region affects `Config.serverURL` property dynamically

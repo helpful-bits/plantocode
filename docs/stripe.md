@@ -171,7 +171,7 @@ Germany
 Kiryl Kazlovich (Geschäftsführer)
 
 **Contact / Kontakt (schnelle elektronische Kontaktaufnahme)**
-E-Mail: [legal@vibemanager.app](mailto:legal@vibemanager.app)
+E-Mail: [legal@plantocode.com](mailto:legal@plantocode.com)
 Telefon: +49 89 122237960
 
 **Register entry / Handelsregister**

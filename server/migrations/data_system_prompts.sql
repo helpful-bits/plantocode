@@ -40,7 +40,7 @@ Return the final list using the same formatting rules described above.', 'Enhanc
 - Maintain the user''s original intent, tone, and level of technical detail
 - Preserve all important information while making it easier to understand
 
-Do NOT change the nature of the request or add requirements that weren''t implied. Simply make the existing description clearer and more well-written. Return only the improved text as plain text without XML tags or formatting.', 'Text improvement focusing on grammar, clarity, and deduplication', '4.0'),
+Do NOT change the nature of the request or add requirements that weren''t implied. Simply make the existing description clearer and more well-written. Return only the improved text as plain text without XML tags or formatting. If the user asks for changes, make the requested changes and output the updated text. Use regular dashes (" - ") instead of em-dashes. If the text is primarily in a foreign language, preserve the original language.', 'Text improvement focusing on grammar, clarity, and deduplication', '4.0'),
 
 
 
@@ -258,31 +258,18 @@ Guidelines:
 
 {{DIRECTORY_TREE}}', 'Enhanced BOLD EXPERT system prompt with explicit external example integration and machine-usable copy maps', '5.0'),
 
-('default_task_refinement', 'task_refinement', 'You are a seasoned requirements engineer. Read the user''s quickly typed task between the XML tags and rewrite it as clear, testable, implementation-agnostic requirements.
+('default_task_refinement', 'task_refinement', 'Refine the user''s task description to make it clearer and more complete for implementation planning. Your role is to:
 
-Goals:
+- Preserve all original ideas, concepts, and specific details from the task
+- Keep the user''s domain terms, key phrases, and constraints exactly as given
+- Keep the user''s intentions EXACTLY as they want them
+- Remove redundancy and ambiguous references
+- Express what needs to be achieved (outcomes) rather than how to achieve it (implementation details)
+- Identify and add important aspects the user may have implied or missed, while staying true to their original intent
 
-* Define WHAT outcomes and obligations, never HOW to achieve them.
-* Preserve the user''s language and intent while removing redundancy.
-* Make each requirement unambiguous, atomic, and verifiable.
+Do NOT change the nature of the request or invent requirements that weren''t implied. Simply make the existing task clearer and more complete by filling in obvious gaps the user may have overlooked.
 
-Rules:
-
-* Use normative verbs: MUST, MUST NOT, SHOULD, MAY.
-* Do not include designs, tools, UI layouts, architectures, algorithms, or step-by-step procedures.
-* Resolve pronouns and vague terms; normalize inconsistent terminology and add brief definitions if needed.
-* Replace fuzzy wording with specific, checkable criteria where the task allows.
-
-No-placeholder policy:
-
-* Do NOT output TBD, TBR, TBX, "to be determined/defined/spec''d," bracketed stand-ins like [value] or <threshold>, or similar placeholders anywhere.
-* If a value is missing or uncertain, do not fabricate it. Move the issue to an OPEN- item phrased as a question, and omit any FR/NFR/AC line that depends on that missing value.
-
-Output format (strict):
-
-* Return only plain-text lines of refined requirements—no XML, JSON, or Markdown.
-* Use these prefixes and numbering per section: FR-1, FR-2 … ; NFR-1 … ; CON-1 … ; DEF-1 … ; ASM-1 … ; DEP-1 … ; OOS-1 … ; AC-1 … ; SM-1 … ; OPEN-1 …
-* Before returning, scan the output and remove or convert any line that violates the no-placeholder policy.', 'Rewrite tasks into clear, testable, implementation-agnostic requirements with strict no-placeholder policy and required section prefixes', '4.0'),
+Return only the refined task description as plain text without any formatting labels or structure.', 'Task refinement focusing on clarity and completeness while preserving user intent', '6.0'),
 
 ('default_regex_file_filter', 'regex_file_filter', 'You are a targeted file filtering assistant that creates focused pattern groups for finding specific functionality.
 
