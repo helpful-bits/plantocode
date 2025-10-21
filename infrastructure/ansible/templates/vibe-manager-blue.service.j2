@@ -1,16 +1,16 @@
 [Unit]
-Description=vibe-manager Rust Service (Blue)
+Description={{ app_name }} Rust Service (Blue)
 After=network.target postgresql@17-main.service
 Wants=postgresql@17-main.service
 
 [Service]
 Type=simple
-User=vibe-manager
-Group=vibe-manager
-WorkingDirectory=/opt/vibe-manager
+User={{ app_user }}
+Group={{ app_user }}
+WorkingDirectory={{ app_dir }}
 
 # Binary path
-ExecStart=/opt/vibe-manager/bin/server
+ExecStart={{ app_dir }}/bin/server
 
 # Environment override for blue instance
 Environment="SERVER_PORT=8080"
@@ -29,13 +29,13 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/vibe-manager/logs /var/log/vibe-manager
+ReadWritePaths={{ app_dir }}/logs /var/log/{{ app_name }}
 
 # Resource limits
 LimitNOFILE=65535
 
 # Environment file (contains all other env vars)
-EnvironmentFile=/opt/vibe-manager/config/app.env
+EnvironmentFile={{ app_dir }}/config/app.env
 
 # Graceful shutdown timeout matching application
 TimeoutStopSec=130
