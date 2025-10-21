@@ -19,7 +19,6 @@ import VoiceTranscription from "./voice-transcription";
 import { VideoRecordingDialog } from "./video-recording-dialog";
 import { useTaskContext } from "../_contexts/task-context";
 import { queueTaskDescriptionUpdate, startTaskEdit, endTaskEdit, createDebouncer } from "@/actions/session/task-fields.actions";
-import { invoke } from "@/utils/tauri-invoke-wrapper";
 import { useTextareaResize } from "@/hooks/use-textarea-resize";
 
 export interface TaskDescriptionHandle {
@@ -171,17 +170,11 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
         console.error("Failed to end task edit:", error);
       });
 
-      try {
-        const session: any = await invoke("get_session_command", { sessionId });
-        if (session?.taskDescription) {
-          valueRef.current = session.taskDescription;
-          if (internalTextareaRef.current) {
-            internalTextareaRef.current.value = session.taskDescription;
-          }
-        }
-      } catch (error) {
-        console.error("Failed to fetch canonical task description:", error);
-      }
+      // NOTE: We do NOT fetch from backend here to avoid race conditions.
+      // Text improvement/refinement jobs update the DOM and queue updates,
+      // but those updates may not be persisted yet when blur fires.
+      // Fetching and overwriting would revert the improved text.
+      // The frontend valueRef is the source of truth.
 
       onBlurExtra?.();
     };
