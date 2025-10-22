@@ -249,7 +249,7 @@ WHERE server_request_id IS NOT NULL;
 -- Create terminal_sessions table to track Claude CLI terminal sessions
 CREATE TABLE IF NOT EXISTS terminal_sessions (
   id TEXT PRIMARY KEY,
-  job_id TEXT NOT NULL UNIQUE,
+  job_id TEXT UNIQUE,  -- Nullable: NULL for standalone terminals, references background_jobs for plan-associated terminals
   session_id TEXT NOT NULL UNIQUE,
   status TEXT NOT NULL DEFAULT 'initializing' CHECK (status IN (
     'idle','starting','initializing','running','completed','failed','agent_requires_attention','recovering','disconnected','stuck','restored'

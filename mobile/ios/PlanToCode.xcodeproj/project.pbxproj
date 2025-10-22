@@ -7,21 +7,21 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		1F0C8D2B283AA0B900A1B2C3 /* VibeManagerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F0C8D2B283AA0B300A1B2C3 /* VibeManagerApp.swift */; };
-		1F0C8D2B283AA0BA00A1B2C3 /* VibeManagerAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F0C8D2B283AA0B200A1B2C3 /* VibeManagerAppDelegate.swift */; };
+		1F0C8D2B283AA0B900A1B2C3 /* PlanToCodeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F0C8D2B283AA0B300A1B2C3 /* PlanToCodeApp.swift */; };
+		1F0C8D2B283AA0BA00A1B2C3 /* PlanToCodeAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F0C8D2B283AA0B200A1B2C3 /* PlanToCodeAppDelegate.swift */; };
 		1F0C8D2B283AA0BB00A1B2C3 /* Core in Frameworks */ = {isa = PBXBuildFile; productRef = 1F0C8D2B283AA0C100A1B2C3 /* Core */; };
 		1F0C8D2B283AA0BC00A1B2C3 /* VibeUI in Frameworks */ = {isa = PBXBuildFile; productRef = 1F0C8D2B283AA0C200A1B2C3 /* VibeUI */; };
 		1F0C8D2B283AA0D000A1B2C3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1F0C8D2B283AA0CF00A1B2C3 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		1F0C8D2B283AA0B100A1B2C3 /* VibeManager.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VibeManager.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		1F0C8D2B283AA0B200A1B2C3 /* VibeManagerAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VibeManagerAppDelegate.swift; sourceTree = "<group>"; };
-		1F0C8D2B283AA0B300A1B2C3 /* VibeManagerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VibeManagerApp.swift; sourceTree = "<group>"; };
+		1F0C8D2B283AA0B100A1B2C3 /* PlanToCode.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PlanToCode.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1F0C8D2B283AA0B200A1B2C3 /* PlanToCodeAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanToCodeAppDelegate.swift; sourceTree = "<group>"; };
+		1F0C8D2B283AA0B300A1B2C3 /* PlanToCodeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanToCodeApp.swift; sourceTree = "<group>"; };
 		1F0C8D2B283AA0B400A1B2C3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		1F0C8D2B283AA0B500A1B2C3 /* VibeManager.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = VibeManager.entitlements; sourceTree = "<group>"; };
+		1F0C8D2B283AA0B500A1B2C3 /* PlanToCode.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PlanToCode.entitlements; sourceTree = "<group>"; };
 		1F0C8D2B283AA0CF00A1B2C3 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		9BBC175E2E9E79CA00DFA149 /* VibeManager.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; name = VibeManager.storekit; path = VibeManager/VibeManager.storekit; sourceTree = "<group>"; };
+		9BBC175E2E9E79CA00DFA149 /* PlanToCode.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; name = PlanToCode.storekit; path = PlanToCode/PlanToCode.storekit; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -40,7 +40,7 @@
 		1F0C8D2B283AA0AE00A1B2C3 = {
 			isa = PBXGroup;
 			children = (
-				9BBC175E2E9E79CA00DFA149 /* VibeManager.storekit */,
+				9BBC175E2E9E79CA00DFA149 /* PlanToCode.storekit */,
 				1F0C8D2B283AA0B000A1B2C3 /* App */,
 				1F0C8D2B283AA0AF00A1B2C3 /* Products */,
 			);
@@ -49,7 +49,7 @@
 		1F0C8D2B283AA0AF00A1B2C3 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				1F0C8D2B283AA0B100A1B2C3 /* VibeManager.app */,
+				1F0C8D2B283AA0B100A1B2C3 /* PlanToCode.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -57,10 +57,10 @@
 		1F0C8D2B283AA0B000A1B2C3 /* App */ = {
 			isa = PBXGroup;
 			children = (
-				1F0C8D2B283AA0B300A1B2C3 /* VibeManagerApp.swift */,
-				1F0C8D2B283AA0B200A1B2C3 /* VibeManagerAppDelegate.swift */,
+				1F0C8D2B283AA0B300A1B2C3 /* PlanToCodeApp.swift */,
+				1F0C8D2B283AA0B200A1B2C3 /* PlanToCodeAppDelegate.swift */,
 				1F0C8D2B283AA0B400A1B2C3 /* Info.plist */,
-				1F0C8D2B283AA0B500A1B2C3 /* VibeManager.entitlements */,
+				1F0C8D2B283AA0B500A1B2C3 /* PlanToCode.entitlements */,
 				1F0C8D2B283AA0CF00A1B2C3 /* Assets.xcassets */,
 			);
 			path = App;
@@ -69,9 +69,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		1F0C8D2B283AA0AA00A1B2C3 /* VibeManager */ = {
+		1F0C8D2B283AA0AA00A1B2C3 /* PlanToCode */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 1F0C8D2B283AA0C400A1B2C3 /* Build configuration list for PBXNativeTarget "VibeManager" */;
+			buildConfigurationList = 1F0C8D2B283AA0C400A1B2C3 /* Build configuration list for PBXNativeTarget "PlanToCode" */;
 			buildPhases = (
 				1F0C8D2B283AA0B600A1B2C3 /* Sources */,
 				1F0C8D2B283AA0B700A1B2C3 /* Frameworks */,
@@ -81,13 +81,13 @@
 			);
 			dependencies = (
 			);
-			name = VibeManager;
+			name = PlanToCode;
 			packageProductDependencies = (
 				1F0C8D2B283AA0C100A1B2C3 /* Core */,
 				1F0C8D2B283AA0C200A1B2C3 /* VibeUI */,
 			);
-			productName = VibeManager;
-			productReference = 1F0C8D2B283AA0B100A1B2C3 /* VibeManager.app */;
+			productName = PlanToCode;
+			productReference = 1F0C8D2B283AA0B100A1B2C3 /* PlanToCode.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -105,7 +105,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 1F0C8D2B283AA0AB00A1B2C3 /* Build configuration list for PBXProject "VibeManager" */;
+			buildConfigurationList = 1F0C8D2B283AA0AB00A1B2C3 /* Build configuration list for PBXProject "PlanToCode" */;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -122,7 +122,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				1F0C8D2B283AA0AA00A1B2C3 /* VibeManager */,
+				1F0C8D2B283AA0AA00A1B2C3 /* PlanToCode */,
 			);
 		};
 /* End PBXProject section */
@@ -143,8 +143,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				1F0C8D2B283AA0B900A1B2C3 /* VibeManagerApp.swift in Sources */,
-				1F0C8D2B283AA0BA00A1B2C3 /* VibeManagerAppDelegate.swift in Sources */,
+				1F0C8D2B283AA0B900A1B2C3 /* PlanToCodeApp.swift in Sources */,
+				1F0C8D2B283AA0BA00A1B2C3 /* PlanToCodeAppDelegate.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -269,8 +269,8 @@
 		1F0C8D2B283AA0C500A1B2C3 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
-				CODE_SIGN_ENTITLEMENTS = App/VibeManager.entitlements;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CODE_SIGN_ENTITLEMENTS = App/PlanToCode.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -278,6 +278,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = App/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = PlanToCode;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -298,8 +299,8 @@
 		1F0C8D2B283AA0C600A1B2C3 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
-				CODE_SIGN_ENTITLEMENTS = App/VibeManager.entitlements;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CODE_SIGN_ENTITLEMENTS = App/PlanToCode.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -307,6 +308,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = App/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = PlanToCode;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -327,7 +329,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		1F0C8D2B283AA0AB00A1B2C3 /* Build configuration list for PBXProject "VibeManager" */ = {
+		1F0C8D2B283AA0AB00A1B2C3 /* Build configuration list for PBXProject "PlanToCode" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				1F0C8D2B283AA0AC00A1B2C3 /* Debug */,
@@ -336,7 +338,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		1F0C8D2B283AA0C400A1B2C3 /* Build configuration list for PBXNativeTarget "VibeManager" */ = {
+		1F0C8D2B283AA0C400A1B2C3 /* Build configuration list for PBXNativeTarget "PlanToCode" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				1F0C8D2B283AA0C500A1B2C3 /* Debug */,

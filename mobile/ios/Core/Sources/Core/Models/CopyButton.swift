@@ -106,7 +106,7 @@ public class CopyButtonManager: ObservableObject {
 
     @Published public private(set) var buttons: [CopyButton] = CopyButton.defaults
 
-    private let userDefaultsKey = "com.vibemanager.copyButtons"
+    private let userDefaultsKey = "com.plantocode.copyButtons"
 
     private init() {
         loadButtons()

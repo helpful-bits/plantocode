@@ -107,14 +107,14 @@ public final class InitializationOrchestrator: ObservableObject {
             // Set project directory in AppState for UI routing
             appState.setSelectedProjectDirectory(pd)
 
-            if let manager = VibeManagerCore.shared.dataServices {
+            if let manager = PlanToCodeCore.shared.dataServices {
                 manager.setCurrentProject(project)
                 await manager.sessionService.setSessions(sessions, activeId: finalActiveId)
                 manager.hasCompletedInitialLoad = true
             }
 
             // Trigger live bootstrap to prefetch data
-            if let manager = VibeManagerCore.shared.dataServices {
+            if let manager = PlanToCodeCore.shared.dataServices {
                 Task {
                     await manager.performLiveBootstrap()
                 }

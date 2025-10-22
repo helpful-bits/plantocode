@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "identifier": "app.plantocode",
+  "identifier": "com.plantocode",
   "productName": "PlanToCode",
   "version": "1.0.21",
 

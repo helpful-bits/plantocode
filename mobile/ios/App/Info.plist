@@ -9,7 +9,7 @@
 	<key>AUTH0_NATIVE_CLIENT_ID</key>
 	<string>32Q1UC2LfKttGUeT0DJINTxEBM8sqJVU</string>
 	<key>AUTH_CALLBACK_SCHEME</key>
-	<string>vibe-manager</string>
+	<string>plantocode</string>
 	<key>AUTH_SCOPE</key>
 	<string>openid profile email</string>
 	<key>CFBundleDevelopmentRegion</key>
@@ -33,7 +33,7 @@
 		<dict>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>vibe-manager</string>
+				<string>plantocode</string>
 			</array>
 		</dict>
 	</array>
@@ -43,6 +43,7 @@
 	<true/>
 	<key>NSBonjourServices</key>
 	<array>
+		<string>_plantocode._tcp</string>
 		<string>_http._tcp</string>
 		<string>_ws._tcp</string>
 	</array>

@@ -7,7 +7,7 @@
   hosts: all
   become: yes
   vars:
-    app_name: vibe-manager
+    app_name: plantocode
     app_dir: "/opt/{{ app_name }}"
     
   tasks:
@@ -29,7 +29,7 @@
   hosts: all
   become: yes
   vars:
-    app_role: vibe_manager_app
+    app_role: plantocode
     
   tasks:
     - name: Create application database

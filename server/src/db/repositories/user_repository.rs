@@ -72,7 +72,7 @@ impl UserRepository {
     }
 
     // Get user by email
-    // SECURITY WARNING: This method bypasses RLS - only use with system pool (vibe_manager_app role)
+    // SECURITY WARNING: This method bypasses RLS - only use with system pool (plantocode role)
     // Never call from user-facing handlers that use user pool (authenticated role)
     pub async fn get_by_email(&self, email: &str) -> Result<User, AppError> {
         let user = query_as!(
@@ -120,7 +120,7 @@ impl UserRepository {
     }
 
     // Get user by Auth0 user ID
-    // SECURITY WARNING: This method bypasses RLS - only use with system pool (vibe_manager_app role)
+    // SECURITY WARNING: This method bypasses RLS - only use with system pool (plantocode role)
     // Never call from user-facing handlers that use user pool (authenticated role)
     pub async fn get_by_auth0_user_id(&self, auth0_user_id: &str) -> Result<User, AppError> {
         let user = query_as!(

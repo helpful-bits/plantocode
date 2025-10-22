@@ -75,9 +75,9 @@ fn validate_issuer(claims: &crate::models::auth_jwt_claims::Claims) -> Result<()
     match &claims.iss {
         Some(issuer) => {
             let expected_issuers = vec![
-                "https://vibe-manager.us.auth0.com/",
-                "https://api.vibe-manager.com",
-                "vibe-manager",
+                "https://plantocode.us.auth0.com/",
+                "https://api-us.plantocode.com",
+                "plantocode",
             ];
 
             if !expected_issuers.contains(&issuer.as_str()) {
@@ -97,7 +97,7 @@ fn validate_issuer(claims: &crate::models::auth_jwt_claims::Claims) -> Result<()
 fn validate_audience(claims: &crate::models::auth_jwt_claims::Claims) -> Result<(), AppError> {
     match &claims.aud {
         Some(audience) => {
-            let expected_audiences = vec!["vibe-manager-api", "https://api.vibe-manager.com"];
+            let expected_audiences = vec!["plantocode-api", "https://api-us.plantocode.com"];
 
             if !expected_audiences.contains(&audience.as_str()) {
                 return Err(AppError::Auth(format!("Invalid audience: {}", audience)));

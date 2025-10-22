@@ -85,7 +85,7 @@ public final class MultiConnectionManager: ObservableObject {
     /// Add connection using server relay for a specific device
     public func addConnection(for deviceId: UUID) async -> Result<UUID, Error> {
         // Strict prerequisite validation
-        if !VibeManagerCore.shared.isInitialized {
+        if !PlanToCodeCore.shared.isInitialized {
             await MainActor.run {
                 connectionStates[deviceId] = .failed(MultiConnectionError.invalidConfiguration)
             }
@@ -357,7 +357,7 @@ public final class MultiConnectionManager: ObservableObject {
 
     public func restoreConnections() async {
         // Only restore if initialized and authenticated
-        if !VibeManagerCore.shared.isInitialized || AuthService.shared.isAuthenticated == false {
+        if !PlanToCodeCore.shared.isInitialized || AuthService.shared.isAuthenticated == false {
             return
         }
 

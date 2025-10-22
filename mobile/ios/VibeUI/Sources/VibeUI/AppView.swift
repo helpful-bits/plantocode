@@ -20,10 +20,10 @@ public struct AppView: View {
     .ignoresSafeArea(.keyboard, edges: .bottom)
     .environmentObject(container)
     .onAppear {
-      if !VibeManagerCore.shared.isInitialized {
+      if !PlanToCodeCore.shared.isInitialized {
         if let url = URL(string: Config.serverURL) {
           let cfg = CoreConfiguration(desktopAPIURL: url, deviceId: DeviceManager.shared.getOrCreateDeviceID())
-          VibeManagerCore.shared.initialize(with: cfg)
+          PlanToCodeCore.shared.initialize(with: cfg)
         }
       }
     }

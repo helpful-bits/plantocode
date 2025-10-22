@@ -318,7 +318,7 @@ impl BillingService {
         &self.db_pools
     }
 
-    // Get the system database pool for operations requiring vibe_manager_app role
+    // Get the system database pool for operations requiring plantocode role
     pub fn get_system_db_pool(&self) -> PgPool {
         self.db_pools.system_pool.clone()
     }

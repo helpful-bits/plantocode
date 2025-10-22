@@ -63,7 +63,7 @@ public class ConnectivityDiagnostics {
     /// Run comprehensive diagnostics for a specific device
     public static func run(for deviceId: UUID) async -> DiagnosticsReport {
         // Get server URL
-        let serverURL = URL(string: Config.serverURL) ?? URL(string: "https://api.vibemanager.com")!
+        let serverURL = URL(string: Config.serverURL) ?? URL(string: "https://api-us.plantocode.com")!
 
         // Check authentication status
         let isAuthenticated = await AuthService.shared.isAuthenticated
@@ -197,12 +197,12 @@ public class ConnectivityDiagnostics {
 
         // Device not found in registry
         if !devicePresent {
-            return "Desktop device not found. On your desktop: ensure Vibe Manager is running, you're signed in with the same account, and 'Allow Remote Access' is enabled in Settings."
+            return "Desktop device not found. On your desktop: ensure **PlanToCode** is running, you're signed in with the same account, and 'Allow Remote Access' is enabled in Settings."
         }
 
         // Device is offline
         if deviceStatus == .offline {
-            return "Desktop is offline. On your desktop: ensure Vibe Manager is running and both 'Allow Remote Access' and 'Discoverable' are enabled in Settings."
+            return "Desktop is offline. On your desktop: ensure **PlanToCode** is running and both 'Allow Remote Access' and 'Discoverable' are enabled in Settings."
         }
 
         // Relay not reachable

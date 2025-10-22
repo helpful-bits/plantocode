@@ -39,7 +39,7 @@ public struct Config {
 
     /// Callback scheme from Info.plist with default fallback
     public static var callbackScheme: String {
-        return Bundle.main.infoDictionary?["AUTH_CALLBACK_SCHEME"] as? String ?? "vibe-manager"
+        return Bundle.main.infoDictionary?["AUTH_CALLBACK_SCHEME"] as? String ?? "plantocode"
     }
 
     // MARK: - Server Configuration
@@ -49,7 +49,9 @@ public struct Config {
     public static var serverURL: String {
         #if DEBUG
         // Force local development server for DEBUG builds
-        return "http://192.168.0.38:8080"
+        // return "http://192.168.0.38:8080"
+        // Use production server URL for now
+        return RegionSettingsRepository.shared.getActive().baseURL
         #else
         return RegionSettingsRepository.shared.getActive().baseURL
         #endif
@@ -59,7 +61,9 @@ public struct Config {
     public static var authServerURL: String {
         #if DEBUG
         // Use local development server for DEBUG builds
-        return "http://192.168.0.38:8080"
+        // return "http://192.168.0.38:8080"
+        // Use production server URL for now
+        return "https://api-us.plantocode.com"
         #else
         // Use production US server for Auth0 authentication
         return "https://api-us.plantocode.com"
@@ -114,10 +118,10 @@ public struct Config {
     /// - UI displays localized prices fetched from StoreKit with static clarifying copy
     public enum IAP {
         /// Monthly subscription product identifier
-        public static let monthlyProductId = "app.vibemanager.pro.monthly"
+        public static let monthlyProductId = "com.plantocode.pro.monthly"
 
         /// Annual subscription product identifier
-        public static let annualProductId = "app.vibemanager.pro.yearly"
+        public static let annualProductId = "com.plantocode.pro.yearly"
     }
 
     // MARK: - Auth0 Scope

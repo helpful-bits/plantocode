@@ -12,7 +12,7 @@ public final class VoiceDictationService: ObservableObject {
     private var audioFileURL: URL?
     private var audioFile: AVAudioFile?
     private let serverFeatureService = ServerFeatureService()
-    private let audioQueue = DispatchQueue(label: "com.vibemanager.audio", qos: .userInitiated)
+    private let audioQueue = DispatchQueue(label: "com.plantocode.audio", qos: .userInitiated)
     private var recordingStartTime: Date?
 
     private init() {}

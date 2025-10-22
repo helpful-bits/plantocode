@@ -52,13 +52,17 @@ public struct TaskModelSettings: Codable, Equatable {
     public var maxTokens: Int
     public var copyButtons: [CopyButton]?
     public var allowedModels: [String]?
+    public var languageCode: String?  // For voice transcription (e.g., "en", "es", "fr")
+    public var prompt: String?        // For voice transcription context/hints
 
-    public init(model: String, temperature: Double, maxTokens: Int, copyButtons: [CopyButton]? = nil, allowedModels: [String]? = nil) {
+    public init(model: String, temperature: Double, maxTokens: Int, copyButtons: [CopyButton]? = nil, allowedModels: [String]? = nil, languageCode: String? = nil, prompt: String? = nil) {
         self.model = model
         self.temperature = temperature
         self.maxTokens = maxTokens
         self.copyButtons = copyButtons
         self.allowedModels = allowedModels
+        self.languageCode = languageCode
+        self.prompt = prompt
     }
 }
 

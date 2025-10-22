@@ -331,7 +331,7 @@ export const JobCard = React.memo(
           </div>
         )}
 
-        {(!job.taskType || TaskTypeDetails[job.taskType as TaskType]?.requiresLlm !== false) && (
+        {(!job.taskType || !TaskTypeDetails[job.taskType as TaskType] || TaskTypeDetails[job.taskType as TaskType]?.requiresLlm !== false) && (
           <div className="text-muted-foreground text-[10px] mt-2 flex items-center justify-between min-h-[24px] w-full min-w-0">
             <div className="flex flex-col gap-0.5 max-w-[90%] overflow-hidden min-w-0 flex-1">
               {(() => {

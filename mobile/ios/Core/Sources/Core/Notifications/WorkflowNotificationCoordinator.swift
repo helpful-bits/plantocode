@@ -21,7 +21,7 @@ public final class WorkflowNotificationCoordinator: ObservableObject {
 
     private func setupObservers() {
         // Observe job changes from JobsDataService
-        guard let jobsService = VibeManagerCore.shared.dataServices?.jobsService else {
+        guard let jobsService = PlanToCodeCore.shared.dataServices?.jobsService else {
             logger.warning("JobsDataService not available")
             return
         }
@@ -55,7 +55,7 @@ public final class WorkflowNotificationCoordinator: ObservableObject {
     private func handleJobCompletion(_ job: BackgroundJob) {
         let taskType = job.taskType
         let sessionId = job.sessionId
-        let projectDirectory = VibeManagerCore.shared.dataServices?.sessionService.currentSession?.projectDirectory
+        let projectDirectory = PlanToCodeCore.shared.dataServices?.sessionService.currentSession?.projectDirectory
 
         if fileFinderTypes.contains(taskType) {
             logger.info("File finder job completed: \(job.id)")

@@ -21,6 +21,7 @@ public struct VoiceRecordingButton: View {
     // Internal state
     @State private var recordingDuration: TimeInterval = 0
     @State private var timer: Timer?
+    @State private var capturedCursorPosition: NSRange? = nil // Preserve cursor position when recording starts
 
     public init(
         text: Binding<String>,
@@ -97,13 +98,17 @@ public struct VoiceRecordingButton: View {
                         await MainActor.run {
                             let nsString = text as NSString
 
+                            // Use captured cursor position (from when recording started) instead of current position
+                            // This prevents the cursor from jumping to the end during recording
+                            let insertionRange = capturedCursorPosition ?? selectedRange
+
                             let validRange: NSRange
-                            if selectedRange.location == NSNotFound || selectedRange.location > nsString.length {
+                            if insertionRange.location == NSNotFound || insertionRange.location > nsString.length {
                                 validRange = NSRange(location: nsString.length, length: 0)
-                            } else if selectedRange.location + selectedRange.length > nsString.length {
-                                validRange = NSRange(location: selectedRange.location, length: nsString.length - selectedRange.location)
+                            } else if insertionRange.location + insertionRange.length > nsString.length {
+                                validRange = NSRange(location: insertionRange.location, length: nsString.length - insertionRange.location)
                             } else {
-                                validRange = selectedRange
+                                validRange = insertionRange
                             }
 
                             let beforeCursor = nsString.substring(to: validRange.location)
@@ -117,10 +122,19 @@ public struct VoiceRecordingButton: View {
                             let newCursorPosition = (beforeCursor as NSString).length + (prefix as NSString).length + (trimmedText as NSString).length
                             selectedRange = NSRange(location: newCursorPosition, length: 0)
 
+                            // Clear captured position after use
+                            capturedCursorPosition = nil
+
                             onTranscriptionComplete()
                         }
                     }
                 } else {
+                    // Capture cursor position BEFORE starting recording
+                    // This preserves where the user wants to insert transcribed text
+                    await MainActor.run {
+                        capturedCursorPosition = selectedRange
+                    }
+
                     try await voiceService.startRecording()
 
                     // Start timer for duration display
@@ -132,14 +146,17 @@ public struct VoiceRecordingButton: View {
                 }
             } catch VoiceDictationError.permissionDenied {
                 await MainActor.run {
+                    capturedCursorPosition = nil // Clear on error
                     onError("Microphone permission denied")
                 }
             } catch VoiceDictationError.recordingInProgress {
                 await MainActor.run {
+                    capturedCursorPosition = nil // Clear on error
                     onError("Recording already in progress")
                 }
             } catch {
                 await MainActor.run {
+                    capturedCursorPosition = nil // Clear on error
                     onError("Voice dictation error: \(error.localizedDescription)")
                 }
             }

@@ -11,7 +11,7 @@
   vars:
     alert_threshold: 10  # Log alert after N blocked attempts from same IP
     monitoring_interval: 300  # Check every 5 minutes
-    alert_log_dir: /var/log/vibe-manager
+    alert_log_dir: /var/log/plantocode
     
   tasks:
     # ========================================
@@ -369,25 +369,25 @@
     
     - name: Create fail2ban filter for region violations
       copy:
-        dest: /etc/fail2ban/filter.d/vibe-region.conf
+        dest: /etc/fail2ban/filter.d/plantocode-region.conf
         content: |
           [Definition]
           failregex = ^<HOST> .* (403|451) .*$
           ignoreregex =
-    
+
     - name: Create fail2ban jail for region violations
       copy:
-        dest: /etc/fail2ban/jail.d/vibe-region.conf
+        dest: /etc/fail2ban/jail.d/plantocode-region.conf
         content: |
-          [vibe-region]
+          [plantocode-region]
           enabled = true
-          filter = vibe-region
+          filter = plantocode-region
           logpath = /var/log/nginx/blocked_access.log
                     /var/log/nginx/restricted_access.log
           maxretry = {{ alert_threshold }}
           findtime = 600
           bantime = 86400
-          action = iptables-multiport[name=VibeRegion, port="80,443"]
+          action = iptables-multiport[name=PlanToCode, port="80,443"]
     
     - name: Restart fail2ban
       systemd:

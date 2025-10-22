@@ -277,10 +277,11 @@ public class ServerFeatureService: ObservableObject {
         bodyData.append(audioData)
         bodyData.append("\r\n")
 
-        // Field: model (use provided model or default to whisper-1 like desktop app)
+        // Field: model (required - must be provided, use server default "openai/gpt-4o-transcribe" as fallback)
+        let modelToUse = model ?? "openai/gpt-4o-transcribe"
         bodyData.append("--\(boundary)\r\n")
         bodyData.append("Content-Disposition: form-data; name=\"model\"\r\n\r\n")
-        bodyData.append((model ?? "whisper-1") + "\r\n")
+        bodyData.append(modelToUse + "\r\n")
 
         // Field: duration_ms (required by server)
         bodyData.append("--\(boundary)\r\n")

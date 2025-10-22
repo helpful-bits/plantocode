@@ -1,10 +1,10 @@
 import Foundation
 
 /// Main entry point for the PlanToCode Core library
-public final class VibeManagerCore {
+public final class PlanToCodeCore {
 
     /// Shared instance for easy access
-    public static let shared = VibeManagerCore()
+    public static let shared = PlanToCodeCore()
 
     /// Data services manager
     public private(set) var dataServices: DataServicesManager?
