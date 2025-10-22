@@ -2,22 +2,22 @@ import UIKit
 import UserNotifications
 import Core
 
-class VibeManagerAppDelegate: NSObject, UIApplicationDelegate {
+class PlanToCodeAppDelegate: NSObject, UIApplicationDelegate {
   func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
     // Configure TabBar appearance
     configureTabBarAppearance()
 
-    // Initialize VibeManagerCore early
+    // Initialize PlanToCodeCore early
     let deviceId = DeviceManager.shared.getOrCreateDeviceID()
     guard let serverURL = URL(string: Config.serverURL) else {
         print("Invalid serverURL")
         return true
     }
     let config = CoreConfiguration(desktopAPIURL: serverURL, deviceId: deviceId)
-    if !VibeManagerCore.shared.isInitialized {
-        VibeManagerCore.shared.initialize(with: config)
+    if !PlanToCodeCore.shared.isInitialized {
+        PlanToCodeCore.shared.initialize(with: config)
     }
-    print("Core initialized: \(VibeManagerCore.shared.isInitialized)")
+    print("Core initialized: \(PlanToCodeCore.shared.isInitialized)")
 
     // Initialize notification managers early to ensure delegate and subscriptions are active
     _ = PushNotificationManager.shared

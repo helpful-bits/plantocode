@@ -20,7 +20,7 @@ Apple requires clear, user-facing explanations for all privacy-sensitive permiss
 
 <key>NSBonjourServices</key>
 <array>
-    <string>_vibemanager._tcp</string>
+    <string>_plantocode._tcp</string>
     <!-- Replace with your actual Bonjour service type -->
 </array>
 ```
@@ -286,7 +286,7 @@ UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound
     <string>PlanToCode</string>
 
     <key>CFBundleIdentifier</key>
-    <string>com.vibemanager.ios</string>
+    <string>com.plantocode.mobile</string>
 
     <key>CFBundleVersion</key>
     <string>1</string>
@@ -300,7 +300,7 @@ UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound
 
     <key>NSBonjourServices</key>
     <array>
-        <string>_vibemanager._tcp</string>
+        <string>_plantocode._tcp</string>
     </array>
 
     <key>NSSpeechRecognitionUsageDescription</key>

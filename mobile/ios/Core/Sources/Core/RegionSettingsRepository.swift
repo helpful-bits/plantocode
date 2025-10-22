@@ -108,7 +108,7 @@ public class RegionSettingsRepository {
     public func getAvailableRegions() -> [(region: String, baseURL: String)] {
         #if DEBUG
         return [
-            ("Local Development", "http://192.168.0.38:8080"),
+            // ("Local Development", "http://192.168.0.38:8080"),
             ("United States", "https://api-us.plantocode.com"),
             ("European Union", "https://api-eu.plantocode.com")
         ]
@@ -169,7 +169,9 @@ public class RegionSettingsRepository {
         #if DEBUG
         // Using Mac's actual IP for both simulator and physical device testing
         // Server runs on port 8080
-        return ("Local Development", "http://192.168.0.38:8080")
+        // return ("Local Development", "http://192.168.0.38:8080")
+        // Use production server URL for now
+        return ("United States", "https://api-us.plantocode.com")
         #else
         return ("United States", "https://api-us.plantocode.com")
         #endif

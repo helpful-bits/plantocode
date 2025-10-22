@@ -20,7 +20,7 @@ private struct LoginAttempt {
 public final class AuthService: NSObject, ObservableObject {
   public static let shared = AuthService()
 
-  private let keychain = Keychain(service: "com.vibemanager.mobile.auth")
+  private let keychain = Keychain(service: "com.plantocode.mobile.auth")
   @Published public private(set) var isAuthenticated: Bool = false
   @Published public private(set) var currentUser: User? = nil
   @Published public private(set) var authError: String? = nil

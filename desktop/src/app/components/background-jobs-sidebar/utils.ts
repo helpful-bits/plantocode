@@ -136,13 +136,19 @@ export function formatApiType(apiType: ApiType): string {
 
 /**
  * Returns human-readable task type using consolidated TaskTypeDetails
- * STRICT: NO FALLBACKS - Invalid task types cause immediate failure
+ * Gracefully handles invalid task types with fallback
  */
 export function formatTaskType(taskType: TaskType): string {
-  // STRICT: Use comprehensive validation - NO FALLBACKS
-  const validatedTaskType = validateTaskTypeWithConfiguration(taskType);
-  const taskDetails = TaskTypeDetails[validatedTaskType];
-  return taskDetails.displayName;
+  try {
+    // Try strict validation first
+    const validatedTaskType = validateTaskTypeWithConfiguration(taskType);
+    const taskDetails = TaskTypeDetails[validatedTaskType];
+    return taskDetails.displayName;
+  } catch (error) {
+    // Fallback for invalid task types (e.g., old/corrupted data)
+    console.warn(`Invalid task type encountered: ${taskType}`, error);
+    return "Unknown Task";
+  }
 }
 
 /**

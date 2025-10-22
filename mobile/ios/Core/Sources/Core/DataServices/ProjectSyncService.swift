@@ -61,7 +61,7 @@ public final class ProjectSyncService {
                     let project = ProjectInfo(name: name, directory: dir, hash: String(dir.hashValue))
 
                     // Apply domain state and fetch sessions
-                    if let manager = VibeManagerCore.shared.dataServices {
+                    if let manager = PlanToCodeCore.shared.dataServices {
                         manager.setCurrentProject(project)
                         Task {
                             try? await manager.sessionService.fetchSessions(projectDirectory: dir)

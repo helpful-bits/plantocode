@@ -12,7 +12,7 @@ use uuid::Uuid;
 pub const DEFAULT_JWT_DURATION_DAYS: i64 = 30;
 
 // Issuer name for JWT tokens
-pub const JWT_ISSUER: &str = "vibe-manager";
+pub const JWT_ISSUER: &str = "plantocode";
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FeaturebaseClaims {

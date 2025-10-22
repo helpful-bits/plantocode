@@ -191,7 +191,7 @@ Before submission, find and replace these placeholders throughout all documents:
 - `<YOUR PHONE>` → Phone number for App Review contact
 - `<DEMO_PASSWORD>` → Password for demo@plantocode.com account
 - `<LINK TO 60-90s DEMO VIDEO>` → YouTube/Vimeo link to demo video
-- `_vibemanager._tcp` → Your actual Bonjour service type (if different)
+- `_plantocode._tcp` → Your actual Bonjour service type (if different)
 
 **URLs to verify live:**
 - `https://plantocode.com` → Marketing website

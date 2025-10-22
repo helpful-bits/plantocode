@@ -15,9 +15,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "1F0C8D2B283AA0AA00A1B2C3"
-               BuildableName = "VibeManager.app"
-               BlueprintName = "VibeManager"
-               ReferencedContainer = "container:VibeManager.xcodeproj">
+               BuildableName = "PlanToCode.app"
+               BlueprintName = "PlanToCode"
+               ReferencedContainer = "container:PlanToCode.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -31,9 +31,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "1F0C8D2B283AA0AA00A1B2C3"
-            BuildableName = "VibeManager.app"
-            BlueprintName = "VibeManager"
-            ReferencedContainer = "container:VibeManager.xcodeproj">
+            BuildableName = "PlanToCode.app"
+            BlueprintName = "PlanToCode"
+            ReferencedContainer = "container:PlanToCode.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
       <Testables>
@@ -54,13 +54,13 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "1F0C8D2B283AA0AA00A1B2C3"
-            BuildableName = "VibeManager.app"
-            BlueprintName = "VibeManager"
-            ReferencedContainer = "container:VibeManager.xcodeproj">
+            BuildableName = "PlanToCode.app"
+            BlueprintName = "PlanToCode"
+            ReferencedContainer = "container:PlanToCode.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
       <StoreKitConfigurationFileReference
-         identifier = "../../VibeManager/VibeManager.storekit">
+         identifier = "../../PlanToCode/PlanToCode.storekit">
       </StoreKitConfigurationFileReference>
    </LaunchAction>
    <ProfileAction
@@ -74,9 +74,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "1F0C8D2B283AA0AA00A1B2C3"
-            BuildableName = "VibeManager.app"
-            BlueprintName = "VibeManager"
-            ReferencedContainer = "container:VibeManager.xcodeproj">
+            BuildableName = "PlanToCode.app"
+            BlueprintName = "PlanToCode"
+            ReferencedContainer = "container:PlanToCode.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

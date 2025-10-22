@@ -6,7 +6,7 @@ use std::time::Duration;
 /// Database pools for different access levels
 #[derive(Debug, Clone)]
 pub struct DatabasePools {
-    /// System pool with vibe_manager_app role for Auth0 lookups and system operations
+    /// System pool with plantocode role for Auth0 lookups and system operations
     pub system_pool: PgPool,
     /// User pool with authenticated role for user-specific operations subject to RLS
     pub user_pool: PgPool,
@@ -29,7 +29,7 @@ pub async fn create_dual_pools() -> Result<DatabasePools, AppError> {
     })
 }
 
-/// Creates a system-level connection pool with vibe_manager_app role.
+/// Creates a system-level connection pool with plantocode role.
 /// Used for Auth0 authentication, system configuration, and administrative tasks.
 async fn create_system_pool() -> Result<PgPool, AppError> {
     let database_url = env::var("DATABASE_URL").map_err(|_| {
@@ -85,7 +85,7 @@ async fn create_system_pool() -> Result<PgPool, AppError> {
 
     create_pool_with_role(
         &database_url,
-        "vibe_manager_app",
+        "plantocode",
         max_connections,
         min_connections,
         acquire_timeout_ms,

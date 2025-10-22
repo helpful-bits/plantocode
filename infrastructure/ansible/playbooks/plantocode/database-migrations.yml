@@ -7,7 +7,7 @@
   hosts: all
   become: yes
   vars:
-    app_name: vibe-manager
+    app_name: plantocode
     app_dir: "/opt/{{ app_name }}"
     migrations_dir: "{{ app_dir }}/migrations"
     db_name: appdb

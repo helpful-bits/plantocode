@@ -65,22 +65,22 @@ export function FounderProof() {
                 
                 {/* Product Hunt Badge */}
                 {/* <div className="flex justify-center" style={{ minHeight: '43px' }}>
-                  <a 
-                    href="https://www.producthunt.com/products/vibe-manager?embed=true&utm_source=badge-featured&utm_medium=badge&utm_source=badge-vibe-manager" 
+                  <a
+                    href="https://www.producthunt.com/products/plantocode?embed=true&utm_source=badge-featured&utm_medium=badge&utm_source=badge-plantocode"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-block hover:opacity-90 transition-opacity"
                     style={{ width: '200px', height: '43px' }}
                   >
                     {mounted ? (
-                      <img 
+                      <img
                         src={
-                          resolvedTheme === 'dark' 
+                          resolvedTheme === 'dark'
                             ? "https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1009288&theme=dark&t=1757410274822"
                             : "https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1009288&theme=light&t=1757410294950"
-                        } 
-                        alt="PlanToCode - Context control for AI coding sessions | Product Hunt" 
-                        width="200" 
+                        }
+                        alt="PlanToCode - Context control for AI coding sessions | Product Hunt"
+                        width="200"
                         height="43"
                         style={{ width: '200px', height: '43px' }}
                         loading="eager"

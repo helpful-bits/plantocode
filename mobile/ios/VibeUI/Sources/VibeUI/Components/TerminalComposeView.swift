@@ -243,7 +243,23 @@ public struct TerminalComposeView: View {
                         if let settings = settingsService.projectTaskSettings["voiceTranscription"] {
                             transcriptionModel = settings.model
                             transcriptionTemperature = settings.temperature
-                            // Note: prompt is not in TaskModelSettings, but could be added if needed
+                            transcriptionPrompt = settings.prompt
+                            // Set language code from settings if available
+                            if let shortCode = settings.languageCode {
+                                selectedLanguage = mapShortCodeToLocale(shortCode)
+                            }
+                        } else {
+                            // Project doesn't have voice transcription settings configured yet
+                            // Fetch server defaults as fallback
+                            let serverDefaults = try await settingsService.fetchServerDefaults()
+                            if let defaultSettings = serverDefaults["voiceTranscription"] {
+                                transcriptionModel = defaultSettings.model
+                                transcriptionTemperature = defaultSettings.temperature
+                                transcriptionPrompt = defaultSettings.prompt
+                                if let shortCode = defaultSettings.languageCode {
+                                    selectedLanguage = mapShortCodeToLocale(shortCode)
+                                }
+                            }
                         }
                     }
                 } catch {
@@ -427,6 +443,18 @@ public struct TerminalComposeView: View {
                     errorMessage = "Refinement failed: \(error.localizedDescription)"
                 }
             }
+        }
+    }
+
+    // Map short language code from backend (e.g., "en") to full locale code for UI (e.g., "en-US")
+    private func mapShortCodeToLocale(_ shortCode: String) -> String {
+        switch shortCode.lowercased() {
+        case "en": return "en-US"
+        case "es": return "es-ES"
+        case "fr": return "fr-FR"
+        case "de": return "de-DE"
+        case "zh": return "zh-CN"
+        default: return "en-US" // Default to English if unknown
         }
     }
 

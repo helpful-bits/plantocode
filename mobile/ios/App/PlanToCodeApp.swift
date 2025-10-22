@@ -3,8 +3,8 @@ import VibeUI
 import Core
 
 @main
-struct VibeManagerApp: App {
-  @UIApplicationDelegateAdaptor(VibeManagerAppDelegate.self) var appDelegate
+struct PlanToCodeApp: App {
+  @UIApplicationDelegateAdaptor(PlanToCodeAppDelegate.self) var appDelegate
 
   var body: some Scene {
     WindowGroup {

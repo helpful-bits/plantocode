@@ -93,7 +93,7 @@ public struct SessionSelectionView: View {
                 Divider()
 
                 // Loading State
-                if isLoading && sessions.isEmpty && !(VibeManagerCore.shared.dataServices?.sessionService.hasLoadedOnce ?? false) {
+                if isLoading && sessions.isEmpty && !(PlanToCodeCore.shared.dataServices?.sessionService.hasLoadedOnce ?? false) {
                     VStack {
                         Spacer()
                         HStack {
@@ -240,7 +240,7 @@ public struct SessionSelectionView: View {
 
         Task {
             do {
-                guard let dataServices = VibeManagerCore.shared.dataServices else {
+                guard let dataServices = PlanToCodeCore.shared.dataServices else {
                     await MainActor.run {
                         errorMessage = "App not initialized"
                         isLoading = false
@@ -432,7 +432,7 @@ struct NewSessionFormView: View {
 
         Task {
             do {
-                guard let dataServices = VibeManagerCore.shared.dataServices else {
+                guard let dataServices = PlanToCodeCore.shared.dataServices else {
                     await MainActor.run {
                         errorMessage = "App not initialized"
                         isCreating = false
@@ -472,7 +472,7 @@ class SessionListEventMonitor: ObservableObject {
         self.currentProjectDirectory = projectDirectory
         cancellables.removeAll()
 
-        guard let dataServices = VibeManagerCore.shared.dataServices else { return }
+        guard let dataServices = PlanToCodeCore.shared.dataServices else { return }
 
         // Monitor plans service events for new/updated plans
         dataServices.plansService.$lastUpdateEvent

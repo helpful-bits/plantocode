@@ -79,7 +79,7 @@ ansible/
 │   │   ├── redis-setup.yml
 │   │   ├── security-updates.yml
 │   │   └── nginx-ssl.yml
-│   └── app-vibe-manager/      # Application-specific
+│   └── plantocode/          # Application-specific
 │       ├── app-setup.yml      # Master app playbook
 │       ├── database-migrations.yml
 │       ├── rust-deploy.yml
@@ -235,12 +235,12 @@ The application environment is managed through a centralized `app_env_vars` sect
 - **Single source of truth** for all environment configuration
 - **Templated values** that reference other vault variables
 
-The `app_env_vars` dictionary in `secrets.yml` contains ALL environment variables that will be written to `/opt/vibe-manager/config/app.env`. The deployment process completely replaces this file, ensuring no outdated variables persist.
+The `app_env_vars` dictionary in `secrets.yml` contains ALL environment variables that will be written to `/opt/plantocode/config/app.env`. The deployment process completely replaces this file, ensuring no outdated variables persist.
 
 Example structure:
 ```yaml
 app_env_vars:
-  APP_NAME: "vibe-manager"
+  APP_NAME: "plantocode"
   DATABASE_URL: "postgresql://{{ db_user }}:{{ db_password }}@localhost:5432/{{ db_name }}"
   REDIS_URL: "redis://:{{ redis_password }}@127.0.0.1:6379"
   # ... all other environment variables
@@ -278,12 +278,12 @@ If locked out:
 - `/usr/local/bin/backup_postgresql.sh` - Backup script (uses pg_dumpall for full server backup)
 
 ### Application Files
-- `/opt/vibe-manager/` - Application root
-- `/opt/vibe-manager/bin/` - Binary location
-- `/opt/vibe-manager/config/app.env` - Environment variables
-- `/opt/vibe-manager/migrations/` - Database migrations
-- `/opt/vibe-manager/logs/` - Application logs
-- `/etc/systemd/system/vibe-manager.service` - Service file
+- `/opt/plantocode/` - Application root
+- `/opt/plantocode/bin/` - Binary location
+- `/opt/plantocode/config/app.env` - Environment variables
+- `/opt/plantocode/migrations/` - Database migrations
+- `/opt/plantocode/logs/` - Application logs
+- `/etc/systemd/system/plantocode.service` - Service file
 
 ## Extending the Infrastructure
 

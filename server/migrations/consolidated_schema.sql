@@ -402,13 +402,13 @@ END $$;
 
 DO $$ 
 BEGIN 
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vibe_manager_app') THEN
-        CREATE ROLE vibe_manager_app;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'plantocode') THEN
+        CREATE ROLE plantocode;
     END IF;
 END $$;
 
--- Grant vibe_manager_app ability to switch to authenticated role (for user pool connections)
-GRANT authenticated TO vibe_manager_app;
+-- Grant plantocode ability to switch to authenticated role (for user pool connections)
+GRANT authenticated TO plantocode;
 
 -- Create helper function to safely get current user ID for RLS
 CREATE OR REPLACE FUNCTION get_current_user_id() RETURNS UUID AS $$
@@ -457,21 +457,21 @@ WITH CHECK (id = get_current_user_id());
 DROP POLICY IF EXISTS "App can lookup users by Auth0 ID for authentication" ON users;
 CREATE POLICY "App can lookup users by Auth0 ID for authentication"
 ON users FOR SELECT
-TO vibe_manager_app
+TO plantocode
 USING (auth0_user_id IS NOT NULL);
 
--- Policy allowing vibe_manager_app to INSERT users during Auth0 authentication
+-- Policy allowing plantocode to INSERT users during Auth0 authentication
 DROP POLICY IF EXISTS "App can insert users during authentication" ON users;
 CREATE POLICY "App can insert users during authentication"
 ON users FOR INSERT
-TO vibe_manager_app
+TO plantocode
 WITH CHECK (true);  -- App service needs to create users during Auth0 login flow
 
--- Policy allowing vibe_manager_app to UPDATE users during Auth0 authentication
+-- Policy allowing plantocode to UPDATE users during Auth0 authentication
 DROP POLICY IF EXISTS "App can update users during authentication" ON users;
 CREATE POLICY "App can update users during authentication"
 ON users FOR UPDATE
-TO vibe_manager_app
+TO plantocode
 USING (true)
 WITH CHECK (true);  -- App service needs to update user details from Auth0
 
@@ -517,26 +517,26 @@ WITH CHECK (user_id = get_current_user_id());
 DROP POLICY IF EXISTS "App can select all customer billing" ON customer_billing;
 CREATE POLICY "App can select all customer billing"
 ON customer_billing FOR SELECT
-TO vibe_manager_app
+TO plantocode
 USING (true);
 
 DROP POLICY IF EXISTS "App can insert customer billing" ON customer_billing;
 CREATE POLICY "App can insert customer billing"
 ON customer_billing FOR INSERT
-TO vibe_manager_app
+TO plantocode
 WITH CHECK (true);
 
 DROP POLICY IF EXISTS "App can update customer billing" ON customer_billing;
 CREATE POLICY "App can update customer billing"
 ON customer_billing FOR UPDATE
-TO vibe_manager_app
+TO plantocode
 USING (true)
 WITH CHECK (true);
 
 DROP POLICY IF EXISTS "App can delete customer billing" ON customer_billing;
 CREATE POLICY "App can delete customer billing"
 ON customer_billing FOR DELETE
-TO vibe_manager_app
+TO plantocode
 USING (true);
 
 -- DELETE typically handled by backend/service roles.
@@ -578,7 +578,7 @@ ALTER TABLE providers ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "App users can select providers" ON providers;
 CREATE POLICY "App users can select providers"
 ON providers FOR SELECT
-TO vibe_manager_app, authenticated
+TO plantocode, authenticated
 USING (true);
 
 -- INSERT, UPDATE, DELETE typically handled by backend/service roles.
@@ -589,7 +589,7 @@ ALTER TABLE models ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "App users can select models" ON models;
 CREATE POLICY "App users can select models"
 ON models FOR SELECT
-TO vibe_manager_app, authenticated
+TO plantocode, authenticated
 USING (true);
 
 -- INSERT, UPDATE, DELETE typically handled by backend/service roles.
@@ -600,7 +600,7 @@ ALTER TABLE model_provider_mappings ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "App users can select model provider mappings" ON model_provider_mappings;
 CREATE POLICY "App users can select model provider mappings"
 ON model_provider_mappings FOR SELECT
-TO vibe_manager_app, authenticated
+TO plantocode, authenticated
 USING (true);
 
 -- INSERT, UPDATE, DELETE typically handled by backend/service roles.
@@ -612,7 +612,7 @@ ALTER TABLE application_configurations ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "App role can always select application configurations" ON application_configurations;
 CREATE POLICY "App role can always select application configurations"
 ON application_configurations FOR SELECT
-TO vibe_manager_app
+TO plantocode
 USING (true);
 
 DROP POLICY IF EXISTS "Authenticated users can select application configurations" ON application_configurations;
@@ -670,7 +670,7 @@ ALTER TABLE default_system_prompts ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "App users can select default system prompts" ON default_system_prompts;
 CREATE POLICY "App users can select default system prompts"
 ON default_system_prompts FOR SELECT
-TO vibe_manager_app, authenticated
+TO plantocode, authenticated
 USING (true);
 
 -- Default system prompts are read-only for the application.
@@ -688,30 +688,34 @@ USING (user_id = get_current_user_id());
 DROP POLICY IF EXISTS "App can manage audit logs" ON audit_logs;
 CREATE POLICY "App can manage audit logs"
 ON audit_logs FOR ALL
-TO vibe_manager_app
+TO plantocode
 USING (true); -- System-level table managed by application for auditing purposes
 
 
--- Grant necessary table permissions to vibe_manager_app role
+-- Grant necessary table permissions to plantocode role
 -- These are for system tables that need to be readable by the application
-GRANT SELECT ON providers TO vibe_manager_app;
-GRANT SELECT ON models TO vibe_manager_app; 
-GRANT SELECT ON model_provider_mappings TO vibe_manager_app;
-GRANT SELECT ON application_configurations TO vibe_manager_app;
-GRANT SELECT ON default_system_prompts TO vibe_manager_app;
+GRANT SELECT ON providers TO plantocode;
+GRANT SELECT ON models TO plantocode; 
+GRANT SELECT ON model_provider_mappings TO plantocode;
+GRANT SELECT ON application_configurations TO plantocode;
+GRANT SELECT ON default_system_prompts TO plantocode;
 
 -- Grant permissions needed for authentication flow
-GRANT SELECT ON users TO vibe_manager_app;
-GRANT INSERT, UPDATE ON users TO vibe_manager_app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON refresh_tokens TO vibe_manager_app;
+GRANT SELECT ON users TO plantocode;
+GRANT INSERT, UPDATE ON users TO plantocode;
+GRANT SELECT, INSERT, UPDATE, DELETE ON refresh_tokens TO plantocode;
 
 -- Grant permissions needed for billing and credit operations
-GRANT SELECT, INSERT, UPDATE ON user_credits TO vibe_manager_app;
-GRANT SELECT, INSERT ON credit_transactions TO vibe_manager_app;
+GRANT SELECT, INSERT, UPDATE ON user_credits TO plantocode;
+GRANT SELECT, INSERT ON credit_transactions TO plantocode;
 
 -- Grant permissions needed for system operations
-GRANT SELECT, INSERT, UPDATE ON webhook_idempotency TO vibe_manager_app;
-GRANT SELECT, INSERT, UPDATE ON audit_logs TO vibe_manager_app;
+GRANT SELECT, INSERT, UPDATE ON webhook_idempotency TO plantocode;
+GRANT SELECT, INSERT, UPDATE ON audit_logs TO plantocode;
+GRANT SELECT, INSERT ON revoked_tokens TO plantocode;
+GRANT SELECT ON server_regions TO plantocode;
+GRANT SELECT, INSERT, UPDATE ON invoices TO plantocode;
+GRANT SELECT, INSERT, UPDATE, DELETE ON devices TO plantocode;
 
 
 -- User credits balance tracking
@@ -860,7 +864,7 @@ USING (user_id = get_current_user_id());
 DROP POLICY IF EXISTS "App can manage user credit balance" ON user_credits;
 CREATE POLICY "App can manage user credit balance"
 ON user_credits FOR ALL
-TO vibe_manager_app
+TO plantocode
 USING (true)  -- App service has full access for system operations
 WITH CHECK (true);
 
@@ -902,7 +906,7 @@ USING (user_id = get_current_user_id());
 DROP POLICY IF EXISTS "App can manage credit transactions" ON credit_transactions;
 CREATE POLICY "App can manage credit transactions"
 ON credit_transactions FOR ALL
-TO vibe_manager_app
+TO plantocode
 USING (true)  -- App service has full access for system operations
 WITH CHECK (true);
 
@@ -977,7 +981,7 @@ ALTER TABLE webhook_idempotency ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "App can manage webhook idempotency" ON webhook_idempotency;
 CREATE POLICY "App can manage webhook idempotency"
 ON webhook_idempotency FOR ALL
-TO vibe_manager_app
+TO plantocode
 USING (true); -- App service can read/write all webhook records
 
 
@@ -991,6 +995,9 @@ GRANT SELECT, INSERT, UPDATE ON user_credits TO authenticated;
 GRANT SELECT, INSERT ON credit_transactions TO authenticated;
 GRANT SELECT ON audit_logs TO authenticated;
 GRANT SELECT ON application_configurations TO authenticated;
+GRANT SELECT, INSERT ON revoked_tokens TO authenticated;
+GRANT SELECT ON server_regions TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON devices TO authenticated;
 
 
 -- =============================================================================
@@ -1279,12 +1286,12 @@ ALTER TABLE model_estimation_coefficients ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "App users can select estimation coefficients" ON model_estimation_coefficients;
 CREATE POLICY "App users can select estimation coefficients"
 ON model_estimation_coefficients FOR SELECT
-TO vibe_manager_app, authenticated
+TO plantocode, authenticated
 USING (true);
 
 -- Grant permissions
 GRANT SELECT ON model_estimation_coefficients TO authenticated;
-GRANT SELECT ON model_estimation_coefficients TO vibe_manager_app;
+GRANT SELECT ON model_estimation_coefficients TO plantocode;
 
 -- Load initial estimation coefficients
 \i data_estimation_coefficients.sql
@@ -1411,9 +1418,9 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Grant permissions
-GRANT SELECT, INSERT ON billing_adjustment_alerts TO vibe_manager_app;
+GRANT SELECT, INSERT ON billing_adjustment_alerts TO plantocode;
 GRANT SELECT, INSERT ON billing_adjustment_alerts TO authenticated;
-GRANT EXECUTE ON FUNCTION finalize_timed_out_pending_usage TO vibe_manager_app;
+GRANT EXECUTE ON FUNCTION finalize_timed_out_pending_usage TO plantocode;
 
 -- =============================================================================
 -- COMPREHENSIVE SECURITY IMPLEMENTATION STATUS
@@ -1583,13 +1590,13 @@ USING (true);
 DROP POLICY IF EXISTS "App can read legal documents" ON legal_documents;
 CREATE POLICY "App can read legal documents"
 ON legal_documents FOR SELECT
-TO vibe_manager_app
+TO plantocode
 USING (true);
 
 DROP POLICY IF EXISTS "App can manage legal documents" ON legal_documents;
 CREATE POLICY "App can manage legal documents"
 ON legal_documents FOR ALL
-TO vibe_manager_app
+TO plantocode
 USING (true)
 WITH CHECK (true);
 
@@ -1609,7 +1616,7 @@ WITH CHECK (user_id = get_current_user_id());
 DROP POLICY IF EXISTS "App can manage consent events" ON user_consent_events;
 CREATE POLICY "App can manage consent events"
 ON user_consent_events FOR ALL
-TO vibe_manager_app
+TO plantocode
 USING (true)
 WITH CHECK (true);
 
@@ -1636,15 +1643,15 @@ WITH CHECK (user_id = get_current_user_id());
 DROP POLICY IF EXISTS "App can manage consents" ON user_consents;
 CREATE POLICY "App can manage consents"
 ON user_consents FOR ALL
-TO vibe_manager_app
+TO plantocode
 USING (true)
 WITH CHECK (true);
 
 -- Grant permissions
-GRANT SELECT ON legal_documents TO authenticated, vibe_manager_app;
+GRANT SELECT ON legal_documents TO authenticated, plantocode;
 GRANT SELECT, INSERT ON user_consent_events TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON user_consents TO authenticated;
-GRANT ALL ON legal_documents, user_consent_events, user_consents TO vibe_manager_app;
+GRANT ALL ON legal_documents, user_consent_events, user_consents TO plantocode;
 
 -- Insert initial legal documents for all combinations
 INSERT INTO legal_documents (doc_type, region, version, effective_at, url, content_hash, material_change)
@@ -1738,8 +1745,8 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Grant execute permissions on utility functions
-GRANT EXECUTE ON FUNCTION user_has_current_consent TO authenticated, vibe_manager_app;
-GRANT EXECUTE ON FUNCTION record_consent_event TO authenticated, vibe_manager_app;
+GRANT EXECUTE ON FUNCTION user_has_current_consent TO authenticated, plantocode;
+GRANT EXECUTE ON FUNCTION record_consent_event TO authenticated, plantocode;
 
 -- Add function documentation
 COMMENT ON FUNCTION user_has_current_consent IS 'Checks if user has accepted the current version of a legal document for a region';

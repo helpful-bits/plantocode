@@ -66,7 +66,7 @@
     # ========================================
     - name: Create initial HTTP configuration
       copy:
-        dest: /etc/nginx/sites-available/vibe-manager
+        dest: /etc/nginx/sites-available/plantocode
         content: |
           server {
               listen 80;
@@ -84,11 +84,11 @@
               }
           }
       notify: reload nginx
-      
+
     - name: Enable site configuration
       file:
-        src: /etc/nginx/sites-available/vibe-manager
-        dest: /etc/nginx/sites-enabled/vibe-manager
+        src: /etc/nginx/sites-available/plantocode
+        dest: /etc/nginx/sites-enabled/plantocode
         state: link
       notify: reload nginx
       
@@ -166,10 +166,10 @@
     # ========================================
     - name: Create HTTPS configuration with proxy
       copy:
-        dest: /etc/nginx/sites-available/vibe-manager-ssl
+        dest: /etc/nginx/sites-available/plantocode-ssl
         content: |
           # Upstream application
-          upstream vibe_manager {
+          upstream plantocode {
               server 127.0.0.1:{{ app_port }} fail_timeout=0;
           }
           
@@ -224,7 +224,7 @@
               
               # Proxy Settings
               location / {
-                  proxy_pass http://vibe_manager;
+                  proxy_pass http://plantocode;
                   proxy_http_version 1.1;
                   
                   # Headers
@@ -253,7 +253,7 @@
               
               # Health check endpoint (no logs)
               location /health {
-                  proxy_pass http://vibe_manager/health;
+                  proxy_pass http://plantocode/health;
                   access_log off;
               }
           }
@@ -262,15 +262,15 @@
       
     - name: Enable HTTPS site
       file:
-        src: /etc/nginx/sites-available/vibe-manager-ssl
-        dest: /etc/nginx/sites-enabled/vibe-manager-ssl
+        src: /etc/nginx/sites-available/plantocode-ssl
+        dest: /etc/nginx/sites-enabled/plantocode-ssl
         state: link
       when: (use_wildcard and wildcard_cert.stat.exists) or (not use_wildcard and ssl_cert.stat.exists)
       notify: reload nginx
 
     - name: Remove HTTP-only site when SSL is active
       file:
-        path: /etc/nginx/sites-enabled/vibe-manager
+        path: /etc/nginx/sites-enabled/plantocode
         state: absent
       when: (use_wildcard and wildcard_cert.stat.exists) or (not use_wildcard and ssl_cert.stat.exists)
       notify: reload nginx

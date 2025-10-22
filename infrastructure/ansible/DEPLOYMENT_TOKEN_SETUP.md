@@ -25,13 +25,13 @@ The PlanToCode zero-downtime deployment system uses an API token to authenticate
 
 The token is deployed in three places:
 
-1. **Systemd service files** (`vibe-manager-blue.service`, `vibe-manager-green.service`):
-   - Set as `VIBE_DEPLOYMENT_TOKEN` environment variable
+1. **Systemd service files** (`plantocode-blue.service`, `plantocode-green.service`):
+   - Set as `PLANTOCODE_DEPLOYMENT_TOKEN` environment variable
    - The Rust application reads this to authenticate requests
 
-2. **Deployment config file** (`/opt/vibe-manager/config/deployment.env`):
+2. **Deployment config file** (`/opt/plantocode/config/deployment.env`):
    - Used by the zero-downtime deployment script
-   - Contains `VIBE_DEPLOYMENT_TOKEN=<token>`
+   - Contains `PLANTOCODE_DEPLOYMENT_TOKEN=<token>`
 
 3. **Application environment** (via systemd):
    - Available to the running application for request validation
@@ -42,10 +42,10 @@ When running playbooks that use the vault:
 
 ```bash
 # With password prompt
-ansible-playbook -i inventory/hosts.yml playbooks/app-vibe-manager/rust-deploy.yml --tags bluegreen --ask-vault-pass
+ansible-playbook -i inventory/hosts.yml playbooks/plantocode/rust-deploy.yml --tags bluegreen --ask-vault-pass
 
 # With password file
-ansible-playbook -i inventory/hosts.yml playbooks/app-vibe-manager/rust-deploy.yml --tags bluegreen --vault-password-file .vault_pass
+ansible-playbook -i inventory/hosts.yml playbooks/plantocode/rust-deploy.yml --tags bluegreen --vault-password-file .vault_pass
 ```
 
 ## Security Notes
@@ -69,5 +69,5 @@ curl http://localhost:8080/health
 curl -H "Authorization: Bearer YOUR_TOKEN" http://localhost:8080/health/deployment
 
 # Deployment script will use the token automatically
-vibe-zero-downtime deploy /path/to/binary
+plantocode-zero-downtime deploy /path/to/binary
 ```

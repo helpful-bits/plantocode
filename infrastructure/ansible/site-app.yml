@@ -40,15 +40,15 @@
 # ========================================
 
 # Complete application setup (database, migrations, secrets, deployment)
-- import_playbook: playbooks/app-vibe-manager/app-setup.yml
+- import_playbook: playbooks/plantocode/app-setup.yml
   tags: [app, setup]
 
 # Individual application components (for maintenance)
-- import_playbook: playbooks/app-vibe-manager/database-migrations.yml
+- import_playbook: playbooks/plantocode/database-migrations.yml
   tags: [migrations]
 
 
-- import_playbook: playbooks/app-vibe-manager/rust-deploy.yml
+- import_playbook: playbooks/plantocode/rust-deploy.yml
   tags: [deploy]
 
 # ========================================
@@ -62,5 +62,5 @@
 # ========================================
 # APPLICATION MANAGEMENT
 # ========================================
-- import_playbook: playbooks/app-vibe-manager/maintenance.yml
+- import_playbook: playbooks/plantocode/maintenance.yml
   tags: [status, health, logs, restart, start, stop]

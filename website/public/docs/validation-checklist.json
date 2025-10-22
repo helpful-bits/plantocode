@@ -9,7 +9,7 @@
     "docs/model-configuration",
     "docs/terminal-sessions",
     "docs/voice-transcription",
-    "docs/vibe-manager-architecture"
+    "docs/plantocode-architecture"
   ],
   "status": "complete"
 }

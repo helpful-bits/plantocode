@@ -114,7 +114,7 @@ public class KeychainManager {
     // MARK: - Properties
 
     public static let shared = KeychainManager()
-    private let defaultService = "com.vibe-manager.mobile"
+    private let defaultService = "com.plantocode.mobile"
 
     private init() {}
 
@@ -316,7 +316,7 @@ extension KeychainManager.KeychainItem {
     /// Authentication token storage
     public static func authToken(userId: String) -> KeychainManager.KeychainItem {
         return KeychainManager.KeychainItem(
-            service: "com.vibe-manager.auth",
+            service: "com.plantocode.auth",
             account: "token-\(userId)",
             biometricPolicy: .biometryOrPasscode
         )
@@ -325,7 +325,7 @@ extension KeychainManager.KeychainItem {
     /// Refresh token storage
     public static func refreshToken(userId: String) -> KeychainManager.KeychainItem {
         return KeychainManager.KeychainItem(
-            service: "com.vibe-manager.auth",
+            service: "com.plantocode.auth",
             account: "refresh-\(userId)",
             biometricPolicy: .biometryOrPasscode
         )
@@ -334,7 +334,7 @@ extension KeychainManager.KeychainItem {
     /// Device credentials
     public static func deviceCredentials(deviceId: String) -> KeychainManager.KeychainItem {
         return KeychainManager.KeychainItem(
-            service: "com.vibe-manager.device",
+            service: "com.plantocode.device",
             account: "credentials-\(deviceId)",
             biometricPolicy: .biometryAny
         )
@@ -343,7 +343,7 @@ extension KeychainManager.KeychainItem {
     /// User PIN/Password
     public static func userPin(userId: String) -> KeychainManager.KeychainItem {
         return KeychainManager.KeychainItem(
-            service: "com.vibe-manager.user",
+            service: "com.plantocode.user",
             account: "pin-\(userId)",
             biometricPolicy: .biometryCurrentSet
         )
@@ -352,7 +352,7 @@ extension KeychainManager.KeychainItem {
     /// SSH Keys
     public static func sshKey(keyId: String) -> KeychainManager.KeychainItem {
         return KeychainManager.KeychainItem(
-            service: "com.vibe-manager.ssh",
+            service: "com.plantocode.ssh",
             account: "key-\(keyId)",
             biometricPolicy: .biometryOrPasscode
         )
@@ -361,7 +361,7 @@ extension KeychainManager.KeychainItem {
     /// API Keys
     public static func apiKey(serviceId: String) -> KeychainManager.KeychainItem {
         return KeychainManager.KeychainItem(
-            service: "com.vibe-manager.api",
+            service: "com.plantocode.api",
             account: "key-\(serviceId)",
             biometricPolicy: .biometryAny
         )
@@ -370,7 +370,7 @@ extension KeychainManager.KeychainItem {
     /// Encryption keys
     public static func encryptionKey(keyId: String) -> KeychainManager.KeychainItem {
         return KeychainManager.KeychainItem(
-            service: "com.vibe-manager.crypto",
+            service: "com.plantocode.crypto",
             account: "key-\(keyId)",
             biometricPolicy: .biometryCurrentSet
         )
@@ -470,7 +470,7 @@ extension KeychainManager.KeychainItem {
     /// Relay session resume token storage per device
     public static func relayResumeToken(deviceId: String) -> KeychainManager.KeychainItem {
         return KeychainManager.KeychainItem(
-            service: "com.vibe-manager.relay",
+            service: "com.plantocode.relay",
             account: "resume-\(deviceId)",
             biometricPolicy: .none,
             synchronizable: false

@@ -2,9 +2,9 @@
 
 ## Setup Instructions
 
-1) Open `mobile/ios/VibeManager.xcodeproj` in Xcode.
-   - Select the VibeManager target → Signing & Capabilities → choose your Apple Developer Team.
-   - Bundle Identifier is preset to `com.vibemanager.mobile`; adjust only if your team requires it.
+1) Open `mobile/ios/PlanToCode.xcodeproj` in Xcode.
+   - Select the PlanToCode target → Signing & Capabilities → choose your Apple Developer Team.
+   - Bundle Identifier is preset to `com.plantocode.mobile`; adjust only if your team requires it.
 
 2) Resolve local Swift packages when prompted (Core, UI, Features).
    - They live in `mobile/Core`, `mobile/UI`, and `mobile/Features` and are referenced automatically.
@@ -103,7 +103,7 @@ The `RegionSettingsRepository.shared.getActive()` method returns the current reg
 
 ### Token Management
 
-- **Storage**: JWT tokens stored in iOS Keychain (`com.vibemanager.mobile.auth`)
+- **Storage**: JWT tokens stored in iOS Keychain (`com.plantocode.mobile.auth`)
 - **Validation**: Tokens validated by fetching user info (`/api/auth/userinfo`)
 - **Refresh**: Token refresh via `/api/auth0/refresh-app-token` endpoint
 - **Expiry**: Invalid tokens cleared automatically

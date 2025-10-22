@@ -174,7 +174,7 @@ public struct DesktopDiscoveryConfig {
         localAddresses: [String] = [],
         discoveryTimeoutSeconds: TimeInterval = 3.0,
         enableBonjour: Bool = true,
-        bonjourServiceType: String = "_vibe-manager._tcp"
+        bonjourServiceType: String = "_plantocode._tcp"
     ) {
         self.scanPorts = scanPorts
         self.localAddresses = localAddresses

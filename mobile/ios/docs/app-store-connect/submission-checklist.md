@@ -89,7 +89,7 @@ Complete this checklist before submitting PlanToCode for iOS to App Review.
 
 - [ ] **Permission strings** added from `info-plist-permissions.md`:
   - [ ] `NSLocalNetworkUsageDescription`
-  - [ ] `NSBonjourServices` (with correct service type: `_vibemanager._tcp`)
+  - [ ] `NSBonjourServices` (with correct service type: `_plantocode._tcp`)
   - [ ] `NSSpeechRecognitionUsageDescription` (if using dictation)
   - [ ] `NSMicrophoneUsageDescription` (if using dictation)
   - [ ] `NSUserNotificationsUsageDescription` (if using notifications)

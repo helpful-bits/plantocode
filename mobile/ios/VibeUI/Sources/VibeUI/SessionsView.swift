@@ -138,7 +138,7 @@ public struct SessionsView: View {
         }
         .sheet(isPresented: $showingSessionDetail) {
             if let session = selectedSession,
-               let dataServices = VibeManagerCore.shared.dataServices {
+               let dataServices = PlanToCodeCore.shared.dataServices {
                 SessionDetailView(session: session, sessionService: dataServices.sessionService)
             }
         }
@@ -164,7 +164,7 @@ public struct SessionsView: View {
         isLoading = true
         errorMessage = nil
 
-        guard let dataServices = VibeManagerCore.shared.dataServices else {
+        guard let dataServices = PlanToCodeCore.shared.dataServices else {
             self.errorMessage = "App not initialized"
             self.isLoading = false
             return
@@ -194,7 +194,7 @@ public struct SessionsView: View {
     }
 
     private func refreshSessions() async {
-        guard let dataServices = VibeManagerCore.shared.dataServices else {
+        guard let dataServices = PlanToCodeCore.shared.dataServices else {
             await MainActor.run {
                 self.errorMessage = "App not initialized"
             }

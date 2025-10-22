@@ -266,9 +266,9 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
             {/* Copy buttons */}
             {copyButtons.length > 0 && !isStreaming && hasContent && (
               <>
-                {copyButtons.map((button) => (
+                {copyButtons.map((button, index) => (
                   <Button
-                    key={button.id}
+                    key={button.id || `copy-button-${index}`}
                     variant="outline"
                     size="sm"
                     className="text-xs h-7 px-2 py-1"

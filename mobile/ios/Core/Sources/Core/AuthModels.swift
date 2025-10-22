@@ -450,12 +450,12 @@ public struct AuthConstants {
     public static let authTokenRefreshThresholdMs: UInt64 = 300000 // Refresh when 5 minutes left
 
     public struct StorageKeys {
-        public static let deviceId = "vibe_manager_device_id"
-        public static let authToken = "vibe_manager_auth_token"
-        public static let auth0RefreshToken = "vibe_manager_auth0_refresh_token"
-        public static let userInfo = "vibe_manager_user_info"
-        public static let serverUrl = "vibe_manager_server_url"
-        public static let onboardingCompleted = "vibe_manager_onboarding_completed"
+        public static let deviceId = "plantocode_device_id"
+        public static let authToken = "plantocode_auth_token"
+        public static let auth0RefreshToken = "plantocode_auth0_refresh_token"
+        public static let userInfo = "plantocode_user_info"
+        public static let serverUrl = "plantocode_server_url"
+        public static let onboardingCompleted = "plantocode_onboarding_completed"
     }
 
     public struct HTTPHeaders {

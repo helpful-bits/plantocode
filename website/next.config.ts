@@ -53,6 +53,12 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       {
         protocol: 'https',
+        hostname: 'plantocode-media.s3.amazonaws.com',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
         hostname: 'vibe-manager-media.s3.amazonaws.com',
         port: '',
         pathname: '/**',

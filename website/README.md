@@ -260,7 +260,7 @@ The website includes cutting-edge 3D elements powered by React Three Fiber:
 
 Large media assets (videos, high-resolution images) are hosted on S3:
 
-- Bucket: `vibe-manager-assets`
+- Bucket: `plantocode-assets`
 - Region: `us-east-1`
 - CDN: CloudFront distribution (if configured)
 

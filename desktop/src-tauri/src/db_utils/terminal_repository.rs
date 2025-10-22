@@ -20,8 +20,9 @@ impl TerminalRepository {
         started_at: i64,
         working_directory: Option<String>,
     ) -> AppResult<()> {
-        // First, check if a background job exists with this id (job_id)
-        // If not, we need to create a minimal background job for this terminal session
+        // Check if a background job exists with this id
+        // If it exists, use it as job_id (for plan-associated terminals)
+        // If not, job_id will be NULL (for standalone terminals)
         let job_exists: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM background_jobs WHERE id = ?1)"
         )
@@ -29,54 +30,22 @@ impl TerminalRepository {
         .fetch_one(&*self.pool)
         .await?;
 
-        if !job_exists {
-            // Create a minimal background job for standalone terminal sessions
-            // We need a valid session_id from the sessions table
-            // First, try to find a session or create a default one
-            let default_session_id = "terminal-standalone";
+        let job_id = if job_exists {
+            Some(session_id)
+        } else {
+            None
+        };
 
-            // Ensure a default session exists for standalone terminals
-            let temp_dir = env::temp_dir().to_string_lossy().to_string();
-            let _ = sqlx::query(
-                r#"
-                INSERT OR IGNORE INTO sessions (
-                    id, name, project_directory, project_hash, created_at, updated_at
-                ) VALUES (
-                    ?1, 'Terminal Sessions', ?2, '', ?3, ?3
-                )
-                "#
-            )
-            .bind(default_session_id)
-            .bind(&temp_dir)
-            .bind(started_at)
-            .execute(&*self.pool)
-            .await;
-
-            // Now create the background job for this terminal
-            sqlx::query(
-                r#"
-                INSERT OR IGNORE INTO background_jobs (
-                    id, session_id, task_type, status, prompt, created_at, updated_at
-                ) VALUES (
-                    ?1, ?2, 'terminal', 'running', 'Terminal session', ?3, ?3
-                )
-                "#
-            )
-            .bind(session_id)
-            .bind(default_session_id)
-            .bind(started_at)
-            .execute(&*self.pool)
-            .await?;
-        }
-
-        // Now create the terminal session record
+        // Create the terminal session record
+        // job_id is now nullable - NULL for standalone terminals, session_id for plan-associated terminals
         sqlx::query(
             r#"
             INSERT OR IGNORE INTO terminal_sessions (
                 id, job_id, session_id, status, created_at, updated_at, started_at, working_directory, output_log
-            ) VALUES (hex(randomblob(16)), ?1, ?1, 'running', ?2, ?2, ?2, ?3, '')
+            ) VALUES (hex(randomblob(16)), ?1, ?2, 'running', ?3, ?3, ?3, ?4, '')
             "#,
         )
+        .bind(job_id)
         .bind(session_id)
         .bind(started_at)
         .bind(working_directory)

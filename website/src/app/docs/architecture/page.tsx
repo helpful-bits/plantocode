@@ -6,18 +6,18 @@ export const metadata: Metadata = {
   title: 'PlanToCode architecture overview',
   description: 'Desktop, orchestration, and persistence layers that power implementation plans, workflows, and terminal sessions.',
   alternates: {
-    canonical: 'https://www.plantocode.com/docs/vibe-manager-architecture',
+    canonical: 'https://www.plantocode.com/docs/plantocode-architecture',
   },
   openGraph: {
     title: 'PlanToCode architecture overview',
     description: 'Learn how the React front end, Tauri commands, and background services cooperate inside the desktop app.',
-    url: 'https://www.plantocode.com/docs/vibe-manager-architecture',
+    url: 'https://www.plantocode.com/docs/plantocode-architecture',
     siteName: 'PlanToCode',
     type: 'article',
   },
 };
 
-export default function VibeManagerArchitecturePage() {
+export default function PlanToCodeArchitecturePage() {
   return (
     <DocsArticle
       title="PlanToCode Architecture"

@@ -3,7 +3,7 @@
   hosts: all
   become: yes
   vars:
-    app_name: vibe-manager
+    app_name: plantocode
     app_user: "{{ app_name }}"
     app_group: "{{ app_name }}"
     app_dir: "/opt/{{ app_name }}"
@@ -258,30 +258,30 @@
             name: jq
             state: present
 
-        - name: Install vibe-manager blue service
+        - name: Install plantocode blue service
           template:
-            src: "{{ playbook_dir }}/../../templates/vibe-manager-blue.service.j2"
-            dest: /etc/systemd/system/vibe-manager-blue.service
+            src: "{{ playbook_dir }}/../../templates/plantocode-blue.service.j2"
+            dest: /etc/systemd/system/plantocode-blue.service
             mode: "0644"
           notify: reload systemd
 
-        - name: Install vibe-manager green service
+        - name: Install plantocode green service
           template:
-            src: "{{ playbook_dir }}/../../templates/vibe-manager-green.service.j2"
-            dest: /etc/systemd/system/vibe-manager-green.service
+            src: "{{ playbook_dir }}/../../templates/plantocode-green.service.j2"
+            dest: /etc/systemd/system/plantocode-green.service
             mode: "0644"
           notify: reload systemd
 
         - name: Copy zero-downtime deploy script
           copy:
             src: "{{ playbook_dir }}/../../scripts/zero-downtime-deploy.sh"
-            dest: /usr/local/bin/vibe-zero-downtime
+            dest: /usr/local/bin/plantocode-zero-downtime
             mode: "0755"
 
         - name: Create deployment environment file
           template:
             src: "{{ playbook_dir }}/../../templates/deployment.env.j2"
-            dest: /opt/vibe-manager/config/deployment.env
+            dest: /opt/plantocode/config/deployment.env
             owner: "{{ app_user }}"
             group: "{{ app_group }}"
             mode: "0600"
@@ -289,7 +289,7 @@
         - name: Seed nginx upstream (initially blue active)
           template:
             src: "{{ playbook_dir }}/../../templates/nginx-upstream.conf.j2"
-            dest: /etc/nginx/conf.d/vibe-upstream.conf
+            dest: /etc/nginx/conf.d/plantocode-upstream.conf
             mode: "0644"
           vars:
             active_color: "blue"
