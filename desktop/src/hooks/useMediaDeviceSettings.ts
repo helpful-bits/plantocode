@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 
 export const FPS_OPTIONS = [1, 5, 10, 15, 20, 24];
 
-const STORAGE_KEY = 'vibe-manager-audio-device';
+const STORAGE_KEY = 'plantocode-audio-device';
 
 export function useMediaDeviceSettings() {
   const [availableAudioInputs, setAvailableAudioInputs] = useState<

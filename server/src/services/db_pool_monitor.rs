@@ -40,7 +40,7 @@ impl DbPoolMonitor {
                    COUNT(*) FILTER (WHERE state = 'idle') AS idle,
                    COUNT(*) FILTER (WHERE wait_event_type = 'Lock') AS waiting_locks
             FROM pg_stat_activity
-            WHERE application_name LIKE 'vibe-manager-%'
+            WHERE application_name LIKE 'plantocode-%'
             GROUP BY application_name
             "#,
         )
@@ -59,7 +59,7 @@ impl DbPoolMonitor {
             r#"
             SELECT pid, application_name, now() - query_start AS duration, state, left(query, 200) AS q
             FROM pg_stat_activity
-            WHERE application_name LIKE 'vibe-manager-%'
+            WHERE application_name LIKE 'plantocode-%'
               AND state = 'active'
               AND query_start IS NOT NULL
               AND now() - query_start > interval '10 seconds'

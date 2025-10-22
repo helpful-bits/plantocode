@@ -12,7 +12,7 @@ pub const AUTH0_NATIVE_CLIENT_ID: Option<&str> = option_env!("AUTH0_NATIVE_CLIEN
 pub const AUTH0_API_AUDIENCE: Option<&str> = option_env!("AUTH0_API_AUDIENCE");
 
 // HTTP Headers for API requests
-pub const APP_HTTP_REFERER: &str = "https://github.com/vibe-manager/vibe-manager";
+pub const APP_HTTP_REFERER: &str = "https://github.com/plantocode/plantocode";
 pub const APP_X_TITLE: &str = "PlanToCode Desktop";
 
 // Binary file extensions that shouldn't be processed

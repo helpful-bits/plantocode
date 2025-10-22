@@ -48,7 +48,7 @@ if (-not $makeappx) {
     exit 1
 }
 
-$verifyDir = "$env:TEMP\vibe_msix_verify_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+$verifyDir = "$env:TEMP\plantocode_msix_verify_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
 
 if (-not $Quiet) {
     Write-Host "=== MSIX Package Verification ===" -ForegroundColor Cyan

@@ -10,6 +10,9 @@ import {
   SelectTrigger,
   SelectValue,
   AudioDeviceSelect,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
 } from "@/ui";
 
 import { useVoiceTranscription } from "@/hooks/use-voice-recording";
@@ -38,11 +41,12 @@ const VoiceTranscription = function VoiceTranscription({
     duration: recordingDuration,
     languageCode,
     activeSessionId,
-    
+
     // Audio
     audioLevel,
+    availableAudioInputs,
     selectedAudioInputId,
-    
+
     // Actions
     startRecording,
     stopRecording,
@@ -69,7 +73,8 @@ const VoiceTranscription = function VoiceTranscription({
   }, [isRecording, startRecording, stopRecording, trackEvent, recordingDuration]);
 
   // Computed values
-  const canRecord = !disabled && !!activeSessionId;
+  const hasAudioDevice = availableAudioInputs.length > 0;
+  const canRecord = !disabled && !!activeSessionId && hasAudioDevice;
 
   // UI states for recording transition
   const [showRecordingUI, setShowRecordingUI] = useState(false);
@@ -115,47 +120,54 @@ const VoiceTranscription = function VoiceTranscription({
   return (
     <div className="inline-flex items-center gap-2">
       {(isRecording || isProcessing || status === 'ERROR') && (
-        <div 
+        <div
           className={`w-2 h-2 rounded-full ${getStatusDot()} transition-all duration-200`}
           title={status === 'ERROR' ? 'Error' : isRecording && showRecordingUI ? 'Recording' : isRecording && showStartingUI ? 'Starting recording...' : isProcessing ? 'Processing' : 'Ready'}
         />
       )}
-      
-      <Button
-        type="button"
-        onClick={handleToggleRecording}
-        disabled={!canRecord}
-        variant="ghost"
-        size="icon"
-        className={`relative h-6 w-6 ${
-          isRecording && showRecordingUI
-            ? "bg-red-500 hover:bg-red-600 text-white animate-pulse" 
-            : isRecording && showStartingUI
-              ? "bg-amber-500 hover:bg-amber-600 text-white animate-bounce"
-            : canRecord 
-              ? "hover:bg-success/10 text-success" 
-              : "opacity-60"
-        } transition-all duration-200`}
-        title={
-          disabled
+
+      <Tooltip delayDuration={!hasAudioDevice ? 0 : 200}>
+        <TooltipTrigger asChild>
+          <span>
+            <Button
+              type="button"
+              onClick={canRecord ? handleToggleRecording : undefined}
+              variant="ghost"
+              size="icon"
+              className={`relative h-6 w-6 ${
+                isRecording && showRecordingUI
+                  ? "bg-red-500 hover:bg-red-600 text-white animate-pulse"
+                  : isRecording && showStartingUI
+                    ? "bg-amber-500 hover:bg-amber-600 text-white animate-bounce"
+                  : canRecord
+                    ? "hover:bg-success/10 text-success"
+                    : "opacity-40 cursor-not-allowed"
+              } transition-all duration-200`}
+            >
+              {isRecording && showRecordingUI ? (
+                <MicOff className="h-4 w-4" />
+              ) : isRecording && showStartingUI ? (
+                <Mic className="h-4 w-4 animate-spin" />
+              ) : (
+                <Mic className="h-4 w-4" />
+              )}
+            </Button>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          {disabled
             ? "Feature disabled during session switching"
-            : !canRecord
-              ? "Please select or create a session to enable voice recording"
-              : isProcessing
-                ? "Please wait for transcription to complete"
-                : isRecording 
-                  ? "Click to stop recording"
-                  : "Click to start recording"
-        }
-      >
-        {isRecording && showRecordingUI ? (
-          <MicOff className="h-4 w-4" />
-        ) : isRecording && showStartingUI ? (
-          <Mic className="h-4 w-4 animate-spin" />
-        ) : (
-          <Mic className="h-4 w-4" />
-        )}
-      </Button>
+            : !hasAudioDevice
+              ? "No microphone detected. Please connect a microphone and try again."
+              : !activeSessionId
+                ? "Please select or create a session to enable voice recording"
+                : isProcessing
+                  ? "Please wait for transcription to complete"
+                  : isRecording
+                    ? "Click to stop recording"
+                    : "Click to start recording"}
+        </TooltipContent>
+      </Tooltip>
 
       {isRecording && showStartingUI && (
         <div className="flex items-center gap-2 text-base animate-in fade-in duration-300">

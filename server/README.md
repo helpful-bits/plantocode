@@ -36,7 +36,7 @@ cp .env.example .env
 4. Create a database in PostgreSQL:
 
 ```bash
-createdb vibe_manager
+createdb plantocode
 ```
 
 5. Run database migrations:
@@ -66,7 +66,7 @@ cargo run
 
 ### Environment Variables
 
-- `APP_NAME`: Application name (default: "vibe-manager")
+- `APP_NAME`: Application name (default: "plantocode")
 - `ENVIRONMENT`: Environment (e.g., "development", "production")
 - `SERVER_HOST`: Host to bind the server to (default: "0.0.0.0")
 - `SERVER_PORT`: Port to listen on (default: 8080)
@@ -146,7 +146,7 @@ This application can be built and run using Docker. The provided `Dockerfile` us
 Navigate to the `server` directory and run the following command to build the image:
 
 ```bash
-docker build -t vibe-manager-server .
+docker build -t plantocode-server .
 ```
 
 ### Running the Container
@@ -157,8 +157,8 @@ To run the container, you must provide the necessary environment variables, such
 docker run --rm -it \
   -p 8080:8080 \
   --env-file ./.env \
-  --name vibe-manager-server \
-  vibe-manager-server
+  --name plantocode-server \
+  plantocode-server
 ```
 
 **Notes:**

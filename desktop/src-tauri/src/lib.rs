@@ -157,8 +157,12 @@ pub fn run() {
             .plugin(tauri_plugin_single_instance::init(|_app, _argv, _cwd| {
                 info!("Another instance tried to launch. Focusing existing window.");
             }))
-            .plugin(tauri_plugin_updater::Builder::new().build())
             .plugin(tauri_plugin_process::init());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     }
 
     builder

@@ -29,7 +29,7 @@ const ThemeProviderContext = createContext<ThemeProviderState>(initialState);
 export function ThemeProvider({
   children,
   defaultTheme = "system",
-  storageKey = "vibe-theme",
+  storageKey = "plantocode-theme",
   attribute = "class", // This is properly defined in ThemeProviderProps
   enableSystem = false, // This is properly defined in ThemeProviderProps
   ...props

@@ -114,7 +114,7 @@ impl RLSSessionManager {
         );
 
         // Tag connection with backend pid for diagnostics
-        sqlx::query("SELECT set_config('application_name', format('vibe-manager-user:%s', pg_backend_pid()::text), true)")
+        sqlx::query("SELECT set_config('application_name', format('plantocode-user:%s', pg_backend_pid()::text), true)")
             .execute(&mut *conn)
             .await
             .map_err(|e| {

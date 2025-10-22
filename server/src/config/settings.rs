@@ -100,7 +100,7 @@ pub struct AuthStoreConfig {
 impl AppSettings {
     pub fn from_env() -> Result<Self, AppError> {
         // App config
-        let app_name = env::var("APP_NAME").unwrap_or_else(|_| "vibe-manager".to_string());
+        let app_name = env::var("APP_NAME").unwrap_or_else(|_| "plantocode".to_string());
         let environment = env::var("ENVIRONMENT").unwrap_or_else(|_| "development".to_string());
 
         // Database config

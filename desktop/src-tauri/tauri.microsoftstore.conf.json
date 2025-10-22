@@ -20,7 +20,7 @@
         "enable": true,
         "scope": ["$APPDATA/**"]
       },
-      "capabilities": ["default", "featurebase", "vibe-api"]
+      "capabilities": ["default", "featurebase", "plantocode-api"]
     },
     "windows": [
       {
