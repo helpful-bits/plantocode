@@ -213,7 +213,7 @@ async fn create_pool_with_role(
             .after_connect(move |conn, _meta| {
                 let role = role_for_closure.clone();
                 let pool_type_label = pool_type_for_closure.clone();
-                let app_name = format!("vibe-manager-{}", pool_type_label.as_str());
+                let app_name = format!("plantocode-{}", pool_type_label.as_str());
                 Box::pin(async move {
                     // deadlock_timeout is SUSET, so set it while we still hold the original (elevated) role.
                     if pool_type_label == "system" {

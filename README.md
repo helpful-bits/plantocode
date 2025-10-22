@@ -7,7 +7,7 @@ PlanToCode is a powerful AI coding assistant that helps you write and manage cod
 This monorepo is organized into three main parts:
 
 ```
-vibe-manager/
+plantocode/
 ├── core/               # Core web application (Next.js)
 ├── desktop/            # Desktop application (Tauri)
 └── server/             # Backend server (Rust)

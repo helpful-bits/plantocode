@@ -296,7 +296,7 @@ export function useVoiceTranscription({
       recorder.onstop = () => {
         const finalMimeType = recorder.mimeType || mimeType || "audio/webm";
         const combinedBlob = new Blob(audioChunksRef.current, { type: finalMimeType });
-        
+
         if (resolveRecordingRef.current) {
           resolveRecordingRef.current(combinedBlob);
           resolveRecordingRef.current = null;
@@ -306,15 +306,16 @@ export function useVoiceTranscription({
       // Handle errors
       recorder.onerror = (event) => {
         console.error("MediaRecorder error:", event.error);
-        
+
         if (resolveRecordingRef.current) {
           resolveRecordingRef.current(new Blob([], { type: "audio/webm" }));
           resolveRecordingRef.current = null;
         }
       };
 
-      // Start recording
-      recorder.start(1000);
+      // Start recording without timeslice to get one complete, properly formatted blob
+      // This ensures the MediaRecorder writes proper WebM headers and container format
+      recorder.start();
 
       // Auto-stop after maximum duration
       autoStopTimeoutRef.current = setTimeout(() => {
@@ -376,11 +377,34 @@ export function useVoiceTranscription({
       setStatus('PROCESSING');
       setStatusMessage('Transcribing audio...');
 
+      // Minimum recording duration check (0.3 seconds)
+      if (recordingDuration < 0.3) {
+        setStatusMessage('Recording too short - please record for at least 0.3 seconds');
+        isStoppingRef.current = false;
+        setStatus('IDLE');
+        return;
+      }
+
       if (audioBlob.size > 0) {
         try {
           // Get the MIME type from the blob or default to webm
           const mimeType = audioBlob.type || "audio/webm";
-          
+
+          // Validate WebM format if that's what we're using
+          if (mimeType.includes('webm')) {
+            const arrayBuffer = await audioBlob.arrayBuffer();
+            const bytes = new Uint8Array(arrayBuffer);
+
+            // Check for EBML header (0x1A 0x45 0xDF 0xA3)
+            if (bytes.length < 4 || bytes[0] !== 0x1A || bytes[1] !== 0x45 || bytes[2] !== 0xDF || bytes[3] !== 0xA3) {
+              console.warn('[VoiceTranscription] Invalid WebM format detected, blob size:', audioBlob.size);
+              setStatusMessage('Recording format error - please try again');
+              isStoppingRef.current = false;
+              setStatus('IDLE');
+              return;
+            }
+          }
+
           // Transcribe the complete audio
           const result = await transcribeAudioChunk(
             audioBlob,

@@ -30,7 +30,7 @@ The desktop app consists of:
 ## Project Structure
 
 ```
-vibe-manager/
+plantocode/
 ├── core/               # Core application (Next.js)
 │   ├── app/            # Next.js app
 │   ├── components/     # UI components

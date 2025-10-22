@@ -11,7 +11,7 @@ param(
 # Configuration
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectRoot = (Get-Item $scriptDir).Parent.Parent.FullName
-$workDir = "$env:TEMP\vibe_manager_msix_build_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+$workDir = "$env:TEMP\plantocode_msix_build_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
 $targetDir = Join-Path $projectRoot "src-tauri\target\x86_64-pc-windows-msvc\release"
 $bundleDir = Join-Path $targetDir "bundle\msix"
 $outputPath = Join-Path $bundleDir "PlanToCode_${Version}_${Architecture}.msix"
@@ -130,7 +130,7 @@ if (Test-Path $configPath) {
     $msixConfig = @{
         identity = @{
             name = "helpfulbitsGmbH.PlanToCode"
-            publisher = "CN=58806E05-BC90-4351-94F9-CF7626A0F3D6"
+            publisher = "CN=CB633740-D90E-4813-8294-FB8FB5AC3481"
             publisherDisplayName = "helpful bits GmbH"
         }
         application = @{
