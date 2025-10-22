@@ -109,10 +109,6 @@ impl LlmTaskRunner {
 
         // Log the actual system prompt being sent to the LLM
 
-        // Log full prompt to file for debugging
-        self.log_prompt_to_file(&system_prompt, &user_prompt, "non_streaming")
-            .await;
-
         // Create messages
         let messages = llm_api_utils::create_openrouter_messages(&system_prompt, &user_prompt);
 
@@ -153,16 +149,6 @@ impl LlmTaskRunner {
             "Non-streaming LLM response usage (server-calculated): {:?}",
             response.usage
         );
-
-        // Log complete interaction (prompt + response) to file for debugging
-        self.log_complete_interaction(
-            &system_prompt,
-            &user_prompt,
-            &response_text,
-            &response.usage,
-            "non_streaming",
-        )
-        .await;
 
         Ok(LlmTaskResult {
             response: response_text,
@@ -235,10 +221,6 @@ impl LlmTaskRunner {
                 .unwrap_or_else(|| self.job.task_type.to_string()),
         );
 
-        // Log full prompt to file for debugging
-        self.log_prompt_to_file(&system_prompt, &user_prompt, "streaming")
-            .await;
-
         // Get API client
         let llm_client = llm_api_utils::get_api_client(&self.app_handle).await?;
 
@@ -291,16 +273,6 @@ impl LlmTaskRunner {
         // Use the usage data from the stream result (updated with authoritative cost data)
         let final_usage = stream_result.final_usage.clone();
 
-        // Log complete interaction (prompt + response) to file for debugging
-        self.log_complete_interaction(
-            &system_prompt,
-            &user_prompt,
-            &stream_result.accumulated_response,
-            &final_usage,
-            "streaming",
-        )
-        .await;
-
         Ok(LlmTaskResult {
             response: stream_result.accumulated_response,
             usage: final_usage, // Server-authoritative usage data including cost
@@ -334,111 +306,6 @@ impl LlmTaskRunner {
         .await
     }
 
-    /// Log prompt to temporary file for debugging
-    #[cfg(debug_assertions)]
-    async fn log_prompt_to_file(&self, system_prompt: &str, user_prompt: &str, prompt_type: &str) {
-        let base_dir = std::path::Path::new("/path/to/project/tmp");
-        let task_type_dir = base_dir
-            .join("llm_logs")
-            .join(format!("{:?}", self.job.task_type));
-
-        if let Err(_) = fs::create_dir_all(&task_type_dir).await {
-            // Silently fail if can't create directory
-            return;
-        }
-
-        let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S%.3f");
-        let filename = format!("prompt_{}_{}.txt", self.job.id, timestamp);
-        let filepath = task_type_dir.join(filename);
-
-        let full_prompt = format!(
-            "=== JOB ID: {} ===\n=== TASK TYPE: {:?} ===\n=== MODEL: {} ===\n=== TEMPERATURE: {} ===\n=== PROMPT TYPE: {} ===\n\n=== SYSTEM PROMPT ===\n{}\n\n=== USER PROMPT ===\n{}\n\n=== END ===\n",
-            self.job.id,
-            self.job.task_type,
-            self.config.model,
-            self.config.temperature,
-            prompt_type,
-            system_prompt,
-            user_prompt
-        );
-
-        let _ = fs::write(&filepath, full_prompt).await;
-    }
-
-    #[cfg(not(debug_assertions))]
-    async fn log_prompt_to_file(
-        &self,
-        _system_prompt: &str,
-        _user_prompt: &str,
-        _prompt_type: &str,
-    ) {
-        // No-op in release builds
-    }
-
-    /// Log complete LLM interaction (prompt + response) to temporary file for debugging
-    #[cfg(debug_assertions)]
-    async fn log_complete_interaction(
-        &self,
-        system_prompt: &str,
-        user_prompt: &str,
-        response: &str,
-        usage: &Option<crate::models::OpenRouterUsage>,
-        prompt_type: &str,
-    ) {
-        let base_dir = std::path::Path::new("/path/to/project/tmp");
-        let task_type_dir = base_dir
-            .join("llm_interactions")
-            .join(format!("{:?}", self.job.task_type));
-
-        if let Err(_) = fs::create_dir_all(&task_type_dir).await {
-            // Silently fail if can't create directory
-            return;
-        }
-
-        let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S%.3f");
-        let filename = format!("interaction_{}_{}.txt", self.job.id, timestamp);
-        let filepath = task_type_dir.join(filename);
-
-        // Format usage information
-        let usage_info = if let Some(usage) = usage {
-            format!(
-                "=== USAGE ===\nInput Tokens: {}\nOutput Tokens: {}\nTotal Tokens: {}\nCost: ${:.6}\n\n",
-                usage.prompt_tokens,
-                usage.completion_tokens,
-                usage.total_tokens,
-                usage.cost.unwrap_or(0.0)
-            )
-        } else {
-            "=== USAGE ===\nNo usage information available\n\n".to_string()
-        };
-
-        let full_interaction = format!(
-            "=== LLM INTERACTION LOG ===\n=== JOB ID: {} ===\n=== TASK TYPE: {:?} ===\n=== MODEL: {} ===\n=== TEMPERATURE: {} ===\n=== PROMPT TYPE: {} ===\n\n{}\n=== SYSTEM PROMPT ===\n{}\n\n=== USER PROMPT ===\n{}\n\n=== LLM RESPONSE ===\n{}\n\n=== END INTERACTION ===\n",
-            self.job.id,
-            self.job.task_type,
-            self.config.model,
-            self.config.temperature,
-            prompt_type,
-            usage_info,
-            system_prompt,
-            user_prompt,
-            response
-        );
-
-        let _ = fs::write(&filepath, full_interaction).await;
-    }
-
-    #[cfg(not(debug_assertions))]
-    async fn log_complete_interaction(
-        &self,
-        _system_prompt: &str,
-        _user_prompt: &str,
-        _response: &str,
-        _usage: &Option<crate::models::OpenRouterUsage>,
-        _prompt_type: &str,
-    ) {
-        // No-op in release builds
-    }
 }
 
 /// Builder for LlmTaskConfig

@@ -1,5 +1,5 @@
 import * as React from "react";
-import "./vibe_manager_ad.css";
+import "./plantocode_ad.css";
 
 interface PanelProps {
   x: number;
@@ -14,7 +14,7 @@ interface ChevronProps {
   cy: number;
 }
 
-export default function VibeManagerAd() {
+export default function PlanToCodeAd() {
   const Panel = ({ x, y, glow, accent, children }: PanelProps) => (
     <div
       className={`panel ${accent ? 'panel--accent' : ''} ${glow ? 'panel--glow' : ''}`}

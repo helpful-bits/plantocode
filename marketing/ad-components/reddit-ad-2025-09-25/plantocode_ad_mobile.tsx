@@ -1,5 +1,5 @@
 import * as React from "react";
-import "./vibe_manager_ad_mobile.css";
+import "./plantocode_ad_mobile.css";
 
 interface PanelProps {
   glow?: boolean;
@@ -7,7 +7,7 @@ interface PanelProps {
   children: React.ReactNode;
 }
 
-export default function VibeManagerAdMobile() {
+export default function PlanToCodeAdMobile() {
   const Panel = ({ glow, accent, children }: PanelProps) => (
     <div
       className={`panel-mobile ${accent ? 'panel-mobile--accent' : ''} ${glow ? 'panel-mobile--glow' : ''}`}

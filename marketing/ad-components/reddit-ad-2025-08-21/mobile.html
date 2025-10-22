@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PlanToCode Mobile Ad - Tall Format</title>
-    <link rel="stylesheet" href="vibe_manager_ad_mobile.css">
+    <link rel="stylesheet" href="plantocode_ad_mobile.css">
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -41,7 +41,7 @@
     <div id="root"></div>
     
     <script type="text/babel">
-        function VibeManagerAdMobile() {
+        function PlanToCodeAdMobile() {
           const Panel = ({ glow, accent, children }) => (
             <div className={`panel-mobile ${accent ? 'panel-mobile--accent' : ''} ${glow ? 'panel-mobile--glow' : ''}`}>
               {children}
@@ -171,7 +171,7 @@ $ git push origin main
           );
         }
         
-        ReactDOM.render(<VibeManagerAdMobile />, document.getElementById('root'));
+        ReactDOM.render(<PlanToCodeAdMobile />, document.getElementById('root'));
     </script>
 </body>
 </html>

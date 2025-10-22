@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PlanToCode Ad</title>
-    <link rel="stylesheet" href="vibe_manager_ad.css">
+    <link rel="stylesheet" href="plantocode_ad.css">
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -24,7 +24,7 @@
     <div id="root"></div>
     
     <script type="text/babel">
-        function VibeManagerAd() {
+        function PlanToCodeAd() {
           const Panel = ({ glow, accent, children }) => (
             <div className={`panel ${accent ? 'panel--accent' : ''} ${glow ? 'panel--glow' : ''}`}>
               {children}
@@ -162,7 +162,7 @@
           );
         }
         
-        ReactDOM.render(<VibeManagerAd />, document.getElementById('root'));
+        ReactDOM.render(<PlanToCodeAd />, document.getElementById('root'));
     </script>
 </body>
 </html>

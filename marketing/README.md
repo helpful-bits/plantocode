@@ -19,7 +19,7 @@ A comprehensive command-line interface for managing advertising campaigns across
 
 1. Clone or navigate to the marketing folder:
 ```bash
-cd /path/to/vibe-manager/marketing
+cd /path/to/plantocode/marketing
 ```
 
 2. Make the main CLI executable:

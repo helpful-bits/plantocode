@@ -1,5 +1,5 @@
 {
-  "name": "vibe-manager-ad-components",
+  "name": "plantocode-ad-components",
   "version": "1.0.0",
   "description": "Marketing ad components for PlanToCode",
   "main": "index.js",
@@ -18,7 +18,7 @@
     "ads",
     "react",
     "tsx",
-    "vibe-manager"
+    "plantocode"
   ],
   "author": "PlanToCode Team",
   "license": "MIT",
