@@ -3,7 +3,7 @@
   hosts: all
   become: yes
   vars:
-    app_name: vibe-manager
+    app_name: plantocode
   tasks:
     - name: Check service status
       tags: [status]

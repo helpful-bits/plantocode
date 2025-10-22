@@ -8,6 +8,10 @@ private class KeyCommandTextView: UITextView {
     var onUpArrow: (() -> Void)?
     var onDownArrow: (() -> Void)?
 
+    // Timer to control auto-scroll rate during text selection
+    private var autoScrollTimer: Timer?
+    private var targetScrollOffset: CGPoint?
+
     override var keyCommands: [UIKeyCommand]? {
         var commands: [UIKeyCommand] = []
 
@@ -28,6 +32,92 @@ private class KeyCommandTextView: UITextView {
 
     @objc private func handleDownArrow() {
         onDownArrow?()
+    }
+
+    // Slow down auto-scrolling during text selection with CONSTANT speed
+    override func scrollRectToVisible(_ rect: CGRect, animated: Bool) {
+        // Only slow down during selection (when we have a drag gesture active)
+        guard let _ = selectedTextRange else {
+            super.scrollRectToVisible(rect, animated: animated)
+            return
+        }
+
+        // Calculate which direction to scroll (but NOT how much - that's the key!)
+        let visibleRect = CGRect(origin: contentOffset, size: bounds.size)
+        let needsScrollDown = rect.maxY > visibleRect.maxY
+        let needsScrollUp = rect.minY < visibleRect.minY
+        let needsScrollRight = rect.maxX > visibleRect.maxX
+        let needsScrollLeft = rect.minX < visibleRect.minX
+
+        // Cancel any existing timer
+        autoScrollTimer?.invalidate()
+
+        // Only start scrolling if we actually need to scroll
+        if !needsScrollDown && !needsScrollUp && !needsScrollRight && !needsScrollLeft {
+            return
+        }
+
+        // Use CONSTANT scroll rate - completely independent of distance
+        let scrollRate: CGFloat = 1.5 // Pixels per frame (lower = slower, higher = faster)
+
+        autoScrollTimer = Timer.scheduledTimer(withTimeInterval: 0.016, repeats: true) { [weak self] timer in
+            guard let self = self else {
+                timer.invalidate()
+                return
+            }
+
+            var newOffset = self.contentOffset
+
+            // Scroll at constant rate in the needed direction
+            if needsScrollDown {
+                newOffset.y += scrollRate
+            } else if needsScrollUp {
+                newOffset.y -= scrollRate
+            }
+
+            if needsScrollRight {
+                newOffset.x += scrollRate
+            } else if needsScrollLeft {
+                newOffset.x -= scrollRate
+            }
+
+            // Clamp to valid range
+            let maxOffsetX = max(0, self.contentSize.width - self.bounds.width)
+            let maxOffsetY = max(0, self.contentSize.height - self.bounds.height)
+            newOffset.x = max(0, min(newOffset.x, maxOffsetX))
+            newOffset.y = max(0, min(newOffset.y, maxOffsetY))
+
+            self.contentOffset = newOffset
+        }
+    }
+
+    private func calculateTargetOffset(for rect: CGRect) -> CGPoint {
+        var targetOffset = contentOffset
+        let visibleRect = CGRect(origin: contentOffset, size: bounds.size)
+
+        // Scroll vertically if needed
+        if rect.maxY > visibleRect.maxY {
+            targetOffset.y = rect.maxY - bounds.size.height + contentInset.bottom
+        } else if rect.minY < visibleRect.minY {
+            targetOffset.y = rect.minY - contentInset.top
+        }
+
+        // Scroll horizontally if needed
+        if rect.maxX > visibleRect.maxX {
+            targetOffset.x = rect.maxX - bounds.size.width + contentInset.right
+        } else if rect.minX < visibleRect.minX {
+            targetOffset.x = rect.minX - contentInset.left
+        }
+
+        // Clamp to valid range
+        targetOffset.x = max(0, min(targetOffset.x, contentSize.width - bounds.width))
+        targetOffset.y = max(0, min(targetOffset.y, contentSize.height - bounds.height))
+
+        return targetOffset
+    }
+
+    deinit {
+        autoScrollTimer?.invalidate()
     }
 }
 
@@ -145,11 +235,14 @@ struct SelectableTextView: UIViewRepresentable {
                 let validLength = min(selectedRange.length, textLength - selectedRange.location)
                 uiView.selectedRange = NSRange(location: selectedRange.location, length: validLength)
 
-                // Only scroll for programmatic changes (like undo/redo)
-                DispatchQueue.main.async {
-                    if let selectedTextRange = uiView.selectedTextRange {
-                        let rect = uiView.caretRect(for: selectedTextRange.start)
-                        uiView.scrollRectToVisible(rect, animated: false)
+                // Only scroll for programmatic changes (like undo/redo) when keyboard is NOT visible
+                // Scrolling during keyboard animations causes jumpiness
+                if coordinator.keyboardHeight == 0 {
+                    DispatchQueue.main.async {
+                        if let selectedTextRange = uiView.selectedTextRange {
+                            let rect = uiView.caretRect(for: selectedTextRange.start)
+                            uiView.scrollRectToVisible(rect, animated: false)
+                        }
                     }
                 }
             }
@@ -224,24 +317,28 @@ struct SelectableTextView: UIViewRepresentable {
 
             keyboardHeight = keyboardFrame.height
 
-            UIView.animate(withDuration: duration) {
-                // Calculate bottom inset accounting for tab bar
-                let window = UIApplication.shared.windows.first { $0.isKeyWindow }
-                let bottomSafeArea = window?.safeAreaInsets.bottom ?? 0
-                let tabBarHeight: CGFloat = 83 // Tab bar height
-                let adjustedHeight = keyboardFrame.height - bottomSafeArea - tabBarHeight
+            // Calculate bottom inset accounting for tab bar
+            let window = UIApplication.shared.windows.first { $0.isKeyWindow }
+            let bottomSafeArea = window?.safeAreaInsets.bottom ?? 0
 
+            // Get actual tab bar height from view hierarchy instead of hardcoding
+            var tabBarHeight: CGFloat = 0
+            if let tabBarController = window?.rootViewController as? UITabBarController {
+                tabBarHeight = tabBarController.tabBar.frame.height
+            } else if let tabBarController = textView.window?.rootViewController as? UITabBarController {
+                tabBarHeight = tabBarController.tabBar.frame.height
+            } else {
+                // Fallback for SwiftUI TabView: use safe area + typical tab bar height
+                tabBarHeight = bottomSafeArea + 49
+            }
+
+            let adjustedHeight = keyboardFrame.height - bottomSafeArea - tabBarHeight
+
+            UIView.animate(withDuration: duration) {
                 textView.contentInset.bottom = adjustedHeight
                 textView.scrollIndicatorInsets.bottom = adjustedHeight
-
-                // Scroll to cursor position with padding
-                if let selectedRange = textView.selectedTextRange {
-                    let rect = textView.caretRect(for: selectedRange.start)
-                    var visibleRect = rect
-                    visibleRect.origin.y -= 20 // Add some padding above cursor
-                    visibleRect.size.height += 40
-                    textView.scrollRectToVisible(visibleRect, animated: false)
-                }
+                // Remove manual scroll - UITextView automatically keeps cursor visible
+                // when contentInset changes. Manual scrolling here causes jumpiness.
             }
         }
 
@@ -545,7 +642,24 @@ public struct TaskInputView: View {
                     if let settings = settingsService.projectTaskSettings["voiceTranscription"] {
                         transcriptionModel = settings.model
                         transcriptionTemperature = settings.temperature
-                        // Note: prompt is not in TaskModelSettings, but could be added if needed
+                        transcriptionPrompt = settings.prompt
+                        // Set language code from settings if available
+                        // Backend stores short codes (e.g., "en"), but UI uses full locale codes (e.g., "en-US")
+                        if let shortCode = settings.languageCode {
+                            selectedLanguage = mapShortCodeToLocale(shortCode)
+                        }
+                    } else {
+                        // Project doesn't have voice transcription settings configured yet
+                        // Fetch server defaults as fallback
+                        let serverDefaults = try await settingsService.fetchServerDefaults()
+                        if let defaultSettings = serverDefaults["voiceTranscription"] {
+                            transcriptionModel = defaultSettings.model
+                            transcriptionTemperature = defaultSettings.temperature
+                            transcriptionPrompt = defaultSettings.prompt
+                            if let shortCode = defaultSettings.languageCode {
+                                selectedLanguage = mapShortCodeToLocale(shortCode)
+                            }
+                        }
                     }
                 } catch {
                     print("Failed to fetch transcription settings: \(error)")
@@ -755,6 +869,18 @@ public struct TaskInputView: View {
         }
         Task { @MainActor in
             self.saveHistoryTimer = newTimer
+        }
+    }
+
+    // Map short language code from backend (e.g., "en") to full locale code for UI (e.g., "en-US")
+    private func mapShortCodeToLocale(_ shortCode: String) -> String {
+        switch shortCode.lowercased() {
+        case "en": return "en-US"
+        case "es": return "es-ES"
+        case "fr": return "fr-FR"
+        case "de": return "de-DE"
+        case "zh": return "zh-CN"
+        default: return "en-US" // Default to English if unknown
         }
     }
 

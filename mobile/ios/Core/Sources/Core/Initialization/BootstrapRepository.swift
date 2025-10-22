@@ -44,7 +44,7 @@ public struct BootstrapRepository {
     }
 
     public func fetchSessions(projectDirectory: String) async throws -> [Session] {
-        return try await VibeManagerCore.shared
+        return try await PlanToCodeCore.shared
             .dataServices?
             .sessionService
             .fetchSessions(projectDirectory: projectDirectory) ?? []

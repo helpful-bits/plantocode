@@ -178,6 +178,10 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{
           __html: `window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};plausible.init()`
         }} />
+        {/* Crisp Chat Widget */}
+        <script dangerouslySetInnerHTML={{
+          __html: `window.$crisp=[];window.CRISP_WEBSITE_ID="9cdabe80-2d86-4925-9490-c999d53d0e6b";(function(){d=document;s=d.createElement("script");s.src="https://client.crisp.chat/l.js";s.async=1;d.getElementsByTagName("head")[0].appendChild(s);})();`
+        }} />
       </head>
       <body className={`${fontClasses.sans} bg-transparent overflow-x-hidden`}>
         {/* <ConditionalBackground /> */}

@@ -8,7 +8,7 @@ import UIKit
 public final class DeviceManager {
     public static let shared = DeviceManager()
 
-    private let keychain = Keychain(service: "com.vibemanager.mobile.device")
+    private let keychain = Keychain(service: "com.plantocode.mobile.device")
     private let deviceIDKey = "device_id"
 
     private init() {}

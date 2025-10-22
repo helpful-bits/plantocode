@@ -287,7 +287,14 @@ function useProvideTaskContext(taskDescriptionRef: React.RefObject<TaskDescripti
         // Format and append to task description
         const formattedAnalysis = `\n\n<video_analysis_summary>\n${response.analysis}\n</video_analysis_summary>\n`;
         taskDescriptionRef.current?.appendText(formattedAnalysis);
-        
+
+        // Get the final value after appending and record in history + update session
+        const finalValue = taskDescriptionRef.current?.getValue() || '';
+        if (finalValue) {
+          recordTaskChange('improvement', finalValue);
+          sessionActions.updateCurrentSessionFields({ taskDescription: finalValue });
+        }
+
         // Reset state and show success notification
         resetVideoState();
         showNotification({

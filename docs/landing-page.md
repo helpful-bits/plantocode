@@ -1,7 +1,7 @@
 ---
 title: "PlanToCode | Context for Lost AI Agents"
 description: "A rather civilized solution for AI agents experiencing mild navigational difficulties in your codebase. We provide gentle context curation to help them find their way. Built by a developer, for developers, from the trenches."
-imageUrl: "https://vibe-manager-media.s3.amazonaws.com/og-image.png"
+imageUrl: "https://plantocode-media.s3.amazonaws.com/og-image.png"
 keywords: ["AI coding assistant", "context curation", "vibe coding", "multi-model AI", "codebase analysis", "implementation plans", "developer tools", "local AI", "private AI coding", "Claude Code", "Gemini"]
 ---
 
@@ -87,7 +87,7 @@ This isn't a black box. Your code and your data are yours. Period.
 
 Look, I built this because I was drowning in AI babysitting duty. But this isn't just my tool—it's ours. I want us all to be more productive, to spend less time wrestling with context and more time building cool stuff.
 
-**Got ideas? Hit a bug? Something not working quite right?** Head over to our [FeatureBase portal](https://vibemanager.featurebase.app) to:
+**Got ideas? Hit a bug? Something not working quite right?** Head over to our [FeatureBase portal](https://plantocode.featurebase.app) to:
 - Submit feature requests and bug reports
 - Vote on what we should build next
 - See what's in development

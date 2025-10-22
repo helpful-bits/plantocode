@@ -314,6 +314,10 @@ export function useTaskDescriptionState({
           if (taskDescriptionRef.current?.setValue) {
             taskDescriptionRef.current.setValue(finalTaskDescription);
           }
+          // Record the refined task in history so undo/redo and state sync work correctly
+          recordTaskChange('refine', finalTaskDescription);
+          // Update session context immediately to keep it in sync with the textarea
+          sessionActions.updateCurrentSessionFields({ taskDescription: finalTaskDescription });
           if (activeSessionId) {
             queueTaskDescriptionUpdate(activeSessionId, finalTaskDescription).catch(err => {
               console.error("Failed to queue task description after refinement:", err);
@@ -668,15 +672,20 @@ export function useTaskDescriptionState({
   }, [activeSessionId]);
 
   // Periodic sync to backend (2s interval)
+  // Note: We use a ref to access current history state to avoid recreating the interval
+  const historyEntriesRef = useRef(historyState.entries);
+  historyEntriesRef.current = historyState.entries;
+
   useEffect(() => {
     if (!activeSessionId) return;
 
     const computeChecksum = (entries: string[]) => {
-      return entries.join('|').slice(0, 100);
+      // Better checksum: count + length of each entry + sample from each
+      return `${entries.length}:${entries.map(e => e.length).join(',')}:${entries.map(e => e.slice(0, 20) + e.slice(-20)).join('|')}`;
     };
 
     syncTimerRef.current = window.setInterval(() => {
-      const entries = historyState.entries;
+      const entries = historyEntriesRef.current;
       if (!entries || entries.length === 0) return;
 
       const checksum = computeChecksum(entries);
@@ -697,7 +706,7 @@ export function useTaskDescriptionState({
         syncTimerRef.current = null;
       }
     };
-  }, [activeSessionId, historyState.entries]);
+  }, [activeSessionId]); // Removed historyState.entries dependency to prevent interval recreation
 
   const undo = useCallback(() => {
     if (historyState.currentIndex > 0) {
@@ -712,6 +721,8 @@ export function useTaskDescriptionState({
         if (taskDescriptionRef.current?.setValue) {
           taskDescriptionRef.current.setValue(previousDescription);
         }
+        // Update session context to keep it in sync
+        sessionActions.updateCurrentSessionFields({ taskDescription: previousDescription });
         if (activeSessionId) {
           queueTaskDescriptionUpdate(activeSessionId, previousDescription).catch(err => {
             console.error("Failed to queue task description after undo:", err);
@@ -740,6 +751,8 @@ export function useTaskDescriptionState({
         if (taskDescriptionRef.current?.setValue) {
           taskDescriptionRef.current.setValue(nextDescription);
         }
+        // Update session context to keep it in sync
+        sessionActions.updateCurrentSessionFields({ taskDescription: nextDescription });
         if (activeSessionId) {
           queueTaskDescriptionUpdate(activeSessionId, nextDescription).catch(err => {
             console.error("Failed to queue task description after redo:", err);
@@ -809,6 +822,10 @@ ${formattedResults}
     if (taskDescriptionRef.current?.setValue) {
       taskDescriptionRef.current.setValue(finalTaskDescription);
     }
+    // Record the web search results in history
+    recordTaskChange('improvement', finalTaskDescription);
+    // Update session context immediately to keep it in sync
+    sessionActions.updateCurrentSessionFields({ taskDescription: finalTaskDescription });
     if (activeSessionId) {
       queueTaskDescriptionUpdate(activeSessionId, finalTaskDescription).catch(err => {
         console.error("Failed to queue task description after web search:", err);

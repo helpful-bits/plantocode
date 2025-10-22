@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Website Video Encoding Script for Vibe Manager
+# Website Video Encoding Script for PlanToCode
 # These videos will be uploaded to CloudFront at: https://d2tyb0wucqqf48.cloudfront.net/videos/
 # DO NOT RUN THIS SCRIPT DIRECTLY - Review videos first!
 

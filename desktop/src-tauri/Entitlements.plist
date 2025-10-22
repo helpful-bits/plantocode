@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <!-- App Sandbox is DISABLED for full file system access -->
-    <!-- Database will be in ~/Library/Application Support/com.vibemgr.app/... -->
+    <!-- Database will be in ~/Library/Application Support/com.plantocode/... -->
     <key>com.apple.security.app-sandbox</key>
     <false/>
     

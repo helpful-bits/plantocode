@@ -64,7 +64,7 @@ map $geoip_country_code $sanctioned_country {
 }
 ```
 
-#### Environment Variables (`/opt/vibe-manager/.env`)
+#### Environment Variables (`/opt/plantocode/.env`)
 ```bash
 ENFORCE_REGION_RESTRICTIONS=true
 ALLOWED_REGIONS=EU,UK,US
@@ -174,7 +174,7 @@ systemctl status region-monitor.timer
 journalctl -u region-monitor.service -n 50
 
 # Check fail2ban status
-fail2ban-client status vibe-region
+fail2ban-client status plantocode-region
 ```
 
 ## Troubleshooting
@@ -201,8 +201,8 @@ fail2ban-client status vibe-region
 #### Disable all restrictions temporarily
 ```bash
 # Comment out restriction blocks in Nginx
-sed -i 's/^[[:space:]]*if ($sanctioned_country)/# if ($sanctioned_country)/' /etc/nginx/sites-available/vibe-manager-ssl
-sed -i 's/^[[:space:]]*if ($allowed_country/# if ($allowed_country/' /etc/nginx/sites-available/vibe-manager-ssl
+sed -i 's/^[[:space:]]*if ($sanctioned_country)/# if ($sanctioned_country)/' /etc/nginx/sites-available/plantocode-ssl
+sed -i 's/^[[:space:]]*if ($allowed_country/# if ($allowed_country/' /etc/nginx/sites-available/plantocode-ssl
 nginx -t && systemctl reload nginx
 ```
 

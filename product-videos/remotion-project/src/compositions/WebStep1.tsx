@@ -102,7 +102,7 @@ export const WebStep1: React.FC = () => {
           muted={true}
           style={{ width: '100%', height: '100%' }}
         />
-        <Caption text="Here's how a task session looks in Vibe Manager" timing="fade" />
+        <Caption text="Here's how a task session looks in PlanToCode" timing="fade" />
       </Sequence>
       
       {/* Segment 2: User presses video transcribe button */}

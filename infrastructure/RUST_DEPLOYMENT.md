@@ -59,14 +59,14 @@ ansible-playbook -i inventory/hosts.yml site-app.yml --tags deploy
 
 ### Rollback if Needed
 ```bash
-ansible-playbook -i inventory/hosts.yml playbooks/app-vibe-manager/rust-deploy.yml --tags rollback
+ansible-playbook -i inventory/hosts.yml playbooks/plantocode/rust-deploy.yml --tags rollback
 ```
 
 **Warning:** This is a potentially dangerous operation. The 'rollback' tag is intentionally marked with 'never' in the playbook to prevent accidental execution. You must explicitly use '--tags rollback' to run it.
 
 ## Environment Variables
 
-Environment variables are managed using Ansible Vault and deployed as `/opt/vibe-manager/config/app.env` on the server:
+Environment variables are managed using Ansible Vault and deployed as `/opt/plantocode/config/app.env` on the server:
 
 ```bash
 # Variables are automatically deployed during app setup
@@ -93,7 +93,7 @@ ansible-playbook -i inventory/hosts.yml site-app.yml --tags restart
 
 ### Check All Releases
 ```bash
-ansible -i inventory/hosts.yml hetzner -m command -a "ls -la /opt/vibe-manager/releases/" --become
+ansible -i inventory/hosts.yml hetzner -m command -a "ls -la /opt/plantocode/releases/" --become
 ```
 
 ## Troubleshooting
@@ -101,7 +101,7 @@ ansible -i inventory/hosts.yml hetzner -m command -a "ls -la /opt/vibe-manager/r
 ### Binary Won't Start
 ```bash
 # Check permissions
-ansible -i inventory/hosts.yml hetzner -m command -a "ls -la /opt/vibe-manager/bin/" --become
+ansible -i inventory/hosts.yml hetzner -m command -a "ls -la /opt/plantocode/bin/" --become
 
 # Check service logs using the playbook
 ansible-playbook -i inventory/hosts.yml site-app.yml --tags logs
@@ -118,12 +118,12 @@ cargo build --release --target x86_64-unknown-linux-gnu
 
 ### Database Connection Issues
 - Ensure PostgreSQL is running
-- Check DATABASE_URL in `/opt/vibe-manager/config/app.env`
+- Check DATABASE_URL in `/opt/plantocode/config/app.env`
 - Run migrations: `ansible-playbook -i inventory/hosts.yml site-app.yml --tags migrations`
 
 ## Security Notes
 
-- Binary runs as non-root user `vibe-manager`
+- Binary runs as non-root user `plantocode`
 - Systemd hardening enabled (PrivateTmp, ProtectSystem, etc.)
 - Only localhost connections by default
 - Use Nginx for SSL termination in production

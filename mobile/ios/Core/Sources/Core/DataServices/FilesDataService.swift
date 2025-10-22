@@ -233,7 +233,7 @@ public final class FilesDataService: ObservableObject {
 
     /// Convenience overload with default project directory
     public func searchFilesWithDefaultProject(query: String, maxResults: Int = 50, includeContent: Bool = false) async throws -> [FileInfo] {
-        guard let defaultProjectDirectory = VibeManagerCore.shared.dataServices?.currentProject?.directory
+        guard let defaultProjectDirectory = PlanToCodeCore.shared.dataServices?.currentProject?.directory
                                              ?? AppState.shared.selectedProjectDirectory,
               !defaultProjectDirectory.isEmpty else {
             throw DataServiceError.invalidState("No project directory configured")
@@ -501,10 +501,10 @@ public final class FilesDataService: ObservableObject {
         // Kick off a fetch for local UX parity
         self.performSearch(query: self.currentSearchTerm)
 
-        guard let session = VibeManagerCore.shared.dataServices?.sessionService.currentSession else { return }
+        guard let session = PlanToCodeCore.shared.dataServices?.sessionService.currentSession else { return }
 
         // Guard against cross-project broadcasts during rapid project switches
-        if let currentProjectDir = VibeManagerCore.shared.dataServices?.currentProject?.directory,
+        if let currentProjectDir = PlanToCodeCore.shared.dataServices?.currentProject?.directory,
            session.projectDirectory != currentProjectDir {
             logger.debug("Suppressing file browser state broadcast: session project mismatch")
             return
@@ -526,7 +526,7 @@ public final class FilesDataService: ObservableObject {
         // Trigger file search with current query
         Task {
             do {
-                guard let project = VibeManagerCore.shared.dataServices?.currentProject else { return }
+                guard let project = PlanToCodeCore.shared.dataServices?.currentProject else { return }
                 let results = try await searchFiles(
                     query: query,
                     maxResults: 10000,

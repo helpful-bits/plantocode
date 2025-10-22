@@ -502,7 +502,7 @@ impl StripeService {
         // Add metadata as nested object
         customer_data["metadata"] = serde_json::json!({
             "user_id": user_id.to_string(),
-            "created_by": "vibe_manager"
+            "created_by": "plantocode"
         });
 
         let response = self

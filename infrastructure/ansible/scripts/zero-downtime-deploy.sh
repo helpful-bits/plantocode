@@ -1,12 +1,12 @@
 #!/bin/bash
-# Zero-downtime deployment script for vibe-manager
+# Zero-downtime deployment script for plantocode
 # Uses blue-green deployment strategy with graceful shutdown
 
 set -e
 
 # Configuration
-NGINX_UPSTREAM_CONF="/etc/nginx/conf.d/vibe-upstream.conf"
-DEPLOY_STATUS_FILE="/var/run/vibe-manager-deployment.status"
+NGINX_UPSTREAM_CONF="/etc/nginx/conf.d/plantocode-upstream.conf"
+DEPLOY_STATUS_FILE="/var/run/plantocode-deployment.status"
 HEALTH_CHECK_URL="http://127.0.0.1"
 HEALTH_CHECK_RETRIES=30
 HEALTH_CHECK_DELAY=2
@@ -17,19 +17,19 @@ DRAIN_TIMEOUT=${DRAIN_TIMEOUT:-120}
 
 # Deployment API token for authenticated endpoints
 # Must be provided via environment variable or config file
-DEPLOYMENT_API_TOKEN="${VIBE_DEPLOYMENT_TOKEN:-}"
+DEPLOYMENT_API_TOKEN="${PLANTOCODE_DEPLOYMENT_TOKEN:-}"
 
 # Check if token is provided
 if [ -z "$DEPLOYMENT_API_TOKEN" ]; then
     # Try to read from a secure config file
-    if [ -f "/opt/vibe-manager/config/deployment.env" ]; then
-        source /opt/vibe-manager/config/deployment.env
-        DEPLOYMENT_API_TOKEN="${VIBE_DEPLOYMENT_TOKEN:-}"
+    if [ -f "/opt/plantocode/config/deployment.env" ]; then
+        source /opt/plantocode/config/deployment.env
+        DEPLOYMENT_API_TOKEN="${PLANTOCODE_DEPLOYMENT_TOKEN:-}"
     fi
 fi
 
 if [ -z "$DEPLOYMENT_API_TOKEN" ]; then
-    log_error "VIBE_DEPLOYMENT_TOKEN not set. Please set it in environment or /opt/vibe-manager/config/deployment.env"
+    log_error "PLANTOCODE_DEPLOYMENT_TOKEN not set. Please set it in environment or /opt/plantocode/config/deployment.env"
     exit 1
 fi
 
@@ -55,9 +55,9 @@ log_error() {
 
 # Determine current active color
 get_active_color() {
-    if systemctl is-active --quiet vibe-manager-blue; then
+    if systemctl is-active --quiet plantocode-blue; then
         echo "blue"
-    elif systemctl is-active --quiet vibe-manager-green; then
+    elif systemctl is-active --quiet plantocode-green; then
         echo "green"
     else
         echo "none"
@@ -145,7 +145,7 @@ update_nginx_upstream() {
     local preferred_color=$2
 
     cat > "$NGINX_UPSTREAM_CONF" <<EOF
-upstream vibe_backend {
+upstream plantocode_backend {
 EOF
 
     if [ "$active_color" = "both" ]; then
@@ -213,22 +213,22 @@ deploy() {
 
     # Step 1: Deploy new binary
     log_info "Deploying new binary..."
-    cp "$new_binary" /opt/vibe-manager/bin/server.new
-    chown vibe-manager:vibe-manager /opt/vibe-manager/bin/server.new
-    chmod +x /opt/vibe-manager/bin/server.new
+    cp "$new_binary" /opt/plantocode/bin/server.new
+    chown plantocode:plantocode /opt/plantocode/bin/server.new
+    chmod +x /opt/plantocode/bin/server.new
 
     # Atomic replace
-    mv /opt/vibe-manager/bin/server.new /opt/vibe-manager/bin/server
+    mv /opt/plantocode/bin/server.new /opt/plantocode/bin/server
 
     # Step 2: Start new instance
     log_info "Starting $new_color instance on port $new_port..."
-    systemctl start vibe-manager-$new_color
+    systemctl start plantocode-$new_color
 
     # Step 3: Health check new instance
     log_info "Performing health check on new instance..."
     if ! check_health $new_port $HEALTH_CHECK_RETRIES; then
         log_error "Health check failed for new instance"
-        systemctl stop vibe-manager-$new_color
+        systemctl stop plantocode-$new_color
         exit 1
     fi
 
@@ -256,7 +256,7 @@ deploy() {
 
         # After drain is complete (or timeout), stop the service
         log_info "Stopping $current_color instance after drain..."
-        systemctl stop vibe-manager-$current_color
+        systemctl stop plantocode-$current_color
         log_info "$current_color instance stopped"
     fi
 
@@ -280,13 +280,13 @@ rollback() {
     log_warn "Rolling back to $previous_color..."
 
     # Start previous instance
-    systemctl start vibe-manager-$previous_color
+    systemctl start plantocode-$previous_color
 
     # Update nginx
     update_nginx_upstream "$previous_color" "$previous_color"
 
     # Stop current instance
-    systemctl stop vibe-manager-$current_color
+    systemctl stop plantocode-$current_color
 
     echo "$previous_color" > "$DEPLOY_STATUS_FILE"
     log_info "Rollback completed"
@@ -308,13 +308,13 @@ case "${1:-}" in
         current=$(get_active_color)
         echo "Active deployment: $current"
 
-        if systemctl is-active --quiet vibe-manager-blue; then
+        if systemctl is-active --quiet plantocode-blue; then
             echo "Blue: running (port 8080)"
         else
             echo "Blue: stopped"
         fi
 
-        if systemctl is-active --quiet vibe-manager-green; then
+        if systemctl is-active --quiet plantocode-green; then
             echo "Green: running (port 8081)"
         else
             echo "Green: stopped"

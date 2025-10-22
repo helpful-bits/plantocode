@@ -3,6 +3,7 @@
 # S3 Bucket Reorganization Script
 # This script reorganizes the S3 bucket structure to use versioned folders
 # while maintaining backward compatibility with existing update URLs
+# NOTE: This is a LEGACY MIGRATION script - bucket name kept for historical migration purposes
 
 set -e
 
@@ -49,19 +50,19 @@ for version in 1.0.12 1.0.13 1.0.14 1.0.15 1.0.16 1.0.17; do
     if s3_exists "$BUCKET/desktop/mac/Vibe Manager_${version}_aarch64.app.tar.gz"; then
         echo "  Moving tar.gz..."
         aws s3 mv "$BUCKET/desktop/mac/Vibe Manager_${version}_aarch64.app.tar.gz" \
-                  "$BUCKET/desktop/mac/v${version}/Vibe-Manager-${version}.tar.gz"
+                  "$BUCKET/desktop/mac/v${version}/PlanToCode-${version}.tar.gz"
     fi
-    
+
     if s3_exists "$BUCKET/desktop/mac/Vibe Manager_${version}_aarch64.app.tar.gz.sig"; then
         echo "  Moving signature..."
         aws s3 mv "$BUCKET/desktop/mac/Vibe Manager_${version}_aarch64.app.tar.gz.sig" \
-                  "$BUCKET/desktop/mac/v${version}/Vibe-Manager-${version}.tar.gz.sig"
+                  "$BUCKET/desktop/mac/v${version}/PlanToCode-${version}.tar.gz.sig"
     fi
-    
+
     if s3_exists "$BUCKET/desktop/mac/Vibe Manager_${version}_aarch64.dmg"; then
         echo "  Moving DMG..."
         aws s3 mv "$BUCKET/desktop/mac/Vibe Manager_${version}_aarch64.dmg" \
-                  "$BUCKET/desktop/mac/v${version}/Vibe-Manager-${version}.dmg"
+                  "$BUCKET/desktop/mac/v${version}/PlanToCode-${version}.dmg"
     fi
 done
 
@@ -69,11 +70,11 @@ done
 echo ""
 echo "Step 3: Copying current version ($CURRENT_VERSION) to stable folder..."
 if s3_exists "$BUCKET/desktop/mac/v${CURRENT_VERSION}/"; then
-    aws s3 cp "$BUCKET/desktop/mac/v${CURRENT_VERSION}/Vibe-Manager-${CURRENT_VERSION}.tar.gz" \
+    aws s3 cp "$BUCKET/desktop/mac/v${CURRENT_VERSION}/PlanToCode-${CURRENT_VERSION}.tar.gz" \
               "$BUCKET/desktop/mac/stable/latest.tar.gz"
-    aws s3 cp "$BUCKET/desktop/mac/v${CURRENT_VERSION}/Vibe-Manager-${CURRENT_VERSION}.tar.gz.sig" \
+    aws s3 cp "$BUCKET/desktop/mac/v${CURRENT_VERSION}/PlanToCode-${CURRENT_VERSION}.tar.gz.sig" \
               "$BUCKET/desktop/mac/stable/latest.tar.gz.sig"
-    aws s3 cp "$BUCKET/desktop/mac/v${CURRENT_VERSION}/Vibe-Manager-${CURRENT_VERSION}.dmg" \
+    aws s3 cp "$BUCKET/desktop/mac/v${CURRENT_VERSION}/PlanToCode-${CURRENT_VERSION}.dmg" \
               "$BUCKET/desktop/mac/stable/latest.dmg"
 fi
 

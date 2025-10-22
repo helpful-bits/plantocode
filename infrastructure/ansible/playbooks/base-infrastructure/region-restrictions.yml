@@ -197,7 +197,7 @@
     # ========================================
     - name: Update Nginx site configuration with region restrictions
       blockinfile:
-        path: /etc/nginx/sites-available/vibe-manager-ssl
+        path: /etc/nginx/sites-available/plantocode-ssl
         insertafter: "server_name"
         marker: "# {mark} ANSIBLE MANAGED BLOCK - REGION RESTRICTIONS"
         block: |
@@ -329,7 +329,7 @@
     
     - name: Include IP blocklist in Nginx configuration
       lineinfile:
-        path: /etc/nginx/sites-available/vibe-manager-ssl
+        path: /etc/nginx/sites-available/plantocode-ssl
         insertafter: "server_name"
         line: "    include /etc/nginx/blocked_ip_ranges.conf;"
       notify: reload nginx
@@ -363,7 +363,7 @@
     # ========================================
     - name: Set environment variables for region checking
       lineinfile:
-        path: /opt/vibe-manager/.env
+        path: /opt/plantocode/.env
         line: "{{ item }}"
         create: yes
       loop:

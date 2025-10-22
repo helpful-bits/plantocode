@@ -3,7 +3,7 @@
 
 set -e
 
-DATABASE_URL="${DATABASE_URL:-postgresql://localhost:5432/vibe_manager}"
+DATABASE_URL="${DATABASE_URL:-postgresql://localhost:5432/plantocode}"
 
 echo "Running migrations with custom order..."
 

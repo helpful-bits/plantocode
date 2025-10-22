@@ -186,7 +186,7 @@ public class PushNotificationManager: NSObject, ObservableObject {
 
     /// Schedule notification for completed file finder job
     public func scheduleFileFinderCompleted(sessionId: String, projectDirectory: String?) {
-        guard VibeManagerCore.shared.dataServices?.settingsService.notifyFileFinderResultsEnabled ?? true else {
+        guard PlanToCodeCore.shared.dataServices?.settingsService.notifyFileFinderResultsEnabled ?? true else {
             return
         }
 
@@ -204,7 +204,7 @@ public class PushNotificationManager: NSObject, ObservableObject {
 
     /// Schedule notification for completed implementation plan
     public func scheduleImplementationPlanCompleted(sessionId: String, projectDirectory: String?, jobId: String) {
-        guard VibeManagerCore.shared.dataServices?.settingsService.notifyPlanReadyEnabled ?? true else {
+        guard PlanToCodeCore.shared.dataServices?.settingsService.notifyPlanReadyEnabled ?? true else {
             return
         }
 
@@ -222,7 +222,7 @@ public class PushNotificationManager: NSObject, ObservableObject {
     }
 
     public func scheduleTerminalInactivityDetected(sessionId: String, projectDirectory: String?, jobId: String? = nil) {
-        guard VibeManagerCore.shared.dataServices?.settingsService.notifyTerminalInactivityEnabled ?? true else {
+        guard PlanToCodeCore.shared.dataServices?.settingsService.notifyTerminalInactivityEnabled ?? true else {
             return
         }
 
@@ -241,7 +241,7 @@ public class PushNotificationManager: NSObject, ObservableObject {
 
     /// Ensure session is loaded before navigating
     private func ensureSessionLoaded(sessionId: String, projectDirectory: String?) async {
-        guard let dataServices = VibeManagerCore.shared.dataServices else { return }
+        guard let dataServices = PlanToCodeCore.shared.dataServices else { return }
         if dataServices.sessionService.currentSession?.id != sessionId {
             // Only load if we have a project directory
             guard let projectDir = projectDirectory else {
@@ -511,9 +511,9 @@ extension PushNotificationManager: UNUserNotificationCenterDelegate {
         let userInfo = notification.request.content.userInfo
 
         if let type = userInfo["type"] as? String {
-            let fileFinderEnabled = VibeManagerCore.shared.dataServices?.settingsService.notifyFileFinderResultsEnabled ?? true
-            let planReadyEnabled = VibeManagerCore.shared.dataServices?.settingsService.notifyPlanReadyEnabled ?? true
-            let terminalInactivityEnabled = VibeManagerCore.shared.dataServices?.settingsService.notifyTerminalInactivityEnabled ?? true
+            let fileFinderEnabled = PlanToCodeCore.shared.dataServices?.settingsService.notifyFileFinderResultsEnabled ?? true
+            let planReadyEnabled = PlanToCodeCore.shared.dataServices?.settingsService.notifyPlanReadyEnabled ?? true
+            let terminalInactivityEnabled = PlanToCodeCore.shared.dataServices?.settingsService.notifyTerminalInactivityEnabled ?? true
 
             if type == Self.FILE_FINDER_COMPLETE && !fileFinderEnabled {
                 completionHandler([])
@@ -563,7 +563,7 @@ extension PushNotificationManager: UNUserNotificationCenterDelegate {
                         }
 
                     case Self.TERMINAL_INACTIVITY_DETECTED:
-                        let terminalInactivityEnabled = VibeManagerCore.shared.dataServices?.settingsService.notifyTerminalInactivityEnabled ?? true
+                        let terminalInactivityEnabled = PlanToCodeCore.shared.dataServices?.settingsService.notifyTerminalInactivityEnabled ?? true
                         if terminalInactivityEnabled {
                             AppState.shared.deepLinkRoute = .filesSelected(sessionId: sessionId, projectDirectory: projectDirectory)
                         }

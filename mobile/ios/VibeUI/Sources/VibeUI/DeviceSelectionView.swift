@@ -257,7 +257,7 @@ public struct DeviceSelectionView: View {
 
             Task {
                 // Only restore/refresh if initialized and authenticated
-                if VibeManagerCore.shared.isInitialized && AuthService.shared.isAuthenticated {
+                if PlanToCodeCore.shared.isInitialized && AuthService.shared.isAuthenticated {
                     await multiConnectionManager.restoreConnections()
                     await deviceDiscovery.refreshDevices()
                 } else {
@@ -396,7 +396,7 @@ public struct DeviceSelectionView: View {
             return
         }
 
-        if !VibeManagerCore.shared.isInitialized {
+        if !PlanToCodeCore.shared.isInitialized {
             errorMessage = "Initialization required. Please restart the app."
             return
         }

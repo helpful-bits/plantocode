@@ -729,12 +729,12 @@ impl RateLimitMiddleware {
             if let Ok(ua_str) = user_agent.to_str() {
                 let ua_lower = ua_str.to_lowercase();
 
-                if ua_lower.contains("vibe-manager-mobile") || ua_lower.contains("mobile") {
+                if ua_lower.contains("plantocode-mobile") || ua_lower.contains("mobile") {
                     return ClientType::Mobile;
-                } else if ua_lower.contains("vibe-manager-desktop") || ua_lower.contains("electron")
+                } else if ua_lower.contains("plantocode-desktop") || ua_lower.contains("electron")
                 {
                     return ClientType::Desktop;
-                } else if ua_lower.contains("vibe-manager-api") {
+                } else if ua_lower.contains("plantocode-api") {
                     return ClientType::Api;
                 }
             }

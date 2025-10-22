@@ -457,7 +457,7 @@ extension ConnectionEventListener {
 /// Default network monitor implementation
 public class DefaultNetworkMonitor: NetworkMonitor {
     private let pathMonitor = NWPathMonitor()
-    private let monitorQueue = DispatchQueue(label: "com.vibemanager.network.monitor")
+    private let monitorQueue = DispatchQueue(label: "com.plantocode.network.monitor")
 
     public private(set) var currentPath: NWPath?
 
