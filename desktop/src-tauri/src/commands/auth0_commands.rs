@@ -455,11 +455,23 @@ pub async fn logout_auth0(
 /// Get user info with app JWT with timeout protection
 #[command]
 pub async fn get_user_info_with_app_jwt(
-    server_proxy_client: State<'_, Arc<crate::api_clients::server_proxy_client::ServerProxyClient>>,
+    app_handle: AppHandle,
 ) -> AppResult<FrontendUser> {
     use tokio::time::{Duration, timeout};
 
     info!("Getting user info via server proxy");
+
+    // Get server proxy client from wrapped optional state
+    let server_proxy_lock = app_handle
+        .state::<Arc<tokio::sync::RwLock<Option<Arc<crate::api_clients::server_proxy_client::ServerProxyClient>>>>>()
+        .inner()
+        .clone();
+    let server_proxy_guard = server_proxy_lock.read().await;
+    let server_proxy_client = server_proxy_guard.as_ref().ok_or_else(|| {
+        warn!("ServerProxyClient not available");
+        AppError::InitializationError("Server proxy client not available".to_string())
+    })?
+    .clone();
 
     // Add overall timeout protection (reduced to 10s to match frontend)
     match timeout(Duration::from_secs(10), server_proxy_client.get_user_info()).await {

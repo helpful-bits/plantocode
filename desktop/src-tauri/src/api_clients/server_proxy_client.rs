@@ -1091,43 +1091,6 @@ impl ServerProxyClient {
         Ok(cost_response)
     }
 
-    /// Get Featurebase SSO token
-    pub async fn get_featurebase_sso_token(&self) -> AppResult<String> {
-        info!("Fetching Featurebase SSO token via server proxy");
-
-        let auth_token = self.get_auth_token().await?;
-        let url = format!("{}/api/featurebase/sso-token", self.server_url);
-
-        let req = self.with_auth_headers(self.http_client.get(&url), &auth_token)?;
-        let response = req
-            .header("HTTP-Referer", APP_HTTP_REFERER)
-            .header("X-Title", APP_X_TITLE)
-            .send()
-            .await
-            .map_err(|e| AppError::HttpError(e.to_string()))?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_text = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "Failed to get error text".to_string());
-            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
-        }
-
-        #[derive(serde::Deserialize)]
-        struct FeaturebaseSsoResponse {
-            token: String,
-        }
-
-        let sso_response: FeaturebaseSsoResponse = response.json().await.map_err(|e| {
-            AppError::ServerProxyError(format!("Failed to parse Featurebase SSO response: {}", e))
-        })?;
-
-        info!("Successfully fetched Featurebase SSO token");
-        Ok(sso_response.token)
-    }
-
     /// Get user info using app JWT
     pub async fn get_user_info(&self) -> AppResult<crate::models::FrontendUser> {
         info!("Fetching user info via server proxy");
