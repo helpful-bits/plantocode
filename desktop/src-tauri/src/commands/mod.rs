@@ -5,7 +5,6 @@ pub mod auth0_commands;
 pub mod billing_commands;
 pub mod config_commands;
 pub mod db_commands;
-pub mod featurebase_commands;
 pub mod file_system_commands;
 pub mod geo_commands;
 pub mod job_commands;
@@ -97,9 +96,6 @@ pub use auth0_commands::{
     get_user_info_with_app_jwt, logout_auth0, refresh_app_jwt_auth0, set_app_jwt,
     start_auth0_login_flow,
 };
-
-// Re-exports from featurebase commands module
-pub use featurebase_commands::get_featurebase_sso_token;
 
 // Re-exports from config commands module
 pub use config_commands::{
