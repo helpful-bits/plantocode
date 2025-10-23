@@ -304,7 +304,6 @@ pub fn run() {
             commands::auth0_commands::set_app_jwt,
             commands::auth0_commands::clear_stored_app_jwt,
             commands::device_commands::get_device_id,
-            commands::featurebase_commands::get_featurebase_sso_token,
             commands::billing_commands::get_billing_dashboard_data_command,
             commands::billing_commands::get_customer_billing_info_command,
             commands::billing_commands::get_spending_history_command,
