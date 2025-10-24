@@ -21,6 +21,7 @@ import {
   Code2,
   GitMerge,
   Mic,
+  CheckCircle2,
 } from 'lucide-react';
 import type { SoftwareApplication, FAQPage, VideoObject, ImageObject, Organization, WebSite } from 'schema-dts';
 import { SectionDividerMesh } from '@/components/ui/SectionDivider';
@@ -43,15 +44,18 @@ const CallToAction = dynamic(() => import('@/components/landing/CallToAction').t
   loading: () => <div className="h-[30vh]" />,
 });
 
-const Value = dynamic(() => import('@/components/landing/Value').then(mod => ({ default: mod.Value })), {
-  loading: () => <div className="h-[40vh]" />,
-});
 
 
 export const metadata: Metadata = {
-  title: 'PlanToCode - plan and ship code changes',
-  description: 'PlanToCode helps you plan and ship code changes - find the right files, generate and merge implementation plans, then run them in a persistent terminal.',
+  title: 'PlanToCode - Human-in-the-loop AI Planning for Large & Legacy Codebases',
+  description: 'Generate granular, file-by-file implementation plans with exact repository paths. Human-reviewed approvals before execution. Prevent regressions with corporate AI governance. Microsoft Teams meeting ingestion.',
   keywords: [
+    'human-in-the-loop ai',
+    'corporate ai governance',
+    'file-by-file implementation plans',
+    'legacy codebase planning',
+    'microsoft teams meeting ingestion',
+    'ai plan approval workflow',
     'ai plan editor',
     'monaco editor plans',
     'merge ai plans',
@@ -148,8 +152,7 @@ export default function Home() {
     description: 'Plan and ship code changes. Find the right files, generate and merge implementation plans from multiple AI models, then run them in a persistent terminal. Available for Windows and macOS.',
     offers: {
       '@type': 'Offer',
-      price: 0, // Numeric 0 for free apps, no priceCurrency needed per Google guidance
-      description: 'Free app with pay-as-you-go API usage. $5 free credits on signup.',
+      description: 'Pay-as-you-go API usage. No subscriptions or seat licenses.',
     },
     downloadUrl: 'https://www.plantocode.com/downloads',
     softwareVersion: '1.0.23',
@@ -183,6 +186,18 @@ export default function Home() {
   };
 
   const faqItems = [
+    {
+      question: 'Can stakeholders review and approve plans before execution?',
+      answer: 'Yes. PlanToCode provides a human-in-the-loop workflow where team leads and stakeholders can review generated implementation plans, edit details, request modifications, and approve changes before they are executed by coding agents or developers. This ensures corporate governance and prevents regressions.',
+    },
+    {
+      question: 'How do Teams meetings become specifications?',
+      answer: 'Upload Microsoft Teams meeting recordings or screen captures to PlanToCode. Advanced multimodal models analyze both audio transcripts (including speaker identification) and visual content (shared screens, documents) to extract specification requirements. You review the extracted insights - decisions, action items, discussion points - and incorporate them into implementation plans.',
+    },
+    {
+      question: 'Do plans map to exact files in our repo?',
+      answer: 'Yes. Implementation plans break down changes on a file-by-file basis with exact repository paths corresponding to your project structure. This granular approach ensures you know exactly what will be modified before execution, providing complete visibility and control.',
+    },
     {
       question: 'How is this different from chat-based coding agents?',
       answer: 'PlanToCode is a desktop planning workspace. You run the file discovery workflow, review implementation plans in a Monaco editor, adjust prompts, and then launch the terminal from the same session. Chat tools hand you a single reply; here you stage the work before anything runs.',
@@ -237,38 +252,26 @@ export default function Home() {
     })),
   };
 
-  const valuePropositions = [
-    {
-      title: 'Review plans before anything runs',
-      metric: 'Prompt control',
-      description: 'Preview the exact prompt, inspect token estimates, and edit the Monaco draft before you trigger a job. Plans stay alongside their background job history so you can revisit changes later.',
-      icon: <Shield className="w-8 h-8" />,
-      features: ['Prompt preview & copy helpers', 'Token estimates with context window checks'],
-    },
-    {
-      title: 'Find the right files without guesswork',
-      metric: 'File discovery',
-      description: 'Run the staged file finder workflow to generate search patterns, relevance scoring, and prioritized selections. Apply the results directly to your session when you are satisfied.',
-      icon: <Search className="w-8 h-8" />,
-      features: ['Regex pattern generation', 'Relevance ranking before inclusion'],
-    },
-    {
-      title: 'Keep work in sync across restarts',
-      metric: 'Persistent sessions',
-      description: 'Session state, plan drafts, and terminal logs are stored locally. Close the laptop mid-debug and resume later with the same job history and shell output.',
-      icon: <History className="w-8 h-8" />,
-      features: ['SQLite-backed terminal log ring buffer', 'Session restoration on launch'],
-    },
-    {
-      title: 'Capture ideas hands-free',
-      metric: 'Voice input',
-      description: 'Use built-in voice transcription for task descriptions or terminal commands. Configure language and temperature defaults per project.',
-      icon: <Video className="w-8 h-8" />,
-      features: ['Realtime transcription pipeline', 'Per-project language settings'],
-    },
-  ];
 
   const features = [
+    {
+      title: 'Specification capture & refinement',
+      description: 'Voice dictation for rapid input, text enhancement for clarity, and task refinement to identify implied requirements and edge cases.',
+      icon: <Sparkles className="w-8 h-8" />,
+      href: '/features/text-improvement',
+    },
+    {
+      title: 'Meeting recording ingestion',
+      description: 'Upload Microsoft Teams meetings or screen recordings. Multimodal analysis extracts specifications from audio transcripts and visual content for review and incorporation.',
+      icon: <Video className="w-8 h-8" />,
+      href: '/features/video-analysis',
+    },
+    {
+      title: 'Human-reviewed implementation plans',
+      description: 'Generate file-by-file implementation plans with exact repository paths. Review, edit, and approve changes before execution to prevent regressions and ensure alignment with requirements.',
+      icon: <Shield className="w-8 h-8" />,
+      href: '/docs',
+    },
     {
       title: 'File discovery workflow',
       description: 'Start staged background jobs for regex pattern generation, relevance scoring, and path correction. Review each stage before applying the results to your session.',
@@ -462,7 +465,111 @@ export default function Home() {
           </section>
           <SectionDividerMesh />
 
-          <Value propositions={valuePropositions} />
+          {/* Human-in-the-loop Implementation Planning */}
+          <section className="py-16 px-4">
+            <div className="container mx-auto max-w-6xl">
+              <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">Human-in-the-loop Governance</h2>
+              <p className="text-lg text-center text-foreground/80 mb-12 max-w-3xl mx-auto">
+                Maintain full control over AI-generated implementation plans. Review, edit, approve, and audit every step before execution.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <GlassCard className="p-6">
+                  <h3 className="text-xl font-semibold mb-3">File-by-file Plans with Exact Paths</h3>
+                  <p className="text-foreground/80">
+                    Implementation plans break down changes on a file-by-file basis with exact repository paths, ensuring complete visibility into what will be modified.
+                  </p>
+                </GlassCard>
+                <GlassCard className="p-6">
+                  <h3 className="text-xl font-semibold mb-3">Review, Edit & Approve Workflow</h3>
+                  <p className="text-foreground/80">
+                    Team leads and stakeholders can review proposed changes, directly edit plan details, request modifications, and approve plans before execution.
+                  </p>
+                </GlassCard>
+                <GlassCard className="p-6">
+                  <h3 className="text-xl font-semibold mb-3">Safe Handoff to Agents</h3>
+                  <p className="text-foreground/80">
+                    Once approved, plans are securely transmitted to your chosen coding agent or assigned to developers, preventing regressions and ensuring alignment with requirements.
+                  </p>
+                </GlassCard>
+              </div>
+            </div>
+          </section>
+          <SectionDividerMesh />
+
+          {/* Specification Capture Mode */}
+          <section className="py-16 px-4">
+            <div className="container mx-auto max-w-6xl">
+              <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">Specification Capture & Refinement</h2>
+              <p className="text-lg text-center text-foreground/80 mb-12 max-w-3xl mx-auto">
+                Rapidly crystallize ideas into clear, actionable specifications with voice dictation and AI-powered enhancement.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <GlassCard className="p-6">
+                  <Mic className="w-10 h-10 text-primary mb-4" />
+                  <h3 className="text-xl font-semibold mb-3">Voice Dictation</h3>
+                  <p className="text-foreground/80 mb-4">
+                    Capture initial requirements through voice input, which you can then refine manually for precision and clarity.
+                  </p>
+                  <Link href="/features/voice-transcription" className="text-primary hover:underline text-sm font-medium">
+                    Learn more →
+                  </Link>
+                </GlassCard>
+                <GlassCard className="p-6">
+                  <Sparkles className="w-10 h-10 text-primary mb-4" />
+                  <h3 className="text-xl font-semibold mb-3">Text Enhancement</h3>
+                  <p className="text-foreground/80 mb-4">
+                    Improve grammar, sentence structure, clarity, and conciseness while maintaining your original intent, tone, and technical detail level.
+                  </p>
+                  <Link href="/features/text-improvement" className="text-primary hover:underline text-sm font-medium">
+                    Learn more →
+                  </Link>
+                </GlassCard>
+                <GlassCard className="p-6">
+                  <Code2 className="w-10 h-10 text-primary mb-4" />
+                  <h3 className="text-xl font-semibold mb-3">Task Refinement</h3>
+                  <p className="text-foreground/80 mb-4">
+                    Expand task descriptions by identifying implied requirements, clarifying expected behavior and edge cases, and adding technical considerations.
+                  </p>
+                  <Link href="/features/text-improvement" className="text-primary hover:underline text-sm font-medium">
+                    Learn more →
+                  </Link>
+                </GlassCard>
+              </div>
+            </div>
+          </section>
+          <SectionDividerMesh />
+
+          {/* Meeting & Recording Ingestion */}
+          <section className="py-16 px-4">
+            <div className="container mx-auto max-w-6xl">
+              <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">Meeting & Recording Ingestion</h2>
+              <p className="text-lg text-center text-foreground/80 mb-12 max-w-3xl mx-auto">
+                Transform Microsoft Teams meetings and screen recordings into actionable implementation requirements.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <GlassCard className="p-6">
+                  <Video className="w-10 h-10 text-primary mb-4" />
+                  <h3 className="text-xl font-semibold mb-3">Multimodal Analysis</h3>
+                  <p className="text-foreground/80 mb-4">
+                    Upload Microsoft Teams meetings or screen recordings. Advanced multimodal models analyze both audio transcripts (with speaker identification) and relevant visual content (shared screens, presented documents, key moments) to extract specification requirements.
+                  </p>
+                  <Link href="/features/video-analysis" className="text-primary hover:underline text-sm font-medium">
+                    Learn more →
+                  </Link>
+                </GlassCard>
+                <GlassCard className="p-6">
+                  <CheckCircle2 className="w-10 h-10 text-primary mb-4" />
+                  <h3 className="text-xl font-semibold mb-3">Review & Incorporate Insights</h3>
+                  <p className="text-foreground/80 mb-4">
+                    Extracted insights - summarized decisions, action items, and key discussion points - are presented in an intuitive interface where team leads can review, select, and incorporate them into actionable implementation plans.
+                  </p>
+                  <Link href="/features/video-analysis" className="text-primary hover:underline text-sm font-medium">
+                    Learn more →
+                  </Link>
+                </GlassCard>
+              </div>
+            </div>
+          </section>
           <SectionDividerMesh />
 
           <Features features={features} />

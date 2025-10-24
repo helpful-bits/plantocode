@@ -245,6 +245,51 @@ impl Actor for DeviceLinkWs {
             }
         }
 
+        // Broadcast device-status offline event before cleanup
+        if let (Some(user_id), Some(device_id), Some(connection_manager)) =
+            (self.user_id, &self.device_id, &self.connection_manager)
+        {
+            let status_event = serde_json::json!({
+                "type": "device-status",
+                "payload": {
+                    "deviceId": device_id,
+                    "status": "offline"
+                }
+            });
+
+            let device_message = DeviceMessage {
+                message_type: "device-status".to_string(),
+                payload: status_event.get("payload").cloned().unwrap_or(serde_json::json!({})),
+                target_device_id: None,
+                source_device_id: Some(device_id.clone()),
+                timestamp: chrono::Utc::now(),
+            };
+
+            let cm = connection_manager.clone();
+            let uid = user_id;
+            let src_dev = Some(device_id.clone());
+
+            actix::spawn(async move {
+                match cm.broadcast_to_user_excluding(&uid, device_message, src_dev.as_deref()).await {
+                    Ok(count) => {
+                        info!(
+                            user_id = %uid,
+                            device_id = %src_dev.as_deref().unwrap_or("unknown"),
+                            devices_reached = count,
+                            "Broadcasted device-status:offline event"
+                        );
+                    }
+                    Err(e) => {
+                        warn!(
+                            user_id = %uid,
+                            error = %e,
+                            "Failed to broadcast device-status offline event"
+                        );
+                    }
+                }
+            });
+        }
+
         // Clean up connection from manager
         if let (Some(user_id), Some(device_id), Some(connection_manager)) =
             (self.user_id, &self.device_id, &self.connection_manager)
@@ -898,6 +943,50 @@ impl Handler<HandleRegisterMessage> for DeviceLinkWs {
                 log_stage = "register:connection_manager_registered",
                 "Connection registered with connection manager"
             );
+
+            // After connection manager registration, broadcast device-status event
+            let status_event = serde_json::json!({
+                "type": "device-status",
+                "payload": {
+                    "deviceId": device_id,
+                    "status": "online"
+                }
+            });
+
+            let device_message = DeviceMessage {
+                message_type: "device-status".to_string(),
+                payload: status_event.get("payload").cloned().unwrap_or(serde_json::json!({})),
+                target_device_id: None,
+                source_device_id: Some(device_id.clone()),
+                timestamp: chrono::Utc::now(),
+            };
+
+            let cm = connection_manager.clone();
+            let uid = user_id;
+            let src_dev = Some(device_id.clone());
+
+            ctx.spawn(
+                async move {
+                    match cm.broadcast_to_user_excluding(&uid, device_message, src_dev.as_deref()).await {
+                        Ok(count) => {
+                            info!(
+                                user_id = %uid,
+                                device_id = %src_dev.as_deref().unwrap_or("unknown"),
+                                devices_reached = count,
+                                "Broadcasted device-status:online event"
+                            );
+                        }
+                        Err(e) => {
+                            warn!(
+                                user_id = %uid,
+                                error = %e,
+                                "Failed to broadcast device-status event"
+                            );
+                        }
+                    }
+                }
+                .into_actor(self),
+            );
         } else {
             error!(
                 connection_id = %self.connection_id,
@@ -1315,6 +1404,24 @@ impl Handler<HandleEventMessage> for DeviceLinkWs {
                 return;
             }
         };
+
+        // Handle device visibility updates
+        if event_type == "device-visibility-updated" {
+            if let Some(visible) = event_payload.get("visible").and_then(|v| v.as_bool()) {
+                if let (Some(device_id_str), Some(device_repo)) = (&self.device_id, &self.device_repository) {
+                    if let Ok(dev_id) = Uuid::parse_str(device_id_str) {
+                        let repo = device_repo.clone();
+                        actix::spawn(async move {
+                            if let Err(e) = repo.set_relay_eligible(&dev_id, visible).await {
+                                warn!("Failed to update relay_eligible: {:?}", e);
+                            } else {
+                                info!("Updated relay_eligible to {} for device {}", visible, dev_id);
+                            }
+                        });
+                    }
+                }
+            }
+        }
 
         // Persist project directory updates to database
         if event_type == "project-directory-updated" {

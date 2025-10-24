@@ -3,6 +3,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { cdnUrl } from '@/lib/cdn';
+import { CALENDLY_URL } from '@/lib/brand';
 import { Play, Search, BarChart3, CheckCircle2, Target, Zap } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -48,10 +49,10 @@ export function HeroSection() {
             backgroundClip: 'text',
           }}
         >
-          Plan software changes before you code
+          Human-in-the-loop AI Planning for Large & Legacy Codebases
         </h1>
         <p className="mt-6 text-lg sm:text-xl text-foreground/80 max-w-4xl mx-auto">
-          Find the right files, generate implementation steps from multiple models, then run them in an integrated terminal with logs.
+          Generate granular, file-by-file implementation plans with exact repository paths. Review, edit, and approve all changes before securely handing off to coding agents or developers - preventing regressions and ensuring every change aligns with your team's requirements.
         </p>
       </div>
 
@@ -234,7 +235,12 @@ export function HeroSection() {
             <div className="flex flex-col sm:flex-row items-center gap-3">
               <Button variant="cta" size="lg" asChild>
                 <Link href="/downloads">
-                  Download Free
+                  Download
+                </Link>
+              </Button>
+              <Button asChild variant="outline" size="lg">
+                <Link href={CALENDLY_URL} target="_blank" rel="noopener noreferrer">
+                  Talk to an Architect
                 </Link>
               </Button>
               <Button variant="outline" size="lg" asChild>
@@ -250,7 +256,7 @@ export function HeroSection() {
               </Button>
             </div>
             <div className="text-sm text-foreground/50">
-              macOS & Windows • $5 free credits
+              macOS & Windows
             </div>
           </div>
         </div>

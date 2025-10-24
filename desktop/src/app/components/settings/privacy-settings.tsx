@@ -21,10 +21,7 @@ import { DeviceSettings } from "@/types/settings-types";
 export default function PrivacySettings() {
   const { showNotification } = useNotification();
   const [settings, setSettings] = useState<DeviceSettings>({
-    is_discoverable: false,
     allow_remote_access: false,
-    require_approval: true,
-    session_timeout_minutes: 30,
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -111,20 +108,6 @@ export default function PrivacySettings() {
           <div className="space-y-4">
             <div className="flex items-center space-x-3">
               <Checkbox
-                id="discoverable"
-                checked={settings.is_discoverable}
-                onCheckedChange={(checked) => handleCheckboxChange('is_discoverable', checked as boolean)}
-              />
-              <div className="space-y-0.5">
-                <Label htmlFor="discoverable" className="cursor-pointer">Device Discoverable</Label>
-                <div className="text-sm text-muted-foreground">
-                  Allow other devices to discover this device on the network
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center space-x-3">
-              <Checkbox
                 id="remote-access"
                 checked={settings.allow_remote_access}
                 onCheckedChange={(checked) => handleCheckboxChange('allow_remote_access', checked as boolean)}
@@ -132,7 +115,7 @@ export default function PrivacySettings() {
               <div className="space-y-0.5">
                 <Label htmlFor="remote-access" className="cursor-pointer">Allow Remote Access</Label>
                 <div className="text-sm text-muted-foreground">
-                  Enable remote connections to this device
+                  Allow other devices to see and connect to this device for remote control
                 </div>
               </div>
             </div>

@@ -552,6 +552,24 @@ The application tracks these custom events (configure matching Goals in Plausibl
 - `video_complete` - Video completion events
 - `download_click` - Download button clicks
 
+## WER Benchmarks Section
+
+The Voice Transcription feature page includes an interactive WER chart (D3.js) and a side-by-side transcription comparison.
+
+- Data source: configure via `NEXT_PUBLIC_WER_DATA_URL` in `.env.local`, or the default `/data/transcription/wer-benchmarks.json`.
+- Expected JSON schema:
+  ```json
+  {
+    "unit": "percent",
+    "models": [
+      { "id": "gpt-4o-transcribe", "label": "OpenAI gpt-4o-transcribe", "vendor": "OpenAI", "wer": 2.1 }
+    ]
+  }
+  ```
+- To update labels/vendors: edit the dataset JSON or map properties client-side in `AccuracySection`.
+- Accessibility: bars are keyboard-focusable and expose ARIA labels; tooltips appear on hover/focus.
+- Performance: D3 imports are tree-shaken; chart is responsive via ResizeObserver.
+
 ## License
 
 Copyright (c) 2024 PlanToCode. All rights reserved.

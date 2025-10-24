@@ -782,16 +782,32 @@ pub async fn update_device_settings(
         .clone();
     settings_repo.update_device_settings(&settings).await?;
 
-    // Restart device link connection if settings are now enabled
-    if settings.is_discoverable && settings.allow_remote_access {
-        tracing::info!("Device settings enabled, restarting DeviceLinkClient");
-        let app_handle_clone = app_handle.clone();
-        tokio::spawn(async move {
-            // Use the reconnection-enabled initialization
-            if let Err(e) = crate::app_setup::services::initialize_device_link_connection(&app_handle_clone).await {
-                tracing::warn!("Failed to restart DeviceLinkClient after settings update: {:?}", e);
+    // Get device link client
+    if let Some(client) = app_handle.try_state::<Arc<crate::services::device_link_client::DeviceLinkClient>>() {
+        if settings.allow_remote_access {
+            // Send visibility update
+            if let Err(e) = client.send_visibility_event(true).await {
+                tracing::warn!("Failed to send visibility event: {:?}", e);
             }
-        });
+
+            // Restart device link connection
+            tracing::info!("Device settings enabled, restarting DeviceLinkClient");
+            let app_handle_clone = app_handle.clone();
+            tokio::spawn(async move {
+                if let Err(e) = crate::app_setup::services::initialize_device_link_connection(&app_handle_clone).await {
+                    tracing::warn!("Failed to restart DeviceLinkClient after settings update: {:?}", e);
+                }
+            });
+        } else {
+            // Send visibility update
+            if let Err(e) = client.send_visibility_event(false).await {
+                tracing::warn!("Failed to send visibility event: {:?}", e);
+            }
+
+            // Shutdown connection
+            tracing::info!("Device settings disabled, shutting down DeviceLinkClient");
+            client.shutdown().await;
+        }
     }
 
     Ok(())

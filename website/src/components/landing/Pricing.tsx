@@ -16,7 +16,7 @@ export function Pricing() {
             Built for Professional Development
           </Reveal>
           <Reveal as="p" className="text-lg sm:text-xl max-w-3xl mx-auto leading-relaxed font-medium text-description-muted" delay={0.1}>
-            Transparent token costs. No seat licenses. Pay only for AI inference. Watch your ROI in real-time - one saved production incident pays for months of usage.
+            Pay only for AI inference with transparent token costs. Watch your ROI in real-time - one saved production incident pays for months of usage.
           </Reveal>
         </div>
 
@@ -33,31 +33,19 @@ export function Pricing() {
                     Transparent Pricing
                   </h3>
                   <p className="text-lg mb-8 text-muted-foreground">
-                    $5 free credits to validate this actually works. Then pay-as-you-go. No subscriptions. No per-seat licensing. Just raw API costs with full transparency.
+                    Start with usage-based pricing to validate results. No subscriptions. Just transparent API costs.
                   </p>
                 </Reveal>
 
                 <Reveal className="relative bg-gradient-to-br from-primary/10 to-primary/5 rounded-2xl p-8 mb-8 ring-1 ring-primary/20" delay={0.25}>
-                  <motion.div
-                    className="absolute -top-3 -right-3"
-                    initial={{ opacity: 0, scale: 0 }}
-                    transition={{ duration: 0.4, delay: 0.7 }}
-                    viewport={{ once: true }}
-                    whileInView={{ opacity: 1, scale: 1 }}
-                  >
-                    <div className="inline-flex items-center justify-center px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-xs font-bold rounded-full shadow-lg ring-2 ring-white/30 backdrop-blur-sm">
-                      <span className="tracking-wider">FREE</span>
-                    </div>
-                  </motion.div>
-
                   <h4 className="text-4xl font-bold mb-3 text-primary text-shadow-subtle">
-                    $5 Free Credits
+                    Usage-Based Pricing
                   </h4>
                   <p className="text-lg font-medium text-accent-highlight">
-                    Test Plan Editor, Merge Instructions, Terminal Integration
+                    Pay only for what you use.
                   </p>
                   <p className="text-sm text-muted-foreground mt-2">
-                    Enough to generate 50+ implementation plans. Auto top-off when you're convinced.
+                    Test Plan Editor, Merge Instructions, Terminal Integration. Auto top-off when you're convinced.
                   </p>
                 </Reveal>
 
