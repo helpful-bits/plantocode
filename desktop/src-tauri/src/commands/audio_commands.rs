@@ -78,8 +78,12 @@ pub async fn transcribe_audio_command(
             )
         })?;
 
-    // Use the default model if not provided
-    let model_to_use = model.unwrap_or_else(|| "whisper-1".to_string());
+    // Model must be provided by the caller - no default
+    let model_to_use = model.ok_or_else(|| {
+        crate::error::AppError::ValidationError(
+            "Transcription model must be specified".to_string(),
+        )
+    })?;
 
     // Call the transcription method with extended parameters
     let text = transcribe_with_extended_params(

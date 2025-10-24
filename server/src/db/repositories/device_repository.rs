@@ -293,6 +293,39 @@ impl DeviceRepository {
         self.set_device_status(device_id, "offline", Some(0)).await
     }
 
+    /// Update relay_eligible flag for a device
+    pub async fn set_relay_eligible(
+        &self,
+        device_id: &Uuid,
+        relay_eligible: bool,
+    ) -> Result<(), AppError> {
+        // If setting to false, also set status to offline for desktop devices
+        let result = query!(
+            r#"
+            UPDATE devices
+            SET
+                relay_eligible = $2,
+                status = CASE
+                    WHEN device_type = 'desktop' AND $2 = false THEN 'offline'
+                    ELSE status
+                END,
+                updated_at = NOW()
+            WHERE device_id = $1
+            "#,
+            device_id,
+            relay_eligible
+        )
+        .execute(&*self.db_pool)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to set relay_eligible: {}", e)))?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::NotFound("Device not found".to_string()));
+        }
+
+        Ok(())
+    }
+
     /// Save push notification token for a device
     pub async fn save_push_token(
         &self,

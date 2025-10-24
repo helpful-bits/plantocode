@@ -8,6 +8,7 @@ import { StructuredData } from '@/components/seo/StructuredData';
 import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
+import { FAQ } from '@/components/landing/FAQ';
 import {
   Sparkles,
   MousePointer2,
@@ -21,10 +22,16 @@ import {
 import type { SoftwareApplication, HowTo, FAQPage } from 'schema-dts';
 
 export const metadata: Metadata = {
-  title: 'AI text improvement - refine tasks quickly | PlanToCode',
+  title: 'Specification Capture Mode - AI text enhancement | PlanToCode',
   description:
-    'Select any text, click to improve. AI refines task descriptions with full project context. Customizable prompts capture your mental model accurately. Used by teams who ship fast.',
+    'Capture and refine specifications with two AI prompt types: Text Enhancement for clarity and grammar, Task Refinement for completeness. Create detailed, actionable specs for corporate development teams.',
   keywords: [
+    'specification capture mode',
+    'text enhancement',
+    'task refinement',
+    'requirements gathering',
+    'corporate specifications',
+    'ai requirements analysis',
     'ai text improvement',
     'task description refinement',
     'ai writing assistant developers',
@@ -165,12 +172,12 @@ export default function TextImprovementPage() {
 
   const softwareApplicationJsonLd: SoftwareApplication = {
     '@type': 'SoftwareApplication',
-    name: 'PlanToCode - Text Improvement',
+    name: 'PlanToCode - Specification Capture Mode',
     applicationCategory: 'DeveloperApplication',
     operatingSystem: ['Windows 10+', 'macOS 11.0+'],
     url: 'https://www.plantocode.com/features/text-improvement',
     description:
-      'AI-powered text improvement for task descriptions. Select text, click improve. Context-aware refinement with customizable prompts.',
+      'AI-powered specification capture with two prompt types: Text Enhancement for clarity and grammar, Task Refinement for completeness. Context-aware refinement with customizable prompts.',
     offers: {
       '@type': 'Offer',
       price: 0,
@@ -220,16 +227,16 @@ export default function TextImprovementPage() {
               <div className="text-center space-y-6">
                 <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary text-sm font-medium">
                   <Sparkles className="w-4 h-4" />
-                  <span>AI Text Improvement • Context-Aware Refinement</span>
+                  <span>Specification Capture Mode • Two AI Prompt Types</span>
                 </div>
                 <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold leading-tight bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent">
-                  Instant AI text improvement
+                  Specification Capture Mode
                 </h1>
                 <p className="text-lg sm:text-xl md:text-2xl text-foreground/80 max-w-3xl mx-auto leading-relaxed">
-                  Highlight text. Click improve. Get clearer task descriptions with project context.
+                  Specification Capture Mode provides TWO DISTINCT AI prompt types designed to help corporate teams capture and refine requirements that development teams can confidently implement.
                 </p>
                 <p className="text-base sm:text-lg text-foreground/70 max-w-2xl mx-auto">
-                  Context-aware refinement with customizable prompts. Works in task descriptions and code editors. Used by teams who ship fast.
+                  Text Enhancement improves clarity and grammar. Task Refinement expands completeness and implementation readiness. Both are essential tools for corporate teams managing complex development workflows and detailed requirements gathering.
                 </p>
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                   <Button variant="cta" size="lg" asChild>
@@ -241,7 +248,70 @@ export default function TextImprovementPage() {
               </div>
 
               <div className="space-y-8">
-                <h2 className="text-2xl sm:text-3xl font-bold text-center">Why teams use AI text improvement</h2>
+                <h2 className="text-2xl sm:text-3xl font-bold text-center">Two Distinct AI Prompt Types</h2>
+                <div className="grid md:grid-cols-2 gap-6">
+                  <GlassCard className="p-6 h-full" highlighted>
+                    <div className="flex items-center gap-3 mb-4">
+                      <Sparkles className="w-6 h-6 text-primary" />
+                      <h3 className="text-xl font-semibold">Text Enhancement</h3>
+                    </div>
+                    <p className="text-sm text-foreground/70 leading-relaxed mb-4">
+                      Improves grammar, sentence structure, clarity, and conciseness while maintaining the user's original intent, tone, and technical detail level. Perfect for polishing rough drafts and voice transcriptions.
+                    </p>
+                    <ul className="space-y-2 text-sm text-foreground/70">
+                      <li className="flex items-start gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+                        <span>Preserves original meaning and intent</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+                        <span>Fixes grammar and punctuation</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+                        <span>Improves sentence flow and readability</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+                        <span>Maintains technical accuracy</span>
+                      </li>
+                    </ul>
+                  </GlassCard>
+                  <GlassCard className="p-6 h-full" highlighted>
+                    <div className="flex items-center gap-3 mb-4">
+                      <Target className="w-6 h-6 text-primary" />
+                      <h3 className="text-xl font-semibold">Task Refinement</h3>
+                    </div>
+                    <p className="text-sm text-foreground/70 leading-relaxed mb-4">
+                      Expands task descriptions by identifying implied requirements, filling in overlooked gaps, clarifying expected behavior and edge cases, and adding technical considerations to make tasks more complete and implementation-ready.
+                    </p>
+                    <ul className="space-y-2 text-sm text-foreground/70">
+                      <li className="flex items-start gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+                        <span>Identifies implied requirements</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+                        <span>Clarifies edge cases and constraints</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+                        <span>Adds technical implementation details</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+                        <span>Makes tasks actionable for developers</span>
+                      </li>
+                    </ul>
+                  </GlassCard>
+                </div>
+                <p className="text-base text-foreground/70 max-w-4xl mx-auto text-center leading-relaxed">
+                  Both prompt types leverage large language models to enhance content while preserving the original intent and core meaning of user input. This ensures your specifications remain true to your vision while becoming clearer and more complete.
+                </p>
+              </div>
+
+              <div className="space-y-8">
+                <h2 className="text-2xl sm:text-3xl font-bold text-center">Why corporate teams use Specification Capture Mode</h2>
                 <div className="grid md:grid-cols-3 gap-6">
                   {painPoints.map((item, index) => (
                     <GlassCard key={index} className="p-6 h-full">
@@ -297,23 +367,13 @@ export default function TextImprovementPage() {
                 </div>
               </div>
 
-              <div className="space-y-6">
-                <h2 className="text-2xl sm:text-3xl font-bold text-center">Frequently asked</h2>
-                <div className="grid md:grid-cols-2 gap-6">
-                  {faqs.map((item, index) => (
-                    <GlassCard key={index} className="p-6 h-full">
-                      <h3 className="text-lg font-semibold mb-3">{item.question}</h3>
-                      <p className="text-sm text-foreground/70 leading-relaxed">{item.answer}</p>
-                    </GlassCard>
-                  ))}
-                </div>
-              </div>
+              <FAQ items={faqs} />
 
               <div>
                 <GlassCard className="p-8 sm:p-12 max-w-3xl mx-auto text-center" highlighted>
-                  <h2 className="text-2xl sm:text-3xl font-bold mb-4">Refine task descriptions instantly with AI</h2>
+                  <h2 className="text-2xl sm:text-3xl font-bold mb-4">Start capturing clear specifications with AI</h2>
                   <p className="text-lg text-foreground/80 mb-8">
-                    Stop rewriting. Select text, click improve, get refined descriptions that capture your mental model accurately.
+                    Stop struggling with vague requirements. Capture ideas with voice, refine them with AI prompts, and create specifications that development teams can confidently implement.
                   </p>
                   <PlatformDownloadSection location="features_text_improvement" />
                   <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4 text-sm text-foreground/60">

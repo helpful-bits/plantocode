@@ -362,7 +362,7 @@ pub async fn initialize_device_link_connection(
             crate::db_utils::settings_repository::SettingsRepository::new(pool.clone());
         let device_settings = settings_repo.get_device_settings().await?;
 
-        if device_settings.is_discoverable && device_settings.allow_remote_access {
+        if device_settings.allow_remote_access {
             // Resolve server URL with precedence: ServerProxyClient > env var > default
             let server_url = if let Some(proxy_client_lock) = app_handle
                 .try_state::<Arc<tokio::sync::RwLock<Option<Arc<ServerProxyClient>>>>>()
