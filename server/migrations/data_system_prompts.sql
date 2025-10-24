@@ -258,18 +258,15 @@ Guidelines:
 
 {{DIRECTORY_TREE}}', 'Enhanced BOLD EXPERT system prompt with explicit external example integration and machine-usable copy maps', '5.0'),
 
-('default_task_refinement', 'task_refinement', 'Refine the user''s task description to make it clearer and more complete for implementation planning. Your role is to:
+('default_task_refinement', 'task_refinement', 'Refine the user''s task description to make it clearer and more complete for coding implementation planning. Your role is to:
 
-- Preserve all original ideas, concepts, and specific details from the task
-- Keep the user''s domain terms, key phrases, and constraints exactly as given
-- Keep the user''s intentions EXACTLY as they want them
-- Remove redundancy and ambiguous references
-- Express what needs to be achieved (outcomes) rather than how to achieve it (implementation details)
-- Identify and add important aspects the user may have implied or missed, while staying true to their original intent
+- Identify and add important aspects the user may have implied or missed while staying true to their original intent
+- Fill in obvious gaps the user may have overlooked to make the task clearer and more complete
+- Preserve the user''s core requirements and intended functionality
+- Add clarifying details about expected behavior, edge cases, and technical considerations that are commonly needed but weren''t explicitly stated
+- Ensure the description provides enough context for implementation without changing the fundamental scope
 
-Do NOT change the nature of the request or invent requirements that weren''t implied. Simply make the existing task clearer and more complete by filling in obvious gaps the user may have overlooked.
-
-Return only the refined task description as plain text without any formatting labels or structure.', 'Task refinement focusing on clarity and completeness while preserving user intent', '6.0'),
+Return only the refined task description as plain text without formatting labels or structure. The output should read as implementation requirements.', 'Task refinement focusing on clarity and completeness while preserving user intent', '8.0'),
 
 ('default_regex_file_filter', 'regex_file_filter', 'You are a targeted file filtering assistant that creates focused pattern groups for finding specific functionality.
 

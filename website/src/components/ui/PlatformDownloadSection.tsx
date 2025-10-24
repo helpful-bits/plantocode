@@ -87,8 +87,8 @@ export function PlatformDownloadSection({
           <WindowsStoreButton size={location === 'hero_section' || location === 'cta_section' || location === 'demo_screenshots' || location === 'pricing' ? 'medium' : 'small'} />
         </div>
         <div className="flex flex-col items-center gap-1 mt-2">
-          <span className="text-xs text-muted-foreground">$5 Free Credits • Pay-as-you-go</span>
-          <span className="text-xs text-muted-foreground">Local Session History • No Subscriptions</span>
+          <span className="text-xs text-muted-foreground">Pay as you go • No subscriptions</span>
+          <span className="text-xs text-muted-foreground">Local Session History • Usage-Based Pricing</span>
         </div>
       </div>
     </div>

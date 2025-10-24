@@ -1,0 +1,11 @@
+{
+  "benchmark": "Mixed-domain technical dictation (placeholder)",
+  "note": "Placeholder data for development. Replace with real WER dataset when available.",
+  "unit": "percent",
+  "models": [
+    { "id": "gpt-4o-transcribe", "label": "OpenAI gpt-4o-transcribe", "vendor": "OpenAI", "wer": 2.1 },
+    { "id": "google-stt-v2", "label": "Google Speech-to-Text v2", "vendor": "Google", "wer": 4.0 },
+    { "id": "aws-transcribe", "label": "AWS Transcribe", "vendor": "AWS", "wer": 6.2 },
+    { "id": "whisper-large-v2", "label": "Whisper large-v2", "vendor": "OpenAI Whisper", "wer": 5.5 }
+  ]
+}

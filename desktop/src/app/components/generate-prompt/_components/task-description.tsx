@@ -12,6 +12,7 @@ import React, {
 import type { ChangeEvent } from "react";
 
 import { useScreenRecording } from "@/contexts/screen-recording";
+import { useSessionActionsContext } from "@/contexts/session";
 import { Button } from "@/ui/button";
 import { Textarea } from "@/ui/textarea";
 import { cn } from "@/utils/utils";
@@ -67,6 +68,7 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
     const { state: taskState, actions: taskActions } = useTaskContext();
     const { recordTaskChange } = taskActions;
     const { isAnalyzingVideo } = taskState;
+    const sessionActions = useSessionActionsContext();
 
     // Use ref to track value instead of state to avoid re-renders on every keystroke
     const valueRef = useRef(initialValue);
@@ -166,6 +168,7 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
       }
       setIsEmpty(!currentValue.trim());
 
+      sessionActions.updateCurrentSessionFields({ taskDescription: valueRef.current });
       await endTaskEdit(sessionId).catch((error) => {
         console.error("Failed to end task edit:", error);
       });
@@ -355,6 +358,9 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
                   if (recordTaskChange) {
                     recordTaskChange('voice', newValue);
                   }
+                  setIsEmpty(!newValue.trim());
+                  sessionActions.updateCurrentSessionFields({ taskDescription: newValue });
+                  el.dispatchEvent(new Event('input', { bubbles: true }));
                   setTimeout(() => {
                     const newCursorPos = beforeCursor.length + prefix.length + trimmedText.length;
                     el.setSelectionRange(newCursorPos, newCursorPos);

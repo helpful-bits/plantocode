@@ -16,16 +16,24 @@ public struct DeviceSelectionView: View {
         let allowedPlatforms = Set(["macos", "windows", "linux"])
         let filtered = deviceDiscovery.devices.filter { device in
             let isDesktop = device.deviceType.lowercased() == "desktop"
-            let isAvailable = device.status.isAvailable
             let isAllowedPlatform = allowedPlatforms.contains(device.platform.lowercased())
             let isValidName = device.deviceName.lowercased() != "unknown"
 
-            print("[DeviceSelection] Device: \(device.deviceName) - Type: \(device.deviceType) (isDesktop: \(isDesktop)), Status: \(device.status) (isAvailable: \(isAvailable)), Platform: \(device.platform) (allowed: \(isAllowedPlatform)), Name valid: \(isValidName)")
+            print("[DeviceSelection] Device: \(device.deviceName) - Type: \(device.deviceType) (isDesktop: \(isDesktop)), Status: \(device.status), Platform: \(device.platform) (allowed: \(isAllowedPlatform)), Name valid: \(isValidName)")
 
-            return isDesktop && isAvailable && isAllowedPlatform && isValidName
+            return isDesktop && isAllowedPlatform && isValidName
         }
-        print("[DeviceSelection] Filtered devices: \(filtered.count) of \(deviceDiscovery.devices.count)")
-        return filtered
+
+        // Sort: online devices first, then by name
+        let sorted = filtered.sorted { first, second in
+            if first.status.isAvailable != second.status.isAvailable {
+                return first.status.isAvailable
+            }
+            return first.deviceName.localizedCaseInsensitiveCompare(second.deviceName) == .orderedAscending
+        }
+
+        print("[DeviceSelection] Filtered and sorted devices: \(sorted.count) of \(deviceDiscovery.devices.count)")
+        return sorted
     }
 
     private var identityText: String {
@@ -194,17 +202,20 @@ public struct DeviceSelectionView: View {
                     }
 
                     if !filteredDevices.isEmpty {
-                        VStack(spacing: 12) {
-                            ForEach(filteredDevices) { device in
-                                DeviceRow(
-                                    device: device,
-                                    isSelected: selectedDeviceId == device.deviceId,
-                                    isConnecting: isConnecting && selectedDeviceId == device.deviceId
-                                ) {
-                                    connectToDevice(device)
+                        ScrollView {
+                            VStack(spacing: 12) {
+                                ForEach(filteredDevices) { device in
+                                    DeviceRow(
+                                        device: device,
+                                        isSelected: selectedDeviceId == device.deviceId,
+                                        isConnecting: isConnecting && selectedDeviceId == device.deviceId
+                                    ) {
+                                        connectToDevice(device)
+                                    }
                                 }
                             }
                         }
+                        .frame(maxHeight: 400)
 
                         HStack {
                             Button("Refresh") {

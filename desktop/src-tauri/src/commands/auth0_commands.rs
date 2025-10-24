@@ -290,6 +290,14 @@ pub async fn check_auth_status_and_exchange_token(
     // Store app JWT
     token_manager.set(Some(auth_response.token.clone())).await?;
 
+    // Re-register device to ensure server has up-to-date record
+    let app_handle_clone = app_handle.clone();
+    tokio::spawn(async move {
+        if let Err(e) = crate::app_setup::services::initialize_device_link_connection(&app_handle_clone).await {
+            tracing::warn!("Failed to re-register device after login: {:?}", e);
+        }
+    });
+
     // Remove the polling ID now that authentication is complete
     let _ = app_state
         .auth0_state_store
@@ -365,6 +373,14 @@ pub async fn refresh_app_jwt_auth0(
     // Store new app JWT
     token_manager.set(Some(auth_response.token)).await?;
 
+    // Re-register device to ensure server has up-to-date record
+    let app_handle_clone = app_handle.clone();
+    tokio::spawn(async move {
+        if let Err(e) = crate::app_setup::services::initialize_device_link_connection(&app_handle_clone).await {
+            tracing::warn!("Failed to re-register device after token refresh: {:?}", e);
+        }
+    });
+
     info!("App JWT refreshed successfully via Auth0");
 
     Ok(())
@@ -413,6 +429,12 @@ pub async fn logout_auth0(
                 warn!("Failed to call server logout endpoint: {}", e);
             }
         }
+    }
+
+    // Shutdown DeviceLinkClient before clearing token
+    if let Some(client) = app_handle.try_state::<Arc<crate::services::device_link_client::DeviceLinkClient>>() {
+        tracing::info!("Logging out: shutting down DeviceLinkClient");
+        client.shutdown().await;
     }
 
     // Clear stored app JWT regardless of server response

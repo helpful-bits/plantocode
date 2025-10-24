@@ -171,16 +171,9 @@ impl DeviceLinkClient {
         // Register device with server before connecting WebSocket
         self.register_device(&device_id, &token).await?;
 
-        // Check if device is discoverable AFTER registration
-        if !device_settings.is_discoverable {
-            info!("Desktop not discoverable: enable 'Allow Remote Access' in Settings");
-            return Ok(());
-        }
-
+        // Check if remote access is enabled AFTER registration
         if !device_settings.allow_remote_access {
-            info!(
-                "Remote access disabled: enable 'Allow Remote Access' in Settings to connect via relay"
-            );
+            info!("Remote access disabled: enable 'Allow Remote Access' in Settings to connect via relay");
             return Ok(());
         }
 
@@ -449,6 +442,24 @@ impl DeviceLinkClient {
                                     *bound = None;
                                     info!("Bound terminal: cleared bound session");
                                 }
+                            } else if env.kind == "device-status" {
+                                // Forward device status changes to local event bus
+                                if let Err(e) = app_handle.emit("device-link-event", json!({
+                                    "type": "device-status",
+                                    "payload": env.payload,
+                                    "relayOrigin": "remote"
+                                })) {
+                                    error!("Failed to emit device-status event: {}", e);
+                                }
+                            } else if env.kind == "device-unlinked" {
+                                // Forward device unlinked events to local event bus
+                                if let Err(e) = app_handle.emit("device-link-event", json!({
+                                    "type": "device-unlinked",
+                                    "payload": env.payload,
+                                    "relayOrigin": "remote"
+                                })) {
+                                    error!("Failed to emit device-unlinked event: {}", e);
+                                }
                             } else if env.kind.starts_with("job:") {
                                 // Forward job events to local event bus
                                 if let Err(e) = app_handle.emit("device-link-event", json!({
@@ -553,16 +564,15 @@ impl DeviceLinkClient {
             loop {
                 interval.tick().await;
 
-                // Check if device is still visible
+                // Check if remote access is still enabled
                 if let Some(pool) =
                     app_handle_for_heartbeat.try_state::<Arc<sqlx::SqlitePool>>()
                 {
                     let pool = pool.inner().clone();
                     let settings_repo = SettingsRepository::new(pool.clone());
                     if let Ok(device_settings) = settings_repo.get_device_settings().await {
-                        if !device_settings.is_discoverable || !device_settings.allow_remote_access
-                        {
-                            info!("Device visibility settings changed, terminating connection");
+                        if !device_settings.allow_remote_access {
+                            info!("Remote access disabled, terminating connection");
                             break;
                         }
                     }
@@ -692,7 +702,7 @@ impl DeviceLinkClient {
 
     /// Register device with the server's device registry
     async fn register_device(&self, device_id: &str, token: &str) -> Result<(), AppError> {
-        info!("Registering device with server: {}", device_id);
+        info!("Registering device with server - device_id: {}, server: {}", device_id, self.server_url);
 
         // Get device information
         let device_name = hostname::get()
@@ -720,6 +730,16 @@ impl DeviceLinkClient {
             }
         }
 
+        // Get device settings to determine relay_eligible
+        let relay_eligible = if let Some(pool) = self.app_handle.try_state::<Arc<sqlx::SqlitePool>>() {
+            let settings_repo = crate::db_utils::SettingsRepository::new((*pool).clone());
+            settings_repo.get_device_settings().await
+                .map(|settings| settings.allow_remote_access)
+                .unwrap_or(false)
+        } else {
+            false
+        };
+
         // Build registration request
         let registration_body = serde_json::json!({
             "device_name": device_name,
@@ -727,7 +747,7 @@ impl DeviceLinkClient {
             "platform": platform,
             "platform_version": std::env::consts::OS,
             "app_version": app_version,
-            "relay_eligible": true,
+            "relay_eligible": relay_eligible,
             "capabilities": serde_json::Value::Object(capabilities_map)
         });
 
@@ -757,6 +777,21 @@ impl DeviceLinkClient {
             // 409 Conflict = already registered (this is fine)
             info!("Device registered successfully (status: {})", status);
             Ok(())
+        } else if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+            // Authentication failed in background service - DO NOT clear token
+            // Background services should never manage auth state
+            // The token manager will handle token refresh/clearing based on user-initiated requests
+            warn!(
+                "Authentication failed during device registration: {}. \
+                Device link will stop attempting to connect until token is refreshed. \
+                This is a background service and will not clear your token.",
+                status
+            );
+
+            // Return a specific auth error that tells the caller to stop retrying
+            Err(AppError::AuthError(
+                "Authentication failed in background service. Device link connection suspended until token refresh.".to_string()
+            ))
         } else {
             let error_text = response
                 .text()
@@ -842,12 +877,20 @@ impl DeviceLinkClient {
         }
     }
 
+    /// Send a visibility event to the server
+    pub async fn send_visibility_event(&self, visible: bool) -> Result<(), AppError> {
+        self.send_event(
+            "device-visibility-updated".to_string(),
+            serde_json::json!({ "visible": visible })
+        ).await
+    }
+
     /// Check if the client is connected
     pub fn is_connected(&self) -> bool {
         self.sender.lock().unwrap().is_some()
     }
 
-    /// Check if device is visible (discoverable and allows remote access)
+    /// Check if device allows remote access
     pub async fn is_device_visible(&self) -> bool {
         if let Some(pool) = self
             .app_handle
@@ -856,7 +899,7 @@ impl DeviceLinkClient {
             let pool = pool.inner().clone();
             let settings_repo = SettingsRepository::new(pool.clone());
             if let Ok(device_settings) = settings_repo.get_device_settings().await {
-                return device_settings.is_discoverable && device_settings.allow_remote_access;
+                return device_settings.allow_remote_access;
             }
         }
         false
@@ -911,9 +954,28 @@ pub async fn start_device_link_client(
                 break;
             }
             Err(e) => {
+                // Check if this is an auth error - if so, stop retrying
+                // Background services should not keep hammering the server with invalid tokens
+                if matches!(e, AppError::AuthError(_)) {
+                    warn!(
+                        "Device link client authentication failed: {}. \
+                        Stopping reconnection attempts. Device link will restart automatically \
+                        when token is refreshed.",
+                        e
+                    );
+
+                    // Emit an event to notify UI that device link stopped due to auth
+                    let _ = app_handle.emit("device-link-status", serde_json::json!({
+                        "status": "auth_failed",
+                        "message": "Device link suspended due to authentication issue. Will resume after token refresh."
+                    }));
+
+                    break; // Stop the loop - don't retry on auth failures
+                }
+
                 error!("Device link client error: {}", e);
 
-                // Wait before reconnecting
+                // Wait before reconnecting for non-auth errors (network issues, etc.)
                 tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                 info!("Attempting to reconnect device link client...");
             }

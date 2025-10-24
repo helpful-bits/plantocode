@@ -14,7 +14,7 @@ use crate::db::repositories::device_repository::{
 };
 use crate::error::AppError;
 use crate::models::AuthenticatedUser;
-use crate::services::device_connection_manager::DeviceConnectionManager;
+use crate::services::device_connection_manager::{DeviceConnectionManager, DeviceMessage};
 use crate::services::device_link_ws::{DeviceLinkWs, create_device_link_ws};
 use crate::services::relay_session_store::RelaySessionStore;
 
@@ -112,6 +112,7 @@ pub async fn register_device_handler(
             } else {
                 warn!(
                     user_id = %user.user_id,
+                    header_value = ?id_str,
                     "Invalid X-Device-ID header format, generating new UUID"
                 );
                 Uuid::new_v4()
@@ -124,6 +125,11 @@ pub async fn register_device_handler(
             Uuid::new_v4()
         }
     } else {
+        warn!(
+            user_id = %user.user_id,
+            headers_present = ?req.headers().keys().collect::<Vec<_>>(),
+            "X-Device-ID header missing, generating new UUID - this will create duplicate devices!"
+        );
         Uuid::new_v4()
     };
 
@@ -350,6 +356,7 @@ pub async fn get_devices_handler(
 /// Unregister a device
 pub async fn unregister_device_handler(
     device_repo: web::Data<DeviceRepository>,
+    connection_manager: web::Data<DeviceConnectionManager>,
     user: AuthenticatedUser,
     path: web::Path<Uuid>,
 ) -> Result<HttpResponse, AppError> {
@@ -364,6 +371,34 @@ pub async fn unregister_device_handler(
         device_id = %device_id,
         "Device unregistered successfully"
     );
+
+    // Broadcast device-unlinked event to user's other devices
+    let unlink_event = serde_json::json!({
+        "type": "device-unlinked",
+        "payload": {
+            "deviceId": device_id.to_string()
+        }
+    });
+
+    let device_message = DeviceMessage {
+        message_type: "device-unlinked".to_string(),
+        payload: unlink_event.get("payload").cloned().unwrap_or(serde_json::json!({})),
+        target_device_id: None,
+        source_device_id: None,
+        timestamp: chrono::Utc::now(),
+    };
+
+    if let Err(e) = connection_manager
+        .broadcast_to_user_excluding(&user.user_id, device_message, None)
+        .await
+    {
+        warn!(
+            user_id = %user.user_id,
+            device_id = %device_id,
+            error = %e,
+            "Failed to broadcast device-unlinked event"
+        );
+    }
 
     Ok(HttpResponse::NoContent().finish())
 }

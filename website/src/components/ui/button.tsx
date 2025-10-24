@@ -19,9 +19,9 @@ const buttonVariants = cva(
         cta:
           'bg-gradient-to-r from-[oklch(0.48_0.15_195)] via-[oklch(0.50_0.14_190)] to-[oklch(0.52_0.13_185)] hover:from-[oklch(0.42_0.17_195)] hover:via-[oklch(0.44_0.16_190)] hover:to-[oklch(0.46_0.15_185)] text-white font-bold shadow-md hover:shadow-lg shadow-[oklch(0.48_0.15_195_/_0.3)] hover:shadow-[oklch(0.48_0.15_195_/_0.4)] dark:from-[oklch(0.58_0.12_195)] dark:via-[oklch(0.60_0.11_190)] dark:to-[oklch(0.62_0.10_185)] dark:hover:from-[oklch(0.55_0.13_195)] dark:hover:via-[oklch(0.57_0.12_190)] dark:hover:to-[oklch(0.59_0.11_185)] dark:text-white',
         outline:
-          'border border-[oklch(0.90_0.04_195)] bg-transparent hover:bg-[oklch(0.97_0.025_195)] hover:border-[oklch(0.48_0.15_195)] text-foreground shadow-sm hover:shadow-md dark:border-[oklch(0.30_0.045_206)] dark:hover:bg-[oklch(0.22_0.035_206)] dark:hover:border-[oklch(0.58_0.12_195)]',
+          'border border-[oklch(0.90_0.04_195)] bg-transparent hover:bg-[oklch(0.92_0.05_195)] hover:border-[oklch(0.48_0.15_195)] text-foreground shadow-sm hover:shadow-md dark:border-[oklch(0.30_0.045_206)] dark:hover:bg-[oklch(0.22_0.035_206)] dark:hover:border-[oklch(0.58_0.12_195)]',
         ghost:
-          'hover:bg-[oklch(0.96_0.045_195)] text-muted-foreground hover:text-foreground dark:hover:bg-[oklch(0.28_0.032_195)] dark:hover:text-foreground',
+          'hover:bg-[oklch(0.93_0.055_195)] text-muted-foreground hover:text-foreground dark:hover:bg-[oklch(0.28_0.032_195)] dark:hover:text-foreground',
         destructive:
           'bg-[oklch(0.53_0.24_25)] hover:bg-[oklch(0.48_0.25_25)] text-white shadow-md hover:shadow-lg shadow-[oklch(0.53_0.24_25_/_0.25)] hover:shadow-[oklch(0.53_0.24_25_/_0.35)] dark:bg-[oklch(0.55_0.22_25)] dark:hover:bg-[oklch(0.52_0.23_25)] dark:text-white',
         secondary:

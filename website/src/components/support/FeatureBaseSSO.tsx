@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useWebAuth } from '../auth/WebAuthProvider';
-import { FEATUREBASE_ORG, FEATUREBASE_BASE_URL } from '@/lib/brand';
+import { FEATUREBASE_BASE_URL } from '@/lib/brand';
 
 interface FeatureBaseSSOProps {
   className?: string;
@@ -55,9 +55,8 @@ export function FeatureBaseSSOButton({ className = '', children, returnTo }: Fea
       if (!token) {
         throw new Error('No SSO token received');
       }
-      
+
       // Construct secure FeatureBase SSO URL
-      const featureBaseOrg = FEATUREBASE_ORG;
       const finalReturnTo = returnTo || FEATUREBASE_BASE_URL;
       const ssoUrl = `${FEATUREBASE_BASE_URL}/api/v1/auth/access/jwt?jwt=${encodeURIComponent(token)}&return_to=${encodeURIComponent(finalReturnTo)}`;
       
