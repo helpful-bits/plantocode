@@ -4,27 +4,25 @@ import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { StructuredData } from '@/components/seo/StructuredData';
-import { Mic, Settings, Terminal, AudioWaveform, Shield, Languages, Thermometer, CheckCircle2, AlertCircle, Code2 } from 'lucide-react';
-import type { SoftwareApplication, HowTo, FAQPage } from 'schema-dts';
+import { FAQ } from '@/components/landing/FAQ';
+import { Mic, Settings, Terminal, AlertCircle, Code2, Sparkles, Target } from 'lucide-react';
+import type { SoftwareApplication, FAQPage } from 'schema-dts';
+import { AccuracySection } from '@/components/voice/AccuracySection';
+import { TranscriptionComparison } from '@/components/voice/TranscriptionComparison';
 
 export const metadata: Metadata = {
-  title: 'Voice to text for developers - faster task input | PlanToCode',
-  description: 'Speak your task descriptions. AI transcribes with smart text insertion (prevents word concatenation). 5 languages, customizable per project. Audio level feedback. Used by teams who move fast.',
+  title: 'Voice to text for rapid specification capture | PlanToCode',
+  description: 'Capture specifications hands-free with voice. PlanToCode transcribes accurately and inserts your words where you work. Configure defaults per project. Supports multiple languages.',
   keywords: [
     'voice transcription',
-    'ai coding voice input',
-    'terminal voice dictation',
-    'openai whisper',
+    'specification capture',
     'developer voice input',
-    'hands-free coding',
-    'voice to text developers',
-    'transcription settings',
-    'monaco editor voice',
-    'voice task description',
+    'terminal dictation',
+    'project configuration',
   ],
   openGraph: {
     title: 'Voice-to-Text for Developers: Faster Task Input',
-    description: 'Speak your task descriptions naturally. OpenAI Whisper transcribes with smart text insertion that prevents word concatenation. 5 languages, temperature control, real-time audio monitoring. The voice input system developers actually want.',
+    description: 'Rapid specification capture with voice dictation. Speak your requirements naturally, AI transcribes accurately. The first step in creating detailed implementation plans for corporate teams.',
     url: 'https://www.plantocode.com/features/voice-transcription',
     siteName: 'PlanToCode',
     type: 'website',
@@ -43,48 +41,13 @@ export default function VoiceTranscriptionFeaturePage() {
     url: 'https://www.plantocode.com/features/voice-transcription',
     description: 'Voice transcription system for developers powered by OpenAI Whisper (GPT-4o-transcribe). Speak task descriptions and terminal commands with language selection, temperature control, real-time audio monitoring, and per-project configuration.',
     featureList: [
-      'OpenAI Whisper GPT-4o-transcribe',
-      'Voice to task description with smart text insertion',
-      '5 language support (EN, ES, FR, DE, ZH)',
-      'Temperature control 0.0-1.0',
-      'Real-time audio level meter',
-      'Silence detection',
+      'Hands-free specification capture',
+      'Multiple language support',
       'Per-project configuration',
       'Terminal dictation support',
     ],
   };
 
-  const howToJsonLd: HowTo = {
-    '@type': 'HowTo',
-    name: 'How to use voice transcription for task descriptions',
-    description: 'Capture task descriptions hands-free with AI-powered voice transcription',
-    step: [
-      {
-        '@type': 'HowToStep',
-        position: 1,
-        name: 'Click the microphone button',
-        text: 'Open your task description panel and click the microphone icon to start recording',
-      },
-      {
-        '@type': 'HowToStep',
-        position: 2,
-        name: 'Speak your task naturally',
-        text: 'Describe your task while watching the real-time audio level meter. The system detects silence automatically.',
-      },
-      {
-        '@type': 'HowToStep',
-        position: 3,
-        name: 'AI transcribes automatically',
-        text: 'OpenAI Whisper processes your audio with the configured language and temperature settings',
-      },
-      {
-        '@type': 'HowToStep',
-        position: 4,
-        name: 'Text inserted with proper spacing',
-        text: 'Transcribed text appears in your Monaco editor or terminal with automatic spacing and formatting',
-      },
-    ],
-  };
 
   const faqJsonLd: FAQPage = {
     '@type': 'FAQPage',
@@ -94,7 +57,7 @@ export default function VoiceTranscriptionFeaturePage() {
         name: 'Which languages are supported for voice transcription?',
         acceptedAnswer: {
           '@type': 'Answer',
-          text: 'PlanToCode supports 5 languages: English (EN), Spanish (ES), French (FR), German (DE), and Chinese (ZH). You can configure the default language per project.',
+          text: 'OpenAI transcription supports multiple languages. You can set a default language per project.',
         },
       },
       {
@@ -102,7 +65,7 @@ export default function VoiceTranscriptionFeaturePage() {
         name: 'Which AI model is used for transcription?',
         acceptedAnswer: {
           '@type': 'Answer',
-          text: 'We use OpenAI Whisper (GPT-4o-transcribe) for all voice transcription. It provides high accuracy with smart text insertion (prevents word concatenation) and punctuation.',
+          text: 'We use OpenAI transcription for accurate results.',
         },
       },
       {
@@ -110,7 +73,7 @@ export default function VoiceTranscriptionFeaturePage() {
         name: 'Can I customize transcription settings per project?',
         acceptedAnswer: {
           '@type': 'Answer',
-          text: 'Yes. You can configure language, temperature (0.0-1.0), and model settings for each project. Settings are stored in the project configuration and shared across team members.',
+          text: 'Yes. You can configure language and model settings for each project. Settings are stored in the project configuration and shared across team members.',
         },
       },
       {
@@ -129,21 +92,13 @@ export default function VoiceTranscriptionFeaturePage() {
           text: 'No, voice transcription requires an internet connection to send audio to OpenAI Whisper API. The transcription happens in real-time with minimal latency.',
         },
       },
-      {
-        '@type': 'Question',
-        name: 'What is the temperature control for?',
-        acceptedAnswer: {
-          '@type': 'Answer',
-          text: 'Temperature (0.0-1.0) controls transcription creativity. Lower values (0.0-0.3) produce more accurate, consistent transcriptions. Higher values allow more variation. Most developers use 0.2-0.5.',
-        },
-      },
     ],
   };
 
   const painPoints = [
     {
-      title: 'Typing slows down ideation',
-      description: 'You think faster than you type. Ideas get lost while your fingers catch up. Voice lets you capture the full thought before it fades.',
+      title: 'Capture ideas before they fade',
+      description: 'Stakeholders think faster than they type. Requirements and context get lost while fingers catch up. Voice lets you capture the complete specification before critical details fade.',
       icon: <AlertCircle className="w-6 h-6" />,
     },
     {
@@ -160,34 +115,19 @@ export default function VoiceTranscriptionFeaturePage() {
 
   const capabilities = [
     {
-      title: 'OpenAI Whisper (GPT-4o-transcribe)',
-      description: 'State-of-the-art transcription with automatic punctuation and smart text insertion that prevents word concatenation. No manual cleanup needed.',
-      icon: <AudioWaveform className="w-8 h-8" />,
-    },
-    {
-      title: '5 Language Support',
-      description: 'English, Spanish, French, German, Chinese. Configure per project. Team members in different regions use their native language.',
-      icon: <Languages className="w-8 h-8" />,
-    },
-    {
-      title: 'Temperature Control (0.0-1.0)',
-      description: 'Fine-tune transcription accuracy vs creativity. Lower values for technical terms, higher for natural language. Adjust per use case.',
-      icon: <Thermometer className="w-8 h-8" />,
-    },
-    {
-      title: 'Real-time Audio Level Meter',
-      description: 'Visual feedback shows recording strength. Know if you are too quiet or too loud before wasting a take.',
-      icon: <AudioWaveform className="w-8 h-8" />,
-    },
-    {
-      title: 'Automatic Silence Detection',
-      description: 'Recording stops when you pause. No need to manually click stop. Resume automatically when you start speaking again.',
+      title: 'Multiple Language Support',
+      description: 'OpenAI transcription supports multiple languages.',
       icon: <Mic className="w-8 h-8" />,
     },
     {
       title: 'Per-Project Configuration',
-      description: 'Language, temperature, and model defaults persist per project. Switch projects, settings follow automatically.',
+      description: 'Set project defaults. Your team shares sensible defaults.',
       icon: <Settings className="w-8 h-8" />,
+    },
+    {
+      title: 'Terminal Dictation',
+      description: 'Dictate commands directly to your terminal session.',
+      icon: <Terminal className="w-8 h-8" />,
     },
   ];
 
@@ -216,7 +156,7 @@ export default function VoiceTranscriptionFeaturePage() {
 
   return (
     <>
-      <StructuredData data={{ '@graph': [softwareApplicationJsonLd, howToJsonLd, faqJsonLd] }} />
+      <StructuredData data={{ '@graph': [softwareApplicationJsonLd, faqJsonLd] }} />
       <div className="fixed inset-0 -z-20" style={{ background: 'var(--background-gradient)' }} />
 
       <div className="relative z-0 bg-transparent min-h-screen flex flex-col">
@@ -229,19 +169,19 @@ export default function VoiceTranscriptionFeaturePage() {
               <div className="text-center mb-16">
                 <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary mb-6 text-sm font-medium">
                   <Mic className="w-4 h-4" />
-                  <span>OpenAI Whisper GPT-4o-transcribe</span>
+                  <span>Voice transcription for developers</span>
                 </div>
                 <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-6 bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent">
-                  Voice to text that works for developers
+                  Rapid specification capture with voice
                 </h1>
                 <p className="text-lg sm:text-xl md:text-2xl text-foreground/80 max-w-3xl mx-auto leading-relaxed">
-                  Speak your task or command. PlanToCode transcribes and inserts clean text with proper spacing.
+                  Speak your requirements and ideas naturally. This is the first step in your specification workflow: capture ideas quickly with voice, then refine them manually with AI-powered prompts. The fastest way to capture initial specifications before refinement.
                 </p>
               </div>
 
               {/* Pain Points */}
               <div className="mb-16">
-                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">Why Typing Slows You Down</h2>
+                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">Why Voice Accelerates Specification Capture</h2>
                 <div className="grid md:grid-cols-3 gap-6">
                   {painPoints.map((point, index) => (
                     <GlassCard key={index} className="p-6">
@@ -254,68 +194,6 @@ export default function VoiceTranscriptionFeaturePage() {
                       </div>
                     </GlassCard>
                   ))}
-                </div>
-              </div>
-
-              {/* How It Works */}
-              <div className="mb-16">
-                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">How It Works</h2>
-                <div className="space-y-4 max-w-3xl mx-auto">
-                  <GlassCard className="p-6" highlighted>
-                    <div className="flex items-start gap-4">
-                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold">
-                        1
-                      </div>
-                      <div>
-                        <h3 className="font-semibold mb-2">Click the microphone button</h3>
-                        <p className="text-foreground/80">
-                          Task description panel or terminal modal. Microphone icon starts recording immediately. Visual feedback confirms active state.
-                        </p>
-                      </div>
-                    </div>
-                  </GlassCard>
-
-                  <GlassCard className="p-6" highlighted>
-                    <div className="flex items-start gap-4">
-                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold">
-                        2
-                      </div>
-                      <div>
-                        <h3 className="font-semibold mb-2">Speak your task naturally</h3>
-                        <p className="text-foreground/80">
-                          Real-time audio level meter shows recording strength. Automatic silence detection pauses recording. Resume when you continue speaking.
-                        </p>
-                      </div>
-                    </div>
-                  </GlassCard>
-
-                  <GlassCard className="p-6" highlighted>
-                    <div className="flex items-start gap-4">
-                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold">
-                        3
-                      </div>
-                      <div>
-                        <h3 className="font-semibold mb-2">AI transcribes automatically</h3>
-                        <p className="text-foreground/80">
-                          OpenAI Whisper (GPT-4o-transcribe) processes audio with your configured language and temperature. High accuracy, minimal latency.
-                        </p>
-                      </div>
-                    </div>
-                  </GlassCard>
-
-                  <GlassCard className="p-6" highlighted>
-                    <div className="flex items-start gap-4">
-                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold">
-                        4
-                      </div>
-                      <div>
-                        <h3 className="font-semibold mb-2">Text inserted with proper spacing</h3>
-                        <p className="text-foreground/80">
-                          Transcribed text appears in Monaco editor or terminal buffer with automatic punctuation and smart text insertion. No word concatenation - spacing is intelligently added where needed.
-                        </p>
-                      </div>
-                    </div>
-                  </GlassCard>
                 </div>
               </div>
 
@@ -339,6 +217,39 @@ export default function VoiceTranscriptionFeaturePage() {
                 </div>
               </div>
 
+              <section className="mb-16">
+                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">Accuracy Benchmarks</h2>
+                <GlassCard className="p-6 md:p-8">
+                  <AccuracySection datasetUrl="/data/transcription/wer-benchmarks.json" />
+                  <div className="mt-6 space-y-2 text-sm text-foreground/80">
+                    <p className="font-medium">About these models</p>
+                    <ul className="list-disc pl-5 space-y-1">
+                      <li>OpenAI gpt-4o-transcribe — advanced multilingual speech model optimized for accuracy and latency.</li>
+                      <li>Google Speech-to-Text v2 — cloud speech recognition by Google.</li>
+                      <li>AWS Transcribe — managed speech recognition by Amazon Web Services.</li>
+                      <li>Whisper large-v2 — open-source large-model baseline for comparison.</li>
+                    </ul>
+                    <p className="mt-3 text-foreground">
+                      <strong>Bottom line:</strong> Fewer errors mean fewer ambiguous tickets and less rework. gpt-4o-transcribe helps teams capture precise, implementation-ready specifications on the first try.
+                    </p>
+                  </div>
+                </GlassCard>
+              </section>
+
+              <section className="mb-16">
+                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">Illustrative Example: Capturing Specifications</h2>
+                <GlassCard className="p-6 md:p-8">
+                  <TranscriptionComparison
+                    reference="Create a Postgres read-replica in us-east-1 with 2 vCPU, 8GB RAM, and enable logical replication; set wal_level=logical and max_wal_senders=10."
+                    gpt="Create a Postgres read-replica in us-east-1 with 2 vCPU, 8 GB RAM, and enable logical replication; set wal_level=logical and max_wal_senders=10."
+                    competitor={{
+                      label: 'Competitor Model',
+                      text: 'Create a Postgres replica in us-east with 2 CPUs, 8GB RAM, and enable replication; set wal level logical and max senders equals ten.'
+                    }}
+                  />
+                </GlassCard>
+              </section>
+
               {/* Use Cases */}
               <div className="mb-16">
                 <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">Real Use Cases</h2>
@@ -361,140 +272,53 @@ export default function VoiceTranscriptionFeaturePage() {
                 </div>
               </div>
 
-              {/* Technical Details */}
-              <div className="mb-16">
-                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">Technical Details</h2>
-                <div className="grid md:grid-cols-2 gap-8">
-                  <GlassCard className="p-8">
-                    <div className="flex items-start gap-4">
-                      <AudioWaveform className="w-8 h-8 text-primary flex-shrink-0" />
-                      <div>
-                        <h3 className="text-xl font-bold mb-3">Transcription Pipeline</h3>
-                        <p className="text-foreground/80 mb-4">
-                          Audio captured via <code>useVoiceTranscription</code> hook. Streamed to OpenAI Whisper API. Results saved to Monaco editor or terminal buffer with automatic retries.
-                        </p>
-                        <ul className="space-y-2 text-foreground/70 text-sm">
-                          <li className="flex items-start gap-2">
-                            <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
-                            <span>Real-time audio level feedback during recording</span>
-                          </li>
-                          <li className="flex items-start gap-2">
-                            <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
-                            <span>Automatic retry with helpful error messages</span>
-                          </li>
-                          <li className="flex items-start gap-2">
-                            <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
-                            <span>Configurable silence detection threshold</span>
-                          </li>
-                        </ul>
-                      </div>
-                    </div>
-                  </GlassCard>
-
-                  <GlassCard className="p-8">
-                    <div className="flex items-start gap-4">
-                      <Settings className="w-8 h-8 text-primary flex-shrink-0" />
-                      <div>
-                        <h3 className="text-xl font-bold mb-3">Configuration</h3>
-                        <p className="text-foreground/80 mb-4">
-                          Settings stored per project via task settings API. Team members share defaults. Individual overrides supported.
-                        </p>
-                        <ul className="space-y-2 text-foreground/70 text-sm">
-                          <li className="flex items-start gap-2">
-                            <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
-                            <span>Language: EN, ES, FR, DE, ZH</span>
-                          </li>
-                          <li className="flex items-start gap-2">
-                            <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
-                            <span>Temperature: 0.0 (accurate) to 1.0 (creative)</span>
-                          </li>
-                          <li className="flex items-start gap-2">
-                            <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
-                            <span>Model: GPT-4o-transcribe or GPT-4o-mini-transcribe</span>
-                          </li>
-                          <li className="flex items-start gap-2">
-                            <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
-                            <span>Separate defaults for task vs terminal usage</span>
-                          </li>
-                        </ul>
-                      </div>
-                    </div>
-                  </GlassCard>
-
-                  <GlassCard className="p-8">
-                    <div className="flex items-start gap-4">
-                      <Terminal className="w-8 h-8 text-primary flex-shrink-0" />
-                      <div>
-                        <h3 className="text-xl font-bold mb-3">Terminal Integration</h3>
-                        <p className="text-foreground/80 mb-4">
-                          Dictated commands appended to active PTY session. Backpressure-aware writes prevent partial commands. Compatible with claude, cursor, codex, gemini.
-                        </p>
-                        <ul className="space-y-2 text-foreground/70 text-sm">
-                          <li className="flex items-start gap-2">
-                            <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
-                            <span>Voice controls in terminal modal</span>
-                          </li>
-                          <li className="flex items-start gap-2">
-                            <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
-                            <span>Chunked writes for long commands</span>
-                          </li>
-                          <li className="flex items-start gap-2">
-                            <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
-                            <span>Works with persistent shell sessions</span>
-                          </li>
-                        </ul>
-                      </div>
-                    </div>
-                  </GlassCard>
-
-                  <GlassCard className="p-8">
-                    <div className="flex items-start gap-4">
-                      <Shield className="w-8 h-8 text-primary flex-shrink-0" />
-                      <div>
-                        <h3 className="text-xl font-bold mb-3">Error Handling</h3>
-                        <p className="text-foreground/80 mb-4">
-                          Clear messages for authentication, network, provider errors. Logs persisted for debugging. Automatic retries respect rate limits.
-                        </p>
-                        <ul className="space-y-2 text-foreground/70 text-sm">
-                          <li className="flex items-start gap-2">
-                            <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
-                            <span>Friendly guidance for microphone permissions</span>
-                          </li>
-                          <li className="flex items-start gap-2">
-                            <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
-                            <span>Structured errors from server responses</span>
-                          </li>
-                          <li className="flex items-start gap-2">
-                            <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
-                            <span>Local audit trail alongside plan drafts</span>
-                          </li>
-                        </ul>
-                      </div>
-                    </div>
-                  </GlassCard>
-                </div>
-              </div>
-
               {/* FAQ Section */}
+              <FAQ items={(Array.isArray(faqJsonLd.mainEntity) ? faqJsonLd.mainEntity : []).map((item) => ({
+                question: item.name || '',
+                answer: item.acceptedAnswer?.text || '',
+              }))} />
+
+              {/* Next Steps Section */}
               <div className="mb-16">
-                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">Frequently Asked Questions</h2>
-                <div className="space-y-4 max-w-3xl mx-auto">
-                  {(Array.isArray(faqJsonLd.mainEntity) ? faqJsonLd.mainEntity : []).map((item, index) => (
-                    <GlassCard key={index} className="p-6">
-                      <h3 className="font-semibold text-lg mb-3 text-primary">{item.name}</h3>
-                      <p className="text-foreground/80">{item.acceptedAnswer?.text}</p>
-                    </GlassCard>
-                  ))}
-                </div>
+                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">Refine Your Captured Specifications</h2>
+                <GlassCard className="p-8 max-w-3xl mx-auto">
+                  <p className="text-foreground/80 mb-6">
+                    Voice transcription is the first step in our Specification Capture workflow. Once you've captured your requirements, use AI-powered prompts to transform rough transcripts into clear, implementation-ready specifications.
+                  </p>
+                  <div className="flex flex-col gap-4">
+                    <div className="flex items-start gap-3">
+                      <Sparkles className="w-5 h-5 text-primary flex-shrink-0 mt-1" />
+                      <div>
+                        <h3 className="font-semibold mb-1">Text Enhancement</h3>
+                        <p className="text-sm text-foreground/70">
+                          Polish grammar, improve clarity, and enhance readability while preserving your original intent.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <Target className="w-5 h-5 text-primary flex-shrink-0 mt-1" />
+                      <div>
+                        <h3 className="font-semibold mb-1">Task Refinement</h3>
+                        <p className="text-sm text-foreground/70">
+                          Expand descriptions with implied requirements, edge cases, and technical considerations.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-6">
+                    <LinkWithArrow href="/features/text-improvement">
+                      Learn about Specification Capture Mode
+                    </LinkWithArrow>
+                  </div>
+                </GlassCard>
               </div>
 
               {/* CTA */}
               <div className="mt-16">
                 <GlassCard className="p-8 sm:p-12 max-w-3xl mx-auto text-center" highlighted>
-                  <h2 className="text-2xl sm:text-3xl font-bold mb-4">Unlock Hands-Free Development</h2>
+                  <h2 className="text-2xl sm:text-3xl font-bold mb-4">Start Capturing Specifications with Voice</h2>
                   <p className="text-lg text-foreground/80 mb-8 max-w-2xl mx-auto">
-                    From voice to code, seamlessly capture ideas and execute commands.
-                    This is how voice input should work - natural, integrated, powerful.
+                    From voice to refined specifications, seamlessly. Capture requirements hands-free, then refine with AI prompts. This is how corporate teams should capture and clarify requirements.
                   </p>
                   <PlatformDownloadSection location="voice_transcription_feature" redirectToDownloadPage />
                   <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4 text-sm text-foreground/60">

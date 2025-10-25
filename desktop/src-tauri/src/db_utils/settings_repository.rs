@@ -489,51 +489,21 @@ impl SettingsRepository {
 
     /// Get device settings
     pub async fn get_device_settings(&self) -> AppResult<DeviceSettings> {
-        let is_discoverable = self
-            .get_bool_setting("device_is_discoverable")
-            .await?
-            .unwrap_or(false);
         let allow_remote_access = self
             .get_bool_setting("device_allow_remote_access")
             .await?
             .unwrap_or(false);
-        let require_approval = self
-            .get_bool_setting("device_require_approval")
-            .await?
-            .unwrap_or(true);
-        let session_timeout_minutes = self
-            .get_int_setting("device_session_timeout_minutes")
-            .await?
-            .unwrap_or(30);
 
         Ok(DeviceSettings {
-            is_discoverable,
             allow_remote_access,
-            require_approval,
-            session_timeout_minutes,
         })
     }
 
     /// Update device settings
     pub async fn update_device_settings(&self, settings: &DeviceSettings) -> AppResult<()> {
         self.set_setting(
-            "device_is_discoverable",
-            &settings.is_discoverable.to_string(),
-        )
-        .await?;
-        self.set_setting(
             "device_allow_remote_access",
             &settings.allow_remote_access.to_string(),
-        )
-        .await?;
-        self.set_setting(
-            "device_require_approval",
-            &settings.require_approval.to_string(),
-        )
-        .await?;
-        self.set_setting(
-            "device_session_timeout_minutes",
-            &settings.session_timeout_minutes.to_string(),
         )
         .await?;
 

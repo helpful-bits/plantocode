@@ -280,7 +280,7 @@ export default function DownloadPage() {
                           </p>
                         </div>
                         <div>
-                          <h4 className="font-semibold mb-2">$5 Free Credits</h4>
+                          <h4 className="font-semibold mb-2">Usage-Based Pricing</h4>
                           <p className="text-foreground/80 text-sm">
                             Start immediately. Pay-as-you-go. No subscriptions. Token transparency for power users who track costs.
                           </p>

@@ -1,6 +1,9 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
+import { Button } from '@/components/ui/button';
+import { CALENDLY_URL } from '@/lib/brand';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { motion } from 'framer-motion';
 import { CheckCircle2, Zap } from 'lucide-react';
@@ -87,7 +90,7 @@ export function CallToAction({ title, description }: CallToActionProps) {
 
                 <Reveal className="inline-flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-primary/10 dark:bg-primary/15 text-primary mb-4 sm:mb-6 text-xs sm:text-sm font-medium" delay={0.1}>
                   <Zap className="w-3 h-3 sm:w-4 sm:h-4" />
-                  <span>For Heavy Coding-Agent Users</span>
+                  <span>Human-in-the-loop AI Planning</span>
                 </Reveal>
 
                 <Reveal as="h2" className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl mb-4 sm:mb-6 text-primary-emphasis relative z-10 font-bold" delay={0.15}>
@@ -99,12 +102,21 @@ export function CallToAction({ title, description }: CallToActionProps) {
                 </Reveal>
 
                 <Reveal delay={0.25}>
-                  <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                    <PlatformDownloadSection 
-                      location="cta_section"
-                      redirectToDownloadPage={true}
-                    />
-                  </motion.div>
+                  <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                    <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                      <PlatformDownloadSection
+                        location="cta_section"
+                        redirectToDownloadPage={true}
+                      />
+                    </motion.div>
+                    <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                      <Button asChild variant="outline" size="lg">
+                        <Link href={CALENDLY_URL} target="_blank" rel="noopener noreferrer">
+                          Talk to an Architect
+                        </Link>
+                      </Button>
+                    </motion.div>
+                  </div>
                 </Reveal>
 
                 <Reveal className="mt-6 sm:mt-8 flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-8 text-xs sm:text-sm text-foreground/60" delay={0.3}>

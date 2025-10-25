@@ -85,6 +85,71 @@ ansible interserver-us -i inventory/hosts.yml -m uri -a "url=http://127.0.0.1:80
 ansible interserver-us -i inventory/hosts.yml -m shell -a "netstat -tlnp | grep 8080" --become
 ```
 
+### Nginx Operations (Website)
+
+**Note**: Website nginx is only deployed on the **US server** (interserver-us).
+
+#### Deploy/Update Nginx Configuration
+```bash
+# Deploy website nginx configuration
+cd infrastructure/ansible
+ansible-playbook playbooks/website/deploy.yml -i inventory/hosts.yml --tags nginx --vault-password-file .vault_pass --limit interserver-us
+
+# Or manually update nginx config
+ansible interserver-us -i inventory/hosts.yml -m template -a "src=playbooks/website/templates/nginx-site.j2 dest=/etc/nginx/sites-available/plantocode.com mode=0644" --vault-password-file .vault_pass --become -e "domain_name=plantocode.com legacy_domain=vibemanager.app container_port=3000" -e @group_vars/interserver/secrets.yml
+```
+
+#### Test and Reload Nginx
+```bash
+# Test nginx configuration before applying
+ansible interserver-us -i inventory/hosts.yml -m shell -a "nginx -t" --vault-password-file .vault_pass --become
+
+# Reload nginx (applies config changes without downtime)
+ansible interserver-us -i inventory/hosts.yml -m systemd -a "name=nginx state=reloaded" --vault-password-file .vault_pass --become
+
+# Restart nginx (if reload doesn't work)
+ansible interserver-us -i inventory/hosts.yml -m systemd -a "name=nginx state=restarted" --vault-password-file .vault_pass --become
+```
+
+#### Check Nginx Status
+```bash
+# Check nginx service status
+ansible interserver-us -i inventory/hosts.yml -m systemd -a "name=nginx" --vault-password-file .vault_pass --become
+
+# View nginx error logs
+ansible interserver-us -i inventory/hosts.yml -m shell -a "tail -n 100 /var/log/nginx/error.log" --vault-password-file .vault_pass --become
+
+# View nginx access logs
+ansible interserver-us -i inventory/hosts.yml -m shell -a "tail -n 100 /var/log/nginx/access.log" --vault-password-file .vault_pass --become
+
+# Check what sites are enabled
+ansible interserver-us -i inventory/hosts.yml -m shell -a "ls -la /etc/nginx/sites-enabled/" --vault-password-file .vault_pass --become
+```
+
+#### View Nginx Configuration
+```bash
+# View website site configuration
+ansible interserver-us -i inventory/hosts.yml -m shell -a "cat /etc/nginx/sites-available/plantocode.com" --vault-password-file .vault_pass --become
+
+# Test a URL response (bypass Cloudflare)
+ansible interserver-us -i inventory/hosts.yml -m shell -a "curl -I -H 'Host: plantocode.com' http://localhost" --vault-password-file .vault_pass
+```
+
+#### Direct SSH Access (Alternative)
+```bash
+# SSH into US server
+ssh root@YOUR_US_SERVER_IP -i ~/.ssh/id_ed25519_interserver
+
+# Once connected:
+nginx -t                    # Test config
+systemctl reload nginx      # Reload nginx
+systemctl restart nginx     # Restart nginx
+systemctl status nginx      # Check status
+cat /etc/nginx/sites-available/plantocode.com  # View website config
+ls -la /etc/nginx/sites-enabled/               # List enabled sites
+tail -f /var/log/nginx/error.log               # Watch error logs
+```
+
 ### System Operations
 
 #### Disk Space

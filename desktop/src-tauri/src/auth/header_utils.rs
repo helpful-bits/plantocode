@@ -14,8 +14,9 @@ pub fn apply_device_binding_headers(
     app_handle: &AppHandle,
 ) -> AppResult<RequestBuilder> {
     let device_id = get_device_id(app_handle)?;
+    tracing::debug!("Adding device binding headers with device_id: {}", device_id);
     Ok(builder
-        .header("x-device-id", device_id.clone())
+        .header("X-Device-ID", device_id.clone())
         .header("X-Token-Binding", device_id))
 }
 

@@ -4,26 +4,24 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
-import { Video, Upload, Eye, Settings, Zap, FileVideo, Target, CheckCircle2, Clock, DollarSign, Sparkles, AlertCircle, FileText, Camera } from 'lucide-react';
+import { FAQ } from '@/components/landing/FAQ';
+import { Video, Upload, Eye, Settings, Zap, Target, CheckCircle2, Clock, Sparkles, FileText, Users, Mic } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'Video analysis - record, analyze, attach context | PlanToCode',
-  description: 'Record screen, AI analyzes with Gemini Vision. Extract errors, UI states, patterns. Auto-attach to tasks. Used by teams who debug fast.',
+  title: 'Meeting & recording analysis - multimodal AI extraction | PlanToCode',
+  description: 'Capture Microsoft Teams meetings and screen recordings. Multimodal AI analyzes audio (with speaker identification) and visual content to extract actionable requirements. Used by corporate teams for requirements gathering.',
   keywords: [
-    'video analysis',
-    'screen recording',
-    'gemini vision',
-    'ai video processing',
-    'bug capture',
-    'visual debugging',
-    'fps control',
-    'error extraction',
-    'ui analysis',
-    'automated documentation',
+    'meeting analysis',
+    'teams meeting capture',
+    'multimodal analysis',
+    'speaker identification',
+    'requirements extraction',
+    'corporate meeting analysis',
+    'visual content analysis',
   ],
   openGraph: {
-    title: 'AI Video Analysis: Screen Record - Instant Context',
-    description: 'Screen recording with Gemini Vision AI analysis. Automatically extract errors, UI states, and patterns from videos. Perfect for bug reports and documentation.',
+    title: 'AI Meeting & Recording Analysis: Requirements Extraction',
+    description: 'Capture Microsoft Teams meetings and screen recordings. Multimodal AI analyzes audio with speaker identification and visual content to extract actionable requirements for corporate teams.',
     url: 'https://www.plantocode.com/features/video-analysis',
     siteName: 'PlanToCode',
     type: 'website',
@@ -158,38 +156,38 @@ export default function VideoAnalysisPage() {
               <div className="text-center mb-16">
                 <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary mb-6 text-sm font-medium">
                   <Video className="w-4 h-4" />
-                  <span>Gemini Vision-Powered Video Analysis</span>
+                  <span>Multimodal Meeting & Recording Analysis</span>
                 </div>
                 <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-6 bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent">
-                  Screen record. AI analyzes. Instant context.
+                  Meeting & Presentation Capture for Requirements Extraction
                 </h1>
                 <p className="text-lg sm:text-xl md:text-2xl text-foreground/80 max-w-3xl mx-auto leading-relaxed">
-                  Record or upload a video and extract the key details for your task.
+                  Record Microsoft Teams meetings or capture screen presentations. Multimodal AI analyzes audio transcripts and visual content to extract actionable requirements and decisions.
                 </p>
               </div>
 
               {/* Pain Points */}
               <div className="mb-16">
-                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">The Problem with Visual Debugging</h2>
+                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">Why Meeting Analysis Matters for Corporate Teams</h2>
 
                 <div className="grid md:grid-cols-3 gap-6">
                   <GlassCard className="p-6">
                     <div className="text-red-500 mb-3">
-                      <AlertCircle className="w-8 h-8" />
+                      <Users className="w-8 h-8" />
                     </div>
-                    <h3 className="text-lg font-semibold mb-2">Hard to Explain Visual Bugs</h3>
+                    <h3 className="text-lg font-semibold mb-2">Requirements Get Lost in Meetings</h3>
                     <p className="text-foreground/80 text-sm">
-                      Complex UI issues are difficult to describe in text. Screenshots miss the interaction flow and temporal context needed to reproduce bugs.
+                      Critical decisions and requirements discussed in meetings are forgotten or misinterpreted. Manual note-taking misses context, speaker intent, and visual references.
                     </p>
                   </GlassCard>
 
                   <GlassCard className="p-6">
                     <div className="text-yellow-500 mb-3">
-                      <Camera className="w-8 h-8" />
+                      <FileText className="w-8 h-8" />
                     </div>
-                    <h3 className="text-lg font-semibold mb-2">Screenshots Miss Context</h3>
+                    <h3 className="text-lg font-semibold mb-2">Manual Meeting Notes Are Incomplete</h3>
                     <p className="text-foreground/80 text-sm">
-                      Static images can't capture animation glitches, timing issues, or multi-step interactions. Context is lost between screenshots.
+                      Note-takers can't capture everything—who said what, what was shown on screen, subtle requirement changes. Important context gets lost between meetings and implementation.
                     </p>
                   </GlassCard>
 
@@ -197,17 +195,118 @@ export default function VideoAnalysisPage() {
                     <div className="text-orange-500 mb-3">
                       <Clock className="w-8 h-8" />
                     </div>
-                    <h3 className="text-lg font-semibold mb-2">Manual Bug Reports Are Slow</h3>
+                    <h3 className="text-lg font-semibold mb-2">Review Time Wastes Team Resources</h3>
                     <p className="text-foreground/80 text-sm">
-                      Writing detailed bug reports takes time. Reviewing videos manually to extract key moments is tedious and error-prone.
+                      Teams spend hours reviewing meeting recordings manually to extract key decisions. Requirements buried in hour-long calls are hard to find and document.
                     </p>
                   </GlassCard>
                 </div>
               </div>
 
+              {/* Multimodal Analysis */}
+              <div className="mb-16">
+                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">Multimodal Analysis of Meetings</h2>
+                <div className="grid md:grid-cols-2 gap-8">
+                  <GlassCard className="p-8">
+                    <div className="flex items-start gap-4">
+                      <div className="p-3 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 flex-shrink-0">
+                        <Mic className="w-6 h-6 text-primary" />
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-bold mb-3">Audio Transcript Analysis</h3>
+                        <p className="text-foreground/80 mb-4">
+                          Complete audio transcription with speaker identification. Know exactly who proposed each requirement, who agreed, and who raised concerns.
+                        </p>
+                        <ul className="space-y-2 text-foreground/70">
+                          <li className="flex items-start gap-2">
+                            <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
+                            <span>Speaker identification and attribution</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
+                            <span>Decision point extraction</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
+                            <span>Action item identification</span>
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  </GlassCard>
+
+                  <GlassCard className="p-8">
+                    <div className="flex items-start gap-4">
+                      <div className="p-3 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 flex-shrink-0">
+                        <Eye className="w-6 h-6 text-primary" />
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-bold mb-3">Visual Content Analysis</h3>
+                        <p className="text-foreground/80 mb-4">
+                          AI analyzes shared screens, presented documents, and key visual moments. Captures UI mockups, architecture diagrams, and other visual context critical for requirements.
+                        </p>
+                        <ul className="space-y-2 text-foreground/70">
+                          <li className="flex items-start gap-2">
+                            <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
+                            <span>Screen share content extraction</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
+                            <span>Document and diagram analysis</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
+                            <span>Key moment identification</span>
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  </GlassCard>
+                </div>
+              </div>
+
+              {/* Extracting Actionable Insights */}
+              <div className="mb-16">
+                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">Extracting Actionable Insights</h2>
+                <GlassCard className="p-8 max-w-4xl mx-auto">
+                  <p className="text-foreground/80 mb-6">
+                    After processing your meeting recording, the system analyzes both audio transcripts (with speaker identification) and visual content (shared screens, documents, key moments) to extract actionable insights. The extracted insights - summarized decisions, action items, and key discussion points - are presented in an intuitive interface where team leads can review, select, and incorporate them into actionable implementation plans.
+                  </p>
+                  <div className="grid md:grid-cols-3 gap-6">
+                    <div className="text-center">
+                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center mx-auto mb-3">
+                        <FileText className="w-6 h-6 text-primary" />
+                      </div>
+                      <h4 className="font-semibold mb-2">Summarized Decisions</h4>
+                      <p className="text-sm text-foreground/70">
+                        Key decisions extracted with context and attributed to specific speakers
+                      </p>
+                    </div>
+                    <div className="text-center">
+                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center mx-auto mb-3">
+                        <CheckCircle2 className="w-6 h-6 text-primary" />
+                      </div>
+                      <h4 className="font-semibold mb-2">Action Items</h4>
+                      <p className="text-sm text-foreground/70">
+                        Concrete action items with owners and implicit dependencies identified
+                      </p>
+                    </div>
+                    <div className="text-center">
+                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center mx-auto mb-3">
+                        <Target className="w-6 h-6 text-primary" />
+                      </div>
+                      <h4 className="font-semibold mb-2">Discussion Points</h4>
+                      <p className="text-sm text-foreground/70">
+                        Important context, concerns raised, and alternative approaches discussed
+                      </p>
+                    </div>
+                  </div>
+                </GlassCard>
+              </div>
+
               {/* How It Works */}
               <div className="mb-16">
-                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">How Video Analysis Works</h2>
+                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">How Meeting Analysis Works</h2>
 
                 <div className="space-y-4 max-w-3xl mx-auto">
                   <GlassCard className="p-6">
@@ -216,9 +315,9 @@ export default function VideoAnalysisPage() {
                         1
                       </div>
                       <div>
-                        <h3 className="font-semibold mb-2">Record or Upload Video</h3>
+                        <h3 className="font-semibold mb-2">Record or Upload Meeting</h3>
                         <p className="text-foreground/80">
-                          Use built-in screen recording to capture bugs as they happen, or upload existing video files. Supports MP4, WebM, MOV, and AVI formats.
+                          Capture Microsoft Teams meetings, record screen presentations while presenting tasks from Jira or similar corporate tools, or upload existing recordings. Supports MP4, WebM, MOV, and AVI formats for maximum compatibility with corporate meeting tools.
                         </p>
                       </div>
                     </div>
@@ -506,91 +605,32 @@ export default function VideoAnalysisPage() {
               </div>
 
               {/* FAQ */}
-              <div className="mb-16">
-                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">Frequently Asked Questions</h2>
-
-                <div className="space-y-6 max-w-3xl mx-auto">
-                  <GlassCard className="p-6">
-                    <h3 className="text-lg font-semibold mb-3 flex items-start gap-3">
-                      <FileVideo className="w-5 h-5 text-primary flex-shrink-0 mt-1" />
-                      Which video formats are supported?
-                    </h3>
-                    <p className="text-foreground/80">
-                      PlanToCode supports MP4, WebM, MOV, and AVI video formats. Videos are processed locally and frames are extracted based on your FPS settings before being sent to Gemini Vision for analysis. Most screen recording tools output compatible formats by default.
-                    </p>
-                  </GlassCard>
-
-                  <GlassCard className="p-6">
-                    <h3 className="text-lg font-semibold mb-3 flex items-start gap-3">
-                      <Eye className="w-5 h-5 text-primary flex-shrink-0 mt-1" />
-                      Which AI model should I choose?
-                    </h3>
-                    <p className="text-foreground/80">
-                      Use Gemini 2.5 Flash for straightforward bug captures, quick UI demos, and documentation where speed and cost matter. Choose Gemini 2.5 Pro for complex UI issues, detailed pattern analysis, and when you need deeper contextual understanding. Pro provides more nuanced insights but costs more per frame.
-                    </p>
-                  </GlassCard>
-
-                  <GlassCard className="p-6">
-                    <h3 className="text-lg font-semibold mb-3 flex items-start gap-3">
-                      <Settings className="w-5 h-5 text-primary flex-shrink-0 mt-1" />
-                      What FPS settings should I use?
-                    </h3>
-                    <p className="text-foreground/80 mb-3">
-                      FPS recommendations based on use case:
-                    </p>
-                    <ul className="space-y-2 text-foreground/70 text-sm">
-                      <li className="flex items-start gap-2">
-                        <span className="font-semibold text-primary">1-2 FPS:</span>
-                        <span>General bug reports, long recordings, cost optimization. Captures key moments without excessive frames.</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <span className="font-semibold text-primary">3-5 FPS:</span>
-                        <span>Balanced analysis for most use cases. Good for UI walkthroughs and standard bug captures.</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <span className="font-semibold text-primary">6-10 FPS:</span>
-                        <span>Detailed UI interactions, animation issues, rapid state changes. Higher cost but more comprehensive.</span>
-                      </li>
-                    </ul>
-                  </GlassCard>
-
-                  <GlassCard className="p-6">
-                    <h3 className="text-lg font-semibold mb-3 flex items-start gap-3">
-                      <DollarSign className="w-5 h-5 text-primary flex-shrink-0 mt-1" />
-                      How can I optimize analysis costs?
-                    </h3>
-                    <p className="text-foreground/80 mb-3">
-                      Cost optimization strategies:
-                    </p>
-                    <ul className="space-y-2 text-foreground/70 text-sm">
-                      <li className="flex items-start gap-2">
-                        <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
-                        <span>Use lower FPS settings (1-2 FPS) for longer videos or simple analysis</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
-                        <span>Choose Gemini Flash over Pro when detailed analysis isn't critical</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
-                        <span>Trim videos to relevant sections only before uploading</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
-                        <span>Use screen recording to capture only necessary interactions rather than uploading long recordings</span>
-                      </li>
-                    </ul>
-                  </GlassCard>
-                </div>
-              </div>
+              <FAQ items={[
+                {
+                  question: 'Which video formats are supported?',
+                  answer: 'PlanToCode supports MP4, WebM, MOV, and AVI video formats. Videos are processed locally and frames are extracted based on your FPS settings before being sent to Gemini Vision for analysis. Most screen recording tools output compatible formats by default.',
+                },
+                {
+                  question: 'Which AI model should I choose?',
+                  answer: 'Use Gemini 2.5 Flash for straightforward bug captures, quick UI demos, and documentation where speed and cost matter. Choose Gemini 2.5 Pro for complex UI issues, detailed pattern analysis, and when you need deeper contextual understanding. Pro provides more nuanced insights but costs more per frame.',
+                },
+                {
+                  question: 'What FPS settings should I use?',
+                  answer: 'FPS recommendations based on use case: 1-2 FPS for general bug reports, long recordings, and cost optimization - captures key moments without excessive frames. 3-5 FPS for balanced analysis for most use cases - good for UI walkthroughs and standard bug captures. 6-10 FPS for detailed UI interactions, animation issues, and rapid state changes - higher cost but more comprehensive.',
+                },
+                {
+                  question: 'How can I optimize analysis costs?',
+                  answer: 'Cost optimization strategies: Use lower FPS settings (1-2 FPS) for longer videos or simple analysis. Choose Gemini Flash over Pro when detailed analysis isn\'t critical. Trim videos to relevant sections only before uploading. Use screen recording to capture only necessary interactions rather than uploading long recordings.',
+                },
+              ]} />
 
               {/* CTA */}
               <div className="text-center">
                 <GlassCard className="p-8 sm:p-12 max-w-3xl mx-auto" highlighted>
-                  <h2 className="text-2xl sm:text-3xl font-bold mb-4">Transform Visual Debugging</h2>
+                  <h2 className="text-2xl sm:text-3xl font-bold mb-4">Transform Meeting Notes into Actionable Requirements</h2>
                   <p className="text-lg text-foreground/80 mb-8 max-w-2xl mx-auto">
-                    From screen recording to AI-powered insights. Stop writing manual bug reports.
-                    Let Gemini Vision extract every detail automatically.
+                    From Teams meetings to implementation plans. Stop losing requirements in hour-long calls.
+                    Let multimodal AI extract every decision, action item, and visual context automatically.
                   </p>
 
                   <PlatformDownloadSection location="features_video_analysis" />

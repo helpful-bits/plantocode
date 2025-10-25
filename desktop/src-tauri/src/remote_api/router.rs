@@ -1,7 +1,7 @@
 use crate::db_utils::SettingsRepository;
 use crate::remote_api::types::{RpcRequest, RpcResponse, UserContext};
 use crate::remote_api::handlers;
-use log::{debug, error, info, warn};
+use log::{debug, error, info};
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
@@ -46,18 +46,6 @@ pub async fn dispatch(
                     error: Some("Remote access is disabled".to_string()),
                     is_final: true,
                 };
-            }
-
-            // For sensitive methods, check if approval is required
-            if device_settings.require_approval {
-                match request.method.as_str() {
-                    "fs.writeFileContent" | "fs.deleteFile" | "terminal.execute" => {
-                        // Could implement approval mechanism here
-                        // For now, just log
-                        warn!("Sensitive operation requested: {}", request.method);
-                    }
-                    _ => {}
-                }
             }
         }
         Err(e) => {

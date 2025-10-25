@@ -8,6 +8,7 @@ import { StructuredData } from '@/components/seo/StructuredData';
 import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
+import { FAQ } from '@/components/landing/FAQ';
 import {
   Terminal,
   SearchX,
@@ -440,17 +441,7 @@ export default function CodexPlanModePage() {
                 </div>
               </div>
 
-              <div className="space-y-6">
-                <h2 className="text-2xl sm:text-3xl font-bold text-center">Frequently asked</h2>
-                <div className="grid md:grid-cols-3 gap-6">
-                  {faqs.map((item, index) => (
-                    <GlassCard key={index} className="p-6 h-full">
-                      <h3 className="text-lg font-semibold mb-3">{item.question}</h3>
-                      <p className="text-sm text-foreground/70 leading-relaxed">{item.answer}</p>
-                    </GlassCard>
-                  ))}
-                </div>
-              </div>
+              <FAQ items={faqs} />
 
               <div>
                 <GlassCard className="p-8 sm:p-12 max-w-3xl mx-auto text-center" highlighted>

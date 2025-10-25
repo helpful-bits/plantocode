@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { Merge, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/ui/button";
 import { Card, CardContent } from "@/ui/card";
@@ -25,14 +25,23 @@ export const MergePlansSection = React.memo(function MergePlansSection({
   onClearSelection,
 }: MergePlansSectionProps) {
   const [isOpen, setIsOpen] = useState(true);
+  // Local state for immediate UI responsiveness (same pattern as FloatingMergeInstructions)
+  const [localValue, setLocalValue] = useState(mergeInstructions);
 
+  // Sync local value when prop changes from outside
+  useEffect(() => {
+    setLocalValue(mergeInstructions);
+  }, [mergeInstructions]);
+
+  // Handle input changes - update local state only for instant feedback
   const handleInstructionsChange = useCallback((value: string) => {
-    onMergeInstructionsChange(value);
-  }, [onMergeInstructionsChange]);
+    setLocalValue(value);
+  }, []);
 
+  // Flush on blur - send to parent
   const handleBlur = useCallback(() => {
-    onMergeInstructionsChange(mergeInstructions);
-  }, [mergeInstructions, onMergeInstructionsChange]);
+    onMergeInstructionsChange(localValue);
+  }, [localValue, onMergeInstructionsChange]);
 
   return (
     <Card className="bg-primary/5 border-primary/20 mb-4">
@@ -64,7 +73,7 @@ export const MergePlansSection = React.memo(function MergePlansSection({
                 <Textarea
                   id="merge-instructions"
                   placeholder="Provide specific instructions for how to merge these plans..."
-                  value={mergeInstructions}
+                  value={localValue}
                   onChange={(e) => handleInstructionsChange(e.target.value)}
                   onBlur={handleBlur}
                   className="min-h-[80px] resize-y"

@@ -8,7 +8,7 @@ import { useProject } from "@/contexts/project-context";
 import { useBackgroundJob } from "@/contexts/_hooks/use-background-job";
 import { createImproveTextJobAction } from "@/actions/ai/improve-text";
 import { refineTaskDescriptionAction } from "@/actions/ai/task-refinement.actions";
-import { queueTaskDescriptionUpdate } from "@/actions/session/task-fields.actions";
+import { queueTaskDescriptionUpdate, queueMergeInstructionsUpdate } from "@/actions/session/task-fields.actions";
 import { logError } from "@/utils/error-handling";
 
 interface TextImprovementContextType {
@@ -90,19 +90,19 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
             // Text has been modified by user while job was running, skip applying improvement
             console.warn("Text was modified while improvement job was running, skipping application");
           } else {
-            const newValue = 
-              currentValue.slice(0, selectionRange.start) + 
-              improvedText + 
+            const newValue =
+              currentValue.slice(0, selectionRange.start) +
+              improvedText +
               currentValue.slice(selectionRange.end);
-            
-            // Flush any pending saves before applying changes to prevent conflicts
-            flushSaves();
 
             // For task description fields, update via session state to respect the gate
             const isTaskDescriptionField = targetElement.id === 'taskDescArea' ||
                                          targetElement.id === 'task-description' ||
                                          targetElement.getAttribute('data-field') === 'taskDescription' ||
                                          targetElement.closest('[data-task-description]') !== null;
+
+            const isMergeInstructionsField = targetElement.id === 'merge-instructions' ||
+                                            targetElement.getAttribute('data-field') === 'mergeInstructions';
 
             if (isTaskDescriptionField) {
               // Update DOM directly for immediate UI response
@@ -120,6 +120,9 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
                 });
               }
 
+              // Sync session state to prevent disappearing text on blur
+              updateCurrentSessionFields({ taskDescription: newValue });
+
               // Dispatch window event for history tracking
               window.dispatchEvent(new CustomEvent('task-description-local-change', {
                 detail: {
@@ -128,6 +131,37 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
                   source: 'improvement'
                 }
               }));
+
+              // Position cursor at the end of the replaced text
+              const newCursorPos = selectionRange.start + improvedText.length;
+              requestAnimationFrame(() => {
+                try {
+                  if (targetElement.isConnected) {
+                    targetElement.focus();
+                    targetElement.setSelectionRange(newCursorPos, newCursorPos);
+                  }
+                } catch (e) {
+                  // Silently handle if element is no longer available
+                }
+              });
+            } else if (isMergeInstructionsField) {
+              // Update DOM directly for immediate UI response
+              const valueSetter = Object.getOwnPropertyDescriptor(targetElement, 'value') ||
+                                Object.getOwnPropertyDescriptor(Object.getPrototypeOf(targetElement), 'value');
+              if (valueSetter && valueSetter.set) {
+                valueSetter.set.call(targetElement, newValue);
+              }
+              targetElement.dispatchEvent(new Event('input', { bubbles: true }));
+
+              // Queue to Rust for persistence
+              if (sessionBasicFields.id) {
+                queueMergeInstructionsUpdate(sessionBasicFields.id, newValue).catch(err => {
+                  console.error("Failed to queue merge instructions after improvement:", err);
+                });
+              }
+
+              // Sync session state to prevent disappearing text on blur
+              updateCurrentSessionFields({ mergeInstructions: newValue });
 
               // Position cursor at the end of the replaced text
               const newCursorPos = selectionRange.start + improvedText.length;
@@ -206,13 +240,14 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
               refinedText +
               currentValue.slice(selectionRange.end);
 
-            flushSaves();
-
             // For task description fields, update via session state to respect the gate
             const isTaskDescriptionField = targetElement.id === 'taskDescArea' ||
                                          targetElement.id === 'task-description' ||
                                          targetElement.getAttribute('data-field') === 'taskDescription' ||
                                          targetElement.closest('[data-task-description]') !== null;
+
+            const isMergeInstructionsField = targetElement.id === 'merge-instructions' ||
+                                            targetElement.getAttribute('data-field') === 'mergeInstructions';
 
             if (isTaskDescriptionField) {
               // Update DOM directly for immediate UI response
@@ -230,6 +265,9 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
                 });
               }
 
+              // Sync session state to prevent disappearing text on blur
+              updateCurrentSessionFields({ taskDescription: newValue });
+
               // Dispatch window event for history tracking
               window.dispatchEvent(new CustomEvent('task-description-local-change', {
                 detail: {
@@ -238,6 +276,37 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
                   source: 'refine'
                 }
               }));
+
+              // Position cursor at the end of the replaced text
+              const newCursorPos = selectionRange.start + refinedText.length;
+              requestAnimationFrame(() => {
+                try {
+                  if (targetElement.isConnected) {
+                    targetElement.focus();
+                    targetElement.setSelectionRange(newCursorPos, newCursorPos);
+                  }
+                } catch (e) {
+                  // Silently handle if element is no longer available
+                }
+              });
+            } else if (isMergeInstructionsField) {
+              // Update DOM directly for immediate UI response
+              const valueSetter = Object.getOwnPropertyDescriptor(targetElement, 'value') ||
+                                Object.getOwnPropertyDescriptor(Object.getPrototypeOf(targetElement), 'value');
+              if (valueSetter && valueSetter.set) {
+                valueSetter.set.call(targetElement, newValue);
+              }
+              targetElement.dispatchEvent(new Event('input', { bubbles: true }));
+
+              // Queue to Rust for persistence
+              if (sessionBasicFields.id) {
+                queueMergeInstructionsUpdate(sessionBasicFields.id, newValue).catch(err => {
+                  console.error("Failed to queue merge instructions after refinement:", err);
+                });
+              }
+
+              // Sync session state to prevent disappearing text on blur
+              updateCurrentSessionFields({ mergeInstructions: newValue });
 
               // Position cursor at the end of the replaced text
               const newCursorPos = selectionRange.start + refinedText.length;

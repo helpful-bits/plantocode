@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { BRAND_X_URL, FEATUREBASE_BASE_URL } from '@/lib/brand';
+import { BRAND_X_URL, FEATUREBASE_BASE_URL, CALENDLY_URL } from '@/lib/brand';
 
 export function Footer() {
 
@@ -121,6 +121,11 @@ export function Footer() {
                   Company
                 </h4>
                 <ul className="space-y-3">
+                  <li>
+                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href={CALENDLY_URL} target="_blank" rel="noopener noreferrer">
+                      Talk to an architect
+                    </Link>
+                  </li>
                   <li>
                     <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/about">
                       About

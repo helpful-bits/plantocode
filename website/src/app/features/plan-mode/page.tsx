@@ -4,11 +4,11 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
-import { Code2, Edit3, Save, FileText, CheckCircle2, Terminal, Layers, Brain, Zap, Copy, AlertCircle } from 'lucide-react';
+import { Code2, Edit3, Save, FileText, CheckCircle2, Terminal, Layers, Brain, Zap, Copy, AlertCircle, Target } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'Implementation Plans - Plan and execute code changes | PlanToCode',
-  description: 'Generate, edit, execute, and merge implementation plans. Full Monaco editor, terminal integration, multi-model support, real-time streaming, and intelligent file context. The complete implementation planning system.',
+  title: 'Human-in-the-loop implementation plans - safe AI planning | PlanToCode',
+  description: 'Generate implementation plans with AI, but review and approve every change before execution. Human-in-the-loop governance with file-by-file granularity prevents regressions. Used by teams managing legacy codebases.',
   keywords: [
     'implementation plans',
     'ai development planning',
@@ -20,10 +20,19 @@ export const metadata: Metadata = {
     'xml plan structure',
     'real-time streaming',
     'file context loading',
+    'human in the loop',
+    'hitl ai',
+    'ai governance',
+    'code review',
+    'legacy code safety',
+    'file by file plans',
+    'corporate ai governance',
+    'safe ai coding',
+    'plan approval workflow',
   ],
   openGraph: {
-    title: 'Implementation Plans - From Generation to Execution',
-    description: 'Complete implementation planning system with AI generation, Monaco editing, terminal execution, and architectural synthesis. Not just an editor - a full planning platform.',
+    title: 'Human-in-the-Loop Implementation Plans: Safe AI Development',
+    description: 'Generate implementation plans with AI, but review and approve every change before execution. Human-in-the-loop governance with file-by-file granularity prevents regressions in legacy codebases.',
     url: 'https://www.plantocode.com/features/plan-mode',
     siteName: 'PlanToCode',
     type: 'website',
@@ -75,7 +84,7 @@ export default function ImplementationPlansPage() {
                   Implementation plans: generate - edit - execute
                 </h1>
                 <p className="text-lg sm:text-xl md:text-2xl text-foreground/80 max-w-3xl mx-auto leading-relaxed">
-                  Load full context, generate plans, merge approaches, and run in the terminal - all in one place.
+                  Human-in-the-loop governance with file-by-file granularity for safe AI-assisted development
                 </p>
               </div>
 
@@ -114,9 +123,106 @@ export default function ImplementationPlansPage() {
                 </div>
               </div>
 
+              {/* Human-in-the-Loop Governance */}
+              <div className="mb-16">
+                <div className="text-center mb-8">
+                  <h2 className="text-2xl sm:text-3xl font-bold mb-4">Human-in-the-Loop Governance</h2>
+                  <p className="text-lg text-foreground/80 max-w-3xl mx-auto">
+                    Team leads and stakeholders retain full control to review, edit, and approve every aspect
+                    of implementation plans before any code changes begin. This ensures all development efforts
+                    align with corporate product requirements, team workflows, and business objectives.
+                  </p>
+                </div>
+
+                <div className="grid md:grid-cols-3 gap-6">
+                  <GlassCard className="p-6" highlighted>
+                    <div className="text-primary mb-3">
+                      <Edit3 className="w-8 h-8" />
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2">Review Before Execution</h3>
+                    <p className="text-foreground/80 text-sm">
+                      Every AI-generated plan opens in Monaco editor for thorough review. No autonomous execution—you see and approve every proposed change.
+                    </p>
+                  </GlassCard>
+
+                  <GlassCard className="p-6" highlighted>
+                    <div className="text-primary mb-3">
+                      <CheckCircle2 className="w-8 h-8" />
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2">Edit & Modify Plans</h3>
+                    <p className="text-foreground/80 text-sm">
+                      Full editing capabilities with VS Code features. Adjust approaches, add constraints, remove risky steps. The plan is yours to perfect.
+                    </p>
+                  </GlassCard>
+
+                  <GlassCard className="p-6" highlighted>
+                    <div className="text-primary mb-3">
+                      <Target className="w-8 h-8" />
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2">Approve & Transmit</h3>
+                    <p className="text-foreground/80 text-sm">
+                      When satisfied, securely transmit the approved plan to your chosen coding agent or assigned developer. Full audit trail maintained.
+                    </p>
+                  </GlassCard>
+                </div>
+              </div>
+
+              {/* File-by-File Granularity for Maximum Safety */}
+              <div className="mb-16">
+                <div className="text-center mb-8">
+                  <h2 className="text-2xl sm:text-3xl font-bold mb-4">File-by-File Granularity for Maximum Safety</h2>
+                  <p className="text-lg text-foreground/80 max-w-3xl mx-auto">
+                    Plans break down development tasks with exact file paths corresponding to your project's repository structure.
+                    This granularity makes the impact of changes crystal clear and prevents regressions, bugs, and unintended modifications
+                    that can occur with autonomous coding agents.
+                  </p>
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+                  <GlassCard className="p-8">
+                    <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                      <FileText className="w-6 h-6 text-primary" />
+                      Exact File Paths
+                    </h3>
+                    <p className="text-foreground/80 mb-4">
+                      Every step specifies exact file paths from your repository. No ambiguity about which files will be modified, created, or deleted.
+                    </p>
+                    <div className="bg-black/50 rounded-lg p-4 font-mono text-xs space-y-1">
+                      <div className="text-green-400">src/components/auth/LoginForm.tsx</div>
+                      <div className="text-yellow-400">src/api/handlers/user_handlers.rs</div>
+                      <div className="text-cyan-400">server/migrations/add_mfa_columns.sql</div>
+                    </div>
+                  </GlassCard>
+
+                  <GlassCard className="p-8">
+                    <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                      <AlertCircle className="w-6 h-6 text-primary" />
+                      Prevent Regressions
+                    </h3>
+                    <p className="text-foreground/80 mb-4">
+                      See exactly which legacy code will be touched. Identify potential breaking changes before they happen. Confident adoption of AI coding agents.
+                    </p>
+                    <ul className="space-y-2 text-foreground/70">
+                      <li className="flex items-start gap-2">
+                        <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
+                        <span>Clear impact assessment</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
+                        <span>Breaking change detection</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
+                        <span>Legacy code protection</span>
+                      </li>
+                    </ul>
+                  </GlassCard>
+                </div>
+              </div>
+
               {/* Plan Generation Deep Dive */}
               <div className="mb-16">
-                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">Intelligent Plan Generation</h2>
+                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">AI-Powered Plan Generation with Full Context</h2>
 
                 <div className="grid md:grid-cols-2 gap-8">
                   <GlassCard className="p-8">
@@ -481,10 +587,9 @@ export default function ImplementationPlansPage() {
               {/* CTA */}
               <div className="text-center">
                 <GlassCard className="p-8 sm:p-12 max-w-3xl mx-auto" highlighted>
-                  <h2 className="text-2xl sm:text-3xl font-bold mb-4">Experience Complete Implementation Planning</h2>
+                  <h2 className="text-2xl sm:text-3xl font-bold mb-4">Experience Safe, Human-Controlled AI Development</h2>
                   <p className="text-lg text-foreground/80 mb-8 max-w-2xl mx-auto">
-                    From AI-powered generation to professional editing to terminal execution.
-                    This is how implementation planning should work - complete, integrated, powerful.
+                    From AI-powered generation to human review to controlled execution. This is how corporate teams adopt AI coding agents confidently—with human-in-the-loop governance, file-by-file granularity, and full control at every step.
                   </p>
 
                   <PlatformDownloadSection location="features_implementation_plans" />

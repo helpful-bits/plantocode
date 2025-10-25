@@ -438,6 +438,30 @@ public class DataServicesManager: ObservableObject {
                 let dict = event.data.mapValues { $0.value }
 
                 switch eventType {
+                case "device-status":
+                    // Handle device status changes
+                    self.logger.info("Received device-status event")
+                    Task { @MainActor in
+                        await DeviceDiscoveryService.shared.refreshDevices()
+                    }
+
+                case "device-unlinked":
+                    // Handle device unlinked - refresh list and potentially disconnect if it's active device
+                    if let deviceIdStr = dict["deviceId"] as? String,
+                       let deviceId = UUID(uuidString: deviceIdStr) {
+                        self.logger.info("Device \(deviceIdStr) was unlinked")
+
+                        // If it's the currently active device, handle disconnection
+                        if MultiConnectionManager.shared.activeDeviceId == deviceId {
+                            MultiConnectionManager.shared.removeConnection(deviceId: deviceId)
+                        }
+
+                        // Refresh device list
+                        Task { @MainActor in
+                            await DeviceDiscoveryService.shared.refreshDevices()
+                        }
+                    }
+
                 case "session-file-browser-state-updated":
                     if let sid = dict["sessionId"] as? String {
                         self.filesService.applyRemoteBrowserState(
