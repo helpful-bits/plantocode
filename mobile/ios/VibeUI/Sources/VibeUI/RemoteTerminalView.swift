@@ -623,6 +623,32 @@ struct SwiftTerminalView: UIViewRepresentable {
         terminalView.nativeForegroundColor = UIColor.white
         terminalView.nativeBackgroundColor = UIColor.black
 
+        // Configure ANSI color palette with dark theme to prevent light backgrounds
+        // on Unicode characters. SwiftTerm's default palette includes light colors
+        // that can appear as grey/white rectangles behind characters.
+        let terminal = terminalView.getTerminal()
+        let darkPalette: [SwiftTerm.Color] = [
+            // Standard colors (0-7)
+            SwiftTerm.Color(red: 0, green: 0, blue: 0),           // 0: Black
+            SwiftTerm.Color(red: 52428, green: 0, blue: 0),        // 1: Red
+            SwiftTerm.Color(red: 0, green: 52428, blue: 0),        // 2: Green
+            SwiftTerm.Color(red: 52428, green: 52428, blue: 0),    // 3: Yellow
+            SwiftTerm.Color(red: 0, green: 0, blue: 52428),        // 4: Blue
+            SwiftTerm.Color(red: 52428, green: 0, blue: 52428),    // 5: Magenta
+            SwiftTerm.Color(red: 0, green: 52428, blue: 52428),    // 6: Cyan
+            SwiftTerm.Color(red: 52428, green: 52428, blue: 52428), // 7: White (dimmed to prevent bright backgrounds)
+            // Bright colors (8-15)
+            SwiftTerm.Color(red: 32768, green: 32768, blue: 32768), // 8: Bright Black (dark grey)
+            SwiftTerm.Color(red: 65535, green: 16384, blue: 16384), // 9: Bright Red
+            SwiftTerm.Color(red: 16384, green: 65535, blue: 16384), // 10: Bright Green
+            SwiftTerm.Color(red: 65535, green: 65535, blue: 16384), // 11: Bright Yellow
+            SwiftTerm.Color(red: 16384, green: 16384, blue: 65535), // 12: Bright Blue
+            SwiftTerm.Color(red: 65535, green: 16384, blue: 65535), // 13: Bright Magenta
+            SwiftTerm.Color(red: 16384, green: 65535, blue: 65535), // 14: Bright Cyan
+            SwiftTerm.Color(red: 58982, green: 58982, blue: 58982)  // 15: Bright White (dimmed to 90%)
+        ]
+        terminal.installPalette(colors: darkPalette)
+
         // Configure keyboard behavior for desktop parity (if properties exist)
         // Configure Backspace to send DEL (0x7f) instead of ^H (0x08)
         if terminalView.responds(to: Selector(("setBackspaceSendsControlH:"))) {

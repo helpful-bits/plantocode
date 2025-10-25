@@ -214,6 +214,24 @@ pub fn map_server_proxy_error(status_code: u16, response_text: &str) -> AppError
     }
 }
 
+/// Handle API errors for USER-INITIATED requests only
+///
+/// IMPORTANT: This function clears the authentication token on 401 errors.
+/// Only use this for user-facing API calls (commands triggered by user actions).
+///
+/// DO NOT use this for background services (device link, auto-sync, health checks, etc.)
+/// Background services should handle auth failures gracefully without clearing tokens.
+/// Background services getting 401 should stop retrying and wait for token refresh.
+///
+/// Examples of when to use this:
+/// - User clicks "Generate Code" button
+/// - User submits a transcription request
+/// - User loads their profile
+///
+/// Examples of when NOT to use this:
+/// - Device link client registration (background service)
+/// - Automatic cache sync (background service)
+/// - Periodic health checks (background service)
 pub async fn handle_api_error(
     status_code: u16,
     error_text: &str,

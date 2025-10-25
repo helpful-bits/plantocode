@@ -4,7 +4,7 @@ VALUES (
   '{
     "tasks": {
       "implementation_plan": {
-        "model": "google/gemini-2.5-pro",
+        "model": "openai/gpt-5",
         "allowed_models": ["openai/o3", "openai/gpt-5", "deepseek/deepseek-r1-0528", "moonshotai/kimi-k2", "google/gemini-2.5-pro", "xai/grok-4", "anthropic/claude-sonnet-4-5-20250929"],
         "max_tokens": 23000,
         "temperature": 0.7,
@@ -28,7 +28,7 @@ VALUES (
         ]
       },
       "implementation_plan_merge": {
-        "model": "google/gemini-2.5-pro",
+        "model": "openai/gpt-5",
         "allowed_models": ["google/gemini-2.5-flash", "openai/gpt-5", "google/gemini-2.5-pro", "moonshotai/kimi-k2", "openai/o4-mini", "xai/grok-4"],
         "max_tokens": 35000,
         "temperature": 0.35
