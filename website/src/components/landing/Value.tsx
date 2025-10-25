@@ -178,7 +178,7 @@ export const Value = memo(function Value({ propositions = defaultPropositions }:
             >
               <Link href="/downloads">
                 <ArrowRight className="w-4 h-4 mr-2" />
-                Get Started Free
+                Get Started
               </Link>
             </Button>
           </motion.div>

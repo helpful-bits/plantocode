@@ -306,6 +306,4 @@ VALUES ('schema_version', '2025-02-05-terminal-sessions-persistence-v2', strftim
 -- Insert default device visibility settings
 INSERT OR IGNORE INTO app_settings (key, value, description) VALUES
     ('device.is_discoverable', 'true', 'Whether this device is discoverable by other devices'),
-    ('device.allow_remote_access', 'false', 'Whether to allow remote access from mobile devices'),
-    ('device.require_approval', 'true', 'Whether to require approval for new connections'),
-    ('device.session_timeout_minutes', '60', 'Session timeout in minutes for remote connections');
+    ('device.allow_remote_access', 'false', 'Whether to allow remote access from mobile devices');

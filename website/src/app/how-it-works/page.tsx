@@ -4,28 +4,33 @@ import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import Link from 'next/link';
 import {
-  FileSearch,
-  GitMerge,
   Code2,
   Terminal,
   Play,
   Edit3,
   CheckCircle2,
-  Brain,
   Sparkles,
   Zap,
   Target,
   Video,
   Mic,
-  FileText
+  FileText,
+  Camera
 } from 'lucide-react';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Button } from '@/components/ui/button';
 
 export const metadata: Metadata = {
-  title: 'How it works - PlanToCode',
-  description: 'Step-by-step workflow: surface the right files, generate implementation plans from configured models, edit in the Monaco workspace, and execute through the integrated terminal.',
+  title: 'How it works - Corporate AI development workflow | PlanToCode',
+  description: 'End-to-end workflow: capture requirements from meetings and voice, refine into actionable specifications, generate granular implementation plans, review with human-in-the-loop governance, and execute safely. Built for corporate teams managing legacy codebases.',
   keywords: [
+    'corporate ai workflow',
+    'requirements to implementation',
+    'meeting to code',
+    'human in the loop workflow',
+    'safe ai development',
+    'specification capture workflow',
+    'enterprise ai development',
     'ai workflow',
     'implementation plan workflow',
     'monaco editor ai',
@@ -42,8 +47,8 @@ export const metadata: Metadata = {
     'integrated terminal ai',
   ],
   openGraph: {
-    title: 'How It Works - Professional AI Planning Workflow',
-    description: 'Generate, Edit, Merge, Execute. The complete workflow for professional AI-assisted development. Monaco editor, multi-model planning, integrated terminal.',
+    title: 'How It Works - Corporate AI Development Workflow',
+    description: 'End-to-end workflow: capture requirements from meetings and voice, refine into actionable specifications, generate granular implementation plans, review with human-in-the-loop governance, and execute safely. Built for corporate teams managing legacy codebases.',
     url: 'https://www.plantocode.com/how-it-works',
     siteName: 'PlanToCode',
     type: 'website',
@@ -53,102 +58,129 @@ export const metadata: Metadata = {
   },
 };
 
+interface WorkflowStep {
+  step: number;
+  title: string;
+  subtitle: string;
+  icon: React.ReactElement;
+  description: string;
+  methods?: Array<{ icon: React.ReactElement; title: string; description: string }>;
+  promptTypes?: Array<{ icon: React.ReactElement; title: string; description: string }>;
+  features?: string[];
+  capabilities?: string[];
+  tools?: string[];
+  models?: string[];
+  examples?: string[];
+  learnMoreLinks?: Array<{ href: string; text: string }>;
+}
+
 export default function HowItWorksPage() {
-  const workflowSteps = [
+  const workflowSteps: WorkflowStep[] = [
     {
       step: 1,
-      title: "Describe Your Task",
-      subtitle: "Multiple input methods for maximum efficiency",
-      icon: <FileText className="w-6 h-6" />,
-      description: "Start with natural language description of what you want to build or fix, then highlight the draft to refine it before moving on.",
+      title: "Capture Ideas & Context",
+      subtitle: "Meeting recordings, screen captures, and voice dictation",
+      icon: <Video className="w-6 h-6" />,
+      description: "Start by capturing initial requirements from multiple sources. Upload Microsoft Teams meeting recordings for multimodal analysis, record screen presentations to capture visual context, or use voice dictation for rapid idea capture. All input methods feed into the same refinement workflow.",
       methods: [
         {
-          icon: <Edit3 className="w-5 h-5" />,
-          title: "AI-Enhanced Text",
-          description: "Highlight any draft and press the Sparkles popover. The text-improvement job uses Claude Sonnet 4 or Gemini 2.5 Flash to rewrite the selection without touching formatting."
+          icon: <Video className="w-5 h-5" />,
+          title: "Meeting Recordings",
+          description: "Upload Teams meetings. Multimodal AI analyzes audio transcripts (with speaker identification) and visual content (shared screens, documents) to extract requirements, decisions, and action items."
+        },
+        {
+          icon: <Camera className="w-5 h-5" />,
+          title: "Screen Recordings",
+          description: "Record workflows, bugs, or UI presentations. Gemini Vision analyzes both audio narration and visual content to capture complete context for requirements gathering."
         },
         {
           icon: <Mic className="w-5 h-5" />,
           title: "Voice Dictation",
-          description: "Speak your requirements naturally. Transcripts land in the editor with project defaults so you can run the same improvement popover immediately."
-        },
-        {
-          icon: <Video className="w-5 h-5" />,
-          title: "Screen Recording",
-          description: "Record bugs, workflows, or visual context. Gemini 2.5 Pro analyzes recordings, and the resulting notes can be refined with the text improvement flow before planning."
+          description: "Speak requirements naturally. OpenAI Whisper transcribes with smart text insertion and speaker identification for rapid specification capture."
         }
+      ],
+      learnMoreLinks: [
+        { href: "/features/video-analysis", text: "Learn about meeting analysis" },
+        { href: "/features/voice-transcription", text: "Learn about voice transcription" }
       ]
     },
     {
       step: 2,
-      title: "Intelligent File Discovery",
-      subtitle: "Multi-stage AI identifies relevant files",
-      icon: <FileSearch className="w-6 h-6" />,
-      description: "Hierarchical folder selection, pattern-based filtering, and AI relevance assessment to find exactly the files needed for your task.",
-      features: [
-        "Root folder selection based on task context",
-        "Targeted regex pattern groups for specific functionality",
-        "AI-powered relevance assessment and filtering",
-        "Extended path finding for dependencies",
-        "Path correction and validation against filesystem"
+      title: "Refine into Actionable Specifications",
+      subtitle: "Two AI prompt types for clarity and completeness",
+      icon: <Sparkles className="w-6 h-6" />,
+      description: "Transform raw meeting transcripts, voice recordings, and rough notes into clear, implementation-ready specifications using two distinct AI prompt types that work together to ensure both clarity and completeness.",
+      promptTypes: [
+        {
+          icon: <Edit3 className="w-5 h-5" />,
+          title: "Text Enhancement",
+          description: "Improves grammar, sentence structure, clarity, and conciseness while maintaining your original intent, tone, and technical detail level. Perfect for polishing voice transcripts and meeting notes."
+        },
+        {
+          icon: <Target className="w-5 h-5" />,
+          title: "Task Refinement",
+          description: "Expands task descriptions by identifying implied requirements, filling in overlooked gaps, clarifying expected behavior and edge cases, and adding technical considerations for implementation readiness."
+        }
+      ],
+      learnMoreLinks: [
+        { href: "/features/text-improvement", text: "Learn about Specification Capture Mode" }
       ]
     },
     {
       step: 3,
-      title: "Multi-Model Plan Generation",
-      subtitle: "Council of LLMs for better solutions",
-      icon: <Brain className="w-6 h-6" />,
-      description: "Generate multiple implementation approaches from different AI models simultaneously.",
-      models: [
-        "OpenAI GPT-5",
-        "Anthropic Claude 4 Sonnet",
-        "Google Gemini 2.5 Pro",
-        "OpenAI o3 / o4 Mini",
-        "xAI Grok 4",
-        "DeepSeek R1 & Moonshot Kimi K2"
+      title: "Generate Granular Implementation Plans",
+      subtitle: "File-by-file plans with exact repository paths",
+      icon: <FileText className="w-6 h-6" />,
+      description: "AI file discovery identifies relevant files across your codebase. Multiple AI models generate implementation plans with file-by-file granularity—exact file paths, specific line ranges, and clear operation types (modify/create/delete). This granularity makes impact assessment crystal clear.",
+      features: [
+        "Exact file paths from your repository structure",
+        "Specific line ranges and modification details",
+        "Clear operation types (modify, create, delete)",
+        "Dependency analysis and impact assessment",
+        "Multiple plan generation for approach comparison",
+        "Multi-model support (GPT-5, Claude 4, Gemini 2.5 Pro)"
+      ],
+      learnMoreLinks: [
+        { href: "/features/file-discovery", text: "Learn about AI file discovery" },
+        { href: "/features/plan-mode", text: "Learn about plan generation" }
       ]
     },
     {
       step: 4,
-      title: "Edit in Monaco Editor",
-      subtitle: "Real IDE for implementation plans",
+      title: "Review, Edit & Approve (Human-in-the-Loop)",
+      subtitle: "Full control before any code changes",
       icon: <Code2 className="w-6 h-6" />,
-      description: "Full VS Code editor for AI-generated plans. Not a chat interface - a professional editing experience.",
+      description: "Plans open in Monaco editor for comprehensive review. Team leads examine every proposed change, edit steps directly, merge multiple approaches with custom instructions, or reject plans entirely. No code changes occur without explicit human approval—ensuring alignment with corporate requirements and team workflows.",
       capabilities: [
-        "Syntax highlighting inside Monaco",
-        "Prompt preview & copy buttons",
-        "Token estimation with context warnings",
-        "Auto-save with change tracking",
-        "Copy individual steps",
-        "Reorder and restructure plans"
+        "Professional Monaco editor with syntax highlighting",
+        "Direct editing of all plan steps and details",
+        "Merge multiple plans with custom instructions",
+        "Request modifications or alternative approaches",
+        "Approve for execution or reject with audit trail",
+        "Complete visibility into proposed changes"
+      ],
+      learnMoreLinks: [
+        { href: "/features/plan-mode", text: "Learn about human-in-the-loop governance" },
+        { href: "/features/merge-instructions", text: "Learn about plan merging" }
       ]
     },
     {
       step: 5,
-      title: "Merge with Instructions",
-      subtitle: "Combine the best approaches your way",
-      icon: <GitMerge className="w-6 h-6" />,
-      description: "Specify exactly how to merge multiple plans. Floating instruction panel stays visible while reviewing.",
-      examples: [
-        "\"Use Plan 2's error handling with Plan 3's architecture\"",
-        "\"Take the database approach from Plan 1, API design from Plan 3\"",
-        "\"Combine the testing strategy from Plan 2 with execution steps from Plan 4\"",
-        "\"Use Plan 1's file structure with Plan 2's implementation details\""
-      ]
-    },
-    {
-      step: 6,
-      title: "Execute in Integrated Terminal",
-      subtitle: "From plan to reality without context switching",
+      title: "Execute with Confidence",
+      subtitle: "Safe handoff to developers or coding agents",
       icon: <Terminal className="w-6 h-6" />,
-      description: "Run your perfected plan immediately. Integrated terminal with persistent sessions.",
+      description: "After approval, securely transmit the plan to your chosen coding agent (Claude Code, Cursor, Codex) or assigned software developer. File-by-file granularity prevents regressions and unintended modifications—ensuring safe execution. Integrated terminal with persistent sessions enables immediate execution and debugging.",
       tools: [
-        "Claude Code CLI",
-        "Cursor CLI",
-        "OpenAI Codex CLI",
-        "Gemini CLI",
-        "Voice transcription inside the terminal",
-        "Persistent terminal log with auto-recovery"
+        "Claude Code CLI with plan mode support",
+        "Cursor CLI integration",
+        "OpenAI Codex CLI execution",
+        "Integrated terminal with voice transcription",
+        "Persistent terminal sessions with auto-recovery",
+        "Complete audit trail of execution"
+      ],
+      learnMoreLinks: [
+        { href: "/features/integrated-terminal", text: "Learn about terminal integration" },
+        { href: "/plan-mode/claude-code", text: "See Claude Code workflow" }
       ]
     }
   ];
@@ -156,8 +188,8 @@ export default function HowItWorksPage() {
   const keyFeatures = [
     {
       icon: <Target className="w-8 h-8" />,
-      title: "Professional Control",
-      description: "Generate multiple approaches, merge with your rules, edit before execution. Not a black box."
+      title: "Human-in-the-Loop Governance",
+      description: "Review every plan before execution. Edit approaches, merge strategies, approve or reject. AI assists, humans control. Built for teams where code quality matters."
     },
     {
       icon: <Zap className="w-8 h-8" />,
@@ -191,7 +223,7 @@ export default function HowItWorksPage() {
                   How it works
                 </h1>
                 <p className="text-lg sm:text-xl md:text-2xl text-foreground/80 max-w-4xl mx-auto leading-relaxed">
-                  Describe your task, find the right files, generate and merge plans, then execute - all in one place.
+                  From meeting capture to safe execution—the complete corporate AI development workflow
                 </p>
               </div>
 
@@ -256,7 +288,7 @@ export default function HowItWorksPage() {
 
                             {step.models && (
                               <div className="flex flex-wrap gap-3">
-                                {step.models.map((model, idx) => (
+                                {step.models.map((model: string, idx: number) => (
                                   <span key={idx} className="px-3 py-1 rounded-full bg-primary/10 text-primary text-sm font-medium">
                                     {model}
                                   </span>
@@ -278,7 +310,7 @@ export default function HowItWorksPage() {
                             {step.examples && (
                               <div className="space-y-2">
                                 <p className="font-semibold text-sm text-foreground/80 mb-3">Example merge instructions:</p>
-                                {step.examples.map((example, idx) => (
+                                {step.examples.map((example: string, idx: number) => (
                                   <div key={idx} className="p-3 rounded bg-background/50 border border-border/30 font-mono text-sm text-foreground/70">
                                     {example}
                                   </div>
@@ -296,6 +328,32 @@ export default function HowItWorksPage() {
                                 ))}
                               </div>
                             )}
+
+                            {step.promptTypes && (
+                              <div className="grid sm:grid-cols-2 gap-4">
+                                {step.promptTypes.map((type, idx) => (
+                                  <div key={idx} className="p-4 rounded-lg bg-background/50 border border-border/30">
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <div className="p-1.5 rounded bg-primary/10">
+                                        {type.icon}
+                                      </div>
+                                      <span className="font-semibold text-sm">{type.title}</span>
+                                    </div>
+                                    <p className="text-xs text-foreground/70">{type.description}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {step.learnMoreLinks && (
+                              <div className="mt-6 flex flex-wrap gap-3">
+                                {step.learnMoreLinks.map((link, idx) => (
+                                  <LinkWithArrow key={idx} href={link.href} className="text-sm">
+                                    {link.text}
+                                  </LinkWithArrow>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </GlassCard>
@@ -307,7 +365,7 @@ export default function HowItWorksPage() {
 
               {/* Key Features */}
               <div className="mb-16">
-                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">Why This Workflow Works</h2>
+                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">Why Corporate Teams Choose This Workflow</h2>
 
                 <div className="grid md:grid-cols-3 gap-8">
                   {keyFeatures.map((feature, index) => (
@@ -324,7 +382,7 @@ export default function HowItWorksPage() {
 
               {/* Use Cases */}
               <div className="mb-16">
-                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">Perfect For</h2>
+                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">Built for Corporate Development Teams</h2>
 
                 <div className="grid md:grid-cols-2 gap-8">
                   <GlassCard className="p-8">
@@ -438,10 +496,9 @@ export default function HowItWorksPage() {
               {/* CTA */}
               <div className="text-center">
                 <GlassCard className="p-8 sm:p-12 max-w-4xl mx-auto" highlighted>
-                  <h2 className="text-2xl sm:text-3xl font-bold mb-4">Ready to Transform Your Development Workflow?</h2>
+                  <h2 className="text-2xl sm:text-3xl font-bold mb-4">Ready to Transform Your Corporate Development Workflow?</h2>
                   <p className="text-lg text-foreground/80 mb-8 max-w-3xl mx-auto">
-                    Stop accepting AI's first draft. Generate multiple approaches, merge with your rules,
-                    edit in a real IDE, execute with professional tools. Built by engineers for engineers.
+                    From meeting capture to safe execution—the complete workflow for corporate teams adopting AI coding agents confidently. Capture requirements from any source, refine with AI, generate granular plans, review with full control, and execute safely.
                   </p>
 
                   <PlatformDownloadSection location="how_it_works" />
