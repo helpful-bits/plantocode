@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, memo } from "react";
+import React, { useMemo, memo } from "react";
 import { type BackgroundJob } from "@/types/session-types";
 
 import { EmptyState, LoadingState } from "../sidebar-states";
@@ -28,7 +28,7 @@ interface JobContentProps {
 /**
  * Component for rendering the scrollable job content area
  */
-export const JobContent = ({
+const JobContentComponent = ({
   shouldShowLoading,
   shouldShowEmpty,
   allJobsSorted,
@@ -181,4 +181,5 @@ export const JobContent = ({
   );
 };
 
+export const JobContent = React.memo(JobContentComponent);
 JobContent.displayName = "JobContent";

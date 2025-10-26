@@ -147,7 +147,10 @@ pub async fn rename_session_command(
     let cache = app_handle.state::<std::sync::Arc<crate::services::SessionCache>>().inner().clone();
 
     // Update via cache using partial update
-    cache.update_fields_partial(&app_handle, &session_id, &serde_json::json!({"name": name})).await
+    cache.update_fields_partial(&app_handle, &session_id, &serde_json::json!({"name": name})).await?;
+
+    // Ensure immediate persistence so DB reads reflect the new name
+    cache.flush_session_if_dirty(&app_handle, &session_id).await
 }
 
 /// Update a session's project directory and hash
@@ -238,6 +241,13 @@ pub async fn update_session_fields_command(
 
     // Update via cache using partial update (cache emits session-updated)
     cache.update_fields_partial(&app_handle, &session_id, &fields_to_update).await?;
+
+    // Ensure immediate persistence when name field changes
+    if let Some(fields) = fields_to_update.as_object() {
+        if fields.contains_key("name") {
+            cache.flush_session_if_dirty(&app_handle, &session_id).await?;
+        }
+    }
 
     // Keep history-synced for backward compatibility if task description changed
     if task_description_changed {

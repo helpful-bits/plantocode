@@ -14,6 +14,7 @@ import {
 import { logError, getErrorMessage } from "@/utils/error-handling";
 import { safeListen } from "@/utils/tauri-event-utils";
 import { getAllVisibleJobsAction } from "@/actions/background-jobs/jobs.actions";
+import { shouldProcessEventBySession } from "./session-event-filter";
 
 export interface UseOrchestratedBackgroundJobsStateParams {
   initialJobs?: BackgroundJob[];
@@ -41,6 +42,9 @@ export function useOrchestratedBackgroundJobsState({
   const { showNotification } = useNotification();
   const { isUserPresent, lastPresenceChangeTs } = useUILayout();
 
+  // Track session ID for event filtering
+  const sessionIdRef = useRef<string | undefined>(sessionId);
+
   const presenceRef = useRef(isUserPresent);
   const prevPresenceRef = useRef(isUserPresent);
 
@@ -63,6 +67,16 @@ export function useOrchestratedBackgroundJobsState({
 
   // Track which implementation plan job is currently open in a modal for optimized streaming
   const viewedImplementationPlanIdRef = useRef<string | null>(null);
+
+  // Batching and throttling constants for performance optimization
+  const FLUSH_INTERVAL_MS = 120; // Minimum interval between React state updates (tuneable)
+  const THROTTLE_MS = 200; // Per-job progress throttle for background jobs
+
+  const lastFlushTsRef = useRef(0);
+  const renderScheduledRef = useRef(false);
+  const rafIdRef = useRef<number | null>(null);
+  const flushTimerRef = useRef<number | null>(null);
+  const streamThrottleMapRef = useRef<Map<string, number>>(new Map());
   
   // Initialize Map with initial jobs
   useEffect(() => {
@@ -73,7 +87,12 @@ export function useOrchestratedBackgroundJobsState({
       });
     }
   }, [initialJobs]);
-  
+
+  // Keep session ID ref updated
+  useEffect(() => {
+    sessionIdRef.current = sessionId;
+  }, [sessionId]);
+
   useEffect(() => {
     presenceRef.current = isUserPresent;
   }, [isUserPresent]);
@@ -87,6 +106,54 @@ export function useOrchestratedBackgroundJobsState({
     const newJobsArray = Array.from(jobsMapRef.current.values());
     setJobs(newJobsArray);
   }, []);
+
+  // Immediately flush jobs to React state
+  const flushJobsNow = useCallback(() => {
+    updateJobsFromMap();
+    lastFlushTsRef.current = performance.now();
+    renderScheduledRef.current = false;
+    if (rafIdRef.current != null) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
+    if (flushTimerRef.current != null) {
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+  }, [updateJobsFromMap]);
+
+  // Schedule a throttled render using requestAnimationFrame with minimum interval
+  const scheduleRenderWithThrottle = useCallback(() => {
+    const now = performance.now();
+    const elapsed = now - lastFlushTsRef.current;
+
+    if (elapsed >= FLUSH_INTERVAL_MS) {
+      if (renderScheduledRef.current) return;
+      renderScheduledRef.current = true;
+      rafIdRef.current = requestAnimationFrame(() => {
+        flushJobsNow();
+      });
+      return;
+    }
+
+    // Ensure at-most-once pending timer within window
+    if (flushTimerRef.current == null) {
+      const delay = FLUSH_INTERVAL_MS - elapsed;
+      flushTimerRef.current = window.setTimeout(() => {
+        flushJobsNow();
+      }, Math.max(0, delay));
+    }
+  }, [flushJobsNow]);
+
+  // Helper function to extract session ID from event payload
+  const extractEventSessionId = (payload: any): string | undefined => {
+    return (
+      payload?.sessionId ??
+      payload?.session_id ??
+      payload?.job?.sessionId ??
+      payload?.job?.session_id
+    );
+  };
 
   // Server-side filtering architecture:
   // The Rust backend (desktop/src-tauri/src/remote_api/handlers/jobs.rs) now handles:
@@ -192,7 +259,7 @@ export function useOrchestratedBackgroundJobsState({
           jobsMapRef.current.set(job.id, job);
         });
         if (presenceRef.current) {
-          updateJobsFromMap();
+          flushJobsNow();
         }
       }
     } finally {
@@ -200,7 +267,7 @@ export function useOrchestratedBackgroundJobsState({
         setIsLoading(false);
       }
     }
-  }, [fetchJobs, updateJobsFromMap]);
+  }, [fetchJobs, flushJobsNow]);
 
   // Cancel a job using Tauri command
   const cancelJob = useCallback(
@@ -272,12 +339,32 @@ export function useOrchestratedBackgroundJobsState({
         unlistenJobCreated = await safeListen("job:created", async (event) => {
           try {
             const payload = event.payload as { job: BackgroundJob };
+
+            // Session filtering for create events
+            const payloadSessionId = extractEventSessionId(payload);
+            const shouldProcess = shouldProcessEventBySession({
+              activeSessionId: sessionIdRef.current,
+              payloadSessionId,
+              requirePayloadForCreate: true,
+            });
+
+            if (!shouldProcess) {
+              if (process.env.NODE_ENV !== "production") {
+                console.debug("[BackgroundJobs] Filtered job:created - session mismatch", {
+                  activeSessionId: sessionIdRef.current,
+                  payloadSessionId,
+                  jobId: payload.job?.id,
+                });
+              }
+              return;
+            }
+
             const newJob = payload.job;
             // Filter out workflow orchestrator jobs
             const workflowTypes = ['file_finder_workflow', 'web_search_workflow'];
             if (!workflowTypes.includes(newJob.taskType)) {
               jobsMapRef.current.set(newJob.id, newJob);
-              updateJobsFromMap();
+              flushJobsNow();
             }
           } catch (err) {
             console.error("[BackgroundJobs] Error processing job:created:", err);
@@ -288,9 +375,29 @@ export function useOrchestratedBackgroundJobsState({
         unlistenJobDeleted = await safeListen("job:deleted", async (event) => {
           try {
             const payload = event.payload as { jobId: string };
+
+            // Session filtering
+            const payloadSessionId = extractEventSessionId(payload);
+            const existingJob = jobsMapRef.current.get(payload.jobId);
+            const shouldProcess = shouldProcessEventBySession({
+              activeSessionId: sessionIdRef.current,
+              payloadSessionId,
+              existingJobSessionId: existingJob?.sessionId,
+            });
+
+            if (!shouldProcess) {
+              if (process.env.NODE_ENV !== "production" && !payloadSessionId) {
+                console.debug("[BackgroundJobs] job:deleted payload lacks sessionId, relying on existing job", {
+                  jobId: payload.jobId,
+                  existingJobSessionId: existingJob?.sessionId,
+                });
+              }
+              return;
+            }
+
             if (jobsMapRef.current.has(payload.jobId)) {
               jobsMapRef.current.delete(payload.jobId);
-              updateJobsFromMap();
+              flushJobsNow();
             }
           } catch (err) {
             console.error("[BackgroundJobs] Error processing job:deleted:", err);
@@ -301,7 +408,26 @@ export function useOrchestratedBackgroundJobsState({
         unlistenJobStatusChanged = await safeListen("job:status-changed", async (event) => {
           try {
             const update = event.payload as { jobId: string; status: string; startTime?: number; endTime?: number; subStatusMessage?: string };
+
+            // Session filtering
+            const payloadSessionId = extractEventSessionId(update);
             const existingJob = jobsMapRef.current.get(update.jobId);
+            const shouldProcess = shouldProcessEventBySession({
+              activeSessionId: sessionIdRef.current,
+              payloadSessionId,
+              existingJobSessionId: existingJob?.sessionId,
+            });
+
+            if (!shouldProcess) {
+              if (process.env.NODE_ENV !== "production" && !payloadSessionId) {
+                console.debug("[BackgroundJobs] job:status-changed payload lacks sessionId, relying on existing job", {
+                  jobId: update.jobId,
+                  existingJobSessionId: existingJob?.sessionId,
+                });
+              }
+              return;
+            }
+
             if (existingJob) {
               const updatedJob: BackgroundJob = {
                 ...existingJob,
@@ -312,7 +438,7 @@ export function useOrchestratedBackgroundJobsState({
                 updatedAt: Date.now(),
               };
               jobsMapRef.current.set(update.jobId, updatedJob);
-              updateJobsFromMap();
+              flushJobsNow();
 
               // Check if user input is required
               const payload = event.payload as any;
@@ -344,16 +470,46 @@ export function useOrchestratedBackgroundJobsState({
         // Listen for job stream progress events - Update progress and metadata.taskData fields
         unlistenJobStreamProgress = await safeListen("job:stream-progress", async (event) => {
           try {
-            const update = event.payload as { 
-              jobId: string; 
-              progress?: number; 
-              responseLength?: number; 
+            const update = event.payload as {
+              jobId: string;
+              progress?: number;
+              responseLength?: number;
               estimatedTotalLength?: number;
               lastStreamUpdateTime?: number;
               isStreaming?: boolean;
             };
+
+            // Session filtering
+            const payloadSessionId = extractEventSessionId(update);
             const existingJob = jobsMapRef.current.get(update.jobId);
+            const shouldProcess = shouldProcessEventBySession({
+              activeSessionId: sessionIdRef.current,
+              payloadSessionId,
+              existingJobSessionId: existingJob?.sessionId,
+            });
+
+            if (!shouldProcess) {
+              if (process.env.NODE_ENV !== "production" && !payloadSessionId) {
+                console.debug("[BackgroundJobs] job:stream-progress payload lacks sessionId, relying on existing job", {
+                  jobId: update.jobId,
+                  existingJobSessionId: existingJob?.sessionId,
+                });
+              }
+              return;
+            }
+
             if (existingJob) {
+              // Throttle updates for background jobs
+              const viewedId = viewedImplementationPlanIdRef?.current ?? null;
+              if (update.jobId !== viewedId) {
+                const now = performance.now();
+                const last = streamThrottleMapRef.current.get(update.jobId) ?? 0;
+                if (now - last < THROTTLE_MS) {
+                  return;
+                }
+                streamThrottleMapRef.current.set(update.jobId, now);
+              }
+
               // Parse existing metadata
               let metadata: any = existingJob.metadata;
               if (typeof metadata === 'string') {
@@ -364,7 +520,7 @@ export function useOrchestratedBackgroundJobsState({
                 }
               }
               metadata = metadata || {};
-              
+
               // Update taskData fields
               const taskData = metadata.taskData || {};
               if (update.progress !== undefined) taskData.streamProgress = update.progress;
@@ -372,16 +528,16 @@ export function useOrchestratedBackgroundJobsState({
               if (update.estimatedTotalLength !== undefined) taskData.estimatedTotalLength = update.estimatedTotalLength;
               if (update.lastStreamUpdateTime !== undefined) taskData.lastStreamUpdateTime = update.lastStreamUpdateTime;
               if (update.isStreaming !== undefined) taskData.isStreaming = update.isStreaming;
-              
+
               metadata.taskData = taskData;
-              
+
               const updatedJob: BackgroundJob = {
                 ...existingJob,
                 metadata,
                 updatedAt: Date.now(),
               };
               jobsMapRef.current.set(update.jobId, updatedJob);
-              updateJobsFromMap();
+              scheduleRenderWithThrottle();
             }
           } catch (err) {
             console.error("[BackgroundJobs] Error processing job:stream-progress:", err);
@@ -391,14 +547,33 @@ export function useOrchestratedBackgroundJobsState({
         // Listen for job tokens updated events - Patch token fields
         unlistenJobTokensUpdated = await safeListen("job:tokens-updated", async (event) => {
           try {
-            const update = event.payload as { 
-              jobId: string; 
-              tokensSent?: number; 
+            const update = event.payload as {
+              jobId: string;
+              tokensSent?: number;
               tokensReceived?: number;
               cacheWriteTokens?: number;
               cacheReadTokens?: number;
             };
+
+            // Session filtering
+            const payloadSessionId = extractEventSessionId(update);
             const existingJob = jobsMapRef.current.get(update.jobId);
+            const shouldProcess = shouldProcessEventBySession({
+              activeSessionId: sessionIdRef.current,
+              payloadSessionId,
+              existingJobSessionId: existingJob?.sessionId,
+            });
+
+            if (!shouldProcess) {
+              if (process.env.NODE_ENV !== "production" && !payloadSessionId) {
+                console.debug("[BackgroundJobs] job:tokens-updated payload lacks sessionId, relying on existing job", {
+                  jobId: update.jobId,
+                  existingJobSessionId: existingJob?.sessionId,
+                });
+              }
+              return;
+            }
+
             if (existingJob) {
               const updatedJob: BackgroundJob = {
                 ...existingJob,
@@ -409,7 +584,7 @@ export function useOrchestratedBackgroundJobsState({
                 updatedAt: Date.now(),
               };
               jobsMapRef.current.set(update.jobId, updatedJob);
-              updateJobsFromMap();
+              scheduleRenderWithThrottle();
             }
           } catch (err) {
             console.error("[BackgroundJobs] Error processing job:tokens-updated:", err);
@@ -420,7 +595,26 @@ export function useOrchestratedBackgroundJobsState({
         unlistenJobCostUpdated = await safeListen("job:cost-updated", async (event) => {
           try {
             const update = event.payload as { jobId: string; actualCost?: number; isFinalized?: boolean };
+
+            // Session filtering
+            const payloadSessionId = extractEventSessionId(update);
             const existingJob = jobsMapRef.current.get(update.jobId);
+            const shouldProcess = shouldProcessEventBySession({
+              activeSessionId: sessionIdRef.current,
+              payloadSessionId,
+              existingJobSessionId: existingJob?.sessionId,
+            });
+
+            if (!shouldProcess) {
+              if (process.env.NODE_ENV !== "production" && !payloadSessionId) {
+                console.debug("[BackgroundJobs] job:cost-updated payload lacks sessionId, relying on existing job", {
+                  jobId: update.jobId,
+                  existingJobSessionId: existingJob?.sessionId,
+                });
+              }
+              return;
+            }
+
             if (existingJob) {
               const updatedJob: BackgroundJob = {
                 ...existingJob,
@@ -429,7 +623,7 @@ export function useOrchestratedBackgroundJobsState({
                 updatedAt: Date.now(),
               };
               jobsMapRef.current.set(update.jobId, updatedJob);
-              updateJobsFromMap();
+              scheduleRenderWithThrottle();
             }
           } catch (err) {
             console.error("[BackgroundJobs] Error processing job:cost-updated:", err);
@@ -440,8 +634,34 @@ export function useOrchestratedBackgroundJobsState({
         unlistenJobResponseAppended = await safeListen("job:response-appended", async (event) => {
           try {
             const update = event.payload as { jobId: string; chunk: string; accumulatedLength: number };
+
+            // Session filtering
+            const payloadSessionId = extractEventSessionId(update);
             const existingJob = jobsMapRef.current.get(update.jobId);
+            const shouldProcess = shouldProcessEventBySession({
+              activeSessionId: sessionIdRef.current,
+              payloadSessionId,
+              existingJobSessionId: existingJob?.sessionId,
+            });
+
+            if (!shouldProcess) {
+              if (process.env.NODE_ENV !== "production" && !payloadSessionId) {
+                console.debug("[BackgroundJobs] job:response-appended payload lacks sessionId, relying on existing job", {
+                  jobId: update.jobId,
+                  existingJobSessionId: existingJob?.sessionId,
+                });
+              }
+              return;
+            }
+
             if (existingJob) {
+              // Skip heavy response concatenation for background jobs
+              const viewedId = viewedImplementationPlanIdRef?.current ?? null;
+              if (update.jobId !== viewedId) {
+                // Skip heavy response concatenation for background jobs
+                return;
+              }
+
               const currentResponse = existingJob.response || '';
               const updatedJob: BackgroundJob = {
                 ...existingJob,
@@ -449,7 +669,7 @@ export function useOrchestratedBackgroundJobsState({
                 updatedAt: Date.now(),
               };
               jobsMapRef.current.set(update.jobId, updatedJob);
-              updateJobsFromMap();
+              scheduleRenderWithThrottle();
             }
           } catch (err) {
             console.error("[BackgroundJobs] Error processing job:response-appended:", err);
@@ -460,7 +680,26 @@ export function useOrchestratedBackgroundJobsState({
         unlistenJobErrorDetails = await safeListen("job:error-details", async (event) => {
           try {
             const update = event.payload as { jobId: string; errorDetails: any };
+
+            // Session filtering
+            const payloadSessionId = extractEventSessionId(update);
             const existingJob = jobsMapRef.current.get(update.jobId);
+            const shouldProcess = shouldProcessEventBySession({
+              activeSessionId: sessionIdRef.current,
+              payloadSessionId,
+              existingJobSessionId: existingJob?.sessionId,
+            });
+
+            if (!shouldProcess) {
+              if (process.env.NODE_ENV !== "production" && !payloadSessionId) {
+                console.debug("[BackgroundJobs] job:error-details payload lacks sessionId, relying on existing job", {
+                  jobId: update.jobId,
+                  existingJobSessionId: existingJob?.sessionId,
+                });
+              }
+              return;
+            }
+
             if (existingJob) {
               const updatedJob: BackgroundJob = {
                 ...existingJob,
@@ -468,7 +707,7 @@ export function useOrchestratedBackgroundJobsState({
                 updatedAt: Date.now(),
               };
               jobsMapRef.current.set(update.jobId, updatedJob);
-              updateJobsFromMap();
+              flushJobsNow();
             }
           } catch (err) {
             console.error("[BackgroundJobs] Error processing job:error-details:", err);
@@ -488,7 +727,26 @@ export function useOrchestratedBackgroundJobsState({
               cacheReadTokens?: number;
               cacheWriteTokens?: number;
             };
+
+            // Session filtering
+            const payloadSessionId = extractEventSessionId(update);
             const existingJob = jobsMapRef.current.get(update.jobId);
+            const shouldProcess = shouldProcessEventBySession({
+              activeSessionId: sessionIdRef.current,
+              payloadSessionId,
+              existingJobSessionId: existingJob?.sessionId,
+            });
+
+            if (!shouldProcess) {
+              if (process.env.NODE_ENV !== "production" && !payloadSessionId) {
+                console.debug("[BackgroundJobs] job:finalized payload lacks sessionId, relying on existing job", {
+                  jobId: update.jobId,
+                  existingJobSessionId: existingJob?.sessionId,
+                });
+              }
+              return;
+            }
+
             if (existingJob) {
               const updatedJob: BackgroundJob = {
                 ...existingJob,
@@ -503,7 +761,7 @@ export function useOrchestratedBackgroundJobsState({
                 updatedAt: Date.now(),
               };
               jobsMapRef.current.set(update.jobId, updatedJob);
-              updateJobsFromMap();
+              flushJobsNow();
             }
           } catch (err) {
             console.error("[BackgroundJobs] Error processing job:finalized:", err);
@@ -513,7 +771,26 @@ export function useOrchestratedBackgroundJobsState({
         unlistenJobMetadataUpdated = await safeListen("job:metadata-updated", async (event) => {
           try {
             const update = event.payload as { jobId: string; metadataPatch: any };
+
+            // Session filtering
+            const payloadSessionId = extractEventSessionId(update);
             const existingJob = jobsMapRef.current.get(update.jobId);
+            const shouldProcess = shouldProcessEventBySession({
+              activeSessionId: sessionIdRef.current,
+              payloadSessionId,
+              existingJobSessionId: existingJob?.sessionId,
+            });
+
+            if (!shouldProcess) {
+              if (process.env.NODE_ENV !== "production" && !payloadSessionId) {
+                console.debug("[BackgroundJobs] job:metadata-updated payload lacks sessionId, relying on existing job", {
+                  jobId: update.jobId,
+                  existingJobSessionId: existingJob?.sessionId,
+                });
+              }
+              return;
+            }
+
             if (existingJob) {
               let metadata: any = existingJob.metadata;
               if (typeof metadata === 'string') {
@@ -539,7 +816,7 @@ export function useOrchestratedBackgroundJobsState({
                 updatedAt: Date.now(),
               };
               jobsMapRef.current.set(update.jobId, updatedJob);
-              updateJobsFromMap();
+              scheduleRenderWithThrottle();
             }
           } catch (err) {
             console.error("[BackgroundJobs] Error processing job:metadata-updated:", err);
@@ -566,7 +843,13 @@ export function useOrchestratedBackgroundJobsState({
       unlistenJobFinalized?.();
       unlistenJobMetadataUpdated?.();
     };
-  }, [updateJobsFromMap]);
+  }, [flushJobsNow, scheduleRenderWithThrottle, showNotification]);
+
+  // Cleanup RAF and timers on unmount
+  useEffect(() => () => {
+    if (rafIdRef.current != null) cancelAnimationFrame(rafIdRef.current);
+    if (flushTimerRef.current != null) clearTimeout(flushTimerRef.current);
+  }, []);
 
   // Initial job fetch on mount - single bootstrap call, no polling
   useEffect(() => {

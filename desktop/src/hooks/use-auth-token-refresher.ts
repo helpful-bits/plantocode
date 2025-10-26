@@ -44,16 +44,24 @@ export function useAuthTokenRefresher(user: FrontendUser | undefined) {
         const now = Date.now();
         const expiresInMs = tokenExpiresAt - now;
         const refreshBufferMs = 5 * 60 * 1000; // 5 minutes buffer
-        
+
         // Refresh at least 5 minutes before expiry, but at least 1 minute from now
         refreshIntervalMs = Math.max(60 * 1000, expiresInMs - refreshBufferMs);
+
+        // Add ±10% jitter to prevent synchronized refresh storms
+        const jitter = 0.9 + Math.random() * 0.2;
+        refreshIntervalMs = Math.floor(refreshIntervalMs * jitter);
         initialRefreshDelayMs = refreshIntervalMs;
-        
+
         logger.debug(`[AuthTokenRefresher] Token expires in ${Math.round(expiresInMs / 1000 / 60)} minutes, scheduling refresh in ${Math.round(refreshIntervalMs / 1000 / 60)} minutes`);
       } else {
         // No expiry info or token is already expired, use fallback
         refreshIntervalMs = 50 * 60 * 1000; // 50 minutes fallback
-        
+
+        // Add ±10% jitter
+        const jitter = 0.9 + Math.random() * 0.2;
+        refreshIntervalMs = Math.floor(refreshIntervalMs * jitter);
+
         if (tokenExpiresAt && tokenExpiresAt <= Date.now()) {
           logger.warn('[AuthTokenRefresher] Token is already expired. Attempting immediate refresh.');
           initialRefreshDelayMs = 0; // Attempt refresh immediately
@@ -78,7 +86,7 @@ export function useAuthTokenRefresher(user: FrontendUser | undefined) {
           }
 
           if (!currentToken) {
-            logger.debug('[AuthTokenRefresher] No token found during scheduled refresh, stopping refresh interval.');
+            logger.debug('[AuthTokenRefresher] No token found during scheduled refresh. This may indicate user logged out. Stopping refresh interval.');
             if (refreshIntervalRef.current) {
               window.clearInterval(refreshIntervalRef.current);
               refreshIntervalRef.current = null;

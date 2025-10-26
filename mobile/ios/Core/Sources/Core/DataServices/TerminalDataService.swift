@@ -834,6 +834,47 @@ public class TerminalDataService: ObservableObject {
         }
     }
 
+    /// Clean all terminal state when switching devices
+    @MainActor
+    public func cleanForDeviceSwitch() {
+        // Cancel global binary subscription
+        globalBinarySubscription?.cancel()
+        globalBinarySubscription = nil
+        binarySubscriptionDeviceId = nil
+
+        // Cancel all event subscriptions
+        eventSubscriptions.values.forEach { $0.cancel() }
+        eventSubscriptions.removeAll()
+
+        // Clear all session state
+        activeSessions.removeAll()
+        jobToSessionId.removeAll()
+
+        // Clear publishers and buffers
+        outputPublishers.removeAll()
+        outputBytesPublishers.removeAll()
+        outputRings.removeAll()
+
+        // Clear binding state
+        boundSessions.removeAll()
+        bindingRefCount.removeAll()
+        currentBoundSessionId = nil
+
+        // Cancel pending unbind tasks
+        pendingUnbindTasks.values.forEach { $0.cancel() }
+        pendingUnbindTasks.removeAll()
+
+        // Clear activity tracking
+        lastActivityBySession.removeAll()
+        firstResizeCompleted.removeAll()
+
+        // Reset error state
+        lastError = nil
+        isLoading = false
+
+        logger.info("Terminal state cleaned for device switch")
+    }
+
     // MARK: - Private Methods
 
     private func setupEventSubscriptions() {

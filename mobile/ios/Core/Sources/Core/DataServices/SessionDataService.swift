@@ -12,6 +12,10 @@ public final class SessionDataService: ObservableObject {
     private let offlineQueue = OfflineActionQueue()
     private var sessionsIndex: [String: Int] = [:]
 
+    private var deviceKey: String {
+        MultiConnectionManager.shared.activeDeviceId?.uuidString ?? "no_device"
+    }
+
     public init() {
         self.currentSessionId = "mobile-session-\(UUID().uuidString)"
     }
@@ -35,6 +39,20 @@ public final class SessionDataService: ObservableObject {
         let id = "mobile-session-\(UUID().uuidString)"
         currentSessionId = id
         return id
+    }
+
+    /// Reset session state when active device changes
+    @MainActor
+    public func onActiveDeviceChanged() {
+        sessions.removeAll()
+        currentSession = nil
+        currentSessionId = nil
+        hasLoadedOnce = false
+        error = nil
+        isLoading = false
+
+        // Create a new ephemeral session ID
+        _ = newSession()
     }
 
     @discardableResult
@@ -123,7 +141,7 @@ public final class SessionDataService: ObservableObject {
                         self.isLoading = false
                         self.hasLoadedOnce = true
                     }
-                    let cacheKey = "sessions_\(projectDirectory.replacingOccurrences(of: "/", with: "_"))"
+                    let cacheKey = "dev_\(deviceKey)_sessions_\(projectDirectory.replacingOccurrences(of: "/", with: "_"))"
                     CacheManager.shared.set(sessionList, forKey: cacheKey, ttl: 300)
                     return sessionList
                 }
@@ -141,7 +159,7 @@ public final class SessionDataService: ObservableObject {
             }
             return sessions
         } catch {
-            let cacheKey = "sessions_\(projectDirectory.replacingOccurrences(of: "/", with: "_"))"
+            let cacheKey = "dev_\(deviceKey)_sessions_\(projectDirectory.replacingOccurrences(of: "/", with: "_"))"
             if let cached: [Session] = CacheManager.shared.get(key: cacheKey) {
                 await MainActor.run {
                     self.sessions = cached

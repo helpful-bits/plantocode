@@ -143,9 +143,9 @@ const SessionList = ({
               </div>
             </div>
           ) : (
-            <div className="flex-1 flex flex-col">
-              <div className="flex items-center">
-                <span className="text-sm font-medium truncate max-w-[250px] text-foreground">
+            <div className="flex-1 flex flex-col min-w-0">
+              <div className="flex items-center min-w-0">
+                <span className="text-sm font-medium truncate text-foreground">
                   {session.name || "Untitled Session"}
                 </span>
                 {isLoading && activeSessionId === session.id && (

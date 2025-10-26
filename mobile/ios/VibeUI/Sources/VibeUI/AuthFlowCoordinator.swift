@@ -27,7 +27,13 @@ public struct AuthFlowCoordinator: View {
     Group {
       switch route {
       case .loading:
-        ProgressView()
+        VStack(spacing: 16) {
+          ProgressView()
+            .scaleEffect(1.2)
+          Text(loadingMessage)
+            .font(.system(size: 16, weight: .medium))
+            .foregroundColor(.secondary)
+        }
       case .regionSelection:
         ServerSelectionView(isModal: false)
       case .login:
@@ -58,6 +64,43 @@ public struct AuthFlowCoordinator: View {
     }
     .onChange(of: appState.bootstrapState) { _ in withAnimation { updateRoute() } }
     .onChange(of: appState.selectedProjectDirectory) { _ in withAnimation { updateRoute() } }
+  }
+
+  private var loadingMessage: String {
+    // Check for failed connection state first
+    if let activeId = multiConnectionManager.activeDeviceId,
+       let state = multiConnectionManager.connectionStates[activeId],
+       case .failed = state {
+      return "Connection failed. Please check your network and try again."
+    }
+
+    if !appState.authBootstrapCompleted {
+      return "Initializing..."
+    }
+
+    switch appState.bootstrapState {
+    case .idle:
+      return "Starting..."
+    case .running:
+      if let deviceId = multiConnectionManager.activeDeviceId,
+         let state = multiConnectionManager.connectionStates[deviceId] {
+        switch state {
+        case .connecting, .handshaking:
+          return "Connecting to desktop..."
+        case .connected:
+          return "Loading workspace..."
+        default:
+          return "Connecting..."
+        }
+      }
+      return "Connecting..."
+    case .ready:
+      return "Almost ready..."
+    case .failed(let message):
+      return "Failed: \(message)"
+    case .needsConfiguration:
+      return "Configuration needed..."
+    }
   }
 
   @MainActor

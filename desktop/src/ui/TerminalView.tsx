@@ -41,7 +41,7 @@ export const cleanupTerminalInstance = (sessionId: string) => {
 };
 
 const TerminalView: React.FC<Props> = ({ sessionId, isVisible }) => {
-  const { setOutputBytesCallback, removeOutputBytesCallback, write, resize, attachSession } = useTerminalSessions();
+  const { setOutputBytesCallback, removeOutputBytesCallback, write, resize, attachSession, setVisibleSessionId } = useTerminalSessions();
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const parseUriListToPaths = (uriList: string): string[] => {
@@ -405,6 +405,17 @@ const TerminalView: React.FC<Props> = ({ sessionId, isVisible }) => {
       window.removeEventListener('dragover', handleWindowDragOver, true);
     };
   }, [handleDrop]);
+
+  // Track terminal focus when visible
+  useEffect(() => {
+    if (isVisible && sessionId) {
+      setVisibleSessionId(sessionId);
+    }
+
+    return () => {
+      setVisibleSessionId(null);
+    };
+  }, [isVisible, sessionId, setVisibleSessionId]);
 
   return (
     <div

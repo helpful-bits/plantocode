@@ -239,13 +239,10 @@ pub async fn handle_api_error(
 ) -> AppError {
     if status_code == 401 {
         warn!(
-            "Received 401 Unauthorized. Clearing token. Details: {}",
+            "Received 401 Unauthorized. Do NOT clear tokens here; callers must invoke refresh-and-retry. Token clearing occurs only when refresh endpoint returns 401. Details: {}",
             error_text
         );
-        if let Err(e) = token_manager.set(None).await {
-            error!("Failed to clear invalid token: {}", e);
-        }
-        AppError::AuthError("Authentication token expired. Please re-authenticate.".to_string())
+        AppError::AuthError("Authentication required. Token may need refresh.".to_string())
     } else {
         map_server_proxy_error(status_code, error_text)
     }
