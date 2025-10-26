@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import Security
+import OSLog
 
 @MainActor
 public final class MultiConnectionManager: ObservableObject {
@@ -14,9 +15,31 @@ public final class MultiConnectionManager: ObservableObject {
     private var connectingTasks: [UUID: Task<Result<UUID, Error>, Never>] = [:]
     private var verifyingDevices = Set<UUID>()
     private var relayHandshakeByDevice = [UUID: ConnectionHandshake]()
+    private let logger = Logger(subsystem: "PlanToCode", category: "MultiConnectionManager")
+
+    private var connectedDeviceIds: [UUID] {
+        connectionStates.filter { _, state in
+            if case .connected = state {
+                return true
+            }
+            return false
+        }.map { $0.key }
+    }
 
     private init() {
         loadPersistedActiveDeviceId()
+
+        // Validate activeDeviceId exists in persisted connections
+        let deviceIds = UserDefaults.standard.array(forKey: connectedDevicesKey) as? [String] ?? []
+        if let activeId = activeDeviceId {
+            let activeIdStr = activeId.uuidString
+            if !deviceIds.contains(activeIdStr) {
+                // Stale activeDeviceId - clear it
+                logger.info("Clearing stale activeDeviceId: \(activeIdStr)")
+                activeDeviceId = nil
+                UserDefaults.standard.removeObject(forKey: activeDeviceKey)
+            }
+        }
 
         NotificationCenter.default.addObserver(
             forName: NSNotification.Name("auth-token-refreshed"),
@@ -82,6 +105,37 @@ public final class MultiConnectionManager: ObservableObject {
         return result
     }
 
+    /// Switch to a different active device, disconnecting all others
+    @MainActor
+    public func switchActiveDevice(to deviceId: UUID) async -> Result<UUID, Error> {
+        // If already connected to target device, return early
+        if activeDeviceId == deviceId,
+           let state = connectionStates[deviceId],
+           case .connected = state {
+            return .success(deviceId)
+        }
+
+        // Connect to target device if not already connected
+        if connectionStates[deviceId] == nil || !connectionStates[deviceId]!.isConnected {
+            let result = await addConnection(for: deviceId)
+            if case .failure(let error) = result {
+                return .failure(error)
+            }
+        }
+
+        // Disconnect all other devices
+        for otherDeviceId in storage.keys where otherDeviceId != deviceId {
+            removeConnection(deviceId: otherDeviceId)
+        }
+
+        // Set as active and persist
+        setActive(deviceId)
+        persistActiveDeviceId()
+        persistConnectedDevices([deviceId])
+
+        return .success(deviceId)
+    }
+
     /// Add connection using server relay for a specific device
     public func addConnection(for deviceId: UUID) async -> Result<UUID, Error> {
         // Strict prerequisite validation
@@ -98,6 +152,11 @@ public final class MultiConnectionManager: ObservableObject {
                 connectionStates[deviceId] = .failed(MultiConnectionError.authenticationRequired)
             }
             return .failure(MultiConnectionError.authenticationRequired)
+        }
+
+        // Set connecting state immediately for UI feedback
+        await MainActor.run {
+            connectionStates[deviceId] = .connecting
         }
 
         // Check if we have an existing connection that's actually connected
@@ -182,6 +241,14 @@ public final class MultiConnectionManager: ObservableObject {
                                         self.connectionStates[deviceId] = .connected(handshake)
                                         self.persistConnectedDevice(deviceId)
                                     }
+                                    // Auto-assign if this is the only connected device and no active device is set
+                                    if self.activeDeviceId == nil {
+                                        let connected = self.connectedDeviceIds
+                                        if connected.count == 1, connected.first == deviceId {
+                                            self.setActive(deviceId)
+                                            self.logger.info("Auto-assigned single connected device: \(deviceId)")
+                                        }
+                                    }
                                 case .reconnecting:
                                     self.connectionStates[deviceId] = .reconnecting
                                     self.verifyingDevices.insert(deviceId)
@@ -244,6 +311,16 @@ public final class MultiConnectionManager: ObservableObject {
     }
 
     public func removeConnection(deviceId: UUID) {
+        // Remove from persisted connected devices list
+        var deviceIds = UserDefaults.standard.array(forKey: connectedDevicesKey) as? [String] ?? []
+        deviceIds.removeAll { $0 == deviceId.uuidString }
+        UserDefaults.standard.set(deviceIds, forKey: connectedDevicesKey)
+
+        // Clear active device if it was the removed device
+        if activeDeviceId == deviceId {
+            UserDefaults.standard.removeObject(forKey: activeDeviceKey)
+        }
+
         verifyingDevices.remove(deviceId)
         relayHandshakeByDevice.removeValue(forKey: deviceId)
         // Disconnect and remove relay connection
@@ -372,6 +449,15 @@ public final class MultiConnectionManager: ObservableObject {
                 UserDefaults.standard.set(updatedIds, forKey: connectedDevicesKey)
             }
         }
+
+        // Auto-assign if exactly one device connected successfully and no active device
+        if activeDeviceId == nil {
+            let connected = connectedDeviceIds
+            if connected.count == 1, let deviceId = connected.first {
+                setActive(deviceId)
+                print("[MultiConnectionManager] Auto-assigned single connected device after restore: \(deviceId)")
+            }
+        }
     }
 
     private func persistActiveDeviceId() {
@@ -394,6 +480,15 @@ public final class MultiConnectionManager: ObservableObject {
             deviceIds.append(idStr)
             UserDefaults.standard.set(deviceIds, forKey: connectedDevicesKey)
         }
+    }
+
+    private func persistConnectedDevices(_ ids: [UUID]) {
+        let strings = ids.map { $0.uuidString }
+        UserDefaults.standard.set(strings, forKey: connectedDevicesKey)
+    }
+
+    private func clearPersistedConnectedDevices(except: [UUID]) {
+        persistConnectedDevices(except)
     }
 }
 

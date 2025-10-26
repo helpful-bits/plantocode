@@ -319,74 +319,17 @@ pub async fn refresh_app_jwt_auth0(
     token_manager: State<'_, Arc<TokenManager>>,
     app_state: State<'_, AppState>,
 ) -> AppResult<()> {
-    let current_token = token_manager
-        .get()
-        .await
-        .ok_or_else(|| AppError::ValidationError("No app JWT found".to_string()))?;
-
-    // Get server URL from app state
-    let server_url = app_state.get_server_url().ok_or_else(|| {
-        AppError::ConfigError(
-            "No server URL configured. Please select a server region first.".to_string(),
-        )
-    })?;
-    let server_auth0_refresh_app_token_url = format!(
-        "{}/api/auth0/refresh-app-token",
-        server_url.trim_end_matches('/')
-    );
-
-    let client = &app_state.client;
-
-    let device_id = device_id_manager::get_or_create(&app_handle)?;
-
-    let response = client
-        .post(&server_auth0_refresh_app_token_url)
-        .header("Authorization", format!("Bearer {}", current_token))
-        .header("x-device-id", device_id)
-        .send()
-        .await
-        .map_err(|e| AppError::NetworkError(format!("Failed to refresh token: {}", e)))?;
-
-    if !response.status().is_success() {
-        let status = response.status();
-        let error_text = response
-            .text()
-            .await
-            .unwrap_or_else(|_| "Unknown error".to_string());
-
-        if status == StatusCode::UNAUTHORIZED {
-            // Clear invalid token
-            token_manager.set(None).await?;
-        }
-
-        return Err(AppError::ExternalServiceError(format!(
-            "Token refresh failed: {}",
-            error_text
-        )));
-    }
-
-    let auth_response: AuthDataResponse = response
-        .json()
-        .await
-        .map_err(|e| AppError::SerdeError(format!("Failed to parse refresh response: {}", e)))?;
-
-    // Store new app JWT
-    token_manager.set(Some(auth_response.token)).await?;
-
-    // Re-register device to ensure server has up-to-date record
-    let app_handle_clone = app_handle.clone();
-    tokio::spawn(async move {
-        if let Err(e) = crate::app_setup::services::initialize_device_link_connection(&app_handle_clone).await {
-            tracing::warn!("Failed to re-register device after token refresh: {:?}", e);
-        }
-    });
-
+    crate::auth::token_refresh::refresh_app_jwt_via_server(&app_handle).await?;
     info!("App JWT refreshed successfully via Auth0");
-
     Ok(())
 }
 
 /// Logout from Auth0
+///
+/// This performs a comprehensive logout:
+/// 1. Shutdown DeviceLinkClient (if present)
+/// 2. Best-effort server logout call
+/// 3. Always clear local tokens (even if server call fails)
 #[command]
 pub async fn logout_auth0(
     app_handle: AppHandle,

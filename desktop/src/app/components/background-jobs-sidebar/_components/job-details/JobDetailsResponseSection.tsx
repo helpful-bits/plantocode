@@ -97,16 +97,13 @@ export function JobDetailsResponseSection() {
         liveJobForModal.taskType === 'implementation_plan' ||
         liveJobForModal.taskType === 'implementation_plan_merge';
       if (isImplementationPlan) {
-        // Fetch accumulated content for streaming plans, then enable chunk appending
         void setViewedImplementationPlanId(openedJobId);
       }
     }
     return () => {
-      if (!openedJobId) {
-        void setViewedImplementationPlanId(null);
-      }
+      setViewedImplementationPlanId(null);
     };
-  }, [openedJobId, liveJobForModal, setViewedImplementationPlanId]);
+  }, [openedJobId, liveJobForModal?.taskType, setViewedImplementationPlanId]);
 
 
   // Copy handler for modal

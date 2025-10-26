@@ -183,7 +183,7 @@ public class ConnectivityDiagnostics {
                 return "Connection timed out. Check your network connection or ensure the desktop is online and accessible."
 
             case "network_error", "not_connected", "disconnected":
-                return "Network issue detected. Check your internet connection and try again."
+                return "Network issue detected. Check your cellular or Wi-Fi connection and try again."
 
             default:
                 break
@@ -197,17 +197,17 @@ public class ConnectivityDiagnostics {
 
         // Device not found in registry
         if !devicePresent {
-            return "Desktop device not found. On your desktop: ensure **PlanToCode** is running, you're signed in with the same account, and 'Allow Remote Access' is enabled in Settings."
+            return "Desktop device not found. On your desktop:\n1. Ensure **PlanToCode** is running\n2. Sign in with the same account\n3. Enable 'Allow Remote Access' in Settings\n4. Enable 'Discoverable' in Settings"
         }
 
         // Device is offline
         if deviceStatus == .offline {
-            return "Desktop is offline. On your desktop: ensure **PlanToCode** is running and both 'Allow Remote Access' and 'Discoverable' are enabled in Settings."
+            return "Desktop is offline. On your desktop:\n1. Ensure **PlanToCode** is running\n2. Enable 'Allow Remote Access' in Settings\n3. Enable 'Discoverable' in Settings\n4. Check that your network allows connections"
         }
 
         // Relay not reachable
         if !relayReachable && deviceStatus != .offline {
-            return "Cannot reach desktop. On your desktop: enable 'Allow Remote Access' and 'Discoverable' in Settings, then ensure your network allows connections."
+            return "Cannot reach desktop relay. Check your internet connection (Wi-Fi or cellular) and ensure the desktop app is running with remote access enabled."
         }
 
         // Generic fallback

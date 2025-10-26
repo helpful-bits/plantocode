@@ -181,6 +181,10 @@ public struct PlanRunestoneEditorView: UIViewRepresentable {
 
         textView.isEditable = !isReadOnly
 
+        if textView.isEditable {
+            textView.addDismissKeyboardAccessory()
+        }
+
         return textView
     }
 
@@ -194,6 +198,16 @@ public struct PlanRunestoneEditorView: UIViewRepresentable {
         // Update editability
         if textView.isEditable != !isReadOnly {
             textView.isEditable = !isReadOnly
+        }
+
+        if textView.isEditable {
+            if textView.inputAccessoryView == nil {
+                textView.addDismissKeyboardAccessory()
+            }
+        } else {
+            if textView.inputAccessoryView != nil {
+                textView.removeDismissKeyboardAccessory()
+            }
         }
 
         // Check if language or color scheme changed

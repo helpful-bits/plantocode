@@ -33,6 +33,7 @@ public final class ProjectSyncService {
     private func attachRelay(for deviceId: UUID) {
         // Prevent duplicate attachments
         relayCancellable?.cancel()
+        self.lastAppliedDirectory = nil
 
         guard let relay = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
             return

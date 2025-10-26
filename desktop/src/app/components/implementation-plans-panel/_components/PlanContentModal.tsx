@@ -12,6 +12,7 @@ import { Button } from "@/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/ui/dialog";
 import { Progress } from "@/ui/progress";
 import { VirtualizedCodeViewer } from "@/ui/virtualized-code-viewer";
+import { Badge } from "@/ui/badge";
 
 import { getStreamingStatus } from "../../background-jobs-sidebar/utils";
 import { getContentForStep } from "../_utils/plan-content-parser";
@@ -86,14 +87,10 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
   // Register this plan as viewed when modal is open for optimized streaming
   useEffect(() => {
     if (open && plan) {
-      // Fetch accumulated content for streaming plans, then enable chunk appending
       void setViewedImplementationPlanId(plan.id);
     }
     return () => {
-      // Clear when modal closes
-      if (!open) {
-        void setViewedImplementationPlanId(null);
-      }
+      setViewedImplementationPlanId(null);
     };
   }, [open, plan?.id, setViewedImplementationPlanId]);
 
@@ -197,6 +194,10 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
   }, [displayPlan?.metadata]);
 
   const planTitle = parsedMeta?.planTitle || parsedMeta?.generated_title || "Implementation Plan";
+
+  // Check for user sign-off
+  const userSignoff = parsedMeta?.user_signoff;
+  const isSignedOff = userSignoff?.state === "accepted";
 
   // Use unified streaming detection with ACTIVE fallback
   const isStreaming = getStreamingStatus(displayPlan?.metadata) ||
@@ -360,8 +361,14 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
             View, edit, and interact with the implementation plan content.
           </DialogDescription>
           <div className="flex-1 min-w-[40%] max-w-[40%]">
-            <DialogTitle className="text-lg">
+            <DialogTitle className="text-lg flex items-center gap-2">
               {planTitle}
+              {isSignedOff && (
+                <Badge variant="success" className="ml-1">
+                  <Check className="h-3 w-3 mr-1" />
+                  Reviewed
+                </Badge>
+              )}
             </DialogTitle>
           </div>
           

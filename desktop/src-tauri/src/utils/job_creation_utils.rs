@@ -261,13 +261,16 @@ pub async fn create_and_queue_background_job(
                         if let Err(e) = repo.update_job_metadata(&job_id_clone, &patch).await {
                             warn!("Failed to update job metadata with title_generation_failed: {:?}", e);
                         } else {
-                            emit_job_metadata_updated(
-                                &app_handle_clone,
-                                JobMetadataUpdatedEvent {
-                                    job_id: job_id_clone.clone(),
-                                    metadata_patch: patch,
-                                },
-                            );
+                            if let Ok(Some(job)) = repo.get_job_by_id(&job_id_clone).await {
+                                emit_job_metadata_updated(
+                                    &app_handle_clone,
+                                    JobMetadataUpdatedEvent {
+                                        job_id: job_id_clone.clone(),
+                                        session_id: job.session_id.clone(),
+                                        metadata_patch: patch,
+                                    },
+                                );
+                            }
                         }
                     }
                     tracing::warn!("Title generation returned empty result for job {}", job_id_clone);
@@ -612,11 +615,15 @@ async fn update_job_title_metadata(
     // Update job metadata using the patch method
     repo.update_job_metadata(job_id, &patch).await?;
 
-    // Emit event to notify UI of metadata change
+    let job = repo.get_job_by_id(job_id).await?.ok_or_else(|| {
+        AppError::DatabaseError(format!("Job {} not found after metadata update", job_id))
+    })?;
+
     emit_job_metadata_updated(
         app_handle,
         JobMetadataUpdatedEvent {
             job_id: job_id.to_string(),
+            session_id: job.session_id.clone(),
             metadata_patch: patch,
         },
     );

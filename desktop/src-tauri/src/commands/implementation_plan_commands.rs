@@ -12,6 +12,7 @@ use crate::utils::unified_prompt_system::{
 use futures::future::join_all;
 use log::info;
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, command};
 use uuid::Uuid;
@@ -674,6 +675,52 @@ pub async fn update_implementation_plan_content_command(
         "Successfully updated implementation plan content for job: {}",
         job_id
     );
+    Ok(())
+}
+
+/// Marks an implementation plan as signed off by the user
+#[command]
+pub async fn mark_implementation_plan_signed_off_command(
+    app_handle: AppHandle,
+    job_id: String,
+    state: Option<String>,
+) -> AppResult<()> {
+    use chrono::Utc;
+
+    let repo = app_handle
+        .state::<Arc<BackgroundJobRepository>>()
+        .inner()
+        .clone();
+
+    let job = repo
+        .get_job_by_id(&job_id)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to get job: {}", e)))?
+        .ok_or_else(|| AppError::NotFoundError(format!("Job not found: {}", job_id)))?;
+
+    let mut meta: serde_json::Value = if let Some(metadata_str) = job.metadata.as_ref() {
+        serde_json::from_str(metadata_str).unwrap_or(serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+
+    let state_value = state.unwrap_or_else(|| "accepted".to_string());
+
+    let sign = serde_json::json!({
+        "state": state_value,
+        "timestamp": Utc::now().to_rfc3339(),
+    });
+    meta["user_signoff"] = sign;
+
+    let metadata_str = serde_json::to_string(&meta)
+        .map_err(|e| AppError::ValidationError(format!("Failed to serialize metadata: {}", e)))?;
+
+    repo.update_job_status_with_metadata(&job_id, &JobStatus::from_str(&job.status).unwrap_or(JobStatus::Completed), None, metadata_str)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to update job metadata: {}", e)))?;
+
+    info!("Marked implementation plan {} as signed off with state: {}", job_id, state_value);
+
     Ok(())
 }
 

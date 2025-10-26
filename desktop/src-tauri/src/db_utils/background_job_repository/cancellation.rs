@@ -135,6 +135,11 @@ impl BackgroundJobRepository {
                 );
             }
 
+            let job = self
+                .get_job_by_id(job_id)
+                .await?
+                .ok_or_else(|| AppError::NotFoundError(format!("Job {} not found", job_id)))?;
+
             // Emit granular events
             if let Some(ref app_handle) = self.app_handle {
                 // Emit status changed event
@@ -142,6 +147,7 @@ impl BackgroundJobRepository {
                     app_handle,
                     JobStatusChangedEvent {
                         job_id: job_id.to_string(),
+                        session_id: job.session_id.clone(),
                         status: JobStatus::Canceled.to_string(),
                         start_time: None,
                         end_time: Some(now),
@@ -155,6 +161,7 @@ impl BackgroundJobRepository {
                         app_handle,
                         JobFinalizedEvent {
                             job_id: job_id.to_string(),
+                            session_id: job.session_id.clone(),
                             status: JobStatus::Canceled.to_string(),
                             response: None,
                             actual_cost: cost_value,

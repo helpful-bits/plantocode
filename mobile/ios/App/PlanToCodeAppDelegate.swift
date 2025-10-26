@@ -67,6 +67,20 @@ class PlanToCodeAppDelegate: NSObject, UIApplicationDelegate {
     }
   }
 
+  func applicationDidBecomeActive(_ application: UIApplication) {
+      // Restore connections when app becomes active
+      Task {
+          await MultiConnectionManager.shared.restoreConnections()
+      }
+  }
+
+  func applicationWillTerminate(_ application: UIApplication) {
+      // Clean up all connections on termination
+      Task { @MainActor in
+          MultiConnectionManager.shared.removeAllConnections()
+      }
+  }
+
   func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey : Any] = [:]) -> Bool {
     // URL handling not needed with polling-based auth
     return false

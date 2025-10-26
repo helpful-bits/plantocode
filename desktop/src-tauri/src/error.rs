@@ -198,6 +198,9 @@ pub enum AppError {
     #[error("Terminal state error: {0}")]
     TerminalStateError(String),
 
+    #[error("Stream error: {0}")]
+    StreamError(String),
+
     #[error("Terminal persistence error: {0}")]
     TerminalPersistenceError(String),
 
@@ -342,6 +345,7 @@ impl From<AppError> for SerializableError {
             AppError::TerminalSessionNotFound(_) => "TERMINAL_SESSION_NOT_FOUND",
             AppError::TerminalAttachmentFailed(_) => "TERMINAL_ATTACHMENT_FAILED",
             AppError::TerminalNoOutput(_) => "TERMINAL_NO_OUTPUT",
+            AppError::StreamError(_) => "STREAM_ERROR",
         }
         .to_string();
 

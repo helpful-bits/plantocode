@@ -20,18 +20,21 @@ pub const JOB_METADATA_UPDATED: &str = "job:metadata-updated";
 #[serde(rename_all = "camelCase")]
 pub struct JobCreatedEvent {
     pub job: crate::models::BackgroundJob,
+    pub session_id: String,
 }
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct JobDeletedEvent {
     pub job_id: String,
+    pub session_id: String,
 }
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct JobStatusChangedEvent {
     pub job_id: String,
+    pub session_id: String,
     pub status: String,
     pub start_time: Option<i64>,
     pub end_time: Option<i64>,
@@ -42,6 +45,7 @@ pub struct JobStatusChangedEvent {
 #[serde(rename_all = "camelCase")]
 pub struct JobStreamProgressEvent {
     pub job_id: String,
+    pub session_id: String,
     pub progress: Option<f32>,
     pub response_length: Option<usize>,
     pub last_stream_update_time: Option<i64>,
@@ -51,6 +55,7 @@ pub struct JobStreamProgressEvent {
 #[serde(rename_all = "camelCase")]
 pub struct JobTokensUpdatedEvent {
     pub job_id: String,
+    pub session_id: String,
     pub tokens_sent: Option<i32>,
     pub tokens_received: Option<i32>,
     pub cache_read_tokens: Option<i32>,
@@ -61,6 +66,7 @@ pub struct JobTokensUpdatedEvent {
 #[serde(rename_all = "camelCase")]
 pub struct JobCostUpdatedEvent {
     pub job_id: String,
+    pub session_id: String,
     pub actual_cost: f64,
     pub is_finalized: Option<bool>,
 }
@@ -69,6 +75,7 @@ pub struct JobCostUpdatedEvent {
 #[serde(rename_all = "camelCase")]
 pub struct JobResponseAppendedEvent {
     pub job_id: String,
+    pub session_id: String,
     pub chunk: String,
     pub accumulated_length: usize,
 }
@@ -77,6 +84,7 @@ pub struct JobResponseAppendedEvent {
 #[serde(rename_all = "camelCase")]
 pub struct JobErrorDetailsEvent {
     pub job_id: String,
+    pub session_id: String,
     pub error_details: crate::models::error_details::ErrorDetails,
 }
 
@@ -84,6 +92,7 @@ pub struct JobErrorDetailsEvent {
 #[serde(rename_all = "camelCase")]
 pub struct JobFinalizedEvent {
     pub job_id: String,
+    pub session_id: String,
     pub status: String,
     pub response: Option<String>,
     pub actual_cost: f64,
@@ -97,6 +106,7 @@ pub struct JobFinalizedEvent {
 #[serde(rename_all = "camelCase")]
 pub struct JobMetadataUpdatedEvent {
     pub job_id: String,
+    pub session_id: String,
     pub metadata_patch: serde_json::Value,
 }
 

@@ -5,6 +5,33 @@ import OSLog
 @MainActor
 public struct CommandRouter {
 
+    /// Resolves a usable relay connection: prefers active device, falls back to single connected device
+    private static func getUsableRelay() -> (deviceId: UUID, relay: ServerRelayClient)? {
+        // First, try active device
+        if let activeId = MultiConnectionManager.shared.activeDeviceId,
+           let relay = MultiConnectionManager.shared.relayConnection(for: activeId),
+           relay.isConnected {
+            return (activeId, relay)
+        }
+
+        // Fallback: if exactly one device is connected, use it
+        let connectedDevices = MultiConnectionManager.shared.connectionStates.filter { _, state in
+            if case .connected = state {
+                return true
+            }
+            return false
+        }.map { $0.key }
+
+        if connectedDevices.count == 1,
+           let deviceId = connectedDevices.first,
+           let relay = MultiConnectionManager.shared.relayConnection(for: deviceId),
+           relay.isConnected {
+            return (deviceId, relay)
+        }
+
+        return nil
+    }
+
     public static func workflowsStartFileFinder(
         sessionId: String,
         taskDescription: String,
@@ -12,12 +39,12 @@ public struct CommandRouter {
         excludedPaths: [String],
         timeoutMs: Int
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         let request = RpcRequest(
             method: "workflows.startFileFinder",
@@ -39,12 +66,12 @@ public struct CommandRouter {
         maxResults: Int,
         timeoutMs: Int
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         let request = RpcRequest(
             method: "workflows.startWebSearch",
@@ -65,12 +92,12 @@ public struct CommandRouter {
         includeContent: Bool,
         maxResults: Int
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         let request = RpcRequest(
             method: "files.search",
@@ -91,12 +118,12 @@ public struct CommandRouter {
         jobId: String? = nil,
         shell: String? = nil
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         var params: [String: Any] = [:]
         if let jobId = jobId {
@@ -118,12 +145,12 @@ public struct CommandRouter {
         sessionId: String,
         maxLines: Int? = nil
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         var params: [String: Any] = ["sessionId": sessionId]
         if let maxLines = maxLines {
@@ -141,12 +168,12 @@ public struct CommandRouter {
     public static func terminalDetach(
         sessionId: String
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         let request = RpcRequest(
             method: "terminal.detach",
@@ -160,12 +187,12 @@ public struct CommandRouter {
         sessionId: String,
         base64Data: String
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         let request = RpcRequest(
             method: "terminal.write",
@@ -181,12 +208,12 @@ public struct CommandRouter {
     public static func terminalKill(
         sessionId: String
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         let request = RpcRequest(
             method: "terminal.kill",
@@ -203,12 +230,12 @@ public struct CommandRouter {
         cols: Int,
         rows: Int
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         let request = RpcRequest(
             method: "terminal.resize",
@@ -226,12 +253,12 @@ public struct CommandRouter {
         sessionId: String,
         text: String
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         let base64 = text.data(using: .utf8)?.base64EncodedString() ?? ""
         let request = RpcRequest(
@@ -246,12 +273,12 @@ public struct CommandRouter {
     }
 
     public static func terminalGetStatus(sessionId: String) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         let request = RpcRequest(
             method: "terminal.getStatus",
@@ -262,12 +289,12 @@ public struct CommandRouter {
     }
 
     public static func terminalGetMetadata(sessionId: String) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         let request = RpcRequest(
             method: "terminal.getMetadata",
@@ -278,12 +305,12 @@ public struct CommandRouter {
     }
 
     public static func terminalGetActiveSessions() -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         let request = RpcRequest(
             method: "terminal.getActiveSessions",
@@ -297,12 +324,12 @@ public struct CommandRouter {
         sessionId: String? = nil,
         projectDirectory: String? = nil
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         guard let sessionId = sessionId, !sessionId.isEmpty else {
             return AsyncThrowingStream { continuation in
@@ -327,12 +354,12 @@ public struct CommandRouter {
     public static func plansGet(
         id: String
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         let request = RpcRequest(
             method: "plans.get",
@@ -348,12 +375,12 @@ public struct CommandRouter {
         id: String,
         content: String
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         let request = RpcRequest(
             method: "plans.save",
@@ -370,12 +397,12 @@ public struct CommandRouter {
         taskId: String,
         options: [String: Any]
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         let request = RpcRequest(
             method: "plans.create",
@@ -391,12 +418,12 @@ public struct CommandRouter {
     public static func plansActivate(
         id: String
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         let request = RpcRequest(
             method: "plans.activate",
@@ -411,12 +438,12 @@ public struct CommandRouter {
     public static func plansDelete(
         id: String
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         let request = RpcRequest(
             method: "plans.delete",
@@ -433,12 +460,12 @@ public struct CommandRouter {
         format: String,
         sampleRate: Int
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         let request = RpcRequest(
             method: "speech.transcribe",
@@ -457,12 +484,12 @@ public struct CommandRouter {
         sessionId: String,
         projectDirectory: String?
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         var params: [String: Any] = [
             "text": text,
@@ -487,12 +514,12 @@ public struct CommandRouter {
         projectDirectory: String?,
         relevantFiles: [String] = []
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         var params: [String: Any] = [
             "text": text,
@@ -516,12 +543,12 @@ public struct CommandRouter {
         projectDirectory: String,
         taskDescription: String?
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         var params: [String: Any] = [
             "name": name,
@@ -545,12 +572,12 @@ public struct CommandRouter {
     public static func sessionList(
         projectDirectory: String
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         let request = RpcRequest(
             method: "session.list",
@@ -565,12 +592,12 @@ public struct CommandRouter {
     public static func sessionGet(
         id: String
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         let request = RpcRequest(
             method: "session.get",
@@ -586,12 +613,12 @@ public struct CommandRouter {
         id: String,
         updates: [String: Any]
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         let request = RpcRequest(
             method: "session.update",
@@ -608,12 +635,12 @@ public struct CommandRouter {
         sessionId: String,
         taskDescription: String
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         let request = RpcRequest(
             method: "session.updateTaskDescription",
@@ -630,12 +657,12 @@ public struct CommandRouter {
         sessionId: String,
         mergeInstructions: String
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         let request = RpcRequest(
             method: "session.updateMergeInstructions",
@@ -651,12 +678,12 @@ public struct CommandRouter {
     public static func sessionDelete(
         id: String
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         let request = RpcRequest(
             method: "session.delete",
@@ -672,12 +699,12 @@ public struct CommandRouter {
         sourceSessionId: String,
         newName: String?
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         var params: [String: Any] = [
             "sourceSessionId": sourceSessionId
@@ -698,12 +725,12 @@ public struct CommandRouter {
     public static func sessionGetTaskDescriptionHistory(
         sessionId: String
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         let request = RpcRequest(
             method: "session.getTaskDescriptionHistory",
@@ -719,12 +746,12 @@ public struct CommandRouter {
         sessionId: String,
         history: [String]
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         let request = RpcRequest(
             method: "session.syncTaskDescriptionHistory",
@@ -744,12 +771,12 @@ public struct CommandRouter {
         addExcluded: [String]?,
         removeExcluded: [String]?
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         var params: [String: Any] = [
             "sessionId": id
@@ -782,12 +809,12 @@ public struct CommandRouter {
     public static func sessionGetFileRelationships(
         sessionId: String
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         let request = RpcRequest(
             method: "session.getFileRelationships",
@@ -802,12 +829,12 @@ public struct CommandRouter {
     public static func sessionGetOverview(
         sessionId: String
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         let request = RpcRequest(
             method: "session.getOverview",
@@ -822,12 +849,12 @@ public struct CommandRouter {
     public static func sessionGetContents(
         sessionId: String
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         let request = RpcRequest(
             method: "session.getContents",
@@ -843,12 +870,12 @@ public struct CommandRouter {
         projectDirectory: String?,
         filePaths: [String]
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         var params: [String: Any] = [
             "filePaths": filePaths
@@ -869,12 +896,12 @@ public struct CommandRouter {
     public static func jobGet(
         jobId: String
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         let request = RpcRequest(
             method: "job.get",
@@ -895,12 +922,12 @@ public struct CommandRouter {
         pageSize: Int? = nil,
         filter: String? = nil
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         guard let sessionId = sessionId, !sessionId.isEmpty else {
             return AsyncThrowingStream { continuation in
@@ -1044,12 +1071,12 @@ public struct CommandRouter {
     // MARK: - Helper
 
     private static func invoke(_ method: String, _ params: [String: Any]) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         let request = RpcRequest(method: method, params: params)
         return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
@@ -1063,12 +1090,12 @@ public struct CommandRouter {
         sortOrder: String?,
         filterMode: String?
     ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+        guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
+        let (deviceId, relayClient) = usable
 
         var params: [String: Any] = [
             "sessionId": sessionId,

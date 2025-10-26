@@ -122,24 +122,35 @@ public class ServerRelayClient: NSObject, ObservableObject {
                 return
             }
 
-            // Build WebSocket URL with proper ws/wss scheme
-            var wsURLString = self.serverURL.absoluteString
-            if wsURLString.hasPrefix("https://") {
-                wsURLString = wsURLString.replacingOccurrences(of: "https://", with: "wss://")
-            } else if wsURLString.hasPrefix("http://") {
-                wsURLString = wsURLString.replacingOccurrences(of: "http://", with: "ws://")
+            // Build WebSocket URL - prefer Config.deviceLinkWebSocketURL for consistency
+            let wsURL: URL
+            if let configURL = try? URL(string: Config.serverURL), configURL == self.serverURL {
+                // Use Config's device-link WebSocket URL if serverURL matches
+                wsURL = Config.deviceLinkWebSocketURL
+            } else {
+                // Fallback: Build WebSocket URL with proper ws/wss scheme
+                var wsURLString = self.serverURL.absoluteString
+                if wsURLString.hasPrefix("https://") {
+                    wsURLString = wsURLString.replacingOccurrences(of: "https://", with: "wss://")
+                } else if wsURLString.hasPrefix("http://") {
+                    wsURLString = wsURLString.replacingOccurrences(of: "http://", with: "ws://")
+                }
+
+                // Append WebSocket path
+                if !wsURLString.hasSuffix("/") {
+                    wsURLString += "/"
+                }
+                wsURLString += "ws/device-link"
+
+                guard let constructedURL = URL(string: wsURLString) else {
+                    promise(.failure(.invalidURL))
+                    return
+                }
+                wsURL = constructedURL
             }
 
-            // Append WebSocket path
-            if !wsURLString.hasSuffix("/") {
-                wsURLString += "/"
-            }
-            wsURLString += "ws/device-link"
-
-            guard let wsURL = URL(string: wsURLString) else {
-                promise(.failure(.invalidURL))
-                return
-            }
+            // Log WebSocket connection details for diagnostics
+            self.logger.info("Attempting WebSocket connection to host: \(wsURL.host ?? "unknown"), path: \(wsURL.path)")
 
             var request = URLRequest(url: wsURL)
             // Set headers: Authorization: "Bearer \(jwt)", X-Device-ID: deviceId, X-Token-Binding: deviceId, X-Client-Type: "mobile"

@@ -42,7 +42,10 @@ impl BackgroundJobRepository {
 
         if let Some(ref app_handle) = self.app_handle {
             if let Ok(Some(created_job)) = self.get_job_by_id(&job.id).await {
-                emit_job_created(app_handle, JobCreatedEvent { job: created_job });
+                emit_job_created(app_handle, JobCreatedEvent {
+                    job: created_job.clone(),
+                    session_id: created_job.session_id.clone(),
+                });
             }
         }
 
@@ -101,6 +104,7 @@ impl BackgroundJobRepository {
             emit_job_status_changed(
                 app_handle,
                 JobStatusChangedEvent {
+                    session_id: job.session_id.clone(),
                     job_id: job.id.clone(),
                     status: job.status.clone(),
                     start_time: job.start_time,
@@ -114,6 +118,12 @@ impl BackgroundJobRepository {
     }
 
     pub async fn delete_job(&self, id: &str) -> AppResult<()> {
+        let session_id = if let Some(ref app_handle) = self.app_handle {
+            self.get_job_by_id(id).await.ok().flatten().map(|job| job.session_id)
+        } else {
+            None
+        };
+
         sqlx::query("DELETE FROM background_jobs WHERE id = $1")
             .bind(id)
             .execute(&*self.pool)
@@ -125,6 +135,7 @@ impl BackgroundJobRepository {
                 app_handle,
                 JobDeletedEvent {
                     job_id: id.to_string(),
+                    session_id: session_id.unwrap_or_default(),
                 },
             );
         }
