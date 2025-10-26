@@ -24,6 +24,11 @@ impl BackgroundJobRepository {
     ) -> AppResult<()> {
         let now = get_timestamp();
 
+        let job = self
+            .get_job_by_id(job_id)
+            .await?
+            .ok_or_else(|| AppError::NotFoundError(format!("Job {} not found", job_id)))?;
+
         // Log failure with cost information for debugging
         if let Some(cost) = actual_cost {
             info!(
@@ -146,6 +151,7 @@ impl BackgroundJobRepository {
                     app_handle,
                     JobStatusChangedEvent {
                         job_id: job_id.to_string(),
+                        session_id: job.session_id.clone(),
                         status: JobStatus::Failed.to_string(),
                         start_time: None,
                         end_time: Some(now),
@@ -159,8 +165,9 @@ impl BackgroundJobRepository {
                         app_handle,
                         JobFinalizedEvent {
                             job_id: job_id.to_string(),
+                            session_id: job.session_id.clone(),
                             status: JobStatus::Failed.to_string(),
-                            response: None, // Failed jobs typically don't have a complete response
+                            response: None,
                             actual_cost: cost,
                             tokens_sent: tokens_sent,
                             tokens_received: tokens_received,
@@ -230,6 +237,7 @@ impl BackgroundJobRepository {
                     app_handle,
                     JobErrorDetailsEvent {
                         job_id: job_id.to_string(),
+                        session_id: job.session_id.clone(),
                         error_details: error_details.clone(),
                     },
                 );

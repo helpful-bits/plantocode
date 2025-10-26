@@ -374,6 +374,7 @@ pub fn run() {
             commands::implementation_plan_commands::get_prompt_command,
             commands::implementation_plan_commands::estimate_prompt_tokens_command,
             commands::implementation_plan_commands::create_merged_implementation_plan_command,
+            commands::implementation_plan_commands::mark_implementation_plan_signed_off_command,
             commands::workflow_commands::start_file_finder_workflow,
             commands::workflow_commands::get_file_finder_roots_for_session,
             commands::web_search_commands::start_web_search_workflow,

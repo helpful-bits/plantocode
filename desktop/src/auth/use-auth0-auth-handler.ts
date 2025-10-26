@@ -8,6 +8,41 @@ import { type FrontendUser } from "../types";
 
 const logger = createLogger({ namespace: "Auth0Handler" });
 
+/**
+ * Decode JWT token and extract expiry timestamp
+ * Returns timestamp in milliseconds, or undefined if decoding fails
+ */
+function decodeJwtExp(token: string): number | undefined {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      return undefined;
+    }
+
+    const payload = parts[1];
+    // Base64url decode
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+
+    const decoded = JSON.parse(jsonPayload);
+
+    if (decoded.exp && typeof decoded.exp === 'number') {
+      // JWT exp is in seconds, convert to milliseconds
+      return decoded.exp * 1000;
+    }
+
+    return undefined;
+  } catch (error) {
+    logger.warn('Failed to decode JWT exp:', error);
+    return undefined;
+  }
+}
+
 interface Auth0AuthState {
   user?: FrontendUser;
   loading: boolean;
@@ -79,15 +114,14 @@ export function useAuth0AuthHandler() {
             
             logger.debug("Token validated, user authenticated:", userInfo.id);
             if (isMountedRef.current && !abortController.signal.aborted) {
-              // For stored tokens, we don't know the exact expiry, so use a conservative estimate
-              // Assume tokens are valid for 1 hour from now (will be refreshed every 50 minutes)
-              const tokenExpiresAt = Date.now() + (60 * 60 * 1000); // 1 hour from now
-              setState((prev: Auth0AuthState) => ({ 
-                ...prev, 
-                user: userInfo, 
-                token: storedToken, 
+              // Decode JWT to get actual expiry, fall back to conservative estimate
+              const tokenExpiresAt = decodeJwtExp(storedToken) || (Date.now() + (60 * 60 * 1000));
+              setState((prev: Auth0AuthState) => ({
+                ...prev,
+                user: userInfo,
+                token: storedToken,
                 tokenExpiresAt,
-                loading: false, 
+                loading: false,
                 error: undefined
               }));
             }

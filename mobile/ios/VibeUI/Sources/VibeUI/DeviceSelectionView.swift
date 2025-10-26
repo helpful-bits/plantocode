@@ -399,7 +399,11 @@ public struct DeviceSelectionView: View {
     }
 
     private func connectToDevice(_ device: RegisteredDevice) {
-        guard !isConnecting else { return }
+        // Guard against rapid re-entrant calls
+        guard !isConnecting else {
+            print("[DeviceSelection] Already connecting, ignoring duplicate call")
+            return
+        }
 
         // Validate prerequisites before attempting connection
         if !device.status.isAvailable {
@@ -417,7 +421,7 @@ public struct DeviceSelectionView: View {
             return
         }
 
-        print("[DeviceSelection] Initiating connection to device: \(device.deviceName) (\(device.deviceId))")
+        print("[DeviceSelection] Switching to device: \(device.deviceName) (\(device.deviceId))")
         selectedDeviceId = device.deviceId
         isConnecting = true
         errorMessage = nil
@@ -425,16 +429,31 @@ public struct DeviceSelectionView: View {
 
         Task {
             do {
-                let result = await MultiConnectionManager.shared.addConnection(for: device.deviceId)
+                // Check if we're switching from a different device
+                let currentActive = MultiConnectionManager.shared.activeDeviceId
+                let isSwitching = currentActive != nil && currentActive != device.deviceId
+
+                if isSwitching {
+                    print("[DeviceSelection] Switching from \(currentActive!.uuidString) to \(device.deviceId.uuidString)")
+                }
+
+                // Use switchActiveDevice for device switching
+                let result = await MultiConnectionManager.shared.switchActiveDevice(to: device.deviceId)
 
                 switch result {
-                case .success:
-                    print("[DeviceSelection] Connection successful, running bootstrap")
-                    // Run bootstrap to initialize project and sessions, which will set state to .ready
-                    await InitializationOrchestrator.shared.run()
-                    // Note: AuthFlowCoordinator advances to workspace based on connection state and bootstrap state
+                case .success(_):
+                    print("[DeviceSelection] Switch successful, triggering state reset")
 
-                    // Watchdog: ensure bootstrap progressed within 8 seconds
+                    // Trigger full state reset
+                    await MainActor.run {
+                        PlanToCodeCore.shared.dataServices?.onActiveDeviceSwitch(newId: device.deviceId)
+                    }
+
+                    // Run bootstrap to fetch fresh state
+                    print("[DeviceSelection] Running bootstrap for new device")
+                    await InitializationOrchestrator.shared.run()
+
+                    // Wait for bootstrap to complete
                     let deadline = Date().addingTimeInterval(8.0)
                     while Date() < deadline {
                         try? await Task.sleep(nanoseconds: 200_000_000) // 200ms
@@ -446,27 +465,23 @@ public struct DeviceSelectionView: View {
                     let finalState = AppState.shared.bootstrapState
                     switch finalState {
                     case .ready, .needsConfiguration:
-                        // Bootstrap completed successfully
-                        break
+                        await MainActor.run {
+                            appState.selectedDeviceId = device.deviceId
+                            isConnecting = false
+                            selectedDeviceId = nil
+                            errorMessage = nil
+                            print("[DeviceSelection] Device switch complete")
+                        }
                     default:
-                        // Bootstrap did not complete - show error
                         await MainActor.run {
                             errorMessage = "Desktop did not respond in time. Check that the desktop app is running and signed in with the same account."
                             isConnecting = false
                             diagnosticsDeviceId = device.deviceId
                         }
-                        return
                     }
 
-                    await MainActor.run {
-                        appState.selectedDeviceId = device.deviceId
-                        // AuthFlowCoordinator will handle routing based on device connection and project state
-                        // Reset local state now that connection is established
-                        isConnecting = false
-                        selectedDeviceId = nil
-                    }
                 case .failure(let error):
-                    print("[DeviceSelection] Connection failed: \(error.localizedDescription)")
+                    print("[DeviceSelection] Switch failed: \(error.localizedDescription)")
                     await MainActor.run {
                         // Map specific errors to user-friendly messages
                         if let multiError = error as? MultiConnectionError {
@@ -484,7 +499,6 @@ public struct DeviceSelectionView: View {
                             errorMessage = error.localizedDescription
                         }
                         isConnecting = false
-                        // Keep selectedDeviceId and diagnosticsDeviceId for diagnostics button
                         diagnosticsDeviceId = device.deviceId
                     }
                 }

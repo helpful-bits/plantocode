@@ -1,5 +1,5 @@
 "use client";
-import React, { createContext, useCallback, useContext, useMemo } from "react";
+import React, { createContext, useCallback, useContext, useMemo, useEffect } from "react";
 import { Channel } from "@tauri-apps/api/core";
 import {
   attachTerminalOutput,
@@ -13,6 +13,9 @@ import {
 import { safeListen } from "@/utils/tauri-event-utils";
 import type { TerminalSessionsContextShape, TerminalSession } from "./types";
 
+const INACTIVITY_KEY = 'terminal.inactivitySeconds';
+const DEFAULT_INACTIVITY_SEC = 20;
+
 // Module-level store
 class TerminalStore {
   private sessions: Map<string, TerminalSession> = new Map();
@@ -22,6 +25,7 @@ class TerminalStore {
   private visibleId: string | null = null;
   private bootstrapped = false;
   private unlistenExit: (() => void) | null = null;
+  public inactivityNotifiedRef: Set<string> = new Set();
 
   subscribe = (onStoreChange: () => void) => {
     this.subscribers.add(onStoreChange);
@@ -75,6 +79,12 @@ class TerminalStore {
                 exitCode
               });
               this.notifySubscribers();
+
+              // Dispatch agent-job-completed event
+              window.dispatchEvent(new CustomEvent('agent-job-completed', { detail: { sessionId, code: exitCode } }));
+
+              // Clean up inactivity notification
+              this.inactivityNotifiedRef.delete(sessionId);
             }
           }
         }
@@ -107,7 +117,21 @@ class TerminalStore {
   // Store methods exposed to Provider
   setVisibleSessionId = (id: string | null) => {
     this.visibleId = id;
+    if (id !== null) {
+      const session = this.sessions.get(id);
+      if (session) {
+        this.sessions.set(id, { ...session, isMinimized: false });
+      }
+    }
     this.notifySubscribers();
+  };
+
+  minimizeSession = (id: string) => {
+    const session = this.sessions.get(id);
+    if (session) {
+      this.sessions.set(id, { ...session, isMinimized: true });
+      this.notifySubscribers();
+    }
   };
 
   setOutputBytesCallback = (id: string, cb: (chunk: Uint8Array) => void) => {
@@ -164,6 +188,14 @@ export const TerminalSessionsProvider: React.FC<React.PropsWithChildren> = ({ ch
 
     const ch = new Channel<Uint8Array>();
     ch.onmessage = (chunk) => {
+      // Update lastActivityAt on every output chunk
+      store.updateSession(id, { lastActivityAt: Date.now() });
+
+      // Clear inactivity notification if it was set
+      if (store.inactivityNotifiedRef.has(id)) {
+        store.inactivityNotifiedRef.delete(id);
+      }
+
       const cb = store.getBytesCbRef().get(id);
       if (cb) cb(new Uint8Array(chunk));
     };
@@ -186,6 +218,14 @@ export const TerminalSessionsProvider: React.FC<React.PropsWithChildren> = ({ ch
       if (!storeState.channelsRef.has(id)) {
         const ch = new Channel<Uint8Array>();
         ch.onmessage = (chunk) => {
+          // Update lastActivityAt on every output chunk
+          store.updateSession(id, { lastActivityAt: Date.now() });
+
+          // Clear inactivity notification if it was set
+          if (store.inactivityNotifiedRef.has(id)) {
+            store.inactivityNotifiedRef.delete(id);
+          }
+
           const cb = store.getBytesCbRef().get(id);
           if (cb) cb(new Uint8Array(chunk));
         };
@@ -200,17 +240,48 @@ export const TerminalSessionsProvider: React.FC<React.PropsWithChildren> = ({ ch
 
     if (storeState.sessions.has(id) && storeState.channelsRef.has(id)) return;
 
-    store.updateSession(id, { status: "starting" });
+    // Initialize session with displayName, origin, and lastActivityAt
+    store.updateSession(id, {
+      status: "starting",
+      displayName: opts?.displayName,
+      origin: opts?.origin,
+      lastActivityAt: Date.now()
+    });
 
     const ch = new Channel<Uint8Array>();
     ch.onmessage = (chunk) => {
+      // Update lastActivityAt on every output chunk
+      store.updateSession(id, { lastActivityAt: Date.now() });
+
+      // Clear inactivity notification if it was set
+      if (store.inactivityNotifiedRef.has(id)) {
+        store.inactivityNotifiedRef.delete(id);
+      }
+
       const cb = store.getBytesCbRef().get(id);
       if (cb) cb(new Uint8Array(chunk));
     };
 
     await startTerminalSession(id, opts, ch);
     storeState.channelsRef.set(id, ch);
-    store.updateSession(id, { status: "running" });
+    store.updateSession(id, { status: "running", lastActivityAt: Date.now() });
+
+    // Dispatch agent-job-started event
+    window.dispatchEvent(new CustomEvent('agent-job-started', { detail: { sessionId: id } }));
+
+    // If initialInput is provided, write it to the channel
+    if (opts?.initialInput) {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(opts.initialInput + '\n');
+      const channelRef = storeState.channelsRef.get(id);
+      if (channelRef) {
+        try {
+          await writeTerminalInput(id, data);
+        } catch (e) {
+          console.error("Failed to write initial input:", e);
+        }
+      }
+    }
   }, [storeState.sessions, storeState.channelsRef]);
 
   const detachSession = useCallback((id: string) => {
@@ -244,6 +315,25 @@ export const TerminalSessionsProvider: React.FC<React.PropsWithChildren> = ({ ch
   const getAttentionCount = useCallback(() => 0, []);
   const deleteLog = useCallback(async () => {}, []);
 
+  // Inactivity scanner
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const threshold = Number(localStorage.getItem(INACTIVITY_KEY)) || DEFAULT_INACTIVITY_SEC;
+
+      storeState.sessions.forEach((session: TerminalSession, id: string) => {
+        if (session.status === 'running') {
+          const lastTs = session.lastActivityAt ?? Date.now();
+          if (Date.now() - lastTs >= threshold * 1000 && !store.inactivityNotifiedRef.has(id)) {
+            window.dispatchEvent(new CustomEvent('agent-inactivity', { detail: { sessionId: id } }));
+            store.inactivityNotifiedRef.add(id);
+          }
+        }
+      });
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [storeState.sessions]);
+
   const value = useMemo<TerminalSessionsContextShape>(() => ({
     sessions: storeState.sessions,
     startSession,
@@ -252,6 +342,7 @@ export const TerminalSessionsProvider: React.FC<React.PropsWithChildren> = ({ ch
     write,
     resize,
     kill,
+    minimizeSession: store.minimizeSession,
     setVisibleSessionId: store.setVisibleSessionId,
     getVisibleSessionId: () => storeState.visibleId,
     setOutputBytesCallback: store.setOutputBytesCallback,

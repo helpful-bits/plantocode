@@ -14,15 +14,58 @@ interface MonitoringPanelProps {
 
 export const MonitoringPanel = ({ onBack, onOpenTerminal }: MonitoringPanelProps) => {
   const { jobs } = useContext(BackgroundJobsContext);
-  const { getSession, getActiveCount, getAttention } = useTerminalSessions();
+  const { sessions, getSession, getActiveCount, getAttention } = useTerminalSessions();
   const [searchQuery, setSearchQuery] = useState("");
 
+  // Filter active terminal sessions
+  const activeSessions = useMemo(() =>
+    Array.from(sessions.values()).filter(s =>
+      ['running','restored','starting','initializing'].includes(s.status) || s.isMinimized
+    ), [sessions]);
+
   // Filter only implementation plan jobs
-  const allImplementationPlanJobs = useMemo(() => 
-    jobs.filter(job => 
-      job.taskType === "implementation_plan" || 
+  const allImplementationPlanJobs = useMemo(() =>
+    jobs.filter(job =>
+      job.taskType === "implementation_plan" ||
       job.taskType === "implementation_plan_merge"
     ), [jobs]);
+
+  // Filter available sessions (completed implementation plans without active terminals)
+  const availableSessions = useMemo(() =>
+    allImplementationPlanJobs.filter(job =>
+      job.status === 'completed' &&
+      !sessions.has(job.id)
+    ), [allImplementationPlanJobs, sessions]);
+
+  // Handle session click
+  const handleSessionClick = (sessionId: string) => {
+    // Check if a background job exists with this id
+    const job = jobs.find(j => j.id === sessionId);
+    if (job) {
+      onOpenTerminal(sessionId);
+    } else {
+      window.dispatchEvent(new CustomEvent('open-terminal-session', { detail: { sessionId } }));
+    }
+  };
+
+  // Get status badge for terminal session
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "running":
+        return { text: "Running", className: "bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-300" };
+      case "restored":
+        return { text: "Restored", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300" };
+      case "starting":
+      case "initializing":
+        return { text: "Starting", className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-300" };
+      case "completed":
+        return { text: "Completed", className: "bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-300" };
+      case "failed":
+        return { text: "Error", className: "bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-300" };
+      default:
+        return { text: "Inactive", className: "bg-gray-100 text-gray-700 dark:bg-gray-900/20 dark:text-gray-300" };
+    }
+  };
 
   // Filter and sort jobs based on search query
   const implementationPlanJobs = useMemo(() => {
@@ -186,7 +229,115 @@ export const MonitoringPanel = ({ onBack, onOpenTerminal }: MonitoringPanelProps
             </div>
           </div>
         </section>
-        
+
+        {/* Active Terminal Sessions */}
+        {activeSessions.length > 0 && (
+          <section className="space-y-2">
+            <div className="text-sm font-medium text-foreground">Active Terminal Sessions</div>
+            <div className="space-y-2">
+              {activeSessions.map(session => {
+                const statusBadge = getStatusBadge(session.status);
+                const displayName = session.displayName ?? session.sessionId;
+
+                return (
+                  <div
+                    key={session.sessionId}
+                    className="group flex items-start gap-3 border border-border/60 rounded-md p-3 bg-card hover:bg-accent/5 transition-colors cursor-pointer"
+                    onClick={() => handleSessionClick(session.sessionId)}
+                  >
+                    {/* Status icon */}
+                    <div className="flex-shrink-0 mt-0.5">
+                      <Circle className="w-3.5 h-3.5 text-success animate-pulse" />
+                    </div>
+
+                    {/* Main content */}
+                    <div className="flex-1 min-w-0 space-y-1">
+                      {/* Session name and status */}
+                      <div className="flex items-center gap-2">
+                        <div className="text-sm font-medium text-foreground truncate">
+                          {displayName}
+                        </div>
+                        <span className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 ${statusBadge.className}`}>
+                          {statusBadge.text}
+                        </span>
+                      </div>
+
+                      {/* Last activity timestamp */}
+                      {session.lastActivityAt && (
+                        <div className="text-xs text-muted-foreground">
+                          Last activity: {new Date(session.lastActivityAt).toLocaleTimeString()}
+                        </div>
+                      )}
+
+                      {/* Session ID if no display name */}
+                      {!session.displayName && (
+                        <div className="text-xs text-muted-foreground/60">
+                          {session.sessionId.slice(0, 8)}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Terminal indicator */}
+                    <div className="flex-shrink-0 mt-0.5">
+                      <Terminal className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* Available Sessions */}
+        {availableSessions.length > 0 && (
+          <section className="space-y-2">
+            <div className="text-sm font-medium text-foreground">Available Sessions</div>
+            <div className="space-y-2">
+              {availableSessions.map(job => {
+                let planTitle = "";
+                try {
+                  const metadata = typeof job.metadata === 'string'
+                    ? JSON.parse(job.metadata)
+                    : job.metadata || {};
+                  planTitle = metadata.planTitle || metadata.generated_title || metadata.displayName || "";
+                } catch {
+                  // Ignore parsing errors
+                }
+
+                const displayTitle = planTitle ||
+                  (job.taskType === "implementation_plan_merge" ? "Merge Plan" : "Implementation Plan");
+
+                return (
+                  <div
+                    key={job.id}
+                    className="flex items-center justify-between gap-3 border border-border/60 rounded-md p-3 bg-card hover:bg-accent/5 transition-colors"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-foreground truncate">
+                        {displayTitle}
+                      </div>
+                      {!planTitle && (
+                        <div className="text-xs text-muted-foreground/60">
+                          {job.id.slice(0, 8)}
+                        </div>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => onOpenTerminal(job.id)}
+                      className="flex-shrink-0 gap-1 h-7 text-xs"
+                    >
+                      <Terminal className="w-3 h-3" />
+                      Start
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
         <section className="space-y-2">
           <div className="flex items-center justify-between">
             <div className="text-sm font-medium text-foreground">Implementation Plans</div>

@@ -124,21 +124,27 @@ public final class AppState: ObservableObject {
       .receive(on: DispatchQueue.main)
       .removeDuplicates()
       .sink { [weak self] value in
-        self?.isAuthenticated = value
+        Task { @MainActor in
+          self?.isAuthenticated = value
+        }
       }
       .store(in: &cancellables)
 
     authService.$currentUser
       .receive(on: DispatchQueue.main)
       .sink { [weak self] value in
-        self?.currentUser = value
+        Task { @MainActor in
+          self?.currentUser = value
+        }
       }
       .store(in: &cancellables)
 
     authService.$authError
       .receive(on: DispatchQueue.main)
       .sink { [weak self] value in
-        self?.authError = value
+        Task { @MainActor in
+          self?.authError = value
+        }
       }
       .store(in: &cancellables)
   }
@@ -160,8 +166,9 @@ public final class AppState: ObservableObject {
   }
 
   public func setActiveRegion(_ region: Region) {
-    // Update published property immediately for UI reactivity
-    self.activeRegion = region
+    Task { @MainActor in
+      self.activeRegion = region
+    }
     // Persist to database asynchronously
     regionRepository.setActiveRegion(region: region.name)
   }
@@ -221,41 +228,45 @@ public final class AppState: ObservableObject {
   // MARK: - Onboarding and Auth Bootstrap methods
 
   public func markRegionSelectionCompleted() {
-    hasSelectedRegionOnce = true
+    Task { @MainActor in
+      hasSelectedRegionOnce = true
+    }
   }
 
   public func markAuthBootstrapCompleted() {
-    if Thread.isMainThread {
+    Task { @MainActor in
       authBootstrapCompleted = true
-    } else {
-      DispatchQueue.main.async {
-        self.authBootstrapCompleted = true
-      }
     }
   }
 
   public func setSelectedProjectDirectory(_ path: String?) {
-    self.selectedProjectDirectory = path
+    Task { @MainActor in
+      self.selectedProjectDirectory = path
+    }
   }
 
-  @MainActor
   public func setBootstrapRunning() {
-    self.bootstrapState = .running
+    Task { @MainActor in
+      self.bootstrapState = .running
+    }
   }
 
-  @MainActor
   public func setBootstrapReady() {
-    self.bootstrapState = .ready
+    Task { @MainActor in
+      self.bootstrapState = .ready
+    }
   }
 
-  @MainActor
   public func setBootstrapNeedsConfig(_ missing: MissingConfig) {
-    self.bootstrapState = .needsConfiguration(missing)
+    Task { @MainActor in
+      self.bootstrapState = .needsConfiguration(missing)
+    }
   }
 
-  @MainActor
   public func setBootstrapFailed(_ message: String) {
-    self.bootstrapState = .failed(message)
+    Task { @MainActor in
+      self.bootstrapState = .failed(message)
+    }
   }
 
   // URL handling is no longer needed with Auth0.swift 2.13+

@@ -76,6 +76,12 @@ impl TokenManager {
     pub async fn set(&self, new_token: Option<String>) -> AppResult<()> {
         use tokio::time::{Duration, timeout};
 
+        let storage_type = if USE_SESSION_STORAGE {
+            "session storage"
+        } else {
+            "keyring"
+        };
+
         // Update in-memory cache with timeout protection
         match timeout(Duration::from_secs(5), async {
             let mut token_guard = self.token.write().await;
@@ -90,35 +96,40 @@ impl TokenManager {
         {
             Ok(_) => {}
             Err(_) => {
-                error!("Timeout setting token in memory cache");
+                error!("Timeout setting token in memory cache (5s limit exceeded)");
                 return Err(AppError::StorageError(
                     "Timeout updating token in memory".to_string(),
                 ));
             }
         }
 
-        // Persist to storage with timeout protection (10 seconds should be sufficient for keyring operations)
+        // Persist to storage with timeout protection
+        let persist_start = std::time::Instant::now();
         match timeout(
             Duration::from_secs(10),
             token_persistence::save_token(new_token.clone()),
         )
         .await
         {
-            Ok(result) => result?,
+            Ok(result) => {
+                let persist_duration = persist_start.elapsed();
+                debug!(
+                    "TokenManager: Token persisted to {} in {:?}",
+                    storage_type, persist_duration
+                );
+                result?
+            }
             Err(_) => {
-                error!("Timeout persisting token to storage");
-                return Err(AppError::StorageError(
-                    "Timeout persisting token to storage".to_string(),
-                ));
+                error!(
+                    "Timeout persisting token to {} (10s limit exceeded)",
+                    storage_type
+                );
+                return Err(AppError::StorageError(format!(
+                    "Timeout persisting token to {}",
+                    storage_type
+                )));
             }
         }
-
-        let storage_type = if USE_SESSION_STORAGE {
-            "session storage"
-        } else {
-            "keyring"
-        };
-        debug!("TokenManager: Token persisted to {}", storage_type);
 
         Ok(())
     }

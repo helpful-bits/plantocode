@@ -159,6 +159,13 @@ pub fn format_user_error(error: &AppError) -> String {
         AppError::TerminalSessionNotFound(msg) => format!("Terminal session not found: {}", msg),
         AppError::TerminalAttachmentFailed(msg) => format!("Terminal attachment failed: {}", msg),
         AppError::TerminalNoOutput(msg) => format!("Terminal output error: {}", msg),
+        AppError::StreamError(msg) => {
+            if msg.contains("connection") || msg.contains("timeout") {
+                "Stream connection error. Please check your internet connection and try again.".to_string()
+            } else {
+                format!("Stream error: {}", msg)
+            }
+        },
     }
 }
 
@@ -296,6 +303,7 @@ pub async fn log_error_to_db(error: &AppError, context: &str, metadata: Option<V
                 AppError::TerminalSessionNotFound(_) => "TERMINAL_SESSION_NOT_FOUND",
                 AppError::TerminalAttachmentFailed(_) => "TERMINAL_ATTACHMENT_FAILED",
                 AppError::TerminalNoOutput(_) => "TERMINAL_NO_OUTPUT",
+                AppError::StreamError(_) => "STREAM_ERROR",
             };
 
             // Stack trace would need backtrace crate

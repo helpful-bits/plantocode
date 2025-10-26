@@ -34,6 +34,8 @@ export interface NotificationContextValue {
   showPersistentNotification: (notification: NotificationType) => string;
   dismissNotification: (id: string) => void;
   getPersistentNotifications: (tag?: string) => ActiveNotification[];
+  dismissNotificationsByTag: (tag: string) => void;
+  dismissNotificationsByPredicate: (predicate: (n: ActiveNotification) => boolean) => void;
   showError: (error: unknown, context?: string, userContext?: string) => void;
   showSuccess: (message: string, title?: string) => void;
   showWarning: (message: string, title?: string) => void;
@@ -44,6 +46,8 @@ const NotificationContext = createContext<NotificationContextValue>({
   showPersistentNotification: () => '',
   dismissNotification: () => {},
   getPersistentNotifications: () => [],
+  dismissNotificationsByTag: () => {},
+  dismissNotificationsByPredicate: () => {},
   showError: () => {},
   showSuccess: () => {},
   showWarning: () => {},
@@ -135,6 +139,34 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     });
   }, [notifications]);
 
+  const dismissNotificationsByTag = useCallback((tag: string) => {
+    const notificationsToDismiss = notifications.filter(n => n.duration === 0 && n.tag === tag);
+
+    notificationsToDismiss.forEach(notification => {
+      const timeoutId = activeTimeoutsRef.current.get(notification.id);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        activeTimeoutsRef.current.delete(notification.id);
+      }
+    });
+
+    setNotifications(prev => prev.filter(n => !(n.duration === 0 && n.tag === tag)));
+  }, [notifications]);
+
+  const dismissNotificationsByPredicate = useCallback((predicate: (n: ActiveNotification) => boolean) => {
+    const notificationsToDismiss = notifications.filter(n => n.duration === 0 && predicate(n));
+
+    notificationsToDismiss.forEach(notification => {
+      const timeoutId = activeTimeoutsRef.current.get(notification.id);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        activeTimeoutsRef.current.delete(notification.id);
+      }
+    });
+
+    setNotifications(prev => prev.filter(n => !(n.duration === 0 && predicate(n))));
+  }, [notifications]);
+
   // Cleanup all timeouts on unmount
   useEffect(() => {
     return () => {
@@ -144,6 +176,79 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       activeTimeoutsRef.current.clear();
     };
   }, []);
+
+  // Terminal lifecycle event listeners
+  useEffect(() => {
+    const handleJobStarted = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      showPersistentNotification({
+        tag: 'terminal',
+        title: `Coding agent job started for [${detail.sessionId}].`,
+        type: 'info',
+        data: { jobId: detail.sessionId }
+      });
+      showNotification({
+        title: `Coding agent job started for [${detail.sessionId}].`,
+        type: 'info'
+      });
+    };
+
+    const handleInactivity = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      showPersistentNotification({
+        tag: 'terminal',
+        title: `Coding agent inactive for [${detail.sessionId}]. User attention required.`,
+        type: 'warning',
+        data: { jobId: detail.sessionId }
+      });
+      showNotification({
+        title: `Coding agent inactive for [${detail.sessionId}]. User attention required.`,
+        type: 'warning'
+      });
+    };
+
+    const handleJobCompleted = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      showPersistentNotification({
+        tag: 'terminal',
+        title: `Coding agent job complete for [${detail.sessionId}].`,
+        type: 'success',
+        data: { jobId: detail.sessionId }
+      });
+      showNotification({
+        title: `Coding agent job complete for [${detail.sessionId}].`,
+        type: 'success'
+      });
+    };
+
+    const handleOpenPlanTerminal = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      dismissNotificationsByPredicate(n =>
+        n.tag === 'terminal' && n.data?.jobId === detail.jobId
+      );
+    };
+
+    const handleOpenTerminalSession = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      dismissNotificationsByPredicate(n =>
+        n.tag === 'terminal' && n.data?.jobId === detail.sessionId
+      );
+    };
+
+    window.addEventListener('agent-job-started', handleJobStarted);
+    window.addEventListener('agent-inactivity', handleInactivity);
+    window.addEventListener('agent-job-completed', handleJobCompleted);
+    window.addEventListener('open-plan-terminal', handleOpenPlanTerminal);
+    window.addEventListener('open-terminal-session', handleOpenTerminalSession);
+
+    return () => {
+      window.removeEventListener('agent-job-started', handleJobStarted);
+      window.removeEventListener('agent-inactivity', handleInactivity);
+      window.removeEventListener('agent-job-completed', handleJobCompleted);
+      window.removeEventListener('open-plan-terminal', handleOpenPlanTerminal);
+      window.removeEventListener('open-terminal-session', handleOpenTerminalSession);
+    };
+  }, [showNotification, showPersistentNotification, dismissNotificationsByPredicate]);
 
   // Helper function to create action buttons for billing errors
   const getActionButton = useCallback((errorType: ErrorType, workflowContext?: any) => {
@@ -501,7 +606,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   }, [showNotification]);
 
   return (
-    <NotificationContext.Provider value={{ showNotification, showPersistentNotification, dismissNotification, getPersistentNotifications, showError, showSuccess, showWarning }}>
+    <NotificationContext.Provider value={{ showNotification, showPersistentNotification, dismissNotification, getPersistentNotifications, dismissNotificationsByTag, dismissNotificationsByPredicate, showError, showSuccess, showWarning }}>
       {children}
       
       {/* Render active notifications */}

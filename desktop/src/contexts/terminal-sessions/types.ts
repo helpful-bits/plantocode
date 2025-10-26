@@ -23,16 +23,28 @@ export interface TerminalSession {
   status: TerminalStatus;
   exitCode?: number;
   lastOutput?: string;
+  lastActivityAt?: number;
+  displayName?: string;
+  origin?: 'plan' | 'task_description';
+  isMinimized?: boolean;
 }
 
 export interface TerminalSessionsContextShape {
   sessions: Map<string, TerminalSession>;
-  startSession: (sessionId: string, opts?: { workingDirectory?: string; cols?: number; rows?: number }) => Promise<void>;
+  startSession: (sessionId: string, opts?: {
+    workingDirectory?: string;
+    cols?: number;
+    rows?: number;
+    displayName?: string;
+    origin?: 'plan' | 'task_description';
+    initialInput?: string;
+  }) => Promise<void>;
   attachSession: (sessionId: string) => Promise<void>;
   detachSession: (sessionId: string) => void;
   write: (sessionId: string, data: string | Uint8Array) => void;
   resize: (sessionId: string, cols: number, rows: number) => void;
   kill: (sessionId: string) => void;
+  minimizeSession: (sessionId: string) => void;
   setVisibleSessionId: (sessionId: string | null) => void;
   getVisibleSessionId: () => string | null;
   setOutputBytesCallback: (sessionId: string, cb: (chunk: Uint8Array) => void) => void;

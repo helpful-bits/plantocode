@@ -16,8 +16,9 @@ import {
 } from "@/ui/card";
 import { Progress } from "@/ui/progress";
 import { Checkbox } from "@/ui/checkbox";
+import { Badge } from "@/ui/badge";
 
-import { getParsedMetadata } from "../../background-jobs-sidebar/utils";
+import { getParsedMetadata, getStreamingStatus } from "../../background-jobs-sidebar/utils";
 import { useLiveProgress } from "@/hooks/use-live-progress";
 import { useTerminalSessions } from "@/contexts/terminal-sessions/useTerminalSessions";
 
@@ -59,18 +60,20 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
   const parsedMeta = getParsedMetadata(plan.metadata);
 
   const planTitle = String(parsedMeta?.planTitle || parsedMeta?.generated_title || "Implementation Plan");
-  
+
   // Helper function to truncate long titles
   const truncateTitle = (title: string, maxLength: number = 80) => {
     if (title.length <= maxLength) return title;
     return `${title.substring(0, maxLength - 3)}...`;
   };
-  // Check if actively streaming (running status but no content yet)
-  const hasResponseContent = plan.response && plan.response.trim().length > 0;
-  const isStreaming = JOB_STATUSES.ACTIVE.includes(plan.status) &&
-                     ["running", "processingStream", "generatingStream"].includes(plan.status) &&
-                     !hasResponseContent;
-  
+
+  // Check for user sign-off
+  const userSignoff = parsedMeta?.user_signoff as { state?: string } | undefined;
+  const isSignedOff = userSignoff?.state === "accepted";
+  // Check if actively streaming using metadata-driven detection
+  const streamingStatus = getStreamingStatus(parsedMeta);
+  const isStreaming = Boolean(streamingStatus) || (JOB_STATUSES.ACTIVE.includes(plan.status));
+
   // Use live progress hook for consistent real-time updates
   const progress = useLiveProgress(plan);
 
@@ -104,7 +107,7 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
   // For completed jobs, we assume they have content (will be fetched on demand)
   // For streaming jobs, we can view the stream
   // For running jobs with content, we can view the delivered content
-  const hasContent = JOB_STATUSES.COMPLETED.includes(plan.status) || isStreaming || hasResponseContent;
+  const hasContent = JOB_STATUSES.COMPLETED.includes(plan.status) || isStreaming || (plan.response && plan.response.trim().length > 0);
 
   // Check if the plan is ready for terminal access
   const isPlanReadyForTerminal = JOB_STATUSES.COMPLETED.includes(plan.status);
@@ -196,6 +199,12 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
                   {truncateTitle(planTitle)}
                 </CardTitle>
                 {getAttentionIcon() || getTerminalStatusIcon()}
+                {isSignedOff && (
+                  <Badge variant="success" className="ml-1">
+                    <Check className="h-3 w-3 mr-1" />
+                    Reviewed
+                  </Badge>
+                )}
               </div>
               <CardDescription className="flex flex-wrap gap-x-2 text-xs mt-1">
                 {plan.taskType === "implementation_plan_merge" && (

@@ -36,6 +36,7 @@ public class DataServicesManager: ObservableObject {
     private var relayEventsCancellable: AnyCancellable?
     private let logger = Logger(subsystem: "PlanToCode", category: "DataServicesManager")
     private var isApplyingRemoteActiveSession = false
+    private var isInitialProjectFetchInProgress = false
 
     // MARK: - Initialization
     public init(baseURL: URL, deviceId: String) {
@@ -121,6 +122,45 @@ public class DataServicesManager: ObservableObject {
 
         // Reload data
         preloadProjectData(project)
+    }
+
+    /// Reset all service state when switching to a new active device
+    @MainActor
+    public func onActiveDeviceSwitch(newId: UUID?) {
+        logger.info("Resetting all state for device switch to: \(newId?.uuidString ?? "nil")")
+
+        // Reset bootstrap flags
+        hasCompletedInitialLoad = false
+        isInitializing = true
+
+        // Clear project
+        currentProject = nil
+
+        // Invalidate all caches
+        invalidateAllCaches()
+
+        // Reset per-service state
+        sessionService.currentSession = nil
+        sessionService.sessions = []
+
+        jobsService.clearJobs()
+
+        plansService.invalidateCache()
+        plansService.plans.removeAll()
+
+        filesService.invalidateCache()
+        filesService.files = []
+        terminalService.cleanForDeviceSwitch()
+
+        // Cancel relay events subscription
+        relayEventsCancellable?.cancel()
+        relayEventsCancellable = nil
+
+        // Reset AppState routing markers
+        AppState.shared.setSelectedProjectDirectory(nil)
+        AppState.shared.setBootstrapRunning()
+
+        logger.info("State reset complete for device switch")
     }
 
     /// Test connection to desktop app
@@ -364,19 +404,37 @@ public class DataServicesManager: ObservableObject {
                 // Detect active device change and propagate
                 let newActive = MultiConnectionManager.shared.activeDeviceId
                 if newActive != self.activeDesktopDeviceId {
-                    self.activeDesktopDeviceId = newActive
-                    self.plansService.onActiveDeviceChanged(newActive)
-                    if let project = self.currentProject {
-                        self.plansService.preloadPlans(
-                            for: project.directory,
-                            sessionId: self.sessionService.currentSession?.id
-                        )
-                    }
-                    Task { @MainActor in
-                        await self.terminalService.bootstrapFromRemote()
+                    // Only reset if we're actually switching to a different device or initializing
+                    let isSwitching = self.activeDesktopDeviceId != nil && newActive != self.activeDesktopDeviceId
+                    let isInitializing = self.activeDesktopDeviceId == nil && newActive != nil
 
-                        // Fetch initial project directory from desktop when device changes
-                        await self.fetchInitialProjectDirectory()
+                    if isSwitching {
+                        // Full device switch - reset all state
+                        self.onActiveDeviceSwitch(newId: newActive)
+                        self.activeDesktopDeviceId = newActive
+
+                        // Clear UI state immediately
+                        self.filesService.onActiveDeviceChanged()
+                        self.jobsService.onActiveDeviceChanged()
+                        self.sessionService.onActiveDeviceChanged()
+
+                        self.plansService.onActiveDeviceChanged(newActive)
+                        if let project = self.currentProject {
+                            self.plansService.preloadPlans(
+                                for: project.directory,
+                                sessionId: self.sessionService.currentSession?.id
+                            )
+                        }
+                        Task { @MainActor in
+                            await self.terminalService.bootstrapFromRemote()
+                        }
+                    } else if isInitializing {
+                        // Initial device assignment - just update reference
+                        self.activeDesktopDeviceId = newActive
+                        self.logger.info("Initial device assigned: \(newActive?.uuidString ?? "nil")")
+                    } else {
+                        // Device cleared - update reference
+                        self.activeDesktopDeviceId = newActive
                     }
                 }
 
@@ -421,8 +479,9 @@ public class DataServicesManager: ObservableObject {
     }
 
     private func subscribeToRelayEvents() {
-        // Cancel previous subscription
+        // Cancel previous subscription to avoid duplicates
         relayEventsCancellable?.cancel()
+        relayEventsCancellable = nil
 
         // Get active device and relay client
         guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
@@ -589,6 +648,33 @@ public class DataServicesManager: ObservableObject {
 
     /// Fetch the initial project directory from desktop when connecting
     private func fetchInitialProjectDirectory() async {
+        guard !isInitialProjectFetchInProgress else { return }
+        isInitialProjectFetchInProgress = true
+        defer { isInitialProjectFetchInProgress = false }
+
+        guard MultiConnectionManager.shared.activeDeviceId != nil else {
+            logger.info("No active device selected, skipping initial project fetch")
+            return
+        }
+
+        let startTime = Date()
+        let timeout: TimeInterval = 8.0
+        var isConnected = false
+
+        while Date().timeIntervalSince(startTime) < timeout {
+            if let activeId = MultiConnectionManager.shared.activeDeviceId,
+               case .connected = MultiConnectionManager.shared.connectionStates[activeId] {
+                isConnected = true
+                break
+            }
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+
+        guard isConnected else {
+            logger.info("Connection not established within \(timeout)s, deferring initial project fetch to connection handler")
+            return
+        }
+
         await MainActor.run {
             self.isInitializing = true
         }
@@ -647,7 +733,12 @@ public class DataServicesManager: ObservableObject {
                 }
             }
         } catch {
-            logger.error("Failed to fetch initial project directory: \(error.localizedDescription)")
+            let errorMessage = error.localizedDescription
+            if errorMessage.contains("Not connected") {
+                logger.debug("Connection not ready for initial project fetch (transient): \(errorMessage)")
+            } else {
+                logger.error("Failed to fetch initial project directory: \(errorMessage)")
+            }
         }
     }
 

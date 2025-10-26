@@ -59,19 +59,17 @@ pub async fn delete_background_job_command(job_id: String, app_handle: AppHandle
         .flatten();
 
     let preserved_task_type = job_opt.as_ref().map(|j| j.task_type.clone());
+    let preserved_session_id = job_opt.as_ref().map(|j| j.session_id.clone()).unwrap_or_default();
 
     repo.delete_job(&job_id)
         .await
         .map_err(|e| AppError::DatabaseError(format!("Failed to delete job: {}", e)))?;
 
-    // Terminal logs are now handled via the database terminal_sessions table
-    // which has a foreign key constraint to background_jobs with ON DELETE CASCADE
-    // So they're automatically cleaned up when the job is deleted
-
     emit_job_deleted(
         &app_handle,
         JobDeletedEvent {
             job_id: job_id.clone(),
+            session_id: preserved_session_id,
         },
     );
 

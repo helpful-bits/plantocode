@@ -190,6 +190,7 @@ impl BackgroundJobRepository {
                 app_handle,
                 JobCostUpdatedEvent {
                     job_id: job_id.to_string(),
+                    session_id: updated_job.session_id.clone(),
                     actual_cost: final_cost,
                     is_finalized: Some(true),
                 },

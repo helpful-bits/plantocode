@@ -67,7 +67,7 @@ pub use audio_commands::transcribe_audio_command;
 pub use implementation_plan_commands::{
     create_implementation_plan_command, create_merged_implementation_plan_command,
     estimate_prompt_tokens_command, get_prompt_command, read_implementation_plan_command,
-    update_implementation_plan_content_command,
+    update_implementation_plan_content_command, mark_implementation_plan_signed_off_command,
 };
 
 // Re-exports from workflow commands module

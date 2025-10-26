@@ -115,6 +115,8 @@ struct SelectableTextView: UIViewRepresentable {
 
         context.coordinator.textView = textView
 
+        textView.addDismissKeyboardAccessory()
+
         return textView
     }
 
@@ -180,6 +182,11 @@ struct SelectableTextView: UIViewRepresentable {
             }
         } else {
             uiView.subviews.first(where: { $0.tag == 999 })?.removeFromSuperview()
+        }
+
+        // Ensure keyboard dismiss accessory remains attached
+        if uiView.inputAccessoryView == nil {
+            uiView.addDismissKeyboardAccessory()
         }
     }
 
