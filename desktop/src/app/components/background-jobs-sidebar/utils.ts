@@ -48,14 +48,16 @@ export const getParsedMetadata = (
  * Returns the icon name for a job status
  */
 export function getStatusIconName(status: string): string {
-  switch (status) {
+  const statusKey = status as string;
+
+  switch (statusKey) {
     case "completed":
-    case "completed_by_tag":
+    case "completedByTag":
       return "check-circle";
     case "failed":
       return "alert-circle";
     case "running":
-    case "processing_stream":
+    case "processingStream":
       return "loader";
     case "canceled":
       return "x-circle";
@@ -63,8 +65,8 @@ export function getStatusIconName(status: string): string {
     case "created":
     case "queued":
     case "idle":
-    case "preparing_input":
-    case "generating_stream":
+    case "preparingInput":
+    case "generatingStream":
       return "clock";
     default:
       return "clock";
@@ -75,14 +77,16 @@ export function getStatusIconName(status: string): string {
  * Returns the class names for status icons
  */
 export function getStatusIconClass(status: string): string {
-  switch (status) {
+  const statusKey = status as string;
+
+  switch (statusKey) {
     case "completed":
-    case "completed_by_tag":
+    case "completedByTag":
       return "h-3 w-3 text-success";
     case "failed":
       return "h-3 w-3 text-destructive";
     case "running":
-    case "processing_stream":
+    case "processingStream":
       return "h-3 w-3 text-primary animate-spin";
     case "canceled":
       return "h-3 w-3 text-warning";
@@ -90,8 +94,8 @@ export function getStatusIconClass(status: string): string {
     case "created":
     case "queued":
     case "idle":
-    case "preparing_input":
-    case "generating_stream":
+    case "preparingInput":
+    case "generatingStream":
       return "h-3 w-3 text-info";
     default:
       return "h-3 w-3 text-muted-foreground";

@@ -1,8 +1,8 @@
 "use client";
 
 import { Loader2, Copy, Save, ChevronLeft, ChevronRight, Plus, Check } from "lucide-react";
-import React, { useEffect, useMemo, useContext } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import React, { useEffect, useMemo, useContext, startTransition } from "react";
+import { invoke } from "@/utils/tauri-invoke-wrapper";
 import { useNotification } from "@/contexts/notification-context";
 import { BackgroundJobsContext, type BackgroundJobsContextType } from "@/contexts/background-jobs/Provider";
 
@@ -72,8 +72,12 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
   const [hasUnsavedChanges, setHasUnsavedChanges] = React.useState(false);
   const [editedContent, setEditedContent] = React.useState<string>("");
   const [fullPlanDetails, setFullPlanDetails] = React.useState<BackgroundJob | null>(null);
-  const [isLoadingFullDetails, setIsLoadingFullDetails] = React.useState(false);
+  const [baselineReady, setBaselineReady] = React.useState(false);
+  const [editorKey, setEditorKey] = React.useState<string>("");
   const { showNotification } = useNotification();
+
+  // Track streaming state for detecting transitions
+  const wasStreaming = React.useRef(false);
 
   // Get live jobs from context for real-time updates
   const { jobs, setViewedImplementationPlanId } = useContext(BackgroundJobsContext) as BackgroundJobsContextType;
@@ -87,67 +91,47 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
   // Register this plan as viewed when modal is open for optimized streaming
   useEffect(() => {
     if (open && plan) {
-      void setViewedImplementationPlanId(plan.id);
+      const loadBaseline = async () => {
+        await setViewedImplementationPlanId(plan.id);
+        const initialLen = livePlan?.response?.length || 0;
+        setEditorKey(`plan:${plan.id}:${initialLen}`);
+        setBaselineReady(true);
+      };
+      void loadBaseline();
+    } else {
+      setBaselineReady(false);
+      setEditorKey("");
+      void setViewedImplementationPlanId(null);
     }
-    return () => {
-      setViewedImplementationPlanId(null);
-    };
   }, [open, plan?.id, setViewedImplementationPlanId]);
-
-  // Fetch full plan details when modal opens or plan changes
-  useEffect(() => {
-    if (!plan || !open) {
-      setFullPlanDetails(null);
-      return;
-    }
-
-    const fetchFullDetails = async () => {
-      setIsLoadingFullDetails(true);
-      try {
-        const result = await invoke("get_background_job_by_id_command", { jobId: plan.id });
-        setFullPlanDetails(result as BackgroundJob);
-      } catch (error) {
-        console.error("Failed to fetch full plan details:", error);
-        // Fallback to using the plan prop
-        setFullPlanDetails(plan);
-      } finally {
-        setIsLoadingFullDetails(false);
-      }
-    };
-
-    fetchFullDetails();
-  }, [plan?.id, open]);
 
   // Fetch full details when streaming completes
   useEffect(() => {
-    if (!livePlan || !open) return;
-    
-    const isCompleted = livePlan.status === "completed";
-    const hasEndTime = !!livePlan.endTime;
-    
-    // If job is completed but we don't have full details yet, fetch them
-    // This handles the case where streaming just finished
-    if (isCompleted && hasEndTime && !fullPlanDetails && !isLoadingFullDetails) {
-      const fetchFullDetails = async () => {
+    if (!livePlan || !open || !baselineReady) return;
+
+    const isCurrentlyStreaming = JOB_STATUSES.ACTIVE.includes(livePlan.status);
+
+    // Detect streaming → completed transition
+    if (wasStreaming.current && !isCurrentlyStreaming) {
+      const reconcile = async () => {
         try {
-          const result = await invoke("get_background_job_by_id_command", { jobId: livePlan.id });
-          setFullPlanDetails(result as BackgroundJob);
+          const result = await invoke<BackgroundJob>(
+            "get_background_job_by_id_command",
+            { jobId: livePlan.id }
+          );
+          if (result && (result.response?.length || 0) > (livePlan.response?.length || 0)) {
+            setFullPlanDetails(result);
+            setEditorKey(`plan:${livePlan.id}:${result.response?.length || 0}`);
+          }
         } catch (error) {
-          console.error("Failed to fetch full plan details after completion:", error);
-          // Don't set fullPlanDetails to livePlan here, let it keep trying
+          console.error("Post-completion reconcile failed:", error);
         }
       };
-      
-      // Small delay to ensure streaming has fully stopped and database is updated
-      const timeoutId = setTimeout(() => {
-        fetchFullDetails();
-      }, 1000);
-      
-      return () => clearTimeout(timeoutId);
+      void reconcile();
     }
-    
-    return undefined;
-  }, [livePlan?.status, livePlan?.endTime, livePlan?.id, open, fullPlanDetails, isLoadingFullDetails]);
+
+    wasStreaming.current = isCurrentlyStreaming;
+  }, [livePlan?.status, livePlan?.id, open, baselineReady]);
 
   if (!plan) return null;
   
@@ -265,9 +249,11 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
   // Handle content changes in the editor
   const handleContentChange = React.useCallback((newContent: string | undefined) => {
     if (newContent !== undefined && displayPlan) {
-      setEditedContent(newContent);
-      const originalContent = normalizeJobResponse(displayPlan.response).content || "";
-      setHasUnsavedChanges(newContent !== originalContent);
+      startTransition(() => {
+        setEditedContent(newContent);
+        const originalContent = normalizeJobResponse(displayPlan.response).content || "";
+        setHasUnsavedChanges(newContent !== originalContent);
+      });
     }
   }, [displayPlan?.response]);
 
@@ -348,14 +334,6 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-6xl h-[95vh] !flex !flex-col !gap-0 text-foreground !bg-card rounded-xl shadow-lg !backdrop-blur-none">
-        {isLoadingFullDetails && (
-          <div className="absolute inset-0 bg-background/80 flex items-center justify-center z-50">
-            <div className="flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span>Loading plan details...</span>
-            </div>
-          </div>
-        )}
         <DialogHeader className="flex flex-row items-start justify-between space-y-0 pb-2 flex-shrink-0">
           <DialogDescription className="sr-only">
             View, edit, and interact with the implementation plan content.
@@ -466,29 +444,32 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
 
         {/* Content */}
         <div className="flex-1 min-h-0 relative">
-          <VirtualizedCodeViewer
-            content={isStreaming ? streamedContent : editedContent}
-            height="100%"
-            showCopy={false}
-            showContentSize={true}
-            isLoading={showLoadingIndicator}
-            placeholder="No implementation plan content available yet"
-            language={viewerLanguage}
-            className=""
-            readOnly={isStreaming} 
-            streamOptimized={isStreaming}
-            showFollowToggle={true}
-            followStreamingDefault={true}
-            onChange={isStreaming ? undefined : handleContentChange}
-            loadingIndicator={
-              <div className="flex items-center justify-center h-full">
-                <div className="flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span className="text-sm text-muted-foreground">Generating implementation plan...</span>
+          {baselineReady && (
+            <VirtualizedCodeViewer
+              key={editorKey}
+              content={isStreaming ? streamedContent : editedContent}
+              height="100%"
+              showCopy={false}
+              showContentSize={true}
+              isLoading={showLoadingIndicator}
+              placeholder="No implementation plan content available yet"
+              language={viewerLanguage}
+              className=""
+              readOnly={isStreaming}
+              streamOptimized={isStreaming}
+              showFollowToggle={true}
+              followStreamingDefault={true}
+              onChange={isStreaming ? undefined : handleContentChange}
+              loadingIndicator={
+                <div className="flex items-center justify-center h-full">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span className="text-sm text-muted-foreground">Generating implementation plan...</span>
+                  </div>
                 </div>
-              </div>
-            }
-          />
+              }
+            />
+          )}
           
           {/* Navigation overlay at the bottom */}
           {(totalPlans > 1 && onNavigate) || onSelect ? (

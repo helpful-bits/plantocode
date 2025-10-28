@@ -12,7 +12,8 @@ import { useTaskContext } from '../_contexts/task-context';
 import { useMediaDeviceSettings } from '@/hooks/useMediaDeviceSettings';
 import { usePlausible } from '@/hooks/use-plausible';
 import { open } from '@tauri-apps/plugin-dialog';
-import { VideoIcon, UploadIcon, FileVideoIcon } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
+import { VideoIcon, UploadIcon, FileVideoIcon, AlertCircle } from 'lucide-react';
 import { startVideoAnalysisJob } from '@/actions/video-analysis/start-video-analysis.action';
 import { useSessionStateContext } from '@/contexts/session';
 import { useNotification } from '@/contexts/notification-context';
@@ -36,9 +37,7 @@ export const VideoRecordingDialog: React.FC<VideoRecordingDialogProps> = ({
     selectedAudioInputId,
     selectAudioInput,
     selectedFrameRate,
-    setSelectedFrameRate,
-    minFps,
-    maxFps
+    setSelectedFrameRate
   } = useMediaDeviceSettings();
 
   const [localPrompt, setLocalPrompt] = useState('');
@@ -46,12 +45,14 @@ export const VideoRecordingDialog: React.FC<VideoRecordingDialogProps> = ({
   const [mode, setMode] = useState<'record' | 'browse'>('record');
   const [selectedFile, setSelectedFile] = useState<{ path: string; name: string; duration?: number } | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [videoMetadata, setVideoMetadata] = useState<{ durationMs: number; size: number } | null>(null);
   
   // Initialize local prompt from context when dialog opens
   useEffect(() => {
     if (isOpen) {
       setLocalPrompt(taskState.videoAnalysisPrompt || '');
       setSelectedFile(null);
+      setVideoMetadata(null);
       setMode('record');
       setIsProcessing(false);
     }
@@ -64,6 +65,7 @@ export const VideoRecordingDialog: React.FC<VideoRecordingDialogProps> = ({
       taskActions.setVideoAnalysisPrompt(localPrompt.trim());
     }
     setSelectedFile(null);
+    setVideoMetadata(null);
     setIsProcessing(false);
     onClose();
   };
@@ -87,6 +89,18 @@ export const VideoRecordingDialog: React.FC<VideoRecordingDialogProps> = ({
           path: selected,
           name: filename
         });
+
+        // Probe video metadata
+        try {
+          const metadata = await invoke<{ durationMs: number; size: number; path: string }>(
+            'get_video_metadata_command',
+            { path: selected }
+          );
+          setVideoMetadata({ durationMs: metadata.durationMs, size: metadata.size });
+        } catch (error) {
+          console.error('Failed to probe video metadata:', error);
+          setVideoMetadata(null);
+        }
       }
     } catch (error) {
       console.error('Error selecting file:', error);
@@ -126,9 +140,8 @@ export const VideoRecordingDialog: React.FC<VideoRecordingDialogProps> = ({
         combinedPrompt += `<video_attention_prompt>\n${userPrompt}\n</video_attention_prompt>`;
       }
 
-      // Estimate duration (we'll use a default since we can't easily get it in Tauri)
-      // You could enhance this by reading video metadata if needed
-      const estimatedDuration = 60000; // Default to 60 seconds
+      // Use probed duration, fallback to 0 if not available
+      const durationMs = videoMetadata?.durationMs || 0;
 
       // Start the video analysis job
       const result = await startVideoAnalysisJob({
@@ -136,7 +149,7 @@ export const VideoRecordingDialog: React.FC<VideoRecordingDialogProps> = ({
         projectDirectory: currentSession.projectDirectory,
         videoPath: selectedFile.path,
         prompt: combinedPrompt || 'Analyze this video and describe what you see',
-        durationMs: estimatedDuration,
+        durationMs,
         framerate: selectedFrameRate
       });
 
@@ -278,22 +291,27 @@ export const VideoRecordingDialog: React.FC<VideoRecordingDialogProps> = ({
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="frame-rate-record">Frame Rate (FPS)</Label>
-                  <span className="text-sm font-mono text-muted-foreground">{selectedFrameRate} FPS</span>
+                  <span className="text-sm font-mono text-muted-foreground">
+                    {selectedFrameRate} FPS
+                    {selectedFrameRate < 1 && (
+                      <span className="text-xs"> (≈ 1 frame every {(1 / selectedFrameRate).toFixed(1)} seconds)</span>
+                    )}
+                  </span>
                 </div>
                 <Slider
                   id="frame-rate-record"
                   value={[selectedFrameRate]}
-                  min={minFps}
-                  max={maxFps}
-                  step={1}
+                  min={0.1}
+                  max={5.0}
+                  step={0.1}
                   onValueChange={(value) => setSelectedFrameRate(value[0])}
                   className="w-full"
                   aria-label="Frame rate"
                 />
                 <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>{minFps} FPS</span>
+                  <span>0.1 FPS</span>
                   <span className="text-center font-medium">Higher frame rates = more frames = more tokens</span>
-                  <span>{maxFps} FPS</span>
+                  <span>5.0 FPS</span>
                 </div>
               </div>
 
@@ -364,25 +382,44 @@ export const VideoRecordingDialog: React.FC<VideoRecordingDialogProps> = ({
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label htmlFor="frame-rate-browse">Frame Rate (FPS)</Label>
-                <span className="text-sm font-mono text-muted-foreground">{selectedFrameRate} FPS</span>
+                <span className="text-sm font-mono text-muted-foreground">
+                  {selectedFrameRate} FPS
+                  {selectedFrameRate < 1 && (
+                    <span className="text-xs"> (≈ 1 frame every {(1 / selectedFrameRate).toFixed(1)} seconds)</span>
+                  )}
+                </span>
               </div>
               <Slider
                 id="frame-rate-browse"
                 value={[selectedFrameRate]}
-                min={minFps}
-                max={maxFps}
-                step={1}
+                min={0.1}
+                max={5.0}
+                step={0.1}
                 onValueChange={(value) => setSelectedFrameRate(value[0])}
                 className="w-full"
                 aria-label="Frame rate"
                 disabled={isProcessing}
               />
               <div className="flex justify-between text-xs text-muted-foreground">
-                <span>{minFps} FPS</span>
+                <span>0.1 FPS</span>
                 <span className="text-center font-medium">Higher frame rates = more frames = more tokens</span>
-                <span>{maxFps} FPS</span>
+                <span>5.0 FPS</span>
               </div>
             </div>
+
+            {/* Cost Warning for Gemini Pro with long videos */}
+            {videoMetadata &&
+             videoMetadata.durationMs >= 120000 &&
+             currentSession?.modelUsed?.toLowerCase().includes('gemini-2.5-pro') && (
+              <Alert variant="warning">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Higher cost on Gemini Pro</AlertTitle>
+                <AlertDescription>
+                  Long videos (over 2 minutes) may incur higher processing costs with Gemini Pro.
+                  Consider Gemini Flash for cost-effective analysis.
+                </AlertDescription>
+              </Alert>
+            )}
 
             {/* Actions */}
             <div className="flex justify-end gap-3">

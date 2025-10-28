@@ -432,3 +432,18 @@ pub async fn initialize_session_cache(app_handle: &tauri::AppHandle) -> crate::e
     tracing::info!("SessionCache initialized with 680ms periodic flush");
     Ok(())
 }
+
+pub async fn initialize_history_state_sequencer(app_handle: &tauri::AppHandle) -> crate::error::AppResult<()> {
+    use crate::services::history_state_sequencer::HistoryStateSequencer;
+    use crate::db_utils::session_repository::SessionRepository;
+
+    let session_repo = app_handle.state::<Arc<SessionRepository>>().inner().clone();
+    let sequencer = Arc::new(HistoryStateSequencer::new(
+        app_handle.clone(),
+        session_repo,
+    ));
+    app_handle.manage(sequencer);
+
+    tracing::info!("HistoryStateSequencer initialized");
+    Ok(())
+}

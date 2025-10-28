@@ -64,25 +64,29 @@ export function useSessionActions({
       return true;
     }
 
+    // Capture the session and ID early to avoid race conditions
+    const sessionSnapshot = currentSessionRef.current;
+    const sessionId = sessionSnapshot.id;
+
     try {
-      if (!currentSessionRef.current) {
+      if (!sessionSnapshot) {
         return false;
       }
 
       // Merge-before-save: fetch latest session to avoid clobbering backend additions
-      let sessionToSave = currentSessionRef.current;
+      let sessionToSave = sessionSnapshot;
 
       try {
         const { getSessionAction } = await import("@/actions");
-        const latestResult = await getSessionAction(currentSessionRef.current.id);
+        const latestResult = await getSessionAction(sessionId);
 
         if (latestResult.isSuccess && latestResult.data) {
           // Merge logic:
           // excluded_final = UI.forceExcluded (UI is authoritative for exclusions)
           // included_final = (UI.included ∪ DB.included) \ UI.forceExcluded (union then difference)
-          const uiIncluded = new Set(currentSessionRef.current.includedFiles);
+          const uiIncluded = new Set(sessionSnapshot.includedFiles);
           const dbIncluded = new Set(latestResult.data.includedFiles);
-          const uiExcluded = new Set(currentSessionRef.current.forceExcludedFiles);
+          const uiExcluded = new Set(sessionSnapshot.forceExcludedFiles);
 
           // UI exclusions are authoritative - don't merge with DB exclusions
           // This allows user to remove exclusions and have them stay removed
@@ -96,7 +100,7 @@ export function useSessionActions({
           );
 
           sessionToSave = {
-            ...currentSessionRef.current,
+            ...sessionSnapshot,
             includedFiles: Array.from(includedFinal),
             forceExcludedFiles: Array.from(excludedFinal),
           };
@@ -119,7 +123,7 @@ export function useSessionActions({
       if (typeof window !== "undefined") {
         window.dispatchEvent(
           new CustomEvent("session-save-complete", {
-            detail: { sessionId: currentSessionRef.current.id },
+            detail: { sessionId },
           })
         );
       }
@@ -135,7 +139,7 @@ export function useSessionActions({
                 originalError: error as unknown as Error | undefined,
                 category: DatabaseErrorCategory.OTHER,
                 severity: DatabaseErrorSeverity.WARNING,
-                context: { sessionId: currentSessionRef.current?.id },
+                context: { sessionId },
               }
             );
 
@@ -152,7 +156,7 @@ export function useSessionActions({
         window.dispatchEvent(
           new CustomEvent("session-save-failed", {
             detail: {
-              sessionId: currentSessionRef.current?.id,
+              sessionId,
               error: dbError.message,
             },
           })

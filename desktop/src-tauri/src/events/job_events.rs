@@ -3,6 +3,9 @@ use serde::Serialize;
 use serde_json::json;
 use tauri::{AppHandle, Emitter};
 
+// Job event payloads are UI-facing; serialize with camelCase via serde(rename_all = "camelCase").
+// Internal Rust code and DB remain snake_case.
+
 // Event name constants
 pub const JOB_CREATED: &str = "job:created";
 pub const JOB_DELETED: &str = "job:deleted";

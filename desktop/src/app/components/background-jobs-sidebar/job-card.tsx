@@ -91,9 +91,9 @@ const CopyPromptButton = ({ prompt, systemPrompt, index, showNotification }: { p
   );
 };
 
-export const JobCard = React.memo(
-  ({ job, handleCancel, handleDelete, isCancelling, isDeleting, onSelect, onApplyFiles, onContinueWorkflow, currentSessionId, hasContinuationJob = false, isWorkflowActive = false, webSearchSystemPrompt = '' }: JobCardProps) => {
+export const JobCard = ({ job, handleCancel, handleDelete, isCancelling, isDeleting, onSelect, onApplyFiles, onContinueWorkflow, currentSessionId, hasContinuationJob = false, isWorkflowActive = false, webSearchSystemPrompt = '' }: JobCardProps) => {
     const { showNotification } = useNotification();
+    const jobStatus = job.status as JobStatus;
     
     // Hide workflow orchestrator jobs
     const isWorkflowJob = ['file_finder_workflow', 'web_search_workflow'].includes(job.taskType);
@@ -102,7 +102,7 @@ export const JobCard = React.memo(
     }
     
     // Determine if job is running for live progress updates  
-    const isJobRunning = ["running", "processingStream", "generatingStream", "preparing", "preparing_input"].includes(job.status);
+    const isJobRunning = ["running", "processingStream", "generatingStream", "preparing", "preparingInput"].includes(jobStatus);
     
     // Use live progress hook for real-time progress updates
     const progress = useLiveProgress(job);
@@ -121,7 +121,7 @@ export const JobCard = React.memo(
         : "Unknown time";
 
     // Determine if job can be canceled (only active/non-terminal jobs) - memoized for stability
-    const canCancel = React.useMemo(() => JOB_STATUSES.ACTIVE.includes(job.status as JobStatus), [job.status]);
+    const canCancel = React.useMemo(() => JOB_STATUSES.ACTIVE.includes(jobStatus), [jobStatus]);
     
     // Memoize status-specific booleans for better performance
     const isCurrentJobCancelling = React.useMemo(() => Boolean(isCancelling?.[job.id]), [isCancelling, job.id]);
@@ -171,19 +171,19 @@ export const JobCard = React.memo(
     // Get user-friendly status display
     const getStatusDisplay = () => {
       // Use constants for all status checks
-      if (job.status === "running" || job.status === "processingStream") {
+      if (jobStatus === "running" || jobStatus === "processingStream") {
         return "Processing";
       } else if (
-        ["preparing", "created", "queued", "preparing_input", "generating_stream"].includes(job.status)
+        ["preparing", "created", "queued", "preparingInput", "generatingStream"].includes(jobStatus)
       ) {
         return "Preparing";
-      } else if (JOB_STATUSES.COMPLETED.includes(job.status as JobStatus)) {
+      } else if (JOB_STATUSES.COMPLETED.includes(jobStatus)) {
         return "Completed";
-      } else if (JOB_STATUSES.FAILED.includes(job.status as JobStatus)) {
-        return job.status === "failed" ? "Failed" : "Canceled";
+      } else if (JOB_STATUSES.FAILED.includes(jobStatus)) {
+        return jobStatus === "failed" ? "Failed" : "Canceled";
       } else {
         // Capitalize the first letter for any other status
-        return job.status.charAt(0).toUpperCase() + job.status.slice(1);
+        return jobStatus.charAt(0).toUpperCase() + jobStatus.slice(1);
       }
     };
 
@@ -211,7 +211,7 @@ export const JobCard = React.memo(
           if (e.key === 'Enter' || e.key === ' ') onSelect(job);
         }}
         data-testid={`job-card-${job.id}`}
-        data-status={job.status}
+        data-status={jobStatus}
       >
         <div className="flex items-center justify-between mb-2 w-full min-w-0">
           <div className="flex items-center gap-2 font-medium min-w-0 flex-1">
@@ -783,8 +783,7 @@ export const JobCard = React.memo(
         </div>
       </div>
     );
-  }
-);
+};
 
 // Add displayName for better debugging
 JobCard.displayName = "JobCard";

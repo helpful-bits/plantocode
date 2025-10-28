@@ -1,70 +1,77 @@
 import { invoke } from "@tauri-apps/api/core";
-import { type ActionState } from "@/types";
-import { handleActionError } from "@/utils/action-utils";
 
-// File selection history types
-export interface FileSelectionHistoryEntry {
-  includedFiles: string[];
-  forceExcludedFiles: string[];
+// NOTE: Legacy FileSelectionHistoryEntry types removed - use HistoryState instead
+
+// New HistoryState types - matches documented schema
+export interface HistoryEntry {
+  value: string;
+  timestampMs: number;
+  deviceId: string;
+  opType: string;
+  sequenceNumber: number;
+  version: number;
 }
 
-export interface FileSelectionHistoryEntryWithTimestamp {
-  includedFiles: string[];
-  forceExcludedFiles: string[];
-  createdAt: number;
+export interface HistoryState {
+  entries: HistoryEntry[];
+  currentIndex: number;
+  version: number;
+  checksum: string;
 }
 
-export async function getTaskDescriptionHistoryAction(sessionId: string): Promise<ActionState<string[]>> {
-  try {
-    const history = await invoke<string[]>("get_task_description_history_command", { sessionId });
+// NOTE: Legacy actions removed - use getHistoryStateAction/syncHistoryStateAction instead
+
+// New HistoryState RPC actions
+export async function getHistoryStateAction(
+  sessionId: string,
+  kind: 'task' | 'files'
+): Promise<HistoryState> {
+  const result = await invoke<any>('get_history_state_command', {
+    sessionId,
+    kind,
+  });
+
+  // For files, backend returns JSON strings that need to be parsed to arrays
+  if (kind === 'files' && result.entries) {
     return {
-      isSuccess: true,
-      data: history,
+      ...result,
+      entries: result.entries.map((e: any) => ({
+        ...e,
+        includedFiles: typeof e.includedFiles === 'string' ? JSON.parse(e.includedFiles) : e.includedFiles,
+        forceExcludedFiles: typeof e.forceExcludedFiles === 'string' ? JSON.parse(e.forceExcludedFiles) : e.forceExcludedFiles,
+      })),
     };
-  } catch (error) {
-    return handleActionError(error) as ActionState<string[]>;
   }
+
+  return result;
 }
 
-export async function syncTaskDescriptionHistoryAction(sessionId: string, history: string[]): Promise<ActionState<void>> {
-  try {
-    await invoke("sync_task_description_history_command", { sessionId, history });
-    return {
-      isSuccess: true,
-      data: undefined,
-    };
-  } catch (error) {
-    return handleActionError(error) as ActionState<void>;
-  }
+export async function syncHistoryStateAction(
+  sessionId: string,
+  kind: 'task' | 'files',
+  state: HistoryState,
+  expectedVersion: number
+): Promise<HistoryState> {
+  return await invoke<HistoryState>('sync_history_state_command', {
+    sessionId,
+    kind,
+    state,
+    expectedVersion,
+  });
 }
 
-export async function getFileSelectionHistoryAction(sessionId: string): Promise<ActionState<FileSelectionHistoryEntryWithTimestamp[]>> {
-  try {
-    const history = await invoke<FileSelectionHistoryEntryWithTimestamp[]>("get_file_selection_history_command", { sessionId });
-    return {
-      isSuccess: true,
-      data: history,
-    };
-  } catch (error) {
-    return handleActionError(error) as ActionState<FileSelectionHistoryEntryWithTimestamp[]>;
-  }
+export async function mergeHistoryStateAction(
+  sessionId: string,
+  kind: 'task' | 'files',
+  remoteState: HistoryState
+): Promise<HistoryState> {
+  return await invoke<HistoryState>('merge_history_state_command', {
+    sessionId,
+    kind,
+    remoteState,
+  });
 }
 
-export async function syncFileSelectionHistoryAction(sessionId: string, history: (FileSelectionHistoryEntry & { createdAt: number })[]): Promise<ActionState<void>> {
-  try {
-    // Convert to the format expected by the backend
-    const historyWithTimestamps: FileSelectionHistoryEntryWithTimestamp[] = history.map(entry => ({
-      includedFiles: entry.includedFiles,
-      forceExcludedFiles: entry.forceExcludedFiles,
-      createdAt: entry.createdAt
-    }));
-    
-    await invoke("sync_file_selection_history_command", { sessionId, history: historyWithTimestamps });
-    return {
-      isSuccess: true,
-      data: undefined,
-    };
-  } catch (error) {
-    return handleActionError(error) as ActionState<void>;
-  }
+export async function getDeviceIdAction(): Promise<string> {
+  return await invoke<string>('get_device_id_command');
 }

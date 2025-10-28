@@ -15,7 +15,7 @@ pub async fn start_video_analysis_job(
     video_path: String,
     prompt: String,
     duration_ms: i64,
-    framerate: u32,
+    framerate: f32,
 ) -> Result<JobCommandResponse, String> {
     info!("Starting video analysis job for file: {}", video_path);
 

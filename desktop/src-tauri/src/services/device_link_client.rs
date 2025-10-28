@@ -305,7 +305,7 @@ impl DeviceLinkClient {
         })?;
 
         ws_sender
-            .send(Message::Text(register_json))
+            .send(Message::Text(register_json.into()))
             .await
             .map_err(|e| {
                 AppError::NetworkError(format!("Failed to send register message: {}", e))
@@ -323,7 +323,7 @@ impl DeviceLinkClient {
                         Some(msg) = rx.recv() => {
                             match serde_json::to_string(&msg) {
                                 Ok(json) => {
-                                    if let Err(e) = ws_sender.send(Message::Text(json)).await {
+                                    if let Err(e) = ws_sender.send(Message::Text(json.into())).await {
                                         error!("Failed to send WebSocket text message: {}", e);
                                         break;
                                     }
@@ -335,7 +335,7 @@ impl DeviceLinkClient {
                         }
                         // Binary messages (terminal output)
                         Some(bytes) = bin_rx.recv() => {
-                            if let Err(e) = ws_sender.send(Message::Binary(bytes)).await {
+                            if let Err(e) = ws_sender.send(Message::Binary(bytes.into())).await {
                                 error!("Failed to send WebSocket binary message: {}", e);
                                 break;
                             }
@@ -469,6 +469,9 @@ impl DeviceLinkClient {
                                 })) {
                                     error!("Failed to emit job event: {}", e);
                                 }
+
+                                // Also emit canonical job:* event locally so frontend listeners receive it
+                                let _ = app_handle.emit(&env.kind, env.payload.clone());
                             } else if ["session-updated", "session-files-updated", "session-file-browser-state-updated",
                                        "session-history-synced", "session-created", "session-deleted", "session:auto-files-applied"]
                                        .contains(&env.kind.as_str()) {
@@ -500,6 +503,15 @@ impl DeviceLinkClient {
                                     "relayOrigin": "remote"
                                 })) {
                                     error!("Failed to emit project-directory-updated device-link-event: {}", e);
+                                }
+                            } else if env.kind == "history-state-changed" {
+                                // Forward history state changes from relay to frontend
+                                if let Err(e) = app_handle.emit("device-link-event", json!({
+                                    "type": "history-state-changed",
+                                    "payload": env.payload,
+                                    "relayOrigin": "remote"
+                                })) {
+                                    error!("Failed to relay history-state-changed: {}", e);
                                 }
                             }
                             // Continue to next message
@@ -535,6 +547,9 @@ impl DeviceLinkClient {
                     },
                     Ok(Message::Close(_)) => {
                         info!("WebSocket connection closed by server");
+                        let _ = app_handle.emit("device-link-status", serde_json::json!({
+                            "status": "disconnected"
+                        }));
                         break;
                     }
                     Ok(Message::Ping(data)) => {
@@ -670,6 +685,11 @@ impl DeviceLinkClient {
             // }
             ServerMessage::Relay { client_id, request } => {
                 debug!("Received relay request from client {}: method={}", client_id, request.method);
+
+                // Emit relay-request-received event
+                let _ = app_handle.emit("relay-request-received", serde_json::json!({
+                    "method": request.method
+                }));
 
                 // VALIDATION: Ensure client_id is non-empty before sending response
                 if client_id.trim().is_empty() {
@@ -946,11 +966,18 @@ pub async fn start_device_link_client(
     let client = Arc::new(DeviceLinkClient::new(app_handle.clone(), server_url));
     app_handle.manage(client.clone());
 
-    // This will run indefinitely, reconnecting as needed
+    let mut attempt: u32 = 0;
+
+    // This will run indefinitely, reconnecting as needed with exponential backoff
     loop {
         match client.clone().start().await {
             Ok(_) => {
                 info!("Device link client completed normally");
+                // Emit connected status
+                let _ = app_handle.emit("device-link-status", serde_json::json!({
+                    "status": "connected"
+                }));
+                attempt = 0; // Reset on success
                 break;
             }
             Err(e) => {
@@ -975,9 +1002,27 @@ pub async fn start_device_link_client(
 
                 error!("Device link client error: {}", e);
 
-                // Wait before reconnecting for non-auth errors (network issues, etc.)
-                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-                info!("Attempting to reconnect device link client...");
+                // Emit error status
+                let _ = app_handle.emit("device-link-status", serde_json::json!({
+                    "status": "error",
+                    "message": e.to_string()
+                }));
+
+                // Calculate exponential backoff: min(30, 2^attempt) seconds, capped at 30s
+                let backoff_secs = std::cmp::min(30, 1u64 << attempt.min(5));
+                let backoff_ms = backoff_secs * 1000;
+
+                // Emit reconnecting status with backoff info
+                let _ = app_handle.emit("device-link-status", serde_json::json!({
+                    "status": "reconnecting",
+                    "attempt": attempt,
+                    "backoffMs": backoff_ms
+                }));
+
+                info!("Attempting to reconnect device link client in {} seconds (attempt {})...", backoff_secs, attempt);
+
+                attempt = attempt.saturating_add(1);
+                tokio::time::sleep(tokio::time::Duration::from_secs(backoff_secs)).await;
             }
         }
     }

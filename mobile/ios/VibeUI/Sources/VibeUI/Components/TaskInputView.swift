@@ -377,6 +377,7 @@ public struct TaskInputView: View {
     @State private var saveHistoryTimer: Timer?
     @State private var historySyncTimer: Timer?
     @State private var initializedForSessionId: String?
+    @State private var suppressNextHistorySave: Bool = false
 
     let placeholder: String
     let onInteraction: () -> Void
@@ -767,17 +768,21 @@ public struct TaskInputView: View {
     private func performUndo() {
         guard let previousText = undoRedoManager.undo() else { return }
         taskDescription = previousText
-        onInteraction()
+        suppressNextHistorySave = true
     }
 
     private func performRedo() {
         guard let nextText = undoRedoManager.redo() else { return }
         taskDescription = nextText
-        onInteraction()
+        suppressNextHistorySave = true
     }
 
     // Debounced history saving
     private func saveToUndoHistory() {
+        if suppressNextHistorySave {
+            suppressNextHistorySave = false
+            return
+        }
         saveHistoryTimer?.invalidate()
         let newTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [undoRedoManager, taskDescription] _ in
             Task { @MainActor in
