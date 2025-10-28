@@ -475,7 +475,7 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
     // Handle incremental updates when in stream-optimized mode
     useEffect(() => {
       if (!streamOptimized) return;
-      
+
       // Guard against missing editor or model
       if (!editorRef.current) return;
       const model = editorRef.current.getModel();
@@ -493,55 +493,42 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
         const model = editor.getModel();
         if (!model) return;
 
-        const prevLen = lastContentLengthRef.current;
-        const currentModelLength = model.getValueLength();
-        const newContentLength = content.length;
+        const modelText = model.getValue();
+        const modelLen = modelText.length;
+        const newLen = content.length;
 
-        // If content length decreased or model prefix mismatch, reset
-        if (newContentLength < prevLen || (prevLen > 0 && !content.startsWith(model.getValue().slice(0, Math.min(prevLen, 100))))) {
-          model.setValue(content);
-          lastContentLengthRef.current = newContentLength;
+        // No change
+        if (newLen === modelLen) {
+          lastContentLengthRef.current = newLen;
+          updateRafRef.current = null;
           return;
         }
 
-        // Check if we can do an incremental append
-        if (newContentLength > prevLen && currentModelLength === prevLen) {
-          const suffix = content.slice(prevLen);
-          
-          // Use incremental append for reasonably sized chunks
-          if (suffix.length > 0 && suffix.length <= 10000) {
-            const lineCount = model.getLineCount();
-            const lastLineColumn = model.getLineMaxColumn(lineCount);
-            
-            // Apply edit to append the suffix using plain IRange object
-            const range = {
-              startLineNumber: lineCount,
-              startColumn: lastLineColumn,
-              endLineNumber: lineCount,
-              endColumn: lastLineColumn
-            };
-            model.applyEdits([{
-              range: range,
-              text: suffix
-            }]);
-          } else if (suffix.length > 10000) {
-            // Fallback to setValue for large jumps
-            model.setValue(content);
-          }
-        } else if (newContentLength !== currentModelLength) {
-          // Content has diverged, reset
+        // Check if new content is a valid prefix extension
+        const isPrefix = content.startsWith(modelText);
+        const bigDelta = (newLen - modelLen) > 10000;
+
+        if (newLen > modelLen && isPrefix && !bigDelta) {
+          // Incremental append: extract suffix and apply edit
+          const suffix = content.slice(modelLen);
+          model.pushEditOperations(
+            [],
+            [{ range: model.getFullModelRange(), text: modelText + suffix }],
+            () => null
+          );
+        } else {
+          // Divergence or large jump: atomic reset
           model.setValue(content);
         }
 
-        // Update tracked length
-        lastContentLengthRef.current = newContentLength;
+        lastContentLengthRef.current = newLen;
 
         // Only auto-reveal last line if following
         if (isFollowingStream) {
           const finalLineCount = model.getLineCount();
           editor.revealLine(finalLineCount);
         }
-        
+
         updateRafRef.current = null;
       });
 

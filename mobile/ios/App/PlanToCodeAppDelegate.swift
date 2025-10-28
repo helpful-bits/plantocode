@@ -68,10 +68,7 @@ class PlanToCodeAppDelegate: NSObject, UIApplicationDelegate {
   }
 
   func applicationDidBecomeActive(_ application: UIApplication) {
-      // Restore connections when app becomes active
-      Task {
-          await MultiConnectionManager.shared.restoreConnections()
-      }
+      MultiConnectionManager.shared.triggerAggressiveReconnect(reason: .appForeground)
   }
 
   func applicationWillTerminate(_ application: UIApplication) {

@@ -26,6 +26,8 @@ const defaultValue: TaskContextValue = {
     canUndo: false,
     canRedo: false,
     webSearchResults: null,
+    historyLoadStatus: 'idle',
+    historyReady: false,
     // Video analysis state defaults
     isAnalyzingVideo: false,
     videoAnalysisJobId: null,
@@ -96,6 +98,9 @@ function useProvideTaskContext(taskDescriptionRef: React.RefObject<TaskDescripti
     recordTaskChange,
     webSearchResults,
     applyWebSearchResults,
+    showMergePulse,
+    historyLoadStatus,
+    historyReady,
   } = useTaskDescriptionState({
     activeSessionId: sessionState.currentSession?.id || null,
     taskDescriptionRef,
@@ -347,6 +352,9 @@ function useProvideTaskContext(taskDescriptionRef: React.RefObject<TaskDescripti
         canUndo,
         canRedo,
         webSearchResults,
+        showMergePulse,
+        historyLoadStatus,
+        historyReady,
         // Video analysis state
         isAnalyzingVideo,
         videoAnalysisJobId,
@@ -384,6 +392,9 @@ function useProvideTaskContext(taskDescriptionRef: React.RefObject<TaskDescripti
       webSearchResults,
       applyWebSearchResults, // memoized with useCallback
       recordTaskChange,
+      showMergePulse,
+      historyLoadStatus,
+      historyReady,
       isAnalyzingVideo,
       videoAnalysisJobId,
       videoAnalysisPrompt,

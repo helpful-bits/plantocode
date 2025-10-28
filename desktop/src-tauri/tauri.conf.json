@@ -52,7 +52,8 @@
     ],
     "resources": [
       "migrations/**/*",
-      "src/jobs/workflow_definitions/*.json"
+      "src/jobs/workflow_definitions/*.json",
+      "icons/tray/*"
     ],
     "externalBin": [],
     "iOS": {

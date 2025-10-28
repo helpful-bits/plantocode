@@ -11,11 +11,11 @@ VALUES (
         "copy_buttons": [
           {
             "label": "Parallel Claude Coding Agents",
-            "content": "Original Task: {{TASK_DESCRIPTION}}\n\n{{IMPLEMENTATION_PLAN}}\n\nNOW, think deeply! Read the files mentioned, understand them and launch parallel Claude coding agents that run AT THE SAME TIME TO SAVE TIME and implement EVERY SINGLE aspect of the perfect plan precisely and systematically, and instruct the agents EXACTLY about what they are supposed to do in great detail. Think even more deeply to give REALLY clear instructions for the agents! Instruct each of the agents NOT to run any git, cargo, or TypeScript check commands. I do not need deprecated comments or annotations; the deprecated or fallback features must be COMPLETELY REMOVED!"
+            "content": "Original Task: {{TASK_DESCRIPTION}}\n\n{{IMPLEMENTATION_PLAN}}\n\nUnderstand the implementation plan above thoroughly. Study the architecture, data flows, sequence of events, and timing relationships in the existing code. Launch parallel Claude coding agents that execute simultaneously to save time. Each agent should implement a specific aspect of the plan precisely and systematically based on their deep understanding of how the system works.\n\nProvide each agent with explicit, detailed instructions about their exact responsibilities. Do NOT instruct agents to run git, cargo, or TypeScript check commands or add logging/debugging code.\n\nCRITICAL: Remove all deprecated features completely - no deprecated comments, annotations, or fallback implementations. The codebase should only contain modern, forward-looking code."
           },
           {
             "label": "Investigate Results",
-            "content": "Investigate the results of ALL agents that were launched and ensure we have implemented the COMPLETE plan CORRECTLY! Perform a thorough self-check without launching background agents. Think deeply to verify EVERYTHING has been properly executed."
+            "content": "Review the results from all launched agents and verify that the complete implementation plan has been executed correctly. Perform a thorough self-check by reading the modified files and analyzing the changes - do NOT launch additional background agents.\n\nAnalyze the code to understand the data flows, sequence of events, and timing of operations. Confirm that every aspect of the plan has been properly implemented based on code evidence and architectural requirements."
           },
           {
             "label": "Task",
@@ -23,9 +23,19 @@ VALUES (
           },
           {
             "label": "Task + Plan",
-            "content": "Task: {{TASK_DESCRIPTION}}\n\nImplementation Plan:\n{{IMPLEMENTATION_PLAN}}"
+            "content": "Task:\n{{TASK_DESCRIPTION}}\n\nImplementation Plan:\n{{IMPLEMENTATION_PLAN}}"
+          },
+          {
+            "label": "Plan",
+            "content": "{{IMPLEMENTATION_PLAN}}"
           }
         ]
+      },
+      "implementation_plan_title": {
+        "model": "openai/gpt-5-mini",
+        "allowed_models": ["openai/gpt-5-mini", "google/gemini-2.5-flash", "anthropic/claude-sonnet-4-5-20250929"],
+        "max_tokens": 500,
+        "temperature": 0.2
       },
       "implementation_plan_merge": {
         "model": "openai/gpt-5",
@@ -35,7 +45,7 @@ VALUES (
       },
       "text_improvement": {
         "model": "anthropic/claude-sonnet-4-5-20250929",
-        "allowed_models": ["anthropic/claude-sonnet-4-5-20250929", "google/gemini-2.5-flash"],
+        "allowed_models": ["anthropic/claude-sonnet-4-5-20250929", "google/gemini-2.5-pro", "openai/gpt-5"],
         "max_tokens": 4096,
         "temperature": 0.45
       },
@@ -52,8 +62,8 @@ VALUES (
         "temperature": 0.2
       },
       "task_refinement": {
-        "model": "google/gemini-2.5-flash",
-        "allowed_models": ["google/gemini-2.5-flash", "openai/o4-mini"],
+        "model": "anthropic/claude-sonnet-4-5-20250929",
+        "allowed_models": ["anthropic/claude-sonnet-4-5-20250929", "google/gemini-2.5-pro", "openai/o4-mini"],
         "max_tokens": 16384,
         "temperature": 0.4
       },

@@ -1,14 +1,11 @@
 "use client";
 
-import React, { useMemo, memo } from "react";
+import React, { useMemo } from "react";
 import { type BackgroundJob } from "@/types/session-types";
 
 import { EmptyState, LoadingState } from "../sidebar-states";
 import { JobCard } from "../job-card";
 import { getParsedMetadata } from "../utils";
-
-// Memoized JobCard to prevent unnecessary re-renders
-const MemoizedJobCard = memo(JobCard);
 
 interface JobContentProps {
   shouldShowLoading: boolean;
@@ -154,8 +151,8 @@ const JobContentComponent = ({
               >
                 <div className={isWorkflowGroup ? "relative border border-dashed border-muted-foreground/40 rounded-lg p-[3px]" : ""}>
                   {group.jobs.map((job, jobIndex) => (
-                    <div key={job.id} className={jobIndex > 0 ? "mt-3" : ""}>
-                      <MemoizedJobCard
+                    <div key={`${job.id}-${job.updatedAt}`} className={jobIndex > 0 ? "mt-3" : ""}>
+                      <JobCard
                         job={job}
                         handleCancel={handleCancel}
                         handleDelete={handleDelete}

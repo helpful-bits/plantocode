@@ -11,6 +11,7 @@ pub mod device_link_ws;
 pub mod email_notification_service;
 pub mod model_mapping_service;
 pub mod pending_charge_manager;
+pub mod pending_command_queue;
 pub mod reconciliation_service;
 pub mod relay_session_store;
 pub mod request_tracker;

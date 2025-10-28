@@ -42,6 +42,23 @@ const TaskSection = React.memo(function TaskSection({
     redo,
   } = taskActions;
 
+  // Re-check button state at click time in case remote update just disabled it
+  const handleUndoClick = () => {
+    if (!canUndo) {
+      console.warn('Undo disabled by remote update');
+      return;
+    }
+    undo();
+  };
+
+  const handleRedoClick = () => {
+    if (!canRedo) {
+      console.warn('Redo disabled by remote update');
+      return;
+    }
+    redo();
+  };
+
   if (!sessionState.currentSession?.id) {
     return null;
   }
@@ -110,8 +127,8 @@ const TaskSection = React.memo(function TaskSection({
         disabled={disabled}
         canUndo={canUndo}
         canRedo={canRedo}
-        onUndo={undo}
-        onRedo={redo}
+        onUndo={handleUndoClick}
+        onRedo={handleRedoClick}
       />
 
       <div className="mt-4 flex items-center gap-2">
