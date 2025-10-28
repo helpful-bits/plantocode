@@ -18,6 +18,7 @@ pub mod jobs;
 pub mod models;
 pub mod remote_api;
 pub mod services;
+mod tray;
 pub mod utils;
 pub mod validation;
 
@@ -26,6 +27,7 @@ use crate::auth::auth0_state::{Auth0StateStore, cleanup_old_attempts};
 use crate::db_utils::{BackgroundJobRepository, SessionRepository, SettingsRepository};
 use crate::error::AppError;
 use crate::services::config_cache_service::ConfigCache;
+use crate::tray::TrayController;
 use crate::utils::FileLockManager;
 use dotenvy::dotenv;
 use log::{debug, error, info, warn};
@@ -44,6 +46,7 @@ use std::sync::{
 use std::time::Duration;
 use tauri::Manager;
 use tokio::sync::{OnceCell, RwLock};
+use once_cell::sync::OnceCell as SyncOnceCell;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RuntimeConfig {
@@ -117,6 +120,16 @@ impl Default for AppState {
 pub(crate) static FILE_LOCK_MANAGER: OnceCell<Arc<FileLockManager>> = OnceCell::const_new();
 pub(crate) static GLOBAL_APP_HANDLE: OnceCell<tauri::AppHandle> = OnceCell::const_new();
 
+struct BgPrefs {
+    run_in_background: bool,
+    minimize_on_close: bool,
+    start_with_system: bool,
+    launch_minimized: bool,
+    show_notifications: bool,
+}
+
+pub static BG_PREFS: SyncOnceCell<std::sync::RwLock<BgPrefs>> = SyncOnceCell::new();
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     dotenv().ok();
@@ -149,7 +162,12 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::default().build())
-        .plugin(tauri_plugin_os::init());
+        .plugin(tauri_plugin_os::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec![]),
+        ))
+        .plugin(tauri_plugin_notification::init());
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
@@ -184,6 +202,34 @@ pub fn run() {
                     panic!("CRITICAL: Critical initialization failed: {}", e);
                 }
             });
+
+            // Initialize BG_PREFS after SettingsRepository is available
+            if let Some(settings_repo) = app.try_state::<Arc<SettingsRepository>>() {
+                let prefs = tauri::async_runtime::block_on(async {
+                    BgPrefs {
+                        run_in_background: settings_repo.get_bool_setting("background_run_enabled").await.unwrap_or(Some(true)).unwrap_or(true),
+                        minimize_on_close: settings_repo.get_bool_setting("minimize_to_tray_on_close").await.unwrap_or(Some(true)).unwrap_or(true),
+                        start_with_system: settings_repo.get_bool_setting("start_with_system").await.unwrap_or(Some(false)).unwrap_or(false),
+                        launch_minimized: settings_repo.get_bool_setting("launch_minimized").await.unwrap_or(Some(false)).unwrap_or(false),
+                        show_notifications: settings_repo.get_bool_setting("show_notifications").await.unwrap_or(Some(true)).unwrap_or(true),
+                    }
+                });
+                BG_PREFS.set(std::sync::RwLock::new(prefs)).ok();
+
+                if let Some(w) = app.get_webview_window("main") {
+                    if let Some(prefs_lock) = BG_PREFS.get() {
+                        if let Ok(prefs) = prefs_lock.read() {
+                            if prefs.run_in_background && prefs.launch_minimized {
+                                let _ = w.hide();
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Initialize TrayController
+            let app_handle = app.handle().clone();
+            let _tray = TrayController::init(&app_handle)?;
 
             let app_handle_bg = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -234,6 +280,67 @@ pub fn run() {
                 });
             });
 
+            // Setup notification listeners for device link status changes
+            {
+                let app_handle = app.handle().clone();
+                app.listen("device-link-status", move |e| {
+                    let p = e.payload();
+                    if p.contains("\"connected\"") || p.contains("\"registered\"") || p.contains("\"resumed\"") {
+                        if let Some(prefs_lock) = BG_PREFS.get() {
+                            if let Ok(prefs) = prefs_lock.read() {
+                                if prefs.show_notifications {
+                                    use tauri_plugin_notification::NotificationExt;
+                                    let _ = app_handle.notification()
+                                        .builder()
+                                        .title("Desktop Online")
+                                        .body("Your desktop is now available for connections.")
+                                        .show();
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            {
+                let app_handle = app.handle().clone();
+                app.listen("relay-request-received", move |e| {
+                    if let Some(prefs_lock) = BG_PREFS.get() {
+                        if let Ok(prefs) = prefs_lock.read() {
+                            if prefs.show_notifications {
+                                let payload_str = e.payload();
+                                let method = if let Ok(json) = serde_json::from_str::<serde_json::Value>(payload_str) {
+                                    json.get("method")
+                                        .and_then(|m| m.as_str())
+                                        .unwrap_or("unknown")
+                                        .to_string()
+                                } else {
+                                    "unknown".to_string()
+                                };
+
+                                use tauri_plugin_notification::NotificationExt;
+                                let _ = app_handle.notification()
+                                    .builder()
+                                    .title("Mobile command received")
+                                    .body(format!("Request: {}", method))
+                                    .show();
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Setup terminate-connections event listener for tray security action
+            {
+                let app_handle = app.handle().clone();
+                app.listen("terminate-connections", move |_| {
+                    let _ = app_handle.emit("device-link-status", serde_json::json!({
+                        "status": "disconnected",
+                        "reason": "terminated"
+                    }));
+                });
+            }
+
             let auth0_store = app.state::<AppState>().auth0_state_store.clone();
             tauri::async_runtime::spawn(async move {
                 use tokio::time::{Duration, interval};
@@ -253,6 +360,27 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                // Check BG_PREFS to determine if we should hide instead of close
+                if let Some(prefs_lock) = BG_PREFS.get() {
+                    if let Ok(prefs) = prefs_lock.read() {
+                        if prefs.run_in_background || prefs.minimize_on_close {
+                            api.prevent_close();
+                            let _ = window.hide();
+
+                            if prefs.show_notifications {
+                                use tauri_plugin_notification::NotificationExt;
+                                let _ = window.app_handle().notification()
+                                    .builder()
+                                    .title("PlanToCode is still running")
+                                    .body("The app is running in the system tray to keep your mobile connection alive.")
+                                    .show();
+                            }
+                            return;
+                        }
+                    }
+                }
+
+                // If not hiding, proceed with normal close behavior
                 let _ = window.emit("app-will-close", ());
 
                 let app_handle = window.app_handle();
@@ -295,6 +423,7 @@ pub fn run() {
             commands::app_commands::get_config_load_error,
             commands::app_commands::get_database_info_command,
             commands::app_commands::get_database_path_command,
+            commands::app_commands::get_resource_info_command,
             commands::auth0_commands::start_auth0_login_flow,
             commands::auth0_commands::check_auth_status_and_exchange_token,
             commands::auth0_commands::refresh_app_jwt_auth0,
@@ -343,6 +472,7 @@ pub fn run() {
             commands::job_commands::delete_background_job_command,
             commands::job_commands::get_background_job_by_id_command,
             commands::video_analysis_commands::start_video_analysis_job,
+            commands::video_utils_commands::get_video_metadata_command,
             commands::screen_recording_commands::stop_screen_recording,
             commands::file_system_commands::get_home_directory_command,
             commands::file_system_commands::list_project_files_command,
@@ -432,6 +562,9 @@ pub fn run() {
             commands::settings_commands::update_device_settings,
             commands::settings_commands::get_app_setting,
             commands::settings_commands::set_app_setting,
+            commands::settings_commands::get_background_prefs_command,
+            commands::settings_commands::set_background_prefs_command,
+            commands::settings_commands::toggle_autostart_command,
             commands::session_commands::create_session_command,
             commands::session_commands::get_session_command,
             commands::session_commands::get_sessions_for_project_command,
@@ -449,6 +582,10 @@ pub fn run() {
             commands::session_commands::update_session_files_command,
             commands::session_commands::broadcast_file_browser_state_command,
             commands::session_commands::broadcast_active_session_changed_command,
+            commands::session_commands::get_history_state_command,
+            commands::session_commands::sync_history_state_command,
+            commands::session_commands::merge_history_state_command,
+            commands::session_commands::get_device_id_command,
             commands::setup_commands::trigger_initial_keychain_access,
             commands::setup_commands::get_storage_mode,
             commands::setup_commands::check_existing_keychain_access,

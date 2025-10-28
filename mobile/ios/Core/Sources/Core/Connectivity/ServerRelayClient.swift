@@ -12,6 +12,11 @@ public class ServerRelayClient: NSObject, ObservableObject {
     @Published public private(set) var isConnected: Bool = false
     @Published public private(set) var lastError: ServerRelayError?
 
+    public var allowInternalReconnect: Bool = false
+    public var isConnecting: Bool {
+        return connectionState == .connecting
+    }
+
     // MARK: - Private Properties
     private var webSocketTask: URLSessionWebSocketTask?
     private var urlSession: URLSession
@@ -885,6 +890,15 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
         logger.info("Publishing relay event: \(eventType) from device: \(sourceDeviceId ?? "unknown")")
         eventPublisher.send(relayEvent)
+
+        // Forward history-state-changed events to NotificationCenter
+        if eventType == "history-state-changed" {
+            NotificationCenter.default.post(
+                name: NSNotification.Name("relay-event-history-state-changed"),
+                object: nil,
+                userInfo: ["event": relayEvent]
+            )
+        }
     }
 
     private func handleDeviceMessageEvent(_ json: [String: Any]) {
@@ -1001,7 +1015,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
     // MARK: - Reconnection
 
     private func shouldReconnect() -> Bool {
-        return (maxReconnectAttempts <= 0 || reconnectAttempts < maxReconnectAttempts) && !isReconnecting
+        return allowInternalReconnect && (maxReconnectAttempts <= 0 || reconnectAttempts < maxReconnectAttempts) && !isReconnecting
     }
 
     private func scheduleReconnection() {
@@ -1042,11 +1056,10 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
     private func setupApplicationLifecycleObservers() {
         #if canImport(UIKit)
-        // Reconnect when app becomes active
         NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)
             .sink { [weak self] _ in
                 guard let self = self else { return }
-                if !self.isConnected && !self.isReconnecting, let token = self.jwtToken {
+                if self.allowInternalReconnect && !self.isConnected && !self.isReconnecting, let token = self.jwtToken {
                     self.logger.info("App became active, reconnecting to relay")
                     self.connect(jwtToken: token)
                         .sink(receiveCompletion: { _ in }, receiveValue: { _ in })

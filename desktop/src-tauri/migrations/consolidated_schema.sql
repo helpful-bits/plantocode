@@ -44,7 +44,11 @@ CREATE TABLE IF NOT EXISTS sessions (
   included_files TEXT,
   force_excluded_files TEXT,
   video_analysis_prompt TEXT DEFAULT NULL,
-  merge_instructions TEXT DEFAULT NULL
+  merge_instructions TEXT DEFAULT NULL,
+  task_history_version INTEGER DEFAULT 1,
+  file_history_version INTEGER DEFAULT 1,
+  task_history_current_index INTEGER DEFAULT 0,
+  file_history_current_index INTEGER DEFAULT 0
 );
 
 -- Create indexes for sessions table
@@ -60,6 +64,9 @@ CREATE TABLE IF NOT EXISTS task_description_history (
     session_id TEXT NOT NULL,
     description TEXT NOT NULL,
     created_at INTEGER NOT NULL,
+    device_id TEXT DEFAULT NULL,
+    sequence_number INTEGER DEFAULT 0,
+    version INTEGER DEFAULT 1,
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
@@ -73,11 +80,20 @@ CREATE TABLE IF NOT EXISTS file_selection_history (
     included_files TEXT NOT NULL,
     force_excluded_files TEXT NOT NULL,
     created_at INTEGER NOT NULL,
+    device_id TEXT DEFAULT NULL,
+    sequence_number INTEGER DEFAULT 0,
+    version INTEGER DEFAULT 1,
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
 -- Create index for file_selection_history table
 CREATE INDEX IF NOT EXISTS idx_file_selection_history_session_id_created_at ON file_selection_history(session_id, created_at DESC);
+
+-- Additional indexes for history tables
+CREATE INDEX IF NOT EXISTS idx_tdh_session_created_at ON task_description_history (session_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_tdh_session_seq ON task_description_history (session_id, sequence_number);
+CREATE INDEX IF NOT EXISTS idx_fsh_session_created_at ON file_selection_history (session_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_fsh_session_seq ON file_selection_history (session_id, sequence_number);
 
 
 -- Create key_value_store table

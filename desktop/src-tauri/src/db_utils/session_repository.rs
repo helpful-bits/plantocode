@@ -1,8 +1,55 @@
 use crate::error::{AppError, AppResult};
 use crate::models::Session;
 use crate::utils::date_utils;
+use crate::utils::hash_utils::sha256_hash;
+use serde::{Deserialize, Serialize};
 use sqlx::{Row, SqlitePool, sqlite::SqliteRow};
+use std::collections::HashSet;
 use std::sync::Arc;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskHistoryEntry {
+    #[serde(rename = "value")]
+    pub description: String,
+    #[serde(rename = "timestampMs")]
+    pub created_at: i64,
+    pub device_id: Option<String>,
+    pub op_type: Option<String>,
+    pub sequence_number: i64,
+    pub version: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileSelectionHistoryEntry {
+    pub included_files: String,
+    pub force_excluded_files: String,
+    #[serde(rename = "timestampMs")]
+    pub created_at: i64,
+    pub device_id: Option<String>,
+    pub op_type: Option<String>,
+    pub sequence_number: i64,
+    pub version: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskHistoryState {
+    pub entries: Vec<TaskHistoryEntry>,
+    pub current_index: i64,
+    pub version: i64,
+    pub checksum: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileHistoryState {
+    pub entries: Vec<FileSelectionHistoryEntry>,
+    pub current_index: i64,
+    pub version: i64,
+    pub checksum: String,
+}
 
 #[derive(Debug)]
 pub struct SessionRepository {
@@ -129,13 +176,6 @@ impl SessionRepository {
 
     /// Create a new session
     pub async fn create_session(&self, session: &Session) -> AppResult<()> {
-        log::debug!(
-            "Repository: Creating session with ID: {}, Name: {}, ProjectDirectory: {}",
-            session.id,
-            session.name,
-            session.project_directory
-        );
-
         // Start transaction
         let mut tx =
             self.pool.begin().await.map_err(|e| {
@@ -166,26 +206,6 @@ impl SessionRepository {
         })
         .bind(&session.model_used);
 
-        let log_shape = |items: &Vec<String>, label: &str| {
-            let total = items.len();
-            let abs = items
-                .iter()
-                .filter(|s| std::path::Path::new(s).is_absolute())
-                .count();
-            let rel = total.saturating_sub(abs);
-            let sample = items.iter().take(3).cloned().collect::<Vec<_>>();
-            log::debug!(
-                "SessionRepository {} paths: total={}, rel={}, abs={}, sample={:?}",
-                label,
-                total,
-                rel,
-                abs,
-                sample
-            );
-        };
-        log_shape(&session.included_files, "included_files");
-        log_shape(&session.force_excluded_files, "force_excluded_files");
-
         let result = result
             .bind(session.included_files.join("\n"))
             .bind(session.force_excluded_files.join("\n"))
@@ -199,7 +219,6 @@ impl SessionRepository {
         if let Err(e) = result {
             // Rollback transaction on error
             let _ = tx.rollback().await;
-            log::error!("Repository: Failed to insert session {}: {}", session.id, e);
             return Err(AppError::DatabaseError(format!(
                 "Failed to insert session: {}",
                 e
@@ -220,13 +239,6 @@ impl SessionRepository {
     /// included_final = (db_included ∪ client_included) \ excluded_final
     pub async fn update_session(&self, session: &Session) -> AppResult<()> {
         use std::collections::BTreeSet;
-
-        log::debug!(
-            "Repository: Updating session with ID: {}, Name: {}, ProjectDirectory: {}",
-            session.id,
-            session.name,
-            session.project_directory
-        );
 
         // Acquire connection and start IMMEDIATE transaction
         let mut conn =
@@ -260,13 +272,6 @@ impl SessionRepository {
 
                 // Conflict detection: if DB is newer than client's timestamp, merge
                 if current_updated_at > session.updated_at {
-                    log::debug!(
-                        "Conflict detected for session {}: DB updated_at={}, client updated_at={}. Merging changes.",
-                        session.id,
-                        current_updated_at,
-                        session.updated_at
-                    );
-
                     // Parse DB state
                     let db_included_text: Option<String> = row.try_get("included_files")?;
                     let db_excluded_text: Option<String> = row.try_get("force_excluded_files")?;
@@ -311,15 +316,6 @@ impl SessionRepository {
                         .cloned()
                         .collect();
 
-                    log::debug!(
-                        "Merged session {}: included {} + {} -> {} (client exclusions: {})",
-                        session.id,
-                        db_included.len(),
-                        client_included.len(),
-                        included_final.len(),
-                        excluded_final.len()
-                    );
-
                     (
                         included_final.into_iter().collect::<Vec<_>>().join("\n"),
                         excluded_final.into_iter().collect::<Vec<_>>().join("\n"),
@@ -360,27 +356,6 @@ impl SessionRepository {
                 )));
             }
         };
-
-        let log_shape = |items: &str, label: &str| {
-            let lines: Vec<&str> = items.lines().filter(|l| !l.is_empty()).collect();
-            let total = lines.len();
-            let abs = lines
-                .iter()
-                .filter(|s| std::path::Path::new(s).is_absolute())
-                .count();
-            let rel = total.saturating_sub(abs);
-            let sample: Vec<&str> = lines.iter().take(3).copied().collect();
-            log::debug!(
-                "SessionRepository {} paths: total={}, rel={}, abs={}, sample={:?}",
-                label,
-                total,
-                rel,
-                abs,
-                sample
-            );
-        };
-        log_shape(&included_final, "included_files");
-        log_shape(&excluded_final, "force_excluded_files");
 
         // Update with merged/consistent values and current timestamp
         let result = sqlx::query(
@@ -436,7 +411,6 @@ impl SessionRepository {
             }
             Err(e) => {
                 let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
-                log::error!("Repository: Failed to update session {}: {}", session.id, e);
                 Err(AppError::DatabaseError(format!(
                     "Failed to update session: {}",
                     e
@@ -467,12 +441,6 @@ impl SessionRepository {
         files_to_add: &[String],
     ) -> AppResult<Vec<String>> {
         use std::collections::BTreeSet;
-
-        log::debug!(
-            "Repository: Atomically merging {} files (respecting exclusions) into session {}",
-            files_to_add.len(),
-            session_id
-        );
 
         // Acquire connection and start IMMEDIATE transaction to lock before any reads
         let mut conn =
@@ -544,7 +512,6 @@ impl SessionRepository {
 
             // CRITICAL: Respect user exclusions - do not add if excluded
             if db_excluded.contains(trimmed) {
-                log::debug!("Skipping file in force_excluded_files: {}", trimmed);
                 continue;
             }
 
@@ -589,12 +556,6 @@ impl SessionRepository {
                             e
                         ))
                     })?;
-
-                log::debug!(
-                    "Repository: Successfully merged {} new files (respecting exclusions) into session {}",
-                    newly_added.len(),
-                    session_id
-                );
 
                 Ok(newly_added)
             }
@@ -906,4 +867,591 @@ impl SessionRepository {
 
         Ok(())
     }
+
+    pub async fn get_task_history_state(&self, session_id: &str) -> AppResult<TaskHistoryState> {
+        // First, get the current version and index from sessions table
+        let session_row = sqlx::query(
+            "SELECT task_history_version, task_history_current_index FROM sessions WHERE id = $1"
+        )
+        .bind(session_id)
+        .fetch_optional(&*self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to fetch session for task history: {}", e)))?;
+
+        let (version, mut current_index) = match session_row {
+            Some(row) => {
+                let version: i64 = row.try_get("task_history_version").unwrap_or(1);
+                let current_index: i64 = row.try_get("task_history_current_index").unwrap_or(0);
+                (version, current_index)
+            }
+            None => {
+                return Err(AppError::DatabaseError(format!("Session not found: {}", session_id)));
+            }
+        };
+
+        // Select all metadata columns with deterministic ordering
+        let rows = sqlx::query(
+            "SELECT description, created_at, device_id, sequence_number, version
+             FROM task_description_history
+             WHERE session_id = $1
+             ORDER BY sequence_number ASC, created_at ASC"
+        )
+        .bind(session_id)
+        .fetch_all(&*self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to fetch task history: {}", e)))?;
+
+        let mut entries: Vec<TaskHistoryEntry> = Vec::new();
+        for row in rows.iter() {
+            let description: String = row.try_get("description")?;
+            let created_at: i64 = row.try_get("created_at")?;
+            // Defensive unwrap_or for optional metadata fields
+            let device_id: Option<String> = row.try_get("device_id").ok().flatten();
+            let sequence_number: i64 = row.try_get("sequence_number").unwrap_or(0);
+            let entry_version: i64 = row.try_get("version").unwrap_or(1);
+
+            entries.push(TaskHistoryEntry {
+                description,
+                created_at,
+                device_id,
+                op_type: None, // op_type not in schema
+                sequence_number,
+                version: entry_version,
+            });
+        }
+
+        // Clamp current_index to valid range before validation
+        let max_valid_index = if entries.is_empty() { 0 } else { (entries.len() as i64) - 1 };
+        let original_index = current_index;
+        current_index = current_index.clamp(0, max_valid_index.max(0));
+
+        let (validated_entries, validated_index) = validate_task_history_entries(entries, current_index);
+        let checksum = compute_task_history_checksum(&validated_entries, validated_index, version);
+
+        Ok(TaskHistoryState {
+            entries: validated_entries,
+            current_index: validated_index,
+            version,
+            checksum,
+        })
+    }
+
+    pub async fn sync_task_history_state(
+        &self,
+        session_id: &str,
+        state: &TaskHistoryState,
+        expected_version: i64,
+    ) -> AppResult<TaskHistoryState> {
+        let mut conn = self.pool.acquire().await.map_err(|e| {
+            AppError::DatabaseError(format!("Failed to acquire connection: {}", e))
+        })?;
+
+        sqlx::query("BEGIN IMMEDIATE")
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                AppError::DatabaseError(format!("Failed to begin immediate transaction: {}", e))
+            })?;
+
+        // Read current version from database
+        let version_row = sqlx::query(
+            "SELECT task_history_version FROM sessions WHERE id = $1"
+        )
+        .bind(session_id)
+        .fetch_optional(&mut *conn)
+        .await
+        .map_err(|e| {
+            AppError::DatabaseError(format!("Failed to fetch session version: {}", e))
+        })?;
+
+        let current_version = match version_row {
+            Some(row) => row.try_get::<i64, _>("task_history_version").unwrap_or(1),
+            None => {
+                let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
+                return Err(AppError::DatabaseError(format!("Session not found: {}", session_id)));
+            }
+        };
+
+        if current_version != expected_version {
+            let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
+            return Err(AppError::Conflict(format!(
+                "Version mismatch: expected {}, got {}",
+                expected_version, current_version
+            )));
+        }
+
+        sqlx::query("DELETE FROM task_description_history WHERE session_id = $1")
+            .bind(session_id)
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                AppError::DatabaseError(format!("Failed to delete existing task history: {}", e))
+            })?;
+
+        let trimmed_entries: Vec<TaskHistoryEntry> = state
+            .entries
+            .iter()
+            .rev()
+            .take(200)
+            .rev()
+            .cloned()
+            .collect();
+
+        for entry in &trimmed_entries {
+            sqlx::query(
+                "INSERT INTO task_description_history
+                 (session_id, description, created_at, device_id, sequence_number, version)
+                 VALUES ($1, $2, $3, $4, $5, $6)"
+            )
+            .bind(session_id)
+            .bind(&entry.description)
+            .bind(entry.created_at)
+            .bind(&entry.device_id)
+            .bind(entry.sequence_number)
+            .bind(entry.version)
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                AppError::DatabaseError(format!("Failed to insert task history entry: {}", e))
+            })?;
+        }
+
+        let new_version = current_version + 1;
+        let new_checksum = compute_task_history_checksum(&trimmed_entries, state.current_index, new_version);
+
+        // Update version and current_index in sessions table
+        sqlx::query(
+            "UPDATE sessions SET task_history_version = $1, task_history_current_index = $2, updated_at = $3 WHERE id = $4"
+        )
+        .bind(new_version)
+        .bind(state.current_index)
+        .bind(crate::utils::date_utils::get_timestamp())
+        .bind(session_id)
+        .execute(&mut *conn)
+        .await
+        .map_err(|e| {
+            AppError::DatabaseError(format!("Failed to update session version: {}", e))
+        })?;
+
+        sqlx::query("COMMIT")
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                AppError::DatabaseError(format!("Failed to commit transaction: {}", e))
+            })?;
+
+        Ok(TaskHistoryState {
+            entries: trimmed_entries,
+            current_index: state.current_index,
+            version: new_version,
+            checksum: new_checksum,
+        })
+    }
+
+    pub async fn get_file_history_state(&self, session_id: &str) -> AppResult<FileHistoryState> {
+        // First, get the current version and index from sessions table
+        let session_row = sqlx::query(
+            "SELECT file_history_version, file_history_current_index FROM sessions WHERE id = $1"
+        )
+        .bind(session_id)
+        .fetch_optional(&*self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to fetch session for file history: {}", e)))?;
+
+        let (version, current_index) = match session_row {
+            Some(row) => {
+                let version: i64 = row.try_get("file_history_version").unwrap_or(1);
+                let current_index: i64 = row.try_get("file_history_current_index").unwrap_or(0);
+                (version, current_index)
+            }
+            None => {
+                return Err(AppError::DatabaseError(format!("Session not found: {}", session_id)));
+            }
+        };
+
+        let rows = sqlx::query(
+            "SELECT included_files, force_excluded_files, created_at
+             FROM file_selection_history
+             WHERE session_id = $1 ORDER BY created_at ASC"
+        )
+        .bind(session_id)
+        .fetch_all(&*self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to fetch file history: {}", e)))?;
+
+        let mut entries: Vec<FileSelectionHistoryEntry> = Vec::new();
+        for (seq, row) in rows.iter().enumerate() {
+            let included_files: String = row.try_get("included_files")?;
+            let force_excluded_files: String = row.try_get("force_excluded_files")?;
+            let created_at: i64 = row.try_get("created_at")?;
+            let op_type: Option<String> = row.try_get("op_type").ok().flatten();
+
+            entries.push(FileSelectionHistoryEntry {
+                included_files,
+                force_excluded_files,
+                created_at,
+                device_id: None,
+                op_type,
+                sequence_number: seq as i64,
+                version: 1,
+            });
+        }
+
+        let (validated_entries, validated_index) = validate_file_history_entries(entries, current_index);
+        let checksum = compute_file_history_checksum(&validated_entries, validated_index, version);
+
+        Ok(FileHistoryState {
+            entries: validated_entries,
+            current_index: validated_index,
+            version,
+            checksum,
+        })
+    }
+
+    pub async fn sync_file_history_state(
+        &self,
+        session_id: &str,
+        state: &FileHistoryState,
+        expected_version: i64,
+    ) -> AppResult<FileHistoryState> {
+        let mut conn = self.pool.acquire().await.map_err(|e| {
+            AppError::DatabaseError(format!("Failed to acquire connection: {}", e))
+        })?;
+
+        sqlx::query("BEGIN IMMEDIATE")
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                AppError::DatabaseError(format!("Failed to begin immediate transaction: {}", e))
+            })?;
+
+        // Read current version from database
+        let version_row = sqlx::query(
+            "SELECT file_history_version FROM sessions WHERE id = $1"
+        )
+        .bind(session_id)
+        .fetch_optional(&mut *conn)
+        .await
+        .map_err(|e| {
+            AppError::DatabaseError(format!("Failed to fetch session version: {}", e))
+        })?;
+
+        let current_version = match version_row {
+            Some(row) => row.try_get::<i64, _>("file_history_version").unwrap_or(1),
+            None => {
+                let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
+                return Err(AppError::DatabaseError(format!("Session not found: {}", session_id)));
+            }
+        };
+
+        if current_version != expected_version {
+            let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
+            return Err(AppError::Conflict(format!(
+                "Version mismatch: expected {}, got {}",
+                expected_version, current_version
+            )));
+        }
+
+        sqlx::query("DELETE FROM file_selection_history WHERE session_id = $1")
+            .bind(session_id)
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                AppError::DatabaseError(format!("Failed to delete existing file history: {}", e))
+            })?;
+
+        let trimmed_entries: Vec<FileSelectionHistoryEntry> = state
+            .entries
+            .iter()
+            .rev()
+            .take(50)
+            .rev()
+            .cloned()
+            .collect();
+
+        for entry in &trimmed_entries {
+            sqlx::query(
+                "INSERT INTO file_selection_history (session_id, included_files, force_excluded_files, created_at)
+                 VALUES ($1, $2, $3, $4)"
+            )
+            .bind(session_id)
+            .bind(&entry.included_files)
+            .bind(&entry.force_excluded_files)
+            .bind(entry.created_at)
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                AppError::DatabaseError(format!("Failed to insert file history entry: {}", e))
+            })?;
+        }
+
+        let new_version = current_version + 1;
+        let new_checksum = compute_file_history_checksum(&trimmed_entries, state.current_index, new_version);
+
+        // Update version and current_index in sessions table
+        sqlx::query(
+            "UPDATE sessions SET file_history_version = $1, file_history_current_index = $2, updated_at = $3 WHERE id = $4"
+        )
+        .bind(new_version)
+        .bind(state.current_index)
+        .bind(crate::utils::date_utils::get_timestamp())
+        .bind(session_id)
+        .execute(&mut *conn)
+        .await
+        .map_err(|e| {
+            AppError::DatabaseError(format!("Failed to update session version: {}", e))
+        })?;
+
+        sqlx::query("COMMIT")
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                AppError::DatabaseError(format!("Failed to commit transaction: {}", e))
+            })?;
+
+        Ok(FileHistoryState {
+            entries: trimmed_entries,
+            current_index: state.current_index,
+            version: new_version,
+            checksum: new_checksum,
+        })
+    }
+
+    pub fn merge_task_history_states(
+        &self,
+        local: &TaskHistoryState,
+        remote: &TaskHistoryState,
+    ) -> TaskHistoryState {
+        let mut combined: Vec<TaskHistoryEntry> = Vec::new();
+        combined.extend(local.entries.clone());
+        combined.extend(remote.entries.clone());
+
+        combined.sort_by(|a, b| {
+            let time_diff = (a.created_at - b.created_at).abs();
+            if time_diff <= 100 {
+                a.device_id.cmp(&b.device_id)
+            } else {
+                a.created_at.cmp(&b.created_at)
+            }
+        });
+
+        let mut deduped: Vec<TaskHistoryEntry> = Vec::new();
+        for entry in combined {
+            if let Some(last) = deduped.last() {
+                if last.description == entry.description {
+                    continue;
+                }
+            }
+            deduped.push(entry);
+        }
+
+        let trimmed: Vec<TaskHistoryEntry> = deduped.into_iter().rev().take(200).rev().collect();
+
+        let max_index = std::cmp::max(local.current_index, remote.current_index);
+        let clamped_index = if trimmed.is_empty() {
+            0
+        } else {
+            std::cmp::min(max_index, (trimmed.len() as i64) - 1)
+        };
+
+        let new_version = std::cmp::max(local.version, remote.version) + 1;
+        let checksum = compute_task_history_checksum(&trimmed, clamped_index, new_version);
+
+        TaskHistoryState {
+            entries: trimmed,
+            current_index: clamped_index,
+            version: new_version,
+            checksum,
+        }
+    }
+
+    pub fn merge_file_history_states(
+        &self,
+        local: &FileHistoryState,
+        remote: &FileHistoryState,
+    ) -> FileHistoryState {
+        let mut combined: Vec<FileSelectionHistoryEntry> = Vec::new();
+        combined.extend(local.entries.clone());
+        combined.extend(remote.entries.clone());
+
+        combined.sort_by(|a, b| {
+            let time_diff = (a.created_at - b.created_at).abs();
+            if time_diff <= 100 {
+                a.device_id.cmp(&b.device_id)
+            } else {
+                a.created_at.cmp(&b.created_at)
+            }
+        });
+
+        let mut deduped: Vec<FileSelectionHistoryEntry> = Vec::new();
+        let mut seen: HashSet<String> = HashSet::new();
+
+        for entry in combined {
+            let key = format!("{}|{}", entry.included_files, entry.force_excluded_files);
+            if !seen.contains(&key) {
+                seen.insert(key);
+                deduped.push(entry);
+            }
+        }
+
+        let trimmed: Vec<FileSelectionHistoryEntry> = deduped.into_iter().rev().take(50).rev().collect();
+
+        let max_index = std::cmp::max(local.current_index, remote.current_index);
+        let clamped_index = if trimmed.is_empty() {
+            0
+        } else {
+            std::cmp::min(max_index, (trimmed.len() as i64) - 1)
+        };
+
+        let new_version = std::cmp::max(local.version, remote.version) + 1;
+        let checksum = compute_file_history_checksum(&trimmed, clamped_index, new_version);
+
+        FileHistoryState {
+            entries: trimmed,
+            current_index: clamped_index,
+            version: new_version,
+            checksum,
+        }
+    }
+}
+
+fn validate_task_history_entries(
+    mut entries: Vec<TaskHistoryEntry>,
+    current_index: i64,
+) -> (Vec<TaskHistoryEntry>, i64) {
+    if entries.is_empty() {
+        return (entries, 0);
+    }
+
+    let mut repairs = Vec::new();
+    let original_len = entries.len();
+
+    entries.sort_by_key(|e| e.created_at);
+
+    let mut deduped: Vec<TaskHistoryEntry> = Vec::new();
+    for entry in entries {
+        if let Some(last) = deduped.last() {
+            if last.description == entry.description {
+                continue;
+            }
+        }
+        deduped.push(entry);
+    }
+
+    let deduplicated_len = deduped.len();
+    if deduplicated_len != original_len {
+        repairs.push(format!("Deduplicated {} -> {} entries", original_len, deduplicated_len));
+    }
+
+    let trimmed: Vec<TaskHistoryEntry> = deduped.into_iter().rev().take(200).rev().collect();
+
+    let trimmed_len = trimmed.len();
+    if trimmed_len != deduplicated_len {
+        repairs.push(format!("Trimmed {} -> {} entries", deduplicated_len, trimmed_len));
+    }
+
+    let clamped_index = if trimmed.is_empty() {
+        0
+    } else {
+        std::cmp::max(0, std::cmp::min(current_index, (trimmed.len() as i64) - 1))
+    };
+
+    if clamped_index != current_index {
+        repairs.push(format!("Clamped index {} -> {}", current_index, clamped_index));
+    }
+
+    if !repairs.is_empty() {
+        eprintln!("[REPAIR] Task history state repaired: {}", repairs.join(", "));
+    }
+
+    (trimmed, clamped_index)
+}
+
+fn validate_file_history_entries(
+    mut entries: Vec<FileSelectionHistoryEntry>,
+    current_index: i64,
+) -> (Vec<FileSelectionHistoryEntry>, i64) {
+    if entries.is_empty() {
+        return (entries, 0);
+    }
+
+    let mut repairs = Vec::new();
+    let original_len = entries.len();
+
+    entries.sort_by_key(|e| e.created_at);
+
+    let mut deduped: Vec<FileSelectionHistoryEntry> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+
+    for entry in entries {
+        let key = format!("{}|{}", entry.included_files, entry.force_excluded_files);
+        if !seen.contains(&key) {
+            seen.insert(key);
+            deduped.push(entry);
+        }
+    }
+
+    let deduplicated_len = deduped.len();
+    if deduplicated_len != original_len {
+        repairs.push(format!("Deduplicated {} -> {} entries", original_len, deduplicated_len));
+    }
+
+    let trimmed: Vec<FileSelectionHistoryEntry> = deduped.into_iter().rev().take(50).rev().collect();
+
+    let trimmed_len = trimmed.len();
+    if trimmed_len != deduplicated_len {
+        repairs.push(format!("Trimmed {} -> {} entries", deduplicated_len, trimmed_len));
+    }
+
+    let clamped_index = if trimmed.is_empty() {
+        0
+    } else {
+        std::cmp::max(0, std::cmp::min(current_index, (trimmed.len() as i64) - 1))
+    };
+
+    if clamped_index != current_index {
+        repairs.push(format!("Clamped index {} -> {}", current_index, clamped_index));
+    }
+
+    if !repairs.is_empty() {
+        eprintln!("[REPAIR] File history state repaired: {}", repairs.join(", "));
+    }
+
+    (trimmed, clamped_index)
+}
+
+fn compute_task_history_checksum(entries: &[TaskHistoryEntry], current_index: i64, version: i64) -> String {
+    #[derive(Serialize)]
+    struct ChecksumData<'a> {
+        current_index: i64,
+        entries: &'a [TaskHistoryEntry],
+        version: i64,
+    }
+
+    let data = ChecksumData {
+        current_index,
+        entries,
+        version,
+    };
+
+    let json = serde_json::to_string(&data).unwrap_or_default();
+    sha256_hash(&json)
+}
+
+fn compute_file_history_checksum(entries: &[FileSelectionHistoryEntry], current_index: i64, version: i64) -> String {
+    #[derive(Serialize)]
+    struct ChecksumData<'a> {
+        current_index: i64,
+        entries: &'a [FileSelectionHistoryEntry],
+        version: i64,
+    }
+
+    let data = ChecksumData {
+        current_index,
+        entries,
+        version,
+    };
+
+    let json = serde_json::to_string(&data).unwrap_or_default();
+    sha256_hash(&json)
 }

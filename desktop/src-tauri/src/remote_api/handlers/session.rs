@@ -1,10 +1,12 @@
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use serde_json::{json, Value};
 use crate::remote_api::types::{RpcRequest, RpcResponse};
 use crate::commands::session_commands;
 use crate::models::CreateSessionRequest;
+use crate::db_utils::session_repository::{SessionRepository, TaskHistoryState, FileHistoryState};
+use crate::services::history_state_sequencer::HistoryStateSequencer;
 use once_cell::sync::Lazy;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::collections::HashMap;
 
@@ -34,6 +36,9 @@ pub async fn dispatch(app_handle: AppHandle, req: RpcRequest) -> RpcResponse {
         "session.getOverview" => handle_session_get_overview(app_handle, req).await,
         "session.getContents" => handle_session_get_contents(app_handle, req).await,
         "session.updateFileBrowserState" => handle_session_update_file_browser_state(app_handle, req).await,
+        "session.getHistoryState" => handle_session_get_history_state_rpc(app_handle, req).await,
+        "session.syncHistoryState" => handle_session_sync_history_state_rpc(app_handle, req).await,
+        "session.mergeHistoryState" => handle_session_merge_history_state_rpc(app_handle, req).await,
         _ => RpcResponse {
             correlation_id: req.correlation_id,
             result: None,
@@ -756,5 +761,165 @@ pub async fn handle_session_update_file_browser_state(
         result: Some(json!({ "ok": true })),
         error: None,
         is_final: true,
+    }
+}
+
+async fn handle_session_get_history_state(
+    app: AppHandle,
+    params: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let session_id = params["sessionId"]
+        .as_str()
+        .ok_or("Missing sessionId")?
+        .to_string();
+    let kind = params["kind"]
+        .as_str()
+        .ok_or("Missing kind")?
+        .to_string();
+
+    let db = app.state::<Arc<sqlx::SqlitePool>>();
+    let repo = SessionRepository::new(db.inner().clone());
+
+    let state = if kind == "task" {
+        let task_state = repo.get_task_history_state(&session_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        serde_json::to_value(&task_state).map_err(|e| e.to_string())?
+    } else if kind == "files" {
+        let file_state = repo.get_file_history_state(&session_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        serde_json::to_value(&file_state).map_err(|e| e.to_string())?
+    } else {
+        return Err("Invalid kind".to_string());
+    };
+
+    Ok(state)
+}
+
+pub async fn handle_session_get_history_state_rpc(
+    app_handle: AppHandle,
+    request: RpcRequest,
+) -> RpcResponse {
+    match handle_session_get_history_state(app_handle, request.params).await {
+        Ok(state) => RpcResponse {
+            correlation_id: request.correlation_id,
+            result: Some(state),
+            error: None,
+            is_final: true,
+        },
+        Err(error) => RpcResponse {
+            correlation_id: request.correlation_id,
+            result: None,
+            error: Some(error),
+            is_final: true,
+        },
+    }
+}
+
+async fn handle_session_sync_history_state(
+    app: AppHandle,
+    params: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let session_id = params["sessionId"]
+        .as_str()
+        .ok_or("Missing sessionId")?
+        .to_string();
+    let kind = params["kind"]
+        .as_str()
+        .ok_or("Missing kind")?
+        .to_string();
+    let expected_version = params["expectedVersion"]
+        .as_i64()
+        .ok_or("Missing expectedVersion")?;
+
+    let sequencer = app.state::<Arc<HistoryStateSequencer>>();
+
+    let result = if kind == "task" {
+        let state: TaskHistoryState = serde_json::from_value(params["state"].clone())
+            .map_err(|e| e.to_string())?;
+        let updated = sequencer.enqueue_sync_task(session_id, state, expected_version).await?;
+        serde_json::to_value(&updated).map_err(|e| e.to_string())?
+    } else if kind == "files" {
+        let state: FileHistoryState = serde_json::from_value(params["state"].clone())
+            .map_err(|e| e.to_string())?;
+        let updated = sequencer.enqueue_sync_files(session_id, state, expected_version).await?;
+        serde_json::to_value(&updated).map_err(|e| e.to_string())?
+    } else {
+        return Err("Invalid kind".to_string());
+    };
+
+    Ok(result)
+}
+
+pub async fn handle_session_sync_history_state_rpc(
+    app_handle: AppHandle,
+    request: RpcRequest,
+) -> RpcResponse {
+    match handle_session_sync_history_state(app_handle, request.params).await {
+        Ok(result) => RpcResponse {
+            correlation_id: request.correlation_id,
+            result: Some(result),
+            error: None,
+            is_final: true,
+        },
+        Err(error) => RpcResponse {
+            correlation_id: request.correlation_id,
+            result: None,
+            error: Some(error),
+            is_final: true,
+        },
+    }
+}
+
+async fn handle_session_merge_history_state(
+    app: AppHandle,
+    params: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let session_id = params["sessionId"]
+        .as_str()
+        .ok_or("Missing sessionId")?
+        .to_string();
+    let kind = params["kind"]
+        .as_str()
+        .ok_or("Missing kind")?
+        .to_string();
+
+    let sequencer = app.state::<Arc<HistoryStateSequencer>>();
+
+    let result = if kind == "task" {
+        let remote_state: TaskHistoryState = serde_json::from_value(params["remoteState"].clone())
+            .map_err(|e| e.to_string())?;
+        let merged = sequencer.enqueue_merge_task(session_id, remote_state).await?;
+        serde_json::to_value(&merged).map_err(|e| e.to_string())?
+    } else if kind == "files" {
+        let remote_state: FileHistoryState = serde_json::from_value(params["remoteState"].clone())
+            .map_err(|e| e.to_string())?;
+        let merged = sequencer.enqueue_merge_files(session_id, remote_state).await?;
+        serde_json::to_value(&merged).map_err(|e| e.to_string())?
+    } else {
+        return Err("Invalid kind".to_string());
+    };
+
+    Ok(result)
+}
+
+pub async fn handle_session_merge_history_state_rpc(
+    app_handle: AppHandle,
+    request: RpcRequest,
+) -> RpcResponse {
+    match handle_session_merge_history_state(app_handle, request.params).await {
+        Ok(result) => RpcResponse {
+            correlation_id: request.correlation_id,
+            result: Some(result),
+            error: None,
+            is_final: true,
+        },
+        Err(error) => RpcResponse {
+            correlation_id: request.correlation_id,
+            result: None,
+            error: Some(error),
+            is_final: true,
+        },
     }
 }

@@ -1,4 +1,4 @@
-import { useState, useMemo, useContext, useEffect } from "react";
+import { useState, useMemo, useContext } from "react";
 import { Loader2, ChevronDown, ChevronUp, Copy, Eye, Check } from "lucide-react";
 import { useNotification } from "@/contexts/notification-context";
 
@@ -72,7 +72,7 @@ export function JobDetailsResponseSection() {
   const { showNotification } = useNotification();
 
   // Get live jobs from context
-  const { jobs, setViewedImplementationPlanId } = useContext(BackgroundJobsContext);
+  const { jobs } = useContext(BackgroundJobsContext);
   
   // Derive the live job from the context using the jobId
   const liveJobForModal = useMemo(() => {
@@ -89,22 +89,6 @@ export function JobDetailsResponseSection() {
   
   // Use live progress hook
   const progress = useLiveProgress(job);
-
-  // Register opened implementation plan for optimized streaming
-  useEffect(() => {
-    if (openedJobId && liveJobForModal) {
-      const isImplementationPlan =
-        liveJobForModal.taskType === 'implementation_plan' ||
-        liveJobForModal.taskType === 'implementation_plan_merge';
-      if (isImplementationPlan) {
-        void setViewedImplementationPlanId(openedJobId);
-      }
-    }
-    return () => {
-      setViewedImplementationPlanId(null);
-    };
-  }, [openedJobId, liveJobForModal?.taskType, setViewedImplementationPlanId]);
-
 
   // Copy handler for modal
   const handleCopy = async (button: CopyButtonConfig) => {

@@ -31,9 +31,9 @@ export interface SessionFilterInput {
  * Determines whether a background job event should be processed based on session matching
  *
  * Filtering logic:
- * 1. If no active session, reject all events
- * 2. For create events: require exact payload session ID match
- * 3. For update events: prefer payload session ID, fallback to existing job session ID
+ * 1. For create events: require explicit payload session ID
+ * 2. If active session exists: require exact session match
+ * 3. If active session is undefined (startup/switch): accept events with resolvable session scope
  * 4. Reject if no usable session information is available
  *
  * @param input - The session filter input parameters
@@ -47,27 +47,21 @@ export function shouldProcessEventBySession(input: SessionFilterInput): boolean 
     requirePayloadForCreate = false,
   } = input;
 
-  // No active session - reject all events
-  if (!activeSessionId) {
+  // For create events, require explicit payload sessionId
+  if (requirePayloadForCreate && !payloadSessionId) {
     return false;
   }
 
-  // For create events, we must have a payload session ID and it must match
-  if (requirePayloadForCreate) {
-    if (!payloadSessionId) {
-      return false;
-    }
-    return payloadSessionId === activeSessionId;
-  }
-
-  // For update/delete events, prefer payload session ID, fallback to existing job session ID
+  // Determine the event's session scope
   const eventSessionId = payloadSessionId ?? existingJobSessionId;
 
-  // No usable session information - reject
-  if (!eventSessionId) {
-    return false;
+  // If we have an active session, require exact match
+  if (activeSessionId) {
+    return eventSessionId === activeSessionId;
   }
 
-  // Check if session matches
-  return eventSessionId === activeSessionId;
+  // When active session is temporarily unknown (startup/switch),
+  // accept events that have a resolvable session scope
+  // This prevents dropping valid events during transient gaps
+  return Boolean(eventSessionId);
 }

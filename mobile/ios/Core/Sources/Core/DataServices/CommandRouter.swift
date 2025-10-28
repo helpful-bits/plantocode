@@ -1122,4 +1122,104 @@ public struct CommandRouter {
 
         return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
     }
+
+    // MARK: - HistoryState Methods
+
+    /// Get history state from desktop
+    public static func sessionGetHistoryState(sessionId: String, kind: String) async throws -> HistoryState {
+        guard let usable = getUsableRelay() else {
+            throw ServerRelayError.notConnected
+        }
+        let (deviceId, relayClient) = usable
+
+        let request = RpcRequest(
+            method: "session.getHistoryState",
+            params: [
+                "sessionId": sessionId,
+                "kind": kind
+            ]
+        )
+
+        for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
+            if let error = response.error {
+                throw ServerRelayError.serverError("rpc_error", error.message)
+            }
+
+            if let result = response.result?.value {
+                let data = try JSONSerialization.data(withJSONObject: result)
+                return try JSONDecoder().decode(HistoryState.self, from: data)
+            }
+        }
+
+        throw ServerRelayError.invalidState("No history state received")
+    }
+
+    /// Sync history state to desktop
+    public static func sessionSyncHistoryState(sessionId: String, kind: String, state: HistoryState, expectedVersion: Int64) async throws -> HistoryState {
+        guard let usable = getUsableRelay() else {
+            throw ServerRelayError.notConnected
+        }
+        let (deviceId, relayClient) = usable
+
+        let encoder = JSONEncoder()
+        let stateData = try encoder.encode(state)
+        let stateJson = try JSONSerialization.jsonObject(with: stateData)
+
+        let request = RpcRequest(
+            method: "session.syncHistoryState",
+            params: [
+                "sessionId": sessionId,
+                "kind": kind,
+                "state": stateJson,
+                "expectedVersion": expectedVersion
+            ]
+        )
+
+        for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
+            if let error = response.error {
+                throw ServerRelayError.serverError("rpc_error", error.message)
+            }
+
+            if let result = response.result?.value {
+                let data = try JSONSerialization.data(withJSONObject: result)
+                return try JSONDecoder().decode(HistoryState.self, from: data)
+            }
+        }
+
+        throw ServerRelayError.invalidState("No sync result received")
+    }
+
+    /// Merge history state with desktop
+    public static func sessionMergeHistoryState(sessionId: String, kind: String, remoteState: HistoryState) async throws -> HistoryState {
+        guard let usable = getUsableRelay() else {
+            throw ServerRelayError.notConnected
+        }
+        let (deviceId, relayClient) = usable
+
+        let encoder = JSONEncoder()
+        let stateData = try encoder.encode(remoteState)
+        let stateJson = try JSONSerialization.jsonObject(with: stateData)
+
+        let request = RpcRequest(
+            method: "session.mergeHistoryState",
+            params: [
+                "sessionId": sessionId,
+                "kind": kind,
+                "remoteState": stateJson
+            ]
+        )
+
+        for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
+            if let error = response.error {
+                throw ServerRelayError.serverError("rpc_error", error.message)
+            }
+
+            if let result = response.result?.value {
+                let data = try JSONSerialization.data(withJSONObject: result)
+                return try JSONDecoder().decode(HistoryState.self, from: data)
+            }
+        }
+
+        throw ServerRelayError.invalidState("No merge result received")
+    }
 }

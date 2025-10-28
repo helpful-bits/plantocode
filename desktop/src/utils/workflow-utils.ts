@@ -450,20 +450,22 @@ export class WorkflowTracker {
   }
   
   private mapJobStatusString(status: string): any {
-    switch (status.toLowerCase()) {
+    const statusKey = status.toLowerCase();
+
+    switch (statusKey) {
       case 'idle':
       case 'created':
       case 'queued':
         return 'queued';
-      case 'acknowledged_by_worker':
+      case 'acknowledgedbyworker':
       case 'preparing':
-      case 'preparing_input':
-      case 'generating_stream':
-      case 'processing_stream':
+      case 'preparinginput':
+      case 'generatingstream':
+      case 'processingstream':
       case 'running':
         return 'running';
       case 'completed':
-      case 'completed_by_tag':
+      case 'completedbytag':
         return 'completed';
       case 'failed':
         return 'failed';
@@ -507,20 +509,22 @@ export class WorkflowTracker {
   
   private calculateStageExecutionTime(status: StageStatus): number | undefined {
     if (!status.startedAt) return undefined;
-    
+
     const startTime = new Date(status.startedAt).getTime();
     if (status.completedAt) {
       const endTime = new Date(status.completedAt).getTime();
       return endTime - startTime;
     }
-    
+
     // For running stages, calculate current execution time
-    if (status.status.toLowerCase() === 'running' || 
-        status.status.toLowerCase() === 'preparing' ||
-        status.status.toLowerCase() === 'processing_stream') {
+    const statusKey = status.status?.toLowerCase?.() ?? '';
+
+    if (statusKey === 'running' ||
+        statusKey === 'preparing' ||
+        statusKey === 'processingstream') {
       return Date.now() - startTime;
     }
-    
+
     return undefined;
   }
   
@@ -529,46 +533,44 @@ export class WorkflowTracker {
     if (responseCurrentStage) {
       return WorkflowUtils.mapTaskTypeToEnum(responseCurrentStage) || undefined;
     }
-    
+
     // Find the first running stage
-    const runningStage = stageJobs.find(job => 
-      job.status === 'running' || 
-      job.status === 'preparing' || 
-      job.status === 'processing_stream'
-    );
-    
+    const runningStage = stageJobs.find(job => {
+      const statusKey = job.status?.toLowerCase();
+      return statusKey === 'running' || statusKey === 'preparing' || statusKey === 'processingstream';
+    });
+
     if (runningStage) {
       return runningStage.stage;
     }
-    
+
     // Find the first pending stage (after completed stages)
-    const pendingStage = stageJobs.find(job => 
-      job.status === 'queued' || 
-      job.status === 'idle' || 
+    const pendingStage = stageJobs.find(job =>
+      job.status === 'queued' ||
+      job.status === 'idle' ||
       job.status === 'created'
     );
-    
+
     return pendingStage?.stage;
   }
   
   private calculateTotalExecutionTime(stageJobs: any[], createdAt?: number, completedAt?: number): number | undefined {
     if (!createdAt) return undefined;
-    
+
     if (completedAt) {
       return completedAt - createdAt;
     }
-    
+
     // For running workflows, calculate current total time
-    const hasRunningStages = stageJobs.some(job => 
-      job.status === 'running' || 
-      job.status === 'preparing' || 
-      job.status === 'processing_stream'
-    );
-    
+    const hasRunningStages = stageJobs.some(job => {
+      const statusKey = job.status?.toLowerCase();
+      return statusKey === 'running' || statusKey === 'preparing' || statusKey === 'processingstream';
+    });
+
     if (hasRunningStages) {
       return Date.now() - createdAt;
     }
-    
+
     return undefined;
   }
 }

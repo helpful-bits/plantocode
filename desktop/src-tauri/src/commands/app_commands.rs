@@ -4,6 +4,7 @@ use crate::db_utils;
 use crate::error::{AppError, AppResult};
 use crate::models::DatabaseInfo;
 use log::info;
+use serde::Serialize;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager, State, command};
 
@@ -43,4 +44,39 @@ pub fn get_database_path_command(app_handle: AppHandle) -> AppResult<String> {
 
     let db_path = app_data_dir.join(DB_FILENAME);
     Ok(db_path.to_string_lossy().to_string())
+}
+
+#[derive(Serialize)]
+pub struct ResourceInfo {
+    pub memory_mb: u64,
+    pub cpu_percent: f32,
+    pub ws_connected: bool,
+}
+
+#[command]
+pub async fn get_resource_info_command(app_handle: AppHandle) -> AppResult<ResourceInfo> {
+    info!("Getting resource information");
+
+    // Check WebSocket connection status
+    let ws_connected = if let Some(client) = app_handle.try_state::<Arc<crate::services::device_link_client::DeviceLinkClient>>() {
+        client.is_connected()
+    } else {
+        false
+    };
+
+    // NOTE: This is a placeholder implementation
+    // To get actual CPU and memory metrics, add sysinfo = "0.30" to Cargo.toml
+    // and use the following code:
+    //
+    // use sysinfo::{System, SystemExt, CpuExt};
+    // let mut sys = System::new_all();
+    // sys.refresh_all();
+    // let total_mem = sys.total_memory() / 1024 / 1024;
+    // let cpu_percent = sys.global_cpu_info().cpu_usage();
+
+    Ok(ResourceInfo {
+        memory_mb: 0, // Placeholder - requires sysinfo crate
+        cpu_percent: 0.0, // Placeholder - requires sysinfo crate
+        ws_connected,
+    })
 }

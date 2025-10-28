@@ -252,12 +252,52 @@ export default function TaskModelSettings({
 
   const handleCopyButtonsChange = useCallback(async (camelCaseKey: keyof TaskSettings, copyButtons: CopyButtonConfig[]) => {
     if (!projectDirectory) return;
-    
+
     const result = await setProjectTaskSetting(projectDirectory, camelCaseKey, 'copyButtons', copyButtons);
     if (result.isSuccess && onRefresh) {
       onRefresh();
     }
   }, [projectDirectory, onRefresh]);
+
+  const handleResetCopyButton = useCallback(async (camelCaseKey: keyof TaskSettings, buttonIndex: number) => {
+    if (!projectDirectory || !serverDefaults) return;
+
+    const currentButtons = getTaskSettings(camelCaseKey)?.copyButtons || [];
+    const defaultButtons = serverDefaults[camelCaseKey]?.copyButtons || [];
+
+    // Replace the button at the given index with the server default
+    if (buttonIndex < defaultButtons.length) {
+      const updatedButtons = [...currentButtons];
+      updatedButtons[buttonIndex] = {
+        ...defaultButtons[buttonIndex],
+        id: currentButtons[buttonIndex].id // Preserve the ID
+      };
+
+      const result = await setProjectTaskSetting(projectDirectory, camelCaseKey, 'copyButtons', updatedButtons);
+      if (result.isSuccess && onRefresh) {
+        onRefresh();
+      }
+    }
+  }, [projectDirectory, serverDefaults, onRefresh]);
+
+  const isCopyButtonDifferentFromDefault = useCallback((taskKey: keyof TaskSettings, buttonIndex: number): boolean => {
+    if (!serverDefaults || !serverDefaults[taskKey]) return false;
+
+    const currentButtons = getTaskSettings(taskKey)?.copyButtons || [];
+    const defaultButtons = serverDefaults[taskKey]?.copyButtons || [];
+
+    // If button index is beyond default buttons, it's a custom button
+    if (buttonIndex >= defaultButtons.length) return false;
+
+    // If button index is beyond current buttons, something is wrong
+    if (buttonIndex >= currentButtons.length) return false;
+
+    const currentButton = currentButtons[buttonIndex];
+    const defaultButton = defaultButtons[buttonIndex];
+
+    // Compare label and content (ignore ID)
+    return currentButton.label !== defaultButton.label || currentButton.content !== defaultButton.content;
+  }, [serverDefaults, taskSettings]);
 
 
   const { fileFinderStages, webSearchStages, workflows, standaloneFeatures } = useMemo(() => {
@@ -710,7 +750,9 @@ export default function TaskModelSettings({
                   onTranscriptionLanguageChange={(languageCode: string) => handleTranscriptionLanguageChange(taskSettingsKey, languageCode)}
                   onCopyButtonsChange={(copyButtons: CopyButtonConfig[]) => handleCopyButtonsChange(taskSettingsKey, copyButtons)}
                   onResetToDefault={(settingName) => handleResetToDefault(taskSettingsKey, settingName)}
+                  onResetCopyButton={(buttonIndex: number) => handleResetCopyButton(taskSettingsKey, buttonIndex)}
                   isDifferentFromDefault={(settingName) => isDifferentFromDefault(taskSettingsKey, settingName)}
+                  isCopyButtonDifferentFromDefault={(buttonIndex: number) => isCopyButtonDifferentFromDefault(taskSettingsKey, buttonIndex)}
                   getSliderValue={(settingName) => getSliderValue(taskSettingsKey, settingName)}
                   providersWithModels={filteredProvidersWithModels}
                 />

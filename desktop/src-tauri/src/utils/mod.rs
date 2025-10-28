@@ -5,6 +5,7 @@ pub mod date_utils;
 pub mod directory_tree;
 pub mod env_utils;
 pub mod error_utils;
+pub mod ffmpeg_utils;
 pub mod file_lock_manager;
 pub mod file_lock_types;
 pub mod fs_utils;

@@ -79,7 +79,11 @@
       "migration_file": "migrations/features/terminal_sessions_upgrade.sql",
       "description": "Upgrade terminal_sessions table with new columns for session persistence and enhanced status tracking",
       "required": true,
-      "priority": 5
+      "priority": 5,
+      "run_if_absent_column": {
+        "table": "terminal_sessions",
+        "column": "session_id"
+      }
     },
     {
       "id": "add_merge_instructions",
@@ -92,6 +96,27 @@
       "run_if_absent_column": {
         "table": "sessions",
         "column": "merge_instructions"
+      }
+    },
+    {
+      "id": "history_state_v1",
+      "migration_file": "migrations/features/history_state_v1.sql",
+      "from_version": "*",
+      "to_version": ">=1.0.0",
+      "required": true,
+      "priority": 30
+    },
+    {
+      "id": "add_history_versions",
+      "from_version": "*",
+      "to_version": ">=1.0.0",
+      "migration_file": "migrations/features/add_history_versions.sql",
+      "description": "Add version tracking columns for history state optimistic locking",
+      "required": true,
+      "priority": 31,
+      "run_if_absent_column": {
+        "table": "sessions",
+        "column": "task_history_version"
       }
     }
   ]

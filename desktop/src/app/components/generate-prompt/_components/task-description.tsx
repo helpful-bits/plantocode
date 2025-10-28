@@ -28,7 +28,8 @@ export interface TaskDescriptionHandle {
   replaceSelection: (newText: string) => void;
   replaceText: (oldText: string, newText: string) => void;
   flushPendingChanges: () => string;
-  setValue: (value: string) => void;
+  setValue: (value: string, opts?: { silent?: boolean }) => void;
+  setValueFromHistory: (value: string) => void;
   getValue: () => string;
   value: string;
   selectionStart: number;
@@ -67,15 +68,18 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
   ) {
     const { state: taskState, actions: taskActions } = useTaskContext();
     const { recordTaskChange } = taskActions;
-    const { isAnalyzingVideo } = taskState;
+    const { isAnalyzingVideo, historyReady } = taskState;
     const sessionActions = useSessionActionsContext();
 
-    // Use ref to track value instead of state to avoid re-renders on every keystroke
+    // Controlled component - parent passes value via initialValue, we maintain local state for performance
+    // Component resets when sessionId changes (via key prop in parent)
+    const [localValue, setLocalValue] = useState(initialValue);
     const valueRef = useRef(initialValue);
     const internalTextareaRef = useRef<HTMLTextAreaElement>(null);
+    const suppressNextDebounceRef = useRef(false);
 
-    // Lightweight state just for isEmpty validation UI
-    const [isEmpty, setIsEmpty] = useState(!initialValue?.trim());
+    // ✅ Calculate during rendering - no state needed
+    const isEmpty = !localValue?.trim();
 
     const { isRecording, stopRecording } = useScreenRecording();
     const [showVideoDialog, setShowVideoDialog] = useState(false);
@@ -85,7 +89,6 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
     const typingIdleTimerRef = React.useRef<number | null>(null);
     const heartbeatIntervalRef = React.useRef<number | null>(null);
     const lastQueuedRef = useRef<string | null>(null);
-    const isEmptyDebounceRef = useRef<number | null>(null);
     const wasPasteRef = useRef(false);
     const historyChangeDebounceRef = useRef<number | null>(null);
 
@@ -102,21 +105,25 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
     // Immediate flush function for blur events
     const flushPendingUpdate = React.useCallback((value: string) => {
       // Cancel any pending debounced call and execute immediately
-      return queueTaskDescriptionUpdate(sessionId, value).catch((error) => {
-        console.error("Failed to flush task description on blur:", error);
-      });
+      return queueTaskDescriptionUpdate(sessionId, value).catch(() => {});
     }, [sessionId]);
 
     const handleValueChange = React.useCallback((newValue: string) => {
-      // Update ref immediately (no re-render)
-      valueRef.current = newValue;
-      // Update textarea value if it exists
-      if (internalTextareaRef.current) {
-        internalTextareaRef.current.value = newValue;
+      if (suppressNextDebounceRef.current) {
+        suppressNextDebounceRef.current = false;
+        valueRef.current = newValue;
+        setLocalValue(newValue);
+        // DO NOT call debouncedQueueUpdate or mutate lastQueuedRef here
+        return;
       }
-      // Deduplicate: Skip if we already queued this exact value
+      // Update ref immediately
+      valueRef.current = newValue;
+      // Update state for controlled component
+      setLocalValue(newValue);
+
+      // Deduplicate: Skip IPC if we already queued this exact value
       if (newValue === lastQueuedRef.current) {
-        return; // Skip if we already queued this exact value
+        return;
       }
       lastQueuedRef.current = newValue;
       // Debounce the IPC call to reduce overhead
@@ -136,15 +143,11 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
     const handleFocus = () => {
       isFocusedRef.current = true;
       (window as any).__taskDescriptionEditorFocused = true;
-      startTaskEdit(sessionId).catch((error) => {
-        console.error("Failed to start task edit:", error);
-      });
+      startTaskEdit(sessionId).catch(() => {});
       onFocusExtra?.();
 
       heartbeatIntervalRef.current = window.setInterval(() => {
-        startTaskEdit(sessionId).catch((error) => {
-          console.error("Failed to send edit heartbeat:", error);
-        });
+        startTaskEdit(sessionId).catch(() => {});
       }, 3000);
     };
 
@@ -161,23 +164,8 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
       const currentValue = valueRef.current;
       await flushPendingUpdate(currentValue);
 
-      // Flush isEmpty immediately on blur
-      if (isEmptyDebounceRef.current) {
-        clearTimeout(isEmptyDebounceRef.current);
-        isEmptyDebounceRef.current = null;
-      }
-      setIsEmpty(!currentValue.trim());
-
       sessionActions.updateCurrentSessionFields({ taskDescription: valueRef.current });
-      await endTaskEdit(sessionId).catch((error) => {
-        console.error("Failed to end task edit:", error);
-      });
-
-      // NOTE: We do NOT fetch from backend here to avoid race conditions.
-      // Text improvement/refinement jobs update the DOM and queue updates,
-      // but those updates may not be persisted yet when blur fires.
-      // Fetching and overwriting would revert the improved text.
-      // The frontend valueRef is the source of truth.
+      await endTaskEdit(sessionId).catch(() => {});
 
       onBlurExtra?.();
     };
@@ -194,8 +182,8 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
           textarea.setSelectionRange(start + text.length, start + text.length);
         }, 0);
       },
-      appendText: (text: string, separator = "\n\n") => {
-        const next = `${valueRef.current}${separator}${text}`;
+      appendText: (text: string) => {
+        const next = `${valueRef.current}\n\n${text}`;
         handleValueChange(next);
         if (!isFocusedRef.current) {
           setTimeout(() => {
@@ -225,8 +213,13 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
           handleValueChange(next);
         }
       },
-      setValue: (newValue: string) => {
-        handleValueChange(newValue);
+      setValue: (value: string, opts?: { silent?: boolean }) => {
+        if (opts?.silent) suppressNextDebounceRef.current = true;
+        handleValueChange(value);
+      },
+      setValueFromHistory: (value: string) => {
+        suppressNextDebounceRef.current = true;
+        handleValueChange(value);
       },
       getValue: () => valueRef.current,
       flushPendingChanges: () => valueRef.current,
@@ -241,13 +234,9 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
     // Use shared resize hook
     useTextareaResize(internalTextareaRef, valueRef.current, { minHeight: 200, maxHeight: 600, extraHeight: 50 });
 
-    // Cleanup debounced isEmpty on unmount
+    // Cleanup history debounce on unmount
     useEffect(() => {
       return () => {
-        if (isEmptyDebounceRef.current) {
-          clearTimeout(isEmptyDebounceRef.current);
-          isEmptyDebounceRef.current = null;
-        }
         if (historyChangeDebounceRef.current) {
           clearTimeout(historyChangeDebounceRef.current);
           historyChangeDebounceRef.current = null;
@@ -255,23 +244,36 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
       };
     }, []);
 
+    useEffect(() => {
+      const handleExternalChange = (event: Event) => {
+        const customEvent = event as CustomEvent;
+        const { sessionId: eventSessionId, value } = customEvent.detail || {};
+
+        if (eventSessionId === sessionId && value !== undefined) {
+          valueRef.current = value;
+          setLocalValue(value);
+        }
+      };
+
+      window.addEventListener('task-description-local-change', handleExternalChange);
+      return () => {
+        window.removeEventListener('task-description-local-change', handleExternalChange);
+      };
+    }, [sessionId]);
+
     const handlePaste = useCallback(() => {
       wasPasteRef.current = true;
     }, []);
 
     const handleChange = useCallback((e: ChangeEvent<HTMLTextAreaElement>) => {
       const newValue = e.target.value;
-      valueRef.current = newValue;
-      debouncedQueueUpdate(sessionId, newValue);
 
-      // Debounce isEmpty updates to reduce re-renders
-      if (isEmptyDebounceRef.current) {
-        clearTimeout(isEmptyDebounceRef.current);
-      }
-      isEmptyDebounceRef.current = window.setTimeout(() => {
-        setIsEmpty(!newValue.trim());
-        isEmptyDebounceRef.current = null;
-      }, 150);
+      // ✅ Update state directly in event handler
+      valueRef.current = newValue;
+      setLocalValue(newValue);
+
+      // Queue IPC update (debounced)
+      debouncedQueueUpdate(sessionId, newValue);
 
       // History tracking with debounce for typing, immediate for paste
       if (historyChangeDebounceRef.current) {
@@ -316,7 +318,7 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
                   variant="outline"
                   size="icon-sm"
                   onClick={onUndo}
-                  disabled={!canUndo || disabled}
+                  disabled={!historyReady || !canUndo || disabled}
                   title="Undo last change"
                   className="h-6 w-6"
                 >
@@ -326,7 +328,7 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
                   variant="outline"
                   size="icon-sm"
                   onClick={onRedo}
-                  disabled={!canRedo || disabled}
+                  disabled={!historyReady || !canRedo || disabled}
                   title="Redo undone change"
                   className="h-6 w-6"
                 >
@@ -351,16 +353,19 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
                   const prefix = needsSpaceBefore ? ' ' : '';
                   const trimmedText = text.trim();
                   const newValue = beforeCursor + prefix + trimmedText + afterCursor;
+
+                  // ✅ Update state directly - let React handle the DOM
                   valueRef.current = newValue;
-                  el.value = newValue;
+                  setLocalValue(newValue);
                   debouncedQueueUpdate(sessionId, newValue);
+
                   // Record voice input in history
                   if (recordTaskChange) {
                     recordTaskChange('voice', newValue);
                   }
-                  setIsEmpty(!newValue.trim());
                   sessionActions.updateCurrentSessionFields({ taskDescription: newValue });
-                  el.dispatchEvent(new Event('input', { bubbles: true }));
+
+                  // Set cursor position after state updates
                   setTimeout(() => {
                     const newCursorPos = beforeCursor.length + prefix.length + trimmedText.length;
                     el.setSelectionRange(newCursorPos, newCursorPos);
@@ -429,8 +434,13 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
               ref={internalTextareaRef}
               id="taskDescArea"
               data-field="taskDescription"
-              className={`border rounded-xl bg-background backdrop-blur-sm text-foreground p-4 w-full resize-y font-normal shadow-soft ${isEmpty ? "border-destructive/20 bg-destructive/5" : "border-border/60"}`}
-              defaultValue={initialValue}
+              data-merge-pulse={taskState.showMergePulse}
+              className={cn(
+                "border rounded-xl bg-background backdrop-blur-sm text-foreground p-4 w-full resize-y font-normal shadow-soft",
+                isEmpty ? "border-destructive/20 bg-destructive/5" : "border-border/60",
+                taskState.showMergePulse && "animate-pulse-border"
+              )}
+              value={localValue}
               onChange={handleChange}
               onPaste={handlePaste}
               onFocus={handleFocus}

@@ -6,6 +6,42 @@ use crate::services::config_cache_service::ConfigCache;
 use crate::services::system_prompt_cache_service::SystemPromptCacheService;
 use tauri::{AppHandle, Manager};
 
+fn pick_fallback_model(app_handle: &AppHandle) -> AppResult<(String, f32, u32)> {
+    let cache = app_handle.state::<ConfigCache>().inner();
+    let cache_guard = cache
+        .lock()
+        .map_err(|e| AppError::ConfigError(format!("Failed to lock cache: {}", e)))?;
+
+    if let Some(runtime_config_value) = cache_guard.get("runtime_ai_config") {
+        if let Ok(runtime_config) =
+            serde_json::from_value::<RuntimeAIConfig>(runtime_config_value.clone())
+        {
+            // Try task types in priority order
+            let task_types = [
+                "implementation_plan_title",
+                "implementation_plan",
+                "generic_llm_stream",
+                "text_improvement",
+            ];
+
+            for task_type in &task_types {
+                if let Some(task_config) = runtime_config.tasks.get(*task_type) {
+                    let model = task_config.model.clone();
+                    if !model.is_empty() && model != "auto" {
+                        let temperature = task_config.temperature.max(0.2);
+                        let max_tokens = (task_config.max_tokens as u32).max(64);
+                        return Ok((model, temperature, max_tokens));
+                    }
+                }
+            }
+        }
+    }
+
+    Err(AppError::ConfigError(
+        "No suitable model found for plan title generation".into(),
+    ))
+}
+
 const MAX_TITLE_CHARS: usize = 140;
 
 async fn resolve_model_defaults(app_handle: &AppHandle) -> AppResult<(String, f32, u32)> {
@@ -18,16 +54,18 @@ async fn resolve_model_defaults(app_handle: &AppHandle) -> AppResult<(String, f3
         if let Ok(runtime_config) =
             serde_json::from_value::<RuntimeAIConfig>(runtime_config_value.clone())
         {
-            if let Some(task_config) = runtime_config.tasks.get("implementation_plan") {
+            if let Some(task_config) = runtime_config.tasks.get("implementation_plan_title") {
                 let model = task_config.model.clone();
-                let temperature = task_config.temperature;
-                let max_tokens = task_config.max_tokens;
-                return Ok((model, temperature, max_tokens as u32));
+                if !model.is_empty() && model != "auto" {
+                    let temperature = task_config.temperature;
+                    let max_tokens = task_config.max_tokens;
+                    return Ok((model, temperature, max_tokens as u32));
+                }
             }
         }
     }
 
-    Ok(("auto".to_string(), 0.2_f32, 64_u32))
+    pick_fallback_model(app_handle)
 }
 
 async fn load_system_prompt(app_handle: &AppHandle) -> String {
@@ -54,7 +92,7 @@ pub async fn generate_plan_title(
     request_id: Option<String>,
     model_override: Option<(String, f32, u32)>,
 ) -> AppResult<Option<String>> {
-    let (model, temperature, _max_tokens) = match model_override {
+    let (model, temperature, max_tokens) = match model_override {
         Some((m, t, k)) => (m, t, k),
         None => resolve_model_defaults(app_handle).await?,
     };
@@ -89,10 +127,10 @@ pub async fn generate_plan_title(
     let options = ApiClientOptions {
         model,
         stream: false,
-        max_tokens: 64,
+        max_tokens,
         temperature,
         request_id,
-        task_type: Some("implementation_plan_title".to_string()),
+        task_type: Some("implementation_plan".to_string()),
     };
 
     let response = api_client.chat_completion(messages, options).await?;

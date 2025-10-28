@@ -288,6 +288,15 @@ pub async fn reset_database_command(app_handle: AppHandle) -> AppResult<serde_js
         }
     }
 
+    // Close the database pool to release file locks before removal
+    info!("[DatabaseMaintenance] Closing database pool before file removal");
+    let pool = app_handle
+        .state::<Arc<sqlx::SqlitePool>>()
+        .inner()
+        .clone();
+    pool.close().await;
+    info!("[DatabaseMaintenance] Database pool closed");
+
     // Remove database files
     let mut removal_errors = Vec::new();
 

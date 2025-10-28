@@ -39,6 +39,9 @@ export function useImplementationPlanActions() {
         return;
       }
 
+      // Ensure session data is persisted before validation and backend operation
+      await flushSaves();
+
       const freshResult = await getSessionAction(activeSessionId);
       const fresh = freshResult?.isSuccess && freshResult.data ? freshResult.data : null;
 
@@ -64,8 +67,6 @@ export function useImplementationPlanActions() {
       setPlanCreationState("submitting");
 
       try {
-        // Ensure session data is persisted before backend operation
-        await flushSaves();
         
         // Call the Tauri command directly
         // Note: enableWebSearch parameter is not yet supported by the backend command

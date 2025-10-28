@@ -212,6 +212,12 @@ pub enum AppError {
 
     #[error("Terminal no output: {0}")]
     TerminalNoOutput(String),
+
+    #[error("Conflict: {0}")]
+    Conflict(String),
+
+    #[error("Processing error: {0}")]
+    Processing(String),
 }
 
 impl From<std::io::Error> for AppError {
@@ -346,6 +352,8 @@ impl From<AppError> for SerializableError {
             AppError::TerminalAttachmentFailed(_) => "TERMINAL_ATTACHMENT_FAILED",
             AppError::TerminalNoOutput(_) => "TERMINAL_NO_OUTPUT",
             AppError::StreamError(_) => "STREAM_ERROR",
+            AppError::Conflict(_) => "CONFLICT",
+            AppError::Processing(_) => "PROCESSING_ERROR",
         }
         .to_string();
 

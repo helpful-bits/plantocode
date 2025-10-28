@@ -640,3 +640,39 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 }
 
 export const useNotification = () => useContext(NotificationContext);
+
+// Only available in development mode
+export const forceHistorySyncForDebug = async (sessionId: string, kind: 'task' | 'files') => {
+  if (process.env.NODE_ENV === 'production') {
+    console.warn('Force sync only available in development');
+    return;
+  }
+
+  try {
+    const { getHistoryStateAction } = await import('@/actions/session/history.actions');
+    const state = await getHistoryStateAction(sessionId, kind);
+
+    console.log(`[DEBUG] Force synced ${kind} history:`, {
+      entriesCount: state.entries.length,
+      currentIndex: state.currentIndex,
+      version: state.version,
+      checksum: state.checksum.slice(0, 8) + '...',
+    });
+
+    // Trigger a local re-sync event
+    window.dispatchEvent(
+      new CustomEvent('history-state-changed', {
+        detail: {
+          sessionId,
+          kind,
+          state,
+          version: state.version,
+          checksum: state.checksum,
+          relayOrigin: 'force-sync-debug',
+        },
+      })
+    );
+  } catch (err) {
+    console.error(`[DEBUG] Force sync failed:`, err);
+  }
+};

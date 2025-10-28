@@ -4,11 +4,33 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useSessionStateContext, useSessionActionsContext } from "@/contexts/session";
 import { listProjectFilesAction } from "@/actions/file-system/list-project-files.action";
 import { getFilesMetadata } from "@/utils/tauri-fs";
-import { getFileSelectionHistoryAction, syncFileSelectionHistoryAction, type FileSelectionHistoryEntry } from "@/actions/session/history.actions";
+import {
+  getHistoryStateAction,
+  syncHistoryStateAction,
+  getDeviceIdAction,
+} from "@/actions/session/history.actions";
 import { areArraysEqual } from "@/utils/array-utils";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { updateSessionFilesAction } from "@/actions/session/update-files.actions";
+
+// Debounce utility
+function debounce<T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void {
+  let timeout: NodeJS.Timeout | null = null;
+
+  return function(...args: Parameters<T>) {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+
+    timeout = setTimeout(() => {
+      func(...args);
+    }, wait);
+  };
+}
 
 // File info from filesystem (without selection state)
 interface FileInfo {
@@ -23,6 +45,23 @@ interface FileInfo {
 interface ExtendedFileInfo extends FileInfo {
   included: boolean;
   excluded: boolean;
+}
+
+// New HistoryState interfaces - matches documented schema
+interface FileHistoryEntry {
+  includedFiles: string[];       // Note: Backend stores as JSON string, but we keep as array here
+  forceExcludedFiles: string[];  // Note: Backend stores as JSON string, but we keep as array here
+  timestampMs: number;            // Matches documented schema timestampMs
+  deviceId: string;
+  opType: string;
+  sequenceNumber: number;
+}
+
+interface FileHistoryState {
+  entries: FileHistoryEntry[];
+  currentIndex: number;
+  version: number;
+  checksum: string;
 }
 
 
@@ -45,9 +84,23 @@ export function useFileSelection(projectDirectory?: string) {
   const applyingRemoteRef = useRef(false);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // History for undo/redo - now with timestamps for each entry
-  const [historyState, setHistoryState] = useState<{ entries: (FileSelectionHistoryEntry & { createdAt: number })[], currentIndex: number }>({ entries: [], currentIndex: -1 });
+  // New HistoryState management
+  const [historyState, setHistoryState] = useState<FileHistoryState>({
+    entries: [],
+    currentIndex: 0,
+    version: 1,
+    checksum: '',
+  });
+  const [deviceId, setDeviceId] = useState<string>('');
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const isActivelyModifyingRef = useRef(false);
+  const isNavigatingHistoryRef = useRef(false);
   const isUndoRedoInProgress = useRef(false);
+  const remoteHistoryApplyingRef = useRef(false);
+  const pendingRemoteFilesStateRef = useRef<FileHistoryState | null>(null);
+
+  // Legacy history state for backward compatibility
   const historyStateRef = useRef(historyState);
   const historyInitialized = useRef(false);
   const historySessionIdRef = useRef<string | null>(null);
@@ -59,6 +112,17 @@ export function useFileSelection(projectDirectory?: string) {
   // Memoized sets for fast lookups in toggles
   const includedSet = useMemo(() => new Set(sessionIncluded), [sessionIncluded]);
   const excludedSet = useMemo(() => new Set(sessionExcluded), [sessionExcluded]);
+
+  // Load device ID
+  useEffect(() => {
+    getDeviceIdAction().then(setDeviceId);
+  }, []);
+
+  // Update canUndo/canRedo
+  useEffect(() => {
+    setCanUndo(historyState.currentIndex > 0);
+    setCanRedo(historyState.currentIndex < historyState.entries.length - 1);
+  }, [historyState.currentIndex, historyState.entries.length]);
 
   const broadcastBrowserState = useCallback(async () => {
     if (!currentSession?.id || !projectDirectory || applyingRemoteRef.current) {
@@ -260,7 +324,12 @@ export function useFileSelection(projectDirectory?: string) {
     historyInitialized.current = false;
     isUndoRedoInProgress.current = false;
 
-    setHistoryState({ entries: [], currentIndex: -1 });
+    setHistoryState({
+      entries: [],
+      currentIndex: -1,
+      version: 1,
+      checksum: '',
+    });
 
     if (!sessionId) {
       return;
@@ -270,21 +339,16 @@ export function useFileSelection(projectDirectory?: string) {
 
     (async () => {
       try {
-        const result = await getFileSelectionHistoryAction(sessionId);
+        // NEW API returns HistoryState directly (transformation handled in getHistoryStateAction)
+        const state = await getHistoryStateAction(sessionId, 'files') as any as FileHistoryState;
 
         if (cancelled || historySessionIdRef.current !== sessionId) {
           return;
         }
 
-        if (result.isSuccess && result.data) {
-          const entries = result.data.map(entry => ({
-            includedFiles: entry.includedFiles,
-            forceExcludedFiles: entry.forceExcludedFiles,
-            createdAt: entry.createdAt
-          }));
-
+        if (state && state.entries && state.entries.length > 0) {
           historyInitialized.current = true;
-          setHistoryState({ entries, currentIndex: entries.length - 1 });
+          setHistoryState(state);
         } else {
           historyInitialized.current = true;
         }
@@ -306,52 +370,138 @@ export function useFileSelection(projectDirectory?: string) {
     historyStateRef.current = historyState;
   }, [historyState]);
 
+  // NOTE: Legacy sync effects removed - periodic sync timer handles all persistence
+
+  // Track active modifications
+  const handleFileSelectionStart = useCallback(() => {
+    isActivelyModifyingRef.current = true;
+  }, []);
+
+  const handleFileSelectionEnd = useCallback(() => {
+    isActivelyModifyingRef.current = false;
+
+    if (pendingRemoteFilesStateRef.current) {
+      applyPendingRemoteState();
+    }
+  }, []);
+
+  // Apply remote state helper
+  const applyRemoteState = useCallback((state: FileHistoryState) => {
+    remoteHistoryApplyingRef.current = true;
+
+    try {
+      setHistoryState(state);
+
+      const currentEntry = state.entries[state.currentIndex];
+      if (currentEntry) {
+        updateCurrentSessionFields({
+          includedFiles: currentEntry.includedFiles,
+          forceExcludedFiles: currentEntry.forceExcludedFiles,
+        });
+      }
+    } finally {
+      remoteHistoryApplyingRef.current = false;
+    }
+  }, [updateCurrentSessionFields]);
+
+  const applyPendingRemoteState = useCallback(() => {
+    if (!pendingRemoteFilesStateRef.current) return;
+
+    const pending = pendingRemoteFilesStateRef.current;
+    pendingRemoteFilesStateRef.current = null;
+
+    applyRemoteState(pending);
+  }, [applyRemoteState]);
+
+  // Debounced commit (500ms)
+  const commitFileSelection = useCallback(
+    debounce(async (includedFiles: string[], forceExcludedFiles: string[]) => {
+      const sessionId = currentSession?.id;
+      if (!sessionId || !deviceId) return;
+      if (isNavigatingHistoryRef.current || remoteHistoryApplyingRef.current) return;
+
+      const lastEntry = historyState.entries[historyState.currentIndex];
+      const isSameSelection =
+        lastEntry &&
+        JSON.stringify(lastEntry.includedFiles.sort()) === JSON.stringify([...includedFiles].sort()) &&
+        JSON.stringify(lastEntry.forceExcludedFiles.sort()) === JSON.stringify([...forceExcludedFiles].sort());
+
+      if (isSameSelection) return;
+
+      const newEntry: FileHistoryEntry = {
+        includedFiles,
+        forceExcludedFiles,
+        timestampMs: Date.now(),
+        deviceId,
+        opType: 'user-edit',
+        sequenceNumber: historyState.entries.length,
+      };
+
+      const trimmedEntries = historyState.entries.slice(0, historyState.currentIndex + 1);
+      const newEntries = [...trimmedEntries, newEntry].slice(-50);
+
+      const newState: FileHistoryState = {
+        entries: newEntries,
+        currentIndex: newEntries.length - 1,
+        version: historyState.version,
+        checksum: '',
+      };
+
+      try {
+        // Convert FileHistoryState to API format - arrays become JSON strings
+        const apiState = {
+          entries: newState.entries.map(e => ({
+            includedFiles: JSON.stringify(e.includedFiles),
+            forceExcludedFiles: JSON.stringify(e.forceExcludedFiles),
+            timestampMs: e.timestampMs,
+            deviceId: e.deviceId,
+            opType: e.opType,
+            sequenceNumber: e.sequenceNumber,
+            version: 1,  // Each entry needs version field for backend struct
+          })),
+          currentIndex: newState.currentIndex,
+          version: newState.version,
+          checksum: newState.checksum,
+        };
+
+        const updatedApiState = await syncHistoryStateAction(
+          sessionId,
+          'files',
+          apiState as any,
+          historyState.version
+        );
+
+        // Convert back to FileHistoryState - JSON strings become arrays
+        const updatedState: FileHistoryState = {
+          entries: updatedApiState.entries.map((e: any) => ({
+            includedFiles: JSON.parse(e.includedFiles),
+            forceExcludedFiles: JSON.parse(e.forceExcludedFiles),
+            timestampMs: e.timestampMs,
+            deviceId: e.deviceId,
+            opType: e.opType,
+            sequenceNumber: e.sequenceNumber,
+          })),
+          currentIndex: updatedApiState.currentIndex,
+          version: updatedApiState.version,
+          checksum: updatedApiState.checksum,
+        };
+
+        setHistoryState(updatedState);
+      } catch (err) {
+        console.error('File selection commit failed:', err);
+      }
+    }, 500),
+    [currentSession?.id, deviceId, historyState, updateCurrentSessionFields]
+  );
+
+  // Trigger commit when session files change
   useEffect(() => {
-    const flushHistory = () => {
-      if (!currentSession?.id) {
-        return;
-      }
-      if (historySessionIdRef.current !== currentSession.id) {
-        return;
-      }
-      if (!historyInitialized.current) {
-        return;
-      }
-      if (historyStateRef.current.entries.length === 0) {
-        return;
-      }
-
-      syncFileSelectionHistoryAction(currentSession.id, historyStateRef.current.entries);
-    };
-
-    window.addEventListener('flush-file-selection-history', flushHistory);
-
-    return () => {
-      window.removeEventListener('flush-file-selection-history', flushHistory);
-    };
-  }, [currentSession?.id]);
-
-  useEffect(() => {
-    if (!currentSession?.id) {
-      return;
+    if (!isNavigatingHistoryRef.current && !remoteHistoryApplyingRef.current) {
+      commitFileSelection(sessionIncluded, sessionExcluded);
     }
-    if (historySessionIdRef.current !== currentSession.id) {
-      return;
-    }
-    if (!historyInitialized.current) {
-      return;
-    }
-    if (historyState.entries.length === 0) {
-      return;
-    }
-    if (isUndoRedoInProgress.current) {
-      return;
-    }
+  }, [sessionIncluded, sessionExcluded, commitFileSelection]);
 
-    syncFileSelectionHistoryAction(currentSession.id, historyState.entries);
-  }, [historyState, currentSession?.id]);
-
-  // Declarative history management
+  // Declarative history management (legacy - keeping for backward compatibility)
   useEffect(() => {
     // Don't create history entries until history is initialized from DB
     if (!historyInitialized.current) {
@@ -364,29 +514,33 @@ export function useFileSelection(projectDirectory?: string) {
         return prevState;
       }
 
-      const currentState = {
-        includedFiles: sessionIncluded,
-        forceExcludedFiles: sessionExcluded,
-        createdAt: Date.now()
-      };
-
       const currentEntry = prevState.entries[prevState.currentIndex];
       if (currentEntry &&
-          areArraysEqual([...currentState.includedFiles].sort(), [...currentEntry.includedFiles].sort()) &&
-          areArraysEqual([...currentState.forceExcludedFiles].sort(), [...currentEntry.forceExcludedFiles].sort())) {
+          areArraysEqual([...sessionIncluded].sort(), [...currentEntry.includedFiles].sort()) &&
+          areArraysEqual([...sessionExcluded].sort(), [...currentEntry.forceExcludedFiles].sort())) {
         return prevState;
       }
 
       const newEntries = prevState.entries.slice(0, prevState.currentIndex + 1);
-      newEntries.push(currentState);
+      const newEntry: FileHistoryEntry = {
+        includedFiles: sessionIncluded,
+        forceExcludedFiles: sessionExcluded,
+        timestampMs: Date.now(),
+        deviceId: deviceId || 'unknown',
+        opType: 'user-edit',
+        sequenceNumber: newEntries.length,
+      };
+      newEntries.push(newEntry);
       const limitedEntries = newEntries.slice(-50);
 
       return {
         entries: limitedEntries,
-        currentIndex: limitedEntries.length - 1
+        currentIndex: limitedEntries.length - 1,
+        version: prevState.version,
+        checksum: prevState.checksum,
       };
     });
-  }, [sessionIncluded, sessionExcluded]);
+  }, [sessionIncluded, sessionExcluded, deviceId]);
 
   // Toggle file inclusion
   const toggleFileSelection = useCallback((path: string) => {
@@ -468,7 +622,146 @@ export function useFileSelection(projectDirectory?: string) {
     }
   }, [currentSession, includedSet, excludedSet, sessionIncluded, sessionExcluded, updateCurrentSessionFields]);
 
-  // Undo functionality
+  // Undo/Redo for file selections
+  const handleUndo = useCallback(async () => {
+    const sessionId = currentSession?.id;
+    if (!canUndo || !sessionId) return;
+
+    isNavigatingHistoryRef.current = true;
+    isUndoRedoInProgress.current = true;
+
+    try {
+      const newIndex = historyState.currentIndex - 1;
+      const newState: FileHistoryState = {
+        ...historyState,
+        currentIndex: newIndex,
+      };
+
+      // Convert to API format - arrays become JSON strings
+      const apiState = {
+        entries: newState.entries.map(e => ({
+          includedFiles: JSON.stringify(e.includedFiles),
+          forceExcludedFiles: JSON.stringify(e.forceExcludedFiles),
+          timestampMs: e.timestampMs,
+          deviceId: e.deviceId,
+          opType: e.opType,
+          sequenceNumber: e.sequenceNumber,
+          version: 1,  // Each entry needs version field for backend struct
+        })),
+        currentIndex: newState.currentIndex,
+        version: newState.version,
+        checksum: newState.checksum,
+      };
+
+      const updatedApiState = await syncHistoryStateAction(
+        sessionId,
+        'files',
+        apiState as any,
+        historyState.version
+      );
+
+      // Convert back to FileHistoryState - JSON strings become arrays
+      const updatedState: FileHistoryState = {
+        entries: updatedApiState.entries.map((e: any) => ({
+          includedFiles: JSON.parse(e.includedFiles),
+          forceExcludedFiles: JSON.parse(e.forceExcludedFiles),
+          timestampMs: e.timestampMs,
+          deviceId: e.deviceId,
+          opType: e.opType,
+          sequenceNumber: e.sequenceNumber,
+        })),
+        currentIndex: updatedApiState.currentIndex,
+        version: updatedApiState.version,
+        checksum: updatedApiState.checksum,
+      };
+
+      setHistoryState(updatedState);
+
+      const entry = updatedState.entries[newIndex];
+      if (entry) {
+        updateCurrentSessionFields({
+          includedFiles: entry.includedFiles,
+          forceExcludedFiles: entry.forceExcludedFiles,
+        });
+      }
+    } catch (err) {
+      console.error('File undo failed:', err);
+    } finally {
+      isNavigatingHistoryRef.current = false;
+      isUndoRedoInProgress.current = false;
+    }
+  }, [canUndo, currentSession?.id, historyState, updateCurrentSessionFields]);
+
+  const handleRedo = useCallback(async () => {
+    const sessionId = currentSession?.id;
+    if (!canRedo || !sessionId) return;
+
+    isNavigatingHistoryRef.current = true;
+    isUndoRedoInProgress.current = true;
+
+    try {
+      const newIndex = historyState.currentIndex + 1;
+      const newState: FileHistoryState = {
+        ...historyState,
+        currentIndex: newIndex,
+      };
+
+      // Convert to API format - arrays become JSON strings
+      const apiState = {
+        entries: newState.entries.map(e => ({
+          includedFiles: JSON.stringify(e.includedFiles),
+          forceExcludedFiles: JSON.stringify(e.forceExcludedFiles),
+          timestampMs: e.timestampMs,
+          deviceId: e.deviceId,
+          opType: e.opType,
+          sequenceNumber: e.sequenceNumber,
+          version: 1,  // Each entry needs version field for backend struct
+        })),
+        currentIndex: newState.currentIndex,
+        version: newState.version,
+        checksum: newState.checksum,
+      };
+
+      const updatedApiState = await syncHistoryStateAction(
+        sessionId,
+        'files',
+        apiState as any,
+        historyState.version
+      );
+
+      // Convert back to FileHistoryState - JSON strings become arrays
+      const updatedState: FileHistoryState = {
+        entries: updatedApiState.entries.map((e: any) => ({
+          includedFiles: JSON.parse(e.includedFiles),
+          forceExcludedFiles: JSON.parse(e.forceExcludedFiles),
+          timestampMs: e.timestampMs,
+          deviceId: e.deviceId,
+          opType: e.opType,
+          sequenceNumber: e.sequenceNumber,
+        })),
+        currentIndex: updatedApiState.currentIndex,
+        version: updatedApiState.version,
+        checksum: updatedApiState.checksum,
+      };
+
+      setHistoryState(updatedState);
+
+      const entry = updatedState.entries[newIndex];
+      if (entry) {
+        updateCurrentSessionFields({
+          includedFiles: entry.includedFiles,
+          forceExcludedFiles: entry.forceExcludedFiles,
+        });
+      }
+    } catch (err) {
+      console.error('File redo failed:', err);
+    } finally {
+      isNavigatingHistoryRef.current = false;
+      isUndoRedoInProgress.current = false;
+    }
+  }, [canRedo, currentSession?.id, historyState, updateCurrentSessionFields]);
+
+  // Legacy undo/redo (keeping for backward compatibility)
   const undo = useCallback(() => {
     if (historyState.currentIndex <= 0) {
       return;
@@ -499,7 +792,6 @@ export function useFileSelection(projectDirectory?: string) {
     });
   }, [historyState, updateCurrentSessionFields, currentSession?.includedFiles, currentSession?.forceExcludedFiles]);
 
-  // Redo functionality
   const redo = useCallback(() => {
     if (historyState.currentIndex >= historyState.entries.length - 1) {
       return;
@@ -730,6 +1022,32 @@ export function useFileSelection(projectDirectory?: string) {
     });
   }, [currentSession, filteredAndSortedFiles, excludedSet, sessionExcluded, updateCurrentSessionFields]);
 
+  // Listen for remote updates
+  useEffect(() => {
+    const sessionId = currentSession?.id;
+    if (!sessionId) return;
+
+    const handleHistoryStateChanged = (event: CustomEvent) => {
+      const { sessionId: eventSessionId, kind, state } = event.detail;
+
+      if (eventSessionId !== sessionId || kind !== 'files') return;
+      if (remoteHistoryApplyingRef.current) return;
+
+      if (isActivelyModifyingRef.current) {
+        pendingRemoteFilesStateRef.current = state;
+        return;
+      }
+
+      applyRemoteState(state);
+    };
+
+    window.addEventListener('history-state-changed', handleHistoryStateChanged as EventListener);
+
+    return () => {
+      window.removeEventListener('history-state-changed', handleHistoryStateChanged as EventListener);
+    };
+  }, [currentSession?.id, applyRemoteState]);
+
   useEffect(() => {
     let unlisten: UnlistenFn | null = null;
 
@@ -805,10 +1123,16 @@ export function useFileSelection(projectDirectory?: string) {
     refreshFiles,
     includedCount,
     totalCount: allProjectFiles.length,
+    // New HistoryState handlers
+    handleUndo,
+    handleRedo,
+    canUndo,
+    canRedo,
+    handleFileSelectionStart,
+    handleFileSelectionEnd,
+    // Legacy undo/redo for backward compatibility
     undo,
     redo,
-    canUndo: historyState.currentIndex > 0,
-    canRedo: historyState.currentIndex < historyState.entries.length - 1,
     selectFiltered,
     deselectFiltered,
     excludeFiltered,

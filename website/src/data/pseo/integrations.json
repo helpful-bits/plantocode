@@ -42,43 +42,6 @@
       ]
     },
     {
-      "slug": "openai-o3/terminal-agent",
-      "tool_integration": "openai-o3",
-      "feature": "terminal-agent",
-      "headline": "OpenAI o3 as Your Terminal Agent",
-      "subhead": "Run o3 reasoning models directly in persistent terminal sessions",
-      "meta_title": "OpenAI o3 Terminal Agent - Direct Execution | PlanToCode",
-      "meta_description": "Execute OpenAI o3 reasoning directly in terminal. Reasoning summaries via the Responses API (raw internal chains are not exposed), persistent sessions, voice input. The missing o3 terminal interface.",
-      "primary_cta": "Run o3 in Terminal",
-      "publish": true,
-      "priority": 1,
-      "pain_points": [
-        {
-          "problem": "o3's output requires full context",
-          "solution": "Detailed reasoning traces in terminal"
-        },
-        {
-          "problem": "Can't execute o3's complex plans",
-          "solution": "Direct terminal execution with review"
-        },
-        {
-          "problem": "o3 lacks persistent context",
-          "solution": "Session recording maintains full history"
-        }
-      ],
-      "workflow_steps": [
-        "Connect o3 to PlanToCode",
-        "Stream reasoning to terminal",
-        "Review generated commands",
-        "Execute with full visibility"
-      ],
-      "key_features": [
-        "Reasoning summaries available (Responses API) - raw internal chains withheld",
-        "Persistent session context via Responses API threads/objects (no raw chain-of-thought; reasoning summaries only)",
-        "Voice-controlled execution"
-      ]
-    },
-    {
       "slug": "cursor/composer-mode/architectural-plans",
       "tool_integration": "cursor",
       "feature": "composer-mode",

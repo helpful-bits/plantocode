@@ -1,9 +1,11 @@
 use crate::error::AppResult;
 use crate::models::{
-    CreateSessionRequest, FileSelectionHistoryEntry, FileSelectionHistoryEntryWithTimestamp,
+    CreateSessionRequest, FileSelectionHistoryEntryWithTimestamp,
     Session,
 };
 use crate::utils::hash_utils::hash_string;
+use crate::db_utils::session_repository::{SessionRepository, TaskHistoryState, FileHistoryState};
+use crate::services::history_state_sequencer::HistoryStateSequencer;
 use serde_json::{Value, json};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
@@ -727,4 +729,86 @@ pub async fn broadcast_active_session_changed_command(
     app_handle.emit("device-link-event", payload).map_err(|e| format!("emit failed: {e}"))?;
     Ok(())
 }
+
+#[tauri::command]
+pub async fn get_history_state_command(
+    session_id: String,
+    kind: String,
+    app: AppHandle,
+) -> Result<serde_json::Value, String> {
+    let db = app.state::<Arc<sqlx::SqlitePool>>();
+    let repo = SessionRepository::new(db.inner().clone());
+
+    if kind == "task" {
+        let state = repo.get_task_history_state(&session_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        serde_json::to_value(&state).map_err(|e| e.to_string())
+    } else if kind == "files" {
+        let state = repo.get_file_history_state(&session_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        serde_json::to_value(&state).map_err(|e| e.to_string())
+    } else {
+        Err("Invalid kind".to_string())
+    }
+}
+
+#[tauri::command]
+pub async fn sync_history_state_command(
+    session_id: String,
+    kind: String,
+    state: serde_json::Value,
+    expected_version: i64,
+    app: AppHandle,
+) -> Result<serde_json::Value, String> {
+    let sequencer = app.state::<Arc<HistoryStateSequencer>>();
+
+    if kind == "task" {
+        let task_state: TaskHistoryState = serde_json::from_value(state)
+            .map_err(|e| e.to_string())?;
+        let result = sequencer.enqueue_sync_task(session_id, task_state, expected_version).await?;
+        serde_json::to_value(&result).map_err(|e| e.to_string())
+    } else if kind == "files" {
+        let file_state: FileHistoryState = serde_json::from_value(state)
+            .map_err(|e| e.to_string())?;
+        let result = sequencer.enqueue_sync_files(session_id, file_state, expected_version).await?;
+        serde_json::to_value(&result).map_err(|e| e.to_string())
+    } else {
+        Err("Invalid kind".to_string())
+    }
+}
+
+#[tauri::command]
+pub async fn merge_history_state_command(
+    session_id: String,
+    kind: String,
+    remote_state: serde_json::Value,
+    app: AppHandle,
+) -> Result<serde_json::Value, String> {
+    let sequencer = app.state::<Arc<HistoryStateSequencer>>();
+
+    if kind == "task" {
+        let task_state: TaskHistoryState = serde_json::from_value(remote_state)
+            .map_err(|e| e.to_string())?;
+        let result = sequencer.enqueue_merge_task(session_id, task_state).await?;
+        serde_json::to_value(&result).map_err(|e| e.to_string())
+    } else if kind == "files" {
+        let file_state: FileHistoryState = serde_json::from_value(remote_state)
+            .map_err(|e| e.to_string())?;
+        let result = sequencer.enqueue_merge_files(session_id, file_state).await?;
+        serde_json::to_value(&result).map_err(|e| e.to_string())
+    } else {
+        Err("Invalid kind".to_string())
+    }
+}
+
+#[tauri::command]
+pub fn get_device_id_command(app: AppHandle) -> Result<String, String> {
+    use crate::auth::device_id_manager;
+
+    device_id_manager::get_or_create(&app)
+        .map_err(|e| e.to_string())
+}
+
 

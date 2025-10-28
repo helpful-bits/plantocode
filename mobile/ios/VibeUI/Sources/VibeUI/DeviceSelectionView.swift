@@ -558,8 +558,9 @@ private struct DeviceRow: View {
                 if let state = multiConnectionManager.connectionStates[device.deviceId] {
                     connectionStatusMessage(for: state)
                 } else if !device.status.isAvailable {
+                    let offlineText = formatOfflineStatus(device.lastHeartbeat)
                     statusMessage(
-                        text: "Device Offline",
+                        text: offlineText,
                         detail: "The desktop device is not connected to the server. Make sure the desktop app is running and connected.",
                         color: Color.mutedForeground
                     )
@@ -726,6 +727,31 @@ private struct DeviceRow: View {
         default:
             return device.platform
         }
+    }
+
+    private func formatOfflineStatus(_ lastHeartbeat: Date?) -> String {
+        guard let lastHeartbeat = lastHeartbeat else {
+            return "Desktop Offline"
+        }
+
+        let timeInterval = Date().timeIntervalSince(lastHeartbeat)
+
+        // Less than a minute ago
+        if timeInterval < 60 {
+            return "Desktop Offline — Last seen moments ago"
+        }
+
+        // Format relative time
+        let formatter = DateComponentsFormatter()
+        formatter.allowedUnits = [.minute, .hour, .day]
+        formatter.unitsStyle = .abbreviated
+        formatter.maximumUnitCount = 1
+
+        if let relativeTime = formatter.string(from: timeInterval) {
+            return "Desktop Offline — Last seen \(relativeTime) ago"
+        }
+
+        return "Desktop Offline"
     }
 }
 
