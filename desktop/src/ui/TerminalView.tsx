@@ -185,7 +185,7 @@ const TerminalView: React.FC<Props> = ({ sessionId, isVisible }) => {
         convertEol: false,
         scrollback: 5000,
         fontSize: 13,
-        fontFamily: "'Cascadia Code', 'Cascadia Mono', Consolas, 'Courier New', Menlo, Monaco, monospace",
+        fontFamily: "Menlo, Monaco, 'Cascadia Code', 'Cascadia Mono', Consolas, 'Courier New', monospace",
         fontWeight: 500,
         fontWeightBold: 700,
         allowProposedApi: true,

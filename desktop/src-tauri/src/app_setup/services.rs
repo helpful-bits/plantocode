@@ -321,6 +321,8 @@ pub async fn initialize_terminal_manager(app_handle: &AppHandle) -> AppResult<()
             repo,
         ));
 
+        mgr.clone().start_periodic_flusher();
+
         // Restore any sessions from previous app runs
         match mgr.restore_sessions().await {
             Ok(restored_ids) => {

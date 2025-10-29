@@ -1,27 +1,17 @@
 "use client";
 
-import React, { useRef, useCallback } from "react";
+import React, { useRef, useCallback, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/ui/dialog";
 import { useTerminalSessions } from "@/contexts/terminal-sessions";
 import TerminalView from "@/ui/TerminalView";
-import { AlertCircle, Mic, Eye, Minimize2, CheckCircle } from "lucide-react";
+import { Mic, Eye, Minimize2, CheckCircle, Copy } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/ui/button";
 import { Textarea } from "@/ui/textarea";
+import { Badge } from "@/ui/badge";
 import { useVoiceTranscription } from "@/hooks/use-voice-recording";
-import { Copy } from "lucide-react";
 import { gracefulExitTerminal } from "@/actions/terminal/terminal.actions";
 import { invoke } from '@tauri-apps/api/core';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/ui/alert-dialog";
 import { getBackgroundJobAction } from "@/actions/background-jobs/jobs.actions";
 import { normalizeJobResponse } from "@/utils/response-utils";
 import { replacePlaceholders } from "@/utils/placeholder-utils";
@@ -59,7 +49,7 @@ export const PlanTerminalModal: React.FC<PlanTerminalModalProps> = ({
   taskDescription,
   onViewPlan
 }) => {
-  const [showConfirmFinish, setShowConfirmFinish] = useState(false);
+  const [isFinishing, setIsFinishing] = useState(false);
   const [planContent, setPlanContent] = useState<string | null>(null);
   const [isLoadingContent, setIsLoadingContent] = useState(false);
   const [showDictation, setShowDictation] = useState(false);
@@ -79,6 +69,26 @@ export const PlanTerminalModal: React.FC<PlanTerminalModalProps> = ({
     disabled: !showDictation,
   });
   const { startSession, getSession, write, minimizeSession } = useTerminalSessions();
+  const session = getSession(planJobId);
+
+  // Stabilize function references to avoid effect re-runs
+  const startSessionRef = useRef(startSession);
+  const getSessionRef = useRef(getSession);
+  useEffect(() => {
+    startSessionRef.current = startSession;
+    getSessionRef.current = getSession;
+  });
+
+  // Auto-start fresh session when reopening finished
+  // Only triggers when modal opens or sessionId changes, not on status updates
+  useEffect(() => {
+    if (!open || !planJobId) return;
+
+    const currentSession = getSessionRef.current(planJobId);
+    if (!currentSession || currentSession.status !== 'running') {
+      startSessionRef.current(planJobId, { workingDirectory: projectDirectory });
+    }
+  }, [open, planJobId, projectDirectory]);
 
   const handleModalOpen = useCallback(async () => {
     if (!open) return;
@@ -152,6 +162,10 @@ export const PlanTerminalModal: React.FC<PlanTerminalModalProps> = ({
   }, [planJobId, minimizeSession, onOpenChange]);
 
   const handleFinish = useCallback(async () => {
+    if (isFinishing) return;
+
+    setIsFinishing(true);
+
     try {
       await gracefulExitTerminal(planJobId);
 
@@ -168,8 +182,10 @@ export const PlanTerminalModal: React.FC<PlanTerminalModalProps> = ({
       onOpenChange(false);
     } catch (error) {
       console.error('Failed to finish terminal session:', error);
+    } finally {
+      setIsFinishing(false);
     }
-  }, [planJobId, onSessionKilled, onOpenChange]);
+  }, [planJobId, onSessionKilled, onOpenChange, isFinishing]);
 
 
 
@@ -181,7 +197,7 @@ export const PlanTerminalModal: React.FC<PlanTerminalModalProps> = ({
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-5xl flex flex-col h-[80vh]"
+        className="max-w-5xl flex flex-col h-[90vh]"
         onEscapeKeyDown={(e) => e.preventDefault()}
 >
         <DialogHeader className="flex-shrink-0">
@@ -189,7 +205,18 @@ export const PlanTerminalModal: React.FC<PlanTerminalModalProps> = ({
             An interactive terminal session to execute the implementation plan. Works offline - some advanced features require server connection.
           </DialogDescription>
           <div className="flex items-center justify-between">
-            <DialogTitle className="flex-1">Claude Terminal — {truncateTitle(title ?? planJobId)}</DialogTitle>
+            <div className="flex items-center gap-2 flex-1">
+              <DialogTitle>Claude Terminal — {truncateTitle(title ?? planJobId)}</DialogTitle>
+              {session?.status && (
+                <Badge variant={
+                  session.status === 'running' ? 'success' :
+                  session.status === 'failed' ? 'destructive' :
+                  session.status === 'completed' ? 'secondary' : 'outline'
+                }>
+                  {session.status.charAt(0).toUpperCase() + session.status.slice(1)}
+                </Badge>
+              )}
+            </div>
             <div className="flex items-center gap-2 ml-4">
               {/* Dictation toggle button */}
               <button
@@ -226,8 +253,9 @@ export const PlanTerminalModal: React.FC<PlanTerminalModalProps> = ({
               <Button
                 variant="destructive"
                 size="sm"
-                onClick={() => setShowConfirmFinish(true)}
+                onClick={handleFinish}
                 title="Finish Session"
+                disabled={isFinishing}
               >
                 <CheckCircle className="h-4 w-4 mr-2" />
                 Finish
@@ -320,29 +348,6 @@ export const PlanTerminalModal: React.FC<PlanTerminalModalProps> = ({
         </div>
       </DialogContent>
     </Dialog>
-
-    {/* Confirmation Dialog for Finish */}
-    <AlertDialog open={showConfirmFinish} onOpenChange={setShowConfirmFinish}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle className="flex items-center gap-2">
-            <AlertCircle className="h-5 w-5 text-amber-500" />
-            Finish Terminal Session?
-          </AlertDialogTitle>
-          <AlertDialogDescription>
-            Are you sure you want to finish this session? This will terminate the agent and mark the task as complete/reviewed.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel onClick={() => setShowConfirmFinish(false)}>
-            Cancel
-          </AlertDialogCancel>
-          <AlertDialogAction onClick={handleFinish}>
-            Finish
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
     </>
   );
 };
