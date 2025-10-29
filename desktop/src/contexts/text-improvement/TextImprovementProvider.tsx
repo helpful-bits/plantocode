@@ -57,21 +57,22 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
   const [selectionRange, setSelectionRange] = useState({ start: 0, end: 0 });
 
   // Monitor background job status
-  const { job, status } = useBackgroundJob(jobId);
-  const isImproving = status === "running" || status === "queued" || status === "created";
+  const { job } = useBackgroundJob(jobId);
+  const jobStatus = job?.status;
+  const isImproving = !!job && ['running','queued','created','processingStream','generatingStream','preparing','preparingInput'].includes(
+    (jobStatus as string) || ''
+  );
 
   const { job: refineJob } = useBackgroundJob(refineJobId);
   const isRefining = !!refineJob && ['created', 'queued', 'running', 'streaming'].includes(refineJob.status);
 
   // Hide popover when job completes and apply improvements
   useEffect(() => {
-    if (job && status === "completed" && job.response) {
+    if (job && jobStatus === "completed" && job.response) {
       try {
-        // Get the improved text from job response
         const improvedText = job.response;
-        
+
         if (targetMonacoEditor) {
-          // Handle Monaco Editor
           const selection = targetMonacoEditor.getSelection();
           if (selection) {
             targetMonacoEditor.executeEdits('text-improvement', [{
@@ -80,50 +81,65 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
               forceMoveMarkers: true
             }]);
           }
-        } else if (targetElement) {
-          // Handle regular input/textarea elements
-          const currentValue = targetElement.value;
-          
-          // Check if the text in the selection range has changed while the job was running
-          const currentSelectionText = currentValue.slice(selectionRange.start, selectionRange.end);
-          if (currentSelectionText !== selectedText) {
-            // Text has been modified by user while job was running, skip applying improvement
-            console.warn("Text was modified while improvement job was running, skipping application");
-          } else {
-            const newValue =
-              currentValue.slice(0, selectionRange.start) +
-              improvedText +
-              currentValue.slice(selectionRange.end);
+        } else {
+          let targetElem = targetElement;
+          if (!targetElem) {
+            const byId = document.getElementById('taskDescArea');
+            const bySelector = document.querySelector<HTMLTextAreaElement>('textarea[data-field="taskDescription"]');
+            targetElem = byId as HTMLTextAreaElement || bySelector;
+          }
 
-            // For task description fields, update via session state to respect the gate
-            const isTaskDescriptionField = targetElement.id === 'taskDescArea' ||
-                                         targetElement.id === 'task-description' ||
-                                         targetElement.getAttribute('data-field') === 'taskDescription' ||
-                                         targetElement.closest('[data-task-description]') !== null;
+          if (targetElem) {
+            const currentValue = targetElem.value;
+            const currentSelectionText = currentValue.slice(selectionRange.start, selectionRange.end);
 
-            const isMergeInstructionsField = targetElement.id === 'merge-instructions' ||
-                                            targetElement.getAttribute('data-field') === 'mergeInstructions';
+            let newValue: string;
+            let newCursorPos: number;
+
+            if (currentSelectionText !== selectedText) {
+              const isFocused = document.activeElement === targetElem;
+              const hasValidSelection = typeof targetElem.selectionStart === 'number' &&
+                                       typeof targetElem.selectionEnd === 'number' &&
+                                       targetElem.selectionStart !== targetElem.selectionEnd;
+
+              if (isFocused && hasValidSelection) {
+                const currentStart = targetElem.selectionStart!;
+                const currentEnd = targetElem.selectionEnd!;
+                newValue = currentValue.slice(0, currentStart) + improvedText + currentValue.slice(currentEnd);
+                newCursorPos = currentStart + improvedText.length;
+              } else {
+                newValue = currentValue + (currentValue.endsWith('\n') ? '' : '\n') + improvedText;
+                newCursorPos = newValue.length;
+              }
+            } else {
+              newValue = currentValue.slice(0, selectionRange.start) + improvedText + currentValue.slice(selectionRange.end);
+              newCursorPos = selectionRange.start + improvedText.length;
+            }
+
+            const isTaskDescriptionField = targetElem.id === 'taskDescArea' ||
+                                         targetElem.id === 'task-description' ||
+                                         targetElem.getAttribute('data-field') === 'taskDescription' ||
+                                         targetElem.closest('[data-task-description]') !== null;
+
+            const isMergeInstructionsField = targetElem.id === 'merge-instructions' ||
+                                            targetElem.getAttribute('data-field') === 'mergeInstructions';
 
             if (isTaskDescriptionField) {
-              // Update DOM directly for immediate UI response
-              const valueSetter = Object.getOwnPropertyDescriptor(targetElement, 'value') ||
-                                Object.getOwnPropertyDescriptor(Object.getPrototypeOf(targetElement), 'value');
+              const valueSetter = Object.getOwnPropertyDescriptor(targetElem, 'value') ||
+                                Object.getOwnPropertyDescriptor(Object.getPrototypeOf(targetElem), 'value');
               if (valueSetter && valueSetter.set) {
-                valueSetter.set.call(targetElement, newValue);
+                valueSetter.set.call(targetElem, newValue);
               }
-              targetElement.dispatchEvent(new Event('input', { bubbles: true }));
+              targetElem.dispatchEvent(new Event('input', { bubbles: true }));
 
-              // Queue to Rust for persistence
               if (sessionBasicFields.id) {
                 queueTaskDescriptionUpdate(sessionBasicFields.id, newValue).catch(err => {
                   console.error("Failed to queue task description after improvement:", err);
                 });
               }
 
-              // Sync session state to prevent disappearing text on blur
               updateCurrentSessionFields({ taskDescription: newValue });
 
-              // Dispatch window event for history tracking
               window.dispatchEvent(new CustomEvent('task-description-local-change', {
                 detail: {
                   sessionId: sessionBasicFields.id,
@@ -132,72 +148,59 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
                 }
               }));
 
-              // Position cursor at the end of the replaced text
-              const newCursorPos = selectionRange.start + improvedText.length;
               requestAnimationFrame(() => {
                 try {
-                  if (targetElement.isConnected) {
-                    targetElement.focus();
-                    targetElement.setSelectionRange(newCursorPos, newCursorPos);
+                  if (targetElem!.isConnected) {
+                    targetElem!.focus();
+                    targetElem!.setSelectionRange(newCursorPos, newCursorPos);
                   }
                 } catch (e) {
-                  // Silently handle if element is no longer available
                 }
               });
             } else if (isMergeInstructionsField) {
-              // Update DOM directly for immediate UI response
-              const valueSetter = Object.getOwnPropertyDescriptor(targetElement, 'value') ||
-                                Object.getOwnPropertyDescriptor(Object.getPrototypeOf(targetElement), 'value');
+              const valueSetter = Object.getOwnPropertyDescriptor(targetElem, 'value') ||
+                                Object.getOwnPropertyDescriptor(Object.getPrototypeOf(targetElem), 'value');
               if (valueSetter && valueSetter.set) {
-                valueSetter.set.call(targetElement, newValue);
+                valueSetter.set.call(targetElem, newValue);
               }
-              targetElement.dispatchEvent(new Event('input', { bubbles: true }));
+              targetElem.dispatchEvent(new Event('input', { bubbles: true }));
 
-              // Queue to Rust for persistence
               if (sessionBasicFields.id) {
                 queueMergeInstructionsUpdate(sessionBasicFields.id, newValue).catch(err => {
                   console.error("Failed to queue merge instructions after improvement:", err);
                 });
               }
 
-              // Sync session state to prevent disappearing text on blur
               updateCurrentSessionFields({ mergeInstructions: newValue });
 
-              // Position cursor at the end of the replaced text
-              const newCursorPos = selectionRange.start + improvedText.length;
               requestAnimationFrame(() => {
                 try {
-                  if (targetElement.isConnected) {
-                    targetElement.focus();
-                    targetElement.setSelectionRange(newCursorPos, newCursorPos);
+                  if (targetElem!.isConnected) {
+                    targetElem!.focus();
+                    targetElem!.setSelectionRange(newCursorPos, newCursorPos);
                   }
                 } catch (e) {
-                  // Silently handle if element is no longer available
                 }
               });
             } else {
-              // For non-task-description fields, use the existing DOM manipulation approach
-              const valueSetter = Object.getOwnPropertyDescriptor(targetElement, 'value') ||
-                                Object.getOwnPropertyDescriptor(Object.getPrototypeOf(targetElement), 'value');
+              const valueSetter = Object.getOwnPropertyDescriptor(targetElem, 'value') ||
+                                Object.getOwnPropertyDescriptor(Object.getPrototypeOf(targetElem), 'value');
               if (valueSetter && valueSetter.set) {
-                valueSetter.set.call(targetElement, newValue);
+                valueSetter.set.call(targetElem, newValue);
               }
 
-              targetElement.dispatchEvent(new Event('input', { bubbles: true }));
-              targetElement.dispatchEvent(new Event('change', { bubbles: true }));
+              targetElem.dispatchEvent(new Event('input', { bubbles: true }));
+              targetElem.dispatchEvent(new Event('change', { bubbles: true }));
 
-              const newCursorPos = selectionRange.start + improvedText.length;
               try {
-                targetElement.focus();
-                targetElement.setSelectionRange(newCursorPos, newCursorPos);
+                targetElem.focus();
+                targetElem.setSelectionRange(newCursorPos, newCursorPos);
               } catch (e) {
-                // Silently handle
               }
             }
           }
         }
-        
-        // Reset state
+
         setIsVisible(false);
         setJobId(null);
         setSelectedText("");
@@ -206,12 +209,11 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
         setSelectionRange({ start: 0, end: 0 });
       } catch (error) {
         console.error("Error applying text improvement:", error);
-        // Still hide popover on error
         setIsVisible(false);
         setJobId(null);
       }
     }
-  }, [job, status, targetElement, targetMonacoEditor, selectionRange, selectedText, flushSaves, updateCurrentSessionFields]);
+  }, [job, jobStatus, targetElement, targetMonacoEditor, selectionRange, selectedText, sessionBasicFields.id, updateCurrentSessionFields, queueTaskDescriptionUpdate, queueMergeInstructionsUpdate]);
 
   // Handle refinement job completion
   useEffect(() => {
@@ -354,7 +356,7 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
         setRefineJobId(null);
       }
     }
-  }, [refineJob, targetElement, targetMonacoEditor, selectionRange, selectedText, flushSaves, updateCurrentSessionFields]);
+  }, [refineJob, targetElement, targetMonacoEditor, selectionRange, selectedText, flushSaves, updateCurrentSessionFields, sessionBasicFields.id, queueTaskDescriptionUpdate, queueMergeInstructionsUpdate]);
 
   // Handle Monaco Editor selection events
   const handleMonacoSelection = useCallback((event: CustomEvent) => {

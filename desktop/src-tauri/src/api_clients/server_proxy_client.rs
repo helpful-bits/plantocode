@@ -12,6 +12,7 @@ use uuid;
 use super::client_trait::{ApiClient, ApiClientOptions, TranscriptionClient};
 use super::error_handling::{handle_api_error, map_server_proxy_error};
 use crate::auth::{TokenManager, header_utils};
+use crate::auth::token_refresh::{ensure_fresh_token, refresh_with_dedup, contains_device_binding_mismatch};
 use crate::constants::{APP_HTTP_REFERER, APP_X_TITLE, SERVER_API_URL};
 use crate::error::{AppError, AppResult};
 use crate::models::stream_event::StreamEvent;
@@ -85,10 +86,13 @@ impl ServerProxyClient {
     pub async fn get_runtime_ai_config(&self) -> AppResult<Value> {
         info!("Fetching runtime AI configuration from server");
 
+        // Proactively ensure token is fresh (5 min TTL)
+        ensure_fresh_token(&self.app_handle, 300).await?;
+
         // Get authentication token
         let auth_token = self.get_auth_token().await?;
 
-        // Create the config endpoint URL - now using authenticated endpoint
+        // Create the config endpoint URL
         let config_url = format!("{}/api/config/desktop-runtime-config", self.server_url);
 
         let req = self.with_auth_headers(self.http_client.get(&config_url), &auth_token)?;
@@ -101,25 +105,58 @@ impl ServerProxyClient {
                 AppError::HttpError(format!("Failed to fetch runtime AI config: {}", e))
             })?;
 
+        // Handle 401 with refresh-and-retry
+        if response.status() == 401 {
+            let body = response.text().await.unwrap_or_default();
+
+            if contains_device_binding_mismatch(&body) {
+                return Err(AppError::AuthError(format!("Device binding mismatch: {}", body)));
+            }
+
+            // Refresh token and retry once
+            refresh_with_dedup(&self.app_handle).await?;
+            let new_token = self.get_auth_token().await?;
+
+            let retry_req = self.with_auth_headers(self.http_client.get(&config_url), &new_token)?;
+            let retry_response = retry_req
+                .header("HTTP-Referer", APP_HTTP_REFERER)
+                .header("X-Title", APP_X_TITLE)
+                .send()
+                .await
+                .map_err(|e| {
+                    AppError::HttpError(format!("Failed to fetch runtime AI config after retry: {}", e))
+                })?;
+
+            if !retry_response.status().is_success() {
+                let status = retry_response.status();
+                let error_text = retry_response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Failed to get error text".to_string());
+                error!("Server runtime config API error after retry: {} - {}", status, error_text);
+                return Err(map_server_proxy_error(status.as_u16(), &error_text));
+            }
+
+            let config: Value = retry_response.json().await.map_err(|e| {
+                AppError::SerializationError(format!("Failed to parse runtime AI config response: {}", e))
+            })?;
+
+            info!("Successfully fetched runtime AI configuration from server after retry");
+            return Ok(config);
+        }
+
         if !response.status().is_success() {
             let status = response.status();
             let error_text = response
                 .text()
                 .await
                 .unwrap_or_else(|_| "Failed to get error text".to_string());
-            error!(
-                "Server runtime config API error: {} - {}",
-                status, error_text
-            );
-            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
+            error!("Server runtime config API error: {} - {}", status, error_text);
+            return Err(map_server_proxy_error(status.as_u16(), &error_text));
         }
 
-        // Parse the response
         let config: Value = response.json().await.map_err(|e| {
-            AppError::SerializationError(format!(
-                "Failed to parse runtime AI config response: {}",
-                e
-            ))
+            AppError::SerializationError(format!("Failed to parse runtime AI config response: {}", e))
         })?;
 
         info!("Successfully fetched runtime AI configuration from server");
@@ -146,21 +183,9 @@ impl ServerProxyClient {
     async fn try_fetch_default_system_prompts_from_server(
         &self,
     ) -> AppResult<Vec<crate::models::DefaultSystemPrompt>> {
-        // Get authentication token
-        let auth_token = self.get_auth_token().await?;
-
-        // Create the prompts endpoint URL - now using authenticated endpoint
         let prompts_url = format!("{}/api/system-prompts/defaults", self.server_url);
 
-        let req = self.with_auth_headers(self.http_client.get(&prompts_url), &auth_token)?;
-        let response = req
-            .header("HTTP-Referer", APP_HTTP_REFERER)
-            .header("X-Title", APP_X_TITLE)
-            .send()
-            .await
-            .map_err(|e| {
-                AppError::HttpError(format!("Failed to fetch default system prompts: {}", e))
-            })?;
+        let response = self.authenticated_get_with_retry(&prompts_url).await?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -168,14 +193,10 @@ impl ServerProxyClient {
                 .text()
                 .await
                 .unwrap_or_else(|_| "Failed to get error text".to_string());
-            error!(
-                "Server default system prompts API error: {} - {}",
-                status, error_text
-            );
-            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
+            error!("Server default system prompts API error: {} - {}", status, error_text);
+            return Err(map_server_proxy_error(status.as_u16(), &error_text));
         }
 
-        // Parse the response directly into DefaultSystemPrompt structs
         let prompts: Vec<crate::models::DefaultSystemPrompt> =
             response.json().await.map_err(|e| {
                 AppError::ServerProxyError(format!(
@@ -206,30 +227,15 @@ impl ServerProxyClient {
         &self,
         task_type: &str,
     ) -> AppResult<Option<crate::models::DefaultSystemPrompt>> {
-        // Get authentication token
-        let auth_token = self.get_auth_token().await?;
-
-        // Create the specific prompt endpoint URL - now using authenticated endpoint
         let prompt_url = format!(
             "{}/api/system-prompts/defaults/{}",
             self.server_url, task_type
         );
 
-        let req = self.with_auth_headers(self.http_client.get(&prompt_url), &auth_token)?;
-        let response = req
-            .header("HTTP-Referer", APP_HTTP_REFERER)
-            .header("X-Title", APP_X_TITLE)
-            .send()
-            .await
-            .map_err(|e| {
-                AppError::HttpError(format!("Failed to fetch default system prompt: {}", e))
-            })?;
+        let response = self.authenticated_get_with_retry(&prompt_url).await?;
 
         if response.status() == 404 {
-            info!(
-                "No default system prompt found for task type '{}'",
-                task_type
-            );
+            info!("No default system prompt found for task type '{}'", task_type);
             return Ok(None);
         }
 
@@ -239,14 +245,10 @@ impl ServerProxyClient {
                 .text()
                 .await
                 .unwrap_or_else(|_| "Failed to get error text".to_string());
-            error!(
-                "Server default system prompt API error: {} - {}",
-                status, error_text
-            );
-            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
+            error!("Server default system prompt API error: {} - {}", status, error_text);
+            return Err(map_server_proxy_error(status.as_u16(), &error_text));
         }
 
-        // Parse the response directly into DefaultSystemPrompt
         let prompt: crate::models::DefaultSystemPrompt = response.json().await.map_err(|e| {
             AppError::ServerProxyError(format!(
                 "Failed to parse default system prompt response: {}",
@@ -254,11 +256,7 @@ impl ServerProxyClient {
             ))
         })?;
 
-        info!(
-            "Successfully fetched default system prompt for task type '{}'",
-            task_type
-        );
-
+        info!("Successfully fetched default system prompt for task type '{}'", task_type);
         Ok(Some(prompt))
     }
 
@@ -406,6 +404,47 @@ impl ServerProxyClient {
     /// Handle authentication error by suggesting token refresh
     async fn handle_auth_error(&self, status_code: u16, error_text: &str) -> AppError {
         handle_api_error(status_code, error_text, &self.token_manager).await
+    }
+
+    /// Make an authenticated GET request with proactive refresh and 401 retry
+    async fn authenticated_get_with_retry(
+        &self,
+        url: &str,
+    ) -> AppResult<reqwest::Response> {
+        // Proactively ensure token is fresh
+        ensure_fresh_token(&self.app_handle, 300).await?;
+
+        let auth_token = self.get_auth_token().await?;
+        let req = self.with_auth_headers(self.http_client.get(url), &auth_token)?;
+        let response = req
+            .header("HTTP-Referer", APP_HTTP_REFERER)
+            .header("X-Title", APP_X_TITLE)
+            .send()
+            .await
+            .map_err(|e| AppError::HttpError(format!("Request failed: {}", e)))?;
+
+        // Handle 401 with refresh-and-retry
+        if response.status() == 401 {
+            let body = response.text().await.unwrap_or_default();
+
+            if contains_device_binding_mismatch(&body) {
+                return Err(AppError::AuthError(format!("Device binding mismatch: {}", body)));
+            }
+
+            // Refresh and retry once
+            refresh_with_dedup(&self.app_handle).await?;
+            let new_token = self.get_auth_token().await?;
+
+            let retry_req = self.with_auth_headers(self.http_client.get(url), &new_token)?;
+            retry_req
+                .header("HTTP-Referer", APP_HTTP_REFERER)
+                .header("X-Title", APP_X_TITLE)
+                .send()
+                .await
+                .map_err(|e| AppError::HttpError(format!("Request failed after retry: {}", e)))
+        } else {
+            Ok(response)
+        }
     }
 
     /// Execute chat completion with duration measurement and retry logic
@@ -637,14 +676,20 @@ impl ServerProxyClient {
         let mut stream_logger = StreamDebugLogger::new("desktop", &request_id_for_logger);
         stream_logger.log_stream_start();
 
-        // Create EventSource from the request builder
+        // Before SSE creation, ensure fresh token
+        ensure_fresh_token(&self.app_handle, 300).await?;
+
+        // Try to create event source
         let mut event_source = EventSource::new(request_builder)
-            .map_err(|e| AppError::HttpError(format!("Failed to create EventSource: {}", e)))?;
+            .map_err(|e| AppError::StreamError(format!("Failed to create SSE event source: {:?}", e)))?;
+
+        // Clone app_handle for use in stream error handling
+        let app_handle_for_stream = self.app_handle.clone();
 
         // Create a stream that converts SSE events to our StreamEvent type
         let stream = futures::stream::unfold(
-            (event_source, stream_logger),
-            move |(mut event_source, mut stream_logger)| async move {
+            (event_source, stream_logger, app_handle_for_stream),
+            move |(mut event_source, mut stream_logger, app_handle)| async move {
                 loop {
                     match event_source.next().await {
                         Some(Ok(Event::Open)) => {
@@ -917,12 +962,12 @@ impl ServerProxyClient {
                                     if matches!(event, StreamEvent::UsageUpdate(_)) {
                                         stream_logger.log_stream_end();
                                     }
-                                    return Some((Ok(event), (event_source, stream_logger)));
+                                    return Some((Ok(event), (event_source, stream_logger, app_handle)));
                                 }
                                 Err(e) => {
                                     stream_logger
                                         .log_error(&format!("Failed to parse event: {}", e));
-                                    return Some((Err(e), (event_source, stream_logger)));
+                                    return Some((Err(e), (event_source, stream_logger, app_handle)));
                                 }
                             }
                         }
@@ -948,7 +993,24 @@ impl ServerProxyClient {
                                     AppError::HttpError(format!("Transport error: {}", e))
                                 }
                                 reqwest_eventsource::Error::InvalidStatusCode(code, _response) => {
-                                    AppError::HttpError(format!("Invalid status code: {}", code))
+                                    if code == 401 {
+                                        // Token expired during streaming - attempt refresh for next request
+                                        warn!("SSE stream received 401 Unauthorized - attempting token refresh");
+                                        if let Err(refresh_err) = refresh_with_dedup(&app_handle).await {
+                                            error!("Failed to refresh token after 401: {:?}", refresh_err);
+                                            AppError::AuthError(format!(
+                                                "Stream authentication failed and token refresh failed: {:?}",
+                                                refresh_err
+                                            ))
+                                        } else {
+                                            info!("Token refreshed after 401 - retry the request");
+                                            AppError::AuthError(
+                                                "Stream authentication failed - token has been refreshed, please retry".to_string()
+                                            )
+                                        }
+                                    } else {
+                                        AppError::HttpError(format!("Invalid status code: {}", code))
+                                    }
                                 }
                                 reqwest_eventsource::Error::InvalidContentType(mime, _response) => {
                                     AppError::InvalidResponse(format!(
@@ -958,7 +1020,7 @@ impl ServerProxyClient {
                                 }
                                 _ => AppError::NetworkError(format!("SSE error: {}", e)),
                             };
-                            return Some((Err(app_error), (event_source, stream_logger)));
+                            return Some((Err(app_error), (event_source, stream_logger, app_handle)));
                         }
                         None => {
                             debug!("EventSource stream ended");

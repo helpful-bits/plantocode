@@ -198,6 +198,9 @@ pub enum AppError {
     #[error("Terminal state error: {0}")]
     TerminalStateError(String),
 
+    #[error("Stream error: {0}")]
+    StreamError(String),
+
     #[error("Terminal persistence error: {0}")]
     TerminalPersistenceError(String),
 
@@ -209,6 +212,12 @@ pub enum AppError {
 
     #[error("Terminal no output: {0}")]
     TerminalNoOutput(String),
+
+    #[error("Conflict: {0}")]
+    Conflict(String),
+
+    #[error("Processing error: {0}")]
+    Processing(String),
 }
 
 impl From<std::io::Error> for AppError {
@@ -342,6 +351,9 @@ impl From<AppError> for SerializableError {
             AppError::TerminalSessionNotFound(_) => "TERMINAL_SESSION_NOT_FOUND",
             AppError::TerminalAttachmentFailed(_) => "TERMINAL_ATTACHMENT_FAILED",
             AppError::TerminalNoOutput(_) => "TERMINAL_NO_OUTPUT",
+            AppError::StreamError(_) => "STREAM_ERROR",
+            AppError::Conflict(_) => "CONFLICT",
+            AppError::Processing(_) => "PROCESSING_ERROR",
         }
         .to_string();
 

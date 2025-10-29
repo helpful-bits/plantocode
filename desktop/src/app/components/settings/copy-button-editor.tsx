@@ -11,11 +11,13 @@ interface CopyButtonEditorProps {
   button: CopyButtonConfig;
   onChange: (button: CopyButtonConfig) => void;
   onDelete: () => void;
+  onReset?: () => void;
+  showReset?: boolean;
   readOnly?: boolean;
   fieldId: string;
 }
 
-function CopyButtonEditorComponent({ button, onChange, onDelete, readOnly, fieldId }: CopyButtonEditorProps) {
+function CopyButtonEditorComponent({ button, onChange, onDelete, onReset, showReset, readOnly, fieldId }: CopyButtonEditorProps) {
   const {
     attributes,
     listeners,
@@ -107,7 +109,17 @@ function CopyButtonEditorComponent({ button, onChange, onDelete, readOnly, field
       </div>
       <div className="space-y-4 p-4 pl-8 border border-border/50 rounded-lg bg-background/50">
         {!readOnly && (
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            {showReset && onReset && (
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={onReset}
+                className="px-2 h-6 text-xs text-muted-foreground hover:text-foreground"
+              >
+                Reset
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="icon-sm"

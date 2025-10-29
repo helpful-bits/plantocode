@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { X, Search, HelpCircle } from "lucide-react";
+import { X, Search, HelpCircle, Terminal } from "lucide-react";
 
 import TaskDescriptionArea from "../_components/task-description";
 import { useTaskContext } from "../_contexts/task-context";
@@ -11,6 +11,7 @@ import {
 import { Button } from "@/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
 import { usePlausible } from "@/hooks/use-plausible";
+import { useTerminalSessions } from "@/contexts/terminal-sessions";
 
 interface TaskSectionProps {
   disabled?: boolean;
@@ -23,6 +24,7 @@ const TaskSection = React.memo(function TaskSection({
   const [showHelpTooltip, setShowHelpTooltip] = useState(false);
 
   const sessionState = useSessionStateContext();
+  const { startSession, getSession } = useTerminalSessions();
 
   const { state: taskState, actions: taskActions } = useTaskContext();
 
@@ -40,9 +42,80 @@ const TaskSection = React.memo(function TaskSection({
     redo,
   } = taskActions;
 
+  // Re-check button state at click time in case remote update just disabled it
+  const handleUndoClick = () => {
+    if (!canUndo) {
+      console.warn('Undo disabled by remote update');
+      return;
+    }
+    undo();
+  };
+
+  const handleRedoClick = () => {
+    if (!canRedo) {
+      console.warn('Redo disabled by remote update');
+      return;
+    }
+    redo();
+  };
+
   if (!sessionState.currentSession?.id) {
     return null;
   }
+
+  const handleStartTerminalSession = async () => {
+    if (!sessionState.currentSession) {
+      return;
+    }
+
+    const projectDirectory = sessionState.currentSession.projectDirectory;
+    const currentTaskDescription = sessionState.currentSession.taskDescription || "";
+
+    if (!projectDirectory) {
+      return;
+    }
+
+    const baseId = `task:${sessionState.currentSession.id}`;
+    const existing = getSession(baseId);
+
+    if (existing && !['completed', 'failed', 'exited'].includes(existing.status)) {
+      // Prompt: Resume existing or start new?
+      const shouldResume = confirm('An existing terminal session is active for this task. Resume it? (Cancel to start a new session)');
+
+      if (shouldResume) {
+        window.dispatchEvent(new CustomEvent('open-terminal-session', {
+          detail: { sessionId: baseId }
+        }));
+        return;
+      } else {
+        // Start new with timestamp suffix
+        const newId = `${baseId}:${Date.now()}`;
+        const taskTitleOrSnippet = currentTaskDescription.split('\n')[0].slice(0, 50) || 'Task';
+        await startSession(newId, {
+          workingDirectory: projectDirectory,
+          displayName: `Task — ${taskTitleOrSnippet}`,
+          origin: 'task_description',
+          initialInput: currentTaskDescription,
+        });
+        window.dispatchEvent(new CustomEvent('open-terminal-session', {
+          detail: { sessionId: newId }
+        }));
+        return;
+      }
+    }
+
+    // No existing session or it's completed
+    const taskTitleOrSnippet = currentTaskDescription.split('\n')[0].slice(0, 50) || 'Task';
+    await startSession(baseId, {
+      workingDirectory: projectDirectory,
+      displayName: `Task — ${taskTitleOrSnippet}`,
+      origin: 'task_description',
+      initialInput: currentTaskDescription,
+    });
+    window.dispatchEvent(new CustomEvent('open-terminal-session', {
+      detail: { sessionId: baseId }
+    }));
+  };
 
   return (
     <div className="border border-border/60 rounded-lg p-5 bg-card shadow-sm w-full">
@@ -54,11 +127,11 @@ const TaskSection = React.memo(function TaskSection({
         disabled={disabled}
         canUndo={canUndo}
         canRedo={canRedo}
-        onUndo={undo}
-        onRedo={redo}
+        onUndo={handleUndoClick}
+        onRedo={handleRedoClick}
       />
 
-      <div className="mt-4 flex items-center gap-6">
+      <div className="mt-4 flex items-center gap-2">
         <div className="flex items-center gap-1 flex-1">
           <Button
             onClick={() => {
@@ -105,6 +178,24 @@ const TaskSection = React.memo(function TaskSection({
             </TooltipContent>
           </Tooltip>
         </div>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              onClick={handleStartTerminalSession}
+              disabled={disabled}
+              variant="outline"
+              size="sm"
+              className="px-3"
+              aria-label="Start Terminal Session"
+            >
+              <Terminal className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Start Terminal Session</p>
+          </TooltipContent>
+        </Tooltip>
 
         {isDoingWebSearch && (
           <Button

@@ -1,13 +1,14 @@
 {
   "name": "plantocode-desktop",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.2.1",
   "type": "module",
   "scripts": {
     "dev": "vite --config src/vite.config.mts",
     "desktop:check": "cd src-tauri && cargo check --message-format=json | jq -r 'select(.reason == \"compiler-message\" and .message.level == \"error\") | .message.rendered // .message.message' > gen/cargo-check.log && echo 'file desktop/src-tauri/gen/cargo-check.log created'",
     "build": "vite build --config src/vite.config.mts",
     "preview": "vite preview --config src/vite.config.mts",
+    "test": "vitest run",
     "tauri": "tauri",
     "tauri:dev": "bash -c 'mkdir -p src-tauri/gen && tauri dev 2>&1 | tee src-tauri/gen/tauri-dev.log'",
     "desktop:run": "bash -c 'mkdir -p src-tauri/gen && cd src-tauri && cargo run 2>&1 | tee gen/tauri-dev.log'",
@@ -111,7 +112,8 @@
     "tailwindcss": "^4.1.15",
     "typescript": "^5.9.3",
     "vite": "^6.4.1",
-    "vite-tsconfig-paths": "^5.1.4"
+    "vite-tsconfig-paths": "^5.1.4",
+    "vitest": "^2.0.0"
   },
   "lint-staged": {
     "*.{js,jsx,ts,tsx}": [

@@ -12,7 +12,7 @@
 import { Profiler } from "react";
 import { useEffect, useState, useCallback } from "react";
 import { safeListen } from "@/utils/tauri-event-utils";
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, useNavigate } from "react-router-dom";
 import { onRender } from "./utils/react-performance-profiler";
 
 import { AppShell } from "@/app/components/app-shell";
@@ -38,6 +38,38 @@ void initSessionEventBridge();
 import { TauriEnvironmentChecker } from "./providers/tauri-environment-checker";
 
 
+// Component to handle settings navigation from system tray
+function SettingsNavigationListener() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const setupListener = async () => {
+      try {
+        const unlisten = await safeListen('open-settings', () => {
+          navigate('/settings');
+        });
+        return unlisten;
+      } catch (error) {
+        console.error('Failed to setup open-settings listener:', error);
+        return () => {};
+      }
+    };
+
+    let cleanup: (() => void) | undefined;
+    setupListener()
+      .then((unlistenFn) => {
+        cleanup = unlistenFn;
+      })
+      .catch(console.error);
+
+    return () => {
+      cleanup?.();
+    };
+  }, [navigate]);
+
+  return null;
+}
+
 // Safe app structure to ensure proper provider nesting and prevent remounting
 function SafeAppContent() {
   // Only render the auth-dependent components when needed
@@ -49,6 +81,8 @@ function SafeAppContent() {
               <UILayoutProvider>
                 <AuthFlowManager>
                   <ProvidersWrapper environmentConfig={{ isDesktop: true }}>
+                    {/* Settings navigation listener for system tray */}
+                    <SettingsNavigationListener />
                     {/* App Shell Component */}
                     <AppShell>
                       <Routes>

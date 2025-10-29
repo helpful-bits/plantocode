@@ -12,8 +12,52 @@ public final class SessionDataService: ObservableObject {
     private let offlineQueue = OfflineActionQueue()
     private var sessionsIndex: [String: Int] = [:]
 
+    private var deviceKey: String {
+        MultiConnectionManager.shared.activeDeviceId?.uuidString ?? "no_device"
+    }
+
     public init() {
         self.currentSessionId = "mobile-session-\(UUID().uuidString)"
+        setupHistoryStateListener()
+    }
+
+    /// Setup listener for history-state-changed events from relay
+    private func setupHistoryStateListener() {
+        // Subscribe to relay events
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("relay-event-history-state-changed"),
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self = self,
+                  let event = notification.userInfo?["event"] as? RelayEvent,
+                  let sessionId = event.data["sessionId"]?.value as? String,
+                  let kind = event.data["kind"]?.value as? String,
+                  let stateDict = event.data["state"]?.value as? [String: Any] else {
+                return
+            }
+
+            // Apply history state change without recording
+            Task { @MainActor in
+                do {
+                    let stateData = try JSONSerialization.data(withJSONObject: stateDict)
+                    let historyState = try JSONDecoder().decode(HistoryState.self, from: stateData)
+
+                    // Notify observers that history state has changed
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("apply-history-state"),
+                        object: nil,
+                        userInfo: [
+                            "sessionId": sessionId,
+                            "kind": kind,
+                            "state": historyState
+                        ]
+                    )
+                } catch {
+                    print("Failed to decode history state: \(error)")
+                }
+            }
+        }
     }
 
     private func normalizeEpochSeconds(_ any: Any?) -> Int64 {
@@ -35,6 +79,20 @@ public final class SessionDataService: ObservableObject {
         let id = "mobile-session-\(UUID().uuidString)"
         currentSessionId = id
         return id
+    }
+
+    /// Reset session state when active device changes
+    @MainActor
+    public func onActiveDeviceChanged() {
+        sessions.removeAll()
+        currentSession = nil
+        currentSessionId = nil
+        hasLoadedOnce = false
+        error = nil
+        isLoading = false
+
+        // Create a new ephemeral session ID
+        _ = newSession()
     }
 
     @discardableResult
@@ -123,7 +181,7 @@ public final class SessionDataService: ObservableObject {
                         self.isLoading = false
                         self.hasLoadedOnce = true
                     }
-                    let cacheKey = "sessions_\(projectDirectory.replacingOccurrences(of: "/", with: "_"))"
+                    let cacheKey = "dev_\(deviceKey)_sessions_\(projectDirectory.replacingOccurrences(of: "/", with: "_"))"
                     CacheManager.shared.set(sessionList, forKey: cacheKey, ttl: 300)
                     return sessionList
                 }
@@ -141,7 +199,7 @@ public final class SessionDataService: ObservableObject {
             }
             return sessions
         } catch {
-            let cacheKey = "sessions_\(projectDirectory.replacingOccurrences(of: "/", with: "_"))"
+            let cacheKey = "dev_\(deviceKey)_sessions_\(projectDirectory.replacingOccurrences(of: "/", with: "_"))"
             if let cached: [Session] = CacheManager.shared.get(key: cacheKey) {
                 await MainActor.run {
                     self.sessions = cached
@@ -878,6 +936,103 @@ public final class SessionDataService: ObservableObject {
             "sessionId": sessionId,
             "projectDirectory": projectDirectory
         ])
+    }
+
+    // MARK: - HistoryState Methods
+
+    /// Get history state from desktop
+    public func getHistoryState(sessionId: String, kind: String) async throws -> HistoryState {
+        let params: [String: Any] = [
+            "sessionId": sessionId,
+            "kind": kind
+        ]
+
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+            throw DataServiceError.invalidState("No active relay connection")
+        }
+
+        let request = RpcRequest(method: "session.getHistoryState", params: params)
+
+        for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
+            if let error = response.error {
+                throw DataServiceError.serverError(error.message)
+            }
+
+            if let result = response.result?.value {
+                let data = try JSONSerialization.data(withJSONObject: result)
+                return try JSONDecoder().decode(HistoryState.self, from: data)
+            }
+        }
+
+        throw DataServiceError.invalidResponse("No history state received")
+    }
+
+    /// Sync history state to desktop
+    public func syncHistoryState(sessionId: String, kind: String, state: HistoryState, expectedVersion: Int64) async throws -> HistoryState {
+        let encoder = JSONEncoder()
+        let stateData = try encoder.encode(state)
+        let stateJson = try JSONSerialization.jsonObject(with: stateData)
+
+        let params: [String: Any] = [
+            "sessionId": sessionId,
+            "kind": kind,
+            "state": stateJson,
+            "expectedVersion": expectedVersion
+        ]
+
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+            throw DataServiceError.invalidState("No active relay connection")
+        }
+
+        let request = RpcRequest(method: "session.syncHistoryState", params: params)
+
+        for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
+            if let error = response.error {
+                throw DataServiceError.serverError(error.message)
+            }
+
+            if let result = response.result?.value {
+                let data = try JSONSerialization.data(withJSONObject: result)
+                return try JSONDecoder().decode(HistoryState.self, from: data)
+            }
+        }
+
+        throw DataServiceError.invalidResponse("No sync result received")
+    }
+
+    /// Merge history state with desktop
+    public func mergeHistoryState(sessionId: String, kind: String, remoteState: HistoryState) async throws -> HistoryState {
+        let encoder = JSONEncoder()
+        let stateData = try encoder.encode(remoteState)
+        let stateJson = try JSONSerialization.jsonObject(with: stateData)
+
+        let params: [String: Any] = [
+            "sessionId": sessionId,
+            "kind": kind,
+            "remoteState": stateJson
+        ]
+
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+            throw DataServiceError.invalidState("No active relay connection")
+        }
+
+        let request = RpcRequest(method: "session.mergeHistoryState", params: params)
+
+        for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
+            if let error = response.error {
+                throw DataServiceError.serverError(error.message)
+            }
+
+            if let result = response.result?.value {
+                let data = try JSONSerialization.data(withJSONObject: result)
+                return try JSONDecoder().decode(HistoryState.self, from: data)
+            }
+        }
+
+        throw DataServiceError.invalidResponse("No merge result received")
     }
 
     public func loadSessionById(sessionId: String, projectDirectory: String) async throws {

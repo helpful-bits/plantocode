@@ -12,6 +12,26 @@ public struct CopyButton: Codable, Identifiable, Hashable {
         self.content = content
     }
 
+    // Custom decoding to handle legacy format without id field
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        // Try to decode id, generate UUID if missing (legacy format)
+        if let id = try? container.decode(String.self, forKey: .id) {
+            self.id = id
+        } else {
+            // Generate stable ID from label for backwards compatibility
+            self.id = UUID().uuidString
+        }
+
+        self.label = try container.decode(String.self, forKey: .label)
+        self.content = try container.decode(String.self, forKey: .content)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, label, content
+    }
+
     // MARK: - Default Buttons
 
     /// Default copy buttons for implementation plans

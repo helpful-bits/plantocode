@@ -7,6 +7,7 @@ use log::{debug, info, warn};
 use serde_json::{Value, json};
 use sqlx::{Row, Sqlite};
 use std::str::FromStr;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Emitter;
 
 impl BackgroundJobRepository {
@@ -135,6 +136,11 @@ impl BackgroundJobRepository {
                 );
             }
 
+            let job = self
+                .get_job_by_id(job_id)
+                .await?
+                .ok_or_else(|| AppError::NotFoundError(format!("Job {} not found", job_id)))?;
+
             // Emit granular events
             if let Some(ref app_handle) = self.app_handle {
                 // Emit status changed event
@@ -142,6 +148,7 @@ impl BackgroundJobRepository {
                     app_handle,
                     JobStatusChangedEvent {
                         job_id: job_id.to_string(),
+                        session_id: job.session_id.clone(),
                         status: JobStatus::Canceled.to_string(),
                         start_time: None,
                         end_time: Some(now),
@@ -155,6 +162,7 @@ impl BackgroundJobRepository {
                         app_handle,
                         JobFinalizedEvent {
                             job_id: job_id.to_string(),
+                            session_id: job.session_id.clone(),
                             status: JobStatus::Canceled.to_string(),
                             response: None,
                             actual_cost: cost_value,
@@ -288,7 +296,36 @@ impl BackgroundJobRepository {
     pub async fn cancel_session_jobs(&self, session_id: &str) -> AppResult<usize> {
         let current_ts = get_timestamp();
 
-        // Update all active jobs for the session to 'canceled', but exclude implementation plans
+        // Step 1: Collect affected job IDs and session IDs before UPDATE
+        let affected_jobs: Vec<(String, String)> = sqlx::query(
+            r#"
+            SELECT id, session_id
+            FROM background_jobs
+            WHERE session_id = $1
+            AND status IN ($2, $3, $4, $5, $6, $7)
+            AND task_type <> $8
+            "#,
+        )
+        .bind(session_id)
+        .bind(JobStatus::Created.to_string())
+        .bind(JobStatus::Running.to_string())
+        .bind(JobStatus::Queued.to_string())
+        .bind(JobStatus::AcknowledgedByWorker.to_string())
+        .bind(JobStatus::Idle.to_string())
+        .bind(JobStatus::Preparing.to_string())
+        .bind(TaskType::ImplementationPlan.to_string())
+        .fetch_all(&*self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to fetch jobs for cancellation: {}", e)))?
+        .into_iter()
+        .map(|row| {
+            let job_id: String = row.get("id");
+            let sess_id: String = row.get("session_id");
+            (job_id, sess_id)
+        })
+        .collect();
+
+        // Step 2: Execute the bulk UPDATE
         let result = sqlx::query(
             r#"
             UPDATE background_jobs
@@ -316,6 +353,31 @@ impl BackgroundJobRepository {
         .await
         .map_err(|e| AppError::DatabaseError(format!("Failed to cancel session jobs: {}", e)))?;
 
-        Ok(result.rows_affected() as usize)
+        let rows_affected = result.rows_affected() as usize;
+
+        // Step 3: Emit job:status-changed events for each affected job
+        if rows_affected > 0 && self.app_handle.is_some() {
+            let app_handle = self.app_handle.as_ref().unwrap();
+            let current_ts_ms = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as i64;
+
+            for (job_id, sess_id) in affected_jobs {
+                emit_job_status_changed(
+                    app_handle,
+                    JobStatusChangedEvent {
+                        job_id,
+                        session_id: sess_id,
+                        status: JobStatus::Canceled.to_string(),
+                        start_time: None,
+                        end_time: Some(current_ts_ms),
+                        sub_status_message: Some("Canceled due to session action".to_string()),
+                    },
+                );
+            }
+        }
+
+        Ok(rows_affected)
     }
 }

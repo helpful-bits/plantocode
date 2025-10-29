@@ -12,6 +12,11 @@ public class ServerRelayClient: NSObject, ObservableObject {
     @Published public private(set) var isConnected: Bool = false
     @Published public private(set) var lastError: ServerRelayError?
 
+    public var allowInternalReconnect: Bool = false
+    public var isConnecting: Bool {
+        return connectionState == .connecting
+    }
+
     // MARK: - Private Properties
     private var webSocketTask: URLSessionWebSocketTask?
     private var urlSession: URLSession
@@ -122,24 +127,35 @@ public class ServerRelayClient: NSObject, ObservableObject {
                 return
             }
 
-            // Build WebSocket URL with proper ws/wss scheme
-            var wsURLString = self.serverURL.absoluteString
-            if wsURLString.hasPrefix("https://") {
-                wsURLString = wsURLString.replacingOccurrences(of: "https://", with: "wss://")
-            } else if wsURLString.hasPrefix("http://") {
-                wsURLString = wsURLString.replacingOccurrences(of: "http://", with: "ws://")
+            // Build WebSocket URL - prefer Config.deviceLinkWebSocketURL for consistency
+            let wsURL: URL
+            if let configURL = try? URL(string: Config.serverURL), configURL == self.serverURL {
+                // Use Config's device-link WebSocket URL if serverURL matches
+                wsURL = Config.deviceLinkWebSocketURL
+            } else {
+                // Fallback: Build WebSocket URL with proper ws/wss scheme
+                var wsURLString = self.serverURL.absoluteString
+                if wsURLString.hasPrefix("https://") {
+                    wsURLString = wsURLString.replacingOccurrences(of: "https://", with: "wss://")
+                } else if wsURLString.hasPrefix("http://") {
+                    wsURLString = wsURLString.replacingOccurrences(of: "http://", with: "ws://")
+                }
+
+                // Append WebSocket path
+                if !wsURLString.hasSuffix("/") {
+                    wsURLString += "/"
+                }
+                wsURLString += "ws/device-link"
+
+                guard let constructedURL = URL(string: wsURLString) else {
+                    promise(.failure(.invalidURL))
+                    return
+                }
+                wsURL = constructedURL
             }
 
-            // Append WebSocket path
-            if !wsURLString.hasSuffix("/") {
-                wsURLString += "/"
-            }
-            wsURLString += "ws/device-link"
-
-            guard let wsURL = URL(string: wsURLString) else {
-                promise(.failure(.invalidURL))
-                return
-            }
+            // Log WebSocket connection details for diagnostics
+            self.logger.info("Attempting WebSocket connection to host: \(wsURL.host ?? "unknown"), path: \(wsURL.path)")
 
             var request = URLRequest(url: wsURL)
             // Set headers: Authorization: "Bearer \(jwt)", X-Device-ID: deviceId, X-Token-Binding: deviceId, X-Client-Type: "mobile"
@@ -184,6 +200,14 @@ public class ServerRelayClient: NSObject, ObservableObject {
             }
         }
         .eraseToAnyPublisher()
+    }
+
+    public func clearResumeToken() {
+        try? KeychainManager.shared.delete(for: .relayResumeToken(deviceId: self.deviceId))
+    }
+
+    public static func clearResumeToken(deviceId: UUID) {
+        try? KeychainManager.shared.delete(for: .relayResumeToken(deviceId: deviceId.uuidString))
     }
 
     /// Disconnect from the relay
@@ -874,6 +898,15 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
         logger.info("Publishing relay event: \(eventType) from device: \(sourceDeviceId ?? "unknown")")
         eventPublisher.send(relayEvent)
+
+        // Forward history-state-changed events to NotificationCenter
+        if eventType == "history-state-changed" {
+            NotificationCenter.default.post(
+                name: NSNotification.Name("relay-event-history-state-changed"),
+                object: nil,
+                userInfo: ["event": relayEvent]
+            )
+        }
     }
 
     private func handleDeviceMessageEvent(_ json: [String: Any]) {
@@ -990,7 +1023,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
     // MARK: - Reconnection
 
     private func shouldReconnect() -> Bool {
-        return (maxReconnectAttempts <= 0 || reconnectAttempts < maxReconnectAttempts) && !isReconnecting
+        return allowInternalReconnect && (maxReconnectAttempts <= 0 || reconnectAttempts < maxReconnectAttempts) && !isReconnecting
     }
 
     private func scheduleReconnection() {
@@ -1031,11 +1064,10 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
     private func setupApplicationLifecycleObservers() {
         #if canImport(UIKit)
-        // Reconnect when app becomes active
         NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)
             .sink { [weak self] _ in
                 guard let self = self else { return }
-                if !self.isConnected && !self.isReconnecting, let token = self.jwtToken {
+                if self.allowInternalReconnect && !self.isConnected && !self.isReconnecting, let token = self.jwtToken {
                     self.logger.info("App became active, reconnecting to relay")
                     self.connect(jwtToken: token)
                         .sink(receiveCompletion: { _ in }, receiveValue: { _ in })

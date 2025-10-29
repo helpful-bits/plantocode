@@ -40,6 +40,7 @@ pub mod image_commands;
 pub mod logging_commands;
 pub mod terminal_commands;
 pub mod video_analysis_commands;
+pub mod video_utils_commands;
 pub mod web_search_commands;
 pub mod workflow_commands;
 
@@ -56,6 +57,9 @@ pub use file_system_commands::{
 pub use geo_commands::detect_user_region_command;
 pub use regex_commands::{generate_regex_command, generate_regex_patterns_command};
 
+// Re-exports from app commands module
+pub use app_commands::get_resource_info_command;
+
 // Re-exports from text commands module
 pub use text_commands::{generate_simple_text_command, improve_text_command};
 
@@ -66,7 +70,7 @@ pub use audio_commands::transcribe_audio_command;
 pub use implementation_plan_commands::{
     create_implementation_plan_command, create_merged_implementation_plan_command,
     estimate_prompt_tokens_command, get_prompt_command, read_implementation_plan_command,
-    update_implementation_plan_content_command,
+    update_implementation_plan_content_command, mark_implementation_plan_signed_off_command,
 };
 
 // Re-exports from workflow commands module
@@ -124,10 +128,12 @@ pub use settings_commands::{
 // Re-exports from session commands module
 pub use session_commands::{
     broadcast_active_session_changed_command, clear_all_project_sessions_command,
-    create_session_command, delete_session_command, get_file_selection_history_command,
+    create_session_command, delete_session_command,
+    get_device_id_command, get_file_selection_history_command, get_history_state_command,
     get_session_command, get_sessions_for_project_command,
-    get_task_description_history_command, rename_session_command,
-    sync_file_selection_history_command, sync_task_description_history_command,
+    get_task_description_history_command, merge_history_state_command,
+    rename_session_command, sync_file_selection_history_command,
+    sync_history_state_command, sync_task_description_history_command,
     update_session_command, update_session_fields_command,
     update_session_project_directory_command,
 };
@@ -187,6 +193,9 @@ pub use error_recovery_commands::{
 
 // Re-exports from video analysis commands module
 pub use video_analysis_commands::start_video_analysis_job;
+
+// Re-exports from video utils commands module
+pub use video_utils_commands::get_video_metadata_command;
 
 // Re-exports from logging commands module
 pub use logging_commands::{append_to_log_file, log_client_error};

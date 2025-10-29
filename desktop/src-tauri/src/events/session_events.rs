@@ -102,3 +102,56 @@ pub fn emit_session_deleted(app: &AppHandle, session_id: &str) -> Result<(), Str
     })).map_err(|e| format!("relay emit failed: {e}"))?;
     Ok(())
 }
+
+pub fn emit_history_state_changed<T: Serialize>(
+    app: &AppHandle,
+    session_id: &str,
+    kind: &str,
+    state: &T,
+) {
+    let state_value = serde_json::to_value(state).unwrap_or(serde_json::json!({}));
+    let version = state_value.get("version").cloned().unwrap_or(serde_json::Value::Null);
+    let checksum = state_value.get("checksum").cloned().unwrap_or(serde_json::Value::Null);
+
+    let payload = serde_json::json!({
+        "sessionId": session_id,
+        "kind": kind,
+        "state": state_value,
+        "version": version,
+        "checksum": checksum
+    });
+
+    if let Err(e) = app.emit("history-state-changed", payload.clone()) {
+        eprintln!("Failed to emit history-state-changed locally: {}", e);
+    }
+
+    let device_link_payload = serde_json::json!({
+        "type": "history-state-changed",
+        "payload": payload,
+    });
+
+    if let Err(e) = app.emit("device-link-event", device_link_payload) {
+        eprintln!("Failed to emit history-state-changed to device-link: {}", e);
+    }
+}
+
+pub fn emit_history_state_validated(
+    app: &AppHandle,
+    session_id: &str,
+    kind: &str,
+    checksum: &str,
+    entries_count: usize,
+    current_index: i64,
+) {
+    let payload = serde_json::json!({
+        "sessionId": session_id,
+        "kind": kind,
+        "checksum": checksum,
+        "entriesCount": entries_count,
+        "currentIndex": current_index,
+    });
+
+    if let Err(e) = app.emit("history-state-validated", payload) {
+        eprintln!("Failed to emit history-state-validated: {}", e);
+    }
+}

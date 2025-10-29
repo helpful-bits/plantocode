@@ -5,10 +5,10 @@
       "slug": "codex-cli-plan-mode",
       "workflow": "plan-mode",
       "tool_integration": "codex-cli",
-      "headline": "Codex CLI Planning Workflow with Architecture Guardrails",
-      "subhead": "Pre-plan with file discovery and multi-model synthesis, then execute in Codex CLI with approval modes.",
+      "headline": "Codex CLI Planning Workflow with File Discovery",
+      "subhead": "Plan with file-by-file specs; run Codex CLI with approvals.",
       "meta_title": "Codex CLI Planning Workflow - PlanToCode",
-      "meta_description": "Map every dependency, merge multi-model plans, and run Codex CLI with Read-Only or Auto approval modes using PlanToCode's planning workflow.",
+      "meta_description": "Map dependencies with file discovery, generate reviewable plans, then run Codex CLI with Auto, Read-Only, or Full Access approval modes.",
       "primary_cta": "Open Codex Planning Guide",
       "publish": true,
       "priority": 1,
@@ -19,7 +19,7 @@
         },
         {
           "problem": "Single-model plans miss edge cases",
-          "solution": "Merge GPT-5, Claude, and Codex plans with attribution"
+          "solution": "Multi-model synthesis captures different perspectives with attribution"
         },
         {
           "problem": "No persistent execution trail",
@@ -28,7 +28,7 @@
       ],
       "workflow_steps": [
         "Run file discovery to map every impacted file",
-        "Generate plans with Codex plus supporting models",
+        "Generate plans with multiple models for comprehensive coverage",
         "Use merge instructions to craft a final blueprint",
         "Execute in PlanToCode's terminal or paste into Codex plan mode"
       ],
@@ -42,17 +42,17 @@
       "slug": "claude-code-plan-mode",
       "workflow": "plan-mode",
       "tool_integration": "claude-code",
-      "headline": "Enhance Claude Code's Native Plan Mode",
-      "subhead": "Add multi-model synthesis and file discovery to Claude Code's built-in Plan Mode (Shift+Tab).",
+      "headline": "Enhance Claude Code Plan Mode",
+      "subhead": "Plan first; use Claude Code's Plan Mode with reviewed specs.",
       "meta_title": "Enhance Claude Code Plan Mode - PlanToCode",
-      "meta_description": "Complement Claude Code's native Plan Mode with file discovery, multi-model synthesis, and merge instructions for superior architectural planning.",
+      "meta_description": "Add file discovery and multi-model synthesis to Claude Code's Plan Mode for comprehensive architectural planning.",
       "primary_cta": "Open Claude Planning Guide",
       "publish": true,
       "priority": 1,
       "pain_points": [
         {
-          "problem": "Claude Code Plan Mode uses only Claude Sonnet",
-          "solution": "PlanToCode adds multi-model synthesis with GPT-5 and Gemini perspectives"
+          "problem": "Claude Code Plan Mode relies on a single model",
+          "solution": "PlanToCode adds multi-model synthesis for broader perspectives"
         },
         {
           "problem": "File context preparation is manual",
@@ -65,8 +65,8 @@
       ],
       "workflow_steps": [
         "Discover architecture with multi-stage file discovery",
-        "Stream plans from Claude Sonnet, GPT-5, and Gemini",
-        "Merge with instructions to synthesize superior architectural plan",
+        "Stream plans from multiple models with different strengths",
+        "Merge with instructions to synthesize comprehensive architectural plan",
         "Use with Claude Code Plan Mode (Shift+Tab) or execute in PlanToCode terminal"
       ],
       "key_features": [
@@ -79,10 +79,10 @@
       "slug": "cursor-plan-mode",
       "workflow": "plan-mode",
       "tool_integration": "cursor",
-      "headline": "Planning Workflow for Cursor Composer & Agent",
-      "subhead": "Add architectural pre-planning to Cursor Agent mode with file discovery and multi-model synthesis.",
+      "headline": "Planning Workflow for Cursor Agent",
+      "subhead": "Plan and run in Agent Terminal or Background Agents.",
       "meta_title": "Cursor Planning Workflow - PlanToCode",
-      "meta_description": "Give Cursor Agent mode complete architectural context. Pre-plan with file discovery, merge multi-model insights, execute with WSL-friendly guardrails.",
+      "meta_description": "Pre-plan with file discovery and multi-model insights, then execute in Cursor Agent Terminal or Background Agents.",
       "primary_cta": "Open Cursor Planning Guide",
       "publish": true,
       "priority": 1,
@@ -97,12 +97,12 @@
         },
         {
           "problem": "Terminal integration lacks structured audit logs",
-          "solution": "Persistent terminal with approvals records every macOS, Windows, or WSL session"
+          "solution": "Persistent terminal with approvals records sessions across platforms"
         }
       ],
       "workflow_steps": [
         "Run file discovery to map architectural scope",
-        "Generate plans from GPT-5, Claude, and Gemini",
+        "Generate plans from multiple models with complementary strengths",
         "Merge and synthesize with architectural context",
         "Feed to Cursor Agent/Composer or execute in PlanToCode terminal"
       ],

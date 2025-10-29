@@ -83,11 +83,11 @@ export function CopyButtonsMock({ isInView }: { isInView: boolean }) {
         {[
           {
             label: 'Parallel Claude Coding Agents',
-            content: '{{IMPLEMENTATION_PLAN}}\\nNOW, think deeply! Read the files mentioned, understand them and launch parallel Claude coding agents that run AT THE SAME TIME TO SAVE TIME and implement EVERY SINGLE aspect of the perfect plan precisely and systematically...'
+            content: '{{IMPLEMENTATION_PLAN}}\\n**Now, think deeply!** Read the files mentioned, understand them and launch parallel Claude coding agents that run **at the same time** to save time and implement **every single aspect** of the perfect plan precisely and systematically...'
           },
           {
             label: 'Investigate Results',
-            content: 'Investigate the results of ALL agents that were launched and ensure we have implemented the COMPLETE plan CORRECTLY! Perform a thorough self-check without launching background agents...'
+            content: 'Investigate the results of **all agents** that were launched and ensure we have implemented the **complete plan correctly!** Perform a thorough self-check without launching background agents...'
           }
         ].map((config, _index) => (
           <div key={config.label} className="relative">

@@ -1,6 +1,11 @@
 import Foundation
 import Combine
 import Security
+import OSLog
+import Network
+#if canImport(UIKit)
+import UIKit
+#endif
 
 @MainActor
 public final class MultiConnectionManager: ObservableObject {
@@ -14,19 +19,96 @@ public final class MultiConnectionManager: ObservableObject {
     private var connectingTasks: [UUID: Task<Result<UUID, Error>, Never>] = [:]
     private var verifyingDevices = Set<UUID>()
     private var relayHandshakeByDevice = [UUID: ConnectionHandshake]()
+    private let logger = Logger(subsystem: "PlanToCode", category: "MultiConnectionManager")
+    private var isHardResetInProgress = false
+
+    private struct ReconnectPolicy {
+        let attemptDelays: [TimeInterval] = [0.0, 0.5, 1, 2, 4, 8, 16, 30]
+        let backgroundRetryInterval: TimeInterval = 120
+        let maxAggressiveAttempts: Int = 8
+        let maxAggressiveWindowSeconds: TimeInterval = 90
+        let jitterFactor: Double = 0.15
+    }
+
+    private struct DeviceReconnectState {
+        var attempts: Int = 0
+        var aggressiveWindowStart: Date?
+        var isAggressiveActive: Bool = false
+        var backgroundTimer: Timer?
+        var currentTask: Task<Void, Never>?
+        var lastError: Error?
+        var backgroundCycles: Int = 0
+    }
+
+    public enum ReconnectReason {
+        case appForeground
+        case networkChange(NWPath)
+        case connectionLoss(UUID)
+        case authRefreshed
+    }
+
+    public enum HardResetReason {
+        case manual
+        case reconnectionExhausted
+        case serverContextChanged
+        case authInvalidated
+        case diagnostics
+    }
+
+    private var reconnectPolicy = ReconnectPolicy()
+    private var reconnectStates = [UUID: DeviceReconnectState]()
+    private let serverContextKey = "LastConnectedServerURL"
+    private var lastConnectedServerURL: String?
+    private let pathMonitor = NWPathMonitor()
+    private let pathMonitorQueue = DispatchQueue(label: "com.plantocode.mcm.network")
+    private var lastPath: NWPath?
+
+    private var connectedDeviceIds: [UUID] {
+        connectionStates.filter { _, state in
+            if case .connected = state {
+                return true
+            }
+            return false
+        }.map { $0.key }
+    }
 
     private init() {
         loadPersistedActiveDeviceId()
+
+        lastConnectedServerURL = UserDefaults.standard.string(forKey: serverContextKey)
+        if let serverURL = lastConnectedServerURL {
+            logger.info("📍 Loaded last connected server: \(serverURL)")
+        }
+
+        // Validate activeDeviceId exists in persisted connections
+        let deviceIds = UserDefaults.standard.array(forKey: connectedDevicesKey) as? [String] ?? []
+        if let activeId = activeDeviceId {
+            let activeIdStr = activeId.uuidString
+            if !deviceIds.contains(activeIdStr) {
+                logger.info("Clearing stale activeDeviceId: \(activeIdStr)")
+                activeDeviceId = nil
+                UserDefaults.standard.removeObject(forKey: activeDeviceKey)
+            }
+        }
+
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            guard let self = self else { return }
+            Task { @MainActor in
+                self.lastPath = path
+                self.logger.info("🌐 Network path changed: status=\(String(describing: path.status)), interfaces=\(path.availableInterfaces.count)")
+                self.triggerAggressiveReconnect(reason: .networkChange(path))
+            }
+        }
+        pathMonitor.start(queue: pathMonitorQueue)
 
         NotificationCenter.default.addObserver(
             forName: NSNotification.Name("auth-token-refreshed"),
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            guard let self = self, let activeId = self.activeDeviceId else { return }
-            if self.connectionStates[activeId]?.isConnected == false {
-                Task { _ = await self.addConnection(for: activeId) }
-            }
+            guard let self = self else { return }
+            self.logger.info("🔑 Auth token refreshed, triggering reconnect for active device")
+            self.triggerAggressiveReconnect(reason: .authRefreshed)
         }
 
         NotificationCenter.default.addObserver(
@@ -34,8 +116,80 @@ public final class MultiConnectionManager: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.removeAllConnections()
+            guard let self = self else { return }
+            self.logger.info("👋 User logged out, stopping all reconnection attempts")
+            self.stopAllReconnectTimers()
+            self.removeAllConnections()
         }
+    }
+
+    private func cancelAllCancellables() {
+        cancellables.removeAll()
+    }
+
+    @MainActor
+    public func hardReset(reason: HardResetReason, deletePersistedDevices: Bool = true) async {
+        guard !isHardResetInProgress else {
+            logger.warning("Hard reset already in progress, skipping")
+            return
+        }
+
+        isHardResetInProgress = true
+        defer { isHardResetInProgress = false }
+
+        logger.info("🔥 Starting hard reset, reason: \(String(describing: reason))")
+
+        stopAllReconnectTimers()
+        cancelAllCancellables()
+
+        for (_, relay) in storage {
+            relay.clearResumeToken()
+            relay.disconnect()
+        }
+
+        let persistedDeviceIds = (UserDefaults.standard.array(forKey: connectedDevicesKey) as? [String] ?? [])
+            .compactMap { UUID(uuidString: $0) }
+        let inMemoryDeviceIds = Array(storage.keys)
+        let allDeviceIds = Set(persistedDeviceIds + inMemoryDeviceIds)
+
+        for deviceId in allDeviceIds {
+            ServerRelayClient.clearResumeToken(deviceId: deviceId)
+        }
+
+        storage.removeAll()
+        connectionStates.removeAll()
+        verifyingDevices.removeAll()
+        relayHandshakeByDevice.removeAll()
+        reconnectStates.removeAll()
+        connectingTasks.removeAll()
+        activeDeviceId = nil
+
+        persistConnectedDevices([])
+
+        if deletePersistedDevices {
+            UserDefaults.standard.removeObject(forKey: connectedDevicesKey)
+            UserDefaults.standard.removeObject(forKey: activeDeviceKey)
+        }
+
+        UserDefaults.standard.removeObject(forKey: serverContextKey)
+        lastConnectedServerURL = nil
+
+        await PlanToCodeCore.shared.dataServices?.resetAllState()
+
+        NotificationCenter.default.post(
+            name: Notification.Name("connection-hard-reset-completed"),
+            object: nil,
+            userInfo: ["reason": reason]
+        )
+
+        logger.info("✅ Hard reset completed")
+    }
+
+    @MainActor
+    public func hardResetAndRescan() async {
+        await hardReset(reason: .manual)
+        await DeviceDiscoveryService.shared.clearList()
+        await DeviceDiscoveryService.shared.refreshDevices()
     }
 
     private func verifyDesktopConnection(deviceId: UUID, timeoutSeconds: Int = 5) async throws {
@@ -82,6 +236,37 @@ public final class MultiConnectionManager: ObservableObject {
         return result
     }
 
+    /// Switch to a different active device, disconnecting all others
+    @MainActor
+    public func switchActiveDevice(to deviceId: UUID) async -> Result<UUID, Error> {
+        // If already connected to target device, return early
+        if activeDeviceId == deviceId,
+           let state = connectionStates[deviceId],
+           case .connected = state {
+            return .success(deviceId)
+        }
+
+        // Connect to target device if not already connected
+        if connectionStates[deviceId] == nil || !connectionStates[deviceId]!.isConnected {
+            let result = await addConnection(for: deviceId)
+            if case .failure(let error) = result {
+                return .failure(error)
+            }
+        }
+
+        // Disconnect all other devices
+        for otherDeviceId in storage.keys where otherDeviceId != deviceId {
+            removeConnection(deviceId: otherDeviceId)
+        }
+
+        // Set as active and persist
+        setActive(deviceId)
+        persistActiveDeviceId()
+        persistConnectedDevices([deviceId])
+
+        return .success(deviceId)
+    }
+
     /// Add connection using server relay for a specific device
     public func addConnection(for deviceId: UUID) async -> Result<UUID, Error> {
         // Strict prerequisite validation
@@ -98,6 +283,11 @@ public final class MultiConnectionManager: ObservableObject {
                 connectionStates[deviceId] = .failed(MultiConnectionError.authenticationRequired)
             }
             return .failure(MultiConnectionError.authenticationRequired)
+        }
+
+        // Set connecting state immediately for UI feedback
+        await MainActor.run {
+            connectionStates[deviceId] = .connecting
         }
 
         // Check if we have an existing connection that's actually connected
@@ -157,6 +347,7 @@ public final class MultiConnectionManager: ObservableObject {
                     deviceId: mobileDeviceId,
                     sessionDelegate: pinningDelegate
                 )
+                relayClient.allowInternalReconnect = false
 
                 print("[MultiConnectionManager] Connecting to relay...")
                 try await relayClient.connect(jwtToken: authToken).asyncValue()
@@ -182,16 +373,26 @@ public final class MultiConnectionManager: ObservableObject {
                                         self.connectionStates[deviceId] = .connected(handshake)
                                         self.persistConnectedDevice(deviceId)
                                     }
+                                    // Auto-assign if this is the only connected device and no active device is set
+                                    if self.activeDeviceId == nil {
+                                        let connected = self.connectedDeviceIds
+                                        if connected.count == 1, connected.first == deviceId {
+                                            self.setActive(deviceId)
+                                            self.logger.info("Auto-assigned single connected device: \(deviceId)")
+                                        }
+                                    }
                                 case .reconnecting:
                                     self.connectionStates[deviceId] = .reconnecting
                                     self.verifyingDevices.insert(deviceId)
                                 case .failed(let e):
                                     self.connectionStates[deviceId] = .failed(e)
                                     self.verifyingDevices.remove(deviceId)
+                                    self.triggerAggressiveReconnect(reason: .connectionLoss(deviceId), deviceIds: [deviceId])
                                 case .disconnected:
                                     self.connectionStates[deviceId] = .disconnected
                                     self.verifyingDevices.remove(deviceId)
                                     self.relayHandshakeByDevice.removeValue(forKey: deviceId)
+                                    self.triggerAggressiveReconnect(reason: .connectionLoss(deviceId), deviceIds: [deviceId])
                                 default:
                                     break
                                 }
@@ -213,6 +414,8 @@ public final class MultiConnectionManager: ObservableObject {
                         self.persistConnectedDevice(deviceId)
                         self.setActive(deviceId)
                         self.verifyingDevices.remove(deviceId)
+                        self.lastConnectedServerURL = Config.serverURL
+                        UserDefaults.standard.set(self.lastConnectedServerURL, forKey: self.serverContextKey)
                     }
 
                     print("[MultiConnectionManager] Verification successful, connection fully established")
@@ -244,6 +447,16 @@ public final class MultiConnectionManager: ObservableObject {
     }
 
     public func removeConnection(deviceId: UUID) {
+        // Remove from persisted connected devices list
+        var deviceIds = UserDefaults.standard.array(forKey: connectedDevicesKey) as? [String] ?? []
+        deviceIds.removeAll { $0 == deviceId.uuidString }
+        UserDefaults.standard.set(deviceIds, forKey: connectedDevicesKey)
+
+        // Clear active device if it was the removed device
+        if activeDeviceId == deviceId {
+            UserDefaults.standard.removeObject(forKey: activeDeviceKey)
+        }
+
         verifyingDevices.remove(deviceId)
         relayHandshakeByDevice.removeValue(forKey: deviceId)
         // Disconnect and remove relay connection
@@ -260,17 +473,27 @@ public final class MultiConnectionManager: ObservableObject {
     }
 
     public func removeAllConnections() {
-        // Disconnect all relay connections
+        stopAllReconnectTimers()
+        cancelAllCancellables()
+        reconnectStates.removeAll()
+        connectingTasks.removeAll()
+
         for (_, relayClient) in storage {
             relayClient.disconnect()
         }
+
         storage.removeAll()
         connectionStates.removeAll()
         verifyingDevices.removeAll()
         relayHandshakeByDevice.removeAll()
         activeDeviceId = nil
+
         UserDefaults.standard.removeObject(forKey: connectedDevicesKey)
         UserDefaults.standard.removeObject(forKey: activeDeviceKey)
+        UserDefaults.standard.removeObject(forKey: serverContextKey)
+        lastConnectedServerURL = nil
+
+        persistConnectedDevices([])
     }
 
 
@@ -337,6 +560,222 @@ public final class MultiConnectionManager: ObservableObject {
         }
     }
 
+    // MARK: - Aggressive Reconnection
+
+    public func triggerAggressiveReconnect(reason: ReconnectReason, deviceIds: [UUID]? = nil) {
+        var candidates: [UUID] = []
+
+        if let activeId = activeDeviceId {
+            candidates.append(activeId)
+        }
+
+        if let specifiedIds = deviceIds {
+            for id in specifiedIds where !candidates.contains(id) {
+                candidates.append(id)
+            }
+        } else {
+            let deviceIdStrs = UserDefaults.standard.array(forKey: connectedDevicesKey) as? [String] ?? []
+            for idStr in deviceIdStrs {
+                if let uuid = UUID(uuidString: idStr), !candidates.contains(uuid) {
+                    candidates.append(uuid)
+                }
+            }
+        }
+
+        logger.info("🔄 Triggering aggressive reconnect for \(candidates.count) devices, reason: \(String(describing: reason))")
+
+        for deviceId in candidates {
+            startAggressiveSequence(for: deviceId, reason: reason)
+        }
+    }
+
+    private func startAggressiveSequence(for deviceId: UUID, reason: ReconnectReason) {
+        guard canAttemptReconnect(for: deviceId) else {
+            return
+        }
+
+        logger.info("🚀 Starting aggressive sequence for device \(deviceId), reason: \(String(describing: reason))")
+
+        if reconnectStates[deviceId] == nil {
+            reconnectStates[deviceId] = DeviceReconnectState()
+        }
+        reconnectStates[deviceId]?.isAggressiveActive = true
+        reconnectStates[deviceId]?.attempts = 0
+        if reconnectStates[deviceId]?.aggressiveWindowStart == nil {
+            reconnectStates[deviceId]?.aggressiveWindowStart = Date()
+        }
+
+        reconnectStates[deviceId]?.backgroundTimer?.invalidate()
+        reconnectStates[deviceId]?.backgroundTimer = nil
+        reconnectStates[deviceId]?.currentTask?.cancel()
+
+        let task = Task { @MainActor in
+            await scheduleNextReconnectAttempt(for: deviceId)
+        }
+        reconnectStates[deviceId]?.currentTask = task
+    }
+
+    private func scheduleNextReconnectAttempt(for deviceId: UUID) async {
+        if let state = connectionStates[deviceId], state.isConnected {
+            logger.info("Device \(deviceId) already connected, stopping reconnect")
+            return
+        }
+
+        if connectingTasks[deviceId] != nil {
+            logger.info("Device \(deviceId) already connecting, skipping")
+            return
+        }
+
+        guard var state = reconnectStates[deviceId], state.isAggressiveActive else { return }
+
+        let elapsed = Date().timeIntervalSince(state.aggressiveWindowStart ?? Date())
+        if state.attempts >= reconnectPolicy.maxAggressiveAttempts || elapsed >= reconnectPolicy.maxAggressiveWindowSeconds {
+            logger.info("Aggressive window exhausted for \(deviceId), degrading to background retry")
+            degradeToBackgroundRetry(for: deviceId)
+            return
+        }
+
+        let attemptIndex = min(state.attempts, reconnectPolicy.attemptDelays.count - 1)
+        let baseDelay = reconnectPolicy.attemptDelays[attemptIndex]
+        let jitterRange = baseDelay * reconnectPolicy.jitterFactor
+        let jitter = Double.random(in: -jitterRange...jitterRange)
+        let delay = max(0, baseDelay + jitter)
+
+        logger.info("⏱️ Scheduling reconnect attempt #\(state.attempts + 1) for \(deviceId) with delay \(String(format: "%.2f", delay))s")
+
+        try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+
+        await attemptConnect(for: deviceId)
+    }
+
+    private func attemptConnect(for deviceId: UUID) async {
+        guard canAttemptReconnect(for: deviceId) else {
+            logger.info("Security gate failed for \(deviceId), stopping reconnect")
+            reconnectStates[deviceId]?.isAggressiveActive = false
+            return
+        }
+
+        logger.info("Attempting connect for device \(deviceId)")
+
+        let result = await addConnection(for: deviceId)
+
+        switch result {
+        case .success:
+            logger.info("✅ Reconnect successful for \(deviceId)")
+            reconnectStates[deviceId]?.currentTask?.cancel()
+            reconnectStates[deviceId]?.backgroundTimer?.invalidate()
+            reconnectStates.removeValue(forKey: deviceId)
+
+            lastConnectedServerURL = Config.serverURL
+            UserDefaults.standard.set(lastConnectedServerURL, forKey: serverContextKey)
+
+        case .failure(let error):
+            logger.error("❌ Reconnect failed for \(deviceId): \(error.localizedDescription)")
+            reconnectStates[deviceId]?.lastError = error
+            reconnectStates[deviceId]?.attempts += 1
+
+            await scheduleNextReconnectAttempt(for: deviceId)
+        }
+    }
+
+    private func canAttemptReconnect(for deviceId: UUID) -> Bool {
+        guard AuthService.shared.isAuthenticated == true else {
+            logger.warning("🔒 Cannot reconnect \(deviceId): not authenticated")
+            return false
+        }
+
+        if let lastServer = lastConnectedServerURL, lastServer != Config.serverURL {
+            logger.warning("🌐 Cannot reconnect \(deviceId): server context changed from \(lastServer) to \(Config.serverURL)")
+            NotificationCenter.default.post(
+                name: Notification.Name("connection-server-context-changed"),
+                object: nil,
+                userInfo: ["old": lastServer, "new": Config.serverURL]
+            )
+            Task { @MainActor in
+                await self.hardReset(reason: .serverContextChanged)
+            }
+            return false
+        }
+
+        let deviceIdStrs = UserDefaults.standard.array(forKey: connectedDevicesKey) as? [String] ?? []
+        let knownDeviceIds = deviceIdStrs.compactMap { UUID(uuidString: $0) }
+        guard deviceId == activeDeviceId || knownDeviceIds.contains(deviceId) else {
+            logger.warning("📱 Cannot reconnect \(deviceId): device not in known list")
+            return false
+        }
+
+        logger.debug("✅ Security gates passed for \(deviceId)")
+        return true
+    }
+
+    private func degradeToBackgroundRetry(for deviceId: UUID) {
+        logger.warning("⚠️ Degrading to background retry for \(deviceId) after \(self.reconnectStates[deviceId]?.attempts ?? 0) attempts")
+
+        reconnectStates[deviceId]?.isAggressiveActive = false
+        reconnectStates[deviceId]?.currentTask?.cancel()
+        reconnectStates[deviceId]?.currentTask = nil
+
+        let errorMessage: String
+        if let lastError = reconnectStates[deviceId]?.lastError {
+            errorMessage = lastError.localizedDescription
+        } else {
+            errorMessage = "Connection could not be established"
+        }
+
+        NotificationCenter.default.post(
+            name: Notification.Name("connection-reconnect-exhausted"),
+            object: nil,
+            userInfo: ["deviceId": deviceId.uuidString, "message": errorMessage]
+        )
+
+        let timer = Timer.scheduledTimer(withTimeInterval: reconnectPolicy.backgroundRetryInterval, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+
+            #if canImport(UIKit)
+            guard UIApplication.shared.applicationState == .active else { return }
+            #endif
+
+            guard self.lastPath?.status == .satisfied else { return }
+
+            guard self.canAttemptReconnect(for: deviceId) else { return }
+
+            if let state = self.reconnectStates[deviceId] {
+                if state.backgroundCycles >= 2 {
+                    if let currentState = self.connectionStates[deviceId], !currentState.isConnected {
+                        self.logger.warning("Background cycles exhausted (\(state.backgroundCycles)), triggering hard reset")
+                        self.reconnectStates[deviceId]?.backgroundTimer?.invalidate()
+                        Task { @MainActor in
+                            await self.hardReset(reason: .reconnectionExhausted)
+                        }
+                        return
+                    }
+                }
+            }
+
+            self.reconnectStates[deviceId]?.backgroundCycles += 1
+
+            Task { @MainActor in
+                let result = await self.addConnection(for: deviceId)
+                if case .success = result {
+                    self.logger.info("Background retry successful for \(deviceId)")
+                    self.reconnectStates[deviceId]?.backgroundTimer?.invalidate()
+                    self.reconnectStates.removeValue(forKey: deviceId)
+                }
+            }
+        }
+
+        reconnectStates[deviceId]?.backgroundTimer = timer
+    }
+
+    private func stopAllReconnectTimers() {
+        logger.info("🛑 Stopping all reconnect timers for \(self.reconnectStates.count) devices")
+        for (_, state) in self.reconnectStates {
+            state.currentTask?.cancel()
+            state.backgroundTimer?.invalidate()
+        }
+        reconnectStates.removeAll()
+    }
+
     // MARK: - Private Helper Methods
 
     private func getAuthToken() async -> String? {
@@ -372,6 +811,15 @@ public final class MultiConnectionManager: ObservableObject {
                 UserDefaults.standard.set(updatedIds, forKey: connectedDevicesKey)
             }
         }
+
+        // Auto-assign if exactly one device connected successfully and no active device
+        if activeDeviceId == nil {
+            let connected = connectedDeviceIds
+            if connected.count == 1, let deviceId = connected.first {
+                setActive(deviceId)
+                print("[MultiConnectionManager] Auto-assigned single connected device after restore: \(deviceId)")
+            }
+        }
     }
 
     private func persistActiveDeviceId() {
@@ -394,6 +842,15 @@ public final class MultiConnectionManager: ObservableObject {
             deviceIds.append(idStr)
             UserDefaults.standard.set(deviceIds, forKey: connectedDevicesKey)
         }
+    }
+
+    private func persistConnectedDevices(_ ids: [UUID]) {
+        let strings = ids.map { $0.uuidString }
+        UserDefaults.standard.set(strings, forKey: connectedDevicesKey)
+    }
+
+    private func clearPersistedConnectedDevices(except: [UUID]) {
+        persistConnectedDevices(except)
     }
 }
 

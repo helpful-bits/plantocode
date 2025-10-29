@@ -3,6 +3,8 @@ use crate::models::BackgroundJob;
 use sqlx::sqlite::SqliteRow;
 use sqlx::Row;
 use serde_json::{Value, Map};
+use std::str::FromStr;
+use crate::models::JobStatus;
 
 /// Helper function to deep merge JSON values
 pub(super) fn deep_merge_json(target: &mut serde_json::Map<String, Value>, key: &str, value: Value) {
@@ -33,7 +35,10 @@ pub(super) fn row_to_job(row: &SqliteRow) -> AppResult<BackgroundJob> {
     let id: String = row.try_get::<'_, String, _>("id")?;
     let session_id: String = row.try_get::<'_, String, _>("session_id")?;
     let task_type: String = row.try_get::<'_, String, _>("task_type")?;
-    let status: String = row.try_get::<'_, String, _>("status")?;
+    let status_raw: String = row.try_get::<'_, String, _>("status")?;
+    let status = JobStatus::from_str(&status_raw)
+        .map(|s| s.to_string())
+        .unwrap_or(status_raw);
     let prompt: String = row.try_get::<'_, String, _>("prompt")?;
     let created_at: i64 = row.try_get::<'_, i64, _>("created_at")?;
 

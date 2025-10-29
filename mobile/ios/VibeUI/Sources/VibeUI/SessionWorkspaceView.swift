@@ -425,23 +425,11 @@ public struct SessionWorkspaceView: View {
     // MARK: - Sync Management
 
     private func startSyncIfNeeded() {
-        guard let session = currentSession else { return }
-
-        // Only start if not already syncing this session
-        if activeSyncSessionId != session.id {
-            container.taskSyncService.startTaskDescriptionSync(
-                sessionId: session.id,
-                textBinding: $taskText,
-                pollIntervalSeconds: 4.0
-            )
-            activeSyncSessionId = session.id
-        }
+        return
     }
 
     private func stopCurrentSync() {
-        guard let sessionId = activeSyncSessionId else { return }
-        container.taskSyncService.stopTaskDescriptionSync(sessionId: sessionId)
-        activeSyncSessionId = nil
+        return
     }
 }
 
@@ -455,13 +443,16 @@ struct TaskTab: View {
 
     @State private var showingDeviceMenu = false
     @State private var showFindFilesSheet: Bool = false
+    @State private var isKeyboardVisible = false
     @StateObject private var multiConnectionManager = MultiConnectionManager.shared
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Session info bar
-                SessionInfoBar(session: session, onTap: onSessionChange)
+                // Session info bar - hide when keyboard is open
+                if !isKeyboardVisible {
+                    SessionInfoBar(session: session, onTap: onSessionChange)
+                }
 
                 // Task Input View - fills remaining space
                 TaskInputView(
@@ -474,13 +465,25 @@ struct TaskTab: View {
                     sessionId: session.id,
                     projectDirectory: session.projectDirectory
                 )
-                .padding()
+                .padding(.horizontal)
+                .padding(.bottom)
+                .padding(.top, isKeyboardVisible ? 0 : 16)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .background(Color.background)
             .onTapGesture {
                 // Dismiss keyboard when tapping outside
                 UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+                withAnimation(.easeOut(duration: 0.25)) {
+                    isKeyboardVisible = true
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                withAnimation(.easeOut(duration: 0.25)) {
+                    isKeyboardVisible = false
+                }
             }
             .navigationTitle("Task Description")
             .navigationBarTitleDisplayMode(.inline)

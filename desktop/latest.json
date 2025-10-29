@@ -1,11 +1,11 @@
 {
-  "version": "1.2.0",
-  "notes": "Version 1.2.0 Release\n\n- Fixed login screen icons rendering in production builds\n- Performance improvements and bug fixes\n- Enhanced stability and reliability",
-  "pub_date": "2025-10-21T12:05:00Z",
+  "version": "1.2.1",
+  "notes": "Version 1.2.1 Release\n\n- Performance improvements and bug fixes\n- Enhanced stability and reliability",
+  "pub_date": "2025-10-25T17:05:00Z",
   "platforms": {
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUXZZN0JwS05DN3NKaXV2Qng3UEo5MFhPWUZHdTFDd3Z3bnpQOEFLZzlKbm9oa0p1UldvUDdpTThVOWY2SGtIOWdYaDhRTnpSdDJTb2RqKzdPVWRWQjhRSmZHWWdNTFFJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzYxMDQxMTMzCWZpbGU6UGxhblRvQ29kZV8xLjIuMF9hYXJjaDY0LmFwcC50YXIuZ3oKRTBVM0Y5OWpFMDRXNjd4Z0lKQ2NURkREYldoZXZybFNNNnhwR3BaNXNTY21FOGJFT1p3amJDMzFWNGNadlM4NkhERmZtYUlVTTRWS3VhNEVHQWE0Q3c9PQo=",
-      "url": "https://d2tyb0wucqqf48.cloudfront.net/desktop/mac/v1.2.0/PlanToCode-1.2.0.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUXZZN0JwS05DN3FJQk1VUHgrK1pjZ29LQTl0ei9saDhERWFseUpvNjFjbzBZUXZmV3VVOHlzMHh5NzlvL2FKM09NZm1XUHN6am0zT2MzYmV1cmNHaDQ2N0k1SE1ZRFE4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzYxNDA0NzU1CWZpbGU6UGxhblRvQ29kZV8xLjIuMV9hYXJjaDY0LmFwcC50YXIuZ3oKeTNEb0ovdVJqUitLN012elpOU2kvaTBLcmY0UVlUbTNPRHpuSGRHVEhlTHpUR3dVU3p3cFV5b3BJVFZ2QWRvL0JNNjVKVHRFTURHeXk5N0srQmFERFE9PQo=",
+      "url": "https://d2tyb0wucqqf48.cloudfront.net/desktop/mac/v1.2.1/PlanToCode-1.2.1.tar.gz"
     }
   }
 }

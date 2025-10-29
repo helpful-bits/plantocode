@@ -24,6 +24,10 @@ public class JobsDataService: ObservableObject {
     private var currentListJobsRequestToken: UUID?
     @Published public private(set) var hasLoadedOnce = false
 
+    private var deviceKey: String {
+        MultiConnectionManager.shared.activeDeviceId?.uuidString ?? "no_device"
+    }
+
     // MARK: - Initialization
     public init(
         apiClient: APIClientProtocol = APIClient.shared,
@@ -48,7 +52,7 @@ public class JobsDataService: ObservableObject {
         isLoading = true
         error = nil
 
-        let cacheKey = "jobs_\(request.cacheKey)"
+        let cacheKey = "dev_\(deviceKey)_jobs_\(request.cacheKey)"
 
         // Try cache first if enabled
         if let cached: JobListResponse = cacheManager.get(key: cacheKey) {
@@ -120,7 +124,7 @@ public class JobsDataService: ObservableObject {
 
     /// Get detailed job information
     public func getJobDetails(request: JobDetailsRequest) -> AnyPublisher<JobDetailsResponse, DataServiceError> {
-        let cacheKey = "job_details_\(request.jobId)"
+        let cacheKey = "dev_\(deviceKey)_job_details_\(request.jobId)"
 
         if let cached: JobDetailsResponse = cacheManager.get(key: cacheKey) {
             return Just(cached)
@@ -206,6 +210,30 @@ public class JobsDataService: ObservableObject {
         self.jobsIndex.removeAll()
     }
 
+    /// Reset jobs state when active device changes
+    @MainActor
+    public func onActiveDeviceChanged() {
+        // Cancel progress subscription
+        progressSubscription?.cancel()
+        progressSubscription = nil
+
+        // Clear all jobs
+        clearJobs()
+
+        // Invalidate caches with device-specific prefix
+        let deviceKey = MultiConnectionManager.shared.activeDeviceId?.uuidString ?? "no_device"
+        cacheManager.invalidatePattern("dev_\(deviceKey)_jobs_")
+        cacheManager.invalidatePattern("dev_\(deviceKey)_job_details_")
+
+        // Reset flags
+        hasLoadedOnce = false
+        error = nil
+        isLoading = false
+        currentListJobsRequestToken = nil
+
+        logger.info("Jobs state reset for device change")
+    }
+
     /// Get status updates for specific jobs
     public func getJobStatusUpdates(jobIds: [String]) -> AnyPublisher<[JobProgressUpdate], DataServiceError> {
         return apiClient.request(
@@ -254,7 +282,7 @@ public class JobsDataService: ObservableObject {
     /// Fast-path job fetch with cache-first strategy
     public func getJobFast(jobId: String) -> AnyPublisher<BackgroundJob, DataServiceError> {
         // Check cache first
-        let cacheKey = "job_details_\(jobId)"
+        let cacheKey = "dev_\(deviceKey)_job_details_\(jobId)"
         if let cached: JobDetailsResponse = cacheManager.get(key: cacheKey) {
             return Just(cached.job)
                 .setFailureType(to: DataServiceError.self)
@@ -308,7 +336,7 @@ public class JobsDataService: ObservableObject {
             pageSize: 100
         )
 
-        let cacheKey = "jobs_\(request.cacheKey)"
+        let cacheKey = "dev_\(deviceKey)_jobs_\(request.cacheKey)"
 
         // Fetch without replacing - we'll merge instead
         listJobsViaRPC(request: request, cacheKey: cacheKey, shouldReplace: false)

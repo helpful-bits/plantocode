@@ -18,6 +18,7 @@ pub mod jobs;
 pub mod models;
 pub mod remote_api;
 pub mod services;
+mod tray;
 pub mod utils;
 pub mod validation;
 
@@ -26,6 +27,7 @@ use crate::auth::auth0_state::{Auth0StateStore, cleanup_old_attempts};
 use crate::db_utils::{BackgroundJobRepository, SessionRepository, SettingsRepository};
 use crate::error::AppError;
 use crate::services::config_cache_service::ConfigCache;
+use crate::tray::TrayController;
 use crate::utils::FileLockManager;
 use dotenvy::dotenv;
 use log::{debug, error, info, warn};
@@ -44,6 +46,7 @@ use std::sync::{
 use std::time::Duration;
 use tauri::Manager;
 use tokio::sync::{OnceCell, RwLock};
+use once_cell::sync::OnceCell as SyncOnceCell;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RuntimeConfig {
@@ -117,6 +120,16 @@ impl Default for AppState {
 pub(crate) static FILE_LOCK_MANAGER: OnceCell<Arc<FileLockManager>> = OnceCell::const_new();
 pub(crate) static GLOBAL_APP_HANDLE: OnceCell<tauri::AppHandle> = OnceCell::const_new();
 
+struct BgPrefs {
+    run_in_background: bool,
+    minimize_on_close: bool,
+    start_with_system: bool,
+    launch_minimized: bool,
+    show_notifications: bool,
+}
+
+pub static BG_PREFS: SyncOnceCell<std::sync::RwLock<BgPrefs>> = SyncOnceCell::new();
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     dotenv().ok();
@@ -149,7 +162,12 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::default().build())
-        .plugin(tauri_plugin_os::init());
+        .plugin(tauri_plugin_os::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec![]),
+        ))
+        .plugin(tauri_plugin_notification::init());
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
@@ -184,6 +202,34 @@ pub fn run() {
                     panic!("CRITICAL: Critical initialization failed: {}", e);
                 }
             });
+
+            // Initialize BG_PREFS after SettingsRepository is available
+            if let Some(settings_repo) = app.try_state::<Arc<SettingsRepository>>() {
+                let prefs = tauri::async_runtime::block_on(async {
+                    BgPrefs {
+                        run_in_background: settings_repo.get_bool_setting("background_run_enabled").await.unwrap_or(Some(true)).unwrap_or(true),
+                        minimize_on_close: settings_repo.get_bool_setting("minimize_to_tray_on_close").await.unwrap_or(Some(true)).unwrap_or(true),
+                        start_with_system: settings_repo.get_bool_setting("start_with_system").await.unwrap_or(Some(false)).unwrap_or(false),
+                        launch_minimized: settings_repo.get_bool_setting("launch_minimized").await.unwrap_or(Some(false)).unwrap_or(false),
+                        show_notifications: settings_repo.get_bool_setting("show_notifications").await.unwrap_or(Some(true)).unwrap_or(true),
+                    }
+                });
+                BG_PREFS.set(std::sync::RwLock::new(prefs)).ok();
+
+                if let Some(w) = app.get_webview_window("main") {
+                    if let Some(prefs_lock) = BG_PREFS.get() {
+                        if let Ok(prefs) = prefs_lock.read() {
+                            if prefs.run_in_background && prefs.launch_minimized {
+                                let _ = w.hide();
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Initialize TrayController
+            let app_handle = app.handle().clone();
+            let _tray = TrayController::init(&app_handle)?;
 
             let app_handle_bg = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -234,6 +280,67 @@ pub fn run() {
                 });
             });
 
+            // Setup notification listeners for device link status changes
+            {
+                let app_handle = app.handle().clone();
+                app.listen("device-link-status", move |e| {
+                    let p = e.payload();
+                    if p.contains("\"connected\"") || p.contains("\"registered\"") || p.contains("\"resumed\"") {
+                        if let Some(prefs_lock) = BG_PREFS.get() {
+                            if let Ok(prefs) = prefs_lock.read() {
+                                if prefs.show_notifications {
+                                    use tauri_plugin_notification::NotificationExt;
+                                    let _ = app_handle.notification()
+                                        .builder()
+                                        .title("Desktop Online")
+                                        .body("Your desktop is now available for connections.")
+                                        .show();
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            {
+                let app_handle = app.handle().clone();
+                app.listen("relay-request-received", move |e| {
+                    if let Some(prefs_lock) = BG_PREFS.get() {
+                        if let Ok(prefs) = prefs_lock.read() {
+                            if prefs.show_notifications {
+                                let payload_str = e.payload();
+                                let method = if let Ok(json) = serde_json::from_str::<serde_json::Value>(payload_str) {
+                                    json.get("method")
+                                        .and_then(|m| m.as_str())
+                                        .unwrap_or("unknown")
+                                        .to_string()
+                                } else {
+                                    "unknown".to_string()
+                                };
+
+                                use tauri_plugin_notification::NotificationExt;
+                                let _ = app_handle.notification()
+                                    .builder()
+                                    .title("Mobile command received")
+                                    .body(format!("Request: {}", method))
+                                    .show();
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Setup terminate-connections event listener for tray security action
+            {
+                let app_handle = app.handle().clone();
+                app.listen("terminate-connections", move |_| {
+                    let _ = app_handle.emit("device-link-status", serde_json::json!({
+                        "status": "disconnected",
+                        "reason": "terminated"
+                    }));
+                });
+            }
+
             let auth0_store = app.state::<AppState>().auth0_state_store.clone();
             tauri::async_runtime::spawn(async move {
                 use tokio::time::{Duration, interval};
@@ -253,41 +360,92 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                // Check BG_PREFS to determine if we should hide instead of close
+                if let Some(prefs_lock) = BG_PREFS.get() {
+                    if let Ok(prefs) = prefs_lock.read() {
+                        if prefs.run_in_background || prefs.minimize_on_close {
+                            api.prevent_close();
+                            let _ = window.hide();
+
+                            if prefs.show_notifications {
+                                use tauri_plugin_notification::NotificationExt;
+                                let _ = window.app_handle().notification()
+                                    .builder()
+                                    .title("PlanToCode is still running")
+                                    .body("The app is running in the system tray to keep your mobile connection alive.")
+                                    .show();
+                            }
+                            return;
+                        }
+                    }
+                }
+
+                // If not hiding, prevent close and spawn shutdown orchestrator
+                api.prevent_close();
+
+                // Optionally emit "app-will-close" event (ignore errors)
                 let _ = window.emit("app-will-close", ());
 
-                let app_handle = window.app_handle();
+                let app_handle = window.app_handle().clone();
 
-                // Flush SessionCache before shutdown
-                if let Some(cache) = app_handle.try_state::<Arc<crate::services::SessionCache>>() {
-                    let cache = cache.inner().clone();
-                    tauri::async_runtime::block_on(async {
-                        let _ = cache.flush_all_now(&app_handle).await;
-                    });
-                    info!("SessionCache flushed on shutdown");
-                }
+                // Spawn non-blocking shutdown orchestrator
+                tauri::async_runtime::spawn(async move {
+                    // Get optional state handles
+                    let cache_opt = app_handle.try_state::<Arc<crate::services::SessionCache>>()
+                        .map(|c| c.inner().clone());
+                    let terminal_manager_opt = app_handle.try_state::<Arc<crate::services::TerminalManager>>()
+                        .map(|t| t.inner().clone());
+                    let device_link_client_opt = app_handle.try_state::<Arc<crate::services::device_link_client::DeviceLinkClient>>()
+                        .map(|d| d.inner().clone());
 
-                // Cleanup all terminals before closing
-                if let Some(terminal_manager) =
-                    app_handle.try_state::<std::sync::Arc<crate::services::TerminalManager>>()
-                {
-                    tauri::async_runtime::block_on(async {
-                        if let Err(e) = terminal_manager.cleanup_all_sessions().await {
-                            error!("Error during terminal cleanup: {}", e);
-                        } else {
-                            info!("All terminal sessions cleaned up successfully");
+                    // Run cleanup concurrently with timeout
+                    let cleanup_future = async {
+                        // Spawn all cleanup tasks concurrently
+                        let cache_task = async {
+                            if let Some(cache) = cache_opt {
+                                if let Err(e) = cache.flush_all_now(&app_handle).await {
+                                    error!("Error flushing SessionCache: {}", e);
+                                } else {
+                                    info!("SessionCache flushed on shutdown");
+                                }
+                            }
+                        };
+
+                        let terminal_task = async {
+                            if let Some(terminal_manager) = terminal_manager_opt {
+                                if let Err(e) = terminal_manager.cleanup_all_sessions().await {
+                                    error!("Error during terminal cleanup: {}", e);
+                                } else {
+                                    info!("All terminal sessions cleaned up successfully");
+                                }
+                            }
+                        };
+
+                        let device_link_task = async {
+                            if let Some(client) = device_link_client_opt {
+                                client.shutdown().await;
+                                info!("DeviceLinkClient shutdown complete");
+                            }
+                        };
+
+                        // Run all cleanup tasks concurrently
+                        tokio::join!(cache_task, terminal_task, device_link_task);
+                    };
+
+                    // Run cleanup with 5-second timeout
+                    match tokio::time::timeout(Duration::from_secs(5), cleanup_future).await {
+                        Ok(_) => {
+                            info!("Shutdown cleanup completed successfully");
                         }
-                    });
-                }
+                        Err(_) => {
+                            warn!("Shutdown cleanup timed out after 5 seconds");
+                        }
+                    }
 
-                // Shutdown DeviceLinkClient before closing
-                if let Some(client) =
-                    app_handle.try_state::<Arc<crate::services::device_link_client::DeviceLinkClient>>()
-                {
-                    let client = client.inner().clone();
-                    tauri::async_runtime::spawn(async move {
-                        client.shutdown().await;
-                    });
-                }
+                    // Exit the application
+                    info!("Exiting application");
+                    app_handle.exit(0);
+                });
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -295,6 +453,7 @@ pub fn run() {
             commands::app_commands::get_config_load_error,
             commands::app_commands::get_database_info_command,
             commands::app_commands::get_database_path_command,
+            commands::app_commands::get_resource_info_command,
             commands::auth0_commands::start_auth0_login_flow,
             commands::auth0_commands::check_auth_status_and_exchange_token,
             commands::auth0_commands::refresh_app_jwt_auth0,
@@ -342,6 +501,7 @@ pub fn run() {
             commands::job_commands::delete_background_job_command,
             commands::job_commands::get_background_job_by_id_command,
             commands::video_analysis_commands::start_video_analysis_job,
+            commands::video_utils_commands::get_video_metadata_command,
             commands::screen_recording_commands::stop_screen_recording,
             commands::file_system_commands::get_home_directory_command,
             commands::file_system_commands::list_project_files_command,
@@ -373,6 +533,7 @@ pub fn run() {
             commands::implementation_plan_commands::get_prompt_command,
             commands::implementation_plan_commands::estimate_prompt_tokens_command,
             commands::implementation_plan_commands::create_merged_implementation_plan_command,
+            commands::implementation_plan_commands::mark_implementation_plan_signed_off_command,
             commands::workflow_commands::start_file_finder_workflow,
             commands::workflow_commands::get_file_finder_roots_for_session,
             commands::web_search_commands::start_web_search_workflow,
@@ -430,6 +591,9 @@ pub fn run() {
             commands::settings_commands::update_device_settings,
             commands::settings_commands::get_app_setting,
             commands::settings_commands::set_app_setting,
+            commands::settings_commands::get_background_prefs_command,
+            commands::settings_commands::set_background_prefs_command,
+            commands::settings_commands::toggle_autostart_command,
             commands::session_commands::create_session_command,
             commands::session_commands::get_session_command,
             commands::session_commands::get_sessions_for_project_command,
@@ -447,6 +611,10 @@ pub fn run() {
             commands::session_commands::update_session_files_command,
             commands::session_commands::broadcast_file_browser_state_command,
             commands::session_commands::broadcast_active_session_changed_command,
+            commands::session_commands::get_history_state_command,
+            commands::session_commands::sync_history_state_command,
+            commands::session_commands::merge_history_state_command,
+            commands::session_commands::get_device_id_command,
             commands::setup_commands::trigger_initial_keychain_access,
             commands::setup_commands::get_storage_mode,
             commands::setup_commands::check_existing_keychain_access,

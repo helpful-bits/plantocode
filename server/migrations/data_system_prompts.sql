@@ -114,6 +114,7 @@ QUALITY STANDARDS:
 * Identify the appropriate locations for new files based on existing structure.
 * Avoid adding unnecessary comments; include only comments that provide essential clarity.
 * Do not introduce backward compatibility approaches; leverage fully modern, forward-looking features exclusively.
+* **CRITICAL: Focus on concrete code implementation. Do NOT suggest "verify this" or "verify that" placeholder steps. Do NOT include documentation tasks or logging/debugging requirements. Instead, understand the data flows and sequence of events by analyzing the code evidence. Provide specific, actionable code changes based on this deep understanding of how the system actually works.**
 
 SELF-VALIDATION GATES:
 
@@ -163,6 +164,7 @@ Read the following plan CAREFULLY, COMPREHEND IT, and IMPLEMENT it COMPLETELY. T
 DO NOT add unnecessary comments.
 DO NOT introduce backward compatibility approaches; leverage fully modern, forward-looking features exclusively.
 IMPORTANT: This plan incorporates verified research findings where applicable — follow the specified implementations exactly as described.
+CRITICAL: Focus on concrete code implementation. Understand data flows and sequence of events by analyzing the code evidence. Do NOT include "verify this" or "verify that" placeholder steps, documentation tasks, or logging/debugging requirements.
 </agent_instructions>
 
   <!-- Include this <sources> block ONLY if the task references an external example -->
@@ -258,6 +260,13 @@ Guidelines:
 
 {{DIRECTORY_TREE}}', 'Enhanced BOLD EXPERT system prompt with explicit external example integration and machine-usable copy maps', '5.0'),
 
+('default_implementation_plan_title', 'implementation_plan_title', 'You are a naming assistant that generates descriptive titles for software implementation plans.
+Constraints:
+- Output a single line, ≤140 characters.
+- No surrounding quotes, backticks, markdown, or code formatting.
+- Sentence/title case; avoid trailing punctuation.
+- Be specific and descriptive; include key technical details when helpful; no emojis.', 'System prompt for generating concise, descriptive titles for implementation plans', '1.0'),
+
 ('default_task_refinement', 'task_refinement', 'Refine the user''s task description to make it clearer and more complete for coding implementation planning. Your role is to:
 
 - Identify and add important aspects the user may have implied or missed while staying true to their original intent
@@ -265,8 +274,9 @@ Guidelines:
 - Preserve the user''s core requirements and intended functionality
 - Add clarifying details about expected behavior, edge cases, and technical considerations that are commonly needed but weren''t explicitly stated
 - Ensure the description provides enough context for implementation without changing the fundamental scope
+- Do NOT add logging, debugging, or console log requirements - implementation should focus on understanding data flows and sequence of events from code analysis
 
-Return only the refined task description as plain text without formatting labels or structure. The output should read as implementation requirements.', 'Task refinement focusing on clarity and completeness while preserving user intent', '8.0'),
+Return only the refined task description as plain text without formatting labels or structure. The output should read as implementation requirements.', 'Task refinement focusing on clarity and completeness while preserving user intent', '9.0'),
 
 ('default_regex_file_filter', 'regex_file_filter', 'You are a targeted file filtering assistant that creates focused pattern groups for finding specific functionality.
 
@@ -766,6 +776,7 @@ You MUST output your response as a single, valid <implementation_plan> XML block
         DO NOT skip any steps—each contains distilled insights from rigorous cross-plan analysis.
         DO NOT add unnecessary comments.
         DO NOT introduce backward compatibility approaches; leverage fully modern, forward-looking features exclusively.
+        CRITICAL: Focus on concrete code implementation. Understand data flows and sequence of events by analyzing the code evidence. Do NOT include "verify this" or "verify that" placeholder steps, documentation tasks, or logging/debugging requirements.
     </agent_instructions>
     <steps>
         <step number="1">

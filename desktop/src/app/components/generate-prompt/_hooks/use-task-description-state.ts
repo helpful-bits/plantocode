@@ -5,9 +5,16 @@ import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { refineTaskDescriptionAction } from "@/actions/ai/task-refinement.actions";
 import { startWebSearchWorkflowOrchestratorAction, cancelWorkflowAction } from "@/actions/workflows/workflow.actions";
 import { startWebSearchPromptsGenerationJobAction } from '@/actions/ai/web-search-workflow.actions';
-import { getTaskDescriptionHistoryAction, syncTaskDescriptionHistoryAction } from "@/actions/session";
+// Legacy imports removed - using only HistoryState API now
 import { queueTaskDescriptionUpdate } from "@/actions/session/task-fields.actions";
-import { listen } from '@tauri-apps/api/event';
+import {
+  getHistoryStateAction,
+  syncHistoryStateAction,
+  getDeviceIdAction,
+  type HistoryState,
+  type HistoryEntry,
+} from '@/actions/session/history.actions';
+// listen import removed - legacy 'session-history-synced' listener was removed
 import { useBackgroundJob } from "@/contexts/_hooks/use-background-job";
 import { useNotification } from "@/contexts/notification-context";
 import { useProject } from "@/contexts/project-context";
@@ -17,9 +24,16 @@ import { extractErrorInfo, createUserFriendlyErrorMessage } from "@/utils/error-
 // Import TaskDescriptionHandle type directly
 import type { TaskDescriptionHandle } from "../_components/task-description";
 
-interface HistoryState {
-  entries: string[];
-  currentIndex: number;
+// Debounce utility function
+function debounce<T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void {
+  let timeout: NodeJS.Timeout | null = null;
+  return function(this: any, ...args: Parameters<T>) {
+    if (timeout) clearTimeout(timeout);
+    timeout = setTimeout(() => func.apply(this, args), wait);
+  };
 }
 
 
@@ -70,16 +84,51 @@ export function useTaskDescriptionState({
     error: null
   });
 
-  // Undo/redo state
+  // New HistoryState management
   const [historyState, setHistoryState] = useState<HistoryState>({
-    entries: [sessionTaskDescription || ""],
-    currentIndex: 0
+    entries: [],
+    currentIndex: 0,
+    version: 1,
+    checksum: '',
   });
-  const initializedForSessionId = useRef<string | null>(null);
+  const [deviceId, setDeviceId] = useState<string>('');
+  const [value, setValue] = useState(sessionTaskDescription || '');
+  const valueRef = useRef(value);
   const isNavigatingHistoryRef = useRef(false);
+  const isUndoRedoInProgress = useRef(false);
+  const remoteHistoryApplyingRef = useRef(false);
+  const lastCommittedValueRef = useRef('');
+  const pendingRemoteStateRef = useRef<HistoryState | null>(null);
+  const [showMergePulse, setShowMergePulse] = useState(false);
+
+  // STEP 5: Add historyLoadStatus lifecycle
+  const [historyLoadStatus, setHistoryLoadStatus] = useState<'idle'|'loading'|'ready'|'error'>('idle');
+  const historyReady = historyLoadStatus === 'ready';
+  const loadIdRef = useRef(0);
+
+  // Sync state
   const lastRecordedHashRef = useRef<string>('');
-  const syncTimerRef = useRef<number | null>(null);
-  const lastSyncedChecksumRef = useRef<string>('');
+
+  // Update valueRef when value changes
+  useEffect(() => {
+    valueRef.current = value;
+  }, [value]);
+
+  // Load device ID on mount
+  useEffect(() => {
+    getDeviceIdAction().then(setDeviceId);
+  }, []);
+
+  // STEP 5: Derived canUndo/canRedo using useMemo
+  const canUndo = useMemo(() => {
+    if (!historyReady) return false;
+    return historyState.currentIndex > 0;
+  }, [historyReady, historyState.currentIndex]);
+
+  const canRedo = useMemo(() => {
+    if (!historyReady) return false;
+    return historyState.currentIndex < historyState.entries.length - 1;
+  }, [historyReady, historyState.currentIndex, historyState.entries.length]);
 
   // External hooks
   const { showNotification } = useNotification();
@@ -138,7 +187,6 @@ export function useTaskDescriptionState({
                 }
               } catch (e) {
                 error = 'Failed to fetch results';
-                console.error('Failed to get web search results:', e);
               }
             } else if (status.status === 'Failed') {
               error = status.errorMessage || 'Workflow failed';
@@ -170,7 +218,6 @@ export function useTaskDescriptionState({
           tracker.destroy();
         }
       } catch (error) {
-        console.error('Error checking workflow status:', error);
         // Don't clear loading state on transient errors
       }
     };
@@ -222,13 +269,14 @@ export function useTaskDescriptionState({
 
 
   const recordTaskChange = useCallback((source: 'typing' | 'paste' | 'voice' | 'improvement' | 'refine' | 'remote', value: string) => {
+    if (!historyReady) return; // Guard before ready
     if (isNavigatingHistoryRef.current) return; // Guard undo/redo echoes
 
     const normalized = value ?? '';
-    const last = historyState.entries[historyState.entries.length - 1] ?? '';
+    const last = historyState.entries[historyState.entries.length - 1];
 
     // Dedupe: skip if same as last entry
-    if (normalized === last) return;
+    if (last && normalized === last.value) return;
 
     // Compute hash for additional deduplication
     const hash = `${source}:${normalized}`;
@@ -237,33 +285,57 @@ export function useTaskDescriptionState({
 
     setHistoryState(prev => {
       const newEntries = prev.entries.slice(0, prev.currentIndex + 1);
-      newEntries.push(normalized);
+      const newEntry: HistoryEntry = {
+        value: normalized,
+        timestampMs: Date.now(),
+        deviceId: deviceId || 'unknown',
+        opType: source,
+        sequenceNumber: newEntries.length,
+        version: prev.version,
+      };
+      newEntries.push(newEntry);
 
       // Cap at 200 entries
       const trimmedEntries = newEntries.slice(-200);
       return {
         entries: trimmedEntries,
-        currentIndex: trimmedEntries.length - 1
+        currentIndex: trimmedEntries.length - 1,
+        version: prev.version,
+        checksum: prev.checksum,
       };
     });
-  }, [historyState.entries]);
+
+    scheduleSync();
+  }, [historyReady, historyState.entries, deviceId]);
 
   const saveToHistory = useCallback((description: string) => {
+    if (!historyReady) return; // Guard before ready
+
     setHistoryState(prev => {
       const newEntries = prev.entries.slice(0, prev.currentIndex + 1);
       const lastItem = newEntries[newEntries.length - 1];
 
-      if (lastItem !== description) {
-        newEntries.push(description);
+      if (!lastItem || lastItem.value !== description) {
+        const newEntry: HistoryEntry = {
+          value: description,
+          timestampMs: Date.now(),
+          deviceId: deviceId || 'unknown',
+          opType: 'user-edit',
+          sequenceNumber: newEntries.length,
+          version: prev.version,
+        };
+        newEntries.push(newEntry);
         const trimmedEntries = newEntries.slice(-50); // Keep only last 50 entries
         return {
           entries: trimmedEntries,
-          currentIndex: trimmedEntries.length - 1
+          currentIndex: trimmedEntries.length - 1,
+          version: prev.version,
+          checksum: prev.checksum,
         };
       }
       return prev;
     });
-  }, []);
+  }, [historyReady, deviceId]);
 
 
   // Task refinement job monitoring with conflict detection
@@ -277,31 +349,6 @@ export function useTaskDescriptionState({
       if (job.status === "completed" && job.response && job.sessionId === activeSessionId) {
         const refinedTask = String(job.response).trim();
         if (refinedTask) {
-          // CONFLICT DETECTION: Check if task description changed while refinement was running
-          if (refinementOriginalTask !== null && refinementOriginalTask !== sessionTaskDescription) {
-            console.warn(
-              "Task description changed during refinement. Original:",
-              refinementOriginalTask.substring(0, 100),
-              "Current:",
-              sessionTaskDescription.substring(0, 100)
-            );
-
-            showNotification({
-              title: "Task was modified",
-              message: "The task description changed while refinement was running. Refined version not applied to avoid overwriting your changes.",
-              type: "warning",
-            });
-
-            // Clean up state
-            setIsRefiningTask(false);
-            setTaskRefinementJobId(undefined);
-            setRefinementOriginalTask(null);
-            return;
-          }
-
-          saveToHistory(sessionTaskDescription);
-          // The backend now returns structured content (original + refined)
-          // Parse if it's structured, otherwise use the response as-is
           let finalTaskDescription = refinedTask;
           try {
             const parsed = JSON.parse(refinedTask);
@@ -309,22 +356,47 @@ export function useTaskDescriptionState({
               finalTaskDescription = parsed.original + "\n\n" + parsed.refined;
             }
           } catch {
-            // Not structured JSON, use as-is
           }
-          if (taskDescriptionRef.current?.setValue) {
-            taskDescriptionRef.current.setValue(finalTaskDescription);
-          }
-          // Record the refined task in history so undo/redo and state sync work correctly
-          recordTaskChange('refine', finalTaskDescription);
-          // Update session context immediately to keep it in sync with the textarea
-          sessionActions.updateCurrentSessionFields({ taskDescription: finalTaskDescription });
-          if (activeSessionId) {
-            queueTaskDescriptionUpdate(activeSessionId, finalTaskDescription).catch(err => {
-              console.error("Failed to queue task description after refinement:", err);
+
+          const hasConflict = refinementOriginalTask !== null && refinementOriginalTask !== sessionTaskDescription;
+
+          if (hasConflict) {
+            const textareaRef = taskDescriptionRef.current;
+            let newValue: string;
+
+            if (textareaRef && typeof (textareaRef as any).getSelectionRange === 'function' && typeof (textareaRef as any).replaceSelection === 'function') {
+              (textareaRef as any).replaceSelection(finalTaskDescription);
+              newValue = (textareaRef as any).getValue?.() || sessionTaskDescription;
+            } else {
+              newValue = sessionTaskDescription + "\n" + finalTaskDescription;
+              if (textareaRef?.setValueFromHistory) {
+                textareaRef.setValueFromHistory(newValue);
+              }
+            }
+
+            recordTaskChange('refine', newValue);
+            sessionActions.updateCurrentSessionFields({ taskDescription: newValue });
+            if (activeSessionId) {
+              queueTaskDescriptionUpdate(activeSessionId, newValue).catch(() => {});
+            }
+            onInteraction?.();
+            showNotification({
+              title: "Task refined",
+              message: "Refined content inserted at cursor due to concurrent edits.",
+              type: "success"
             });
+          } else {
+            if (taskDescriptionRef.current?.setValueFromHistory) {
+              taskDescriptionRef.current.setValueFromHistory(finalTaskDescription);
+            }
+            recordTaskChange('refine', finalTaskDescription);
+            sessionActions.updateCurrentSessionFields({ taskDescription: finalTaskDescription });
+            if (activeSessionId) {
+              queueTaskDescriptionUpdate(activeSessionId, finalTaskDescription).catch(() => {});
+            }
+            onInteraction?.();
+            showNotification({ title: "Task refined", message: "Task description has been refined.", type: "success" });
           }
-          onInteraction?.();
-          showNotification({ title: "Task refined", message: "Task description has been refined.", type: "success" });
         }
         setIsRefiningTask(false);
         setTaskRefinementJobId(undefined);
@@ -338,7 +410,7 @@ export function useTaskDescriptionState({
     };
 
     handleJobCompletion();
-  }, [taskRefinementJob.job?.status, taskRefinementJobId, isSwitchingSession, activeSessionId, onInteraction, showNotification, saveToHistory, sessionTaskDescription, sessionActions, refinementOriginalTask]);
+  }, [taskRefinementJob.job?.status, taskRefinementJobId, isSwitchingSession, activeSessionId, onInteraction, showNotification, sessionTaskDescription, sessionActions, refinementOriginalTask, recordTaskChange, queueTaskDescriptionUpdate, taskDescriptionRef]);
 
   // Prompts generation job monitoring
   useEffect(() => {
@@ -370,14 +442,13 @@ export function useTaskDescriptionState({
             return prevState ? false : prevState;
           });
         } catch (error) {
-          console.error('[TaskDescriptionState] Error resetting copy success state:', error);
+          // Ignore errors
         }
       }, 2000);
       
       // Store timeout ID for potential cleanup (though not critical for short timeouts)
       return true;
     } catch (error) {
-      console.error("Error copying task description:", error);
       return false;
     }
   }, [sessionTaskDescription]);
@@ -437,13 +508,11 @@ export function useTaskDescriptionState({
         );
       }
     } catch (error) {
-      console.error("Error refining task:", error);
       setIsRefiningTask(false);
 
-      // Extract error info and create user-friendly message
       const errorInfo = extractErrorInfo(error);
       const userFriendlyMessage = createUserFriendlyErrorMessage(errorInfo, 'task refinement');
-      
+
       showNotification({
         title: "Error refining task",
         message: userFriendlyMessage,
@@ -532,7 +601,6 @@ export function useTaskDescriptionState({
       }
     } catch (error) {
       setIsGeneratingPrompts(false);
-      console.error("Failed to start web research:", error);
 
       showNotification({
         title: "Failed to start research",
@@ -558,9 +626,9 @@ export function useTaskDescriptionState({
     try {
       await cancelWorkflowAction(webSearchState.workflowId);
     } catch (error) {
-      console.error('Error canceling workflow:', error);
+      // Ignore cancellation errors
     }
-    
+
     // Always clear state regardless of cancellation success
     setWebSearchState({
       isLoading: false,
@@ -579,49 +647,178 @@ export function useTaskDescriptionState({
   // Removed: debounced saveToHistory effect - now using recordTaskChange with explicit calls from components
 
 
+  // STEP 5: Session change effect with lifecycle status
   useEffect(() => {
-    if (!activeSessionId || initializedForSessionId.current === activeSessionId) {
-      if (!activeSessionId) {
-        setHistoryState({ entries: [""], currentIndex: 0 });
-        initializedForSessionId.current = null;
-      }
+    if (!activeSessionId) {
+      // Batch both updates together
+      setHistoryLoadStatus('idle');
+      setHistoryState({
+        entries: [],
+        currentIndex: 0,
+        version: 1,
+        checksum: '',
+      });
       return;
     }
 
-    const initializeHistory = async () => {
+    // Increment loadId for race protection
+    const currentLoadId = ++loadIdRef.current;
+    setHistoryLoadStatus('loading');
+
+    // Clear pending state refs
+    pendingRemoteStateRef.current = null;
+    remoteHistoryApplyingRef.current = false;
+    isNavigatingHistoryRef.current = false;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
+
+    const loadHistory = async () => {
       try {
-        const result = await getTaskDescriptionHistoryAction(activeSessionId);
-        if (result.isSuccess && result.data && result.data.length > 0) {
-          const historyEntries = result.data;
-          const currentDesc = sessionTaskDescription;
-          
-          if (currentDesc && !historyEntries.includes(currentDesc)) {
-            const updatedEntries = [...historyEntries, currentDesc];
-            setHistoryState({ entries: updatedEntries, currentIndex: updatedEntries.length - 1 });
-          } else {
-            const currentIndex = currentDesc ? historyEntries.indexOf(currentDesc) : historyEntries.length - 1;
-            setHistoryState({ entries: historyEntries, currentIndex: Math.max(0, currentIndex) });
+        const state = await getHistoryStateAction(activeSessionId, 'task');
+
+        // Check for stale load
+        if (currentLoadId !== loadIdRef.current) {
+          return;
+        }
+
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        // Validate and clamp
+        if (state && state.entries && state.entries.length > 0) {
+          // CLIENT-SIDE DEFENSIVE FILTERING: Remove invalid entries
+          let entries = Array.isArray(state.entries)
+            ? state.entries.filter(e => e?.value != null)
+            : [];
+
+          const len = entries.length;
+          const idx = state.currentIndex;
+          const clampedIndex = Math.min(Math.max(idx, 0), Math.max(len - 1, 0));
+
+          const validatedState = {
+            ...state,
+            entries,
+            currentIndex: clampedIndex,
+          };
+
+          setHistoryState(validatedState);
+
+          // Update editor value
+          const currentEntry = validatedState.entries[validatedState.currentIndex];
+          if (currentEntry) {
+            setValue(currentEntry.value);
+            lastCommittedValueRef.current = currentEntry.value;
           }
-        } else if (sessionTaskDescription) {
-          setHistoryState({ entries: [sessionTaskDescription], currentIndex: 0 });
+
+          setHistoryLoadStatus('ready');
         } else {
-          setHistoryState({ entries: [""], currentIndex: 0 });
+          // Empty state - will be initialized by next effect
+          setHistoryState({
+            entries: [],
+            currentIndex: 0,
+            version: 1,
+            checksum: '',
+          });
+          setHistoryLoadStatus('ready');
         }
-        
-        initializedForSessionId.current = activeSessionId;
       } catch (error) {
-        console.error('Failed to load task description history:', error);
-        if (sessionTaskDescription) {
-          setHistoryState({ entries: [sessionTaskDescription], currentIndex: 0 });
-        } else {
-          setHistoryState({ entries: [""], currentIndex: 0 });
-        }
-        initializedForSessionId.current = activeSessionId;
+        if (currentLoadId !== loadIdRef.current) return;
+
+        setHistoryLoadStatus('error');
+      } finally {
+        clearTimeout(timeoutId);
       }
     };
 
-    initializeHistory();
+    loadHistory();
+
+    return () => {
+      controller.abort();
+      clearTimeout(timeoutId);
+    };
   }, [activeSessionId]);
+
+  // STEP 5: Initialize empty history from sessionTaskDescription (only after ready)
+  useEffect(() => {
+    if (!historyReady) return;
+    if (historyState.entries.length === 0 && activeSessionId && deviceId) {
+      const initial = sessionTaskDescription || '';
+      const initEntry: HistoryEntry = {
+        value: initial,
+        timestampMs: Date.now(),
+        deviceId: deviceId,
+        opType: 'init',
+        sequenceNumber: 0,
+        version: 1,
+      };
+
+      const newState: HistoryState = {
+        entries: [initEntry],
+        currentIndex: 0,
+        version: 1,
+        checksum: '', // Will be computed by backend
+      };
+
+      setHistoryState(newState);
+      setValue(initial);
+
+      // Immediately sync the initial entry to persist it
+      syncHistoryStateAction(activeSessionId, 'task', newState, 1)
+        .then(updatedState => {
+          setHistoryState(updatedState);
+        })
+        .catch(err => {
+          console.error('[HistoryInit] Failed to sync initial entry:', err);
+          // Keep the local state even if sync fails
+        });
+    }
+  }, [historyReady, deviceId, sessionTaskDescription, activeSessionId]);
+
+  // Debounced commit with new entry creation (1000ms)
+  const commitNewEntry = useCallback(
+    debounce(async (value: string) => {
+      if (!historyReady) return; // Guard before ready
+      if (!activeSessionId || !deviceId) return;
+      if (isNavigatingHistoryRef.current || remoteHistoryApplyingRef.current) return;
+
+      const newEntry: HistoryEntry = {
+        value: value,
+        timestampMs: Date.now(),
+        deviceId,
+        opType: 'user-edit',
+        sequenceNumber: historyState.entries.length,
+        version: historyState.version,
+      };
+
+      const trimmedEntries = historyState.entries.slice(0, historyState.currentIndex + 1);
+      const newEntries = [...trimmedEntries, newEntry].slice(-200);
+
+      const newState: HistoryState = {
+        entries: newEntries,
+        currentIndex: newEntries.length - 1,
+        version: historyState.version,
+        checksum: '',
+      };
+
+      try {
+        const updated = await syncHistoryStateAction(
+          activeSessionId,
+          'task',
+          newState,
+          historyState.version
+        );
+        setHistoryState(updated);
+        lastCommittedValueRef.current = value;
+      } catch (err) {
+        // Ignore commit errors
+      }
+    }, 1000),
+    [historyReady, activeSessionId, deviceId, historyState]
+  );
+
+  const scheduleSync = useMemo(() => debounce(() => commitNewEntry(valueRef.current), 600), []);
 
   // Listen for local changes from decoupled components
   useEffect(() => {
@@ -639,138 +836,183 @@ export function useTaskDescriptionState({
     };
   }, [activeSessionId, recordTaskChange]);
 
-  // Listen for history sync events from backend
+  // Listen for "history-state-changed" events
   useEffect(() => {
     if (!activeSessionId) return;
 
-    let unlisten: (() => void) | undefined;
+    const handleHistoryStateChanged = (event: CustomEvent) => {
+      const { sessionId: eventSessionId, kind, state } = event.detail;
 
-    const setupListener = async () => {
-      unlisten = await listen<{ sessionId: string; taskDescription: string }>('session-history-synced', async (evt) => {
-        const { sessionId } = evt.payload || {};
-        if (!activeSessionId || sessionId !== activeSessionId) return;
+      if (eventSessionId !== activeSessionId || kind !== 'task') return;
+      if (remoteHistoryApplyingRef.current) return;
 
-        try {
-          const result = await getTaskDescriptionHistoryAction(activeSessionId);
-          if (result.isSuccess && result.data && result.data.length > 0) {
-            setHistoryState({
-              entries: result.data,
-              currentIndex: result.data.length - 1
-            });
-          }
-        } catch (error) {
-          console.error('Failed to refresh history after sync:', error);
-        }
-      });
-    };
+      const currentValue = valueRef.current;
+      const hasUncommittedEdits = currentValue !== lastCommittedValueRef.current;
 
-    setupListener();
-
-    return () => {
-      if (unlisten) unlisten();
-    };
-  }, [activeSessionId]);
-
-  // Periodic sync to backend (2s interval)
-  // Note: We use a ref to access current history state to avoid recreating the interval
-  const historyEntriesRef = useRef(historyState.entries);
-  historyEntriesRef.current = historyState.entries;
-
-  useEffect(() => {
-    if (!activeSessionId) return;
-
-    const computeChecksum = (entries: string[]) => {
-      // Better checksum: count + length of each entry + sample from each
-      return `${entries.length}:${entries.map(e => e.length).join(',')}:${entries.map(e => e.slice(0, 20) + e.slice(-20)).join('|')}`;
-    };
-
-    syncTimerRef.current = window.setInterval(() => {
-      const entries = historyEntriesRef.current;
-      if (!entries || entries.length === 0) return;
-
-      const checksum = computeChecksum(entries);
-      if (checksum === lastSyncedChecksumRef.current) return;
-
-      syncTaskDescriptionHistoryAction(activeSessionId, entries)
-        .then(() => {
-          lastSyncedChecksumRef.current = checksum;
-        })
-        .catch(() => {
-          // Swallow transient errors
-        });
-    }, 2000);
-
-    return () => {
-      if (syncTimerRef.current) {
-        clearInterval(syncTimerRef.current);
-        syncTimerRef.current = null;
+      if (hasUncommittedEdits && document.activeElement?.id === 'taskDescArea') {
+        pendingRemoteStateRef.current = state;
+        return;
       }
-    };
-  }, [activeSessionId]); // Removed historyState.entries dependency to prevent interval recreation
 
-  const undo = useCallback(() => {
-    if (historyState.currentIndex > 0) {
-      isNavigatingHistoryRef.current = true;
+      remoteHistoryApplyingRef.current = true;
 
       try {
-        const newIndex = historyState.currentIndex - 1;
-        const previousDescription = historyState.entries[newIndex];
+        setHistoryState(state);
 
-        setHistoryState(prev => ({ ...prev, currentIndex: newIndex }));
+        const currentEntry = state.entries[state.currentIndex];
+        if (currentEntry) {
+          setValue(currentEntry.value);
+          lastCommittedValueRef.current = currentEntry.value;
 
-        if (taskDescriptionRef.current?.setValue) {
-          taskDescriptionRef.current.setValue(previousDescription);
+          // Update legacy components using silent setter to prevent double-queueing
+          if (taskDescriptionRef.current?.setValueFromHistory) {
+            taskDescriptionRef.current.setValueFromHistory(currentEntry.value);
+          }
+          sessionActions.updateCurrentSessionFields({ taskDescription: currentEntry.value });
         }
-        // Update session context to keep it in sync
-        sessionActions.updateCurrentSessionFields({ taskDescription: previousDescription });
-        if (activeSessionId) {
-          queueTaskDescriptionUpdate(activeSessionId, previousDescription).catch(err => {
-            console.error("Failed to queue task description after undo:", err);
-          });
-        }
-        onInteraction?.();
+
+        setShowMergePulse(true);
+        setTimeout(() => setShowMergePulse(false), 300);
       } finally {
-        // Reset after microtask
-        queueMicrotask(() => {
-          isNavigatingHistoryRef.current = false;
-        });
+        remoteHistoryApplyingRef.current = false;
+      }
+    };
+
+    window.addEventListener('history-state-changed', handleHistoryStateChanged as EventListener);
+
+    return () => {
+      window.removeEventListener('history-state-changed', handleHistoryStateChanged as EventListener);
+    };
+  }, [activeSessionId, taskDescriptionRef, sessionActions]);
+
+  // Apply pending remote updates at debounce boundary
+  useEffect(() => {
+    if (pendingRemoteStateRef.current && !isNavigatingHistoryRef.current) {
+      const pending = pendingRemoteStateRef.current;
+      pendingRemoteStateRef.current = null;
+
+      remoteHistoryApplyingRef.current = true;
+
+      try {
+        const currentValue = valueRef.current;
+        const remoteValue = pending.entries[pending.currentIndex]?.value || '';
+        const baseValue = lastCommittedValueRef.current;
+
+        let mergedValue = currentValue;
+        if (currentValue === baseValue) {
+          mergedValue = remoteValue;
+        } else if (remoteValue !== baseValue) {
+          mergedValue = currentValue;
+        }
+
+        setHistoryState(pending);
+        setValue(mergedValue);
+        lastCommittedValueRef.current = mergedValue;
+
+        // Update legacy components using silent setter to prevent double-queueing
+        if (taskDescriptionRef.current?.setValueFromHistory) {
+          taskDescriptionRef.current.setValueFromHistory(mergedValue);
+        }
+        sessionActions.updateCurrentSessionFields({ taskDescription: mergedValue });
+
+        setShowMergePulse(true);
+        setTimeout(() => setShowMergePulse(false), 300);
+      } finally {
+        remoteHistoryApplyingRef.current = false;
       }
     }
-  }, [historyState.currentIndex, historyState.entries, taskDescriptionRef, activeSessionId, onInteraction]);
+  }, [historyState.version, taskDescriptionRef, sessionActions]);
+
+  // New undo function - update currentIndex only, no new entry
+  const handleUndo = useCallback(async () => {
+    if (!canUndo || !activeSessionId) return;
+
+    isNavigatingHistoryRef.current = true;
+    isUndoRedoInProgress.current = true;
+
+    try {
+      const newIndex = historyState.currentIndex - 1;
+
+      // Use the entry value directly without syncing to backend
+      // Backend sync will happen via periodic sync timer
+      const entry = historyState.entries[newIndex];
+      if (entry) {
+        setHistoryState(prev => ({
+          ...prev,
+          currentIndex: newIndex,
+        }));
+
+        setValue(entry.value);
+        lastCommittedValueRef.current = entry.value;
+
+        // Update legacy components using silent setter to prevent echo
+        if (taskDescriptionRef.current?.setValueFromHistory) {
+          taskDescriptionRef.current.setValueFromHistory(entry.value);
+        }
+        sessionActions.updateCurrentSessionFields({ taskDescription: entry.value });
+        // Explicit persistence call for undo
+        queueTaskDescriptionUpdate(activeSessionId, entry.value).catch(() => {});
+        onInteraction?.();
+
+        scheduleSync();
+      }
+    } catch (err) {
+      // Ignore undo errors
+    } finally {
+      isNavigatingHistoryRef.current = false;
+      isUndoRedoInProgress.current = false;
+    }
+  }, [canUndo, activeSessionId, historyState, taskDescriptionRef, sessionActions, onInteraction]);
+
+  // New redo function - update currentIndex only, no new entry
+  const handleRedo = useCallback(async () => {
+    if (!canRedo || !activeSessionId) return;
+
+    isNavigatingHistoryRef.current = true;
+    isUndoRedoInProgress.current = true;
+
+    try {
+      const newIndex = historyState.currentIndex + 1;
+
+      // Use the entry value directly without syncing to backend
+      // Backend sync will happen via periodic sync timer
+      const entry = historyState.entries[newIndex];
+      if (entry) {
+        setHistoryState(prev => ({
+          ...prev,
+          currentIndex: newIndex,
+        }));
+
+        setValue(entry.value);
+        lastCommittedValueRef.current = entry.value;
+
+        // Update legacy components using silent setter to prevent echo
+        if (taskDescriptionRef.current?.setValueFromHistory) {
+          taskDescriptionRef.current.setValueFromHistory(entry.value);
+        }
+        sessionActions.updateCurrentSessionFields({ taskDescription: entry.value });
+        // Explicit persistence call for redo
+        queueTaskDescriptionUpdate(activeSessionId, entry.value).catch(() => {});
+        onInteraction?.();
+
+        scheduleSync();
+      }
+    } catch (err) {
+      // Ignore redo errors
+    } finally {
+      isNavigatingHistoryRef.current = false;
+      isUndoRedoInProgress.current = false;
+    }
+  }, [canRedo, activeSessionId, historyState, taskDescriptionRef, sessionActions, onInteraction]);
+
+  // Legacy undo/redo for backward compatibility (kept for now)
+  const undo = useCallback(() => {
+    handleUndo();
+  }, [handleUndo]);
 
   const redo = useCallback(() => {
-    if (historyState.currentIndex < historyState.entries.length - 1) {
-      isNavigatingHistoryRef.current = true;
-
-      try {
-        const newIndex = historyState.currentIndex + 1;
-        const nextDescription = historyState.entries[newIndex];
-
-        setHistoryState(prev => ({ ...prev, currentIndex: newIndex }));
-
-        if (taskDescriptionRef.current?.setValue) {
-          taskDescriptionRef.current.setValue(nextDescription);
-        }
-        // Update session context to keep it in sync
-        sessionActions.updateCurrentSessionFields({ taskDescription: nextDescription });
-        if (activeSessionId) {
-          queueTaskDescriptionUpdate(activeSessionId, nextDescription).catch(err => {
-            console.error("Failed to queue task description after redo:", err);
-          });
-        }
-        onInteraction?.();
-      } finally {
-        // Reset after microtask
-        queueMicrotask(() => {
-          isNavigatingHistoryRef.current = false;
-        });
-      }
-    }
-  }, [historyState.currentIndex, historyState.entries, taskDescriptionRef, activeSessionId, onInteraction]);
-
-  // Can undo/redo checks
-  const canUndo = historyState.currentIndex > 0;
-  const canRedo = historyState.currentIndex < historyState.entries.length - 1;
+    handleRedo();
+  }, [handleRedo]);
   
   // Apply web search results to task description
   const applyWebSearchResults = useCallback((resultsToApply?: string[]) => {
@@ -819,17 +1061,15 @@ ${formattedResults}
 </task_context>`;
     
     // Update the task description
-    if (taskDescriptionRef.current?.setValue) {
-      taskDescriptionRef.current.setValue(finalTaskDescription);
+    if (taskDescriptionRef.current?.setValueFromHistory) {
+      taskDescriptionRef.current.setValueFromHistory(finalTaskDescription);
     }
     // Record the web search results in history
     recordTaskChange('improvement', finalTaskDescription);
     // Update session context immediately to keep it in sync
     sessionActions.updateCurrentSessionFields({ taskDescription: finalTaskDescription });
     if (activeSessionId) {
-      queueTaskDescriptionUpdate(activeSessionId, finalTaskDescription).catch(err => {
-        console.error("Failed to queue task description after web search:", err);
-      });
+      queueTaskDescriptionUpdate(activeSessionId, finalTaskDescription).catch(() => {});
     }
     onInteraction?.();
 
@@ -876,6 +1116,11 @@ ${formattedResults}
       canUndo,
       canRedo,
       webSearchResults: webSearchState.results,
+      showMergePulse,
+      value,
+      setValue,
+      historyLoadStatus,
+      historyReady,
 
       // Actions
       handleRefineTask,
@@ -885,18 +1130,26 @@ ${formattedResults}
       reset,
       undo,
       redo,
+      handleUndo,
+      handleRedo,
       recordTaskChange,
       saveToHistory,
       applyWebSearchResults,
+      commitNewEntry,
     }),
     [
       isRefiningTask,
       webSearchState.isLoading,
       webSearchState.results,
+      isGeneratingPrompts,
       taskCopySuccess,
       taskDescriptionRef,
       canUndo,
       canRedo,
+      showMergePulse,
+      value,
+      historyLoadStatus,
+      historyReady,
       handleRefineTask,
       handleWebRefineTask,
       cancelWebSearch,
@@ -904,9 +1157,12 @@ ${formattedResults}
       reset,
       undo,
       redo,
+      handleUndo,
+      handleRedo,
       recordTaskChange,
       saveToHistory,
       applyWebSearchResults,
+      commitNewEntry,
     ]
   );
 }

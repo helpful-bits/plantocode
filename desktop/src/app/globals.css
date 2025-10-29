@@ -242,6 +242,20 @@
     animation: pulse-slow 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   }
 
+  /* Pulse border animation for merge indication */
+  @keyframes pulse-border {
+    0%, 100% {
+      border-color: inherit;
+    }
+    50% {
+      border-color: rgb(59, 130, 246);
+    }
+  }
+
+  .animate-pulse-border {
+    animation: pulse-border 300ms ease-in-out;
+  }
+
   /* Standard hover effect for cards and interactive elements */
   .hover-card {
     @apply hover:shadow-md transition-all duration-200;

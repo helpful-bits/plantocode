@@ -1,3 +1,9 @@
+// SERVER RELAY ONLY - NO PERSISTENCE
+// The server acts as a transparent relay for device-link events including
+// "history-state-changed". All history state is stored on the desktop client;
+// the server maintains zero persistence and simply forwards messages between
+// connected devices.
+
 use actix::prelude::*;
 use actix_web_actors::{ws, ws::Message};
 use serde_json::Value as JsonValue;
@@ -10,7 +16,9 @@ use uuid::Uuid;
 
 use crate::db::repositories::device_repository::{DeviceRepository, HeartbeatRequest};
 use crate::error::AppError;
+use crate::services::apns_service::ApnsService;
 use crate::services::device_connection_manager::{DeviceConnectionManager, DeviceMessage};
+use crate::services::pending_command_queue::queue;
 use crate::services::relay_session_store::RelaySessionStore;
 use sqlx::types::BigDecimal;
 use std::str::FromStr;
@@ -52,6 +60,8 @@ pub struct DeviceLinkWs {
     pub device_repository: Option<actix_web::web::Data<DeviceRepository>>,
     /// Relay session store reference
     pub relay_store: Option<actix_web::web::Data<RelaySessionStore>>,
+    /// APNS service for push notifications
+    pub apns_service: Option<actix_web::web::Data<ApnsService>>,
 }
 
 impl DeviceLinkWs {
@@ -69,6 +79,7 @@ impl DeviceLinkWs {
             connection_manager: None,
             device_repository: None,
             relay_store: None,
+            apns_service: None,
         }
     }
 
@@ -944,6 +955,81 @@ impl Handler<HandleRegisterMessage> for DeviceLinkWs {
                 "Connection registered with connection manager"
             );
 
+            // Drain pending commands for desktop devices
+            if self.client_type.as_deref() == Some("desktop") {
+                let key = (user_id.to_string(), normalized_device_id.clone());
+                let pending_commands = queue().drain(&key);
+
+                if !pending_commands.is_empty() {
+                    info!(
+                        user_id = %user_id,
+                        device_id = %normalized_device_id,
+                        command_count = pending_commands.len(),
+                        "Delivering queued commands to desktop that just came online"
+                    );
+
+                    let cm_for_queue = connection_manager.clone();
+                    let user_id_for_queue = user_id;
+                    let device_id_for_queue = normalized_device_id.clone();
+
+                    ctx.spawn(
+                        async move {
+                            for msg in pending_commands {
+                                if let Ok(msg_str) = serde_json::to_string(&msg) {
+                                    if let Err(e) = cm_for_queue.send_raw_to_device(
+                                        &user_id_for_queue,
+                                        &device_id_for_queue,
+                                        &msg_str,
+                                    ) {
+                                        warn!(
+                                            user_id = %user_id_for_queue,
+                                            device_id = %device_id_for_queue,
+                                            error = %e,
+                                            "Failed to deliver queued command to desktop"
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                        .into_actor(self),
+                    );
+                }
+            }
+
+            // Send push notification to mobile when desktop comes online
+            if self.client_type.as_deref() == Some("desktop") {
+                if let Some(apns) = &self.apns_service {
+                    let apns_clone = apns.clone();
+                    let user_id_for_push = user_id;
+
+                    ctx.spawn(
+                        async move {
+                            let notification_data = serde_json::json!({
+                                "type": "desktop_online",
+                                "timestamp": chrono::Utc::now().to_rfc3339()
+                            });
+
+                            match apns_clone.send_silent_notification(&user_id_for_push, notification_data).await {
+                                Ok(_) => {
+                                    debug!(
+                                        user_id = %user_id_for_push,
+                                        "Sent push notification to mobile about desktop coming online"
+                                    );
+                                }
+                                Err(e) => {
+                                    warn!(
+                                        user_id = %user_id_for_push,
+                                        error = %e,
+                                        "Failed to send push notification about desktop online"
+                                    );
+                                }
+                            }
+                        }
+                        .into_actor(self),
+                    );
+                }
+            }
+
             // After connection manager registration, broadcast device-status event
             let status_event = serde_json::json!({
                 "type": "device-status",
@@ -1276,21 +1362,47 @@ impl Handler<HandleRelayMessageInternal> for DeviceLinkWs {
                                 error = %e,
                                 target_device = %target_id,
                                 user_id = %user_id,
-                                "Failed to forward relay message to target device"
+                                "Failed to forward relay message to target device, queueing for later delivery"
                             );
-                            let error_response = serde_json::json!({
-                                "type": "relay_response",
-                                "clientId": device_id_clone,
-                                "response": {
-                                    "correlationId": correlation_id_clone,
-                                    "result": null,
-                                    "error": "relay_failed",
-                                    "isFinal": true
-                                }
-                            });
-                            addr.do_send(RelayMessage {
-                                message: error_response.to_string(),
-                            });
+
+                            // Queue the message for later delivery when desktop comes online
+                            let key = (user_id.to_string(), target_id.clone());
+                            if let Ok(envelope_value) = serde_json::from_str::<serde_json::Value>(&envelope_str) {
+                                queue().enqueue(key, envelope_value);
+
+                                // Send queued response back to mobile
+                                let queued_response = serde_json::json!({
+                                    "type": "relay_response",
+                                    "clientId": device_id_clone,
+                                    "response": {
+                                        "correlationId": correlation_id_clone,
+                                        "result": {
+                                            "queued": true,
+                                            "message": "Desktop is offline. Command will be delivered when it comes online."
+                                        },
+                                        "error": null,
+                                        "isFinal": true
+                                    }
+                                });
+                                addr.do_send(RelayMessage {
+                                    message: queued_response.to_string(),
+                                });
+                            } else {
+                                // Fallback to error response if we can't parse the envelope
+                                let error_response = serde_json::json!({
+                                    "type": "relay_response",
+                                    "clientId": device_id_clone,
+                                    "response": {
+                                        "correlationId": correlation_id_clone,
+                                        "result": null,
+                                        "error": "relay_failed",
+                                        "isFinal": true
+                                    }
+                                });
+                                addr.do_send(RelayMessage {
+                                    message: error_response.to_string(),
+                                });
+                            }
                         }
                     }
                 }
@@ -1655,6 +1767,7 @@ pub fn create_device_link_ws(
     connection_manager: actix_web::web::Data<DeviceConnectionManager>,
     device_repository: actix_web::web::Data<DeviceRepository>,
     relay_store: actix_web::web::Data<RelaySessionStore>,
+    apns_service: Option<actix_web::web::Data<ApnsService>>,
     client_type: Option<String>,
 ) -> DeviceLinkWs {
     DeviceLinkWs {
@@ -1670,5 +1783,6 @@ pub fn create_device_link_ws(
         connection_manager: Some(connection_manager),
         device_repository: Some(device_repository),
         relay_store: Some(relay_store),
+        apns_service,
     }
 }

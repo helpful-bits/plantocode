@@ -830,3 +830,85 @@ pub async fn set_app_setting(app_handle: AppHandle, key: String, value: String) 
         .clone();
     settings_repo.set_setting(&key, &value).await
 }
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct BackgroundPrefs {
+    pub background_run_enabled: bool,
+    pub start_with_system: bool,
+    pub show_notifications: bool,
+    pub minimize_to_tray_on_close: bool,
+    pub launch_minimized: bool,
+}
+
+#[tauri::command]
+pub async fn get_background_prefs_command(
+    app_handle: AppHandle,
+) -> Result<BackgroundPrefs, String> {
+    let settings_repo = app_handle
+        .state::<Arc<SettingsRepository>>()
+        .inner()
+        .clone();
+    Ok(BackgroundPrefs {
+        background_run_enabled: settings_repo.get_bool_setting("background_run_enabled").await.unwrap_or(Some(true)).unwrap_or(true),
+        start_with_system: settings_repo.get_bool_setting("start_with_system").await.unwrap_or(Some(false)).unwrap_or(false),
+        show_notifications: settings_repo.get_bool_setting("show_notifications").await.unwrap_or(Some(true)).unwrap_or(true),
+        minimize_to_tray_on_close: settings_repo.get_bool_setting("minimize_to_tray_on_close").await.unwrap_or(Some(true)).unwrap_or(true),
+        launch_minimized: settings_repo.get_bool_setting("launch_minimized").await.unwrap_or(Some(false)).unwrap_or(false),
+    })
+}
+
+#[tauri::command]
+pub async fn set_background_prefs_command(
+    prefs: BackgroundPrefs,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let settings_repo = app
+        .state::<Arc<SettingsRepository>>()
+        .inner()
+        .clone();
+    settings_repo.set_setting("background_run_enabled", &prefs.background_run_enabled.to_string()).await.map_err(|e| e.to_string())?;
+    settings_repo.set_setting("start_with_system", &prefs.start_with_system.to_string()).await.map_err(|e| e.to_string())?;
+    settings_repo.set_setting("show_notifications", &prefs.show_notifications.to_string()).await.map_err(|e| e.to_string())?;
+    settings_repo.set_setting("minimize_to_tray_on_close", &prefs.minimize_to_tray_on_close.to_string()).await.map_err(|e| e.to_string())?;
+    settings_repo.set_setting("launch_minimized", &prefs.launch_minimized.to_string()).await.map_err(|e| e.to_string())?;
+
+    if let Some(cell) = crate::BG_PREFS.get() {
+        if let Ok(mut c) = cell.write() {
+            c.run_in_background = prefs.background_run_enabled;
+            c.minimize_on_close = prefs.minimize_to_tray_on_close;
+            c.start_with_system = prefs.start_with_system;
+            c.launch_minimized = prefs.launch_minimized;
+            c.show_notifications = prefs.show_notifications;
+        }
+    }
+
+    use tauri_plugin_autostart::ManagerExt;
+    if prefs.start_with_system {
+        let _ = app.autolaunch().enable();
+    } else {
+        let _ = app.autolaunch().disable();
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn toggle_autostart_command(
+    enable: bool,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let settings_repo = app
+        .state::<Arc<SettingsRepository>>()
+        .inner()
+        .clone();
+    settings_repo.set_setting("start_with_system", &enable.to_string()).await.map_err(|e| e.to_string())?;
+
+    if enable {
+        let _ = app.autolaunch().enable();
+    } else {
+        let _ = app.autolaunch().disable();
+    }
+
+    Ok(())
+}
