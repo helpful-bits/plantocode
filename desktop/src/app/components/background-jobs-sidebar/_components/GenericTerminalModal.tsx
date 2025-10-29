@@ -1,23 +1,14 @@
 "use client";
 
-import React, { useCallback, useContext, useState } from "react";
+import React, { useCallback, useContext, useState, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/ui/dialog";
 import { useTerminalSessions } from "@/contexts/terminal-sessions";
 import TerminalView from "@/ui/TerminalView";
-import { Eye, Minimize2, CheckCircle, AlertCircle } from "lucide-react";
+import { Eye, Minimize2, CheckCircle } from "lucide-react";
 import { Button } from "@/ui/button";
+import { Badge } from "@/ui/badge";
 import { gracefulExitTerminal } from "@/actions/terminal/terminal.actions";
 import { BackgroundJobsContext } from "@/contexts/background-jobs";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/ui/alert-dialog";
 
 interface GenericTerminalModalProps {
   open: boolean;
@@ -32,12 +23,32 @@ export const GenericTerminalModal: React.FC<GenericTerminalModalProps> = ({
   sessionId,
   title,
 }) => {
-  const [showConfirmFinish, setShowConfirmFinish] = useState(false);
-  const { minimizeSession } = useTerminalSessions();
+  const [isFinishing, setIsFinishing] = useState(false);
+  const { minimizeSession, getSession, startSession } = useTerminalSessions();
   const { jobs } = useContext(BackgroundJobsContext);
 
   // Find the associated background job
   const associatedJob = sessionId ? jobs.find(job => job.id === sessionId) : null;
+  const session = sessionId ? getSession(sessionId) : undefined;
+
+  // Stabilize function references to avoid effect re-runs
+  const startSessionRef = useRef(startSession);
+  const getSessionRef = useRef(getSession);
+  useEffect(() => {
+    startSessionRef.current = startSession;
+    getSessionRef.current = getSession;
+  });
+
+  // Auto-start fresh session when reopening finished
+  // Only triggers when modal opens or sessionId changes, not on status updates
+  useEffect(() => {
+    if (!open || !sessionId) return;
+
+    const currentSession = getSessionRef.current(sessionId);
+    if (!currentSession || currentSession.status !== 'running') {
+      startSessionRef.current(sessionId, {});
+    }
+  }, [open, sessionId]);
 
   const handleMinimize = useCallback(() => {
     if (sessionId) {
@@ -47,15 +58,19 @@ export const GenericTerminalModal: React.FC<GenericTerminalModalProps> = ({
   }, [sessionId, minimizeSession, onOpenChange]);
 
   const handleFinish = useCallback(async () => {
-    if (!sessionId) return;
+    if (!sessionId || isFinishing) return;
+
+    setIsFinishing(true);
 
     try {
       await gracefulExitTerminal(sessionId);
       onOpenChange(false);
     } catch (error) {
       console.error('Failed to gracefully exit terminal:', error);
+    } finally {
+      setIsFinishing(false);
     }
-  }, [sessionId, onOpenChange]);
+  }, [sessionId, onOpenChange, isFinishing]);
 
   const handleViewPlan = useCallback(() => {
     if (sessionId) {
@@ -69,7 +84,7 @@ export const GenericTerminalModal: React.FC<GenericTerminalModalProps> = ({
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          className="max-w-5xl flex flex-col h-[80vh]"
+          className="max-w-5xl flex flex-col h-[90vh]"
           onEscapeKeyDown={(e) => e.preventDefault()}
         >
           <DialogHeader className="flex-shrink-0">
@@ -77,7 +92,18 @@ export const GenericTerminalModal: React.FC<GenericTerminalModalProps> = ({
               An interactive terminal session for executing tasks.
             </DialogDescription>
             <div className="flex items-center justify-between">
-              <DialogTitle className="flex-1">{title || `Terminal — ${sessionId.slice(0, 8)}`}</DialogTitle>
+              <div className="flex items-center gap-2 flex-1">
+                <DialogTitle>{title || `Terminal — ${sessionId.slice(0, 8)}`}</DialogTitle>
+                {session?.status && (
+                  <Badge variant={
+                    session.status === 'running' ? 'success' :
+                    session.status === 'failed' ? 'destructive' :
+                    session.status === 'completed' ? 'secondary' : 'outline'
+                  }>
+                    {session.status.charAt(0).toUpperCase() + session.status.slice(1)}
+                  </Badge>
+                )}
+              </div>
               <div className="flex items-center gap-2 ml-4">
                 {/* View Plan button - only show if there's an associated job */}
                 {associatedJob && (
@@ -107,8 +133,9 @@ export const GenericTerminalModal: React.FC<GenericTerminalModalProps> = ({
                 <Button
                   variant="destructive"
                   size="sm"
-                  onClick={() => setShowConfirmFinish(true)}
+                  onClick={handleFinish}
                   title="Finish Session"
+                  disabled={isFinishing}
                 >
                   <CheckCircle className="h-4 w-4 mr-2" />
                   Finish
@@ -122,29 +149,6 @@ export const GenericTerminalModal: React.FC<GenericTerminalModalProps> = ({
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* Confirmation Dialog */}
-      <AlertDialog open={showConfirmFinish} onOpenChange={setShowConfirmFinish}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-amber-500" />
-              Finish Terminal Session?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to finish this session? This will terminate the agent and mark the task as complete/reviewed.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setShowConfirmFinish(false)}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={handleFinish}>
-              Finish
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </>
   );
 };

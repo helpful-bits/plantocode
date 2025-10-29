@@ -31,6 +31,7 @@ import { BillingProvider } from "@/contexts/billing-context";
 import { TooltipProvider } from "@/ui/tooltip";
 import { ScreenRecordingProvider } from "@/contexts/screen-recording";
 import { TerminalSessionsProvider } from "@/contexts/terminal-sessions";
+import TerminalSessionModalGateway from "@/app/components/global/TerminalSessionModalGateway";
 
 // Helper component for profiling individual providers when needed
 // @ts-expect-error Intentionally unused - available for developers to use when profiling
@@ -95,6 +96,7 @@ export function ProvidersWrapper({
                       <TerminalSessionsProvider>
                         <BillingProvider>
                           <TextImprovementProvider>
+                            <TerminalSessionModalGateway />
                             {children}
                           </TextImprovementProvider>
                         </BillingProvider>

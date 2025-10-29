@@ -23,11 +23,14 @@ use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter, Manager};
 
 const MAX_BUFFER_SIZE: usize = 1_048_576;
+const FLUSH_INTERVAL_SECS: u64 = 10;
+const FLUSH_SCAN_TICK_MILLIS: u64 = 1000;
 
 pub struct TerminalManager {
     app: AppHandle,
     repo: Arc<crate::db_utils::TerminalRepository>,
     sessions: DashMap<String, Arc<SessionHandle>>,
+    flusher_started: std::sync::atomic::AtomicBool,
 }
 
 struct SessionHandle {
@@ -40,9 +43,10 @@ struct SessionHandle {
     working_dir: Option<String>,
     status: Mutex<&'static str>,
     exit_code: Mutex<Option<i32>>,
-    // Add flush tracking fields:
     last_flushed_len: Mutex<usize>,
     last_flush_at: Mutex<i64>,
+    next_flush_allowed_at: Mutex<i64>,
+    flush_backoff_secs: Mutex<u64>,
 }
 
 impl TerminalManager {
@@ -51,6 +55,7 @@ impl TerminalManager {
             app,
             repo,
             sessions: DashMap::new(),
+            flusher_started: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
@@ -202,6 +207,8 @@ impl TerminalManager {
             exit_code: Mutex::new(None),
             last_flushed_len: Mutex::new(0),
             last_flush_at: Mutex::new(now),
+            next_flush_allowed_at: Mutex::new(now),
+            flush_backoff_secs: Mutex::new(0),
         });
 
         self.sessions.insert(session_id.clone(), handle.clone());
@@ -286,45 +293,6 @@ impl TerminalManager {
                                 let _ = client.send_terminal_output_binary(&sid, &chunk);
                             }
                         }
-
-                        // Incremental flush logic
-                        let should_flush = {
-                            let buffer = handle.buffer.lock().unwrap();
-                            let last_flushed = handle.last_flushed_len.lock().unwrap();
-                            let last_flush_time = handle.last_flush_at.lock().unwrap();
-
-                            let pending_len = buffer.len() - *last_flushed;
-                            let now = now_secs();
-                            let time_since_flush = now - *last_flush_time;
-
-                            // Check if we should flush
-                            if pending_len >= 4096 || (pending_len > 0 && time_since_flush >= 1) {
-                                Some((*last_flushed, buffer.len(), now))
-                            } else {
-                                None
-                            }
-                        };
-
-                        if let Some((start, end, now)) = should_flush {
-                            // Extract chunk to flush
-                            let chunk_to_flush = {
-                                let buffer = handle.buffer.lock().unwrap();
-                                buffer[start..end].to_vec()
-                            };
-
-                            // Perform the async operation
-                            if let Err(e) = repo.append_output(&sid, &chunk_to_flush, now).await {
-                                eprintln!("Failed to append output: {}", e);
-                            }
-
-                            // Update tracking after successful flush
-                            {
-                                let mut last_flushed = handle.last_flushed_len.lock().unwrap();
-                                let mut last_flush_time = handle.last_flush_at.lock().unwrap();
-                                *last_flushed = end;
-                                *last_flush_time = now;
-                            }
-                        }
                     }
                     None => {
                         // Done signal received, exit loop
@@ -342,8 +310,17 @@ impl TerminalManager {
                 handle.exit_code.lock().unwrap().unwrap_or(0)
             };
 
-            *handle.status.lock().unwrap() = "stopped";
+            // Set final status based on exit code
+            let final_status = match exit_code {
+                0 => "completed",
+                _ => "failed",
+            };
+            *handle.status.lock().unwrap() = final_status;
             *handle.exit_code.lock().unwrap() = Some(exit_code);
+
+            // Clear writer and resizer
+            handle.writer.lock().unwrap().take();
+            handle.resizer.lock().unwrap().take();
 
             // Emit device-link-event for terminal exit
             app.emit(
@@ -359,23 +336,10 @@ impl TerminalManager {
             )
             .ok();
 
-            // Flush any remaining bytes before saving session result
-            let final_chunk = {
-                let buffer = handle.buffer.lock().unwrap();
-                let last_flushed = handle.last_flushed_len.lock().unwrap();
-
-                if buffer.len() > *last_flushed {
-                    Some(buffer[*last_flushed..].to_vec())
-                } else {
-                    None
-                }
-            };
-
-            if let Some(chunk) = final_chunk {
-                let now = now_secs();
-                if let Err(e) = repo.append_output(&sid, &chunk, now).await {
-                    eprintln!("Failed to append final output: {}", e);
-                }
+            // Force flush all pending output on EOF (ignoring backoff timers)
+            // This ensures durability before marking session as completed
+            if let Some(manager) = app.try_state::<Arc<TerminalManager>>() {
+                manager.flush_all_pending_for_session(&sid, &handle).await;
             }
 
             let final_log = String::from_utf8_lossy(&handle.buffer.lock().unwrap()).to_string();
@@ -471,24 +435,34 @@ impl TerminalManager {
     pub fn status(&self, session_id: &str) -> serde_json::Value {
         if let Some(h) = self.sessions.get(session_id) {
             // Determine accurate status based on session state
-            let status = {
+            let (status, exit_code) = {
                 let writer_exists = h.writer.lock().unwrap().is_some();
                 let resizer_exists = h.resizer.lock().unwrap().is_some();
+                let exit_code = *h.exit_code.lock().unwrap();
                 let current_status = *h.status.lock().unwrap();
 
-                // If session exists but has no writer/resizer, it's a restored read-only session
-                if !writer_exists && !resizer_exists && current_status != "stopped" {
-                    "restored"
-                } else if writer_exists || resizer_exists {
+                // Check if writer/resizer exist → "running"
+                let computed_status = if writer_exists || resizer_exists {
                     "running"
+                } else if let Some(code) = exit_code {
+                    // exit_code exists: 0 → "completed", non-zero → "failed"
+                    if code == 0 {
+                        "completed"
+                    } else {
+                        "failed"
+                    }
+                } else if current_status == "restored" {
+                    "restored"
                 } else {
-                    current_status
-                }
+                    "stopped"
+                };
+
+                (computed_status, exit_code)
             };
 
             serde_json::json!({
                 "status": status,
-                "exitCode": *h.exit_code.lock().unwrap()
+                "exitCode": exit_code
             })
         } else {
             serde_json::json!({"status": "stopped"})
@@ -496,10 +470,17 @@ impl TerminalManager {
     }
 
     pub fn get_active_sessions(&self) -> Vec<String> {
-        // Returns list of ALL session IDs currently in memory
-        // This includes running, restored, completed, and starting sessions
+        // Returns list of ONLY truly running session IDs
+        // Filters out restored, completed, failed, and stopped sessions
         self.sessions
             .iter()
+            .filter(|entry| {
+                let handle = entry.value();
+                let writer_exists = handle.writer.lock().unwrap().is_some();
+                let resizer_exists = handle.resizer.lock().unwrap().is_some();
+                // Only include if running (writer or resizer exists)
+                writer_exists || resizer_exists
+            })
             .map(|entry| entry.key().clone())
             .collect()
     }
@@ -517,6 +498,16 @@ impl TerminalManager {
     ) -> AppResult<bool> {
         // Try to reconnect to an existing session (used for page reloads)
         if let Some(h) = self.sessions.get(session_id) {
+            // Check if session is actually running (writer or resizer exists)
+            let writer_exists = h.writer.lock().unwrap().is_some();
+            let resizer_exists = h.resizer.lock().unwrap().is_some();
+
+            // Refuse non-running sessions
+            if !writer_exists && !resizer_exists {
+                return Ok(false);
+            }
+
+            // Only proceed with channel attachment if running
             if let Some(output_channel) = output {
                 // Send the current buffer snapshot to catch up
                 let snapshot = h.buffer.lock().unwrap().clone();
@@ -543,23 +534,9 @@ impl TerminalManager {
 
         for session_id in session_ids {
             if let Some(handle) = self.sessions.get(&session_id) {
-                // Flush any remaining bytes before cleanup
-                let cleanup_chunk = {
-                    let buffer = handle.buffer.lock().unwrap();
-                    let last_flushed = handle.last_flushed_len.lock().unwrap();
-
-                    if buffer.len() > *last_flushed {
-                        Some(buffer[*last_flushed..].to_vec())
-                    } else {
-                        None
-                    }
-                };
-
-                if let Some(chunk) = cleanup_chunk {
-                    if let Err(e) = self.repo.append_output(&session_id, &chunk, now).await {
-                        eprintln!("Failed to append cleanup output: {}", e);
-                    }
-                }
+                // Force flush all pending output during cleanup (ignoring backoff timers)
+                // This ensures best-effort durability on app shutdown
+                self.flush_all_pending_for_session(&session_id, &handle).await;
 
                 // Prevent any additional IO on the PTY while we shut it down
                 handle.writer.lock().unwrap().take();
@@ -691,12 +668,14 @@ impl TerminalManager {
 
         for session in restorable_sessions {
             // Create a read-only terminal session that displays the preserved output
+            let restored_output = session.output_log.unwrap_or_default().into_bytes();
+            let restored_len = restored_output.len();
             let handle = Arc::new(SessionHandle {
-                buffer: Mutex::new(session.output_log.unwrap_or_default().into_bytes()),
+                buffer: Mutex::new(restored_output),
                 subscribers: Mutex::new(Vec::new()),
-                writer: Mutex::new(None),        // Read-only - no writer
-                resizer: Mutex::new(None),       // No PTY for restored sessions
-                child_stopper: Mutex::new(None), // No process for restored sessions
+                writer: Mutex::new(None),
+                resizer: Mutex::new(None),
+                child_stopper: Mutex::new(None),
                 started_at: session.created_at,
                 working_dir: session.working_directory,
                 status: Mutex::new(if session.ended_at.is_some() {
@@ -705,8 +684,10 @@ impl TerminalManager {
                     "restored"
                 }),
                 exit_code: Mutex::new(session.exit_code.map(|c| c as i32)),
-                last_flushed_len: Mutex::new(0),
-                last_flush_at: Mutex::new(session.created_at),
+                last_flushed_len: Mutex::new(restored_len),
+                last_flush_at: Mutex::new(now_secs()),
+                next_flush_allowed_at: Mutex::new(now_secs()),
+                flush_backoff_secs: Mutex::new(0),
             });
 
             self.sessions.insert(session.session_id.clone(), handle);
@@ -754,19 +735,38 @@ impl TerminalManager {
     pub fn graceful_exit(&self, session_id: &str) -> AppResult<()> {
         if let Some(h) = self.sessions.get(session_id) {
             if let Some(writer) = h.writer.lock().unwrap().as_mut() {
-                // Send Ctrl+D (EOF) on Unix or "exit\n" on Windows
+                // Send exit sequence twice with 75ms delay for reliability
                 if cfg!(windows) {
+                    // Windows: send "exit\r\n" twice
                     writer.write_all(b"exit\r\n").map_err(|e| {
                         AppError::ExternalServiceError(format!("Failed to write exit: {}", e))
                     })?;
+                    writer.flush().map_err(|e| {
+                        AppError::ExternalServiceError(format!("Failed to flush: {}", e))
+                    })?;
+                    std::thread::sleep(std::time::Duration::from_millis(75));
+                    writer.write_all(b"exit\r\n").map_err(|e| {
+                        AppError::ExternalServiceError(format!("Failed to write exit: {}", e))
+                    })?;
+                    writer.flush().map_err(|e| {
+                        AppError::ExternalServiceError(format!("Failed to flush: {}", e))
+                    })?;
                 } else {
+                    // Unix: send Ctrl-D (0x04) twice
                     writer.write_all(&[0x04]).map_err(|e| {
                         AppError::ExternalServiceError(format!("Failed to write exit: {}", e))
                     })?;
+                    writer.flush().map_err(|e| {
+                        AppError::ExternalServiceError(format!("Failed to flush: {}", e))
+                    })?;
+                    std::thread::sleep(std::time::Duration::from_millis(75));
+                    writer.write_all(&[0x04]).map_err(|e| {
+                        AppError::ExternalServiceError(format!("Failed to write exit: {}", e))
+                    })?;
+                    writer.flush().map_err(|e| {
+                        AppError::ExternalServiceError(format!("Failed to flush: {}", e))
+                    })?;
                 }
-                writer.flush().map_err(|e| {
-                    AppError::ExternalServiceError(format!("Failed to flush: {}", e))
-                })?;
             }
         }
         Ok(())
@@ -788,8 +788,118 @@ impl TerminalManager {
         })
     }
 
+    pub fn start_periodic_flusher(self: Arc<Self>) {
+        if self.flusher_started.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            return;
+        }
+
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_millis(FLUSH_SCAN_TICK_MILLIS));
+            loop {
+                interval.tick().await;
+
+                let session_ids: Vec<String> = self.sessions.iter()
+                    .map(|entry| entry.key().clone())
+                    .collect();
+
+                for session_id in session_ids {
+                    if let Some(handle) = self.sessions.get(&session_id) {
+                        self.flush_if_due(&session_id, &handle).await;
+                    }
+                }
+            }
+        });
+    }
+
+    async fn flush_if_due(&self, session_id: &str, handle: &Arc<SessionHandle>) {
+        let now = now_secs();
+
+        let (buffer_len, last_flushed, last_flush_time, next_allowed) = {
+            let buffer = handle.buffer.lock().unwrap();
+            let last_flushed = *handle.last_flushed_len.lock().unwrap();
+            let last_flush_time = *handle.last_flush_at.lock().unwrap();
+            let next_allowed = *handle.next_flush_allowed_at.lock().unwrap();
+            (buffer.len(), last_flushed, last_flush_time, next_allowed)
+        };
+
+        let pending_len = buffer_len.saturating_sub(last_flushed);
+
+        if pending_len == 0 {
+            return;
+        }
+
+        if (now - last_flush_time) < FLUSH_INTERVAL_SECS as i64 {
+            return;
+        }
+
+        if now < next_allowed {
+            return;
+        }
+
+        let window = {
+            let buffer = handle.buffer.lock().unwrap();
+            buffer[last_flushed..buffer_len].to_vec()
+        };
+
+        match self.repo.append_output(session_id, &window, now).await {
+            Ok(_) => {
+                *handle.last_flushed_len.lock().unwrap() = buffer_len;
+                *handle.last_flush_at.lock().unwrap() = now;
+                *handle.flush_backoff_secs.lock().unwrap() = 0;
+                *handle.next_flush_allowed_at.lock().unwrap() = now;
+            }
+            Err(_) => {
+                let prev_backoff = *handle.flush_backoff_secs.lock().unwrap();
+                let new_backoff = if prev_backoff == 0 {
+                    10
+                } else {
+                    std::cmp::min(60, prev_backoff * 2)
+                };
+                *handle.flush_backoff_secs.lock().unwrap() = new_backoff;
+                *handle.next_flush_allowed_at.lock().unwrap() = now + new_backoff as i64;
+            }
+        }
+    }
+
+    async fn flush_all_pending_for_session(&self, session_id: &str, handle: &Arc<SessionHandle>) {
+        let now = now_secs();
+
+        let (buffer_len, last_flushed) = {
+            let buffer = handle.buffer.lock().unwrap();
+            let last_flushed = *handle.last_flushed_len.lock().unwrap();
+            (buffer.len(), last_flushed)
+        };
+
+        if buffer_len <= last_flushed {
+            return;
+        }
+
+        let window = {
+            let buffer = handle.buffer.lock().unwrap();
+            buffer[last_flushed..buffer_len].to_vec()
+        };
+
+        if let Ok(_) = self.repo.append_output(session_id, &window, now).await {
+            *handle.last_flushed_len.lock().unwrap() = buffer_len;
+            *handle.last_flush_at.lock().unwrap() = now;
+        }
+    }
+
     pub async fn get_log_snapshot_entries(&self, session_id: &str, max_bytes: Option<usize>) -> serde_json::Value {
-        // Try DB first
+        // First check: if session is in memory (active/restored), use fresh buffer data
+        if let Some(bytes) = self.get_buffer_snapshot(session_id, max_bytes) {
+            let data_b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+            return json!({
+                "entries": [{
+                    "sessionId": session_id,
+                    "data": data_b64,
+                    "timestamp": now_secs(),
+                    "type": "stdout"
+                }]
+            });
+        }
+
+        // Fallback: session not in memory, try DB for historical/inactive sessions
         if let Ok(Some((text, ts_opt))) = self.repo.get_output_log(session_id).await {
             let bytes = if let Some(max) = max_bytes {
                 let text_bytes = text.into_bytes();
@@ -810,19 +920,6 @@ impl TerminalManager {
                     "sessionId": session_id,
                     "data": data_b64,
                     "timestamp": timestamp,
-                    "type": "stdout"
-                }]
-            });
-        }
-
-        // Fallback to in-memory
-        if let Some(bytes) = self.get_buffer_snapshot(session_id, max_bytes) {
-            let data_b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-            return json!({
-                "entries": [{
-                    "sessionId": session_id,
-                    "data": data_b64,
-                    "timestamp": now_secs(),
                     "type": "stdout"
                 }]
             });

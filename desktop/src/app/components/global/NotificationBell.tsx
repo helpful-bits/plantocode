@@ -22,16 +22,6 @@ export function NotificationBell() {
   const terminalNotifications = getPersistentNotifications('terminal');
   const notificationCount = terminalNotifications.length;
 
-  const handleNotificationClick = (notification: any) => {
-    const id = notification.data?.jobId;
-    if (id) {
-      window.dispatchEvent(new CustomEvent('open-plan-terminal', { detail: { jobId: id } }));
-      window.dispatchEvent(new CustomEvent('open-terminal-session', { detail: { sessionId: id } }));
-      dismissNotification(notification.id);
-    }
-    setOpen(false);
-  };
-
   const handleClearAll = () => {
     dismissNotificationsByTag('terminal');
     setOpen(false);
@@ -82,23 +72,37 @@ export function NotificationBell() {
 
         <ScrollArea className="max-h-96">
           <div className="p-1">
-            {terminalNotifications.map((notification) => (
+            {terminalNotifications.map((n) => (
               <DropdownMenuItem
-                key={notification.id}
-                className="flex flex-col items-start gap-2 p-3 cursor-pointer"
-                onClick={() => handleNotificationClick(notification)}
+                key={n.id}
+                className="flex flex-col items-start gap-2 p-3"
+                onSelect={(e) => e.preventDefault()}
               >
-                <div className="flex-1 min-w-0">
+                <div className="flex-1 min-w-0 w-full">
                   <h4 className="font-medium text-sm leading-none">
-                    {notification.title}
+                    {n.title}
                   </h4>
-                  {notification.message && (
+                  {n.message && (
                     <p className="text-sm text-muted-foreground mt-1">
-                      {notification.message}
+                      {n.message}
                     </p>
                   )}
                 </div>
-                <div className="text-xs text-primary">Click to open terminal</div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const sessionId = n.data?.jobId;
+                    if (sessionId) {
+                      window.dispatchEvent(new CustomEvent('open-terminal-session', { detail: { sessionId } }));
+                      window.dispatchEvent(new CustomEvent('open-plan-terminal', { detail: { jobId: sessionId } }));
+                    }
+                    dismissNotification(n.id);
+                  }}
+                >
+                  Open Terminal
+                </Button>
               </DropdownMenuItem>
             ))}
           </div>

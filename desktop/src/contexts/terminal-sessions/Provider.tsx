@@ -8,10 +8,11 @@ import {
   startTerminalSession,
   writeTerminalInput,
   getActiveTerminalSessions,
-  reconnectTerminalSession
+  reconnectTerminalSession,
+  getTerminalStatus
 } from "@/actions/terminal/terminal.actions";
 import { safeListen } from "@/utils/tauri-event-utils";
-import type { TerminalSessionsContextShape, TerminalSession } from "./types";
+import type { TerminalSessionsContextShape, TerminalSession, TerminalStatus } from "./types";
 
 const INACTIVITY_KEY = 'terminal.inactivitySeconds';
 const DEFAULT_INACTIVITY_SEC = 20;
@@ -24,8 +25,11 @@ class TerminalStore {
   private bytesCbRef: Map<string, (chunk: Uint8Array) => void> = new Map();
   private visibleId: string | null = null;
   private bootstrapped = false;
+  private bootstrapping = false;
   private unlistenExit: (() => void) | null = null;
   public inactivityNotifiedRef: Set<string> = new Set();
+  public startingSessionIds: Set<string> = new Set();
+  public attachingSessionIds: Set<string> = new Set();
 
   subscribe = (onStoreChange: () => void) => {
     this.subscribers.add(onStoreChange);
@@ -61,8 +65,9 @@ class TerminalStore {
   };
 
   bootstrapOnce = async () => {
-    if (this.bootstrapped) return;
-    this.bootstrapped = true;
+    // Atomic check-and-set to prevent concurrent bootstrap
+    if (this.bootstrapped || this.bootstrapping) return;
+    this.bootstrapping = true;
 
     // Set up terminal exit listener
     try {
@@ -98,19 +103,32 @@ class TerminalStore {
       // List all sessions already in memory (includes running, restored, and completed)
       const sessionIds = await getActiveTerminalSessions();
 
-      // Add all sessions to the store
-      // The backend already restored sessions at startup, so we just list what's there
-      for (const sessionId of sessionIds) {
-        this.sessions.set(sessionId, {
-          sessionId,
-          status: "running", // Status will be updated via events or status checks
-          lastOutput: "[Session loaded]"
-        });
-      }
+      // Fetch actual status for each session instead of defaulting to "running"
+      await Promise.all(sessionIds.map(async (sessionId) => {
+        try {
+          const statusData = await getTerminalStatus(sessionId);
+          this.sessions.set(sessionId, {
+            sessionId,
+            status: (statusData?.status ?? 'stopped') as TerminalStatus,
+            exitCode: statusData?.exitCode ?? undefined,
+            lastOutput: "[Session loaded]"
+          });
+        } catch (e) {
+          console.error(`Failed to get status for session ${sessionId}:`, e);
+          this.sessions.set(sessionId, {
+            sessionId,
+            status: 'stopped' as TerminalStatus,
+            lastOutput: "[Session loaded]"
+          });
+        }
+      }));
 
       this.notifySubscribers();
     } catch (e) {
       console.error("Failed to bootstrap sessions:", e);
+    } finally {
+      this.bootstrapping = false;
+      this.bootstrapped = true;
     }
   };
 
@@ -184,103 +202,177 @@ export const TerminalSessionsProvider: React.FC<React.PropsWithChildren> = ({ ch
   );
 
   const attachSession = useCallback(async (id: string) => {
-    if (storeState.channelsRef.has(id)) return;
-
-    const ch = new Channel<Uint8Array>();
-    ch.onmessage = (chunk) => {
-      // Update lastActivityAt on every output chunk
-      store.updateSession(id, { lastActivityAt: Date.now() });
-
-      // Clear inactivity notification if it was set
-      if (store.inactivityNotifiedRef.has(id)) {
-        store.inactivityNotifiedRef.delete(id);
-      }
-
-      const cb = store.getBytesCbRef().get(id);
-      if (cb) cb(new Uint8Array(chunk));
-    };
+    // Race condition guard: prevent concurrent attach operations
+    if (storeState.channelsRef.has(id) || store.attachingSessionIds.has(id)) return;
+    store.attachingSessionIds.add(id);
 
     try {
-      const reconnected = await reconnectTerminalSession(id, ch);
-      if (reconnected) {
-        storeState.channelsRef.set(id, ch);
+      // Pre-flight status check: only attach to running sessions
+      try {
+        const statusData = await getTerminalStatus(id);
+        if (statusData?.status !== 'running') {
+          console.log(`Refusing to attach to non-running session ${id} (status: ${statusData?.status})`);
+          return;
+        }
+      } catch (e) {
+        console.error(`Failed to check status before attaching to session ${id}:`, e);
         return;
       }
-    } catch {}
 
-    await attachTerminalOutput(id, ch);
-    storeState.channelsRef.set(id, ch);
-  }, [storeState.channelsRef]);
+      const ch = new Channel<Uint8Array>();
+      ch.onmessage = (chunk) => {
+        // Update lastActivityAt on every output chunk
+        store.updateSession(id, { lastActivityAt: Date.now() });
 
-  const startSession = useCallback(async (id: string, opts?: any) => {
-    const activeSessions = await getActiveTerminalSessions();
-    if (activeSessions.includes(id)) {
-      if (!storeState.channelsRef.has(id)) {
-        const ch = new Channel<Uint8Array>();
-        ch.onmessage = (chunk) => {
-          // Update lastActivityAt on every output chunk
-          store.updateSession(id, { lastActivityAt: Date.now() });
+        // Clear inactivity notification if it was set
+        if (store.inactivityNotifiedRef.has(id)) {
+          store.inactivityNotifiedRef.delete(id);
+        }
 
-          // Clear inactivity notification if it was set
-          if (store.inactivityNotifiedRef.has(id)) {
-            store.inactivityNotifiedRef.delete(id);
-          }
+        const cb = store.getBytesCbRef().get(id);
+        if (cb) cb(new Uint8Array(chunk));
+      };
 
-          const cb = store.getBytesCbRef().get(id);
-          if (cb) cb(new Uint8Array(chunk));
-        };
+      try {
         const reconnected = await reconnectTerminalSession(id, ch);
         if (reconnected) {
           storeState.channelsRef.set(id, ch);
-          store.updateSession(id, { status: "running" });
+          // Refresh status after successful reconnect
+          try {
+            const refreshedStatus = await getTerminalStatus(id);
+            if (refreshedStatus) {
+              store.updateSession(id, {
+                status: refreshedStatus.status as TerminalStatus,
+                exitCode: refreshedStatus.exitCode ?? undefined
+              });
+            }
+          } catch (e) {
+            console.error(`Failed to refresh status after reconnect for ${id}:`, e);
+          }
+          return;
         }
-      }
+      } catch {}
+
+      await attachTerminalOutput(id, ch);
+      storeState.channelsRef.set(id, ch);
+    } finally {
+      store.attachingSessionIds.delete(id);
+    }
+  }, [storeState.channelsRef]);
+
+  const startSession = useCallback(async (id: string, opts?: any) => {
+    // Race condition guard: prevent concurrent start operations
+    if (storeState.channelsRef.has(id) || store.startingSessionIds.has(id)) {
       return;
     }
+    store.startingSessionIds.add(id);
 
-    if (storeState.sessions.has(id) && storeState.channelsRef.has(id)) return;
+    try {
+      // Check backend status to determine if we should reconnect or start fresh
+      let shouldStartFresh = true;
+      try {
+        const statusData = await getTerminalStatus(id);
+        const isRunning = statusData?.status === 'running';
 
-    // Initialize session with displayName, origin, and lastActivityAt
-    store.updateSession(id, {
-      status: "starting",
-      displayName: opts?.displayName,
-      origin: opts?.origin,
-      lastActivityAt: Date.now()
-    });
+        if (isRunning && !storeState.channelsRef.has(id)) {
+          // Session is running on backend, try to reconnect
+          const ch = new Channel<Uint8Array>();
+          ch.onmessage = (chunk) => {
+            store.updateSession(id, { lastActivityAt: Date.now() });
+            if (store.inactivityNotifiedRef.has(id)) {
+              store.inactivityNotifiedRef.delete(id);
+            }
+            const cb = store.getBytesCbRef().get(id);
+            if (cb) cb(new Uint8Array(chunk));
+          };
 
-    const ch = new Channel<Uint8Array>();
-    ch.onmessage = (chunk) => {
-      // Update lastActivityAt on every output chunk
-      store.updateSession(id, { lastActivityAt: Date.now() });
-
-      // Clear inactivity notification if it was set
-      if (store.inactivityNotifiedRef.has(id)) {
-        store.inactivityNotifiedRef.delete(id);
+          const reconnected = await reconnectTerminalSession(id, ch);
+          if (reconnected) {
+            storeState.channelsRef.set(id, ch);
+            // Refresh status after successful reconnect
+            try {
+              const refreshedStatus = await getTerminalStatus(id);
+              if (refreshedStatus) {
+                store.updateSession(id, {
+                  status: refreshedStatus.status as TerminalStatus,
+                  exitCode: refreshedStatus.exitCode ?? undefined
+                });
+              }
+            } catch (e) {
+              console.error(`Failed to refresh status after reconnect for ${id}:`, e);
+            }
+            shouldStartFresh = false;
+          }
+        }
+      } catch (e) {
+        console.error(`Failed to check status for session ${id}:`, e);
       }
 
-      const cb = store.getBytesCbRef().get(id);
-      if (cb) cb(new Uint8Array(chunk));
-    };
+      // If session is not running or reconnect failed, start a fresh PTY
+      if (!shouldStartFresh) return;
 
-    await startTerminalSession(id, opts, ch);
-    storeState.channelsRef.set(id, ch);
-    store.updateSession(id, { status: "running", lastActivityAt: Date.now() });
+      if (storeState.sessions.has(id) && storeState.channelsRef.has(id)) return;
 
-    // Dispatch agent-job-started event
-    window.dispatchEvent(new CustomEvent('agent-job-started', { detail: { sessionId: id } }));
+      // Initialize session with displayName, origin, and lastActivityAt
+      store.updateSession(id, {
+        status: "starting",
+        displayName: opts?.displayName,
+        origin: opts?.origin,
+        lastActivityAt: Date.now()
+      });
 
-    // If initialInput is provided, write it to the channel
-    if (opts?.initialInput) {
-      const encoder = new TextEncoder();
-      const data = encoder.encode(opts.initialInput + '\n');
-      const channelRef = storeState.channelsRef.get(id);
-      if (channelRef) {
-        try {
-          await writeTerminalInput(id, data);
-        } catch (e) {
-          console.error("Failed to write initial input:", e);
+      const ch = new Channel<Uint8Array>();
+      ch.onmessage = (chunk) => {
+        // Update lastActivityAt on every output chunk
+        store.updateSession(id, { lastActivityAt: Date.now() });
+
+        // Clear inactivity notification if it was set
+        if (store.inactivityNotifiedRef.has(id)) {
+          store.inactivityNotifiedRef.delete(id);
+        }
+
+        const cb = store.getBytesCbRef().get(id);
+        if (cb) cb(new Uint8Array(chunk));
+      };
+
+      await startTerminalSession(id, opts, ch);
+      storeState.channelsRef.set(id, ch);
+
+      // Refresh status from backend after starting session
+      try {
+        const refreshedStatus = await getTerminalStatus(id);
+        if (refreshedStatus) {
+          store.updateSession(id, {
+            status: refreshedStatus.status as TerminalStatus,
+            exitCode: refreshedStatus.exitCode ?? undefined,
+            lastActivityAt: Date.now()
+          });
+        } else {
+          store.updateSession(id, { status: "running" as TerminalStatus, lastActivityAt: Date.now() });
+        }
+      } catch (e) {
+        console.error(`Failed to refresh status after start for ${id}:`, e);
+        store.updateSession(id, { status: "running" as TerminalStatus, lastActivityAt: Date.now() });
+      }
+
+      // Dispatch agent-job-started event
+      window.dispatchEvent(new CustomEvent('agent-job-started', { detail: { sessionId: id } }));
+
+      // If initialInput is provided, write it to the channel
+      if (opts?.initialInput) {
+        const encoder = new TextEncoder();
+        const data = encoder.encode(opts.initialInput + '\n');
+        const channelRef = storeState.channelsRef.get(id);
+        if (channelRef) {
+          try {
+            await writeTerminalInput(id, data);
+          } catch (e) {
+            console.error("Failed to write initial input:", e);
+          }
         }
       }
+    } finally {
+      store.startingSessionIds.delete(id);
     }
   }, [storeState.sessions, storeState.channelsRef]);
 
