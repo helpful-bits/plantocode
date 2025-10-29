@@ -40,7 +40,7 @@ pub async fn initialize_database_light(app_handle: &AppHandle) -> Result<(), App
     // Configure and connect to SQLite with proper settings
     info!("Connecting to database at: {}", db_path.display());
     let db = SqlitePoolOptions::new()
-        .max_connections(10)
+        .max_connections(20)
         .after_connect(|conn, _meta| {
             Box::pin(async move {
                 // Enable foreign key constraints

@@ -278,7 +278,9 @@ impl TerminalManager {
 
                         // Send raw binary to mobile via device link client
                         if let Some(client) = app.try_state::<Arc<crate::services::device_link_client::DeviceLinkClient>>() {
-                            let _ = client.send_terminal_output_binary(&sid, &chunk);
+                            if client.is_connected() && client.is_session_bound(&sid) {
+                                let _ = client.send_terminal_output_binary(&sid, &chunk);
+                            }
                         }
 
                         // Incremental flush logic
@@ -575,7 +577,8 @@ impl TerminalManager {
                 let exit_code = *handle.exit_code.lock().unwrap();
 
                 // Finish reaping the PTY child process (if it is still running)
-                if let Some(child) = handle.child_stopper.lock().unwrap().take() {
+                let child_opt = handle.child_stopper.lock().unwrap().take();
+                if let Some(child) = child_opt {
                     // Store child handle for potential force kill
                     let mut child_handle = Some(child);
 

@@ -20,6 +20,7 @@ public final class MultiConnectionManager: ObservableObject {
     private var verifyingDevices = Set<UUID>()
     private var relayHandshakeByDevice = [UUID: ConnectionHandshake]()
     private let logger = Logger(subsystem: "PlanToCode", category: "MultiConnectionManager")
+    private var isHardResetInProgress = false
 
     private struct ReconnectPolicy {
         let attemptDelays: [TimeInterval] = [0.0, 0.5, 1, 2, 4, 8, 16, 30]
@@ -36,6 +37,7 @@ public final class MultiConnectionManager: ObservableObject {
         var backgroundTimer: Timer?
         var currentTask: Task<Void, Never>?
         var lastError: Error?
+        var backgroundCycles: Int = 0
     }
 
     public enum ReconnectReason {
@@ -43,6 +45,14 @@ public final class MultiConnectionManager: ObservableObject {
         case networkChange(NWPath)
         case connectionLoss(UUID)
         case authRefreshed
+    }
+
+    public enum HardResetReason {
+        case manual
+        case reconnectionExhausted
+        case serverContextChanged
+        case authInvalidated
+        case diagnostics
     }
 
     private var reconnectPolicy = ReconnectPolicy()
@@ -111,6 +121,75 @@ public final class MultiConnectionManager: ObservableObject {
             self.stopAllReconnectTimers()
             self.removeAllConnections()
         }
+    }
+
+    private func cancelAllCancellables() {
+        cancellables.removeAll()
+    }
+
+    @MainActor
+    public func hardReset(reason: HardResetReason, deletePersistedDevices: Bool = true) async {
+        guard !isHardResetInProgress else {
+            logger.warning("Hard reset already in progress, skipping")
+            return
+        }
+
+        isHardResetInProgress = true
+        defer { isHardResetInProgress = false }
+
+        logger.info("🔥 Starting hard reset, reason: \(String(describing: reason))")
+
+        stopAllReconnectTimers()
+        cancelAllCancellables()
+
+        for (_, relay) in storage {
+            relay.clearResumeToken()
+            relay.disconnect()
+        }
+
+        let persistedDeviceIds = (UserDefaults.standard.array(forKey: connectedDevicesKey) as? [String] ?? [])
+            .compactMap { UUID(uuidString: $0) }
+        let inMemoryDeviceIds = Array(storage.keys)
+        let allDeviceIds = Set(persistedDeviceIds + inMemoryDeviceIds)
+
+        for deviceId in allDeviceIds {
+            ServerRelayClient.clearResumeToken(deviceId: deviceId)
+        }
+
+        storage.removeAll()
+        connectionStates.removeAll()
+        verifyingDevices.removeAll()
+        relayHandshakeByDevice.removeAll()
+        reconnectStates.removeAll()
+        connectingTasks.removeAll()
+        activeDeviceId = nil
+
+        persistConnectedDevices([])
+
+        if deletePersistedDevices {
+            UserDefaults.standard.removeObject(forKey: connectedDevicesKey)
+            UserDefaults.standard.removeObject(forKey: activeDeviceKey)
+        }
+
+        UserDefaults.standard.removeObject(forKey: serverContextKey)
+        lastConnectedServerURL = nil
+
+        await PlanToCodeCore.shared.dataServices?.resetAllState()
+
+        NotificationCenter.default.post(
+            name: Notification.Name("connection-hard-reset-completed"),
+            object: nil,
+            userInfo: ["reason": reason]
+        )
+
+        logger.info("✅ Hard reset completed")
+    }
+
+    @MainActor
+    public func hardResetAndRescan() async {
+        await hardReset(reason: .manual)
+        await DeviceDiscoveryService.shared.clearList()
+        await DeviceDiscoveryService.shared.refreshDevices()
     }
 
     private func verifyDesktopConnection(deviceId: UUID, timeoutSeconds: Int = 5) async throws {
@@ -394,17 +473,27 @@ public final class MultiConnectionManager: ObservableObject {
     }
 
     public func removeAllConnections() {
-        // Disconnect all relay connections
+        stopAllReconnectTimers()
+        cancelAllCancellables()
+        reconnectStates.removeAll()
+        connectingTasks.removeAll()
+
         for (_, relayClient) in storage {
             relayClient.disconnect()
         }
+
         storage.removeAll()
         connectionStates.removeAll()
         verifyingDevices.removeAll()
         relayHandshakeByDevice.removeAll()
         activeDeviceId = nil
+
         UserDefaults.standard.removeObject(forKey: connectedDevicesKey)
         UserDefaults.standard.removeObject(forKey: activeDeviceKey)
+        UserDefaults.standard.removeObject(forKey: serverContextKey)
+        lastConnectedServerURL = nil
+
+        persistConnectedDevices([])
     }
 
 
@@ -602,6 +691,9 @@ public final class MultiConnectionManager: ObservableObject {
                 object: nil,
                 userInfo: ["old": lastServer, "new": Config.serverURL]
             )
+            Task { @MainActor in
+                await self.hardReset(reason: .serverContextChanged)
+            }
             return false
         }
 
@@ -646,6 +738,21 @@ public final class MultiConnectionManager: ObservableObject {
             guard self.lastPath?.status == .satisfied else { return }
 
             guard self.canAttemptReconnect(for: deviceId) else { return }
+
+            if let state = self.reconnectStates[deviceId] {
+                if state.backgroundCycles >= 2 {
+                    if let currentState = self.connectionStates[deviceId], !currentState.isConnected {
+                        self.logger.warning("Background cycles exhausted (\(state.backgroundCycles)), triggering hard reset")
+                        self.reconnectStates[deviceId]?.backgroundTimer?.invalidate()
+                        Task { @MainActor in
+                            await self.hardReset(reason: .reconnectionExhausted)
+                        }
+                        return
+                    }
+                }
+            }
+
+            self.reconnectStates[deviceId]?.backgroundCycles += 1
 
             Task { @MainActor in
                 let result = await self.addConnection(for: deviceId)

@@ -425,23 +425,11 @@ public struct SessionWorkspaceView: View {
     // MARK: - Sync Management
 
     private func startSyncIfNeeded() {
-        guard let session = currentSession else { return }
-
-        // Only start if not already syncing this session
-        if activeSyncSessionId != session.id {
-            container.taskSyncService.startTaskDescriptionSync(
-                sessionId: session.id,
-                textBinding: $taskText,
-                pollIntervalSeconds: 4.0
-            )
-            activeSyncSessionId = session.id
-        }
+        return
     }
 
     private func stopCurrentSync() {
-        guard let sessionId = activeSyncSessionId else { return }
-        container.taskSyncService.stopTaskDescriptionSync(sessionId: sessionId)
-        activeSyncSessionId = nil
+        return
     }
 }
 

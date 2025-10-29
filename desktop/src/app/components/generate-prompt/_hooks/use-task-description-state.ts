@@ -304,6 +304,8 @@ export function useTaskDescriptionState({
         checksum: prev.checksum,
       };
     });
+
+    scheduleSync();
   }, [historyReady, historyState.entries, deviceId]);
 
   const saveToHistory = useCallback((description: string) => {
@@ -816,6 +818,8 @@ export function useTaskDescriptionState({
     [historyReady, activeSessionId, deviceId, historyState]
   );
 
+  const scheduleSync = useMemo(() => debounce(() => commitNewEntry(valueRef.current), 600), []);
+
   // Listen for local changes from decoupled components
   useEffect(() => {
     const onLocalChange = (e: Event) => {
@@ -919,81 +923,6 @@ export function useTaskDescriptionState({
     }
   }, [historyState.version, taskDescriptionRef, sessionActions]);
 
-  // NOTE: Legacy 'session-history-synced' listener removed.
-  // The new system uses 'history-state-changed' events handled via event-bridge
-
-  // STEP 6: Enhanced periodic sync to backend (900ms interval)
-  // Note: We use a ref to access current history state to avoid recreating the interval
-  const historyStateRef = useRef(historyState);
-  historyStateRef.current = historyState;
-
-  useEffect(() => {
-    if (!historyReady) return; // Only run when historyReady
-    if (!activeSessionId || !deviceId) return;
-
-    let cancelled = false;
-    let consecutiveErrors = 0;
-    let syncInProgress = false;
-    let intervalId: number | null = null;
-    const MAX_CONSECUTIVE_ERRORS = 5;
-
-    // Delay first sync to allow initial render to complete
-    const initialDelay = setTimeout(() => {
-      if (cancelled) return;
-
-      intervalId = window.setInterval(async () => {
-        if (cancelled) return;
-        if (syncInProgress) return; // Skip if sync already in progress
-        if (remoteHistoryApplyingRef.current) return;
-        if (isNavigatingHistoryRef.current) return;
-
-        // ✅ CRITICAL: Skip if user is actively editing the textarea
-        const isTextareaFocused = (window as any).__taskDescriptionEditorFocused;
-        if (isTextareaFocused) return;
-
-        const state = historyStateRef.current;
-        if (!state || state.entries.length === 0) return;
-
-        syncInProgress = true;
-        try {
-          await syncHistoryStateAction(activeSessionId, 'task', state, state.version);
-          if (cancelled) return;
-
-          // Reset error counter on success
-          consecutiveErrors = 0;
-
-          // ✅ CRITICAL: Periodic sync is WRITE-ONLY
-          // Backend increments version on every sync, so we can't distinguish our echoes from remote changes
-          // DON'T apply sync responses - they cause UI flickering every 900ms
-          // Remote changes come through 'history-state-changed' events, NOT sync responses
-        } catch (e) {
-          consecutiveErrors++;
-
-          // Only log first error to avoid spam
-          if (consecutiveErrors === 1) {
-            console.error('[HistorySync] Sync failed:', e);
-          }
-
-          // Pause after too many errors
-          if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-            await new Promise(resolve => setTimeout(resolve, 5000));
-            consecutiveErrors = 0;
-          }
-        } finally {
-          syncInProgress = false;
-        }
-      }, 900);
-    }, 2000); // Wait 2 seconds after mount before starting periodic sync
-
-    return () => {
-      cancelled = true;
-      clearTimeout(initialDelay);
-      if (intervalId !== null) {
-        clearInterval(intervalId);
-      }
-    };
-  }, [historyReady, activeSessionId, deviceId]);
-
   // New undo function - update currentIndex only, no new entry
   const handleUndo = useCallback(async () => {
     if (!canUndo || !activeSessionId) return;
@@ -1024,6 +953,8 @@ export function useTaskDescriptionState({
         // Explicit persistence call for undo
         queueTaskDescriptionUpdate(activeSessionId, entry.value).catch(() => {});
         onInteraction?.();
+
+        scheduleSync();
       }
     } catch (err) {
       // Ignore undo errors
@@ -1063,6 +994,8 @@ export function useTaskDescriptionState({
         // Explicit persistence call for redo
         queueTaskDescriptionUpdate(activeSessionId, entry.value).catch(() => {});
         onInteraction?.();
+
+        scheduleSync();
       }
     } catch (err) {
       // Ignore redo errors

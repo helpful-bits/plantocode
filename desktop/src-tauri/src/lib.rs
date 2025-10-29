@@ -380,42 +380,72 @@ pub fn run() {
                     }
                 }
 
-                // If not hiding, proceed with normal close behavior
+                // If not hiding, prevent close and spawn shutdown orchestrator
+                api.prevent_close();
+
+                // Optionally emit "app-will-close" event (ignore errors)
                 let _ = window.emit("app-will-close", ());
 
-                let app_handle = window.app_handle();
+                let app_handle = window.app_handle().clone();
 
-                // Flush SessionCache before shutdown
-                if let Some(cache) = app_handle.try_state::<Arc<crate::services::SessionCache>>() {
-                    let cache = cache.inner().clone();
-                    tauri::async_runtime::block_on(async {
-                        let _ = cache.flush_all_now(&app_handle).await;
-                    });
-                    info!("SessionCache flushed on shutdown");
-                }
+                // Spawn non-blocking shutdown orchestrator
+                tauri::async_runtime::spawn(async move {
+                    // Get optional state handles
+                    let cache_opt = app_handle.try_state::<Arc<crate::services::SessionCache>>()
+                        .map(|c| c.inner().clone());
+                    let terminal_manager_opt = app_handle.try_state::<Arc<crate::services::TerminalManager>>()
+                        .map(|t| t.inner().clone());
+                    let device_link_client_opt = app_handle.try_state::<Arc<crate::services::device_link_client::DeviceLinkClient>>()
+                        .map(|d| d.inner().clone());
 
-                // Cleanup all terminals before closing
-                if let Some(terminal_manager) =
-                    app_handle.try_state::<std::sync::Arc<crate::services::TerminalManager>>()
-                {
-                    tauri::async_runtime::block_on(async {
-                        if let Err(e) = terminal_manager.cleanup_all_sessions().await {
-                            error!("Error during terminal cleanup: {}", e);
-                        } else {
-                            info!("All terminal sessions cleaned up successfully");
+                    // Run cleanup concurrently with timeout
+                    let cleanup_future = async {
+                        // Spawn all cleanup tasks concurrently
+                        let cache_task = async {
+                            if let Some(cache) = cache_opt {
+                                if let Err(e) = cache.flush_all_now(&app_handle).await {
+                                    error!("Error flushing SessionCache: {}", e);
+                                } else {
+                                    info!("SessionCache flushed on shutdown");
+                                }
+                            }
+                        };
+
+                        let terminal_task = async {
+                            if let Some(terminal_manager) = terminal_manager_opt {
+                                if let Err(e) = terminal_manager.cleanup_all_sessions().await {
+                                    error!("Error during terminal cleanup: {}", e);
+                                } else {
+                                    info!("All terminal sessions cleaned up successfully");
+                                }
+                            }
+                        };
+
+                        let device_link_task = async {
+                            if let Some(client) = device_link_client_opt {
+                                client.shutdown().await;
+                                info!("DeviceLinkClient shutdown complete");
+                            }
+                        };
+
+                        // Run all cleanup tasks concurrently
+                        tokio::join!(cache_task, terminal_task, device_link_task);
+                    };
+
+                    // Run cleanup with 5-second timeout
+                    match tokio::time::timeout(Duration::from_secs(5), cleanup_future).await {
+                        Ok(_) => {
+                            info!("Shutdown cleanup completed successfully");
                         }
-                    });
-                }
+                        Err(_) => {
+                            warn!("Shutdown cleanup timed out after 5 seconds");
+                        }
+                    }
 
-                // Shutdown DeviceLinkClient before closing
-                if let Some(client) =
-                    app_handle.try_state::<Arc<crate::services::device_link_client::DeviceLinkClient>>()
-                {
-                    let client = client.inner().clone();
-                    tauri::async_runtime::spawn(async move {
-                        client.shutdown().await;
-                    });
-                }
+                    // Exit the application
+                    info!("Exiting application");
+                    app_handle.exit(0);
+                });
             }
         })
         .invoke_handler(tauri::generate_handler![

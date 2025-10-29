@@ -953,9 +953,9 @@ impl SessionRepository {
                 AppError::DatabaseError(format!("Failed to begin immediate transaction: {}", e))
             })?;
 
-        // Read current version from database
+        // Read current version and current_index from database
         let version_row = sqlx::query(
-            "SELECT task_history_version FROM sessions WHERE id = $1"
+            "SELECT task_history_version, task_history_current_index FROM sessions WHERE id = $1"
         )
         .bind(session_id)
         .fetch_optional(&mut *conn)
@@ -964,8 +964,12 @@ impl SessionRepository {
             AppError::DatabaseError(format!("Failed to fetch session version: {}", e))
         })?;
 
-        let current_version = match version_row {
-            Some(row) => row.try_get::<i64, _>("task_history_version").unwrap_or(1),
+        let (current_version, current_index) = match version_row {
+            Some(row) => {
+                let version = row.try_get::<i64, _>("task_history_version").unwrap_or(1);
+                let index = row.try_get::<i64, _>("task_history_current_index").unwrap_or(0);
+                (version, index)
+            }
             None => {
                 let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
                 return Err(AppError::DatabaseError(format!("Session not found: {}", session_id)));
@@ -980,13 +984,37 @@ impl SessionRepository {
             )));
         }
 
-        sqlx::query("DELETE FROM task_description_history WHERE session_id = $1")
-            .bind(session_id)
-            .execute(&mut *conn)
-            .await
-            .map_err(|e| {
-                AppError::DatabaseError(format!("Failed to delete existing task history: {}", e))
-            })?;
+        // Fetch current entries from database
+        let current_rows = sqlx::query(
+            "SELECT description, created_at, device_id, sequence_number, version
+             FROM task_description_history
+             WHERE session_id = $1
+             ORDER BY sequence_number ASC, created_at ASC"
+        )
+        .bind(session_id)
+        .fetch_all(&mut *conn)
+        .await
+        .map_err(|e| {
+            AppError::DatabaseError(format!("Failed to fetch current task history: {}", e))
+        })?;
+
+        let mut current_entries: Vec<TaskHistoryEntry> = Vec::new();
+        for row in current_rows.iter() {
+            let description: String = row.try_get("description")?;
+            let created_at: i64 = row.try_get("created_at")?;
+            let device_id: Option<String> = row.try_get("device_id").ok().flatten();
+            let sequence_number: i64 = row.try_get("sequence_number").unwrap_or(0);
+            let entry_version: i64 = row.try_get("version").unwrap_or(1);
+
+            current_entries.push(TaskHistoryEntry {
+                description,
+                created_at,
+                device_id,
+                op_type: None,
+                sequence_number,
+                version: entry_version,
+            });
+        }
 
         let trimmed_entries: Vec<TaskHistoryEntry> = state
             .entries
@@ -996,6 +1024,32 @@ impl SessionRepository {
             .rev()
             .cloned()
             .collect();
+
+        // Idempotency check: skip writes if data is unchanged
+        if equal_task_entries(&trimmed_entries, &current_entries) && state.current_index == current_index {
+            sqlx::query("COMMIT")
+                .execute(&mut *conn)
+                .await
+                .map_err(|e| {
+                    AppError::DatabaseError(format!("Failed to commit transaction: {}", e))
+                })?;
+
+            let checksum = compute_task_history_checksum(&current_entries, current_index, current_version);
+            return Ok(TaskHistoryState {
+                entries: current_entries,
+                current_index,
+                version: current_version,
+                checksum,
+            });
+        }
+
+        sqlx::query("DELETE FROM task_description_history WHERE session_id = $1")
+            .bind(session_id)
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                AppError::DatabaseError(format!("Failed to delete existing task history: {}", e))
+            })?;
 
         for entry in &trimmed_entries {
             sqlx::query(
@@ -1125,9 +1179,9 @@ impl SessionRepository {
                 AppError::DatabaseError(format!("Failed to begin immediate transaction: {}", e))
             })?;
 
-        // Read current version from database
+        // Read current version and current_index from database
         let version_row = sqlx::query(
-            "SELECT file_history_version FROM sessions WHERE id = $1"
+            "SELECT file_history_version, file_history_current_index FROM sessions WHERE id = $1"
         )
         .bind(session_id)
         .fetch_optional(&mut *conn)
@@ -1136,8 +1190,12 @@ impl SessionRepository {
             AppError::DatabaseError(format!("Failed to fetch session version: {}", e))
         })?;
 
-        let current_version = match version_row {
-            Some(row) => row.try_get::<i64, _>("file_history_version").unwrap_or(1),
+        let (current_version, current_index) = match version_row {
+            Some(row) => {
+                let version = row.try_get::<i64, _>("file_history_version").unwrap_or(1);
+                let index = row.try_get::<i64, _>("file_history_current_index").unwrap_or(0);
+                (version, index)
+            }
             None => {
                 let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
                 return Err(AppError::DatabaseError(format!("Session not found: {}", session_id)));
@@ -1152,13 +1210,39 @@ impl SessionRepository {
             )));
         }
 
-        sqlx::query("DELETE FROM file_selection_history WHERE session_id = $1")
-            .bind(session_id)
-            .execute(&mut *conn)
-            .await
-            .map_err(|e| {
-                AppError::DatabaseError(format!("Failed to delete existing file history: {}", e))
-            })?;
+        // Fetch current entries from database
+        let current_rows = sqlx::query(
+            "SELECT included_files, force_excluded_files, created_at, device_id, sequence_number, version
+             FROM file_selection_history
+             WHERE session_id = $1
+             ORDER BY created_at ASC"
+        )
+        .bind(session_id)
+        .fetch_all(&mut *conn)
+        .await
+        .map_err(|e| {
+            AppError::DatabaseError(format!("Failed to fetch current file history: {}", e))
+        })?;
+
+        let mut current_entries: Vec<FileSelectionHistoryEntry> = Vec::new();
+        for row in current_rows.iter() {
+            let included_files: String = row.try_get("included_files")?;
+            let force_excluded_files: String = row.try_get("force_excluded_files")?;
+            let created_at: i64 = row.try_get("created_at")?;
+            let device_id: Option<String> = row.try_get("device_id").ok().flatten();
+            let sequence_number: i64 = row.try_get("sequence_number").unwrap_or(0);
+            let entry_version: i64 = row.try_get("version").unwrap_or(1);
+
+            current_entries.push(FileSelectionHistoryEntry {
+                included_files,
+                force_excluded_files,
+                created_at,
+                device_id,
+                op_type: None,
+                sequence_number,
+                version: entry_version,
+            });
+        }
 
         let trimmed_entries: Vec<FileSelectionHistoryEntry> = state
             .entries
@@ -1168,6 +1252,32 @@ impl SessionRepository {
             .rev()
             .cloned()
             .collect();
+
+        // Idempotency check: skip writes if data is unchanged
+        if equal_file_entries(&trimmed_entries, &current_entries) && state.current_index == current_index {
+            sqlx::query("COMMIT")
+                .execute(&mut *conn)
+                .await
+                .map_err(|e| {
+                    AppError::DatabaseError(format!("Failed to commit transaction: {}", e))
+                })?;
+
+            let checksum = compute_file_history_checksum(&current_entries, current_index, current_version);
+            return Ok(FileHistoryState {
+                entries: current_entries,
+                current_index,
+                version: current_version,
+                checksum,
+            });
+        }
+
+        sqlx::query("DELETE FROM file_selection_history WHERE session_id = $1")
+            .bind(session_id)
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                AppError::DatabaseError(format!("Failed to delete existing file history: {}", e))
+            })?;
 
         for entry in &trimmed_entries {
             sqlx::query(
@@ -1454,4 +1564,24 @@ fn compute_file_history_checksum(entries: &[FileSelectionHistoryEntry], current_
 
     let json = serde_json::to_string(&data).unwrap_or_default();
     sha256_hash(&json)
+}
+
+fn equal_task_entries(a: &[TaskHistoryEntry], b: &[TaskHistoryEntry]) -> bool {
+    a.len() == b.len() &&
+    a.iter().zip(b.iter()).all(|(entry_a, entry_b)| {
+        entry_a.description == entry_b.description &&
+        entry_a.created_at == entry_b.created_at &&
+        entry_a.device_id == entry_b.device_id &&
+        entry_a.sequence_number == entry_b.sequence_number
+    })
+}
+
+fn equal_file_entries(a: &[FileSelectionHistoryEntry], b: &[FileSelectionHistoryEntry]) -> bool {
+    a.len() == b.len() &&
+    a.iter().zip(b.iter()).all(|(entry_a, entry_b)| {
+        entry_a.included_files == entry_b.included_files &&
+        entry_a.force_excluded_files == entry_b.force_excluded_files &&
+        entry_a.created_at == entry_b.created_at &&
+        entry_a.sequence_number == entry_b.sequence_number
+    })
 }
