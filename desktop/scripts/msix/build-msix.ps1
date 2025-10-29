@@ -12,9 +12,8 @@ param(
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectRoot = (Get-Item $scriptDir).Parent.Parent.FullName
 $workDir = "$env:TEMP\plantocode_msix_build_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
-$targetDir = Join-Path $projectRoot "src-tauri\target\x86_64-pc-windows-msvc\release"
+$targetDir = Join-Path $projectRoot "src-tauri\target\release"
 $bundleDir = Join-Path $targetDir "bundle\msix"
-$outputPath = Join-Path $bundleDir "PlanToCode_${Version}_${Architecture}.msix"
 $appExePath = Join-Path $targetDir "plantocode.exe"
 
 # Windows SDK paths (try multiple versions)
@@ -166,6 +165,9 @@ if (Test-Path $packageJsonPath) {
         }
     }
 }
+
+# Generate output path with final version
+$outputPath = Join-Path $bundleDir "PlanToCode_${Version}_${Architecture}.msix"
 
 # Generate capabilities from configuration
 $regularCapabilities = ""
