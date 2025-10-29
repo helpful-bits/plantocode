@@ -826,38 +826,29 @@ impl DeviceLinkClient {
         }
     }
 
+    /// Check if a session is bound for binary streaming
+    pub fn is_session_bound(&self, session_id: &str) -> bool {
+        self.bound_session_id
+            .lock()
+            .unwrap()
+            .as_deref()
+            == Some(session_id)
+    }
+
     /// Send raw terminal output bytes without any header or encoding
-    /// Buffers output if session is not bound; sends immediately if bound
+    /// Only sends when connected AND the session is bound
     pub fn send_terminal_output_binary(&self, session_id: &str, data: &[u8]) -> Result<(), AppError> {
-        // Check if this session is bound for binary streaming
-        let bound = self.bound_session_id.lock().unwrap();
-        let bound_id = bound.as_deref();
-
-        if bound_id != Some(session_id) {
-            // Not the bound session - buffer the data
-            drop(bound);
-
-            let mut pending = self.pending_binary_by_session.lock().unwrap();
-            let buffer = pending.entry(session_id.to_string()).or_insert_with(Vec::new);
-            buffer.extend_from_slice(data);
-            let total = buffer.len();
-            debug!("Binary uplink: buffered {} bytes (pending_total={}) for session {}", data.len(), total, session_id);
-
-            // Trim from head if buffer exceeds max size (keep newest data)
-            if buffer.len() > MAX_PENDING_BYTES {
-                let trim = buffer.len() - MAX_PENDING_BYTES;
-                buffer.drain(0..trim);
-                debug!(
-                    "Binary uplink: trimmed {} bytes from head for session '{}', kept {} bytes",
-                    trim, session_id, buffer.len()
-                );
-            }
-
+        // Early return if not connected
+        if !self.is_connected() {
             return Ok(());
         }
-        drop(bound);
 
-        // Session is bound - send immediately
+        // Early return if session is not bound
+        if !self.is_session_bound(session_id) {
+            return Ok(());
+        }
+
+        // Session is bound and connected - send immediately
         let sender = self.binary_sender.lock().unwrap();
         match sender.as_ref() {
             Some(tx) => {
@@ -866,12 +857,11 @@ impl DeviceLinkClient {
                         warn!("Binary uplink: channel closed for session {}", session_id);
                         AppError::NetworkError("Binary uplink channel closed".into())
                     })?;
-                debug!("Binary uplink: enqueued {} bytes for session {}", data.len(), session_id);
+                log::trace!("Binary uplink: enqueued {} bytes for session {}", data.len(), session_id);
                 Ok(())
             }
             None => {
-                debug!("Binary uplink: no channel available for session {}", session_id);
-                Err(AppError::NetworkError("Device link client not connected".into()))
+                Ok(())
             }
         }
     }
@@ -948,6 +938,10 @@ impl DeviceLinkClient {
 
         if let Ok(mut bound) = self.bound_session_id.lock() {
             *bound = None;
+        }
+
+        if let Ok(mut pending) = self.pending_binary_by_session.lock() {
+            pending.clear();
         }
     }
 

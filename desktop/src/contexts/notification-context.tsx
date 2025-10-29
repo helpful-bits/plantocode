@@ -179,19 +179,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   // Terminal lifecycle event listeners
   useEffect(() => {
-    const handleJobStarted = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      showPersistentNotification({
-        tag: 'terminal',
-        title: `Coding agent job started for [${detail.sessionId}].`,
-        type: 'info',
-        data: { jobId: detail.sessionId }
-      });
-      showNotification({
-        title: `Coding agent job started for [${detail.sessionId}].`,
-        type: 'info'
-      });
-    };
+    const handleJobStarted = () => {};
 
     const handleInactivity = (e: Event) => {
       const detail = (e as CustomEvent).detail;
@@ -200,10 +188,6 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         title: `Coding agent inactive for [${detail.sessionId}]. User attention required.`,
         type: 'warning',
         data: { jobId: detail.sessionId }
-      });
-      showNotification({
-        title: `Coding agent inactive for [${detail.sessionId}]. User attention required.`,
-        type: 'warning'
       });
     };
 
@@ -214,10 +198,6 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         title: `Coding agent job complete for [${detail.sessionId}].`,
         type: 'success',
         data: { jobId: detail.sessionId }
-      });
-      showNotification({
-        title: `Coding agent job complete for [${detail.sessionId}].`,
-        type: 'success'
       });
     };
 

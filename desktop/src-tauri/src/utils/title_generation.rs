@@ -6,66 +6,85 @@ use crate::services::config_cache_service::ConfigCache;
 use crate::services::system_prompt_cache_service::SystemPromptCacheService;
 use tauri::{AppHandle, Manager};
 
-fn pick_fallback_model(app_handle: &AppHandle) -> AppResult<(String, f32, u32)> {
-    let cache = app_handle.state::<ConfigCache>().inner();
-    let cache_guard = cache
-        .lock()
-        .map_err(|e| AppError::ConfigError(format!("Failed to lock cache: {}", e)))?;
+async fn pick_fallback_model(app_handle: &AppHandle) -> AppResult<(String, f32, u32)> {
+    let cache = app_handle.state::<ConfigCache>().inner().clone();
 
-    if let Some(runtime_config_value) = cache_guard.get("runtime_ai_config") {
-        if let Ok(runtime_config) =
-            serde_json::from_value::<RuntimeAIConfig>(runtime_config_value.clone())
-        {
-            // Try task types in priority order
-            let task_types = [
-                "implementation_plan_title",
-                "implementation_plan",
-                "generic_llm_stream",
-                "text_improvement",
-            ];
+    // Use spawn_blocking to avoid blocking the async runtime
+    let result = tokio::task::spawn_blocking(move || -> AppResult<(String, f32, u32)> {
+        let cache_guard = cache
+            .lock()
+            .map_err(|e| AppError::ConfigError(format!("Failed to lock cache: {}", e)))?;
 
-            for task_type in &task_types {
-                if let Some(task_config) = runtime_config.tasks.get(*task_type) {
-                    let model = task_config.model.clone();
-                    if !model.is_empty() && model != "auto" {
-                        let temperature = task_config.temperature.max(0.2);
-                        let max_tokens = (task_config.max_tokens as u32).max(64);
-                        return Ok((model, temperature, max_tokens));
+        if let Some(runtime_config_value) = cache_guard.get("runtime_ai_config") {
+            if let Ok(runtime_config) =
+                serde_json::from_value::<RuntimeAIConfig>(runtime_config_value.clone())
+            {
+                // Try task types in priority order
+                let task_types = [
+                    "implementation_plan_title",
+                    "implementation_plan",
+                    "generic_llm_stream",
+                    "text_improvement",
+                ];
+
+                for task_type in &task_types {
+                    if let Some(task_config) = runtime_config.tasks.get(*task_type) {
+                        let model = task_config.model.clone();
+                        if !model.is_empty() && model != "auto" {
+                            let temperature = task_config.temperature.max(0.2);
+                            let max_tokens = (task_config.max_tokens as u32).max(64);
+                            return Ok((model, temperature, max_tokens));
+                        }
                     }
                 }
             }
         }
-    }
 
-    Err(AppError::ConfigError(
-        "No suitable model found for plan title generation".into(),
-    ))
+        // Hard-coded fallback to GPT-5-mini
+        tracing::info!("Using hard-coded fallback model: gpt-5-mini");
+        Ok(("openai/gpt-5-mini".to_string(), 0.3, MAX_TITLE_TOKENS))
+    })
+    .await
+    .map_err(|e| AppError::InternalError(format!("Failed to spawn blocking task: {}", e)))??;
+
+    Ok(result)
 }
 
-const MAX_TITLE_CHARS: usize = 140;
+const MAX_TITLE_CHARS: usize = 500;
+const MAX_TITLE_TOKENS: u32 = 500;
 
 async fn resolve_model_defaults(app_handle: &AppHandle) -> AppResult<(String, f32, u32)> {
-    let cache = app_handle.state::<ConfigCache>().inner();
-    let cache_guard = cache
-        .lock()
-        .map_err(|e| AppError::ConfigError(format!("Failed to lock cache: {}", e)))?;
+    let cache = app_handle.state::<ConfigCache>().inner().clone();
 
-    if let Some(runtime_config_value) = cache_guard.get("runtime_ai_config") {
-        if let Ok(runtime_config) =
-            serde_json::from_value::<RuntimeAIConfig>(runtime_config_value.clone())
-        {
-            if let Some(task_config) = runtime_config.tasks.get("implementation_plan_title") {
-                let model = task_config.model.clone();
-                if !model.is_empty() && model != "auto" {
-                    let temperature = task_config.temperature;
-                    let max_tokens = task_config.max_tokens;
-                    return Ok((model, temperature, max_tokens as u32));
+    // Use spawn_blocking to avoid blocking the async runtime
+    let result = tokio::task::spawn_blocking(move || -> AppResult<Option<(String, f32, u32)>> {
+        let cache_guard = cache
+            .lock()
+            .map_err(|e| AppError::ConfigError(format!("Failed to lock cache: {}", e)))?;
+
+        if let Some(runtime_config_value) = cache_guard.get("runtime_ai_config") {
+            if let Ok(runtime_config) =
+                serde_json::from_value::<RuntimeAIConfig>(runtime_config_value.clone())
+            {
+                if let Some(task_config) = runtime_config.tasks.get("implementation_plan_title") {
+                    let model = task_config.model.clone();
+                    if !model.is_empty() && model != "auto" {
+                        let temperature = task_config.temperature;
+                        let max_tokens = task_config.max_tokens;
+                        return Ok(Some((model, temperature, max_tokens as u32)));
+                    }
                 }
             }
         }
-    }
+        Ok(None)
+    })
+    .await
+    .map_err(|e| AppError::InternalError(format!("Failed to spawn blocking task: {}", e)))??;
 
-    pick_fallback_model(app_handle)
+    match result {
+        Some(config) => Ok(config),
+        None => pick_fallback_model(app_handle).await,
+    }
 }
 
 async fn load_system_prompt(app_handle: &AppHandle) -> String {
@@ -78,12 +97,13 @@ async fn load_system_prompt(app_handle: &AppHandle) -> String {
         }
     }
 
-    "You are a naming assistant that generates descriptive titles for software implementation plans.
+    "You are a naming assistant that generates concise, descriptive titles for software implementation plans.
 Constraints:
-- Output a single line, ≤140 characters.
+- Output a single line with a maximum of 8 words.
 - No surrounding quotes, backticks, markdown, or code formatting.
 - Sentence/title case; avoid trailing punctuation.
-- Be specific and descriptive; include key technical details when helpful; no emojis.".to_string()
+- Be specific and capture the core technical action; no emojis.
+- Examples: \"Implement OAuth Authentication\", \"Refactor Database Schema\", \"Add Dark Mode Support\"".to_string()
 }
 
 pub async fn generate_plan_title(
@@ -108,8 +128,8 @@ pub async fn generate_plan_title(
     };
 
     let user_content = format!(
-        "<task_request>\n  <constraints max_length=\"{}\" />\n  <task_description><![CDATA[\n{}\n]]></task_description>\n</task_request>",
-        MAX_TITLE_CHARS, task_description
+        "<task_request>\n  <constraints max_words=\"8\" />\n  <task_description><![CDATA[\n{}\n]]></task_description>\n</task_request>",
+        task_description
     );
 
     let user_message = OpenRouterRequestMessage {

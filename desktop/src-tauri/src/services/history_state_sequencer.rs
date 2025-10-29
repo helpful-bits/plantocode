@@ -1,6 +1,7 @@
 use crate::db_utils::session_repository::{
     SessionRepository, TaskHistoryState, FileHistoryState
 };
+use crate::error::AppError;
 use crate::events::session_events;
 use crate::utils::hash_utils::sha256_hash;
 use serde::Serialize;
@@ -176,18 +177,37 @@ impl HistoryStateSequencer {
                             );
                         }
 
-                        let result = repository.sync_task_history_state(&session_id, &state, expected_version).await;
-                        let response = match &result {
-                            Ok(new_state) => Ok(new_state.clone()),
+                        let response = match repository.sync_task_history_state(&session_id, &state, expected_version).await {
+                            Ok(new_state) => {
+                                session_events::emit_history_state_changed(&app_handle, &session_id, "task", &new_state);
+                                Ok(new_state)
+                            }
+                            Err(AppError::Conflict(_)) => {
+                                match repository.get_task_history_state(&session_id).await {
+                                    Ok(local_state) => {
+                                        let merged = repository.merge_task_history_states(&local_state, &state);
+                                        match repository.sync_task_history_state(&session_id, &merged, local_state.version).await {
+                                            Ok(persisted) => {
+                                                session_events::emit_history_state_changed(&app_handle, &session_id, "task", &persisted);
+                                                Ok(persisted)
+                                            }
+                                            Err(e) => {
+                                                eprintln!("[HistorySync] Task merge sync failed for session {}: {}", session_id, e);
+                                                Err(e.to_string())
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        eprintln!("[HistorySync] Failed to get local task state for session {}: {}", session_id, e);
+                                        Err(e.to_string())
+                                    }
+                                }
+                            }
                             Err(e) => {
                                 eprintln!("[HistorySync] Task sync failed for session {}: {}", session_id, e);
                                 Err(e.to_string())
                             }
                         };
-
-                        // ✅ FIX: Don't emit events for periodic syncs - causes UI flicker every 900ms
-                        // Events should only be emitted for Merge operations (actual remote changes)
-                        // The sync succeeded, but we don't need to notify the frontend since it initiated the sync
 
                         let _ = respond_to.send(response);
                     }
@@ -203,11 +223,37 @@ impl HistoryStateSequencer {
                             );
                         }
 
-                        let result = repository.sync_file_history_state(&session_id, &state, expected_version).await;
-                        let response = result.map_err(|e| e.to_string());
-
-                        // ✅ FIX: Don't emit events for periodic syncs - causes UI flicker every 900ms
-                        // Events should only be emitted for Merge operations (actual remote changes)
+                        let response = match repository.sync_file_history_state(&session_id, &state, expected_version).await {
+                            Ok(new_state) => {
+                                session_events::emit_history_state_changed(&app_handle, &session_id, "files", &new_state);
+                                Ok(new_state)
+                            }
+                            Err(AppError::Conflict(_)) => {
+                                match repository.get_file_history_state(&session_id).await {
+                                    Ok(local_state) => {
+                                        let merged = repository.merge_file_history_states(&local_state, &state);
+                                        match repository.sync_file_history_state(&session_id, &merged, local_state.version).await {
+                                            Ok(persisted) => {
+                                                session_events::emit_history_state_changed(&app_handle, &session_id, "files", &persisted);
+                                                Ok(persisted)
+                                            }
+                                            Err(e) => {
+                                                eprintln!("[HistorySync] File merge sync failed for session {}: {}", session_id, e);
+                                                Err(e.to_string())
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        eprintln!("[HistorySync] Failed to get local file state for session {}: {}", session_id, e);
+                                        Err(e.to_string())
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("[HistorySync] File sync failed for session {}: {}", session_id, e);
+                                Err(e.to_string())
+                            }
+                        };
 
                         let _ = respond_to.send(response);
                     }

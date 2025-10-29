@@ -85,6 +85,14 @@ public class TerminalDataService: ObservableObject {
     public init() {
         self.setupEventSubscriptions()
 
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("connection-hard-reset-completed"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.cleanForDeviceSwitch() }
+        }
+
         self.connectionStateCancellable = MultiConnectionManager.shared.$connectionStates
             .sink { [weak self] states in
                 guard let self = self else { return }
@@ -867,6 +875,7 @@ public class TerminalDataService: ObservableObject {
         // Clear activity tracking
         lastActivityBySession.removeAll()
         firstResizeCompleted.removeAll()
+        recentSentChunks.removeAll()
 
         // Reset error state
         lastError = nil

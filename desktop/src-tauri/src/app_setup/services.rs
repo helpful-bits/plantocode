@@ -12,6 +12,22 @@ use sqlx::SqlitePool;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
+async fn restart_device_link_client(
+    app_handle: &tauri::AppHandle,
+    server_url: String
+) -> crate::error::AppResult<()> {
+    if let Some(existing) = app_handle.try_state::<std::sync::Arc<crate::services::device_link_client::DeviceLinkClient>>() {
+        existing.shutdown().await;
+    }
+
+    crate::services::device_link_client::start_device_link_client(
+        app_handle.clone(),
+        server_url
+    ).await?;
+
+    Ok(())
+}
+
 /// Initialize TokenManager only (deferred client initialization)
 pub async fn initialize_token_manager(app_handle: &AppHandle) -> AppResult<()> {
     // Get the existing TokenManager from app state (managed early in lib.rs)
@@ -189,12 +205,11 @@ pub async fn reinitialize_api_clients(app_handle: &AppHandle, server_url: String
     info!("API clients reinitialized and registered in app state.");
 
     // Auto-start DeviceLinkClient if token is available
-    // start_device_link_client will create and manage the new instance
     if token_manager.get().await.is_some() {
         let app_for_restart = app_handle.clone();
         tokio::spawn(async move {
-            if let Err(e) = crate::services::device_link_client::start_device_link_client(
-                app_for_restart.clone(),
+            if let Err(e) = restart_device_link_client(
+                &app_for_restart,
                 server_url.clone(),
             )
             .await
@@ -381,17 +396,12 @@ pub async fn initialize_device_link_connection(
 
             tracing::info!("Using server URL for DeviceLinkClient: {}", server_url);
 
-            let client = Arc::new(DeviceLinkClient::new(app_handle.clone(), server_url.clone()));
-
-            // Manage the client in app state so TerminalManager can access it
-            app_handle.manage(client.clone());
-
             // Start in background task with reconnection loop
             let app_handle_clone = app_handle.clone();
             let server_url_clone = server_url.clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = crate::services::device_link_client::start_device_link_client(
-                    app_handle_clone.clone(),
+                if let Err(e) = restart_device_link_client(
+                    &app_handle_clone,
                     server_url_clone.clone(),
                 )
                 .await

@@ -373,11 +373,9 @@ public struct TaskInputView: View {
     @State private var showTerminal = false
     @State private var terminalJobId: String? = nil
     @State private var showDeepResearch = false
-    @State private var lastSavedText: String = ""
-    @State private var saveHistoryTimer: Timer?
-    @State private var historySyncTimer: Timer?
     @State private var initializedForSessionId: String?
-    @State private var suppressNextHistorySave: Bool = false
+    @State private var debounceTask: Task<Void, Never>?
+    @State private var isEditing: Bool = false
 
     let placeholder: String
     let onInteraction: () -> Void
@@ -406,9 +404,9 @@ public struct TaskInputView: View {
                 selectedRange: $selectedRange,
                 placeholder: placeholder,
                 onInteraction: {
+                    isEditing = true
                     onInteraction()
-                    // Save to undo history with debouncing
-                    saveToUndoHistory()
+                    debouncedSync()
                 }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -438,7 +436,8 @@ public struct TaskInputView: View {
                         print("Voice dictation error: \(error)")
                     },
                     onTranscriptionComplete: {
-                        saveToUndoHistory()
+                        undoRedoManager.saveState(taskDescription)
+                        debouncedSync()
                         onInteraction()
                     }
                 )
@@ -585,23 +584,62 @@ public struct TaskInputView: View {
             }
         }
         .onAppear {
-            // Initialize undo/redo history from backend
-            initializeHistoryFromBackend()
+            Task {
+                guard initializedForSessionId != sessionId else { return }
+                do {
+                    let state = try await sessionDataService.getHistoryState(sessionId: sessionId, kind: "task")
+                    await MainActor.run {
+                        undoRedoManager.applyRemoteHistoryState(state, suppressRecording: true)
+                        let history = undoRedoManager.getHistory()
+                        if !history.isEmpty {
+                            taskDescription = history.last ?? ""
+                        }
+                        initializedForSessionId = sessionId
+                    }
+                } catch {
+                    print("Failed to load history state: \(error)")
+                }
+            }
         }
         .onChange(of: sessionId) { _ in
-            // Stop current sync timer
-            stopHistorySyncTimer()
-
-            // Clear initialization flag to allow reloading for new session
             initializedForSessionId = nil
-
-            // Load history for new session from backend
-            initializeHistoryFromBackend()
+            debounceTask?.cancel()
+            Task {
+                do {
+                    let state = try await sessionDataService.getHistoryState(sessionId: sessionId, kind: "task")
+                    await MainActor.run {
+                        undoRedoManager.applyRemoteHistoryState(state, suppressRecording: true)
+                        let history = undoRedoManager.getHistory()
+                        if !history.isEmpty {
+                            taskDescription = history.last ?? ""
+                        }
+                        initializedForSessionId = sessionId
+                    }
+                } catch {
+                    print("Failed to load history state: \(error)")
+                }
+            }
         }
         .onDisappear {
-            // Clean up timers when view disappears
-            stopHistorySyncTimer()
-            saveHistoryTimer?.invalidate()
+            debounceTask?.cancel()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("apply-history-state"))) { notification in
+            guard let userInfo = notification.userInfo,
+                  let notifSessionId = userInfo["sessionId"] as? String,
+                  let kind = userInfo["kind"] as? String,
+                  notifSessionId == sessionId,
+                  kind == "task",
+                  let remoteState = userInfo["state"] as? HistoryState else {
+                return
+            }
+
+            if !isEditing {
+                undoRedoManager.applyRemoteHistoryState(remoteState, suppressRecording: true)
+                let history = undoRedoManager.getHistory()
+                if !history.isEmpty {
+                    taskDescription = history.last ?? ""
+                }
+            }
         }
     }
 
@@ -679,119 +717,40 @@ public struct TaskInputView: View {
         onInteraction()
     }
 
-    // Initialize undo/redo history from backend
-    private func initializeHistoryFromBackend() {
-        // Only initialize once per session
-        guard initializedForSessionId != sessionId else { return }
+    private func debouncedSync() {
+        debounceTask?.cancel()
+        debounceTask = Task {
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            guard !Task.isCancelled else { return }
 
-        Task {
+            let state = undoRedoManager.exportState()
             do {
-                let history = try await sessionDataService.getTaskDescriptionHistory(sessionId: sessionId)
-
-                await MainActor.run {
-                    if !history.isEmpty {
-                        // If we have history, initialize with it
-                        let currentIndex = history.count - 1
-                        undoRedoManager.initializeHistory(entries: history, currentIndex: currentIndex)
-                    } else if !taskDescription.isEmpty {
-                        // If no history but we have a task description, start with it
-                        undoRedoManager.reset(with: taskDescription)
-                    }
-
-                    initializedForSessionId = sessionId
-                    lastSavedText = taskDescription
-
-                    // Start periodic sync after initialization
-                    startHistorySyncTimer()
-                }
+                _ = try await sessionDataService.syncHistoryState(
+                    sessionId: sessionId,
+                    kind: "task",
+                    state: state,
+                    expectedVersion: state.version
+                )
             } catch {
-                // If fetch fails, initialize with current task description
-                await MainActor.run {
-                    undoRedoManager.reset(with: taskDescription)
-                    initializedForSessionId = sessionId
-                    lastSavedText = taskDescription
-                    print("Failed to load task description history: \(error)")
+                print("Failed to sync history state: \(error)")
+            }
 
-                    // Still start sync timer even if initial load failed
-                    startHistorySyncTimer()
-                }
+            await MainActor.run {
+                isEditing = false
             }
         }
     }
 
-    // Sync history to backend (similar to desktop's 2-second sync)
-    private func syncHistoryToBackend() {
-        let currentHistory = undoRedoManager.getHistory()
-
-        // Only sync if we have a session and history
-        guard !sessionId.isEmpty, !currentHistory.isEmpty else { return }
-
-        Task {
-            do {
-                try await sessionDataService.syncTaskDescriptionHistory(sessionId: sessionId, history: currentHistory)
-            } catch {
-                // Silent fail for sync - will retry on next timer tick
-                print("Failed to sync task description history: \(error)")
-            }
-        }
-    }
-
-    // Start periodic history sync timer (similar to desktop)
-    private func startHistorySyncTimer() {
-        // Invalidate existing timer if any
-        historySyncTimer?.invalidate()
-
-        // Create new timer that syncs every 2 seconds
-        historySyncTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak sessionDataService, weak undoRedoManager] _ in
-            guard let undoRedoManager = undoRedoManager else { return }
-
-            let currentHistory = undoRedoManager.getHistory()
-            guard !currentHistory.isEmpty else { return }
-
-            Task {
-                do {
-                    try await sessionDataService?.syncTaskDescriptionHistory(sessionId: sessionId, history: currentHistory)
-                } catch {
-                    print("Failed to sync task description history: \(error)")
-                }
-            }
-        }
-    }
-
-    // Stop history sync timer
-    private func stopHistorySyncTimer() {
-        historySyncTimer?.invalidate()
-        historySyncTimer = nil
-    }
-
-    // Undo/Redo handlers
     private func performUndo() {
         guard let previousText = undoRedoManager.undo() else { return }
         taskDescription = previousText
-        suppressNextHistorySave = true
+        debouncedSync()
     }
 
     private func performRedo() {
         guard let nextText = undoRedoManager.redo() else { return }
         taskDescription = nextText
-        suppressNextHistorySave = true
-    }
-
-    // Debounced history saving
-    private func saveToUndoHistory() {
-        if suppressNextHistorySave {
-            suppressNextHistorySave = false
-            return
-        }
-        saveHistoryTimer?.invalidate()
-        let newTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [undoRedoManager, taskDescription] _ in
-            Task { @MainActor in
-                undoRedoManager.saveState(taskDescription)
-            }
-        }
-        Task { @MainActor in
-            self.saveHistoryTimer = newTimer
-        }
+        debouncedSync()
     }
 
     // Map short language code from backend (e.g., "en") to full locale code for UI (e.g., "en-US")

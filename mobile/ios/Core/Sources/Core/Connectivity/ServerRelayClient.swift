@@ -202,6 +202,14 @@ public class ServerRelayClient: NSObject, ObservableObject {
         .eraseToAnyPublisher()
     }
 
+    public func clearResumeToken() {
+        try? KeychainManager.shared.delete(for: .relayResumeToken(deviceId: self.deviceId))
+    }
+
+    public static func clearResumeToken(deviceId: UUID) {
+        try? KeychainManager.shared.delete(for: .relayResumeToken(deviceId: deviceId.uuidString))
+    }
+
     /// Disconnect from the relay
     public func disconnect() {
         logger.info("Disconnecting from server relay")

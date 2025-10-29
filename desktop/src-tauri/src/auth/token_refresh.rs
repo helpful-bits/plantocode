@@ -1,4 +1,4 @@
-use crate::auth::{TokenManager, device_id_manager, token_introspection};
+use crate::auth::{TokenManager, device_id_manager, token_introspection, header_utils};
 use crate::error::{AppError, AppResult};
 use crate::models::AuthDataResponse;
 use crate::AppState;
@@ -6,6 +6,7 @@ use log::{debug, error, info, warn};
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 use tokio::sync::Mutex;
+use tokio::time::{sleep, Duration};
 use once_cell::sync::Lazy;
 
 /// Global mutex for deduplicating concurrent refresh attempts
@@ -32,54 +33,60 @@ pub async fn refresh_app_jwt_via_server(app_handle: &AppHandle) -> AppResult<()>
 
     let refresh_url = format!("{}/api/auth0/refresh-app-token", server_url.trim_end_matches('/'));
 
-    // Get device ID
-    let device_id = device_id_manager::get_or_create(app_handle)?;
+    for attempt in 0..2 {
+        let builder = app_state.client.post(&refresh_url);
+        let builder = header_utils::apply_auth_headers(builder, &current_token, app_handle)?;
 
-    // Make refresh request
-    let response = app_state
-        .client
-        .post(&refresh_url)
-        .header("Authorization", format!("Bearer {}", current_token))
-        .header("x-device-id", device_id)
-        .send()
-        .await
-        .map_err(|e| AppError::NetworkError(format!("Failed to refresh token: {}", e)))?;
+        let resp_result = builder.send().await;
+        let response = match resp_result {
+            Ok(r) => r,
+            Err(e) => {
+                if attempt == 0 {
+                    sleep(Duration::from_millis(300)).await;
+                    continue;
+                } else {
+                    return Err(AppError::NetworkError(format!("Failed to refresh token: {}", e)));
+                }
+            }
+        };
 
-    let status = response.status();
+        let status = response.status();
 
-    if status == 401 {
-        // ONLY clear token on 401 from refresh endpoint
-        warn!("Refresh endpoint returned 401, clearing token");
-        token_manager.set(None).await?;
-        return Err(AppError::AuthError("Refresh token invalid or expired".to_string()));
-    }
+        if status == 401 {
+            warn!("Refresh endpoint returned 401, clearing token");
+            token_manager.set(None).await?;
+            return Err(AppError::AuthError("Refresh token invalid or expired".to_string()));
+        }
 
-    if !status.is_success() {
-        let error_text = response
-            .text()
+        if (status == 502 || status == 503 || status == 504) && attempt == 0 {
+            sleep(Duration::from_millis(300)).await;
+            continue;
+        }
+
+        if !status.is_success() {
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(AppError::ExternalServiceError(format!(
+                "Token refresh failed: {}",
+                error_text
+            )));
+        }
+
+        let auth_response: AuthDataResponse = response
+            .json()
             .await
-            .unwrap_or_else(|_| "Unknown error".to_string());
-        return Err(AppError::ExternalServiceError(format!(
-            "Token refresh failed: {}",
-            error_text
-        )));
+            .map_err(|e| AppError::SerdeError(format!("Failed to parse refresh response: {}", e)))?;
+
+        token_manager.set(Some(auth_response.token)).await?;
+
+        info!("Token refreshed successfully");
+
+        return Ok(());
     }
 
-    // Parse response
-    let auth_response: AuthDataResponse = response
-        .json()
-        .await
-        .map_err(|e| AppError::SerdeError(format!("Failed to parse refresh response: {}", e)))?;
-
-    // Store new token
-    token_manager.set(Some(auth_response.token)).await?;
-
-    info!("Token refreshed successfully");
-
-    // Note: Device link re-registration will happen automatically on next connection attempt
-    // We don't spawn it here to avoid circular type dependencies
-
-    Ok(())
+    Err(AppError::ExternalServiceError("Token refresh failed after retries".to_string()))
 }
 
 /// Refresh with deduplication using singleflight pattern
@@ -109,6 +116,9 @@ pub async fn ensure_fresh_token(app_handle: &AppHandle, min_ttl_secs: i64) -> Ap
 
 /// Check if error message indicates device binding validation failure
 pub fn contains_device_binding_mismatch(message: &str) -> bool {
-    message.contains("Device binding validation failed")
-        || message.contains("Device ID mismatch")
+    let m = message.to_lowercase();
+    m.contains("device binding validation failed")
+        || m.contains("device id mismatch")
+        || m.contains("token binding validation failed")
+        || m.contains("missing x-token-binding header")
 }

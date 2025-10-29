@@ -38,11 +38,11 @@ export function GlobalRecordingIndicator() {
     const seconds = Math.floor(ms / 1000);
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
-    
+
     const h = hours.toString().padStart(2, '0');
     const m = (minutes % 60).toString().padStart(2, '0');
     const s = (seconds % 60).toString().padStart(2, '0');
-    
+
     return `${h}:${m}:${s}`;
   };
 
@@ -55,11 +55,11 @@ export function GlobalRecordingIndicator() {
         </div>
         <span className="text-sm font-medium">Recording</span>
       </div>
-      
+
       <span className="text-sm font-mono text-muted-foreground">
         {formatTime(elapsedTime)}
       </span>
-      
+
       <Button
         variant="destructive"
         size="sm"
