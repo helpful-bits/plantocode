@@ -36,18 +36,20 @@ impl BackgroundJobRepository {
         result
             .map_err(|e| AppError::DatabaseError(format!("Failed to update job status: {}", e)))?;
 
-        // Emit job:status-changed event
         if let Some(app_handle) = &self.app_handle {
-            emit_job_status_changed(
-                app_handle,
-                JobStatusChangedEvent {
-                    job_id: job_id.to_string(),
-                    status: status.to_string(),
-                    start_time: None,
-                    end_time: None,
-                    sub_status_message: message.map(|m| m.to_string()),
-                },
-            );
+            if let Ok(Some(job)) = self.get_job_by_id(job_id).await {
+                emit_job_status_changed(
+                    app_handle,
+                    JobStatusChangedEvent {
+                        session_id: job.session_id.clone(),
+                        job_id: job_id.to_string(),
+                        status: status.to_string(),
+                        start_time: None,
+                        end_time: None,
+                        sub_status_message: message.map(|m| m.to_string()),
+                    },
+                );
+            }
         }
 
         Ok(())
@@ -78,18 +80,20 @@ impl BackgroundJobRepository {
             AppError::DatabaseError(format!("Failed to update job status with metadata: {}", e))
         })?;
 
-        // Emit job:status-changed event
         if let Some(app_handle) = &self.app_handle {
-            emit_job_status_changed(
-                app_handle,
-                JobStatusChangedEvent {
-                    job_id: job_id.to_string(),
-                    status: status.to_string(),
-                    start_time: None,
-                    end_time: None,
-                    sub_status_message: message.map(|m| m.to_string()),
-                },
-            );
+            if let Ok(Some(job)) = self.get_job_by_id(job_id).await {
+                emit_job_status_changed(
+                    app_handle,
+                    JobStatusChangedEvent {
+                        session_id: job.session_id.clone(),
+                        job_id: job_id.to_string(),
+                        status: status.to_string(),
+                        start_time: None,
+                        end_time: None,
+                        sub_status_message: message.map(|m| m.to_string()),
+                    },
+                );
+            }
         }
 
         Ok(())
@@ -110,18 +114,20 @@ impl BackgroundJobRepository {
         .await
         .map_err(|e| AppError::DatabaseError(format!("Failed to mark job as running: {}", e)))?;
 
-        // Emit job:status-changed event
         if let Some(app_handle) = &self.app_handle {
-            emit_job_status_changed(
-                app_handle,
-                JobStatusChangedEvent {
-                    job_id: job_id.to_string(),
-                    status: JobStatus::Running.to_string(),
-                    start_time: Some(now),
-                    end_time: None,
-                    sub_status_message: None,
-                },
-            );
+            if let Ok(Some(job)) = self.get_job_by_id(job_id).await {
+                emit_job_status_changed(
+                    app_handle,
+                    JobStatusChangedEvent {
+                        session_id: job.session_id.clone(),
+                        job_id: job_id.to_string(),
+                        status: JobStatus::Running.to_string(),
+                        start_time: Some(now),
+                        end_time: None,
+                        sub_status_message: None,
+                    },
+                );
+            }
         }
 
         Ok(())

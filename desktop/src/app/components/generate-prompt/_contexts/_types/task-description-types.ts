@@ -16,7 +16,10 @@ export interface TaskContextState {
   canUndo: boolean;
   canRedo: boolean;
   webSearchResults: string[] | null;
-  
+  showMergePulse?: boolean;
+  historyLoadStatus: 'idle' | 'loading' | 'ready' | 'error';
+  historyReady: boolean;
+
   // Video analysis state
   isAnalyzingVideo: boolean;
   videoAnalysisJobId: string | null;

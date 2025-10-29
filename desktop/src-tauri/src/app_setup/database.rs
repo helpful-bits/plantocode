@@ -1,4 +1,4 @@
-use crate::db_utils::{BackgroundJobRepository, SessionRepository, SettingsRepository};
+use crate::db_utils::{BackgroundJobRepository, SessionRepository, SettingsRepository, execute_script_in_transaction};
 use crate::error::AppError;
 use log::{error, info, warn};
 use sqlx::{Executor, SqlitePool, migrate::MigrateDatabase, sqlite::SqlitePoolOptions};
@@ -40,7 +40,7 @@ pub async fn initialize_database_light(app_handle: &AppHandle) -> Result<(), App
     // Configure and connect to SQLite with proper settings
     info!("Connecting to database at: {}", db_path.display());
     let db = SqlitePoolOptions::new()
-        .max_connections(10)
+        .max_connections(20)
         .after_connect(|conn, _meta| {
             Box::pin(async move {
                 // Enable foreign key constraints
@@ -111,12 +111,22 @@ pub async fn initialize_database_light(app_handle: &AppHandle) -> Result<(), App
             }
         };
 
-        // Apply migrations
-        db.execute(&*migration_sql)
-            .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to apply migrations: {}", e)))?;
+        // Apply migrations using transactional safety
+        execute_script_in_transaction(&db, &migration_sql).await?;
 
         info!("Database migrations applied successfully");
+
+        // Set app version immediately after fresh schema application
+        let version = app_handle.package_info().version.to_string();
+        sqlx::query(
+            "INSERT OR REPLACE INTO key_value_store(key, value, updated_at)
+             VALUES('app_version', ?, strftime('%s','now'))"
+        )
+        .bind(version)
+        .execute(&db)
+        .await?;
+
+        info!("App version set in database after fresh schema application");
     }
 
     // Manage the pool as state immediately
@@ -285,23 +295,41 @@ pub async fn run_deferred_db_tasks(
         }
     }
 
-    // Run version-based migrations
-    info!("Deferred DB: starting version-based migrations...");
+    // Check stored version vs current for idempotency
+    info!("Deferred DB: checking for any pending migrations...");
     let current_version = app_handle.package_info().version.to_string();
     let migration_system = crate::db_utils::MigrationSystem::new(pool_arc.clone());
 
-    if let Err(e) = migration_system
-        .run_migrations(app_handle, &current_version)
-        .await
-    {
-        error!("Deferred DB: version migration failed: {}", e);
-        // Log the error but continue - most migrations are non-critical
-        warn!(
-            "Deferred DB: continuing despite migration failure. Some features may not work correctly."
-        );
-    }
+    // Check if versions match and skip migration execution if so
+    match migration_system.get_stored_version().await {
+        Ok(Some(stored_version)) if stored_version == current_version => {
+            info!(
+                "Deferred DB: versions match ({}), no migrations needed",
+                current_version
+            );
+            // Skip migration execution - versions match, making this path idempotent
+        }
+        Ok(stored_version_opt) => {
+            let stored_display = stored_version_opt
+                .as_deref()
+                .unwrap_or("<none>");
+            info!(
+                "Deferred DB: version mismatch detected (stored: {}, current: {}), checking migrations",
+                stored_display,
+                current_version
+            );
 
-    info!("Deferred DB: migrations completed.");
+            // Only run if there's a version mismatch (shouldn't happen in normal flow)
+            if let Err(e) = migration_system.run_migrations(app_handle, &current_version).await {
+                warn!("Deferred migration check encountered error (may be non-critical): {}", e);
+                // Don't fail startup - migrations should have already run in critical phase
+            }
+        }
+        Err(e) => {
+            warn!("Failed to check stored version: {}", e);
+            // Continue anyway - migrations will handle this
+        }
+    }
 
     // Ensure database permissions
     let app_data_root_dir = app_handle.path().app_local_data_dir().map_err(|e| {

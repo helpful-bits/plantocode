@@ -274,9 +274,9 @@ export default function CopyButtonsPage() {
                         <div className="text-white ml-2 text-wrap break-words">
                           {`{{IMPLEMENTATION_PLAN}}`}<br/>
                           <br/>
-                          NOW, think deeply! Read the files mentioned,<br/>
+                          <strong>Now, think deeply!</strong> Read the files mentioned,<br/>
                           understand them and launch parallel Claude<br/>
-                          coding agents that run AT THE SAME TIME...
+                          coding agents that run <strong>at the same time</strong>...
                         </div>
                         <div className="text-green-400 mt-3">→ One click = Full workflow execution</div>
                       </div>

@@ -125,6 +125,20 @@ pub async fn run_critical_initialization(app_handle: &AppHandle) -> Result<(), A
     }
     info!("Database light initialization completed");
 
+    // Run migrations immediately after DB initialization, before repository wiring
+    info!("Running version-based migrations...");
+    let current_version = app_handle.package_info().version.to_string();
+    let pool_arc = app_handle
+        .state::<std::sync::Arc<sqlx::SqlitePool>>()
+        .inner()
+        .clone();
+    let migration_system = crate::db_utils::MigrationSystem::new(pool_arc);
+    if let Err(e) = migration_system.run_migrations(app_handle, &current_version).await {
+        error!("Critical phase migration failed: {}", e);
+        return Err(e);
+    }
+    info!("Migrations completed in critical phase");
+
     // Initialize job system light (queue and registry only) - must be ready before dispatch
     if let Err(e) = job_system::initialize_job_system_light(app_handle).await {
         error!("Job system light initialization failed: {}", e);
@@ -142,6 +156,10 @@ pub async fn run_critical_initialization(app_handle: &AppHandle) -> Result<(), A
     // Initialize SessionCache as soon as repositories are ready
     crate::app_setup::services::initialize_session_cache(app_handle).await?;
     info!("SessionCache initialized and flush loop started");
+
+    // Initialize HistoryStateSequencer right after SessionCache
+    crate::app_setup::services::initialize_history_state_sequencer(app_handle).await?;
+    info!("HistoryStateSequencer initialized");
 
     // System prompts initialization is deferred (requires API client)
 
@@ -231,11 +249,4 @@ pub async fn run_background_initialization(app_handle: AppHandle) -> Result<(), 
 
     info!("Background initialization completed");
     Ok(())
-}
-
-/// Legacy function for backwards compatibility - calls the new split functions
-#[deprecated(note = "Use run_critical_initialization and run_background_initialization instead")]
-pub async fn run_async_initialization(app_handle: &AppHandle) -> Result<(), AppError> {
-    run_critical_initialization(app_handle).await?;
-    run_background_initialization(app_handle.clone()).await
 }

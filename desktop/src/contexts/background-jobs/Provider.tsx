@@ -1,12 +1,13 @@
 "use client";
 
-import { createContext } from "react";
+import { createContext, useSyncExternalStore, useEffect, useMemo } from "react";
 
 import { type BackgroundJob } from "@/types/session-types";
 import { useProject } from "@/contexts/project-context";
 import { useSessionStateContext } from "@/contexts/session";
+import { useUILayout } from "@/contexts/ui-layout-context";
 
-import { useOrchestratedBackgroundJobsState } from "./_hooks";
+import { jobsStore } from "./store/jobsStore";
 
 import type { ReactNode } from "react";
 
@@ -45,18 +46,61 @@ export function BackgroundJobsProvider({
   // Get the current project directory from the project context
   const { projectDirectory } = useProject();
 
-  // Get the active session ID from the session context
-  const { activeSessionId } = useSessionStateContext();
+  // Get the active session ID and current session from the session context
+  const { activeSessionId, currentSession } = useSessionStateContext();
 
-  // Use the orchestrated background jobs state hook to manage all job-related state and functions
-  const orchestratedState = useOrchestratedBackgroundJobsState({
-    projectDirectory: projectDirectory || undefined,
-    sessionId: activeSessionId || undefined,
-  });
+  // Get user presence state
+  const { isUserPresent } = useUILayout();
+
+  // Use effective session ID with fallback to current session
+  const effectiveSessionId = activeSessionId || currentSession?.id || undefined;
+
+  // Configure the store when inputs change
+  useEffect(() => {
+    jobsStore.configure({
+      projectDirectory: projectDirectory || undefined,
+      sessionId: effectiveSessionId,
+      isUserPresent,
+    });
+  }, [projectDirectory, effectiveSessionId, isUserPresent]);
+
+  // Subscribe to the store
+  const snap = useSyncExternalStore(jobsStore.subscribe, jobsStore.getSnapshot);
+
+  // Memoize getJobById to prevent recreating on every render
+  const getJobById = useMemo(
+    () => (id: string) => snap.jobs.find((j) => j.id === id) || undefined,
+    [snap.jobs]
+  );
+
+  // Memoize setViewedImplementationPlanId wrapper
+  const setViewedImplementationPlanId = useMemo(
+    () => async (jobId: string | null) => {
+      await jobsStore.setViewedImplementationPlanId(jobId);
+    },
+    []
+  );
+
+  // Create context value with store actions (memoized)
+  const contextValue: BackgroundJobsContextType = useMemo(
+    () => ({
+      jobs: snap.jobs,
+      activeJobs: snap.activeJobs,
+      isLoading: snap.isLoading,
+      error: snap.error,
+      cancelJob: jobsStore.cancelJob,
+      deleteJob: jobsStore.deleteJob,
+      clearHistory: jobsStore.clearHistory,
+      refreshJobs: jobsStore.refreshJobs,
+      getJobById,
+      setViewedImplementationPlanId,
+    }),
+    [snap.jobs, snap.activeJobs, snap.isLoading, snap.error, getJobById, setViewedImplementationPlanId]
+  );
 
   // Provide context values to children
   return (
-    <BackgroundJobsContext.Provider value={orchestratedState}>
+    <BackgroundJobsContext.Provider value={contextValue}>
       {children}
     </BackgroundJobsContext.Provider>
   );

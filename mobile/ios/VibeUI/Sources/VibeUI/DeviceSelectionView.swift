@@ -11,6 +11,7 @@ public struct DeviceSelectionView: View {
     @State private var showingRegionSelector = false
     @State private var showingDiagnostics = false
     @State private var diagnosticsDeviceId: UUID?
+    @State private var consecutiveFailures = 0
 
     private var filteredDevices: [RegisteredDevice] {
         let allowedPlatforms = Set(["macos", "windows", "linux"])
@@ -107,17 +108,43 @@ public struct DeviceSelectionView: View {
                         VStack(spacing: 8) {
                             StatusAlertView(variant: .destructive, title: "Connection Error", message: errorMessage)
 
-                            if diagnosticsDeviceId != nil {
+                            HStack(spacing: 8) {
+                                if diagnosticsDeviceId != nil {
+                                    Button(action: {
+                                        showingDiagnostics = true
+                                    }) {
+                                        HStack {
+                                            Image(systemName: "stethoscope")
+                                            Text("Why can't I connect?")
+                                        }
+                                        .small()
+                                    }
+                                    .buttonStyle(SecondaryButtonStyle())
+                                }
+
                                 Button(action: {
-                                    showingDiagnostics = true
+                                    Task { await performHardReset(autoRetry: false) }
                                 }) {
                                     HStack {
-                                        Image(systemName: "stethoscope")
-                                        Text("Why can't I connect?")
+                                        Image(systemName: "arrow.clockwise")
+                                        Text("Reset Connection")
                                     }
                                     .small()
                                 }
                                 .buttonStyle(SecondaryButtonStyle())
+
+                                if selectedDeviceId != nil {
+                                    Button(action: {
+                                        Task { await performHardReset(autoRetry: true) }
+                                    }) {
+                                        HStack {
+                                            Image(systemName: "arrow.clockwise.circle.fill")
+                                            Text("Reset and Retry")
+                                        }
+                                        .small()
+                                    }
+                                    .buttonStyle(PrimaryButtonStyle())
+                                }
                             }
                         }
                     }
@@ -357,13 +384,19 @@ public struct DeviceSelectionView: View {
                         selectedDeviceId = nil
                         errorMessage = nil
                         diagnosticsDeviceId = nil
+                        consecutiveFailures = 0
                     }
                 case .failed(_):
                     // Connection failed, reset connecting state but keep error info for diagnostics
                     if isConnecting {
                         print("[DeviceSelection] Connection failed, keeping error state for diagnostics")
                         isConnecting = false
-                        // errorMessage and diagnosticsDeviceId already set in connectToDevice error handler
+                        consecutiveFailures += 1
+
+                        if consecutiveFailures >= 2 {
+                            print("[DeviceSelection] Auto-invoking hard reset after \(consecutiveFailures) failures")
+                            Task { await performHardReset(autoRetry: false) }
+                        }
                     }
                 default:
                     break
@@ -379,6 +412,14 @@ public struct DeviceSelectionView: View {
             if appState.isAuthenticated {
                 Task { await deviceDiscovery.refreshDevices() }
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("connection-hard-reset-completed"))) { _ in
+            isConnecting = false
+            errorMessage = nil
+            diagnosticsDeviceId = nil
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("connection-reconnect-exhausted"))) { _ in
+            Task { await performHardReset(autoRetry: false) }
         }
     }
 
@@ -398,8 +439,29 @@ public struct DeviceSelectionView: View {
         }
     }
 
+    private func performHardReset(autoRetry: Bool) async {
+        await MultiConnectionManager.shared.hardReset(reason: .manual)
+        await DeviceDiscoveryService.shared.clearList()
+        await DeviceDiscoveryService.shared.refreshDevices()
+
+        if autoRetry, let id = selectedDeviceId {
+            _ = await MultiConnectionManager.shared.addConnection(for: id)
+        }
+
+        await MainActor.run {
+            isConnecting = false
+            errorMessage = nil
+            diagnosticsDeviceId = nil
+            consecutiveFailures = 0
+        }
+    }
+
     private func connectToDevice(_ device: RegisteredDevice) {
-        guard !isConnecting else { return }
+        // Guard against rapid re-entrant calls
+        guard !isConnecting else {
+            print("[DeviceSelection] Already connecting, ignoring duplicate call")
+            return
+        }
 
         // Validate prerequisites before attempting connection
         if !device.status.isAvailable {
@@ -417,7 +479,7 @@ public struct DeviceSelectionView: View {
             return
         }
 
-        print("[DeviceSelection] Initiating connection to device: \(device.deviceName) (\(device.deviceId))")
+        print("[DeviceSelection] Switching to device: \(device.deviceName) (\(device.deviceId))")
         selectedDeviceId = device.deviceId
         isConnecting = true
         errorMessage = nil
@@ -425,16 +487,31 @@ public struct DeviceSelectionView: View {
 
         Task {
             do {
-                let result = await MultiConnectionManager.shared.addConnection(for: device.deviceId)
+                // Check if we're switching from a different device
+                let currentActive = MultiConnectionManager.shared.activeDeviceId
+                let isSwitching = currentActive != nil && currentActive != device.deviceId
+
+                if isSwitching {
+                    print("[DeviceSelection] Switching from \(currentActive!.uuidString) to \(device.deviceId.uuidString)")
+                }
+
+                // Use switchActiveDevice for device switching
+                let result = await MultiConnectionManager.shared.switchActiveDevice(to: device.deviceId)
 
                 switch result {
-                case .success:
-                    print("[DeviceSelection] Connection successful, running bootstrap")
-                    // Run bootstrap to initialize project and sessions, which will set state to .ready
-                    await InitializationOrchestrator.shared.run()
-                    // Note: AuthFlowCoordinator advances to workspace based on connection state and bootstrap state
+                case .success(_):
+                    print("[DeviceSelection] Switch successful, triggering state reset")
 
-                    // Watchdog: ensure bootstrap progressed within 8 seconds
+                    // Trigger full state reset
+                    await MainActor.run {
+                        PlanToCodeCore.shared.dataServices?.onActiveDeviceSwitch(newId: device.deviceId)
+                    }
+
+                    // Run bootstrap to fetch fresh state
+                    print("[DeviceSelection] Running bootstrap for new device")
+                    await InitializationOrchestrator.shared.run()
+
+                    // Wait for bootstrap to complete
                     let deadline = Date().addingTimeInterval(8.0)
                     while Date() < deadline {
                         try? await Task.sleep(nanoseconds: 200_000_000) // 200ms
@@ -446,27 +523,23 @@ public struct DeviceSelectionView: View {
                     let finalState = AppState.shared.bootstrapState
                     switch finalState {
                     case .ready, .needsConfiguration:
-                        // Bootstrap completed successfully
-                        break
+                        await MainActor.run {
+                            appState.selectedDeviceId = device.deviceId
+                            isConnecting = false
+                            selectedDeviceId = nil
+                            errorMessage = nil
+                            print("[DeviceSelection] Device switch complete")
+                        }
                     default:
-                        // Bootstrap did not complete - show error
                         await MainActor.run {
                             errorMessage = "Desktop did not respond in time. Check that the desktop app is running and signed in with the same account."
                             isConnecting = false
                             diagnosticsDeviceId = device.deviceId
                         }
-                        return
                     }
 
-                    await MainActor.run {
-                        appState.selectedDeviceId = device.deviceId
-                        // AuthFlowCoordinator will handle routing based on device connection and project state
-                        // Reset local state now that connection is established
-                        isConnecting = false
-                        selectedDeviceId = nil
-                    }
                 case .failure(let error):
-                    print("[DeviceSelection] Connection failed: \(error.localizedDescription)")
+                    print("[DeviceSelection] Switch failed: \(error.localizedDescription)")
                     await MainActor.run {
                         // Map specific errors to user-friendly messages
                         if let multiError = error as? MultiConnectionError {
@@ -484,7 +557,6 @@ public struct DeviceSelectionView: View {
                             errorMessage = error.localizedDescription
                         }
                         isConnecting = false
-                        // Keep selectedDeviceId and diagnosticsDeviceId for diagnostics button
                         diagnosticsDeviceId = device.deviceId
                     }
                 }
@@ -544,8 +616,9 @@ private struct DeviceRow: View {
                 if let state = multiConnectionManager.connectionStates[device.deviceId] {
                     connectionStatusMessage(for: state)
                 } else if !device.status.isAvailable {
+                    let offlineText = formatOfflineStatus(device.lastHeartbeat)
                     statusMessage(
-                        text: "Device Offline",
+                        text: offlineText,
                         detail: "The desktop device is not connected to the server. Make sure the desktop app is running and connected.",
                         color: Color.mutedForeground
                     )
@@ -712,6 +785,31 @@ private struct DeviceRow: View {
         default:
             return device.platform
         }
+    }
+
+    private func formatOfflineStatus(_ lastHeartbeat: Date?) -> String {
+        guard let lastHeartbeat = lastHeartbeat else {
+            return "Desktop Offline"
+        }
+
+        let timeInterval = Date().timeIntervalSince(lastHeartbeat)
+
+        // Less than a minute ago
+        if timeInterval < 60 {
+            return "Desktop Offline — Last seen moments ago"
+        }
+
+        // Format relative time
+        let formatter = DateComponentsFormatter()
+        formatter.allowedUnits = [.minute, .hour, .day]
+        formatter.unitsStyle = .abbreviated
+        formatter.maximumUnitCount = 1
+
+        if let relativeTime = formatter.string(from: timeInterval) {
+            return "Desktop Offline — Last seen \(relativeTime) ago"
+        }
+
+        return "Desktop Offline"
     }
 }
 

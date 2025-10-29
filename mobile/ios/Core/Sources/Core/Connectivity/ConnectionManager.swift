@@ -295,14 +295,14 @@ public class ConnectionManager: ConnectionStrategyCoordinator {
 
     private func setupLifecycleObservers() {
         #if canImport(UIKit)
-        // Add observer for app becoming active
         NotificationCenter.default.addObserver(
             forName: UIApplication.didBecomeActiveNotification,
             object: nil,
             queue: .main
-        ) { _ in
-            Task {
-                await MultiConnectionManager.shared.restoreConnections()
+        ) { [weak self] _ in
+            guard let self = self else { return }
+            Task { @MainActor in
+                MultiConnectionManager.shared.triggerAggressiveReconnect(reason: .appForeground)
             }
         }
         #endif
@@ -323,22 +323,16 @@ public class ConnectionManager: ConnectionStrategyCoordinator {
     private func handleNetworkPathChange(_ path: NWPath) {
         emitEvent(.networkChanged(path: path))
 
-        // Handle network changes - might trigger reconnection
         if !path.status.isUsable && connectionState.isConnected {
-            // Network became unavailable
             connectionState = .failed(ConnectionStrategyError.networkUnavailable)
             emitStateChange()
         } else if path.status.isUsable && connectionState.isFailed {
-            // Network became available - attempt reconnection
             if let config = currentConfig {
                 Task {
                     _ = await connect(config: config)
                 }
             }
-            // Also restore multi-connections when network becomes available
-            Task {
-                await MultiConnectionManager.shared.restoreConnections()
-            }
+            MultiConnectionManager.shared.triggerAggressiveReconnect(reason: .networkChange(path))
         }
     }
 

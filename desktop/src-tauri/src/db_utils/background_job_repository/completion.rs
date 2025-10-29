@@ -167,35 +167,36 @@ impl BackgroundJobRepository {
                 debug!("Cost ${:.6} stored in database for job {}", cost, job_id);
             }
 
-            // Emit granular events
             if let Some(app_handle) = &self.app_handle {
-                // Emit status changed event
-                emit_job_status_changed(
-                    app_handle,
-                    JobStatusChangedEvent {
-                        job_id: job_id.to_string(),
-                        status: JobStatus::Completed.to_string(),
-                        start_time: None,
-                        end_time: Some(now),
-                        sub_status_message: None,
-                    },
-                );
-
-                // Emit finalized event if cost is provided
-                if let Some(cost) = actual_cost {
-                    emit_job_finalized(
+                if let Ok(Some(job)) = self.get_job_by_id(job_id).await {
+                    emit_job_status_changed(
                         app_handle,
-                        JobFinalizedEvent {
+                        JobStatusChangedEvent {
+                            session_id: job.session_id.clone(),
                             job_id: job_id.to_string(),
                             status: JobStatus::Completed.to_string(),
-                            response: Some(response.to_string()),
-                            actual_cost: cost,
-                            tokens_sent: tokens_sent,
-                            tokens_received: tokens_received,
-                            cache_read_tokens: cache_read_tokens.map(|v| v as i32),
-                            cache_write_tokens: cache_write_tokens.map(|v| v as i32),
+                            start_time: None,
+                            end_time: Some(now),
+                            sub_status_message: None,
                         },
                     );
+
+                    if let Some(cost) = actual_cost {
+                        emit_job_finalized(
+                            app_handle,
+                            JobFinalizedEvent {
+                                session_id: job.session_id.clone(),
+                                job_id: job_id.to_string(),
+                                status: JobStatus::Completed.to_string(),
+                                response: Some(response.to_string()),
+                                actual_cost: cost,
+                                tokens_sent: tokens_sent,
+                                tokens_received: tokens_received,
+                                cache_read_tokens: cache_read_tokens.map(|v| v as i32),
+                                cache_write_tokens: cache_write_tokens.map(|v| v as i32),
+                            },
+                        );
+                    }
                 }
             }
         } else {

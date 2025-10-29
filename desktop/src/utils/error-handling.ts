@@ -604,6 +604,14 @@ function applyContextSpecificTransformations(
     return "The prompt is too long for the selected model. Please reduce the number of selected files, shorten the task description, or choose a model with a larger context window.";
   }
 
+  // Check for device binding mismatch
+  if (
+    lowerMessage.includes('device binding validation failed') ||
+    lowerMessage.includes('device id mismatch')
+  ) {
+    return 'Security check failed for this device. Please sign in again to continue.';
+  }
+
   // Check for checkout-specific error patterns
   if (
     lowerMessage.includes("checkout session expired") ||

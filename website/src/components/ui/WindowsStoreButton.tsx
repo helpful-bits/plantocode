@@ -35,7 +35,7 @@ export function WindowsStoreButton({
 
   return (
     <a
-      href="https://apps.microsoft.com/detail/9PCFLDMDJJBX?referrer=appbadge&mode=direct"
+      href="https://apps.microsoft.com/store/detail/9PNF5PVHN5K8?referrer=appbadge&mode=direct"
       target="_blank"
       rel="noopener noreferrer"
       className={`${className} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded`}

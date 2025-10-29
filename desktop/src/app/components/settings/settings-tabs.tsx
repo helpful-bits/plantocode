@@ -4,7 +4,7 @@ import { useSessionStateContext } from "@/contexts/session";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/ui/tabs";
 import SettingsForm from "./settings-form";
 import TerminalSettings from "./terminal-settings";
-import PrivacySettings from "./privacy-settings";
+import BackgroundSettings from "./background-settings";
 import Legal from "./legal";
 
 export default function SettingsTabs() {
@@ -17,10 +17,10 @@ export default function SettingsTabs() {
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="terminal">Terminal</TabsTrigger>
-          <TabsTrigger value="privacy">Privacy</TabsTrigger>
+          <TabsTrigger value="background">Background</TabsTrigger>
           <TabsTrigger value="legal">Legal</TabsTrigger>
         </TabsList>
-        
+
         <TabsContent value="general" className="space-y-4">
           <div className="text-sm text-muted-foreground">
             Configure AI model preferences and system prompts for each task type. Select a task from the sidebar to view and edit its complete configuration.
@@ -32,8 +32,8 @@ export default function SettingsTabs() {
           <TerminalSettings />
         </TabsContent>
 
-        <TabsContent value="privacy">
-          <PrivacySettings />
+        <TabsContent value="background">
+          <BackgroundSettings />
         </TabsContent>
 
         <TabsContent value="legal">

@@ -27,6 +27,11 @@ public final class InitializationOrchestrator: ObservableObject {
 
     public func run() async {
         appState.setBootstrapRunning()
+
+        // Force reset to ensure clean state
+        PlanToCodeCore.shared.dataServices?.hasCompletedInitialLoad = false
+        log.info("Forced bootstrap reset for device switch")
+
         log.info("Bootstrap started")
 
         guard AuthService.shared.isAuthenticated else {
@@ -36,6 +41,7 @@ public final class InitializationOrchestrator: ObservableObject {
         }
 
         await multi.restoreConnections()
+        log.info("Connection restore completed")
 
         // Start project sync service
         ProjectSyncService.shared.start()
@@ -48,10 +54,10 @@ public final class InitializationOrchestrator: ObservableObject {
         }
 
         // Device is configured, wait briefly for connection (reduced from 20s to 5s)
-        let connected = await awaitActiveDeviceConnected(timeoutSeconds: 5)
+        let connected = await awaitActiveDeviceConnected(timeoutSeconds: 8)
         guard connected else {
             appState.setBootstrapNeedsConfig(.init(projectMissing: true, sessionsEmpty: true, activeSessionMissing: true))
-            log.warning("No active device connection within timeout")
+            log.warning("No active device connection established within timeout, routing to configuration")
             return
         }
 
@@ -129,15 +135,39 @@ public final class InitializationOrchestrator: ObservableObject {
     }
 
     private func awaitActiveDeviceConnected(timeoutSeconds: Int) async -> Bool {
+        log.info("Waiting for active device connection (timeout: \(timeoutSeconds)s)")
         let start = Date()
         while Date().timeIntervalSince(start) < Double(timeoutSeconds) {
+            // Check if we have a connected device
+            let hasConnected = multi.connectionStates.values.contains { state in
+                if case .connected = state { return true }
+                return false
+            }
+
+            // If a device is connected but no active device is set, try auto-assigning
+            if hasConnected && multi.activeDeviceId == nil {
+                let connected = multi.connectionStates.filter { _, state in
+                    if case .connected = state { return true }
+                    return false
+                }.map { $0.key }
+
+                if connected.count == 1, let deviceId = connected.first {
+                    log.info("Auto-assigning single connected device: \(deviceId.uuidString)")
+                    multi.setActive(deviceId)
+                }
+            }
+
+            // Check if both conditions are met: connected state AND active device set
             if let active = multi.activeDeviceId,
                let state = multi.connectionStates[active],
                case .connected = state {
+                log.info("Active device connection established: \(active.uuidString)")
                 return true
             }
+
             try? await Task.sleep(nanoseconds: 100_000_000)
         }
+        log.warning("Connection timeout after \(timeoutSeconds)s - proceeding to configuration")
         return false
     }
 }

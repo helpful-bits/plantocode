@@ -300,6 +300,8 @@ impl TaskType {
     }
 }
 
+// NOTE: This struct is serialized to the React UI. Keep internal fields/logic snake_case,
+// but enforce outbound camelCase via serde(rename_all = "camelCase").
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackgroundJob {

@@ -4,7 +4,6 @@
 import type { Metadata } from 'next';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { Button } from '@/components/ui/button';
 import { StructuredData } from '@/components/seo/StructuredData';
 import { Header } from '@/components/landing/Header';
 import { HeroSection } from '@/components/landing/HeroSection';
@@ -580,27 +579,6 @@ export default function Home() {
           </section>
           <SectionDividerMesh />
 
-          <section className="py-16 px-4">
-            <GlassCard className="max-w-3xl mx-auto p-8 sm:p-12 text-center" highlighted>
-              <h2 className="text-2xl sm:text-3xl font-bold mb-4">Try Before You Buy</h2>
-              <p className="text-lg text-foreground/80 mb-8 max-w-2xl mx-auto">
-                Experience the full workflow with our interactive demo - no installation required
-              </p>
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                <Button variant="cta" size="lg" asChild>
-                  <Link href="/demo">
-                    Launch Interactive Demo
-                  </Link>
-                </Button>
-                <Button variant="outline" size="lg" asChild>
-                  <Link href="/screenshots">
-                    View All Screenshots
-                  </Link>
-                </Button>
-              </div>
-            </GlassCard>
-          </section>
-          <SectionDividerMesh />
 
           <section id="faq" className="pt-8">
             <FAQ items={faqItems} />

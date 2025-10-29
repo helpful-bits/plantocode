@@ -14,7 +14,16 @@ public class DeviceDiscoveryService: ObservableObject {
     private let logger = Logger(subsystem: "com.plantocode.app", category: "DeviceDiscovery")
 
     private init() {
-        // Observe auth token refresh
+        NotificationCenter.default.addObserver(
+            forName: Notification.Name("connection-hard-reset-completed"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                await self?.refreshDevices()
+            }
+        }
+
         NotificationCenter.default.addObserver(
             forName: NSNotification.Name("auth-token-refreshed"),
             object: nil,
@@ -25,7 +34,6 @@ public class DeviceDiscoveryService: ObservableObject {
             }
         }
 
-        // Observe app activation
         NotificationCenter.default.addObserver(
             forName: UIApplication.didBecomeActiveNotification,
             object: nil,
@@ -36,7 +44,6 @@ public class DeviceDiscoveryService: ObservableObject {
             }
         }
 
-        // Observe logout
         NotificationCenter.default.addObserver(
             forName: NSNotification.Name("auth-logged-out"),
             object: nil,
@@ -50,6 +57,13 @@ public class DeviceDiscoveryService: ObservableObject {
 
     deinit {
         NotificationCenter.default.removeObserver(self)
+    }
+
+    @MainActor
+    public func clearList() {
+        self.devices = []
+        self.errorMessage = nil
+        self.isLoading = false
     }
 
     public func refreshDevices() async {

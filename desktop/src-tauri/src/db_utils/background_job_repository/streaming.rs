@@ -199,6 +199,7 @@ impl BackgroundJobRepository {
                     app_handle,
                     JobResponseAppendedEvent {
                         job_id: job_id.to_string(),
+                        session_id: job.session_id.clone(),
                         chunk: chunk.to_string(),
                         accumulated_length: current_response_len,
                     },
@@ -226,6 +227,7 @@ impl BackgroundJobRepository {
                         app_handle,
                         JobStreamProgressEvent {
                             job_id: job_id.to_string(),
+                            session_id: job.session_id.clone(),
                             progress: Some(progress),
                             response_length: Some(current_response_len),
                             last_stream_update_time: Some(now),
@@ -246,6 +248,7 @@ impl BackgroundJobRepository {
                         app_handle,
                         JobTokensUpdatedEvent {
                             job_id: job_id.to_string(),
+                            session_id: job.session_id.clone(),
                             tokens_sent: Some(usage_data.prompt_tokens as i32),
                             tokens_received: Some(usage_data.completion_tokens as i32),
                             cache_read_tokens: if usage_data.cache_read_tokens > 0 {
@@ -269,6 +272,7 @@ impl BackgroundJobRepository {
                             app_handle,
                             JobCostUpdatedEvent {
                                 job_id: job_id.to_string(),
+                                session_id: job.session_id.clone(),
                                 actual_cost: cost,
                                 is_finalized: Some(false),
                             },
@@ -356,6 +360,11 @@ impl BackgroundJobRepository {
             return Err(err);
         }
 
+        let job = self
+            .get_job_by_id(job_id)
+            .await?
+            .ok_or_else(|| AppError::NotFoundError(format!("Job {} not found", job_id)))?;
+
         // Emit granular events
         if let Some(ref app_handle) = self.app_handle {
             // Emit tokens updated event
@@ -363,6 +372,7 @@ impl BackgroundJobRepository {
                 app_handle,
                 JobTokensUpdatedEvent {
                     job_id: job_id.to_string(),
+                    session_id: job.session_id.clone(),
                     tokens_sent: Some(usage.tokens_input as i32),
                     tokens_received: Some(usage.tokens_output as i32),
                     cache_read_tokens: usage.cache_read_tokens.map(|v| v as i32),
@@ -375,6 +385,7 @@ impl BackgroundJobRepository {
                 app_handle,
                 JobCostUpdatedEvent {
                     job_id: job_id.to_string(),
+                    session_id: job.session_id.clone(),
                     actual_cost: usage.estimated_cost,
                     is_finalized: Some(false),
                 },
@@ -498,12 +509,18 @@ impl BackgroundJobRepository {
             return Err(err);
         }
 
+        let job = self
+            .get_job_by_id(job_id)
+            .await?
+            .ok_or_else(|| AppError::NotFoundError(format!("Job {} not found", job_id)))?;
+
         // Emit stream progress event
         if let Some(ref app_handle) = self.app_handle {
             emit_job_stream_progress(
                 app_handle,
                 JobStreamProgressEvent {
                     job_id: job_id.to_string(),
+                    session_id: job.session_id.clone(),
                     progress: stream_progress,
                     response_length: Some(usage_update.tokens_output as usize),
                     last_stream_update_time: Some(now),

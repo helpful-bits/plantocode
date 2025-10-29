@@ -37,7 +37,7 @@ export const JobSection = ({
       <div className="space-y-3 w-full max-w-full overflow-hidden">
         {jobs.map((job) => (
           <JobCard
-            key={job.id}
+            key={`${job.id}-${job.updatedAt}`}
             job={job}
             handleCancel={handleCancel}
             handleDelete={handleDelete}

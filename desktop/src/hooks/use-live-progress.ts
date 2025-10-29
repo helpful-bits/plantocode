@@ -51,10 +51,11 @@ function calculateJobProgress(job: BackgroundJob, isRunning: boolean): number | 
  * @returns Live progress value that updates every second for running jobs
  */
 export function useLiveProgress(job: BackgroundJob): number | undefined {
-  // Determine if job is running for live progress updates  
-  const isJobRunning = ["running", "processingStream", "generatingStream", "preparing", "preparing_input"].includes(job.status);
-  
-  const [liveProgress, setLiveProgress] = useState(() => 
+  // Determine if job is running for live progress updates
+  const statusKey = job.status;
+  const isJobRunning = ["running", "processingStream", "generatingStream", "preparing", "preparingInput"].includes(statusKey);
+
+  const [liveProgress, setLiveProgress] = useState(() =>
     calculateJobProgress(job, isJobRunning)
   );
 

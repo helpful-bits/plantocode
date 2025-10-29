@@ -13,8 +13,8 @@ import { Code2, Terminal, GitMerge, Search, Zap } from 'lucide-react';
 import type { SoftwareApplication, HowTo, FAQPage } from 'schema-dts';
 
 export const metadata: Metadata = {
-  title: 'AI Architect for Codex CLI, Claude Code & Cursor | Stop AI Drift in 2025',
-  description: 'Pre-plan complex changes before AI writes code. Discover impacted files, merge multi-model plans (GPT-5, Claude 4, Gemini 2.5), execute with full visibility. Used by senior engineers who review before they run.',
+  title: 'Plan Software Changes Before You Code — Reviewable Specs | PlanToCode',
+  description: 'Plan software changes before you code. Generate file-by-file implementation specs, review with your team, then execute with full visibility and governance.',
   keywords: [
     'codex cli planning workflow',
     'codex cli architectural planning',
@@ -62,7 +62,7 @@ export default function HirePage() {
         '@type': 'HowToStep',
         position: 2,
         name: 'Generate Plans',
-        text: 'Run models multiple times (e.g., Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet, Grok 4) with token guardrails',
+        text: 'Run multiple models with different perspectives and token guardrails',
       },
       {
         '@type': 'HowToStep',
@@ -74,7 +74,7 @@ export default function HirePage() {
         '@type': 'HowToStep',
         position: 4,
         name: 'Execute',
-        text: 'Run in terminal or paste into Cursor/Windsurf chat',
+        text: 'Run in terminal or paste into your AI coding tool',
       },
     ],
   };
@@ -87,7 +87,7 @@ export default function HirePage() {
         name: 'How is this different from Codex CLI or Claude Code?',
         acceptedAnswer: {
           '@type': 'Answer',
-          text: 'PlanToCode provides architectural pre-planning BEFORE you use Codex, Claude Code, or Cursor. It adds file discovery, multi-model synthesis (GPT-5, Claude, Gemini), and merge instructions that complement the execution phase of those tools.',
+          text: 'PlanToCode provides architectural pre-planning before you use Codex, Claude Code, or Cursor. It adds file discovery, multi-model synthesis, and merge instructions that complement the execution phase of those tools.',
         },
       },
       {
@@ -103,7 +103,7 @@ export default function HirePage() {
         name: 'What does multi-model synthesis mean?',
         acceptedAnswer: {
           '@type': 'Answer',
-          text: 'Run the same task multiple times with different models (e.g., Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet). Each run surfaces different implementation details. PlanToCode merges them into one comprehensive plan with source attribution.',
+          text: 'Run the same task multiple times with different AI models. Each run surfaces different implementation details. PlanToCode merges them into one comprehensive plan with source attribution.',
         },
       },
     ],
@@ -163,7 +163,7 @@ export default function HirePage() {
     },
     {
       step: 'Generate Plans',
-      description: 'Run models multiple times (e.g., Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet, Grok 4) with token guardrails',
+      description: 'Run multiple models with different perspectives and token guardrails',
       icon: <Code2 className="w-5 h-5" />
     },
     {
@@ -173,15 +173,15 @@ export default function HirePage() {
     },
     {
       step: 'Execute',
-      description: 'Run in terminal or paste into Cursor/Windsurf chat',
+      description: 'Run in terminal or paste into your AI coding tool',
       icon: <Terminal className="w-5 h-5" />
     },
   ];
 
   const whyNowReasons = [
     {
-      reason: 'Models are borderline genius now',
-      detail: 'GPT-5, Gemini 2.5 Pro, Claude 4 write flawless code. But they don\'t know YOUR architecture, YOUR patterns, YOUR constraints.'
+      reason: 'AI models write excellent code',
+      detail: 'Modern models are capable. But they don\'t know **your** architecture, **your** patterns, **your** constraints.'
     },
     {
       reason: 'Codebases are interconnected systems',
@@ -189,7 +189,7 @@ export default function HirePage() {
     },
     {
       reason: 'Every IDE has AI now',
-      detail: 'Codex CLI, Claude Code, Cursor, Windsurf - they\'re all brilliant at the micro level. You need something that sees the macro.'
+      detail: 'Popular AI coding tools are brilliant at the micro level. You need something that sees the macro.'
     },
   ];
 
@@ -341,7 +341,7 @@ export default function HirePage() {
                 <FAQ items={[
                   {
                     question: 'How is this different from Codex CLI or Claude Code?',
-                    answer: 'PlanToCode provides architectural pre-planning BEFORE you use Codex, Claude Code, or Cursor. It adds file discovery, multi-model synthesis (Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet, Grok 4), and merge instructions that complement the execution phase of those tools.',
+                    answer: 'PlanToCode provides architectural pre-planning **before** you use Codex, Claude Code, or Cursor. It adds file discovery, multi-model synthesis, and merge instructions that complement the execution phase of those tools.',
                   },
                   {
                     question: 'Can I use this with my existing AI coding tool?',
@@ -349,7 +349,7 @@ export default function HirePage() {
                   },
                   {
                     question: 'What does multi-model synthesis mean?',
-                    answer: 'Run the same task multiple times with different models (Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet, Grok 4, DeepSeek R1). Each run surfaces different implementation details. PlanToCode merges them into one comprehensive plan with source attribution.',
+                    answer: 'Run the same task multiple times with different AI models. Each run surfaces different implementation details. PlanToCode merges them into one comprehensive plan with source attribution.',
                   },
                 ]} />
               </div>
