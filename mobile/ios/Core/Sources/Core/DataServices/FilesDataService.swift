@@ -43,6 +43,10 @@ public final class FilesDataService: ObservableObject {
     private let serverRelayClient: ServerRelayClient?
     private var isApplyingRemoteState = false
 
+    private var deviceKey: String {
+        MultiConnectionManager.shared.activeDeviceId?.uuidString ?? "no_device"
+    }
+
     // MARK: - Initialization
     public init(apiClient: APIClientProtocol = APIClient.shared, cacheManager: CacheManager = CacheManager.shared) {
         self.apiClient = apiClient
@@ -102,7 +106,7 @@ public final class FilesDataService: ObservableObject {
 
     /// Get file content with preview support
     public func getFileContent(request: FileContentRequest) -> AnyPublisher<FileContentResponse, DataServiceError> {
-        let cacheKey = "file_content_\(request.filePath.hashValue)"
+        let cacheKey = "dev_\(deviceKey)_file_content_\(request.filePath.hashValue)"
 
         if let cached: FileContentResponse = cacheManager.get(key: cacheKey) {
             return Just(cached)
@@ -126,7 +130,7 @@ public final class FilesDataService: ObservableObject {
 
     /// List directory contents
     public func listDirectory(request: DirectoryListRequest) -> AnyPublisher<DirectoryListResponse, DataServiceError> {
-        let cacheKey = "directory_\(request.directoryPath.hashValue)"
+        let cacheKey = "dev_\(deviceKey)_directory_\(request.directoryPath.hashValue)"
 
         if let cached: DirectoryListResponse = cacheManager.get(key: cacheKey) {
             return Just(cached)
@@ -548,6 +552,18 @@ public final class FilesDataService: ObservableObject {
         cacheManager.invalidatePattern("files_")
         cacheManager.invalidatePattern("file_content_")
         cacheManager.invalidatePattern("directory_")
+    }
+
+    /// Reset files state when active device changes
+    @MainActor
+    public func onActiveDeviceChanged() {
+        invalidateCache()
+        files.removeAll()
+        searchResults.removeAll()
+        currentSearchTerm = ""
+        error = nil
+        isLoading = false
+        logger.info("Files state reset for device change")
     }
 
     public func preloadProjectFiles(projectDirectory: String) {

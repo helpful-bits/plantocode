@@ -14,7 +14,7 @@ import {
   type SessionStateContextType,
   type SessionActionsContextType,
 } from "./_types/session-context-types";
-import { registerSessionEventHandlers, initSessionEventBridge, disposeSessionEventBridge } from "./event-bridge";
+import { registerSessionEventHandlers, initSessionEventBridge, disposeSessionEventBridge, onHistoryStateChanged } from "./event-bridge";
 import { setActiveSessionAction } from "@/actions/session/active.actions";
 
 import type { ReactNode } from "react";
@@ -337,7 +337,6 @@ export function SessionProvider({ children }: SessionProviderProps) {
             const filtered = files.filter((f) => !excludedSet.has(f));
 
             if (filtered.length === 0) {
-              console.log('session:auto-files-applied: All files were already excluded by user, skipping');
               return;
             }
 
@@ -350,11 +349,11 @@ export function SessionProvider({ children }: SessionProviderProps) {
             sessionActions.applyBackendFileUpdate(filtered, source);
 
           } catch (e) {
-            console.warn('session:auto-files-applied handler error', e);
+            // Ignore handler errors
           }
         });
       } catch (e) {
-        console.warn('Failed to setup session:auto-files-applied listener', e);
+        // Ignore setup errors
       }
     };
 
@@ -391,7 +390,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
           });
         });
       } catch (err) {
-        console.error("Failed to setup session-files-updated listener:", err);
+        // Ignore setup errors
       }
     };
 
@@ -404,39 +403,19 @@ export function SessionProvider({ children }: SessionProviderProps) {
     };
   }, [sessionStateHook.currentSession?.id, sessionActions, isUserPresent]);
 
-  // Listen for task description updates from mobile/remote
+
+  // Register history state changed callback
   useEffect(() => {
-    let unlistenHistory: (() => void) | null = null;
+    if (!currentSessionId) return;
 
-    const setupHistoryListener = async () => {
-      try {
-        unlistenHistory = await listen<{
-          sessionId: string;
-          taskDescription: string;
-        }>("session-history-synced", (e) => {
-          const p = e.payload;
+    const unsubscribe = onHistoryStateChanged(currentSessionId, (event) => {
+      window.dispatchEvent(
+        new CustomEvent('history-state-changed', { detail: event })
+      );
+    });
 
-          // Update task description for matching session
-          if (sessionStateHook.currentSession?.id === p.sessionId) {
-            if (!isUserPresent) return;
-            sessionActions.updateCurrentSessionFields({
-              taskDescription: p.taskDescription,
-            });
-          }
-        });
-      } catch (err) {
-        console.error("Failed to setup session-history-synced listener:", err);
-      }
-    };
-
-    setupHistoryListener();
-
-    return () => {
-      if (unlistenHistory) {
-        unlistenHistory();
-      }
-    };
-  }, [sessionStateHook.currentSession?.id, sessionActions, isUserPresent]);
+    return unsubscribe;
+  }, [currentSessionId]);
 
   // Handle session-updated through event bridge with typing protection
   useEffect(() => {
@@ -502,10 +481,10 @@ export function SessionProvider({ children }: SessionProviderProps) {
             return;
           }
 
-          console.debug(`[SessionValidation] ${p.field} validated - checksum: ${p.checksum.substring(0, 8)}, length: ${p.length}`);
+          // Validation event received
         });
       } catch (err) {
-        console.error("Failed to setup session-field-validated listener:", err);
+        // Ignore setup errors
       }
     };
 
@@ -534,17 +513,13 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
     // Check if this is a real change (not initial mount)
     if (previousProjectDirectoryRef.current !== null && previousProjectDirectoryRef.current !== projectDirectory) {
-      console.log("Project directory changed from", previousProjectDirectoryRef.current, "to", projectDirectory, "- clearing session state");
-
       // Clear the current session data immediately to remove old task description and files from UI
       sessionStateHook.setCurrentSession(null);
       sessionStateHook.setSessionModified(false);
       sessionStateHook.setSessionError(null);
 
       // Clear active session ID without broadcasting to avoid loops
-      sessionActions.setActiveSessionId(null).catch((err) => {
-        console.error("Failed to clear active session on project change:", err);
-      });
+      sessionActions.setActiveSessionId(null).catch(() => {});
     }
 
     // Update the ref for next comparison

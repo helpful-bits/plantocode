@@ -14,6 +14,7 @@ use crate::db::repositories::device_repository::{
 };
 use crate::error::AppError;
 use crate::models::AuthenticatedUser;
+use crate::services::apns_service::ApnsService;
 use crate::services::device_connection_manager::{DeviceConnectionManager, DeviceMessage};
 use crate::services::device_link_ws::{DeviceLinkWs, create_device_link_ws};
 use crate::services::relay_session_store::RelaySessionStore;
@@ -502,6 +503,7 @@ pub async fn device_link_ws_handler(
     connection_manager: web::Data<DeviceConnectionManager>,
     device_repo: web::Data<DeviceRepository>,
     relay_store: web::Data<RelaySessionStore>,
+    apns_service: Option<web::Data<ApnsService>>,
     user: AuthenticatedUser,
 ) -> Result<HttpResponse, actix_web::Error> {
     let user_id = user.user_id;
@@ -536,6 +538,7 @@ pub async fn device_link_ws_handler(
         connection_manager.clone(),
         device_repo,
         relay_store,
+        apns_service,
         client_type,
     );
 

@@ -1,5 +1,6 @@
 use crate::api_clients::error_handling::handle_api_error;
 use crate::auth::{header_utils, token_manager::TokenManager};
+use crate::auth::token_refresh::{ensure_fresh_token, refresh_with_dedup, contains_device_binding_mismatch};
 use crate::commands::billing_commands::{
     BillingDashboardData, BillingPortalResponse, CreditBalanceResponse, CreditHistoryResponse,
     CreditStats, CustomerBillingInfo, DetailedUsageRecord, DetailedUsageResponse, FeeTierConfig,
@@ -111,20 +112,20 @@ impl BillingClient {
     ) -> Result<T, AppError> {
         let server_url = &self.server_url;
 
-        let token =
-            self.token_manager.get().await.ok_or_else(|| {
-                AppError::AuthError("No authentication token available".to_string())
-            })?;
+        // Proactively ensure token is fresh (5 min TTL)
+        ensure_fresh_token(&self.app_handle, 300).await?;
+
+        let token = self.token_manager.get().await.ok_or_else(|| {
+            AppError::AuthError("No authentication token available".to_string())
+        })?;
+
+        let url = format!("{}{}", server_url, endpoint);
 
         let mut request_builder = match method.to_uppercase().as_str() {
-            "GET" => self.http_client.get(&format!("{}{}", server_url, endpoint)),
-            "POST" => self
-                .http_client
-                .post(&format!("{}{}", server_url, endpoint)),
-            "PUT" => self.http_client.put(&format!("{}{}", server_url, endpoint)),
-            "DELETE" => self
-                .http_client
-                .delete(&format!("{}{}", server_url, endpoint)),
+            "GET" => self.http_client.get(&url),
+            "POST" => self.http_client.post(&url),
+            "PUT" => self.http_client.put(&url),
+            "DELETE" => self.http_client.delete(&url),
             _ => {
                 return Err(AppError::InvalidArgument(
                     "Unsupported HTTP method".to_string(),
@@ -135,10 +136,10 @@ impl BillingClient {
         request_builder =
             header_utils::apply_auth_headers(request_builder, &token, &self.app_handle)?;
 
-        if let Some(body_data) = body {
+        if let Some(body_data) = &body {
             request_builder = request_builder
                 .header("Content-Type", "application/json")
-                .json(&body_data);
+                .json(body_data);
         }
 
         let response = request_builder
@@ -146,14 +147,88 @@ impl BillingClient {
             .await
             .map_err(|e| AppError::NetworkError(format!("Request failed: {}", e)))?;
 
+        // Handle 401 with refresh-and-retry
+        if response.status() == 401 {
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_default();
+
+            // Check for device binding mismatch
+            if contains_device_binding_mismatch(&error_body) {
+                return Err(AppError::AuthError(format!(
+                    "Device binding mismatch: {}",
+                    error_body
+                )));
+            }
+
+            // Refresh token and retry once
+            debug!("BillingClient: Got 401, attempting refresh and retry");
+            refresh_with_dedup(&self.app_handle).await?;
+
+            let new_token = self.token_manager.get().await.ok_or_else(|| {
+                AppError::AuthError("No authentication token available after refresh".to_string())
+            })?;
+
+            // Rebuild request with new token
+            let mut retry_builder = match method.to_uppercase().as_str() {
+                "GET" => self.http_client.get(&url),
+                "POST" => self.http_client.post(&url),
+                "PUT" => self.http_client.put(&url),
+                "DELETE" => self.http_client.delete(&url),
+                _ => {
+                    return Err(AppError::InvalidArgument(
+                        "Unsupported HTTP method".to_string(),
+                    ));
+                }
+            };
+
+            retry_builder =
+                header_utils::apply_auth_headers(retry_builder, &new_token, &self.app_handle)?;
+
+            if let Some(body_data) = &body {
+                retry_builder = retry_builder
+                    .header("Content-Type", "application/json")
+                    .json(body_data);
+            }
+
+            let retry_response = retry_builder
+                .send()
+                .await
+                .map_err(|e| AppError::NetworkError(format!("Retry request failed: {}", e)))?;
+
+            if !retry_response.status().is_success() {
+                let status = retry_response.status();
+                let error_text = retry_response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Failed to get error text from response".to_string());
+                error!("BillingClient: Request failed after retry: {} - {}", status, error_text);
+                return Err(crate::api_clients::error_handling::map_server_proxy_error(
+                    status.as_u16(),
+                    &error_text,
+                ));
+            }
+
+            let result: T = retry_response.json().await.map_err(|e| {
+                AppError::InvalidResponse(format!("Failed to parse response after retry: {}", e))
+            })?;
+
+            return Ok(result);
+        }
+
+        // Handle non-401 errors
         if !response.status().is_success() {
             let status = response.status();
             let error_text = response
                 .text()
                 .await
                 .unwrap_or_else(|_| "Failed to get error text from response".to_string());
-            let app_err = handle_api_error(status.as_u16(), &error_text, &self.token_manager).await;
-            return Err(app_err);
+            error!("BillingClient: Request failed: {} - {}", status, error_text);
+            return Err(crate::api_clients::error_handling::map_server_proxy_error(
+                status.as_u16(),
+                &error_text,
+            ));
         }
 
         let result: T = response

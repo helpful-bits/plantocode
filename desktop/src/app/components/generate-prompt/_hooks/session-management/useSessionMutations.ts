@@ -207,9 +207,6 @@ export function useSessionMutations({
       // Clear editing state
       setEditingSessionId(null);
 
-      // Force refresh the session list to ensure the renamed session appears with correct data
-      await loadSessions(true);
-
       showNotification({
         title: "Success",
         message: "Session renamed successfully",

@@ -36,3 +36,7 @@ export async function getActiveTerminalSessions(): Promise<string[]> {
 export async function reconnectTerminalSession(sessionId: string, output: any): Promise<boolean> {
   return invoke("reconnect_terminal_session_command", { sessionId, output });
 }
+
+export async function gracefulExitTerminal(sessionId: string) {
+  return invoke("graceful_exit_terminal_command", { sessionId });
+}

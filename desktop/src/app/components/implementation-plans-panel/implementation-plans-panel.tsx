@@ -212,6 +212,22 @@ export function ImplementationPlansPanel({
     };
   }, [terminalPlanId]);
 
+  // Listen for open-plan-content events
+  useEffect(() => {
+    const handleOpenPlanContent = (event: CustomEvent) => {
+      const { jobId } = event.detail;
+      if (jobId) {
+        setOpenedPlanJobId(jobId);
+        // Optionally close terminal modal or switch views as needed
+      }
+    };
+
+    window.addEventListener('open-plan-content', handleOpenPlanContent as EventListener);
+    return () => {
+      window.removeEventListener('open-plan-content', handleOpenPlanContent as EventListener);
+    };
+  }, []);
+
 
   const { currentSession } = useSessionStateContext();
   const { showNotification } = useNotification();
@@ -941,6 +957,10 @@ export function ImplementationPlansPanel({
             copyButtons={implementationPlanSettings || []}
             taskDescription={taskDescription || currentSession?.taskDescription}
             onSessionKilled={() => handleCloseTerminal(true)}
+            onViewPlan={(jobId) => {
+              setOpenedPlanJobId(jobId);
+              setIsTerminalVisible(false);
+            }}
           />
         );
       })()}

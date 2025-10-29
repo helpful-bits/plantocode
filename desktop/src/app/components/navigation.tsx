@@ -4,7 +4,6 @@ import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import { Home, Settings, User, MessageSquare, RotateCcw, Loader2 } from "lucide-react";
 
-import { useSessionStateContext } from "@/contexts/session";
 import { useUILayout } from "@/contexts/ui-layout-context";
 import { useResetApp } from "@/hooks/use-reset-app";
 import { ThemeToggle, Badge } from "@/ui";
@@ -16,7 +15,6 @@ import { NotificationBell } from "@/app/components/global/NotificationBell";
 export function Navigation() {
   const [isBillingHistoryModalOpen, setIsBillingHistoryModalOpen] = useState(false);
   const { isAppBusy, busyMessage } = useUILayout();
-  useSessionStateContext();
   const resetApp = useResetApp();
 
   const isBusy = isAppBusy;

@@ -7,6 +7,7 @@ public enum QueuedActionType: Codable {
     case deleteSession(sessionId: String)
     case syncTaskHistory(sessionId: String, history: [String])
     case updateTaskDescription(sessionId: String, content: String)
+    case syncHistoryState(sessionId: String, kind: String, state: Data, expectedVersion: Int64)
 }
 
 public struct QueuedAction: Codable, Identifiable {
@@ -92,6 +93,26 @@ public class OfflineActionQueue {
             try await sessionService.syncTaskDescriptionHistory(sessionId: sessionId, history: history)
         case .updateTaskDescription(let sessionId, let content):
             try await sessionService.updateTaskDescription(sessionId: sessionId, content: content)
+        case .syncHistoryState(let sessionId, let kind, let stateData, let expectedVersion):
+            // On reconnect:
+            // 1. Fetch remote desktop state
+            let remoteState = try await sessionService.getHistoryState(sessionId: sessionId, kind: kind)
+
+            // 2. Decode local queued state
+            let localState = try JSONDecoder().decode(HistoryState.self, from: stateData)
+
+            // 3. Merge using local merge logic
+            let undoManager = UndoRedoManager()
+            let mergedState = await undoManager.mergeRemoteHistoryState(remoteState)
+
+            // 4. Sync merged state back to desktop
+            _ = try await sessionService.syncHistoryState(
+                sessionId: sessionId,
+                kind: kind,
+                state: mergedState,
+                expectedVersion: expectedVersion
+            )
+            // 5. On success, action will be removed from queue by caller
         }
     }
 

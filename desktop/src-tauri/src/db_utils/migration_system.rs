@@ -1,3 +1,4 @@
+use crate::db_utils::migration_utils::{execute_script_in_transaction, has_column};
 use crate::error::{AppError, AppResult};
 use log::{error, info, warn};
 use semver::{Version, VersionReq};
@@ -10,18 +11,36 @@ use tauri::{AppHandle, Manager};
 pub struct MigrationRule {
     /// Unique identifier for this migration
     pub id: String,
+    /// Migration SQL file path
+    #[serde(alias = "path")]
+    pub migration_file: String,
     /// Semantic version requirement (e.g., ">=1.0.0, <2.0.0" or "1.x" or "*")
+    #[serde(default = "default_version")]
     pub from_version: String,
     /// Target version pattern (e.g., "2.0.0" or ">=2.0.0")
+    #[serde(default = "default_version")]
     pub to_version: String,
-    /// Migration SQL file path
-    pub migration_file: String,
     /// Optional description
     pub description: Option<String>,
     /// Whether this migration is required (if false, failures are non-fatal)
+    #[serde(default)]
     pub required: bool,
     /// Order priority (lower numbers run first)
+    #[serde(default)]
     pub priority: i32,
+    /// Optional guard: only run if this column is absent
+    #[serde(default)]
+    pub run_if_absent_column: Option<RunIfAbsentColumn>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunIfAbsentColumn {
+    pub table: String,
+    pub column: String,
+}
+
+fn default_version() -> String {
+    "*".to_string()
 }
 
 #[derive(Deserialize)]
@@ -43,6 +62,60 @@ impl MigrationSystem {
         app_handle: &AppHandle,
         current_version: &str,
     ) -> AppResult<()> {
+        // Check for concurrent migration
+        let guard_key = "migrations_in_progress";
+        if let Ok(Some(val)) = sqlx::query_scalar::<_, String>(
+            "SELECT value FROM key_value_store WHERE key = ?"
+        ).bind(guard_key).fetch_optional(&*self.pool).await {
+            if let Ok(timestamp) = val.parse::<i64>() {
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs() as i64;
+                if now - timestamp < 120 {
+                    return Err(AppError::DatabaseError(
+                        "Migrations already in progress".to_string()
+                    ));
+                }
+            }
+        }
+        // Set guard
+        let guard_timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            .to_string();
+        sqlx::query(
+            "INSERT OR REPLACE INTO key_value_store (key, value, updated_at)
+             VALUES (?, ?, strftime('%s','now'))"
+        )
+        .bind(guard_key)
+        .bind(&guard_timestamp)
+        .execute(&*self.pool)
+        .await?;
+
+        // Ensure guard is cleared on exit
+        struct GuardCleaner {
+            pool: Arc<SqlitePool>,
+            key: String,
+        }
+        impl Drop for GuardCleaner {
+            fn drop(&mut self) {
+                let pool = self.pool.clone();
+                let key = self.key.clone();
+                tokio::spawn(async move {
+                    let _ = sqlx::query("DELETE FROM key_value_store WHERE key = ?")
+                        .bind(key)
+                        .execute(&*pool)
+                        .await;
+                });
+            }
+        }
+        let _guard_cleaner = GuardCleaner {
+            pool: self.pool.clone(),
+            key: guard_key.to_string(),
+        };
+
         // Get stored version from database
         let stored_version = self.get_stored_version().await?;
 
@@ -82,6 +155,15 @@ impl MigrationSystem {
             }
         };
 
+        // Detect downgrade
+        if stored > current {
+            return Err(AppError::DatabaseError(format!(
+                "Database downgrade detected: database version {} is newer than app version {}. \
+                 Please upgrade the app or reset the database.",
+                stored_version_str, current_version
+            )));
+        }
+
         // If versions match, no migration needed
         if stored == current {
             info!("App version unchanged: {}", current_version);
@@ -92,7 +174,7 @@ impl MigrationSystem {
 
         // Get applicable migrations
         let migrations =
-            self.get_applicable_migrations(&stored_version_str, current_version, app_handle)?;
+            self.get_applicable_migrations(&stored_version_str, current_version, app_handle).await?;
 
         if migrations.is_empty() {
             info!("No migrations needed for version change");
@@ -112,13 +194,35 @@ impl MigrationSystem {
             }
         }
 
+        // Validate database integrity
+        let integrity_result: String = sqlx::query_scalar("PRAGMA integrity_check")
+            .fetch_one(&*self.pool)
+            .await?;
+        if integrity_result != "ok" {
+            return Err(AppError::DatabaseError(format!(
+                "Database integrity check failed: {}",
+                integrity_result
+            )));
+        }
+
+        // Check foreign keys
+        let fk_violations: Vec<String> = sqlx::query_scalar("PRAGMA foreign_key_check")
+            .fetch_all(&*self.pool)
+            .await?;
+        if !fk_violations.is_empty() {
+            warn!(
+                "Foreign key violations detected after migration: {:?}",
+                fk_violations
+            );
+        }
+
         // Update stored version
         self.set_stored_version(current_version).await?;
 
         Ok(())
     }
 
-    fn get_applicable_migrations(
+    async fn get_applicable_migrations(
         &self,
         from_version: &str,
         to_version: &str,
@@ -138,13 +242,36 @@ impl MigrationSystem {
         };
 
         // Filter applicable migrations
-        let mut applicable: Vec<MigrationRule> = all_migrations
-            .into_iter()
-            .filter(|rule| {
-                // Check if this migration applies to our version transition
-                self.is_migration_applicable(rule, &from, &to)
-            })
-            .collect();
+        let mut applicable: Vec<MigrationRule> = Vec::new();
+        for rule in all_migrations {
+            // Check if this migration applies to our version transition
+            if !self.is_migration_applicable(&rule, &from, &to) {
+                continue;
+            }
+
+            // Check run_if_absent_column guard
+            if let Some(ref guard) = rule.run_if_absent_column {
+                if has_column(&self.pool, &guard.table, &guard.column).await? {
+                    // Column exists, skip but mark as applied
+                    info!(
+                        "Migration '{}' skipped: column {}.{} already exists",
+                        rule.id, guard.table, guard.column
+                    );
+                    // Mark as applied to avoid running in future
+                    let key = format!("migration_{}_applied", rule.id);
+                    let _ = sqlx::query(
+                        "INSERT OR IGNORE INTO key_value_store (key, value, updated_at)
+                         VALUES (?, 'true', strftime('%s', 'now'))"
+                    )
+                    .bind(&key)
+                    .execute(&*self.pool)
+                    .await;
+                    continue;
+                }
+            }
+
+            applicable.push(rule);
+        }
 
         // Sort by priority
         applicable.sort_by_key(|m| m.priority);
@@ -178,7 +305,12 @@ impl MigrationSystem {
     }
 
     fn version_matches(&self, pattern: &str, version: &Version) -> bool {
-        // Handle special wildcards
+        // Try VersionReq first for proper semver handling
+        if let Ok(req) = VersionReq::parse(pattern) {
+            return req.matches(version);
+        }
+
+        // Fallback to special cases for legacy patterns
         match pattern {
             "*" | "any" => true,
             pattern if pattern.starts_with("<=") => {
@@ -236,11 +368,9 @@ impl MigrationSystem {
                 }
             }
             _ => {
-                // Try exact version match or semver requirement
+                // Try exact version match
                 if let Ok(exact_version) = Version::parse(pattern) {
                     version == &exact_version
-                } else if let Ok(req) = VersionReq::parse(pattern) {
-                    req.matches(version)
                 } else {
                     false
                 }
@@ -249,14 +379,43 @@ impl MigrationSystem {
     }
 
     fn load_migration_rules(&self, app_handle: &AppHandle) -> Vec<MigrationRule> {
+        // Helper to try loading and parsing from a JSON string
+        let try_parse_rules = |json_str: String| -> Option<Vec<MigrationRule>> {
+            // Try parsing as complete config first
+            if let Ok(config) = serde_json::from_str::<MigrationRulesConfig>(&json_str) {
+                return Some(config.migrations);
+            }
+
+            // If that fails, try per-item deserialization
+            warn!("Failed to parse migration_rules.json, attempting per-item load");
+            if let Ok(value) = serde_json::from_str::<serde_json::Value>(&json_str) {
+                if let Some(migrations_array) = value.get("migrations").and_then(|v| v.as_array()) {
+                    let mut migrations = Vec::new();
+                    for (idx, item) in migrations_array.iter().enumerate() {
+                        match serde_json::from_value::<MigrationRule>(item.clone()) {
+                            Ok(rule) => migrations.push(rule),
+                            Err(e) => {
+                                warn!("Failed to parse migration rule at index {}: {}", idx, e);
+                            }
+                        }
+                    }
+                    if !migrations.is_empty() {
+                        info!("Loaded {} migrations via per-item parsing", migrations.len());
+                        return Some(migrations);
+                    }
+                }
+            }
+            None
+        };
+
         // Method 1: Try using the resource directory directly
         if let Ok(resource_dir) = app_handle.path().resource_dir() {
             let rules_path = resource_dir.join("migrations").join("migration_rules.json");
             if rules_path.exists() {
                 if let Ok(json_str) = std::fs::read_to_string(&rules_path) {
-                    if let Ok(config) = serde_json::from_str::<MigrationRulesConfig>(&json_str) {
+                    if let Some(migrations) = try_parse_rules(json_str) {
                         info!("Loaded migration rules from resource directory");
-                        return config.migrations;
+                        return migrations;
                     }
                 }
             }
@@ -269,9 +428,9 @@ impl MigrationSystem {
         ) {
             if path.exists() {
                 if let Ok(json_str) = std::fs::read_to_string(&path) {
-                    if let Ok(config) = serde_json::from_str::<MigrationRulesConfig>(&json_str) {
+                    if let Some(migrations) = try_parse_rules(json_str) {
                         info!("Loaded migration rules from resolved resource");
-                        return config.migrations;
+                        return migrations;
                     }
                 }
             }
@@ -279,9 +438,9 @@ impl MigrationSystem {
 
         // Method 3: Try local path as fallback (development)
         if let Ok(json_str) = std::fs::read_to_string("migrations/migration_rules.json") {
-            if let Ok(config) = serde_json::from_str::<MigrationRulesConfig>(&json_str) {
+            if let Some(migrations) = try_parse_rules(json_str) {
                 info!("Loaded migration rules from local file");
-                return config.migrations;
+                return migrations;
             }
         }
 
@@ -296,6 +455,7 @@ impl MigrationSystem {
                 description: Some("Add error logging table and indexes".to_string()),
                 required: false,
                 priority: 10,
+                run_if_absent_column: None,
             },
             // Example: Billing system upgrade for 1.x to 2.x
             MigrationRule {
@@ -306,6 +466,35 @@ impl MigrationSystem {
                 description: Some("Upgrade billing system to v2".to_string()),
                 required: true,
                 priority: 20,
+                run_if_absent_column: None,
+            },
+            // History state v1: Add current index tracking and metadata columns
+            MigrationRule {
+                id: "history_state_v1".to_string(),
+                from_version: "*".to_string(),
+                to_version: ">=1.0.0".to_string(),
+                migration_file: "migrations/features/history_state_v1.sql".to_string(),
+                description: Some("Add history state tracking with current index and metadata".to_string()),
+                required: true,
+                priority: 30,
+                run_if_absent_column: Some(RunIfAbsentColumn {
+                    table: "sessions".to_string(),
+                    column: "task_history_current_index".to_string(),
+                }),
+            },
+            // Add history version tracking for optimistic locking
+            MigrationRule {
+                id: "add_history_versions".to_string(),
+                from_version: "*".to_string(),
+                to_version: ">=1.0.0".to_string(),
+                migration_file: "migrations/features/add_history_versions.sql".to_string(),
+                description: Some("Add version tracking columns for history synchronization".to_string()),
+                required: true,
+                priority: 31,
+                run_if_absent_column: Some(RunIfAbsentColumn {
+                    table: "sessions".to_string(),
+                    column: "task_history_version".to_string(),
+                }),
             },
             // Performance indexes for any version upgrading to 1.2.0 or later
             MigrationRule {
@@ -316,6 +505,7 @@ impl MigrationSystem {
                 description: Some("Add performance indexes".to_string()),
                 required: false,
                 priority: 100,
+                run_if_absent_column: None,
             },
         ]
     }
@@ -345,29 +535,48 @@ impl MigrationSystem {
             .load_migration_file(app_handle, &migration.migration_file)
             .await?;
 
-        // Execute in transaction
-        let mut tx = self.pool.begin().await?;
+        // Execute in transaction using utility
+        if let Err(e) = execute_script_in_transaction(&self.pool, &migration_sql).await {
+            // Log error to error_logs table
+            let error_msg = format!("Migration '{}' failed: {}", migration.id, e);
+            let migration_excerpt = if migration_sql.len() > 200 {
+                format!("{}...", &migration_sql[..200])
+            } else {
+                migration_sql.clone()
+            };
 
-        // Split and execute statements
-        for statement in migration_sql.split(';') {
-            let trimmed = statement.trim();
-            if !trimmed.is_empty() && !trimmed.starts_with("--") {
-                sqlx::query(trimmed).execute(&mut *tx).await.map_err(|e| {
-                    AppError::DatabaseError(format!("Migration '{}' failed: {}", migration.id, e))
-                })?;
-            }
+            let _ = sqlx::query(
+                "INSERT INTO error_logs (timestamp, error_type, error_message, context, stack_trace)
+                 VALUES (strftime('%s', 'now'), 'migration_error', ?, ?, ?)"
+            )
+            .bind(&error_msg)
+            .bind(format!("migration_id: {}", migration.id))
+            .bind(migration_excerpt)
+            .execute(&*self.pool)
+            .await;
+
+            return Err(AppError::DatabaseError(error_msg));
         }
 
-        // Record migration as applied
+        // Record migration as applied in key_value_store
         sqlx::query(
-            "INSERT INTO key_value_store (key, value, updated_at) 
+            "INSERT INTO key_value_store (key, value, updated_at)
              VALUES (?, 'true', strftime('%s', 'now'))",
         )
         .bind(format!("migration_{}_applied", migration.id))
-        .execute(&mut *tx)
+        .execute(&*self.pool)
         .await?;
 
-        tx.commit().await?;
+        // Also record in migrations table
+        sqlx::query(
+            "INSERT INTO migrations(name, applied_at)
+             VALUES(?, strftime('%s','now'))
+             ON CONFLICT(name) DO UPDATE SET applied_at=excluded.applied_at"
+        )
+        .bind(&migration.id)
+        .execute(&*self.pool)
+        .await
+        .ok();
 
         info!("Successfully applied migration '{}'", migration.id);
         Ok(())
@@ -385,7 +594,7 @@ impl MigrationSystem {
         Ok(result.is_some())
     }
 
-    async fn get_stored_version(&self) -> AppResult<Option<String>> {
+    pub async fn get_stored_version(&self) -> AppResult<Option<String>> {
         let row = sqlx::query_scalar::<_, Option<String>>(
             "SELECT value FROM key_value_store WHERE key = 'app_version'",
         )
@@ -452,20 +661,10 @@ pub async fn apply_embedded_consolidated_schema(pool: &SqlitePool) -> AppResult<
 
     let schema_sql = crate::app_setup::embedded_schema::get_consolidated_schema_sql();
 
-    // Execute the schema SQL
-    let mut tx = pool.begin().await?;
-
-    // Split and execute statements
-    for statement in schema_sql.split(';') {
-        let trimmed = statement.trim();
-        if !trimmed.is_empty() && !trimmed.starts_with("--") {
-            sqlx::query(trimmed).execute(&mut *tx).await.map_err(|e| {
-                AppError::DatabaseError(format!("Failed to apply embedded schema: {}", e))
-            })?;
-        }
-    }
-
-    tx.commit().await?;
+    // Execute using transaction utility
+    execute_script_in_transaction(pool, &schema_sql).await.map_err(|e| {
+        AppError::DatabaseError(format!("Failed to apply embedded schema: {}", e))
+    })?;
 
     info!("Database bootstrap: consolidated schema applied (fresh DB)");
     Ok(())

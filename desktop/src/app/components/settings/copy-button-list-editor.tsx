@@ -14,9 +14,11 @@ interface CopyButtonListEditorProps {
   readOnly?: boolean;
   showCustomizeButton?: boolean;
   onCustomize?: () => void;
+  onResetButton?: (buttonIndex: number) => void;
+  isButtonDifferentFromDefault?: (buttonIndex: number) => boolean;
 }
 
-function CopyButtonListEditorComponent({ copyButtons, onChange, readOnly, showCustomizeButton, onCustomize }: CopyButtonListEditorProps) {
+function CopyButtonListEditorComponent({ copyButtons, onChange, readOnly, showCustomizeButton, onCustomize, onResetButton, isButtonDifferentFromDefault }: CopyButtonListEditorProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -120,6 +122,8 @@ function CopyButtonListEditorComponent({ copyButtons, onChange, readOnly, showCu
                     button={buttonWithId}
                     onChange={(updatedButton) => handleButtonChange(index, updatedButton)}
                     onDelete={() => handleButtonDelete(index)}
+                    onReset={onResetButton ? () => onResetButton(index) : undefined}
+                    showReset={isButtonDifferentFromDefault ? isButtonDifferentFromDefault(index) : false}
                     readOnly={readOnly || showCustomizeButton}
                   />
                 );

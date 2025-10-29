@@ -40,7 +40,9 @@ interface TaskSettingsEditorProps {
   onTranscriptionLanguageChange: (languageCode: string) => void;
   onCopyButtonsChange: (copyButtons: CopyButtonConfig[]) => void;
   onResetToDefault: (settingName: 'model' | 'maxTokens' | 'temperature' | 'languageCode' | 'copyButtons') => void;
+  onResetCopyButton: (buttonIndex: number) => void;
   isDifferentFromDefault: (settingName: 'model' | 'maxTokens' | 'temperature' | 'languageCode' | 'copyButtons') => boolean;
+  isCopyButtonDifferentFromDefault: (buttonIndex: number) => boolean;
   getSliderValue: (settingName: 'maxTokens' | 'temperature') => number;
   providersWithModels: ProviderWithModels[] | null;
   readOnly?: boolean; // New flag for read-only mode
@@ -62,7 +64,9 @@ export function TaskSettingsEditor({
   onTranscriptionLanguageChange,
   onCopyButtonsChange,
   onResetToDefault,
+  onResetCopyButton,
   isDifferentFromDefault,
+  isCopyButtonDifferentFromDefault,
   getSliderValue,
   providersWithModels,
   readOnly = false, // Disable editing of AI model parameters
@@ -397,6 +401,8 @@ export function TaskSettingsEditor({
               }));
               onCopyButtonsChange(buttonsWithIds);
             }}
+            onResetButton={onResetCopyButton}
+            isButtonDifferentFromDefault={isCopyButtonDifferentFromDefault}
             readOnly={readOnly}
           />
         </div>

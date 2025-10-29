@@ -4,12 +4,24 @@ import React, { useRef, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/ui/dialog";
 import { useTerminalSessions } from "@/contexts/terminal-sessions";
 import TerminalView from "@/ui/TerminalView";
-import { X, AlertCircle, Mic } from "lucide-react";
+import { AlertCircle, Mic, Eye, Minimize2, CheckCircle } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/ui/button";
 import { Textarea } from "@/ui/textarea";
 import { useVoiceTranscription } from "@/hooks/use-voice-recording";
 import { Copy } from "lucide-react";
+import { gracefulExitTerminal } from "@/actions/terminal/terminal.actions";
+import { invoke } from '@tauri-apps/api/core';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/ui/alert-dialog";
 import { getBackgroundJobAction } from "@/actions/background-jobs/jobs.actions";
 import { normalizeJobResponse } from "@/utils/response-utils";
 import { replacePlaceholders } from "@/utils/placeholder-utils";
@@ -24,6 +36,7 @@ interface PlanTerminalModalProps {
   copyButtons?: CopyButtonConfig[];
   onSessionKilled?: () => void;
   taskDescription?: string; // Current task description from the form
+  onViewPlan?: (jobId: string) => void;
 }
 
 
@@ -43,9 +56,10 @@ export const PlanTerminalModal: React.FC<PlanTerminalModalProps> = ({
   projectDirectory,
   copyButtons,
   onSessionKilled,
-  taskDescription
+  taskDescription,
+  onViewPlan
 }) => {
-  const [showConfirmClose, setShowConfirmClose] = useState(false);
+  const [showConfirmFinish, setShowConfirmFinish] = useState(false);
   const [planContent, setPlanContent] = useState<string | null>(null);
   const [isLoadingContent, setIsLoadingContent] = useState(false);
   const [showDictation, setShowDictation] = useState(false);
@@ -64,7 +78,7 @@ export const PlanTerminalModal: React.FC<PlanTerminalModalProps> = ({
     },
     disabled: !showDictation,
   });
-  const { startSession, getSession, kill, write } = useTerminalSessions();
+  const { startSession, getSession, write, minimizeSession } = useTerminalSessions();
 
   const handleModalOpen = useCallback(async () => {
     if (!open) return;
@@ -124,6 +138,39 @@ export const PlanTerminalModal: React.FC<PlanTerminalModalProps> = ({
     await chunkedSend(planJobId, textToSend);
   }, [planJobId, planContent, taskDescription, chunkedSend]);
 
+  const handleViewPlan = useCallback(() => {
+    if (onViewPlan) {
+      onViewPlan(planJobId);
+    } else {
+      window.dispatchEvent(new CustomEvent('open-plan-content', { detail: { jobId: planJobId } }));
+    }
+  }, [planJobId, onViewPlan]);
+
+  const handleMinimize = useCallback(() => {
+    minimizeSession(planJobId);
+    onOpenChange(false);
+  }, [planJobId, minimizeSession, onOpenChange]);
+
+  const handleFinish = useCallback(async () => {
+    try {
+      await gracefulExitTerminal(planJobId);
+
+      try {
+        await invoke("mark_implementation_plan_signed_off_command", {
+          jobId: planJobId,
+          state: "accepted"
+        });
+      } catch (e) {
+        console.error('Failed to mark plan as signed off:', e);
+      }
+
+      onSessionKilled?.();
+      onOpenChange(false);
+    } catch (error) {
+      console.error('Failed to finish terminal session:', error);
+    }
+  }, [planJobId, onSessionKilled, onOpenChange]);
+
 
 
 
@@ -131,6 +178,7 @@ export const PlanTerminalModal: React.FC<PlanTerminalModalProps> = ({
 
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="max-w-5xl flex flex-col h-[80vh]"
@@ -142,39 +190,50 @@ export const PlanTerminalModal: React.FC<PlanTerminalModalProps> = ({
           </DialogDescription>
           <div className="flex items-center justify-between">
             <DialogTitle className="flex-1">Claude Terminal — {truncateTitle(title ?? planJobId)}</DialogTitle>
-            <div className="flex items-center gap-1 ml-4">
+            <div className="flex items-center gap-2 ml-4">
+              {/* Dictation toggle button */}
               <button
-                className="w-6 h-6 rounded-full bg-blue-500 hover:bg-blue-600 flex items-center justify-center transition-colors mr-2"
+                className="w-6 h-6 rounded-full bg-blue-500 hover:bg-blue-600 flex items-center justify-center transition-colors"
                 onClick={() => setShowDictation(!showDictation)}
                 title={showDictation ? "Hide Dictation" : "Show Dictation"}
               >
                 <Mic className="w-3 h-3 text-white" />
               </button>
-              <button
-                className="w-6 h-6 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center transition-colors"
-                onClick={async () => {
-                  if (showConfirmClose) {
-                    await kill(planJobId);
-                    onSessionKilled?.();
-                    onOpenChange(false);
-                    setShowConfirmClose(false);
-                  } else {
-                    setShowConfirmClose(true);
-                    setTimeout(() => setShowConfirmClose(false), 3000);
-                  }
-                }}
-                title="Close"
+
+              {/* View Plan button */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleViewPlan}
+                title="View Plan"
               >
-                <X className="w-3 h-3 text-red-900" />
-              </button>
+                <Eye className="h-4 w-4 mr-2" />
+                View Plan
+              </Button>
+
+              {/* Minimize button */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleMinimize}
+                title="Minimize"
+              >
+                <Minimize2 className="h-4 w-4 mr-2" />
+                Minimize
+              </Button>
+
+              {/* Finish button */}
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setShowConfirmFinish(true)}
+                title="Finish Session"
+              >
+                <CheckCircle className="h-4 w-4 mr-2" />
+                Finish
+              </Button>
             </div>
           </div>
-          {showConfirmClose && (
-            <div className="text-xs text-amber-600 flex items-center gap-1 mt-1">
-              <AlertCircle className="w-3 h-3" />
-              Click again to stop terminal and close
-            </div>
-          )}
           <div className="flex items-center gap-2 pt-2 border-t border-border mt-2">
             {(copyButtons?.length ? copyButtons : [{ id: "default", label: "Paste Plan + Enter" } as any]).map((btn: any) => (
               <Button
@@ -261,5 +320,29 @@ export const PlanTerminalModal: React.FC<PlanTerminalModalProps> = ({
         </div>
       </DialogContent>
     </Dialog>
+
+    {/* Confirmation Dialog for Finish */}
+    <AlertDialog open={showConfirmFinish} onOpenChange={setShowConfirmFinish}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle className="flex items-center gap-2">
+            <AlertCircle className="h-5 w-5 text-amber-500" />
+            Finish Terminal Session?
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            Are you sure you want to finish this session? This will terminate the agent and mark the task as complete/reviewed.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={() => setShowConfirmFinish(false)}>
+            Cancel
+          </AlertDialogCancel>
+          <AlertDialogAction onClick={handleFinish}>
+            Finish
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 };
