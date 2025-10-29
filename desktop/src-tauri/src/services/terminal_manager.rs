@@ -113,6 +113,10 @@ impl TerminalManager {
             let mut c = CommandBuilder::new(shell);
             if shell == "powershell.exe" {
                 c.arg("-NoLogo");
+                // Bypass execution policy for this session (allows npm's .ps1 shims like claude.ps1)
+                // Mirrors IntelliJ Terminal behavior - process-scope policy only, Group Policy still wins
+                c.arg("-ExecutionPolicy");
+                c.arg("Bypass");
             }
             c
         } else if cfg!(target_os = "macos") {
