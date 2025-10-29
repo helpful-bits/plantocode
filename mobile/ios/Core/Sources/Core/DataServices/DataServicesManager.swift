@@ -163,6 +163,26 @@ public class DataServicesManager: ObservableObject {
         logger.info("State reset complete for device switch")
     }
 
+    /// Reset all state for device connection reliability
+    @MainActor
+    public func resetAllState() {
+        terminalService.cleanForDeviceSwitch()
+
+        sessionService.currentSession = nil
+        sessionService.sessions = []
+
+        filesService.files = []
+
+        jobsService.clearJobs()
+
+        plansService.plans.removeAll()
+
+        taskSyncService.tasks.removeAll()
+        taskSyncService.conflicts.removeAll()
+
+        NotificationCenter.default.post(name: Notification.Name("connection-hard-reset-completed"), object: nil)
+    }
+
     /// Test connection to desktop app
     public func testConnection() -> AnyPublisher<Bool, Never> {
         // Use terminal default shell as lightweight connectivity probe

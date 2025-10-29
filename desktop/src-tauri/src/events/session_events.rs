@@ -109,10 +109,16 @@ pub fn emit_history_state_changed<T: Serialize>(
     kind: &str,
     state: &T,
 ) {
+    let state_value = serde_json::to_value(state).unwrap_or(serde_json::json!({}));
+    let version = state_value.get("version").cloned().unwrap_or(serde_json::Value::Null);
+    let checksum = state_value.get("checksum").cloned().unwrap_or(serde_json::Value::Null);
+
     let payload = serde_json::json!({
         "sessionId": session_id,
         "kind": kind,
-        "state": state,
+        "state": state_value,
+        "version": version,
+        "checksum": checksum
     });
 
     if let Err(e) = app.emit("history-state-changed", payload.clone()) {

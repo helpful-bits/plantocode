@@ -11,6 +11,7 @@ public struct DeviceSelectionView: View {
     @State private var showingRegionSelector = false
     @State private var showingDiagnostics = false
     @State private var diagnosticsDeviceId: UUID?
+    @State private var consecutiveFailures = 0
 
     private var filteredDevices: [RegisteredDevice] {
         let allowedPlatforms = Set(["macos", "windows", "linux"])
@@ -107,17 +108,43 @@ public struct DeviceSelectionView: View {
                         VStack(spacing: 8) {
                             StatusAlertView(variant: .destructive, title: "Connection Error", message: errorMessage)
 
-                            if diagnosticsDeviceId != nil {
+                            HStack(spacing: 8) {
+                                if diagnosticsDeviceId != nil {
+                                    Button(action: {
+                                        showingDiagnostics = true
+                                    }) {
+                                        HStack {
+                                            Image(systemName: "stethoscope")
+                                            Text("Why can't I connect?")
+                                        }
+                                        .small()
+                                    }
+                                    .buttonStyle(SecondaryButtonStyle())
+                                }
+
                                 Button(action: {
-                                    showingDiagnostics = true
+                                    Task { await performHardReset(autoRetry: false) }
                                 }) {
                                     HStack {
-                                        Image(systemName: "stethoscope")
-                                        Text("Why can't I connect?")
+                                        Image(systemName: "arrow.clockwise")
+                                        Text("Reset Connection")
                                     }
                                     .small()
                                 }
                                 .buttonStyle(SecondaryButtonStyle())
+
+                                if selectedDeviceId != nil {
+                                    Button(action: {
+                                        Task { await performHardReset(autoRetry: true) }
+                                    }) {
+                                        HStack {
+                                            Image(systemName: "arrow.clockwise.circle.fill")
+                                            Text("Reset and Retry")
+                                        }
+                                        .small()
+                                    }
+                                    .buttonStyle(PrimaryButtonStyle())
+                                }
                             }
                         }
                     }
@@ -357,13 +384,19 @@ public struct DeviceSelectionView: View {
                         selectedDeviceId = nil
                         errorMessage = nil
                         diagnosticsDeviceId = nil
+                        consecutiveFailures = 0
                     }
                 case .failed(_):
                     // Connection failed, reset connecting state but keep error info for diagnostics
                     if isConnecting {
                         print("[DeviceSelection] Connection failed, keeping error state for diagnostics")
                         isConnecting = false
-                        // errorMessage and diagnosticsDeviceId already set in connectToDevice error handler
+                        consecutiveFailures += 1
+
+                        if consecutiveFailures >= 2 {
+                            print("[DeviceSelection] Auto-invoking hard reset after \(consecutiveFailures) failures")
+                            Task { await performHardReset(autoRetry: false) }
+                        }
                     }
                 default:
                     break
@@ -380,6 +413,14 @@ public struct DeviceSelectionView: View {
                 Task { await deviceDiscovery.refreshDevices() }
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("connection-hard-reset-completed"))) { _ in
+            isConnecting = false
+            errorMessage = nil
+            diagnosticsDeviceId = nil
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("connection-reconnect-exhausted"))) { _ in
+            Task { await performHardReset(autoRetry: false) }
+        }
     }
 
     private func refreshDevices() {
@@ -395,6 +436,23 @@ public struct DeviceSelectionView: View {
 
         Task {
             await deviceDiscovery.refreshDevices()
+        }
+    }
+
+    private func performHardReset(autoRetry: Bool) async {
+        await MultiConnectionManager.shared.hardReset(reason: .manual)
+        await DeviceDiscoveryService.shared.clearList()
+        await DeviceDiscoveryService.shared.refreshDevices()
+
+        if autoRetry, let id = selectedDeviceId {
+            _ = await MultiConnectionManager.shared.addConnection(for: id)
+        }
+
+        await MainActor.run {
+            isConnecting = false
+            errorMessage = nil
+            diagnosticsDeviceId = nil
+            consecutiveFailures = 0
         }
     }
 

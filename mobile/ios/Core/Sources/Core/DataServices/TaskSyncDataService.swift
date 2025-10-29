@@ -424,70 +424,16 @@ public class TaskSyncDataService: ObservableObject {
     private var taskDescriptionSyncTasks: [String: Task<Void, Never>] = [:]
     private var lastSyncedHashes: [String: String] = [:]
 
-    /// Start relay-only sync for a session's task description with fast debounced persistence
     public func startTaskDescriptionSync(
         sessionId: String,
         textBinding: Binding<String>,
         pollIntervalSeconds: Double = 4.0
     ) {
-        // Cancel existing sync for this session
-        stopTaskDescriptionSync(sessionId: sessionId)
-
-        // Relay-only sync: debounced persistence
-        let syncTask = Task { @MainActor in
-            var lastPushedText = textBinding.wrappedValue
-            var lastPersistTime: Date?
-            lastSyncedHashes[sessionId] = hashString(lastPushedText)
-
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: UInt64(0.3 * 1_000_000_000)) // Check every 300ms
-
-                let currentText = textBinding.wrappedValue
-                let currentHash = hashString(currentText)
-                let now = Date()
-
-                // Only process if text has actually changed
-                if currentHash != lastSyncedHashes[sessionId] && currentText != lastPushedText {
-
-                    // Debounced persistence (300ms)
-                    let shouldPersist = lastPersistTime == nil ||
-                                       now.timeIntervalSince(lastPersistTime!) >= 0.3
-
-                    if shouldPersist {
-                        lastPushedText = currentText
-                        lastSyncedHashes[sessionId] = currentHash
-                        lastPersistTime = now
-
-                        // Persist to desktop via CommandRouter
-                        do {
-                            for try await response in CommandRouter.sessionUpdateTaskDescription(
-                                sessionId: sessionId,
-                                taskDescription: currentText
-                            ) {
-                                if let error = response.error {
-                                    logger.error("[TaskSync] Failed to persist: \(error.message)")
-                                }
-                                break
-                            }
-                        } catch {
-                            logger.error("[TaskSync] Persist error: \(error.localizedDescription)")
-                        }
-                    }
-                }
-            }
-        }
-
-        taskDescriptionSyncTasks[sessionId] = syncTask
+        return
     }
 
-    /// Stop relay sync for a session
     public func stopTaskDescriptionSync(sessionId: String) {
-        if let task = taskDescriptionSyncTasks[sessionId] {
-            task.cancel()
-            taskDescriptionSyncTasks.removeValue(forKey: sessionId)
-        }
-
-        lastSyncedHashes.removeValue(forKey: sessionId)
+        return
     }
 
     /// Update the last synced hash when receiving remote updates (prevents echo)

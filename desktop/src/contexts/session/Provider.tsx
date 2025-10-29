@@ -403,39 +403,6 @@ export function SessionProvider({ children }: SessionProviderProps) {
     };
   }, [sessionStateHook.currentSession?.id, sessionActions, isUserPresent]);
 
-  // Listen for task description updates from mobile/remote
-  useEffect(() => {
-    let unlistenHistory: (() => void) | null = null;
-
-    const setupHistoryListener = async () => {
-      try {
-        unlistenHistory = await listen<{
-          sessionId: string;
-          taskDescription: string;
-        }>("session-history-synced", (e) => {
-          const p = e.payload;
-
-          // Update task description for matching session
-          if (sessionStateHook.currentSession?.id === p.sessionId) {
-            if (!isUserPresent) return;
-            sessionActions.updateCurrentSessionFields({
-              taskDescription: p.taskDescription,
-            });
-          }
-        });
-      } catch (err) {
-        // Ignore setup errors
-      }
-    };
-
-    setupHistoryListener();
-
-    return () => {
-      if (unlistenHistory) {
-        unlistenHistory();
-      }
-    };
-  }, [sessionStateHook.currentSession?.id, sessionActions, isUserPresent]);
 
   // Register history state changed callback
   useEffect(() => {
