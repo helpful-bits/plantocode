@@ -38,11 +38,11 @@ export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const hash = url.hash;
   
-  // Build the redirect URL - use the correct base URL
-  const protocol = request.headers.get('x-forwarded-proto') || 'http';
-  const host = request.headers.get('host') || 'localhost:3000';
+  // Build the redirect URL - use production domain as fallback
+  const protocol = request.headers.get('x-forwarded-proto') || 'https';
+  const host = request.headers.get('host') || 'www.plantocode.com';
   const baseUrl = `${protocol}://${host}`;
-  
+
   const redirectUrl = new URL(`/legal/${region}/privacy${hash}`, baseUrl);
   
   return NextResponse.redirect(

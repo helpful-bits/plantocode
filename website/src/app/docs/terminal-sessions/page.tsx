@@ -1,14 +1,26 @@
 import type { Metadata } from 'next';
 import { DocsArticle } from '@/components/docs/DocsArticle';
 import { GlassCard } from '@/components/ui/GlassCard';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
   title: 'Terminal sessions - PlanToCode',
-  description: 'How the PTY terminal runs inside PlanToCode, detects agent inactivity, and manages session persistence.',
+  description: 'Technical guide to PTY terminal implementation in PlanToCode. Learn how sessions persist, agent inactivity detection works, and recovery mechanisms.',
   alternates: {
     canonical: 'https://www.plantocode.com/docs/terminal-sessions',
+    languages: {
+      'en-US': 'https://www.plantocode.com/docs/terminal-sessions',
+      'en': 'https://www.plantocode.com/docs/terminal-sessions',
+    },
   },
   openGraph: {
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
+    
     title: 'Terminal sessions - PlanToCode',
     description: 'Understand session persistence, agent attention detection, and recovery in the plan terminal.',
     url: 'https://www.plantocode.com/docs/terminal-sessions',

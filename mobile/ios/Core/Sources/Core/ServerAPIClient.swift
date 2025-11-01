@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 // Import CommonTypes for shared type definitions
 
 public enum APIError: Error, LocalizedError {
@@ -23,11 +24,29 @@ public final class ServerAPIClient {
 
     private let baseURL: String
     private let urlSession: URLSession
+    private let logger = Logger(subsystem: "PlanToCode", category: "NetworkRequest")
 
     public init(baseURL: String) {
         self.baseURL = baseURL
         let pinningDelegate = CertificatePinningManager.shared.createURLSessionDelegate(endpointType: .relay)
         self.urlSession = URLSession(configuration: .default, delegate: pinningDelegate, delegateQueue: nil)
+    }
+
+    private func formatBytes(_ bytes: Int) -> String {
+        let units = ["B", "KB", "MB", "GB"]
+        var value = Double(bytes)
+        var unitIndex = 0
+
+        while value >= 1024 && unitIndex < units.count - 1 {
+            value /= 1024
+            unitIndex += 1
+        }
+
+        if unitIndex == 0 {
+            return "\(bytes) B"
+        } else {
+            return String(format: "%.2f %@", value, units[unitIndex])
+        }
     }
 
     public func request<T: Decodable>(
@@ -90,6 +109,10 @@ public final class ServerAPIClient {
             }
         }
 
+        // Track request metrics
+        let requestBodySize = request.httpBody?.count ?? 0
+        let startTime = Date()
+
         do {
             let (data, response) = try await urlSession.data(for: request)
 
@@ -97,8 +120,18 @@ public final class ServerAPIClient {
                 throw APIError.invalidResponse(statusCode: -1, data: nil)
             }
 
+            // Calculate timing and log metrics
+            let duration = Date().timeIntervalSince(startTime)
+            let responseSize = data.count
+
+            logger.info("[\(method.rawValue)] \(cleanedPath) | Status: \(httpResponse.statusCode) | Duration: \(String(format: "%.3f", duration))s | Request: \(self.formatBytes(requestBodySize)) | Response: \(self.formatBytes(responseSize))")
+
             return (data, httpResponse)
         } catch {
+            // Log failed requests
+            let duration = Date().timeIntervalSince(startTime)
+            logger.error("[\(method.rawValue)] \(cleanedPath) | Failed after \(String(format: "%.3f", duration))s | Request: \(self.formatBytes(requestBodySize)) | Error: \(error.localizedDescription)")
+
             if let err = error as? APIError { throw err }
             throw APIError.requestFailed(error)
         }

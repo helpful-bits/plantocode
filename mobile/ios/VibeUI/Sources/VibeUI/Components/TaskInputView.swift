@@ -360,7 +360,6 @@ public struct TaskInputView: View {
     @StateObject private var voiceService = VoiceDictationService.shared
     @StateObject private var enhancementService = TextEnhancementService.shared
     @StateObject private var settingsService = SettingsDataService()
-    @StateObject private var sessionDataService = SessionDataService()
     @StateObject private var undoRedoManager = UndoRedoManager()
 
     @State private var selectedRange: NSRange = NSRange(location: 0, length: 0)
@@ -433,7 +432,6 @@ public struct TaskInputView: View {
                     transcriptionPrompt: transcriptionPrompt,
                     transcriptionTemperature: transcriptionTemperature,
                     onError: { error in
-                        print("Voice dictation error: \(error)")
                     },
                     onTranscriptionComplete: {
                         undoRedoManager.saveState(taskDescription)
@@ -579,47 +577,11 @@ public struct TaskInputView: View {
                         }
                     }
                 } catch {
-                    print("Failed to fetch transcription settings: \(error)")
                 }
             }
         }
-        .onAppear {
-            Task {
-                guard initializedForSessionId != sessionId else { return }
-                do {
-                    let state = try await sessionDataService.getHistoryState(sessionId: sessionId, kind: "task")
-                    await MainActor.run {
-                        undoRedoManager.applyRemoteHistoryState(state, suppressRecording: true)
-                        let history = undoRedoManager.getHistory()
-                        if !history.isEmpty {
-                            taskDescription = history.last ?? ""
-                        }
-                        initializedForSessionId = sessionId
-                    }
-                } catch {
-                    print("Failed to load history state: \(error)")
-                }
-            }
-        }
-        .onChange(of: sessionId) { _ in
-            initializedForSessionId = nil
-            debounceTask?.cancel()
-            Task {
-                do {
-                    let state = try await sessionDataService.getHistoryState(sessionId: sessionId, kind: "task")
-                    await MainActor.run {
-                        undoRedoManager.applyRemoteHistoryState(state, suppressRecording: true)
-                        let history = undoRedoManager.getHistory()
-                        if !history.isEmpty {
-                            taskDescription = history.last ?? ""
-                        }
-                        initializedForSessionId = sessionId
-                    }
-                } catch {
-                    print("Failed to load history state: \(error)")
-                }
-            }
-        }
+        .onAppear(perform: handleInitialLoad)
+        .onChange(of: sessionId, perform: handleSessionChange)
         .onDisappear {
             debounceTask?.cancel()
         }
@@ -633,17 +595,75 @@ public struct TaskInputView: View {
                 return
             }
 
-            if !isEditing {
-                undoRedoManager.applyRemoteHistoryState(remoteState, suppressRecording: true)
-                let history = undoRedoManager.getHistory()
-                if !history.isEmpty {
-                    taskDescription = history.last ?? ""
-                }
-            }
+            guard !isEditing else { return }
+            applyHistoryState(remoteState)
         }
     }
 
     // MARK: - Helper Methods
+
+    private func handleInitialLoad() {
+        Task {
+            guard initializedForSessionId != sessionId else { return }
+            await applyAuthoritativeTaskDescription(for: sessionId)
+        }
+    }
+
+    private func handleSessionChange(_ newSessionId: String) {
+        initializedForSessionId = nil
+        debounceTask?.cancel()
+        Task {
+            await applyAuthoritativeTaskDescription(for: newSessionId)
+        }
+    }
+
+    private func applyAuthoritativeTaskDescription(for sessionId: String) async {
+        await MainActor.run {
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        }
+
+        do {
+            let state = try await container.sessionService.getHistoryState(sessionId: sessionId, kind: "task")
+            await MainActor.run {
+                initializedForSessionId = sessionId
+                applyHistoryState(state)
+            }
+        } catch {
+            await MainActor.run {
+                initializedForSessionId = sessionId
+                applyFallbackSessionDescription()
+            }
+        }
+    }
+
+    private func applyHistoryState(_ state: HistoryState) {
+        undoRedoManager.applyRemoteHistoryState(state, suppressRecording: true)
+        if let value = container.sessionService.lastNonEmptyHistoryValue(state) {
+            applyTaskTextIfNeeded(value, resetHistory: false)
+        } else {
+            applyFallbackSessionDescription(resetHistory: true)
+        }
+    }
+
+    private func applyFallbackSessionDescription(resetHistory: Bool = false) {
+        guard let desc = container.sessionService.currentSession?.taskDescription?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !desc.isEmpty else {
+            return
+        }
+
+        applyTaskTextIfNeeded(desc, resetHistory: resetHistory)
+    }
+
+    private func applyTaskTextIfNeeded(_ text: String, resetHistory: Bool) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard taskDescription.trimmingCharacters(in: .whitespacesAndNewlines) != trimmed else { return }
+
+        if resetHistory {
+            undoRedoManager.reset(with: trimmed)
+        }
+        taskDescription = trimmed
+    }
 
     private func enhanceSelectedOrAll() {
         let ns = taskDescription as NSString
@@ -670,7 +690,6 @@ public struct TaskInputView: View {
                     )
                 }
             } catch {
-                print("Enhancement failed: \(error)")
             }
         }
     }
@@ -700,7 +719,6 @@ public struct TaskInputView: View {
                     )
                 }
             } catch {
-                print("Refinement failed: \(error)")
             }
         }
     }
@@ -725,14 +743,13 @@ public struct TaskInputView: View {
 
             let state = undoRedoManager.exportState()
             do {
-                _ = try await sessionDataService.syncHistoryState(
+                _ = try await container.sessionService.syncHistoryState(
                     sessionId: sessionId,
                     kind: "task",
                     state: state,
                     expectedVersion: state.version
                 )
             } catch {
-                print("Failed to sync history state: \(error)")
             }
 
             await MainActor.run {

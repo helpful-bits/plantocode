@@ -5,6 +5,7 @@ import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Search, Globe, Database, Brain, Zap, Shield, CheckCircle2, Network, TrendingUp, FileText, Filter, Clock } from 'lucide-react';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
   title: 'Deep research - web search for developers | PlanToCode',
@@ -29,9 +30,20 @@ export const metadata: Metadata = {
     url: 'https://www.plantocode.com/features/deep-research',
     siteName: 'PlanToCode',
     type: 'website',
+    locale: 'en_US',
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
   },
   alternates: {
     canonical: 'https://www.plantocode.com/features/deep-research',
+    languages: {
+      'en-US': 'https://www.plantocode.com/features/deep-research',
+      'en': 'https://www.plantocode.com/features/deep-research',
+    },
   },
 };
 

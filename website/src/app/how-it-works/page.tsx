@@ -19,11 +19,17 @@ import {
 } from 'lucide-react';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Button } from '@/components/ui/button';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
-  title: 'How it works - Corporate AI development workflow | PlanToCode',
-  description: 'End-to-end workflow: capture requirements from meetings and voice, refine into actionable specifications, generate granular implementation plans, review with human-in-the-loop governance, and execute safely. Built for corporate teams managing legacy codebases.',
+  title: 'How PlanToCode Works - AI Implementation Planning Workflow',
+  description: 'AI implementation planning prevents chaos. File discovery, multi-model plans, human review, and safe execution with any coding agent.',
   keywords: [
+    'implementation plan',
+    'ai code planning',
+    'safe refactoring',
+    'prevent duplicate files',
+    'cursor alternative',
     'corporate ai workflow',
     'requirements to implementation',
     'meeting to code',
@@ -52,9 +58,19 @@ export const metadata: Metadata = {
     url: 'https://www.plantocode.com/how-it-works',
     siteName: 'PlanToCode',
     type: 'website',
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
   },
   alternates: {
     canonical: 'https://www.plantocode.com/how-it-works',
+    languages: {
+      'en-US': 'https://www.plantocode.com/how-it-works',
+      'en': 'https://www.plantocode.com/how-it-works',
+    },
   },
 };
 

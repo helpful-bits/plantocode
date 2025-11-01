@@ -6,7 +6,6 @@ pub mod config_handlers;
 pub mod consent_handlers;
 pub mod deployment_status;
 pub mod device_handlers;
-pub mod featurebase_handlers;
 pub mod health;
 pub mod model_handlers;
 pub mod notification_handlers;

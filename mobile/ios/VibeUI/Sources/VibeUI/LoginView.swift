@@ -176,7 +176,7 @@ public struct LoginView: View {
       }
     }
     .sheet(isPresented: $showingRegionSelector) {
-      ServerSelectionView()
+      ServerSelectionView(isModal: true)
     }
   }
 

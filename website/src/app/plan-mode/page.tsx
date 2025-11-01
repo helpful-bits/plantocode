@@ -11,6 +11,7 @@ import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { FAQ } from '@/components/landing/FAQ';
 import { Code2, Terminal, GitMerge, Search, Zap } from 'lucide-react';
 import type { SoftwareApplication, HowTo, FAQPage } from 'schema-dts';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
   title: 'Plan Software Changes Before You Code — Reviewable Specs | PlanToCode',
@@ -30,6 +31,21 @@ export const metadata: Metadata = {
     'multi-model plan synthesis',
     'file discovery for cli tools'
   ],
+  alternates: {
+    canonical: 'https://www.plantocode.com/plan-mode',
+    languages: {
+      'en-US': 'https://www.plantocode.com/plan-mode',
+      'en': 'https://www.plantocode.com/plan-mode',
+    },
+  },
+  openGraph: {
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
+  },
 };
 
 export default function HirePage() {

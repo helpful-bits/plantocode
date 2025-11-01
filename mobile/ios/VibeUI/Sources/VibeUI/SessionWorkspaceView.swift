@@ -94,7 +94,8 @@ public struct SessionWorkspaceView: View {
             // Tab 4: Jobs - No lazy loading to ensure onReceive handlers fire
             JobsTab(
                 session: session,
-                isOfflineMode: isOfflineMode
+                isOfflineMode: isOfflineMode,
+                jobsService: container.jobsService
             )
             .tabItem {
                 Label("Jobs", systemImage: "chart.bar.doc.horizontal")
@@ -313,16 +314,24 @@ public struct SessionWorkspaceView: View {
     }
 
     private func loadSession(_ session: Session) {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+
         // Set the session immediately for UI responsiveness
         currentSession = session
-        taskText = session.taskDescription ?? ""
+        if let desc = session.taskDescription?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !desc.isEmpty,
+           taskText.trimmingCharacters(in: .whitespacesAndNewlines) != desc {
+            taskText = desc
+        }
         errorMessage = nil
 
         // Set current project in AppContainer for proper scoping
         let dir = session.projectDirectory
-        let name = URL(fileURLWithPath: dir).lastPathComponent
-        let hash = String(dir.hashValue)
-        container.setCurrentProject(ProjectInfo(name: name, directory: dir, hash: hash))
+        if container.currentProject?.directory != dir {
+            let name = URL(fileURLWithPath: dir).lastPathComponent
+            let hash = String(dir.hashValue)
+            container.setCurrentProject(ProjectInfo(name: name, directory: dir, hash: hash))
+        }
 
         // Fetch full session details including includedFiles
         Task {
@@ -331,7 +340,11 @@ public struct SessionWorkspaceView: View {
                     await MainActor.run {
                         // Update with full details
                         currentSession = fullSession
-                        taskText = fullSession.taskDescription ?? taskText
+                        if let desc = fullSession.taskDescription?.trimmingCharacters(in: .whitespacesAndNewlines),
+                           !desc.isEmpty,
+                           taskText.trimmingCharacters(in: .whitespacesAndNewlines) != desc {
+                            taskText = desc
+                        }
 
                         // Set current session in SessionDataService for global access
                         container.sessionService.currentSession = fullSession
@@ -691,7 +704,9 @@ private struct SessionSynchronizedPlansView: View {
             .task {
                 // Synchronize session immediately when view appears
                 if container.sessionService.currentSession?.id != session.id {
-                    container.sessionService.currentSession = session
+                    await MainActor.run {
+                        container.sessionService.currentSession = session
+                    }
                 }
             }
     }
@@ -702,6 +717,7 @@ private struct SessionSynchronizedPlansView: View {
 struct JobsTab: View {
     let session: Session
     let isOfflineMode: Bool
+    let jobsService: JobsDataService
 
     var body: some View {
         NavigationStack {
@@ -730,7 +746,7 @@ struct JobsTab: View {
                 .navigationTitle("Jobs")
                 .navigationBarTitleDisplayMode(.inline)
             } else {
-                JobsMonitoringView()
+                JobsMonitoringView(jobsService: jobsService)
                     .navigationTitle("Jobs")
                     .navigationBarTitleDisplayMode(.inline)
             }
@@ -1141,8 +1157,6 @@ struct SyncLifecycleModifier: ViewModifier {
             }
             .onChange(of: currentSessionId) { newSessionId in
                 stopSync()
-                // Clear pending updates on session switch
-                pendingRemoteTaskDescription = nil
                 lastSyncedSessionId = newSessionId
                 if selectedTab == 0 {
                     startSync()
@@ -1203,10 +1217,14 @@ struct SessionUpdateModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .onReceive(container.sessionService.$currentSession.compactMap { $0 }) { newSession in
+            .onReceive(container.sessionService.currentSessionPublisher.compactMap { $0 }) { newSession in
                 // Adopt externally switched session
                 currentSession = newSession
-                taskText = newSession.taskDescription ?? taskText
+                let incoming = newSession.taskDescription?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let current = taskText.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let desc = incoming, !desc.isEmpty, (current.isEmpty || current != desc) {
+                    taskText = desc
+                }
             }
             .onReceive(appState.$deepLinkRoute.compactMap { $0 }) { route in
                 Task { await handleDeepLink(route) }
@@ -1239,12 +1257,6 @@ struct ConnectionModifier: ViewModifier {
         content
             .onAppear {
                 checkConnectionAndLoad()
-                // Trigger live bootstrap for instant data
-                Task {
-                    if let manager = container as? DataServicesManager {
-                        await manager.performLiveBootstrap()
-                    }
-                }
             }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
                 // Reconnect when app comes back to foreground
@@ -1276,13 +1288,12 @@ struct TaskSyncModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .onReceive(container.sessionService.$currentSession) { updatedSession in
+            .onReceive(container.sessionService.currentSessionPublisher) { updatedSession in
                 // External Update Gate: defer updates while user is actively editing
                 // This prevents cursor jumps during typing (matching desktop behavior)
                 guard let session = updatedSession,
                       session.id == currentSession?.id,
                       let updatedTaskDesc = session.taskDescription,
-                      !updatedTaskDesc.isEmpty,
                       updatedTaskDesc != taskText else {
                     return
                 }
@@ -1290,18 +1301,18 @@ struct TaskSyncModifier: ViewModifier {
                 let trimmedReceived = updatedTaskDesc.trimmingCharacters(in: .whitespacesAndNewlines)
                 let trimmedCurrent = taskText.trimmingCharacters(in: .whitespacesAndNewlines)
 
-                guard trimmedReceived != trimmedCurrent else {
+                guard !trimmedReceived.isEmpty, trimmedReceived != trimmedCurrent else {
                     return
                 }
 
                 // Check if keyboard is visible to decide whether to queue or apply update
                 if isKeyboardVisible {
                     // Queue the update for later to prevent cursor jumps during typing
-                    pendingRemoteTaskDescription = updatedTaskDesc
+                    pendingRemoteTaskDescription = trimmedReceived
                 } else {
                     // Apply immediately if not actively typing
-                    taskText = updatedTaskDesc
-                    container.taskSyncService.updateLastSyncedText(sessionId: session.id, text: updatedTaskDesc)
+                    taskText = trimmedReceived
+                    container.taskSyncService.updateLastSyncedText(sessionId: session.id, text: trimmedReceived)
                     pendingRemoteTaskDescription = nil
                 }
             }
@@ -1313,10 +1324,15 @@ struct TaskSyncModifier: ViewModifier {
 
                 // Flush pending remote updates when keyboard dismisses
                 if let pending = pendingRemoteTaskDescription,
-                   let session = currentSession,
-                   pending != taskText {
-                    taskText = pending
-                    container.taskSyncService.updateLastSyncedText(sessionId: session.id, text: pending)
+                   let session = currentSession {
+                    let trimmedPending = pending.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmedPending.isEmpty, trimmedPending != taskText.trimmingCharacters(in: .whitespacesAndNewlines) else {
+                        pendingRemoteTaskDescription = nil
+                        return
+                    }
+
+                    taskText = trimmedPending
+                    container.taskSyncService.updateLastSyncedText(sessionId: session.id, text: trimmedPending)
                     pendingRemoteTaskDescription = nil
                 }
             }
@@ -1335,7 +1351,9 @@ struct ProjectChangeModifier: ViewModifier {
                 if let oldSession = currentSession,
                    oldSession.projectDirectory != newProject?.directory {
                     currentSession = nil
-                    container.sessionService.currentSession = nil
+                    Task { @MainActor in
+                        container.sessionService.currentSession = nil
+                    }
                 }
                 loadMostRecentSession()
             }

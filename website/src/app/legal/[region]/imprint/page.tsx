@@ -1,6 +1,8 @@
 import { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
 import LegalContent from '@/components/legal/LegalContent';
+import { cdnUrl } from '@/lib/cdn';
+import { ObfuscatedEmail } from '@/components/ui/ObfuscatedEmail';
 
 interface ImprintPageProps {
   params: Promise<{
@@ -19,13 +21,25 @@ export async function generateMetadata({ params }: ImprintPageProps): Promise<Me
 
   return {
     title: 'Imprint (Impressum)',
-    description: 'Legal imprint and company information for helpful bits GmbH, operator of PlanToCode.',
+    description: 'Legal imprint for helpful bits GmbH, operator of PlanToCode. Registered in Munich, Germany with address, VAT ID, commercial register, and contact info.',
     robots: {
       index: true,
       follow: true,
     },
     alternates: {
-      canonical: `/legal/${region}/imprint`,
+      canonical: `https://www.plantocode.com/legal/${region}/imprint`,
+      languages: {
+        'en-US': `https://www.plantocode.com/legal/${region}/imprint`,
+        'en': `https://www.plantocode.com/legal/${region}/imprint`,
+      },
+    },
+    openGraph: {
+      images: [{
+        url: cdnUrl('/images/og-image.png'),
+        width: 1200,
+        height: 630,
+        alt: 'PlanToCode - AI Planning for Code',
+      }],
     },
   };
 }
@@ -59,7 +73,7 @@ export default async function ImprintPage({ params }: ImprintPageProps) {
       <section>
         <h2 className="text-2xl font-semibold mb-4">Contact Information</h2>
         <div className="space-y-2">
-          <p><strong>Email:</strong> <a href="mailto:legal@plantocode.com" className="link-primary">legal@plantocode.com</a></p>
+          <p><strong>Email:</strong> <ObfuscatedEmail user="legal" domain="plantocode.com" className="link-primary" /></p>
           <p><strong>Phone:</strong> +49 89 122237960</p>
           <p><strong>Rapid Communication:</strong> For urgent matters, please use email as the fastest communication channel</p>
         </div>

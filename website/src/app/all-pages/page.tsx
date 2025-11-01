@@ -8,11 +8,23 @@ import {
 } from 'lucide-react';
 import pseoData from '@/data/pseo';
 import { Metadata } from 'next';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
   title: 'All Pages - pSEO Review | PlanToCode',
   description: 'Internal review page for all programmatic SEO pages',
-  robots: 'noindex, nofollow'
+  robots: {
+    index: false,
+    follow: false,
+  },
+  openGraph: {
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
+  },
 };
 
 export default function PseoReviewPage() {

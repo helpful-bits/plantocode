@@ -1,7 +1,6 @@
 import Foundation
 import Combine
 import Security
-import OSLog
 import Network
 #if canImport(UIKit)
 import UIKit
@@ -19,8 +18,8 @@ public final class MultiConnectionManager: ObservableObject {
     private var connectingTasks: [UUID: Task<Result<UUID, Error>, Never>] = [:]
     private var verifyingDevices = Set<UUID>()
     private var relayHandshakeByDevice = [UUID: ConnectionHandshake]()
-    private let logger = Logger(subsystem: "PlanToCode", category: "MultiConnectionManager")
     private var isHardResetInProgress = false
+    private var hasRestoredOnce = false
 
     private struct ReconnectPolicy {
         let attemptDelays: [TimeInterval] = [0.0, 0.5, 1, 2, 4, 8, 16, 30]
@@ -76,16 +75,12 @@ public final class MultiConnectionManager: ObservableObject {
         loadPersistedActiveDeviceId()
 
         lastConnectedServerURL = UserDefaults.standard.string(forKey: serverContextKey)
-        if let serverURL = lastConnectedServerURL {
-            logger.info("📍 Loaded last connected server: \(serverURL)")
-        }
 
         // Validate activeDeviceId exists in persisted connections
         let deviceIds = UserDefaults.standard.array(forKey: connectedDevicesKey) as? [String] ?? []
         if let activeId = activeDeviceId {
             let activeIdStr = activeId.uuidString
             if !deviceIds.contains(activeIdStr) {
-                logger.info("Clearing stale activeDeviceId: \(activeIdStr)")
                 activeDeviceId = nil
                 UserDefaults.standard.removeObject(forKey: activeDeviceKey)
             }
@@ -95,7 +90,6 @@ public final class MultiConnectionManager: ObservableObject {
             guard let self = self else { return }
             Task { @MainActor in
                 self.lastPath = path
-                self.logger.info("🌐 Network path changed: status=\(String(describing: path.status)), interfaces=\(path.availableInterfaces.count)")
                 self.triggerAggressiveReconnect(reason: .networkChange(path))
             }
         }
@@ -107,7 +101,6 @@ public final class MultiConnectionManager: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             guard let self = self else { return }
-            self.logger.info("🔑 Auth token refreshed, triggering reconnect for active device")
             self.triggerAggressiveReconnect(reason: .authRefreshed)
         }
 
@@ -117,7 +110,6 @@ public final class MultiConnectionManager: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             guard let self = self else { return }
-            self.logger.info("👋 User logged out, stopping all reconnection attempts")
             self.stopAllReconnectTimers()
             self.removeAllConnections()
         }
@@ -130,14 +122,11 @@ public final class MultiConnectionManager: ObservableObject {
     @MainActor
     public func hardReset(reason: HardResetReason, deletePersistedDevices: Bool = true) async {
         guard !isHardResetInProgress else {
-            logger.warning("Hard reset already in progress, skipping")
             return
         }
 
         isHardResetInProgress = true
         defer { isHardResetInProgress = false }
-
-        logger.info("🔥 Starting hard reset, reason: \(String(describing: reason))")
 
         stopAllReconnectTimers()
         cancelAllCancellables()
@@ -181,8 +170,6 @@ public final class MultiConnectionManager: ObservableObject {
             object: nil,
             userInfo: ["reason": reason]
         )
-
-        logger.info("✅ Hard reset completed")
     }
 
     @MainActor
@@ -294,12 +281,10 @@ public final class MultiConnectionManager: ObservableObject {
         if let existingClient = storage[deviceId] {
             // Verify the connection is actually healthy
             if existingClient.isConnected {
-                print("[MultiConnectionManager] Reusing existing healthy connection for device: \(deviceId)")
                 activeDeviceId = deviceId
                 return .success(deviceId)
             } else {
                 // Connection exists but is not healthy - remove it and create a new one
-                print("[MultiConnectionManager] Existing connection is not healthy, removing and recreating for device: \(deviceId)")
                 existingClient.disconnect()
                 storage.removeValue(forKey: deviceId)
                 connectionStates.removeValue(forKey: deviceId)
@@ -308,7 +293,6 @@ public final class MultiConnectionManager: ObservableObject {
 
         // If already connecting, wait for that task
         if let existingTask = connectingTasks[deviceId] {
-            print("[MultiConnectionManager] Connection already in progress for device: \(deviceId)")
             return await existingTask.value
         }
 
@@ -325,22 +309,17 @@ public final class MultiConnectionManager: ObservableObject {
             }
 
             do {
-                print("[MultiConnectionManager] Adding connection for device: \(deviceId)")
-
                 let token = try await AuthService.shared.getValidAccessToken()
                 guard let authToken = token else {
-                    print("[MultiConnectionManager] Authentication failed: no token available")
                     return .failure(MultiConnectionError.authenticationRequired)
                 }
 
                 guard let serverURL = self.getServerURL() else {
-                    print("[MultiConnectionManager] Invalid server configuration")
                     return .failure(MultiConnectionError.invalidConfiguration)
                 }
 
                 let mobileDeviceId = DeviceManager.shared.getOrCreateDeviceID()
 
-                print("[MultiConnectionManager] Creating relay client to: \(serverURL.absoluteString)")
                 let pinningDelegate = CertificatePinningManager.shared.createURLSessionDelegate(endpointType: .relay)
                 let relayClient = ServerRelayClient(
                     serverURL: serverURL,
@@ -349,9 +328,7 @@ public final class MultiConnectionManager: ObservableObject {
                 )
                 relayClient.allowInternalReconnect = false
 
-                print("[MultiConnectionManager] Connecting to relay...")
                 try await relayClient.connect(jwtToken: authToken).asyncValue()
-                print("[MultiConnectionManager] Relay connection established, starting verification")
 
                 await MainActor.run {
                     self.storage[deviceId] = relayClient
@@ -378,7 +355,6 @@ public final class MultiConnectionManager: ObservableObject {
                                         let connected = self.connectedDeviceIds
                                         if connected.count == 1, connected.first == deviceId {
                                             self.setActive(deviceId)
-                                            self.logger.info("Auto-assigned single connected device: \(deviceId)")
                                         }
                                     }
                                 case .reconnecting:
@@ -417,10 +393,7 @@ public final class MultiConnectionManager: ObservableObject {
                         self.lastConnectedServerURL = Config.serverURL
                         UserDefaults.standard.set(self.lastConnectedServerURL, forKey: self.serverContextKey)
                     }
-
-                    print("[MultiConnectionManager] Verification successful, connection fully established")
                 } catch {
-                    print("[MultiConnectionManager] Verification failed: \(error.localizedDescription)")
                     await MainActor.run {
                         self.connectionStates[deviceId] = .failed(error)
                         self.verifyingDevices.remove(deviceId)
@@ -429,11 +402,9 @@ public final class MultiConnectionManager: ObservableObject {
                     throw error
                 }
 
-                print("[MultiConnectionManager] Connection successful for device: \(deviceId)")
                 return .success(deviceId)
 
             } catch {
-                print("[MultiConnectionManager] Connection failed: \(error.localizedDescription)")
                 await MainActor.run {
                     self.connectionStates[deviceId] = .failed(error)
                 }
@@ -582,8 +553,6 @@ public final class MultiConnectionManager: ObservableObject {
             }
         }
 
-        logger.info("🔄 Triggering aggressive reconnect for \(candidates.count) devices, reason: \(String(describing: reason))")
-
         for deviceId in candidates {
             startAggressiveSequence(for: deviceId, reason: reason)
         }
@@ -593,8 +562,6 @@ public final class MultiConnectionManager: ObservableObject {
         guard canAttemptReconnect(for: deviceId) else {
             return
         }
-
-        logger.info("🚀 Starting aggressive sequence for device \(deviceId), reason: \(String(describing: reason))")
 
         if reconnectStates[deviceId] == nil {
             reconnectStates[deviceId] = DeviceReconnectState()
@@ -617,12 +584,10 @@ public final class MultiConnectionManager: ObservableObject {
 
     private func scheduleNextReconnectAttempt(for deviceId: UUID) async {
         if let state = connectionStates[deviceId], state.isConnected {
-            logger.info("Device \(deviceId) already connected, stopping reconnect")
             return
         }
 
         if connectingTasks[deviceId] != nil {
-            logger.info("Device \(deviceId) already connecting, skipping")
             return
         }
 
@@ -630,7 +595,6 @@ public final class MultiConnectionManager: ObservableObject {
 
         let elapsed = Date().timeIntervalSince(state.aggressiveWindowStart ?? Date())
         if state.attempts >= reconnectPolicy.maxAggressiveAttempts || elapsed >= reconnectPolicy.maxAggressiveWindowSeconds {
-            logger.info("Aggressive window exhausted for \(deviceId), degrading to background retry")
             degradeToBackgroundRetry(for: deviceId)
             return
         }
@@ -641,8 +605,6 @@ public final class MultiConnectionManager: ObservableObject {
         let jitter = Double.random(in: -jitterRange...jitterRange)
         let delay = max(0, baseDelay + jitter)
 
-        logger.info("⏱️ Scheduling reconnect attempt #\(state.attempts + 1) for \(deviceId) with delay \(String(format: "%.2f", delay))s")
-
         try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
 
         await attemptConnect(for: deviceId)
@@ -650,18 +612,14 @@ public final class MultiConnectionManager: ObservableObject {
 
     private func attemptConnect(for deviceId: UUID) async {
         guard canAttemptReconnect(for: deviceId) else {
-            logger.info("Security gate failed for \(deviceId), stopping reconnect")
             reconnectStates[deviceId]?.isAggressiveActive = false
             return
         }
-
-        logger.info("Attempting connect for device \(deviceId)")
 
         let result = await addConnection(for: deviceId)
 
         switch result {
         case .success:
-            logger.info("✅ Reconnect successful for \(deviceId)")
             reconnectStates[deviceId]?.currentTask?.cancel()
             reconnectStates[deviceId]?.backgroundTimer?.invalidate()
             reconnectStates.removeValue(forKey: deviceId)
@@ -670,7 +628,6 @@ public final class MultiConnectionManager: ObservableObject {
             UserDefaults.standard.set(lastConnectedServerURL, forKey: serverContextKey)
 
         case .failure(let error):
-            logger.error("❌ Reconnect failed for \(deviceId): \(error.localizedDescription)")
             reconnectStates[deviceId]?.lastError = error
             reconnectStates[deviceId]?.attempts += 1
 
@@ -680,12 +637,10 @@ public final class MultiConnectionManager: ObservableObject {
 
     private func canAttemptReconnect(for deviceId: UUID) -> Bool {
         guard AuthService.shared.isAuthenticated == true else {
-            logger.warning("🔒 Cannot reconnect \(deviceId): not authenticated")
             return false
         }
 
         if let lastServer = lastConnectedServerURL, lastServer != Config.serverURL {
-            logger.warning("🌐 Cannot reconnect \(deviceId): server context changed from \(lastServer) to \(Config.serverURL)")
             NotificationCenter.default.post(
                 name: Notification.Name("connection-server-context-changed"),
                 object: nil,
@@ -700,17 +655,13 @@ public final class MultiConnectionManager: ObservableObject {
         let deviceIdStrs = UserDefaults.standard.array(forKey: connectedDevicesKey) as? [String] ?? []
         let knownDeviceIds = deviceIdStrs.compactMap { UUID(uuidString: $0) }
         guard deviceId == activeDeviceId || knownDeviceIds.contains(deviceId) else {
-            logger.warning("📱 Cannot reconnect \(deviceId): device not in known list")
             return false
         }
 
-        logger.debug("✅ Security gates passed for \(deviceId)")
         return true
     }
 
     private func degradeToBackgroundRetry(for deviceId: UUID) {
-        logger.warning("⚠️ Degrading to background retry for \(deviceId) after \(self.reconnectStates[deviceId]?.attempts ?? 0) attempts")
-
         reconnectStates[deviceId]?.isAggressiveActive = false
         reconnectStates[deviceId]?.currentTask?.cancel()
         reconnectStates[deviceId]?.currentTask = nil
@@ -742,7 +693,6 @@ public final class MultiConnectionManager: ObservableObject {
             if let state = self.reconnectStates[deviceId] {
                 if state.backgroundCycles >= 2 {
                     if let currentState = self.connectionStates[deviceId], !currentState.isConnected {
-                        self.logger.warning("Background cycles exhausted (\(state.backgroundCycles)), triggering hard reset")
                         self.reconnectStates[deviceId]?.backgroundTimer?.invalidate()
                         Task { @MainActor in
                             await self.hardReset(reason: .reconnectionExhausted)
@@ -757,7 +707,6 @@ public final class MultiConnectionManager: ObservableObject {
             Task { @MainActor in
                 let result = await self.addConnection(for: deviceId)
                 if case .success = result {
-                    self.logger.info("Background retry successful for \(deviceId)")
                     self.reconnectStates[deviceId]?.backgroundTimer?.invalidate()
                     self.reconnectStates.removeValue(forKey: deviceId)
                 }
@@ -768,7 +717,6 @@ public final class MultiConnectionManager: ObservableObject {
     }
 
     private func stopAllReconnectTimers() {
-        logger.info("🛑 Stopping all reconnect timers for \(self.reconnectStates.count) devices")
         for (_, state) in self.reconnectStates {
             state.currentTask?.cancel()
             state.backgroundTimer?.invalidate()
@@ -795,6 +743,10 @@ public final class MultiConnectionManager: ObservableObject {
     // MARK: - Connection Persistence
 
     public func restoreConnections() async {
+        // Idempotency guard: only restore once per app lifecycle
+        if hasRestoredOnce { return }
+        hasRestoredOnce = true
+        
         // Only restore if initialized and authenticated
         if !PlanToCodeCore.shared.isInitialized || AuthService.shared.isAuthenticated == false {
             return
@@ -817,7 +769,6 @@ public final class MultiConnectionManager: ObservableObject {
             let connected = connectedDeviceIds
             if connected.count == 1, let deviceId = connected.first {
                 setActive(deviceId)
-                print("[MultiConnectionManager] Auto-assigned single connected device after restore: \(deviceId)")
             }
         }
     }

@@ -4,12 +4,20 @@ import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Layers, Workflow, Merge, ClipboardList, Settings } from 'lucide-react';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
   title: 'Ship Large Features with Traceable Plans - PlanToCode',
   description:
     'Use PlanToCode to coordinate implementation plans, model selections, and background workflows when delivering multi-step features.',
   openGraph: {
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
+    
     title: 'Ship Large Features with Traceable Plans - PlanToCode',
     description:
       'Organise multi-step implementation work with plan history, model guardrails, and reusable workflows.',
@@ -19,6 +27,10 @@ export const metadata: Metadata = {
   },
   alternates: {
     canonical: 'https://www.plantocode.com/solutions/large-features',
+    languages: {
+      'en-US': 'https://www.plantocode.com/solutions/large-features',
+      'en': 'https://www.plantocode.com/solutions/large-features',
+    },
   },
 };
 

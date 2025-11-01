@@ -6,9 +6,9 @@ extension ServerAPIClient {
 
     /// Get all registered devices for the authenticated user
     public func getDevices(deviceType: String? = nil) async throws -> [RegisteredDevice] {
-        var path = "api/devices"
+        var path = "api/devices?connected_only=true"
         if let deviceType = deviceType {
-            path += "?device_type=\(deviceType)"
+            path += "&device_type=\(deviceType)"
         }
 
         let serverDevices: [ServerDeviceInfo] = try await deviceRequest(

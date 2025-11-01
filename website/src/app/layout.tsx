@@ -6,7 +6,6 @@ import { fontClasses } from './fonts';
 import { StructuredData } from '@/components/seo/StructuredData';
 import type { WebSite, Organization } from 'schema-dts';
 import { ClientProviders } from '@/components/providers/ClientProviders';
-// import { ConditionalBackground } from '@/components/system/ConditionalBackground';
 import { Footer } from '@/components/landing/Footer';
 import { CSSFix } from '@/components/system/CSSFix';
 import { cdnUrl } from '@/lib/cdn';
@@ -173,6 +172,23 @@ export default function RootLayout({
         {/* Preconnect to CloudFront CDN for faster image loading */}
         <link rel="preconnect" href="https://d2tyb0wucqqf48.cloudfront.net" crossOrigin="anonymous" />
         <link rel="dns-prefetch" href="https://d2tyb0wucqqf48.cloudfront.net" />
+        {/* Google Analytics - GA4 */}
+        {process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID && (
+          <>
+            <script async src={`https://www.googletagmanager.com/gtag/js?id=${process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID}`}></script>
+            <script dangerouslySetInnerHTML={{
+              __html: `
+                window.dataLayer = window.dataLayer || [];
+                function gtag(){dataLayer.push(arguments);}
+                gtag('js', new Date());
+                gtag('config', '${process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID}', {
+                  page_path: window.location.pathname,
+                  send_page_view: false
+                });
+              `
+            }} />
+          </>
+        )}
         {/* Privacy-friendly analytics by Plausible */}
         <script async src="https://plausible.io/js/pa-OwEhgpe8qgYykGAXbW94Z.js"></script>
         <script dangerouslySetInnerHTML={{
@@ -184,7 +200,6 @@ export default function RootLayout({
         }} />
       </head>
       <body className={`${fontClasses.sans} bg-transparent overflow-x-hidden`}>
-        {/* <ConditionalBackground /> */}
         <CSSFix />
         <ClientProviders>
           {children}

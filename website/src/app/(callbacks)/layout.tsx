@@ -1,4 +1,3 @@
-import { InteractiveBackground } from '@/components/landing/InteractiveBackground';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
@@ -21,9 +20,8 @@ export default function CallbacksLayout({
     <>
       {/* Background gradient */}
       <div className="fixed inset-0 -z-20" style={{ background: 'var(--background-gradient)' }} />
-      
+
       <div className="min-h-screen relative">
-        <InteractiveBackground />
         <div className="relative z-10">
           {children}
         </div>

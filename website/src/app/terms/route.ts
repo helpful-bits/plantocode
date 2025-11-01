@@ -34,11 +34,11 @@ export async function GET(request: NextRequest) {
     region = 'eu';
   }
   
-  // Build the redirect URL - use the correct base URL
-  const protocol = request.headers.get('x-forwarded-proto') || 'http';
-  const host = request.headers.get('host') || 'localhost:3000';
+  // Build the redirect URL - use production domain as fallback
+  const protocol = request.headers.get('x-forwarded-proto') || 'https';
+  const host = request.headers.get('host') || 'www.plantocode.com';
   const baseUrl = `${protocol}://${host}`;
-  
+
   // Redirect to the appropriate regional terms page
   return NextResponse.redirect(
     new URL(`/legal/${region}/terms`, baseUrl),

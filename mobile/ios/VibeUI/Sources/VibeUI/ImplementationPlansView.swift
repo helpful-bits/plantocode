@@ -9,7 +9,6 @@ public struct ImplementationPlansView: View {
     @StateObject private var settingsService = SettingsDataService()
     @ObservedObject private var appState = AppState.shared
     @State private var selectedPlanJobIdForNav: String? = nil
-    private let logger = Logger(subsystem: "PlanToCode", category: "ImplementationPlansView")
     @State private var selectedPlans: Set<String> = []
     @State private var mergeInstructions = ""
     @FocusState private var isMergeInstructionsFocused: Bool
@@ -433,7 +432,7 @@ public struct ImplementationPlansView: View {
                 loadModelSettings()
             }
         }
-        .onReceive(container.sessionService.$currentSession) { session in
+        .onReceive(container.sessionService.currentSessionPublisher) { session in
             // Trigger on ANY session change, including initial value
             // This ensures plans load even if session was set before view appeared
             if session != nil {
@@ -497,7 +496,6 @@ public struct ImplementationPlansView: View {
     private func loadPlans() {
         // Guard against nil session - wait for session to be properly synchronized
         guard let currentSession = container.sessionService.currentSession else {
-            logger.warning("Cannot load plans: no session available yet")
             // Don't return silently - mark as "loaded" to prevent indefinite waiting
             // The onReceive for currentSession will trigger again when session is available
             return
@@ -515,7 +513,6 @@ public struct ImplementationPlansView: View {
 
         guard let projectDir = projectDirectory else {
             isLoading = false
-            logger.warning("Cannot load plans: no project directory available")
             return
         }
 
@@ -776,7 +773,6 @@ public struct ImplementationPlansView: View {
                                     }
                                 }
                             } catch {
-                                print("Failed to load server defaults: \(error)")
                                 // Even on error, show all available models
                                 await MainActor.run {
                                     availableModels = providers.flatMap { $0.models.map { $0.id } }
@@ -786,7 +782,7 @@ public struct ImplementationPlansView: View {
                     }
                 }
             } catch {
-                print("Failed to load model settings: \(error)")
+                // Failed to load model settings
             }
         }
     }
@@ -804,7 +800,7 @@ public struct ImplementationPlansView: View {
                     value: model
                 )
             } catch {
-                print("Failed to save model preference: \(error)")
+                // Failed to save model preference
             }
         }
     }
@@ -1190,7 +1186,7 @@ extension ImplementationPlansView {
                 }
             }
         } catch {
-            print("Failed to estimate tokens: \(error)")
+            // Failed to estimate tokens
         }
     }
 

@@ -5,10 +5,11 @@ import { WindowsStoreButton } from '@/components/ui/WindowsStoreButton';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { CheckCircle2, Shield, Smartphone, Tablet } from 'lucide-react';
 import { Header } from '@/components/landing/Header';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
-  title: 'Download PlanToCode',
-  description: 'Download PlanToCode for macOS and Windows - plan code changes, find files, merge plans, and run them in a terminal.',
+  title: 'Download PlanToCode - macOS & Windows | Free Trial',
+  description: 'Download PlanToCode for macOS and Windows. Free $5 credits. Plan multi-file changes with AI, review before execution. No credit card required.',
   keywords: [
     'plantocode download',
     'ai architect studio',
@@ -18,6 +19,9 @@ export const metadata: Metadata = {
     'microsoft store',
     'macos developer tools',
     'heavy coding agent users',
+    'implementation planning tool',
+    'ai code planning',
+    'cursor alternative',
   ],
   openGraph: {
     title: 'Download PlanToCode',
@@ -25,9 +29,20 @@ export const metadata: Metadata = {
     url: 'https://www.plantocode.com/downloads',
     siteName: 'PlanToCode',
     type: 'website',
+    locale: 'en_US',
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
   },
   alternates: {
     canonical: 'https://www.plantocode.com/downloads',
+    languages: {
+      'en-US': 'https://www.plantocode.com/downloads',
+      'en': 'https://www.plantocode.com/downloads',
+    },
   },
 };
 

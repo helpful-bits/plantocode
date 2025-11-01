@@ -20,8 +20,6 @@ public struct DeviceSelectionView: View {
             let isAllowedPlatform = allowedPlatforms.contains(device.platform.lowercased())
             let isValidName = device.deviceName.lowercased() != "unknown"
 
-            print("[DeviceSelection] Device: \(device.deviceName) - Type: \(device.deviceType) (isDesktop: \(isDesktop)), Status: \(device.status), Platform: \(device.platform) (allowed: \(isAllowedPlatform)), Name valid: \(isValidName)")
-
             return isDesktop && isAllowedPlatform && isValidName
         }
 
@@ -33,7 +31,6 @@ public struct DeviceSelectionView: View {
             return first.deviceName.localizedCaseInsensitiveCompare(second.deviceName) == .orderedAscending
         }
 
-        print("[DeviceSelection] Filtered and sorted devices: \(sorted.count) of \(deviceDiscovery.devices.count)")
         return sorted
     }
 
@@ -105,47 +102,45 @@ public struct DeviceSelectionView: View {
                     }
 
                     if let errorMessage = errorMessage {
-                        VStack(spacing: 8) {
+                        VStack(alignment: .leading, spacing: 12) {
                             StatusAlertView(variant: .destructive, title: "Connection Error", message: errorMessage)
 
-                            HStack(spacing: 8) {
-                                if diagnosticsDeviceId != nil {
-                                    Button(action: {
-                                        showingDiagnostics = true
-                                    }) {
-                                        HStack {
-                                            Image(systemName: "stethoscope")
-                                            Text("Why can't I connect?")
+                            VStack(alignment: .leading, spacing: 12) {
+                                HStack(spacing: 12) {
+                                    if diagnosticsDeviceId != nil {
+                                        Button(action: {
+                                            showingDiagnostics = true
+                                        }) {
+                                            Label("Why can't I connect?", systemImage: "stethoscope")
+                                                .small()
                                         }
-                                        .small()
+                                        .frame(maxWidth: .infinity)
+                                        .buttonStyle(SecondaryButtonStyle())
                                     }
+                                    
+                                    Button(action: {
+                                        Task { await performHardReset(autoRetry: false) }
+                                    }) {
+                                        Label("Reset Connection", systemImage: "arrow.clockwise")
+                                            .small()
+                                    }
+                                    .frame(maxWidth: .infinity)
                                     .buttonStyle(SecondaryButtonStyle())
                                 }
-
-                                Button(action: {
-                                    Task { await performHardReset(autoRetry: false) }
-                                }) {
-                                    HStack {
-                                        Image(systemName: "arrow.clockwise")
-                                        Text("Reset Connection")
-                                    }
-                                    .small()
-                                }
-                                .buttonStyle(SecondaryButtonStyle())
 
                                 if selectedDeviceId != nil {
                                     Button(action: {
                                         Task { await performHardReset(autoRetry: true) }
                                     }) {
-                                        HStack {
-                                            Image(systemName: "arrow.clockwise.circle.fill")
-                                            Text("Reset and Retry")
-                                        }
-                                        .small()
+                                        Label("Reset and Retry", systemImage: "arrow.triangle.2.circlepath")
+                                            .small()
                                     }
+                                    .frame(maxWidth: .infinity)
                                     .buttonStyle(PrimaryButtonStyle())
+                                    .padding(.top, 2)
                                 }
                             }
+                            .padding(.top, 4)
                         }
                     }
 
@@ -286,7 +281,6 @@ public struct DeviceSelectionView: View {
             if let selectedId = selectedDeviceId,
                let state = multiConnectionManager.connectionStates[selectedId],
                case .connected(_) = state {
-                print("[DeviceSelection] View appeared with existing connection, resetting local state")
                 isConnecting = false
                 selectedDeviceId = nil
                 errorMessage = nil
@@ -294,12 +288,9 @@ public struct DeviceSelectionView: View {
             }
 
             Task {
-                // Only restore/refresh if initialized and authenticated
+                // Only refresh device discovery; connection restore is handled by InitializationOrchestrator
                 if PlanToCodeCore.shared.isInitialized && AuthService.shared.isAuthenticated {
-                    await multiConnectionManager.restoreConnections()
                     await deviceDiscovery.refreshDevices()
-                } else {
-                    print("[DeviceSelection] Skipping device operations: not initialized or authenticated")
                 }
             }
         }
@@ -379,7 +370,6 @@ public struct DeviceSelectionView: View {
                 case .connected(_):
                     // Connection successful, reset local UI state and clear any errors
                     if isConnecting {
-                        print("[DeviceSelection] Connection reached terminal state, resetting UI")
                         isConnecting = false
                         selectedDeviceId = nil
                         errorMessage = nil
@@ -389,12 +379,10 @@ public struct DeviceSelectionView: View {
                 case .failed(_):
                     // Connection failed, reset connecting state but keep error info for diagnostics
                     if isConnecting {
-                        print("[DeviceSelection] Connection failed, keeping error state for diagnostics")
                         isConnecting = false
                         consecutiveFailures += 1
 
                         if consecutiveFailures >= 2 {
-                            print("[DeviceSelection] Auto-invoking hard reset after \(consecutiveFailures) failures")
                             Task { await performHardReset(autoRetry: false) }
                         }
                     }
@@ -425,7 +413,6 @@ public struct DeviceSelectionView: View {
 
     private func refreshDevices() {
         if isConnecting, let deviceId = selectedDeviceId {
-            print("[DeviceSelection] Refresh requested while connecting; cancelling pending connection")
             MultiConnectionManager.shared.removeConnection(deviceId: deviceId)
             selectedDeviceId = nil
             isConnecting = false
@@ -459,7 +446,6 @@ public struct DeviceSelectionView: View {
     private func connectToDevice(_ device: RegisteredDevice) {
         // Guard against rapid re-entrant calls
         guard !isConnecting else {
-            print("[DeviceSelection] Already connecting, ignoring duplicate call")
             return
         }
 
@@ -479,7 +465,6 @@ public struct DeviceSelectionView: View {
             return
         }
 
-        print("[DeviceSelection] Switching to device: \(device.deviceName) (\(device.deviceId))")
         selectedDeviceId = device.deviceId
         isConnecting = true
         errorMessage = nil
@@ -491,26 +476,26 @@ public struct DeviceSelectionView: View {
                 let currentActive = MultiConnectionManager.shared.activeDeviceId
                 let isSwitching = currentActive != nil && currentActive != device.deviceId
 
-                if isSwitching {
-                    print("[DeviceSelection] Switching from \(currentActive!.uuidString) to \(device.deviceId.uuidString)")
-                }
-
                 // Use switchActiveDevice for device switching
                 let result = await MultiConnectionManager.shared.switchActiveDevice(to: device.deviceId)
 
                 switch result {
                 case .success(_):
-                    print("[DeviceSelection] Switch successful, triggering state reset")
-
-                    // Trigger full state reset
-                    await MainActor.run {
-                        PlanToCodeCore.shared.dataServices?.onActiveDeviceSwitch(newId: device.deviceId)
+                    // Connection successful - proactively trigger orchestrator if needed
+                    if AppState.shared.isAuthenticated {
+                        let s = AppState.shared.bootstrapState
+                        let shouldTrigger: Bool
+                        switch s {
+                        case .ready, .needsConfiguration:
+                            shouldTrigger = false
+                        default:
+                            shouldTrigger = true
+                        }
+                        if shouldTrigger {
+                            Task { @MainActor in await InitializationOrchestrator.shared.run() }
+                        }
                     }
-
-                    // Run bootstrap to fetch fresh state
-                    print("[DeviceSelection] Running bootstrap for new device")
-                    await InitializationOrchestrator.shared.run()
-
+                    
                     // Wait for bootstrap to complete
                     let deadline = Date().addingTimeInterval(8.0)
                     while Date() < deadline {
@@ -521,6 +506,17 @@ public struct DeviceSelectionView: View {
                     }
 
                     let finalState = AppState.shared.bootstrapState
+                    if case .ready = finalState {
+                        await MainActor.run {
+                            appState.selectedDeviceId = device.deviceId
+                            isConnecting = false
+                            selectedDeviceId = nil
+                            errorMessage = nil
+                        }
+                        AppState.shared.navigateToMainApp()
+                        return
+                    }
+                    
                     switch finalState {
                     case .ready, .needsConfiguration:
                         await MainActor.run {
@@ -528,9 +524,37 @@ public struct DeviceSelectionView: View {
                             isConnecting = false
                             selectedDeviceId = nil
                             errorMessage = nil
-                            print("[DeviceSelection] Device switch complete")
                         }
                     default:
+                        // Short recovery nudge
+                        let shouldRecover: Bool
+                        switch finalState {
+                        case .ready, .needsConfiguration, .running:
+                            shouldRecover = false
+                        default:
+                            shouldRecover = true
+                        }
+                        
+                        if shouldRecover {
+                            Task { @MainActor in await InitializationOrchestrator.shared.run() }
+                            // Optional short wait
+                            let recoveryDeadline = Date().addingTimeInterval(3.0)
+                            while Date() < recoveryDeadline {
+                                try? await Task.sleep(nanoseconds: 200_000_000)
+                                let state = AppState.shared.bootstrapState
+                                if case .ready = state {
+                                    await MainActor.run {
+                                        appState.selectedDeviceId = device.deviceId
+                                        isConnecting = false
+                                        selectedDeviceId = nil
+                                        errorMessage = nil
+                                    }
+                                    AppState.shared.navigateToMainApp()
+                                    return
+                                }
+                            }
+                        }
+                        
                         await MainActor.run {
                             errorMessage = "Desktop did not respond in time. Check that the desktop app is running and signed in with the same account."
                             isConnecting = false
@@ -539,7 +563,6 @@ public struct DeviceSelectionView: View {
                     }
 
                 case .failure(let error):
-                    print("[DeviceSelection] Switch failed: \(error.localizedDescription)")
                     await MainActor.run {
                         // Map specific errors to user-friendly messages
                         if let multiError = error as? MultiConnectionError {

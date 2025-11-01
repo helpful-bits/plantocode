@@ -6,28 +6,39 @@ import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { FAQ } from '@/components/landing/FAQ';
 import { Video, Upload, Eye, Settings, Zap, Target, CheckCircle2, Clock, Sparkles, FileText, Users, Mic } from 'lucide-react';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
   title: 'Meeting & recording analysis - multimodal AI extraction | PlanToCode',
-  description: 'Capture Microsoft Teams meetings and screen recordings. Multimodal AI analyzes audio (with speaker identification) and visual content to extract actionable requirements. Used by corporate teams for requirements gathering.',
+  description: 'Capture Microsoft Teams meetings and screen recordings. Multimodal AI analyzes audio transcripts and visual content to extract actionable requirements. Used by corporate teams for requirements gathering.',
   keywords: [
     'meeting analysis',
     'teams meeting capture',
     'multimodal analysis',
-    'speaker identification',
     'requirements extraction',
     'corporate meeting analysis',
     'visual content analysis',
   ],
   openGraph: {
     title: 'AI Meeting & Recording Analysis: Requirements Extraction',
-    description: 'Capture Microsoft Teams meetings and screen recordings. Multimodal AI analyzes audio with speaker identification and visual content to extract actionable requirements for corporate teams.',
+    description: 'Capture Microsoft Teams meetings and screen recordings. Multimodal AI analyzes audio transcripts and visual content to extract actionable requirements for corporate teams.',
     url: 'https://www.plantocode.com/features/video-analysis',
     siteName: 'PlanToCode',
     type: 'website',
+    locale: 'en_US',
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
   },
   alternates: {
     canonical: 'https://www.plantocode.com/features/video-analysis',
+    languages: {
+      'en-US': 'https://www.plantocode.com/features/video-analysis',
+      'en': 'https://www.plantocode.com/features/video-analysis',
+    },
   },
 };
 
@@ -215,12 +226,12 @@ export default function VideoAnalysisPage() {
                       <div>
                         <h3 className="text-xl font-bold mb-3">Audio Transcript Analysis</h3>
                         <p className="text-foreground/80 mb-4">
-                          Complete audio transcription with speaker identification. Know exactly who proposed each requirement, who agreed, and who raised concerns.
+                          Complete audio transcription of meeting discussions. Extract key requirements, decisions, and action items from meeting audio.
                         </p>
                         <ul className="space-y-2 text-foreground/70">
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
-                            <span>Speaker identification and attribution</span>
+                            <span>Complete audio transcription</span>
                           </li>
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
@@ -270,7 +281,7 @@ export default function VideoAnalysisPage() {
                 <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">Extracting Actionable Insights</h2>
                 <GlassCard className="p-8 max-w-4xl mx-auto">
                   <p className="text-foreground/80 mb-6">
-                    After processing your meeting recording, the system analyzes both audio transcripts (with speaker identification) and visual content (shared screens, documents, key moments) to extract actionable insights. The extracted insights - summarized decisions, action items, and key discussion points - are presented in an intuitive interface where team leads can review, select, and incorporate them into actionable implementation plans.
+                    After processing your meeting recording, the system analyzes both audio transcripts and visual content (shared screens, documents, key moments) to extract actionable insights. The extracted insights - summarized decisions, action items, and key discussion points - are presented in an intuitive interface where team leads can review, select, and incorporate them into actionable implementation plans.
                   </p>
                   <div className="grid md:grid-cols-3 gap-6">
                     <div className="text-center">

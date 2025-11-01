@@ -63,10 +63,10 @@ public struct Config {
         // Use local development server for DEBUG builds
         // return "http://192.168.0.38:8080"
         // Use production server URL for now
-        return "https://api-us.plantocode.com"
+        return "https://api-eu.plantocode.com"
         #else
-        // Use production US server for Auth0 authentication
-        return "https://api-us.plantocode.com"
+        // Use production EU server for Auth0 authentication
+        return "https://api-eu.plantocode.com"
         #endif
     }
 

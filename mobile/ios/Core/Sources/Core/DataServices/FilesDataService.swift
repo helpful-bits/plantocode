@@ -42,6 +42,7 @@ public final class FilesDataService: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private let serverRelayClient: ServerRelayClient?
     private var isApplyingRemoteState = false
+    private var lastFileSearch: [String: Date] = [:] // cacheKey -> timestamp for deduplication
 
     private var deviceKey: String {
         MultiConnectionManager.shared.activeDeviceId?.uuidString ?? "no_device"
@@ -66,6 +67,15 @@ public final class FilesDataService: ObservableObject {
 
     /// Search files with various filters and patterns
     public func searchFiles(query: String, maxResults: Int = 50, includeContent: Bool = false, projectDirectory: String) async throws -> [FileInfo] {
+        // Time-based deduplication: if we searched recently, return cached data
+        let cacheKey = "files_\(projectDirectory)_\(query)_\(maxResults)_\(includeContent)"
+        if let lastSearch = lastFileSearch[cacheKey],
+           Date().timeIntervalSince(lastSearch) < 3.0 {
+            logger.debug("Skipping duplicate file search within 3s window: \(query)")
+            // Return current files data without making a network call
+            return self.files
+        }
+
         guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
               let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
             throw DataServiceError.invalidState("Not connected to desktop")
@@ -87,11 +97,15 @@ public final class FilesDataService: ObservableObject {
                         }
                         return FileInfo(from: dict)
                     }
+                    // Update timestamp after successful search
+                    self.lastFileSearch[cacheKey] = Date()
                     return fileInfos
                 } else if let files = result["files"] as? [[String: Any]] {
                     let fileInfos = files.compactMap { dict in
                         FileInfo(from: dict)
                     }
+                    // Update timestamp after successful search
+                    self.lastFileSearch[cacheKey] = Date()
                     return fileInfos
                 }
             }
@@ -558,6 +572,7 @@ public final class FilesDataService: ObservableObject {
     @MainActor
     public func onActiveDeviceChanged() {
         invalidateCache()
+        lastFileSearch.removeAll() // Clear deduplication timestamps on device change
         files.removeAll()
         searchResults.removeAll()
         currentSearchTerm = ""

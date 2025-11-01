@@ -1,6 +1,8 @@
 import { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
 import LegalContent from '@/components/legal/LegalContent';
+import { cdnUrl } from '@/lib/cdn';
+import { ObfuscatedEmail } from '@/components/ui/ObfuscatedEmail';
 
 interface WithdrawalPolicyPageProps {
   params: Promise<{
@@ -25,7 +27,19 @@ export async function generateMetadata({ params }: WithdrawalPolicyPageProps): P
       follow: true,
     },
     alternates: {
-      canonical: `/legal/${region}/withdrawal-policy`,
+      canonical: `https://www.plantocode.com/legal/${region}/withdrawal-policy`,
+      languages: {
+        'en-US': `https://www.plantocode.com/legal/${region}/withdrawal-policy`,
+        'en': `https://www.plantocode.com/legal/${region}/withdrawal-policy`,
+      },
+    },
+    openGraph: {
+      images: [{
+        url: cdnUrl('/images/og-image.png'),
+        width: 1200,
+        height: 630,
+        alt: 'PlanToCode - AI Planning for Code',
+      }],
     },
   };
 }
@@ -64,7 +78,7 @@ export default async function WithdrawalPolicyPage({ params }: WithdrawalPolicyP
         <h3 className="text-xl font-medium mb-3 mt-6">How to Exercise Your Right of Withdrawal</h3>
         <p>
           To exercise the right of withdrawal, you must inform us (helpful bits GmbH, Südliche Münchner Straße 55,
-          82031 Grünwald, Germany, email: <a href="mailto:legal@plantocode.com" className="link-primary">legal@plantocode.com</a>)
+          82031 Grünwald, Germany, email: <ObfuscatedEmail user="legal" domain="plantocode.com" className="link-primary" />)
           of your decision to withdraw from this contract by an unequivocal statement
           (e.g., a letter sent by post or email).
         </p>
@@ -138,7 +152,7 @@ export default async function WithdrawalPolicyPage({ params }: WithdrawalPolicyP
           <div className="space-y-4 text-sm">
             <p>
               <strong>To:</strong> helpful bits GmbH, Südliche Münchner Straße 55, 82031 Grünwald, Germany<br/>
-              <strong>Email:</strong> <a href="mailto:legal@plantocode.com" className="link-primary">legal@plantocode.com</a>
+              <strong>Email:</strong> <ObfuscatedEmail user="legal" domain="plantocode.com" className="link-primary" />
             </p>
             
             <p>
@@ -201,7 +215,7 @@ export default async function WithdrawalPolicyPage({ params }: WithdrawalPolicyP
         </p>
         
         <div className="mt-4 space-y-2">
-          <p><strong>Email:</strong> <a href="mailto:legal@plantocode.com" className="link-primary">legal@plantocode.com</a></p>
+          <p><strong>Email:</strong> <ObfuscatedEmail user="legal" domain="plantocode.com" className="link-primary" /></p>
           <p><strong>Postal Address:</strong><br/>
           helpful bits GmbH<br/>
           Südliche Münchner Straße 55<br/>

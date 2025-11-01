@@ -153,13 +153,6 @@
     --border-modal: var(--color-border-modal);
     --input: var(--color-input);
     --ring: var(--color-ring);
-    
-    /* Particle colors for light mode */
-    --particle-leader-color: #14b8a6; /* Equivalent to Tailwind teal-500. Note: three.js doesn't support oklch(), so using hex. */
-    --particle-follower-base-color: #5eead4; /* Equivalent to Tailwind teal-300 */
-    --particle-follower-highlight-color: #99f6e4; /* Equivalent to Tailwind teal-200 */
-    
-    
   }
 
   .dark {
@@ -240,11 +233,6 @@
     --grad-start: oklch(0.68 0.085 195);
     --grad-mid: oklch(0.55 0.075 185);
     --grad-end: oklch(0.48 0.065 195);
-    
-    /* Particle colors for dark mode */
-    --particle-leader-color: #2dd4bf; /* Equivalent to Tailwind teal-400 */
-    --particle-follower-base-color: #5eead4; /* Equivalent to Tailwind teal-300 */
-    --particle-follower-highlight-color: #ccfbf1; /* Equivalent to Tailwind teal-100 */
   }
 
   * {
@@ -293,11 +281,6 @@
   .gradient-accent-animated,
   .dynamic-bg {
     animation: none !important;
-  }
-  
-  /* Reduce particle count signal */
-  [data-performance="low"] .particle-scene {
-    opacity: 0.5;
   }
 }
 
@@ -1124,11 +1107,6 @@ section:not(:first-child) {
 
 /* Low-end device optimizations with rectangular motion performance tuning */
 @media (max-width: 480px), (-webkit-max-device-pixel-ratio: 1) {
-  /* Disable particle effects on very small screens */
-  .particle-scene {
-    display: none !important;
-  }
-  
   /* Further reduce rectangular motion range for very low-end devices */
   /* Mobile variables removed - unified deck animation */
   
@@ -1755,10 +1733,6 @@ html {
 /* Reduced motion consolidated in carousel-specific section below */
 
 /* Performance-based fallbacks */
-[data-performance="low"] .particle-scene {
-  opacity: 0.9;
-}
-
 [data-performance="low"] .backdrop-blur-xl {
   backdrop-filter: blur(12px);
 }

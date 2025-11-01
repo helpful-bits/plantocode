@@ -14,7 +14,10 @@
     "perf:bundle": "npx @next/bundle-analyzer",
     "perf:lighthouse": "npx lhci autorun",
     "deps:check": "npm audit && npm outdated",
-    "deps:update": "npm update --save"
+    "deps:update": "npm update --save",
+    "content:create": "node scripts/create-content.js",
+    "content:validate": "node scripts/validate-content.js",
+    "content:validate:strict": "node scripts/validate-content.js --strict"
   },
   "dependencies": {
     "@floating-ui/dom": "^1.7.4",
@@ -25,9 +28,6 @@
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@radix-ui/react-popper": "^1.2.8",
     "@radix-ui/react-slot": "1.2.3",
-    "@react-three/drei": "^10.7.6",
-    "@react-three/fiber": "^9.4.0",
-    "@react-three/postprocessing": "3.0.4",
     "@types/js-cookie": "^3.0.6",
     "class-variance-authority": "0.7.1",
     "d3": "^7.9.0",
@@ -40,11 +40,9 @@
     "next": "15.3.5",
     "next-plausible": "^3.12.4",
     "next-themes": "0.4.6",
-    "postprocessing": "6.37.6",
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "schema-dts": "1.1.5",
-    "three": "^0.178.0"
+    "schema-dts": "1.1.5"
   },
   "devDependencies": {
     "@csstools/postcss-oklab-function": "4.0.6",
@@ -57,7 +55,6 @@
     "@types/node": "20.19.7",
     "@types/react": "19.1.8",
     "@types/react-dom": "19.1.6",
-    "@types/three": "0.167.2",
     "autoprefixer": "10.4.20",
     "babel-plugin-react-compiler": "latest",
     "clsx": "2.1.1",

@@ -1,9 +1,25 @@
 import type { Metadata } from 'next';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
   title: 'macOS Notarization & Security',
   description: 'PlanToCode is signed and notarized by Apple for secure distribution on macOS. Learn about our security measures and Gatekeeper compliance.',
   keywords: ['macOS security', 'Apple notarization', 'Gatekeeper', 'code signing', 'secure distribution'],
+  alternates: {
+    canonical: 'https://www.plantocode.com/security/notarization',
+    languages: {
+      'en-US': 'https://www.plantocode.com/security/notarization',
+      'en': 'https://www.plantocode.com/security/notarization',
+    },
+  },
+  openGraph: {
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
+  },
 };
 
 export default function NotarizationPage() {

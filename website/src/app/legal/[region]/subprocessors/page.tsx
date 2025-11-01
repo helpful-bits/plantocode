@@ -1,6 +1,8 @@
 import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import LegalContent from '@/components/legal/LegalContent';
+import { cdnUrl } from '@/lib/cdn';
+import { ObfuscatedEmail } from '@/components/ui/ObfuscatedEmail';
 import SubprocessorsList from '@/components/legal/SubprocessorsList';
 
 interface SubprocessorsPageProps {
@@ -28,7 +30,27 @@ export async function generateMetadata({ params }: SubprocessorsPageProps): Prom
       follow: true,
     },
     alternates: {
-      canonical: `/legal/${region}/subprocessors`,
+      canonical: `https://www.plantocode.com/legal/${region}/subprocessors`,
+      languages: {
+        'x-default': 'https://www.plantocode.com/legal/us/subprocessors',
+        'en-US': 'https://www.plantocode.com/legal/us/subprocessors',
+        'en-GB': 'https://www.plantocode.com/legal/eu/subprocessors',
+        'en-EU': 'https://www.plantocode.com/legal/eu/subprocessors',
+      },
+    },
+    openGraph: {
+      title: 'Sub-processors',
+      description: `List of third-party sub-processors used by PlanToCode for providing our AI-powered workflow automation services. Applicable to ${regionName} users.`,
+      url: `https://www.plantocode.com/legal/${region}/subprocessors`,
+      siteName: 'PlanToCode',
+      type: 'website',
+      locale: 'en_US',
+      images: [{
+        url: cdnUrl('/images/og-image.png'),
+        width: 1200,
+        height: 630,
+        alt: 'PlanToCode - AI Planning for Code',
+      }],
     },
   };
 }
@@ -92,7 +114,7 @@ export default async function SubprocessorsPage({ params }: SubprocessorsPagePro
         </p>
         <p className="mt-4">
           If you have questions about our sub-processor arrangements or data processing practices,
-          please contact us at <a href="mailto:legal@plantocode.com" className="link-primary">legal@plantocode.com</a>.
+          please contact us at <ObfuscatedEmail user="legal" domain="plantocode.com" className="link-primary" />.
         </p>
       </section>
 

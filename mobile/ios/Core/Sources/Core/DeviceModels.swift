@@ -11,6 +11,7 @@ public struct RegisteredDevice: Codable, Identifiable, Equatable {
     public let platform: String
     public let appVersion: String
     public let status: DeviceStatus
+    public let isConnected: Bool
     public let lastHeartbeat: Date?
     public let capabilities: DeviceCapabilities
     public let health: DeviceHealth?
@@ -24,6 +25,7 @@ public struct RegisteredDevice: Codable, Identifiable, Equatable {
         platform: String,
         appVersion: String,
         status: DeviceStatus,
+        isConnected: Bool,
         lastHeartbeat: Date?,
         capabilities: DeviceCapabilities,
         health: DeviceHealth?,
@@ -36,11 +38,13 @@ public struct RegisteredDevice: Codable, Identifiable, Equatable {
         self.platform = platform
         self.appVersion = appVersion
         self.status = status
+        self.isConnected = isConnected
         self.lastHeartbeat = lastHeartbeat
         self.capabilities = capabilities
         self.health = health
         self.createdAt = createdAt
     }
+
 }
 
 // DeviceStatus is defined in HealthTypes.swift
