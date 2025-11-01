@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Header } from '@/components/landing/Header';
 import { Calendar, Clock, Users, MessageSquare } from 'lucide-react';
+import { ObfuscatedEmail } from '@/components/ui/ObfuscatedEmail';
 
 export default function SchedulePage() {
   useEffect(() => {
@@ -98,9 +99,11 @@ export default function SchedulePage() {
               <div className="mt-8 text-center">
                 <p className="text-sm text-foreground/60">
                   Can't find a suitable time? Email us at{' '}
-                  <a href="mailto:architects@plantocode.com" className="text-primary hover:underline">
-                    architects@plantocode.com
-                  </a>
+                  <ObfuscatedEmail
+                    user="architects"
+                    domain="plantocode.com"
+                    className="text-primary hover:underline"
+                  />
                 </p>
               </div>
             </GlassCard>

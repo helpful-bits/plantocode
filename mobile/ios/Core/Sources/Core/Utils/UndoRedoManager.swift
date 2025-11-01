@@ -275,12 +275,44 @@ public struct HistoryEntry: Codable, Equatable {
     public let opType: String?
     public let sequenceNumber: Int32?
 
+    enum CodingKeys: String, CodingKey {
+        case value
+        case createdAt
+        case timestampMs  // Desktop sends this field name
+        case deviceId
+        case opType
+        case sequenceNumber
+    }
+
     public init(value: String, createdAt: Int64, deviceId: String? = nil, opType: String? = nil, sequenceNumber: Int32? = nil) {
         self.value = value
         self.createdAt = createdAt
         self.deviceId = deviceId
         self.opType = opType
         self.sequenceNumber = sequenceNumber
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        value = try container.decode(String.self, forKey: .value)
+        // Try timestampMs first (from desktop), fall back to createdAt
+        if let timestampMs = try? container.decode(Int64.self, forKey: .timestampMs) {
+            createdAt = timestampMs
+        } else {
+            createdAt = try container.decode(Int64.self, forKey: .createdAt)
+        }
+        deviceId = try container.decodeIfPresent(String.self, forKey: .deviceId)
+        opType = try container.decodeIfPresent(String.self, forKey: .opType)
+        sequenceNumber = try container.decodeIfPresent(Int32.self, forKey: .sequenceNumber)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(value, forKey: .value)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encodeIfPresent(deviceId, forKey: .deviceId)
+        try container.encodeIfPresent(opType, forKey: .opType)
+        try container.encodeIfPresent(sequenceNumber, forKey: .sequenceNumber)
     }
 }
 

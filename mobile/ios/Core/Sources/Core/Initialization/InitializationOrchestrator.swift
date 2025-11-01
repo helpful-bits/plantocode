@@ -22,10 +22,46 @@ public final class InitializationOrchestrator: ObservableObject {
     private let repo = BootstrapRepository()
     private let appState = AppState.shared
     private let multi = MultiConnectionManager.shared
+    private var isRunning = false
+    private var authObserver: NSObjectProtocol?
 
-    private init() {}
+    private init() {
+        authObserver = NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("auth-token-refreshed"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self else { return }
+            guard AuthService.shared.isAuthenticated else { return }
+            guard AppState.shared.bootstrapState != .running else { return }
+            if let activeId = MultiConnectionManager.shared.activeDeviceId,
+               self.isConnected(deviceId: activeId) {
+                Task { @MainActor in
+                    await self.run()
+                }
+            }
+        }
+    }
+
+    deinit {
+        if let obs = authObserver {
+            NotificationCenter.default.removeObserver(obs)
+        }
+    }
+
+    private func isConnected(deviceId: UUID) -> Bool {
+        if let st = multi.connectionStates[deviceId], case .connected = st {
+            return true
+        }
+        return false
+    }
 
     public func run() async {
+        // Reentrancy guards
+        if appState.bootstrapState == .running { return }
+        if isRunning { return }
+        isRunning = true
+        defer { isRunning = false }
         appState.setBootstrapRunning()
 
         // Force reset to ensure clean state
@@ -53,8 +89,8 @@ public final class InitializationOrchestrator: ObservableObject {
             return
         }
 
-        // Device is configured, wait briefly for connection (reduced from 20s to 5s)
-        let connected = await awaitActiveDeviceConnected(timeoutSeconds: 8)
+        // Device is configured, wait briefly for connection
+        let connected = await awaitActiveDeviceConnected(timeoutSeconds: 12)
         guard connected else {
             appState.setBootstrapNeedsConfig(.init(projectMissing: true, sessionsEmpty: true, activeSessionMissing: true))
             log.warning("No active device connection established within timeout, routing to configuration")
@@ -116,6 +152,21 @@ public final class InitializationOrchestrator: ObservableObject {
             if let manager = PlanToCodeCore.shared.dataServices {
                 manager.setCurrentProject(project)
                 await manager.sessionService.setSessions(sessions, activeId: finalActiveId)
+
+                // Hydrate active session before marking bootstrap ready
+                if let id = finalActiveId {
+                    log.info("InitializationOrchestrator: hydrating active session via RPC (id=\(id))")
+                    do {
+                        let session = try await manager.sessionService.getSession(id: id)
+                        // Prime JobsDataService during bootstrap after session is resolved
+                        if let session = session {
+                            manager.jobsService.setActiveSession(sessionId: session.id, projectDirectory: session.projectDirectory)
+                        }
+                    } catch {
+                        log.warning("InitializationOrchestrator: failed to hydrate active session: \(error)")
+                    }
+                }
+
                 manager.hasCompletedInitialLoad = true
             }
 
@@ -128,6 +179,9 @@ public final class InitializationOrchestrator: ObservableObject {
 
             appState.setBootstrapReady()
             log.info("Bootstrap ready (project and sessions applied, activeSessionId=\(finalActiveId ?? "none"))")
+            
+            // Navigate to main app after successful bootstrap
+            AppState.shared.navigateToMainApp()
         } catch {
             appState.setBootstrapFailed(String(describing: error))
             log.error("Bootstrap failed: \(String(describing: error))")
@@ -157,15 +211,19 @@ public final class InitializationOrchestrator: ObservableObject {
                 }
             }
 
-            // Check if both conditions are met: connected state AND active device set
-            if let active = multi.activeDeviceId,
-               let state = multi.connectionStates[active],
-               case .connected = state {
-                log.info("Active device connection established: \(active.uuidString)")
-                return true
+            // Check if both conditions are met: accept .connected or .handshaking as success
+            if let active = multi.activeDeviceId {
+                let state = multi.effectiveConnectionState(for: active)
+                switch state {
+                case .connected, .handshaking:
+                    log.info("Active device connection established: \(active.uuidString)")
+                    return true
+                default:
+                    break
+                }
             }
 
-            try? await Task.sleep(nanoseconds: 100_000_000)
+            try? await Task.sleep(nanoseconds: 200_000_000)
         }
         log.warning("Connection timeout after \(timeoutSeconds)s - proceeding to configuration")
         return false

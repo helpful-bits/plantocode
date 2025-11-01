@@ -4,11 +4,12 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Search, Workflow, Target, DollarSign, GitBranch, CheckCircle2, Brain, Layers, Zap } from 'lucide-react';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
   title: 'AI file discovery - find impacted files | PlanToCode',
   description:
-    'AI-powered multi-stage workflow that intelligently discovers and selects relevant files from your codebase. Cost-effective operation at ~$0.10-0.15 per workflow with real-time progress tracking.',
+    'Multi-stage AI workflow that discovers and selects relevant files. Cost-effective at $0.10-0.15 per workflow with real-time progress tracking.',
   keywords: [
     'ai file discovery',
     'intelligent file selection',
@@ -28,9 +29,20 @@ export const metadata: Metadata = {
     url: 'https://www.plantocode.com/features/file-discovery',
     siteName: 'PlanToCode',
     type: 'website',
+    locale: 'en_US',
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
   },
   alternates: {
     canonical: 'https://www.plantocode.com/features/file-discovery',
+    languages: {
+      'en-US': 'https://www.plantocode.com/features/file-discovery',
+      'en': 'https://www.plantocode.com/features/file-discovery',
+    },
   },
 };
 

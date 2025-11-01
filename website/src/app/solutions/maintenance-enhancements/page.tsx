@@ -4,12 +4,20 @@ import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Wrench, ClipboardList, GaugeCircle, History, Files } from 'lucide-react';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
   title: 'Maintain systems with repeatable workflows - PlanToCode',
   description:
-    'Use PlanToCode to document ongoing maintenance tasks, keep an audit trail, and prevent regressions.',
+    'Document maintenance with reusable workflows, plan history, and execution logs. Keep context, prevent regressions, and enforce model guardrails for safe fixes.',
   openGraph: {
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
+    
     title: 'Maintain systems with repeatable workflows - PlanToCode',
     description:
       'Capture reusable plans, model guardrails, and persistent logs for technical debt work.',
@@ -19,6 +27,10 @@ export const metadata: Metadata = {
   },
   alternates: {
     canonical: 'https://www.plantocode.com/solutions/maintenance-enhancements',
+    languages: {
+      'en-US': 'https://www.plantocode.com/solutions/maintenance-enhancements',
+      'en': 'https://www.plantocode.com/solutions/maintenance-enhancements',
+    },
   },
 };
 
@@ -108,7 +120,7 @@ export default function MaintenanceEnhancementsPage() {
                 </p>
                 <PlatformDownloadSection location="solutions_maintenance" />
                 <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4 text-sm text-foreground/60">
-                  <LinkWithArrow href="/docs/workflows/file-discovery">
+                  <LinkWithArrow href="/docs/file-discovery">
                     Explore scoped workflows
                   </LinkWithArrow>
                   <span className="hidden sm:inline">•</span>

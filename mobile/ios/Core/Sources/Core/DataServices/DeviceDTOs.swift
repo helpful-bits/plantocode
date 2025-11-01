@@ -12,6 +12,7 @@ import Foundation
  platform_version             →  platformVersion
  app_version                  →  appVersion
  status                       →  status
+ is_connected                 →  isConnected
  last_heartbeat               →  lastHeartbeat
  cpu_usage                    →  cpuUsage
  memory_usage                 →  memoryUsage
@@ -37,6 +38,7 @@ public struct ServerDeviceInfo: Codable {
     public let platformVersion: String?
     public let appVersion: String
     public let status: String
+    public let isConnected: Bool
     public let lastHeartbeat: Date?
     public let capabilities: AnyCodable?
     public let cpuUsage: Double?
@@ -54,6 +56,7 @@ public struct ServerDeviceInfo: Codable {
         platformVersion: String?,
         appVersion: String,
         status: String,
+        isConnected: Bool,
         lastHeartbeat: Date?,
         capabilities: AnyCodable?,
         cpuUsage: Double?,
@@ -70,6 +73,7 @@ public struct ServerDeviceInfo: Codable {
         self.platformVersion = platformVersion
         self.appVersion = appVersion
         self.status = status
+        self.isConnected = isConnected
         self.lastHeartbeat = lastHeartbeat
         self.capabilities = capabilities
         self.cpuUsage = cpuUsage
@@ -129,6 +133,7 @@ extension RegisteredDevice {
             platform: s.platform,
             appVersion: s.appVersion,
             status: deviceStatus,
+            isConnected: s.isConnected,
             lastHeartbeat: s.lastHeartbeat,
             capabilities: capabilities,
             health: health,

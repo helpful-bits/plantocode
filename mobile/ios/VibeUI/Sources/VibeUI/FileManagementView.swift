@@ -54,7 +54,7 @@ public struct FileManagementView: View {
         return VStack(spacing: 0) {
             connectedView
         }
-        .onReceive(container.sessionService.$currentSession.compactMap { $0 }) { _ in
+        .onReceive(container.sessionService.currentSessionPublisher.compactMap { $0 }) { _ in
             updateIncludedFilesNotInList()
             updateRunningWorkflowCount()
         }
@@ -87,7 +87,7 @@ public struct FileManagementView: View {
         .onChange(of: container.sessionService.currentSession?.includedFiles) { _ in
             updateIncludedFilesNotInList()
         }
-        .onReceive(container.sessionService.$currentSession) { session in
+        .onReceive(container.sessionService.currentSessionPublisher) { session in
             // Only reload files if project directory changed
             let newProjectDir = session?.projectDirectory
             if lastLoadedProjectDir != newProjectDir && newProjectDir != nil {

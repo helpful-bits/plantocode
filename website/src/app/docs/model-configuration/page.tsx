@@ -1,14 +1,26 @@
 import type { Metadata } from 'next';
 import { DocsArticle } from '@/components/docs/DocsArticle';
 import { GlassCard } from '@/components/ui/GlassCard';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
   title: 'Model configuration and guardrails - PlanToCode',
   description: 'How PlanToCode lets you pick allowed models per task and keeps prompts within the active context window.',
   alternates: {
     canonical: 'https://www.plantocode.com/docs/model-configuration',
+    languages: {
+      'en-US': 'https://www.plantocode.com/docs/model-configuration',
+      'en': 'https://www.plantocode.com/docs/model-configuration',
+    },
   },
   openGraph: {
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
+    
     title: 'Model configuration and guardrails - PlanToCode',
     description: 'Learn how task-level model settings, selector toggles, and token estimates work together.',
     url: 'https://www.plantocode.com/docs/model-configuration',

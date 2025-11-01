@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
@@ -10,11 +9,21 @@ export const metadata: Metadata = {
     noarchive: true,
     nosnippet: true,
   },
+  openGraph: {
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
+      },
 };
 
 import { MapPin } from 'lucide-react';
 import GlassCard from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/button';
+import { cdnUrl } from '@/lib/cdn';
+import { ObfuscatedEmail } from '@/components/ui/ObfuscatedEmail';
 
 export default function RestrictedRegionPage() {
   return (
@@ -63,11 +72,11 @@ export default function RestrictedRegionPage() {
 
           <div className="flex flex-col items-center gap-4 w-full mt-4">
             <Button asChild variant="default" size="lg" className="w-full sm:w-auto">
-              <Link href="mailto:legal@plantocode.com?subject=Regional%20Access%20Issue">
+              <ObfuscatedEmail user="legal" domain="plantocode.com">
                 Contact Support
-              </Link>
+              </ObfuscatedEmail>
             </Button>
-            
+
             <p className="text-xs text-muted-foreground">
               If you believe this is an error, please contact our support team
             </p>

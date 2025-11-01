@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { BRAND_X_URL, FEATUREBASE_BASE_URL, CALENDLY_URL } from '@/lib/brand';
+import { trackCTA } from '@/lib/track';
 
 export function Footer() {
 
@@ -54,7 +55,11 @@ export function Footer() {
                 </h4>
                 <ul className="space-y-3">
                   <li>
-                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/demo">
+                    <Link
+                      className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline"
+                      href="/demo"
+                      onClick={() => trackCTA('footer', 'Interactive Demo', '/demo')}
+                    >
                       Interactive Demo
                     </Link>
                   </li>
@@ -69,7 +74,11 @@ export function Footer() {
                     </Link>
                   </li>
                   <li>
-                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/downloads">
+                    <Link
+                      className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline"
+                      href="/downloads"
+                      onClick={() => trackCTA('footer', 'Downloads', '/downloads')}
+                    >
                       Downloads
                     </Link>
                   </li>
@@ -139,6 +148,11 @@ export function Footer() {
                   <li>
                     <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/terms">
                       Terms
+                    </Link>
+                  </li>
+                  <li>
+                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/legal/eu/imprint">
+                      Imprint
                     </Link>
                   </li>
                   <li>

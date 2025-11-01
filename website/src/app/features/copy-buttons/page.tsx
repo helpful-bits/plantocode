@@ -5,6 +5,7 @@ import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Copy, Settings, Terminal, Edit3, Zap, GripVertical, CheckCircle2, Code2, Layers } from 'lucide-react';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
   title: 'Copy buttons - turn prompts into one-click workflows | PlanToCode',
@@ -27,9 +28,20 @@ export const metadata: Metadata = {
     url: 'https://www.plantocode.com/features/copy-buttons',
     siteName: 'PlanToCode',
     type: 'website',
+    locale: 'en_US',
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
   },
   alternates: {
     canonical: 'https://www.plantocode.com/features/copy-buttons',
+    languages: {
+      'en-US': 'https://www.plantocode.com/features/copy-buttons',
+      'en': 'https://www.plantocode.com/features/copy-buttons',
+    },
   },
 };
 

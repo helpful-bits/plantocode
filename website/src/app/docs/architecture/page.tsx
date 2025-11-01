@@ -1,17 +1,29 @@
 import type { Metadata } from 'next';
 import { DocsArticle } from '@/components/docs/DocsArticle';
 import { GlassCard } from '@/components/ui/GlassCard';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
   title: 'PlanToCode architecture overview',
   description: 'Desktop, orchestration, and persistence layers that power implementation plans, workflows, and terminal sessions.',
   alternates: {
-    canonical: 'https://www.plantocode.com/docs/plantocode-architecture',
+    canonical: 'https://www.plantocode.com/docs/architecture',
+    languages: {
+      'en-US': 'https://www.plantocode.com/docs/architecture',
+      'en': 'https://www.plantocode.com/docs/architecture',
+    },
   },
   openGraph: {
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
+    
     title: 'PlanToCode architecture overview',
     description: 'Learn how the React front end, Tauri commands, and background services cooperate inside the desktop app.',
-    url: 'https://www.plantocode.com/docs/plantocode-architecture',
+    url: 'https://www.plantocode.com/docs/architecture',
     siteName: 'PlanToCode',
     type: 'article',
   },

@@ -114,6 +114,12 @@ public struct ServerSelectionView: View {
           }
         }
       }
+      .onAppear {
+        // Pre-select the currently active region when the view appears
+        if selected == nil {
+          selected = appState.activeRegion
+        }
+      }
   }
 }
 

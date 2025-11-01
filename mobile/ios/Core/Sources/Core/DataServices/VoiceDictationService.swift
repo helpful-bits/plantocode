@@ -97,7 +97,6 @@ public final class VoiceDictationService: ObservableObject {
             guard let self = self else { return }
             guard buffer.frameLength > 0 else { return }
             guard let bufferCopy = self.makePCMBufferCopy(buffer) else {
-                print("Failed to copy audio buffer")
                 return
             }
             self.audioQueue.async {
@@ -107,7 +106,6 @@ public final class VoiceDictationService: ObservableObject {
                     // Convert to target format if needed
                     if recordingFormat != format {
                         guard let converter = AVAudioConverter(from: recordingFormat, to: format) else {
-                            print("Failed to create audio converter")
                             return
                         }
 
@@ -116,7 +114,6 @@ public final class VoiceDictationService: ObservableObject {
                         let outputFrameCapacity = AVAudioFrameCount(Double(bufferCopy.frameLength) * ratio) + 1024
 
                         guard let convertedBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: outputFrameCapacity) else {
-                            print("Failed to create converted buffer")
                             return
                         }
 
@@ -137,7 +134,6 @@ public final class VoiceDictationService: ObservableObject {
 
                         // Check conversion status
                         if status == .error {
-                            print("Conversion error: \(error?.localizedDescription ?? "unknown")")
                             return
                         }
 
@@ -149,7 +145,6 @@ public final class VoiceDictationService: ObservableObject {
                         do {
                             try audioFile.write(from: convertedBuffer)
                         } catch {
-                            print("Error writing converted audio buffer: \(error)")
                             // Continue without crashing
                         }
                     } else {
@@ -157,12 +152,10 @@ public final class VoiceDictationService: ObservableObject {
                         do {
                             try audioFile.write(from: bufferCopy)
                         } catch {
-                            print("Error writing audio buffer: \(error)")
                             // Continue without crashing
                         }
                     }
                 } catch {
-                    print("Error writing audio buffer: \(error)")
                 }
             }
         }
@@ -190,7 +183,6 @@ public final class VoiceDictationService: ObservableObject {
         do {
             try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         } catch {
-            print("Error deactivating audio session: \(error)")
         }
     }
 

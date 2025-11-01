@@ -3,10 +3,12 @@ import { FeatureBaseLink } from '@/components/support/FeatureBaseSSO';
 import GlassCard from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/button';
 import { Mail, HelpCircle } from 'lucide-react';
+import { cdnUrl } from '@/lib/cdn';
+import { ObfuscatedEmail } from '@/components/ui/ObfuscatedEmail';
 
 export const metadata: Metadata = {
-  title: 'PlanToCode Support',
-  description: 'Get instant help with PlanToCode installation and usage. Troubleshooting for Claude Code, Cursor, OpenAI Codex integration. Feature requests welcome. Response within 24h.',
+  title: 'PlanToCode Support - Help & Troubleshooting',
+  description: 'Get help with PlanToCode installation, Claude Code, Cursor, and Codex integration. Troubleshooting and feature requests. 24h response time.',
   keywords: [
     'plantocode support',
     'plantocode help',
@@ -22,6 +24,24 @@ export const metadata: Metadata = {
   },
   alternates: {
     canonical: 'https://www.plantocode.com/support',
+    languages: {
+      'en-US': 'https://www.plantocode.com/support',
+      'en': 'https://www.plantocode.com/support',
+    },
+  },
+  openGraph: {
+    title: 'PlanToCode Support - Help & Troubleshooting',
+    description: 'Get help with PlanToCode installation, Claude Code, Cursor, and Codex integration. Troubleshooting and feature requests. 24h response time.',
+    url: 'https://www.plantocode.com/support',
+    siteName: 'PlanToCode',
+    type: 'website',
+    locale: 'en_US',
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
   },
 };
 
@@ -44,13 +64,17 @@ export default function SupportPage() {
           <div className="space-y-6">
             <div className="text-center">
               <Button variant="cta" size="lg" asChild className="w-full">
-                <a href="mailto:support@plantocode.com" className="flex items-center gap-2">
+                <ObfuscatedEmail
+                  user="support"
+                  domain="plantocode.com"
+                  className="flex items-center gap-2"
+                >
                   <Mail className="w-5 h-5" />
                   Contact Support
-                </a>
+                </ObfuscatedEmail>
               </Button>
               <p className="text-sm text-muted-foreground mt-2">
-                support@plantocode.com
+                <ObfuscatedEmail user="support" domain="plantocode.com" />
               </p>
             </div>
 

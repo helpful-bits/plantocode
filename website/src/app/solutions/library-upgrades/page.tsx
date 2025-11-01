@@ -4,12 +4,20 @@ import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { PackageSearch, ClipboardCheck, ShieldCheck, FileOutput, GitBranch } from 'lucide-react';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
   title: 'Upgrade Libraries with Guardrails - PlanToCode',
   description:
     'Plan migrations, monitor terminal output, and keep transcripts when updating frameworks or dependencies.',
   openGraph: {
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
+    
     title: 'Upgrade Libraries with Guardrails - PlanToCode',
     description:
       'Use PlanToCode to scope changes, review plans, and capture execution history during library upgrades.',
@@ -19,6 +27,10 @@ export const metadata: Metadata = {
   },
   alternates: {
     canonical: 'https://www.plantocode.com/solutions/library-upgrades',
+    languages: {
+      'en-US': 'https://www.plantocode.com/solutions/library-upgrades',
+      'en': 'https://www.plantocode.com/solutions/library-upgrades',
+    },
   },
 };
 
@@ -112,7 +124,7 @@ export default function LibraryUpgradesPage() {
                     Explore upgrade planning
                   </LinkWithArrow>
                   <span className="hidden sm:inline">•</span>
-                  <LinkWithArrow href="/docs/workflows/file-discovery">
+                  <LinkWithArrow href="/docs/file-discovery">
                     Learn about scope analysis
                   </LinkWithArrow>
                 </div>

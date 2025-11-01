@@ -9,9 +9,20 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { VideoModal } from '@/components/ui/VideoModal';
 import Link from 'next/link';
 import { Camera, Play } from 'lucide-react';
+import { useScrollTracking } from '@/hooks/useScrollTracking';
+import { track } from '@/lib/track';
 
 export default function DemoPage() {
   const [showVideo, setShowVideo] = useState(false);
+
+  // Track scroll depth on demo page
+  useScrollTracking({ enabled: true });
+
+  // Track demo start when video opens
+  const handleVideoOpen = () => {
+    setShowVideo(true);
+    track({ event: 'demo_start', props: { location: 'demo_page_hero' } });
+  };
 
   return (
     <>
@@ -33,7 +44,7 @@ export default function DemoPage() {
                   See how PlanToCode plans and runs code changes.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
-                  <Button variant="cta" size="sm" onClick={() => setShowVideo(true)} className="flex items-center gap-2">
+                  <Button variant="cta" size="sm" onClick={handleVideoOpen} className="flex items-center gap-2">
                     <Play className="w-4 h-4" />
                     View Short Demo
                   </Button>

@@ -3,13 +3,23 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
+import { Breadcrumbs, buildSolutionBreadcrumbs } from '@/components/Breadcrumbs';
+import { RelatedSolutions } from '@/components/RelatedContent';
 import { AlertTriangle, ListChecks, TerminalSquare, AudioWaveform, FileSearch } from 'lucide-react';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
   title: 'Resolve hard bugs with reproducible context - PlanToCode',
   description:
     'How PlanToCode captures plan history, terminal logs, and live transcripts so tricky production issues can be reproduced without guesswork.',
   openGraph: {
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
+    
     title: 'Resolve hard bugs with reproducible context - PlanToCode',
     description:
       'Use PlanToCode to capture plan history, persistent terminal output, and searchable transcripts when investigating complex defects.',
@@ -19,6 +29,10 @@ export const metadata: Metadata = {
   },
   alternates: {
     canonical: 'https://www.plantocode.com/solutions/hard-bugs',
+    languages: {
+      'en-US': 'https://www.plantocode.com/solutions/hard-bugs',
+      'en': 'https://www.plantocode.com/solutions/hard-bugs',
+    },
   },
 };
 
@@ -33,6 +47,8 @@ export default function HardBugsPage() {
         <main className="flex-grow">
           <section className="py-16 sm:py-20 md:py-24 lg:py-32 px-4">
             <div className="container mx-auto max-w-5xl space-y-16">
+              <Breadcrumbs items={buildSolutionBreadcrumbs('Hard Bugs')} />
+
               <header className="text-center space-y-6">
                 <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-amber-500/10 text-amber-500 text-sm font-medium">
                   <AlertTriangle className="w-4 h-4" />
@@ -99,6 +115,8 @@ export default function HardBugsPage() {
                   </LinkWithArrow>
                 </GlassCard>
               </div>
+
+              <RelatedSolutions currentSlug="solutions/hard-bugs" maxItems={3} />
 
               <GlassCard className="p-8 sm:p-12 max-w-3xl mx-auto text-center" highlighted>
                 <h2 className="text-2xl sm:text-3xl font-bold mb-4">Debug Production Issues with Confidence</h2>

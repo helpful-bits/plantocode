@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Header } from '@/components/landing/Header';
 import { ScreenshotGallery } from '@/components/demo/ScreenshotGallery';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
   title: 'Screenshots - PlanToCode in action',
@@ -16,6 +17,13 @@ export const metadata: Metadata = {
     'voice transcription interface',
   ],
   openGraph: {
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
+    
     title: 'Screenshots - See PlanToCode in Action',
     description: 'Real screenshots from actual workflows showing file discovery, implementation planning, and terminal execution.',
     url: 'https://www.plantocode.com/screenshots',
@@ -24,6 +32,10 @@ export const metadata: Metadata = {
   },
   alternates: {
     canonical: 'https://www.plantocode.com/screenshots',
+    languages: {
+      'en-US': 'https://www.plantocode.com/screenshots',
+      'en': 'https://www.plantocode.com/screenshots',
+    },
   },
 };
 

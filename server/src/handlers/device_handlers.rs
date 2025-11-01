@@ -58,6 +58,8 @@ pub struct DeviceInfo {
     pub disk_space_gb: Option<i64>,
     pub active_jobs: i32,
     pub capabilities: JsonValue,
+    #[serde(rename = "isConnected")]
+    pub is_connected: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -87,6 +89,7 @@ pub struct ConnectionDescriptor {
 #[derive(Debug, Deserialize)]
 pub struct DeviceQuery {
     pub device_type: Option<String>,
+    pub connected_only: Option<bool>,
 }
 
 fn is_valid_desktop_platform(s: &str) -> bool {
@@ -313,6 +316,7 @@ pub async fn get_devices_handler(
                 disk_space_gb: device.disk_space_gb,
                 active_jobs: device.active_jobs,
                 capabilities: device.capabilities,
+                is_connected,
                 created_at: device.created_at,
                 updated_at: device.updated_at,
             }
@@ -340,6 +344,16 @@ pub async fn get_devices_handler(
         device_infos
             .into_iter()
             .filter(|d| d.device_type == *device_type)
+            .collect()
+    } else {
+        device_infos
+    };
+
+    // Apply connected_only filter if provided
+    let device_infos: Vec<DeviceInfo> = if query.connected_only == Some(true) {
+        device_infos
+            .into_iter()
+            .filter(|d| d.is_connected)
             .collect()
     } else {
         device_infos

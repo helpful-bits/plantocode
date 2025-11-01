@@ -17,6 +17,14 @@ public class ServerRelayClient: NSObject, ObservableObject {
         return connectionState == .connecting
     }
 
+    private func publishOnMain(_ block: @escaping () -> Void) {
+        if Thread.isMainThread {
+            block()
+        } else {
+            DispatchQueue.main.async(execute: block)
+        }
+    }
+
     // MARK: - Private Properties
     private var webSocketTask: URLSessionWebSocketTask?
     private var urlSession: URLSession
@@ -30,14 +38,25 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
     // RPC and event handling
     private var pendingRPCCalls: [String: RpcResponseSubject] = [:]
+    private var rpcMetrics: [String: RpcMetrics] = [:]
     private let rpcQueue = DispatchQueue(label: "rpc-queue")
     private let rpcQueueKey = DispatchSpecificKey<Bool>()
     private var eventPublisher = PassthroughSubject<RelayEvent, Never>()
     private var registrationPromise: ((Result<Void, ServerRelayError>) -> Void)?
 
+    // RPC metrics tracking
+    private struct RpcMetrics {
+        let method: String
+        let targetDeviceId: String
+        let startTime: Date
+        let requestSize: Int
+    }
+
     /// Public accessor for the events publisher
     public var eventsPublisher: AnyPublisher<RelayEvent, Never> {
-        eventPublisher.eraseToAnyPublisher()
+        eventPublisher
+            .receive(on: DispatchQueue.main)
+            .eraseToAnyPublisher()
     }
 
     // Binary terminal bytes publisher
@@ -54,7 +73,9 @@ public class ServerRelayClient: NSObject, ObservableObject {
     }
     private let terminalBytesSubject = PassthroughSubject<TerminalBytesEvent, Never>()
     public var terminalBytes: AnyPublisher<TerminalBytesEvent, Never> {
-        terminalBytesSubject.eraseToAnyPublisher()
+        terminalBytesSubject
+            .receive(on: DispatchQueue.main)
+            .eraseToAnyPublisher()
     }
 
     // Connection management
@@ -67,12 +88,15 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
     private var currentBinaryBind: (sessionId: String, producerDeviceId: String)?
     private var cancellables = Set<AnyCancellable>()
+    private var isDisconnecting = false
 
     // MARK: - Public Interface
 
     /// Stream of incoming events from the relay
     public var events: AnyPublisher<RelayEvent, Never> {
-        eventPublisher.eraseToAnyPublisher()
+        eventPublisher
+            .receive(on: DispatchQueue.main)
+            .eraseToAnyPublisher()
     }
 
     // MARK: - Initialization
@@ -129,7 +153,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
             // Build WebSocket URL - prefer Config.deviceLinkWebSocketURL for consistency
             let wsURL: URL
-            if let configURL = try? URL(string: Config.serverURL), configURL == self.serverURL {
+            if let configURL = URL(string: Config.serverURL), configURL == self.serverURL {
                 // Use Config's device-link WebSocket URL if serverURL matches
                 wsURL = Config.deviceLinkWebSocketURL
             } else {
@@ -165,7 +189,10 @@ public class ServerRelayClient: NSObject, ObservableObject {
             request.setValue("mobile", forHTTPHeaderField: "X-Client-Type")
 
             self.logger.info("Connecting to server relay: \(wsURL)")
-            self.connectionState = .connecting
+            self.publishOnMain {
+                self.connectionState = .connecting
+                self.isConnected = false
+            }
 
             self.webSocketTask = self.urlSession.webSocketTask(with: request)
             // Increase maximum message size to 10MB to handle large session lists
@@ -189,7 +216,11 @@ public class ServerRelayClient: NSObject, ObservableObject {
                         guard let self = self else { return }
                         if self.registrationPromise != nil {
                             self.logger.error("Registration handshake timeout - no response received")
-                            self.connectionState = .failed(ServerRelayError.timeout)
+                            self.publishOnMain {
+                                self.connectionState = .failed(ServerRelayError.timeout)
+                                self.isConnected = false
+                                self.lastError = .timeout
+                            }
                             self.webSocketTask?.cancel(with: .abnormalClosure, reason: nil)
                             self.registrationPromise?(.failure(.timeout))
                             self.registrationPromise = nil
@@ -212,10 +243,20 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
     /// Disconnect from the relay
     public func disconnect() {
+        // Idempotency guard to prevent duplicate disconnect calls
+        if isDisconnecting { return }
+        if webSocketTask == nil, connectionState == .disconnected {
+            return
+        }
+        isDisconnecting = true
+        defer { isDisconnecting = false }
+        
         logger.info("Disconnecting from server relay")
 
-        connectionState = .disconnected
-        isConnected = false
+        publishOnMain {
+            self.connectionState = .disconnected
+            self.isConnected = false
+        }
         stopHeartbeat()
         stopReconnection()
 
@@ -235,6 +276,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
         executeSafelyOnRpcQueue {
             let subjects = Array(self.pendingRPCCalls.values)
             self.pendingRPCCalls.removeAll()
+            self.rpcMetrics.removeAll()
 
             for subject in subjects {
                 subject.send(completion: .failure(.disconnected))
@@ -243,6 +285,23 @@ public class ServerRelayClient: NSObject, ObservableObject {
     }
 
     // MARK: - RPC Calls
+
+    private func formatBytes(_ bytes: Int) -> String {
+        let units = ["B", "KB", "MB", "GB"]
+        var value = Double(bytes)
+        var unitIndex = 0
+
+        while value >= 1024 && unitIndex < units.count - 1 {
+            value /= 1024
+            unitIndex += 1
+        }
+
+        if unitIndex == 0 {
+            return "\(bytes) B"
+        } else {
+            return String(format: "%.2f %@", value, units[unitIndex])
+        }
+    }
 
     /// Safely executes a block on rpcQueue, avoiding deadlock if already on the queue
     private func executeSafelyOnRpcQueue(_ block: @escaping () -> Void) {
@@ -315,12 +374,23 @@ public class ServerRelayClient: NSObject, ObservableObject {
                         case .finished:
                             continuation.finish()
                         case .failure(let error):
+                            // Log metrics for failed/timeout RPCs
+                            self.rpcQueue.async {
+                                if let metrics = self.rpcMetrics[req.id] {
+                                    let duration = Date().timeIntervalSince(metrics.startTime)
+                                    let shortTargetId = String(metrics.targetDeviceId.prefix(8))
+                                    let errorDesc = error.localizedDescription
+
+                                    self.logger.error("[RPC] \(metrics.method) -> \(shortTargetId) | Status: Failed | Duration: \(String(format: "%.3f", duration))s | Request: \(self.formatBytes(metrics.requestSize)) | Error: \(errorDesc)")
+                                }
+                            }
                             continuation.finish(throwing: error)
                         }
 
                         // Clean up
                         self.rpcQueue.async {
                             self.pendingRPCCalls.removeValue(forKey: req.id)
+                            self.rpcMetrics.removeValue(forKey: req.id)
                         }
                     },
                     receiveValue: { response in
@@ -337,6 +407,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
                 cancellable.cancel()
                 self.rpcQueue.async {
                     self.pendingRPCCalls.removeValue(forKey: req.id)
+                    self.rpcMetrics.removeValue(forKey: req.id)
                 }
             }
 
@@ -363,7 +434,19 @@ public class ServerRelayClient: NSObject, ObservableObject {
                         "type": "relay",
                         "payload": payload
                     ]
-                    let _ = try self.encodeForWebSocket(envelope)
+                    let encodedString = try self.encodeForWebSocket(envelope)
+                    let requestSize = encodedString.utf8.count
+
+                    // Track metrics for this RPC call
+                    let metrics = RpcMetrics(
+                        method: req.method,
+                        targetDeviceId: targetDeviceId,
+                        startTime: Date(),
+                        requestSize: requestSize
+                    )
+                    self.rpcQueue.async {
+                        self.rpcMetrics[req.id] = metrics
+                    }
 
                     // Send the message
                     try await self.sendMessage(type: "relay", payload: payload)
@@ -607,7 +690,15 @@ public class ServerRelayClient: NSObject, ObservableObject {
         case .data(let data):
             // Binary frames are raw terminal output - publish as-is without inspection
             let sessionId = self.currentBinaryBind?.sessionId
-            terminalBytesSubject.send(TerminalBytesEvent(data: data, timestamp: Date(), sessionId: sessionId))
+            publishOnMain {
+                self.terminalBytesSubject.send(
+                    TerminalBytesEvent(
+                        data: data,
+                        timestamp: Date(),
+                        sessionId: sessionId
+                    )
+                )
+            }
         @unknown default:
             break
         }
@@ -627,7 +718,6 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
             // Check for DeviceMessage format (with messageType field) first
             if let messageType = json["messageType"] as? String {
-                logger.info("Relay message received type=device_message(\(messageType), privacy: .public)")
                 handleDeviceMessageEvent(json)
                 return
             }
@@ -720,8 +810,10 @@ public class ServerRelayClient: NSObject, ObservableObject {
             transport: "websocket"
         )
 
-        connectionState = .connected(handshake)
-        isConnected = true
+        publishOnMain {
+            self.connectionState = .connected(handshake)
+            self.isConnected = true
+        }
         reconnectAttempts = 0
         startHeartbeat()
 
@@ -776,8 +868,10 @@ public class ServerRelayClient: NSObject, ObservableObject {
             transport: "websocket"
         )
 
-        connectionState = .connected(handshake)
-        isConnected = true
+        publishOnMain {
+            self.connectionState = .connected(handshake)
+            self.isConnected = true
+        }
         reconnectAttempts = 0
         startHeartbeat()
 
@@ -819,8 +913,10 @@ public class ServerRelayClient: NSObject, ObservableObject {
                 clientId: deviceId,
                 transport: "websocket"
             )
-            connectionState = .connected(handshake)
-            isConnected = true
+            publishOnMain {
+                self.connectionState = .connected(handshake)
+                self.isConnected = true
+            }
             startHeartbeat()
         }
     }
@@ -866,20 +962,44 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
             responseSubject.send(rpcResponse)
 
+            // Log metrics if this is the final response or an error
+            if isFinal || rpcError != nil {
+                if let metrics = self.rpcMetrics[correlationId] {
+                    let duration = Date().timeIntervalSince(metrics.startTime)
+
+                    // Calculate response size
+                    let responseSize: Int
+                    if let responseData = try? JSONSerialization.data(withJSONObject: responseDict) {
+                        responseSize = responseData.count
+                    } else {
+                        responseSize = 0
+                    }
+
+                    let status = rpcError != nil ? "Error" : "Success"
+                    let shortTargetId = String(metrics.targetDeviceId.prefix(8))
+
+                    if rpcError != nil {
+                        self.logger.error("[RPC] \(metrics.method) -> \(shortTargetId) | Status: \(status) | Duration: \(String(format: "%.3f", duration))s | Request: \(self.formatBytes(metrics.requestSize)) | Response: \(self.formatBytes(responseSize)) | Error: \(errorMsg ?? "Unknown")")
+                    } else {
+                        self.logger.info("[RPC] \(metrics.method) -> \(shortTargetId) | Status: \(status) | Duration: \(String(format: "%.3f", duration))s | Request: \(self.formatBytes(metrics.requestSize)) | Response: \(self.formatBytes(responseSize))")
+                    }
+                }
+            }
+
             // Complete stream if final or error
             if rpcError != nil {
                 responseSubject.send(completion: .failure(.serverError("rpc_error", errorMsg ?? "Unknown RPC error")))
                 self.pendingRPCCalls.removeValue(forKey: correlationId)
+                self.rpcMetrics.removeValue(forKey: correlationId)
             } else if isFinal {
                 responseSubject.send(completion: .finished)
                 self.pendingRPCCalls.removeValue(forKey: correlationId)
+                self.rpcMetrics.removeValue(forKey: correlationId)
             }
         }
     }
 
     private func handleRelayEventMessage(_ json: [String: Any]) {
-        logger.debug("Received relay event message: \(json)")
-
         guard let eventType = json["eventType"] as? String else {
             logger.warning("Relay event missing eventType field")
             return
@@ -896,8 +1016,9 @@ public class ServerRelayClient: NSObject, ObservableObject {
             sourceDeviceId: sourceDeviceId
         )
 
-        logger.info("Publishing relay event: \(eventType) from device: \(sourceDeviceId ?? "unknown")")
-        eventPublisher.send(relayEvent)
+        publishOnMain {
+            self.eventPublisher.send(relayEvent)
+        }
 
         // Forward history-state-changed events to NotificationCenter
         if eventType == "history-state-changed" {
@@ -923,8 +1044,9 @@ public class ServerRelayClient: NSObject, ObservableObject {
             sourceDeviceId: sourceDeviceId
         )
 
-        logger.info("Publishing device message event: \(eventType) from device: \(sourceDeviceId ?? "unknown")")
-        eventPublisher.send(relayEvent)
+        publishOnMain {
+            self.eventPublisher.send(relayEvent)
+        }
     }
 
     private func handleErrorMessage(_ json: [String: Any]) {
@@ -948,7 +1070,11 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
         if nonRetryableCodes.contains(errorCode) {
             logger.error("Non-retryable error received: \(errorCode)")
-            connectionState = .failed(ServerRelayError.serverError(errorCode, errorMessage))
+            publishOnMain {
+                self.connectionState = .failed(ServerRelayError.serverError(errorCode, errorMessage))
+                self.isConnected = false
+                self.lastError = .serverError(errorCode, errorMessage)
+            }
             isReconnecting = false
             stopReconnection()
             registrationPromise?(.failure(.serverError(errorCode, errorMessage)))
@@ -974,7 +1100,9 @@ public class ServerRelayClient: NSObject, ObservableObject {
             return
         }
 
-        lastError = .serverError(errorCode, errorMessage)
+        publishOnMain {
+            self.lastError = .serverError(errorCode, errorMessage)
+        }
     }
 
 
@@ -983,7 +1111,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
     private func handleConnectionError(_ error: Error) {
         logger.error("Connection error: \(error)")
 
-        DispatchQueue.main.async {
+        publishOnMain {
             self.connectionState = .failed(error)
             self.isConnected = false
             self.lastError = .networkError(error)
@@ -1036,7 +1164,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
         let delay = min(pow(2.0, Double(self.reconnectAttempts - 1)), 30.0)
         logger.info("Scheduling reconnection in \(delay) seconds (attempt \(self.reconnectAttempts))")
 
-        DispatchQueue.main.async {
+        publishOnMain {
             self.connectionState = .reconnecting
         }
 

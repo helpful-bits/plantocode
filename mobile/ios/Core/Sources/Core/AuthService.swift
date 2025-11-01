@@ -72,7 +72,6 @@ public final class AuthService: NSObject, ObservableObject {
         }
       }
     } catch {
-      print("Error checking stored token: \(error)")
     }
   }
 
@@ -144,7 +143,6 @@ public final class AuthService: NSObject, ObservableObject {
       completionHandler: { [weak self] callbackURL, error in
         // Browser session ended - don't stop polling
         // User might have completed auth even if session closed
-        print("Auth session ended, error: \(String(describing: error))")
       }
     )
 
@@ -203,7 +201,6 @@ public final class AuthService: NSObject, ObservableObject {
             // Validate CSRF token
             guard let loginAttempt = loginAttempts[pollingId],
                   loginAttempt.csrfToken == serverCsrfToken else {
-              print("CSRF token mismatch")
               return
             }
 
@@ -228,7 +225,6 @@ public final class AuthService: NSObject, ObservableObject {
         }
 
       } catch {
-        print("Polling error: \(error)")
         loginAttempts.removeValue(forKey: pollingId)
         await MainActor.run {
           self.authError = Self.userFacingMessage(for: error)
@@ -243,7 +239,6 @@ public final class AuthService: NSObject, ObservableObject {
       try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
     }
 
-    print("Authentication timed out")
     loginAttempts.removeValue(forKey: pollingId)
     await MainActor.run {
       self.authError = "Authentication timed out. Please close the browser tab and try again."
@@ -327,6 +322,13 @@ public final class AuthService: NSObject, ObservableObject {
         NotificationCenter.default.post(name: NSNotification.Name("auth-token-refreshed"), object: nil)
       }
 
+      // Kick orchestrator immediately after successful login finalization
+      if PlanToCodeCore.shared.isInitialized {
+        Task { @MainActor in
+          await InitializationOrchestrator.shared.run()
+        }
+      }
+
       // Register push token after successful login
       Task { await PushNotificationManager.shared.registerPushTokenIfAvailable() }
 
@@ -338,7 +340,6 @@ public final class AuthService: NSObject, ObservableObject {
       }
 
     } catch {
-      print("Error in token exchange and finalize login: \(error)")
       await MainActor.run {
         self.authError = Self.userFacingMessage(for: error)
         self.isAuthenticated = false
@@ -370,7 +371,6 @@ public final class AuthService: NSObject, ObservableObject {
       if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
         // 401/403 error - clear token
         try? keychain.remove("app_jwt")
-        print("AuthService: Cleared invalid token after 401/403; user is unauthenticated.")
         throw APIError.invalidResponse(statusCode: httpResponse.statusCode, data: data)
       }
 
@@ -385,9 +385,7 @@ public final class AuthService: NSObject, ObservableObject {
       if case APIError.invalidResponse(let code, _) = error, code == 401 || code == 403 {
         // 401/403 error - clear token
         try? keychain.remove("app_jwt")
-        print("AuthService: Cleared invalid token after 401/403; user is unauthenticated.")
       }
-      print("Error fetching user info: \(error)")
       return nil
     }
   }
@@ -461,7 +459,6 @@ public final class AuthService: NSObject, ObservableObject {
         )
       } catch {
         // Ignore response - proceed with local logout
-        print("Server logout failed: \(error)")
       }
     }
 

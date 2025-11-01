@@ -55,25 +55,32 @@ public final class AppContainer: ObservableObject {
     @Published public var hasCompletedInitialLoad: Bool = false
 
     public init(baseURL: URL, deviceId: String) {
-        self.manager = DataServicesManager(baseURL: baseURL, deviceId: deviceId)
+        // Use the core-managed singleton if available, otherwise create a new one
+        if let coreManager = PlanToCodeCore.shared.dataServices {
+            self.manager = coreManager
+        } else {
+            // Fallback: create new manager if core not initialized yet
+            self.manager = DataServicesManager(baseURL: baseURL, deviceId: deviceId)
+        }
 
         manager.$connectionStatus
+            .receive(on: DispatchQueue.main)
             .assign(to: &$connectionStatus)
 
         manager.$currentProject
+            .receive(on: DispatchQueue.main)
             .assign(to: &$currentProject)
 
         manager.$isInitializing
+            .receive(on: DispatchQueue.main)
             .assign(to: &$isInitializing)
 
         manager.$hasCompletedInitialLoad
+            .receive(on: DispatchQueue.main)
             .assign(to: &$hasCompletedInitialLoad)
     }
 
     public func setCurrentProject(_ project: ProjectInfo) {
-        #if DEBUG
-        print("[AppContainer] Setting current project: \(project.name) at \(project.directory)")
-        #endif
         manager.setCurrentProject(project)
     }
 

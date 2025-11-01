@@ -80,6 +80,11 @@ public class TerminalDataService: ObservableObject {
     private var firstResizeCompleted = Set<String>() // Tracks session.id keys
     private var bindingRefCount = [String: Int]() // session.id -> refcount
     private var pendingUnbindTasks: [String: Task<Void, Never>] = [:]
+    private var binarySubscriptionEstablishing = false
+    private var isGlobalBinarySubscribed: Bool = false
+    private let binarySubscriptionQueue = DispatchQueue(label: "TerminalDataService.binarySubscription")
+    private var bootstrapInFlight = false
+    private var lastBootstrapAt: Date?
 
     // MARK: - Initialization
     public init() {
@@ -111,8 +116,8 @@ public class TerminalDataService: ObservableObject {
                             }
                         }
 
-                        // Re-subscribe to binary stream on connect
-                        self.ensureGlobalBinarySubscriptionForActiveDevice()
+                        // Binary subscription is now ONLY established via activeDeviceReconnectCancellable
+                        // to ensure single-source subscription setup and eliminate race conditions
                     }
                 }
             }
@@ -124,7 +129,12 @@ public class TerminalDataService: ObservableObject {
 
                 if case .connected = states[activeId] {
                     Task { @MainActor in
-                        // Re-subscribe to binary stream on reconnect
+                        if let activeDeviceId = self.binarySubscriptionDeviceId,
+                           self.globalBinarySubscription != nil,
+                           self.isGlobalBinarySubscribed {
+                            return
+                        }
+
                         self.ensureGlobalBinarySubscriptionForActiveDevice()
 
                         for sessionId in self.boundSessions {
@@ -540,45 +550,50 @@ public class TerminalDataService: ObservableObject {
     }
 
     private func ensureGlobalBinarySubscription(relayClient: ServerRelayClient, deviceId: UUID) {
-        // Check if we need to re-subscribe (device changed or first subscription)
-        if let existingDeviceId = binarySubscriptionDeviceId, existingDeviceId == deviceId, globalBinarySubscription != nil {
-            self.logger.info("Global binary subscription already exists for device \(deviceId), skipping setup")
+        if let currentId = binarySubscriptionDeviceId,
+           currentId == deviceId,
+           globalBinarySubscription != nil,
+           isGlobalBinarySubscribed {
             return
         }
 
-        // Cancel old subscription if device changed
-        if let existingDeviceId = binarySubscriptionDeviceId, existingDeviceId != deviceId {
-            self.logger.info("Device changed from \(existingDeviceId) to \(deviceId), re-subscribing")
-            globalBinarySubscription?.cancel()
-            globalBinarySubscription = nil
+        let shouldEstablish = binarySubscriptionQueue.sync { () -> Bool in
+            if isGlobalBinarySubscribed, binarySubscriptionDeviceId == deviceId {
+                return false
+            }
+            if binarySubscriptionDeviceId != nil, binarySubscriptionDeviceId != deviceId {
+                globalBinarySubscription?.cancel()
+                globalBinarySubscription = nil
+                isGlobalBinarySubscribed = false
+            }
+            isGlobalBinarySubscribed = true
+            binarySubscriptionDeviceId = deviceId
+            return true
         }
+
+        guard shouldEstablish else { return }
 
         globalBinarySubscription = relayClient.terminalBytes
             .receive(on: DispatchQueue.main)
             .sink { [weak self] evt in
                 guard let self = self else { return }
 
-                // Resolve session ID with event priority
                 let sid = evt.sessionId ?? self.currentBoundSessionId
                 guard let sid = sid else {
                     self.logger.debug("Dropping binary bytes: no sessionId in event or binding")
                     return
                 }
 
-                // Ensure ByteRing exists before appending
                 if self.outputRings[sid] == nil {
                     self.outputRings[sid] = ByteRing(maxBytes: 2_000_000)
                 }
                 self.outputRings[sid]!.append(evt.data)
 
-                // Ensure bytes publisher exists before sending
                 let pub = self.outputBytesPublishers[sid] ?? self.ensureBytesPublisher(for: sid)
                 pub.send(evt.data)
 
-                // Update activity tracking
                 self.lastActivityBySession[sid] = Date()
 
-                // Also decode to text for backward compatibility
                 if let decoded = String(data: evt.data, encoding: .utf8),
                    let textPublisher = self.outputPublishers[sid] {
                     let output = TerminalOutput(
@@ -591,7 +606,6 @@ public class TerminalDataService: ObservableObject {
                 }
             }
 
-        binarySubscriptionDeviceId = deviceId
         self.logger.info("Global binary subscription established for device \(deviceId)")
     }
 
@@ -599,6 +613,13 @@ public class TerminalDataService: ObservableObject {
         // Resolve active device/relay from MultiConnectionManager
         guard let activeDeviceId = connectionManager.activeDeviceId,
               let activeRelay = connectionManager.relayConnection(for: activeDeviceId) else {
+            return
+        }
+
+        if let currentId = binarySubscriptionDeviceId,
+           currentId == activeDeviceId,
+           globalBinarySubscription != nil,
+           isGlobalBinarySubscribed {
             return
         }
 
@@ -789,6 +810,16 @@ public class TerminalDataService: ObservableObject {
     }
 
     public func bootstrapFromRemote() async {
+        // Idempotency guards: prevent concurrent or rapid successive bootstraps
+        if bootstrapInFlight { return }
+        if let last = lastBootstrapAt, Date().timeIntervalSince(last) < 1.0 { return }
+        
+        bootstrapInFlight = true
+        defer {
+            lastBootstrapAt = Date()
+            bootstrapInFlight = false
+        }
+        
         guard let deviceId = connectionManager.activeDeviceId,
               connectionManager.relayConnection(for: deviceId) != nil else {
             return
@@ -845,39 +876,32 @@ public class TerminalDataService: ObservableObject {
     /// Clean all terminal state when switching devices
     @MainActor
     public func cleanForDeviceSwitch() {
-        // Cancel global binary subscription
         globalBinarySubscription?.cancel()
         globalBinarySubscription = nil
         binarySubscriptionDeviceId = nil
+        isGlobalBinarySubscribed = false
 
-        // Cancel all event subscriptions
         eventSubscriptions.values.forEach { $0.cancel() }
         eventSubscriptions.removeAll()
 
-        // Clear all session state
         activeSessions.removeAll()
         jobToSessionId.removeAll()
 
-        // Clear publishers and buffers
         outputPublishers.removeAll()
         outputBytesPublishers.removeAll()
         outputRings.removeAll()
 
-        // Clear binding state
         boundSessions.removeAll()
         bindingRefCount.removeAll()
         currentBoundSessionId = nil
 
-        // Cancel pending unbind tasks
         pendingUnbindTasks.values.forEach { $0.cancel() }
         pendingUnbindTasks.removeAll()
 
-        // Clear activity tracking
         lastActivityBySession.removeAll()
         firstResizeCompleted.removeAll()
         recentSentChunks.removeAll()
 
-        // Reset error state
         lastError = nil
         isLoading = false
 

@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import type { SoftwareApplication, FAQPage, VideoObject, ImageObject, Organization, WebSite } from 'schema-dts';
 import { SectionDividerMesh } from '@/components/ui/SectionDivider';
+import { HomePageClient } from '@/components/landing/HomePageClient';
 
 
 const Features = dynamic(() => import('@/components/landing/Features').then(mod => ({ default: mod.Features })), {
@@ -46,9 +47,16 @@ const CallToAction = dynamic(() => import('@/components/landing/CallToAction').t
 
 
 export const metadata: Metadata = {
-  title: 'PlanToCode - Human-in-the-loop AI Planning for Large & Legacy Codebases',
-  description: 'Generate granular, file-by-file implementation plans with exact repository paths. Human-reviewed approvals before execution. Prevent regressions with corporate AI governance. Microsoft Teams meeting ingestion.',
+  title: 'AI Implementation Planning for Safe Coding | PlanToCode',
+  description: 'AI implementation planning for large codebases. Review changes before execution. Prevent bugs and duplicates. Integrates with Cursor, Copilot, Claude Code.',
   keywords: [
+    'ai code planning',
+    'implementation planning tool',
+    'prevent duplicate files ai',
+    'ai code review',
+    'cursor alternative',
+    'safe refactoring tool',
+    'legacy code planning',
     'human-in-the-loop ai',
     'corporate ai governance',
     'file-by-file implementation plans',
@@ -107,6 +115,10 @@ export const metadata: Metadata = {
   },
   alternates: {
     canonical: 'https://www.plantocode.com',
+    languages: {
+      'en-US': 'https://www.plantocode.com',
+      'en': 'https://www.plantocode.com',
+    },
   },
 };
 
@@ -447,152 +459,252 @@ export default function Home() {
       {imageStructuredData.map((image, index) => (
         <StructuredData key={`image-${index}`} data={image} />
       ))}
-      {/* Background gradient */}
-      <div className="fixed inset-0 -z-20" style={{ background: 'var(--background-gradient)' }} />
-      {/* Page content */}
-      <div className="relative z-0 bg-transparent">
-        <Header />
-        
-        <main className="flex-grow">
-          {/* SR-only content for better Google snippets */}
-          <div className="sr-only">
-            <h1>Plan software changes before you code</h1>
-            <p>PlanToCode helps you find the right files, generate and merge implementation plans, then run them in a persistent terminal. You see scope before you run anything. Plans are editable and traceable.</p>
-          </div>
-          <section className="mb-0">
-            <HeroSection />
-          </section>
-          <SectionDividerMesh />
+      <HomePageClient>
+        {/* Background gradient */}
+        <div className="fixed inset-0 -z-20" style={{ background: 'var(--background-gradient)' }} />
+        {/* Page content */}
+        <div className="relative z-0 bg-transparent">
+          <Header />
 
-          {/* Human-in-the-loop Implementation Planning */}
-          <section className="py-16 px-4">
-            <div className="container mx-auto max-w-6xl">
-              <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">Human-in-the-loop Governance</h2>
-              <p className="text-lg text-center text-foreground/80 mb-12 max-w-3xl mx-auto">
-                Maintain full control over AI-generated implementation plans. Review, edit, approve, and audit every step before execution.
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <GlassCard className="p-6">
-                  <h3 className="text-xl font-semibold mb-3">File-by-file Plans with Exact Paths</h3>
-                  <p className="text-foreground/80">
-                    Implementation plans break down changes on a file-by-file basis with exact repository paths, ensuring complete visibility into what will be modified.
-                  </p>
-                </GlassCard>
-                <GlassCard className="p-6">
-                  <h3 className="text-xl font-semibold mb-3">Review, Edit & Approve Workflow</h3>
-                  <p className="text-foreground/80">
-                    Team leads and stakeholders can review proposed changes, directly edit plan details, request modifications, and approve plans before execution.
-                  </p>
-                </GlassCard>
-                <GlassCard className="p-6">
-                  <h3 className="text-xl font-semibold mb-3">Safe Handoff to Agents</h3>
-                  <p className="text-foreground/80">
-                    Once approved, plans are securely transmitted to your chosen coding agent or assigned to developers, preventing regressions and ensuring alignment with requirements.
-                  </p>
-                </GlassCard>
-              </div>
+          <main className="flex-grow">
+            {/* SR-only content for better Google snippets */}
+            <div className="sr-only">
+              <h1>Plan software changes before you code</h1>
+              <p>PlanToCode helps you find the right files, generate and merge implementation plans, then run them in a persistent terminal. You see scope before you run anything. Plans are editable and traceable.</p>
             </div>
-          </section>
-          <SectionDividerMesh />
+            <section className="mb-0">
+              <HeroSection />
+            </section>
+            <SectionDividerMesh />
 
-          {/* Specification Capture Mode */}
-          <section className="py-16 px-4">
-            <div className="container mx-auto max-w-6xl">
-              <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">Specification Capture & Refinement</h2>
-              <p className="text-lg text-center text-foreground/80 mb-12 max-w-3xl mx-auto">
-                Rapidly crystallize ideas into clear, actionable specifications with voice dictation and AI-powered enhancement.
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <GlassCard className="p-6">
-                  <Mic className="w-10 h-10 text-primary mb-4" />
-                  <h3 className="text-xl font-semibold mb-3">Voice Dictation</h3>
-                  <p className="text-foreground/80 mb-4">
-                    Capture initial requirements through voice input, which you can then refine manually for precision and clarity.
-                  </p>
-                  <Link href="/features/voice-transcription" className="text-primary hover:underline text-sm font-medium">
-                    Learn more →
-                  </Link>
-                </GlassCard>
-                <GlassCard className="p-6">
-                  <Sparkles className="w-10 h-10 text-primary mb-4" />
-                  <h3 className="text-xl font-semibold mb-3">Text Enhancement</h3>
-                  <p className="text-foreground/80 mb-4">
-                    Improve grammar, sentence structure, clarity, and conciseness while maintaining your original intent, tone, and technical detail level.
-                  </p>
-                  <Link href="/features/text-improvement" className="text-primary hover:underline text-sm font-medium">
-                    Learn more →
-                  </Link>
-                </GlassCard>
-                <GlassCard className="p-6">
-                  <Code2 className="w-10 h-10 text-primary mb-4" />
-                  <h3 className="text-xl font-semibold mb-3">Task Refinement</h3>
-                  <p className="text-foreground/80 mb-4">
-                    Expand task descriptions by identifying implied requirements, clarifying expected behavior and edge cases, and adding technical considerations.
-                  </p>
-                  <Link href="/features/text-improvement" className="text-primary hover:underline text-sm font-medium">
-                    Learn more →
-                  </Link>
-                </GlassCard>
+            {/* Human-in-the-loop Implementation Planning */}
+            <section className="py-16 px-4">
+              <div className="container mx-auto max-w-6xl">
+                <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">Human-in-the-loop Governance</h2>
+                <p className="text-lg text-center text-foreground/80 mb-12 max-w-3xl mx-auto">
+                  Maintain full control over AI-generated implementation plans. Review, edit, approve, and audit every step before execution.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <GlassCard className="p-6">
+                    <h3 className="text-xl font-semibold mb-3">File-by-file Plans with Exact Paths</h3>
+                    <p className="text-foreground/80">
+                      Implementation plans break down changes on a file-by-file basis with exact repository paths, ensuring complete visibility into what will be modified.
+                    </p>
+                  </GlassCard>
+                  <GlassCard className="p-6">
+                    <h3 className="text-xl font-semibold mb-3">Review, Edit & Approve Workflow</h3>
+                    <p className="text-foreground/80">
+                      Team leads and stakeholders can review proposed changes, directly edit plan details, request modifications, and approve plans before execution.
+                    </p>
+                  </GlassCard>
+                  <GlassCard className="p-6">
+                    <h3 className="text-xl font-semibold mb-3">Safe Handoff to Agents</h3>
+                    <p className="text-foreground/80">
+                      Once approved, plans are securely transmitted to your chosen coding agent or assigned to developers, preventing regressions and ensuring alignment with requirements.
+                    </p>
+                  </GlassCard>
+                </div>
               </div>
-            </div>
-          </section>
-          <SectionDividerMesh />
+            </section>
+            <SectionDividerMesh />
 
-          {/* Meeting & Recording Ingestion */}
-          <section className="py-16 px-4">
-            <div className="container mx-auto max-w-6xl">
-              <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">Meeting & Recording Ingestion</h2>
-              <p className="text-lg text-center text-foreground/80 mb-12 max-w-3xl mx-auto">
-                Transform Microsoft Teams meetings and screen recordings into actionable implementation requirements.
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <GlassCard className="p-6">
-                  <Video className="w-10 h-10 text-primary mb-4" />
-                  <h3 className="text-xl font-semibold mb-3">Multimodal Analysis</h3>
-                  <p className="text-foreground/80 mb-4">
-                    Upload Microsoft Teams meetings or screen recordings. Advanced multimodal models analyze both audio transcripts (with speaker identification) and relevant visual content (shared screens, presented documents, key moments) to extract specification requirements.
-                  </p>
-                  <Link href="/features/video-analysis" className="text-primary hover:underline text-sm font-medium">
-                    Learn more →
-                  </Link>
-                </GlassCard>
-                <GlassCard className="p-6">
-                  <CheckCircle2 className="w-10 h-10 text-primary mb-4" />
-                  <h3 className="text-xl font-semibold mb-3">Review & Incorporate Insights</h3>
-                  <p className="text-foreground/80 mb-4">
-                    Extracted insights - summarized decisions, action items, and key discussion points - are presented in an intuitive interface where team leads can review, select, and incorporate them into actionable implementation plans.
-                  </p>
-                  <Link href="/features/video-analysis" className="text-primary hover:underline text-sm font-medium">
-                    Learn more →
-                  </Link>
-                </GlassCard>
+            {/* Specification Capture Mode */}
+            <section className="py-16 px-4">
+              <div className="container mx-auto max-w-6xl">
+                <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">Specification Capture & Refinement</h2>
+                <p className="text-lg text-center text-foreground/80 mb-12 max-w-3xl mx-auto">
+                  Rapidly crystallize ideas into clear, actionable specifications with voice dictation and AI-powered enhancement.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <GlassCard className="p-6">
+                    <Mic className="w-10 h-10 text-primary mb-4" />
+                    <h3 className="text-xl font-semibold mb-3">Voice Dictation</h3>
+                    <p className="text-foreground/80 mb-4">
+                      Capture initial requirements through voice input, which you can then refine manually for precision and clarity.
+                    </p>
+                    <Link href="/features/voice-transcription" className="text-primary hover:underline text-sm font-medium">
+                      Learn more →
+                    </Link>
+                  </GlassCard>
+                  <GlassCard className="p-6">
+                    <Sparkles className="w-10 h-10 text-primary mb-4" />
+                    <h3 className="text-xl font-semibold mb-3">Text Enhancement</h3>
+                    <p className="text-foreground/80 mb-4">
+                      Improve grammar, sentence structure, clarity, and conciseness while maintaining your original intent, tone, and technical detail level.
+                    </p>
+                    <Link href="/features/text-improvement" className="text-primary hover:underline text-sm font-medium">
+                      Learn more →
+                    </Link>
+                  </GlassCard>
+                  <GlassCard className="p-6">
+                    <Code2 className="w-10 h-10 text-primary mb-4" />
+                    <h3 className="text-xl font-semibold mb-3">Task Refinement</h3>
+                    <p className="text-foreground/80 mb-4">
+                      Expand task descriptions by identifying implied requirements, clarifying expected behavior and edge cases, and adding technical considerations.
+                    </p>
+                    <Link href="/features/text-improvement" className="text-primary hover:underline text-sm font-medium">
+                      Learn more →
+                    </Link>
+                  </GlassCard>
+                </div>
               </div>
-            </div>
-          </section>
-          <SectionDividerMesh />
+            </section>
+            <SectionDividerMesh />
 
-          <Features features={features} />
-          <SectionDividerMesh />
+            {/* Meeting & Recording Ingestion */}
+            <section className="py-16 px-4">
+              <div className="container mx-auto max-w-6xl">
+                <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">Meeting & Recording Ingestion</h2>
+                <p className="text-lg text-center text-foreground/80 mb-12 max-w-3xl mx-auto">
+                  Transform Microsoft Teams meetings and screen recordings into actionable implementation requirements.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <GlassCard className="p-6">
+                    <Video className="w-10 h-10 text-primary mb-4" />
+                    <h3 className="text-xl font-semibold mb-3">Multimodal Analysis</h3>
+                    <p className="text-foreground/80 mb-4">
+                      Upload Microsoft Teams meetings or screen recordings. Advanced multimodal models analyze both audio transcripts (with speaker identification) and relevant visual content (shared screens, presented documents, key moments) to extract specification requirements.
+                    </p>
+                    <Link href="/features/video-analysis" className="text-primary hover:underline text-sm font-medium">
+                      Learn more →
+                    </Link>
+                  </GlassCard>
+                  <GlassCard className="p-6">
+                    <CheckCircle2 className="w-10 h-10 text-primary mb-4" />
+                    <h3 className="text-xl font-semibold mb-3">Review & Incorporate Insights</h3>
+                    <p className="text-foreground/80 mb-4">
+                      Extracted insights - summarized decisions, action items, and key discussion points - are presented in an intuitive interface where team leads can review, select, and incorporate them into actionable implementation plans.
+                    </p>
+                    <Link href="/features/video-analysis" className="text-primary hover:underline text-sm font-medium">
+                      Learn more →
+                    </Link>
+                  </GlassCard>
+                </div>
+              </div>
+            </section>
+            <SectionDividerMesh />
 
-          <section id="pricing">
-            <Pricing />
-          </section>
-          <SectionDividerMesh />
+            <Features features={features} />
+            <SectionDividerMesh />
+
+            {/* Common Problems Section - Internal Linking */}
+            <section className="py-16 px-4">
+              <div className="container mx-auto max-w-6xl">
+                <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">
+                  Solve Complex Development Challenges
+                </h2>
+                <p className="text-lg text-center text-foreground/80 mb-12 max-w-3xl mx-auto">
+                  Real solutions for the hardest problems in software development
+                </p>
+                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  <GlassCard className="p-6" highlighted>
+                    <h3 className="text-xl font-semibold mb-3">Hard Production Bugs</h3>
+                    <p className="text-foreground/80 mb-4 text-sm">
+                      Debug with preserved context, reproducible steps, and complete investigation history
+                    </p>
+                    <Link href="/solutions/hard-bugs" className="text-primary hover:underline text-sm font-medium">
+                      Learn more →
+                    </Link>
+                  </GlassCard>
+
+                  <GlassCard className="p-6" highlighted>
+                    <h3 className="text-xl font-semibold mb-3">Large Features</h3>
+                    <p className="text-foreground/80 mb-4 text-sm">
+                      Plan complex implementations with architectural awareness and impact analysis
+                    </p>
+                    <Link href="/solutions/large-features" className="text-primary hover:underline text-sm font-medium">
+                      Learn more →
+                    </Link>
+                  </GlassCard>
+
+                  <GlassCard className="p-6" highlighted>
+                    <h3 className="text-xl font-semibold mb-3">Library Upgrades</h3>
+                    <p className="text-foreground/80 mb-4 text-sm">
+                      Safely update dependencies with breaking change detection and migration planning
+                    </p>
+                    <Link href="/solutions/library-upgrades" className="text-primary hover:underline text-sm font-medium">
+                      Learn more →
+                    </Link>
+                  </GlassCard>
+
+                  <GlassCard className="p-6" highlighted>
+                    <h3 className="text-xl font-semibold mb-3">Browse All Workflows</h3>
+                    <p className="text-foreground/80 mb-4 text-sm">
+                      Explore workflows for refactors, migrations, incident response, and more
+                    </p>
+                    <Link href="/workflows" className="text-primary hover:underline text-sm font-medium">
+                      View all workflows →
+                    </Link>
+                  </GlassCard>
+                </div>
+              </div>
+            </section>
+            <SectionDividerMesh />
+
+            {/* Tool Integrations Section */}
+            <section className="py-16 px-4">
+              <div className="container mx-auto max-w-6xl">
+                <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">
+                  Works With Your Favorite AI Tools
+                </h2>
+                <p className="text-lg text-center text-foreground/80 mb-12 max-w-3xl mx-auto">
+                  Enhance Claude Code, Cursor, and Codex CLI with architectural planning
+                </p>
+                <div className="grid md:grid-cols-3 gap-6">
+                  <GlassCard className="p-6">
+                    <h3 className="text-xl font-semibold mb-3">Claude Code Integration</h3>
+                    <p className="text-foreground/80 mb-4 text-sm">
+                      Run Claude Code in persistent terminals with full session recording and health monitoring
+                    </p>
+                    <Link href="/plan-mode/claude-code" className="text-primary hover:underline text-sm font-medium">
+                      Setup guide →
+                    </Link>
+                  </GlassCard>
+
+                  <GlassCard className="p-6">
+                    <h3 className="text-xl font-semibold mb-3">Cursor Enhancement</h3>
+                    <p className="text-foreground/80 mb-4 text-sm">
+                      Give Cursor Composer architectural context and file discovery capabilities
+                    </p>
+                    <Link href="/plan-mode/cursor" className="text-primary hover:underline text-sm font-medium">
+                      Setup guide →
+                    </Link>
+                  </GlassCard>
+
+                  <GlassCard className="p-6">
+                    <h3 className="text-xl font-semibold mb-3">All Integrations</h3>
+                    <p className="text-foreground/80 mb-4 text-sm">
+                      Explore all supported AI coding tools and integration patterns
+                    </p>
+                    <Link href="/integrations" className="text-primary hover:underline text-sm font-medium">
+                      View integrations →
+                    </Link>
+                  </GlassCard>
+                </div>
+              </div>
+            </section>
+            <SectionDividerMesh />
+
+            <section id="pricing">
+              <Pricing />
+            </section>
+            <SectionDividerMesh />
 
 
-          <section id="faq" className="pt-8">
-            <FAQ items={faqItems} />
-          </section>
-          <SectionDividerMesh />
+            <section id="faq" className="pt-8">
+              <FAQ items={faqItems} />
+            </section>
+            <SectionDividerMesh />
 
-          <section id="cta" className="pt-8">
-            <CallToAction
-              description="Plan, review, and run AI-assisted changes from one workspace. Keep models, prompts, files, and terminal output aligned."
-              title="Ready to coordinate your next implementation plan?"
-            />
-          </section>
-        </main>
-      </div>
+            <section id="cta" className="pt-8">
+              <CallToAction
+                description="Plan, review, and run AI-assisted changes from one workspace. Keep models, prompts, files, and terminal output aligned."
+                title="Ready to coordinate your next implementation plan?"
+              />
+            </section>
+          </main>
+        </div>
+      </HomePageClient>
     </>
   );
 }
