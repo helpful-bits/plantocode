@@ -10,7 +10,7 @@
       "meta_title": "Codex CLI Planning Workflow - PlanToCode",
       "meta_description": "Map dependencies with file discovery, generate reviewable plans, then run Codex CLI with Auto, Read-Only, or Full Access approval modes.",
       "primary_cta": "Open Codex Planning Guide",
-      "publish": true,
+      "publish": false,
       "priority": 1,
       "pain_points": [
         {
@@ -47,7 +47,7 @@
       "meta_title": "Enhance Claude Code Plan Mode - PlanToCode",
       "meta_description": "Add file discovery and multi-model synthesis to Claude Code's Plan Mode for comprehensive architectural planning.",
       "primary_cta": "Open Claude Planning Guide",
-      "publish": true,
+      "publish": false,
       "priority": 1,
       "pain_points": [
         {
@@ -84,7 +84,7 @@
       "meta_title": "Cursor Planning Workflow - PlanToCode",
       "meta_description": "Pre-plan with file discovery and multi-model insights, then execute in Cursor Agent Terminal or Background Agents.",
       "primary_cta": "Open Cursor Planning Guide",
-      "publish": true,
+      "publish": false,
       "priority": 1,
       "pain_points": [
         {
@@ -158,8 +158,8 @@
       "os": "windows",
       "headline": "Bug Triage with Cursor on Windows",
       "subhead": "Find root causes faster with architectural context Cursor doesn't have",
-      "meta_title": "Bug Triage with Cursor on Windows - WSL Terminal Integration | PlanToCode",
-      "meta_description": "Enhance Cursor's bug fixing with architectural awareness. File discovery finds actual root causes, not just symptoms. Full WSL terminal support.",
+      "meta_title": "Bug Triage with Cursor on Windows - WSL | PlanToCode",
+      "meta_description": "Enhance Cursor bug fixing with architectural awareness. File discovery finds root causes, not symptoms. Full WSL support.",
       "primary_cta": "Get PlanToCode for Windows",
       "publish": true,
       "priority": 1,
@@ -195,8 +195,8 @@
       "use_case": "production-debugging",
       "headline": "Incident Response & Production Debugging",
       "subhead": "When every second counts, AI needs full system context",
-      "meta_title": "Incident Response with AI - Production Debugging Tools | PlanToCode",
-      "meta_description": "AI-assisted incident response and production debugging. Trace issues across services, generate fixes with full context, execute safely.",
+      "meta_title": "AI Incident Response & Production Debugging | PlanToCode",
+      "meta_description": "AI-assisted incident response. Trace issues across services, generate fixes with full context, and execute safely with monitoring.",
       "primary_cta": "Install for Incident Response",
       "publish": true,
       "priority": 1,
@@ -349,8 +349,8 @@
       "specialty": "automated",
       "headline": "Automated JavaScript Dependency Upgrades",
       "subhead": "Upgrade JavaScript dependencies safely with automated testing and rollback capabilities",
-      "meta_title": "Automated JavaScript Dependency Upgrades with Testing | PlanToCode",
-      "meta_description": "Safely upgrade JS dependencies with automated testing. AI analyzes breaking changes, runs comprehensive tests, provides instant rollback.",
+      "meta_title": "Automated JavaScript Dependency Upgrades | PlanToCode",
+      "meta_description": "Safely upgrade JS dependencies with automated testing. AI analyzes breaking changes, runs tests, and provides instant rollback.",
       "primary_cta": "Automate Upgrades",
       "publish": true,
       "priority": 1,

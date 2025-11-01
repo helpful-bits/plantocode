@@ -1092,6 +1092,30 @@ impl Handler<HandleHeartbeatMessage> for DeviceLinkWs {
             relay_store.touch(session_id);
         }
 
+        // Extract and broadcast activeSessionId hint to peers
+        if let Some(active_session_id) = msg.payload.get("activeSessionId").and_then(|v| v.as_str()) {
+            if !active_session_id.is_empty() {
+                if let (Some(user_id), Some(connection_manager)) = (self.user_id, &self.connection_manager) {
+                    let hint_msg = DeviceMessage {
+                        message_type: "active-session-changed".to_string(),
+                        payload: serde_json::json!({ "sessionId": active_session_id }),
+                        target_device_id: None,
+                        source_device_id: self.device_id.clone(),
+                        timestamp: chrono::Utc::now(),
+                    };
+                    let cm = connection_manager.clone();
+                    let uid = user_id;
+                    let src_dev = self.device_id.clone();
+                    ctx.spawn(
+                        async move {
+                            let _ = cm.broadcast_to_user_excluding(&uid, hint_msg, src_dev.as_deref()).await;
+                        }
+                        .into_actor(self),
+                    );
+                }
+            }
+        }
+
         if let (Some(device_id), Some(device_repo)) = (&self.device_id, &self.device_repository) {
             let heartbeat = HeartbeatRequest {
                 cpu_usage: msg
@@ -1503,11 +1527,34 @@ impl Handler<HandleEventMessage> for DeviceLinkWs {
             .unwrap_or("event")
             .to_string();
 
-        let event_payload = msg
+        let mut event_payload = msg
             .payload
             .get("payload")
             .cloned()
             .unwrap_or(JsonValue::Null);
+
+        // Ensure jobId and sessionId are forwarded at top level for mobile client
+        // Extract from root if present and not in payload
+        if event_type.starts_with("job:") {
+            let root_job_id = msg.payload.get("jobId").cloned();
+            let root_session_id = msg.payload.get("sessionId").cloned();
+            
+            // Normalize to ensure these fields exist at payload level
+            if let Some(payload_obj) = event_payload.as_object_mut() {
+                // Lift jobId to top level if it exists in root but not in payload
+                if let Some(job_id) = root_job_id {
+                    if !payload_obj.contains_key("jobId") {
+                        payload_obj.insert("jobId".to_string(), job_id);
+                    }
+                }
+                // Lift sessionId to top level if it exists in root but not in payload
+                if let Some(session_id) = root_session_id {
+                    if !payload_obj.contains_key("sessionId") {
+                        payload_obj.insert("sessionId".to_string(), session_id);
+                    }
+                }
+            }
+        }
 
         let user_id = match self.user_id {
             Some(id) => id,
@@ -1516,6 +1563,61 @@ impl Handler<HandleEventMessage> for DeviceLinkWs {
                 return;
             }
         };
+
+        // Broadcast active-session-changed hint when jobs become active
+        if event_type == "job:status-changed" {
+            if let Some(status) = event_payload.get("status").and_then(|v| v.as_str()) {
+                let active_status = matches!(
+                    status,
+                    "running" | "preparing" | "queued" | "acknowledged_by_worker" | "created"
+                );
+                if active_status {
+                    if let Some(session_id) = event_payload.get("sessionId").and_then(|v| v.as_str()) {
+                        if let Some(connection_manager) = &self.connection_manager {
+                            let hint_msg = DeviceMessage {
+                                message_type: "active-session-changed".to_string(),
+                                payload: serde_json::json!({ "sessionId": session_id }),
+                                target_device_id: None,
+                                source_device_id: self.device_id.clone(),
+                                timestamp: chrono::Utc::now(),
+                            };
+                            let cm = connection_manager.clone();
+                            let uid = user_id;
+                            let src_dev = self.device_id.clone();
+                            ctx.spawn(
+                                async move {
+                                    let _ = cm.broadcast_to_user_excluding(&uid, hint_msg, src_dev.as_deref()).await;
+                                }
+                                .into_actor(self),
+                            );
+                        }
+                    }
+                }
+            }
+        } else if event_type == "job:created" {
+            if let Some(job) = event_payload.get("job") {
+                if let Some(session_id) = job.get("sessionId").and_then(|v| v.as_str()) {
+                    if let Some(connection_manager) = &self.connection_manager {
+                        let hint_msg = DeviceMessage {
+                            message_type: "active-session-changed".to_string(),
+                            payload: serde_json::json!({ "sessionId": session_id }),
+                            target_device_id: None,
+                            source_device_id: self.device_id.clone(),
+                            timestamp: chrono::Utc::now(),
+                        };
+                        let cm = connection_manager.clone();
+                        let uid = user_id;
+                        let src_dev = self.device_id.clone();
+                        ctx.spawn(
+                            async move {
+                                let _ = cm.broadcast_to_user_excluding(&uid, hint_msg, src_dev.as_deref()).await;
+                            }
+                            .into_actor(self),
+                        );
+                    }
+                }
+            }
+        }
 
         // Handle device visibility updates
         if event_type == "device-visibility-updated" {

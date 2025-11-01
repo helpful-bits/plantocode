@@ -2,6 +2,7 @@ import React from 'react';
 import type { Metadata } from 'next';
 import { PlanIntegrationLayout } from '@/components/plan/PlanIntegrationLayout';
 import { claudeCodeContent } from '@/content/plan-integrations/claude-code';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
   title: claudeCodeContent.meta.title,
@@ -19,6 +20,13 @@ export const metadata: Metadata = {
     'claude code reviewable specs',
   ],
   openGraph: {
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
+    
     title: claudeCodeContent.meta.title,
     description: claudeCodeContent.meta.description,
     url: claudeCodeContent.meta.canonical,
@@ -27,6 +35,10 @@ export const metadata: Metadata = {
   },
   alternates: {
     canonical: claudeCodeContent.meta.canonical,
+    languages: {
+      'en-US': claudeCodeContent.meta.canonical,
+      'en': claudeCodeContent.meta.canonical,
+    },
   },
 };
 

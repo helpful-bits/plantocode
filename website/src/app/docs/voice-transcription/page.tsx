@@ -1,14 +1,26 @@
 import type { Metadata } from 'next';
 import { DocsArticle } from '@/components/docs/DocsArticle';
 import { GlassCard } from '@/components/ui/GlassCard';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
   title: 'Voice transcription - PlanToCode',
-  description: 'How PlanToCode records audio, streams transcripts into prompts, and respects project settings.',
+  description: 'Learn how PlanToCode records audio, streams real-time transcripts into prompts using OpenAI Whisper, manages device permissions, and respects project-specific settings.',
   alternates: {
     canonical: 'https://www.plantocode.com/docs/voice-transcription',
+    languages: {
+      'en-US': 'https://www.plantocode.com/docs/voice-transcription',
+      'en': 'https://www.plantocode.com/docs/voice-transcription',
+    },
   },
   openGraph: {
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
+    
     title: 'Voice transcription - PlanToCode',
     description: 'Learn how the recording hook manages devices, permissions, and streaming text.',
     url: 'https://www.plantocode.com/docs/voice-transcription',

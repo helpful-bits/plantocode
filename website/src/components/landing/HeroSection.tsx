@@ -1,16 +1,14 @@
 'use client';
 
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { cdnUrl } from '@/lib/cdn';
-import { CALENDLY_URL } from '@/lib/brand';
-import { Play, Search, BarChart3, CheckCircle2, Target, Zap } from 'lucide-react';
+import { Search, BarChart3, CheckCircle2, Target, Zap } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
+import { trackCTA } from '@/lib/track';
 
 export function HeroSection() {
-  const videoRef = useRef<HTMLVideoElement>(null);
 
   // Start with null to match server/client
   const [isMobile, setIsMobile] = useState<boolean | null>(null);
@@ -39,7 +37,7 @@ export function HeroSection() {
     <section className="relative flex flex-col items-center bg-transparent w-full">
       {/* Main heading */}
       <div className="relative z-10 text-center px-4 sm:px-6 lg:px-8 pt-24 sm:pt-28 pb-6 sm:pb-8 w-full">
-        <h1
+        <h2
           className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold leading-tight bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent max-w-5xl mx-auto"
           style={{
             contentVisibility: 'auto',
@@ -49,10 +47,12 @@ export function HeroSection() {
             backgroundClip: 'text',
           }}
         >
-          Human-in-the-loop AI Planning for Large & Legacy Codebases
-        </h1>
+          Plan Complex Changes Without Breaking Production
+        </h2>
         <p className="mt-6 text-lg sm:text-xl text-foreground/80 max-w-4xl mx-auto">
-          Generate granular, file-by-file implementation plans with exact repository paths. Review, edit, and approve all changes before securely handing off to coding agents or developers - preventing regressions and ensuring every change aligns with your team's requirements.
+          AI generates detailed implementation plans with exact file paths.
+          You review and approve every change before execution.
+          Zero risk, full control.
         </p>
       </div>
 
@@ -232,58 +232,82 @@ export function HeroSection() {
           
           {/* Simple CTAs */}
           <div className="flex flex-col items-center gap-4 pb-8">
-            <div className="flex flex-col sm:flex-row items-center gap-3">
-              <Button variant="cta" size="lg" asChild>
-                <Link href="/downloads">
-                  Download
-                </Link>
-              </Button>
-              <Button asChild variant="outline" size="lg">
-                <Link href={CALENDLY_URL} target="_blank" rel="noopener noreferrer">
-                  Talk to an Architect
-                </Link>
-              </Button>
-              <Button variant="outline" size="lg" asChild>
-                <Link href="/demo" className="flex items-center gap-2">
-                  <Play className="w-4 h-4" fill="currentColor" />
-                  <span>Interactive Demo</span>
-                </Link>
-              </Button>
-              <Button variant="outline" size="lg" asChild>
-                <Link href="/how-it-works">
-                  How It Works
-                </Link>
-              </Button>
+            <Button
+              variant="cta"
+              size="lg"
+              asChild
+              onClick={() => trackCTA('hero', 'Try Interactive Demo', '/demo')}
+            >
+              <Link href="/demo">Try Interactive Demo →</Link>
+            </Button>
+
+            <Button
+              variant="outline"
+              size="lg"
+              asChild
+              onClick={() => trackCTA('hero', 'Download for Free', '/downloads')}
+            >
+              <Link href="/downloads">Download for Free</Link>
+            </Button>
+
+            <Link
+              href="/how-it-works"
+              className="text-sm text-foreground/60 hover:text-foreground/80 underline"
+            >
+              See how it works
+            </Link>
+
+            {/* Social Proof - Commented out for now */}
+            {/*
+            <div className="flex flex-col items-center gap-4 py-8 border-t border-foreground/10 mt-8">
+              <p className="text-xs text-foreground/50 uppercase tracking-wider">
+                Trusted by teams managing complex codebases
+              </p>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-foreground">
+                  500+ plans reviewed this week
+                </p>
+              </div>
             </div>
-            <div className="text-sm text-foreground/50">
-              macOS & Windows
-            </div>
+            */}
           </div>
         </div>
       </div>
 
-      {/* Hidden video for mobile fullscreen */}
-      <video
-        ref={videoRef}
-        className="hidden"
-        playsInline
-        controls
-        poster={cdnUrl('/assets/images/hero-mobile-poster.jpg')}
-        onEnded={() => {
-          if (videoRef.current) {
-            videoRef.current.currentTime = 0;
-            if (document.fullscreenElement) {
-              document.exitFullscreen?.();
-            }
-          }
-        }}
-        onPause={() => {
-          // Reset video when paused (user exited fullscreen)
-          if (videoRef.current && !document.fullscreenElement) {
-            videoRef.current.currentTime = 0;
-          }
-        }}
-      />
+      {/* Hero Demo Video - Coming Soon */}
+      {/*
+      <div className="w-full max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
+        <div className="relative rounded-lg overflow-hidden shadow-2xl">
+          <video
+            ref={videoRef}
+            className="w-full"
+            playsInline
+            autoPlay
+            loop
+            muted
+            controls
+            poster={cdnUrl('/assets/images/hero-mobile-poster.jpg')}
+            onEnded={() => {
+              if (videoRef.current) {
+                videoRef.current.currentTime = 0;
+                if (document.fullscreenElement) {
+                  document.exitFullscreen?.();
+                }
+              }
+            }}
+            onPause={() => {
+              // Reset video when paused (user exited fullscreen)
+              if (videoRef.current && !document.fullscreenElement) {
+                videoRef.current.currentTime = 0;
+              }
+            }}
+          />
+        </div>
+        <p className="text-center text-sm text-foreground/60 mt-3">
+          Watch: 5-minute first win (ready soon)
+        </p>
+      </div>
+      */}
 
     </section>
   );

@@ -3,6 +3,7 @@ import { DocsArticle } from '@/components/docs/DocsArticle';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { StructuredData } from '@/components/seo/StructuredData';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
   title: 'Text improvement - PlanToCode',
@@ -10,8 +11,19 @@ export const metadata: Metadata = {
     'How the desktop workspace rewrites highlighted text, preserves formatting, and links the feature to voice and video inputs.',
   alternates: {
     canonical: 'https://www.plantocode.com/docs/text-improvement',
+    languages: {
+      'en-US': 'https://www.plantocode.com/docs/text-improvement',
+      'en': 'https://www.plantocode.com/docs/text-improvement',
+    },
   },
   openGraph: {
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
+    
     title: 'Text improvement - PlanToCode',
     description:
       'Understand the selection popover, job queue, model configuration, and integrations that power text improvement.',

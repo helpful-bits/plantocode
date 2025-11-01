@@ -2,14 +2,26 @@ import type { Metadata } from 'next';
 import { DocsArticle } from '@/components/docs/DocsArticle';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
   title: 'File discovery workflow - PlanToCode',
   description: 'Comprehensive technical guide to the 5-stage AI workflow that identifies and filters relevant files for task execution.',
   alternates: {
     canonical: 'https://www.plantocode.com/docs/file-discovery',
+    languages: {
+      'en-US': 'https://www.plantocode.com/docs/file-discovery',
+      'en': 'https://www.plantocode.com/docs/file-discovery',
+    },
   },
   openGraph: {
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
+    
     title: 'File discovery workflow - PlanToCode',
     description: 'Technical documentation for the multi-stage file discovery workflow architecture.',
     url: 'https://www.plantocode.com/docs/file-discovery',

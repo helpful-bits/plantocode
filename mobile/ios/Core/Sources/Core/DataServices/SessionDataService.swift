@@ -5,12 +5,30 @@ import Combine
 public final class SessionDataService: ObservableObject {
     @Published public private(set) var currentSessionId: String?
     @Published public var sessions: [Session] = []
-    @Published public var currentSession: Session?
+
+    // Custom property with backing store that only publishes when session ID actually changes
+    private var _currentSession: Session?
+    public let currentSessionPublisher = CurrentValueSubject<Session?, Never>(nil)
+
+    public var currentSession: Session? {
+        get { _currentSession }
+        set {
+            // Only update if the session ID actually changed
+            if _currentSession?.id != newValue?.id {
+                _currentSession = newValue
+                currentSessionPublisher.send(newValue)
+                objectWillChange.send()
+            }
+        }
+    }
+
     @Published public var isLoading = false
     @Published public var error: DataServiceError?
     @Published public private(set) var hasLoadedOnce: Bool = false
     private let offlineQueue = OfflineActionQueue()
     private var sessionsIndex: [String: Int] = [:]
+    private var sessionsFetchInFlight: [String: Task<[Session], Error>] = [:]
+    private var lastSessionsFetch: [String: Date] = [:] // projectDirectory -> timestamp
 
     private var deviceKey: String {
         MultiConnectionManager.shared.activeDeviceId?.uuidString ?? "no_device"
@@ -69,8 +87,8 @@ public final class SessionDataService: ObservableObject {
         }
     }
 
-    private func ts(from dict: [String: Any], camel: String, snake: String) -> Int64 {
-        return normalizeEpochSeconds(dict[camel] ?? dict[snake])
+    private func ts(from dict: [String: Any], key: String) -> Int64 {
+        return normalizeEpochSeconds(dict[key])
     }
 
     @discardableResult
@@ -117,103 +135,140 @@ public final class SessionDataService: ObservableObject {
     }
 
     public func fetchSessions(projectDirectory: String) async throws -> [Session] {
-        isLoading = true
-        error = nil
+        // Check if we fetched sessions for this project recently (within 15s)
+        if let lastFetch = lastSessionsFetch[projectDirectory],
+           Date().timeIntervalSince(lastFetch) < 15.0 {
+            // Return cached sessions without network call
+            return await MainActor.run { self.sessions }
+        }
 
-        do {
-            let stream = CommandRouter.sessionList(projectDirectory: projectDirectory)
+        // Check if there's already an in-flight request for this project
+        if let existing = sessionsFetchInFlight[projectDirectory] {
+            return try await existing.value
+        }
 
-            for try await response in stream {
-                if let error = response.error {
-                    await MainActor.run {
-                        self.isLoading = false
-                    }
-                    throw DataServiceError.serverError(error.message)
+        // Create new task for this fetch
+        let task = Task<[Session], Error> {
+            defer {
+                Task { @MainActor in
+                    self.sessionsFetchInFlight.removeValue(forKey: projectDirectory)
                 }
+            }
 
-                if let value = response.result?.value {
-                    // Try to parse as wrapped response first, then fall back to raw array
-                    var sessionsArray: [[String: Any]]?
-                    if let dict = value as? [String: Any], let arr = dict["sessions"] as? [[String: Any]] {
-                        sessionsArray = arr
-                    } else if let arr = value as? [[String: Any]] {
-                        sessionsArray = arr
-                    }
+            await MainActor.run {
+                self.isLoading = true
+                self.error = nil
+            }
 
-                    guard let items = sessionsArray else {
+            do {
+                let stream = CommandRouter.sessionList(projectDirectory: projectDirectory)
+
+                for try await response in stream {
+                    if let error = response.error {
                         await MainActor.run {
                             self.isLoading = false
                         }
-                        throw DataServiceError.invalidResponse("Expected sessions array")
+                        throw DataServiceError.serverError(error.message)
                     }
 
-                    let sessionList = items.compactMap { dict -> Session? in
-                        guard let id = dict["id"] as? String,
-                              let name = dict["name"] as? String,
-                              let projectDirectory = dict["projectDirectory"] as? String else {
-                            return nil
+                    if let value = response.result?.value {
+                        // Try to parse as wrapped response first, then fall back to raw array
+                        var sessionsArray: [[String: Any]]?
+                        if let dict = value as? [String: Any], let arr = dict["sessions"] as? [[String: Any]] {
+                            sessionsArray = arr
+                        } else if let arr = value as? [[String: Any]] {
+                            sessionsArray = arr
                         }
 
-                        let createdAt = ts(from: dict, camel: "createdAt", snake: "created_at")
-                        let updatedAt = ts(from: dict, camel: "updatedAt", snake: "updated_at")
+                        guard let items = sessionsArray else {
+                            await MainActor.run {
+                                self.isLoading = false
+                            }
+                            throw DataServiceError.invalidResponse("Expected sessions array")
+                        }
 
-                        let includedFiles = dict["includedFiles"] as? [String] ?? []
-                        let forceExcludedFiles = dict["forceExcludedFiles"] as? [String] ?? []
-                        let mergeInstructions = dict["mergeInstructions"] as? String
+                        let sessionList = items.compactMap { dict -> Session? in
+                            guard let id = dict["id"] as? String,
+                                  let name = dict["name"] as? String,
+                                  let projectDirectory = dict["projectDirectory"] as? String else {
+                                return nil
+                            }
 
-                        return Session(
-                            id: id,
-                            name: name,
-                            projectDirectory: projectDirectory,
-                            taskDescription: dict["taskDescription"] as? String,
-                            mergeInstructions: mergeInstructions,
-                            createdAt: createdAt,
-                            updatedAt: updatedAt,
-                            includedFiles: includedFiles,
-                            forceExcludedFiles: forceExcludedFiles
-                        )
+                            let createdAt = self.ts(from: dict, key: "createdAt")
+                            let updatedAt = self.ts(from: dict, key: "updatedAt")
+
+                            let includedFiles = dict["includedFiles"] as? [String] ?? []
+                            let forceExcludedFiles = dict["forceExcludedFiles"] as? [String] ?? []
+                            let mergeInstructions = dict["mergeInstructions"] as? String
+
+                            return Session(
+                                id: id,
+                                name: name,
+                                projectDirectory: projectDirectory,
+                                taskDescription: dict["taskDescription"] as? String,
+                                mergeInstructions: mergeInstructions,
+                                createdAt: createdAt,
+                                updatedAt: updatedAt,
+                                includedFiles: includedFiles,
+                                forceExcludedFiles: forceExcludedFiles
+                            )
+                        }
+
+                        await MainActor.run {
+                            self.sessions = sessionList
+                            // Build index for fast lookups
+                            self.sessionsIndex = Dictionary(uniqueKeysWithValues: sessionList.enumerated().map { ($1.id, $0) })
+                            self.isLoading = false
+                            self.hasLoadedOnce = true
+                        }
+                        let cacheKey = "dev_\(self.deviceKey)_sessions_\(projectDirectory.replacingOccurrences(of: "/", with: "_"))"
+                        CacheManager.shared.set(sessionList, forKey: cacheKey, ttl: 300)
+                        await MainActor.run {
+                            self.lastSessionsFetch[projectDirectory] = Date()
+                        }
+                        return sessionList
                     }
 
+                    if response.isFinal == true {
+                        await MainActor.run {
+                            self.isLoading = false
+                        }
+                        return []
+                    }
+                }
+
+                await MainActor.run {
+                    self.isLoading = false
+                }
+                return await MainActor.run { self.sessions }
+            } catch {
+                let cacheKey = "dev_\(self.deviceKey)_sessions_\(projectDirectory.replacingOccurrences(of: "/", with: "_"))"
+                if let cached: [Session] = CacheManager.shared.get(key: cacheKey) {
                     await MainActor.run {
-                        self.sessions = sessionList
-                        // Build index for fast lookups
-                        self.sessionsIndex = Dictionary(uniqueKeysWithValues: sessionList.enumerated().map { ($1.id, $0) })
+                        self.sessions = cached
                         self.isLoading = false
                         self.hasLoadedOnce = true
                     }
-                    let cacheKey = "dev_\(deviceKey)_sessions_\(projectDirectory.replacingOccurrences(of: "/", with: "_"))"
-                    CacheManager.shared.set(sessionList, forKey: cacheKey, ttl: 300)
-                    return sessionList
+                    return cached
                 }
-
-                if response.isFinal == true {
-                    await MainActor.run {
-                        self.isLoading = false
-                    }
-                    return []
-                }
-            }
-
-            await MainActor.run {
-                self.isLoading = false
-            }
-            return sessions
-        } catch {
-            let cacheKey = "dev_\(deviceKey)_sessions_\(projectDirectory.replacingOccurrences(of: "/", with: "_"))"
-            if let cached: [Session] = CacheManager.shared.get(key: cacheKey) {
                 await MainActor.run {
-                    self.sessions = cached
+                    self.error = DataServiceError.networkError(error)
                     self.isLoading = false
-                    self.hasLoadedOnce = true
                 }
-                return cached
+                throw error
             }
-            await MainActor.run {
-                self.error = DataServiceError.networkError(error)
-                self.isLoading = false
-            }
-            throw error
         }
+
+        // Store the task in the in-flight dictionary
+        sessionsFetchInFlight[projectDirectory] = task
+        return try await task.value
+    }
+
+    public func hasRecentSessionsFetch(for projectDirectory: String, within interval: TimeInterval) -> Bool {
+        guard let lastFetch = lastSessionsFetch[projectDirectory] else {
+            return false
+        }
+        return Date().timeIntervalSince(lastFetch) < interval
     }
 
     @MainActor
@@ -273,8 +328,8 @@ public final class SessionDataService: ObservableObject {
                        let name = sessionDict["name"] as? String,
                        let projectDirectory = sessionDict["projectDirectory"] as? String {
 
-                        let createdAt = ts(from: sessionDict, camel: "createdAt", snake: "created_at")
-                        let updatedAt = ts(from: sessionDict, camel: "updatedAt", snake: "updated_at")
+                        let createdAt = ts(from: sessionDict, key: "createdAt")
+                        let updatedAt = ts(from: sessionDict, key: "updatedAt")
                         let mergeInstructions = sessionDict["mergeInstructions"] as? String
 
                         let session = Session(
@@ -338,8 +393,8 @@ public final class SessionDataService: ObservableObject {
                        let name = sessionDict["name"] as? String,
                        let projectDirectory = sessionDict["projectDirectory"] as? String {
 
-                        let createdAt = ts(from: sessionDict, camel: "createdAt", snake: "created_at")
-                        let updatedAt = ts(from: sessionDict, camel: "updatedAt", snake: "updated_at")
+                        let createdAt = ts(from: sessionDict, key: "createdAt")
+                        let updatedAt = ts(from: sessionDict, key: "updatedAt")
                         let mergeInstructions = sessionDict["mergeInstructions"] as? String
 
                         let session = Session(
@@ -411,8 +466,8 @@ public final class SessionDataService: ObservableObject {
                        let name = sessionDict["name"] as? String,
                        let projectDirectory = sessionDict["projectDirectory"] as? String {
 
-                        let createdAt = ts(from: sessionDict, camel: "createdAt", snake: "created_at")
-                        let updatedAt = ts(from: sessionDict, camel: "updatedAt", snake: "updated_at")
+                        let createdAt = ts(from: sessionDict, key: "createdAt")
+                        let updatedAt = ts(from: sessionDict, key: "updatedAt")
                         let mergeInstructions = sessionDict["mergeInstructions"] as? String
 
                         let session = Session(
@@ -529,8 +584,8 @@ public final class SessionDataService: ObservableObject {
                        let name = sessionDict["name"] as? String,
                        let projectDirectory = sessionDict["projectDirectory"] as? String {
 
-                        let createdAt = ts(from: sessionDict, camel: "createdAt", snake: "created_at")
-                        let updatedAt = ts(from: sessionDict, camel: "updatedAt", snake: "updated_at")
+                        let createdAt = ts(from: sessionDict, key: "createdAt")
+                        let updatedAt = ts(from: sessionDict, key: "updatedAt")
                         let mergeInstructions = sessionDict["mergeInstructions"] as? String
 
                         let session = Session(
@@ -674,8 +729,8 @@ public final class SessionDataService: ObservableObject {
                        let name = sessionDict["name"] as? String,
                        let projectDirectory = sessionDict["projectDirectory"] as? String {
 
-                        let createdAt = ts(from: sessionDict, camel: "createdAt", snake: "created_at")
-                        let updatedAt = ts(from: sessionDict, camel: "updatedAt", snake: "updated_at")
+                        let createdAt = ts(from: sessionDict, key: "createdAt")
+                        let updatedAt = ts(from: sessionDict, key: "updatedAt")
                         let mergeInstructions = sessionDict["mergeInstructions"] as? String
 
                         let session = Session(
@@ -1002,6 +1057,12 @@ public final class SessionDataService: ObservableObject {
         throw DataServiceError.invalidResponse("No sync result received")
     }
 
+    public func lastNonEmptyHistoryValue(_ state: HistoryState) -> String? {
+        state.entries.reversed().map(\.value).map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        }.first { !$0.isEmpty }
+    }
+
     /// Merge history state with desktop
     public func mergeHistoryState(sessionId: String, kind: String, remoteState: HistoryState) async throws -> HistoryState {
         let encoder = JSONEncoder()
@@ -1046,8 +1107,8 @@ public final class SessionDataService: ObservableObject {
                 if let id = sessionDict["id"] as? String,
                    let name = sessionDict["name"] as? String,
                    let projDir = sessionDict["projectDirectory"] as? String {
-                    let createdAt = ts(from: sessionDict, camel: "createdAt", snake: "created_at")
-                    let updatedAt = ts(from: sessionDict, camel: "updatedAt", snake: "updated_at")
+                    let createdAt = ts(from: sessionDict, key: "createdAt")
+                    let updatedAt = ts(from: sessionDict, key: "updatedAt")
                     let mergeInstructions = sessionDict["mergeInstructions"] as? String
                     let s = Session(
                         id: id,
@@ -1161,29 +1222,42 @@ public final class SessionDataService: ObservableObject {
     private func handleSessionFilesUpdated(dict: [String: Any]) {
         guard let sessionId = dict["sessionId"] as? String,
               let includedFiles = dict["includedFiles"] as? [String],
-              let forceExcludedFiles = dict["forceExcludedFiles"] as? [String],
-              let index = sessionsIndex[sessionId] else {
+              let forceExcludedFiles = dict["forceExcludedFiles"] as? [String] else {
             return
         }
 
-        // Update files in session
-        var session = sessions[index]
-        let updatedSession = Session(
-            id: session.id,
-            name: session.name,
-            projectDirectory: session.projectDirectory,
-            taskDescription: session.taskDescription,
-            mergeInstructions: session.mergeInstructions,
-            createdAt: session.createdAt,
-            updatedAt: session.updatedAt,
-            includedFiles: includedFiles,
-            forceExcludedFiles: forceExcludedFiles
-        )
-        sessions[index] = updatedSession
-
-        // Update current session if it's the same
+        // Update currentSession even if not in sessionsIndex
         if currentSession?.id == sessionId {
+            let cs = currentSession!
+            let updatedSession = Session(
+                id: cs.id,
+                name: cs.name,
+                projectDirectory: cs.projectDirectory,
+                taskDescription: cs.taskDescription,
+                mergeInstructions: cs.mergeInstructions,
+                createdAt: cs.createdAt,
+                updatedAt: cs.updatedAt,
+                includedFiles: includedFiles,
+                forceExcludedFiles: forceExcludedFiles
+            )
             currentSession = updatedSession
+        }
+
+        // Also update in sessions array if present
+        if let index = sessionsIndex[sessionId] {
+            var session = sessions[index]
+            let updatedSession = Session(
+                id: session.id,
+                name: session.name,
+                projectDirectory: session.projectDirectory,
+                taskDescription: session.taskDescription,
+                mergeInstructions: session.mergeInstructions,
+                createdAt: session.createdAt,
+                updatedAt: session.updatedAt,
+                includedFiles: includedFiles,
+                forceExcludedFiles: forceExcludedFiles
+            )
+            sessions[index] = updatedSession
         }
     }
 
@@ -1248,8 +1322,8 @@ public final class SessionDataService: ObservableObject {
             return nil
         }
 
-        let createdAt = ts(from: dict, camel: "createdAt", snake: "created_at")
-        let updatedAt = ts(from: dict, camel: "updatedAt", snake: "updated_at")
+        let createdAt = ts(from: dict, key: "createdAt")
+        let updatedAt = ts(from: dict, key: "updatedAt")
         let mergeInstructions = dict["mergeInstructions"] as? String
 
         return Session(

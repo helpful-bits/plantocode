@@ -5,7 +5,7 @@ export const cursorContent: PlanIntegrationContent = {
   meta: {
     title: 'Plan for Cursor Agent — Reviewed Specs and Safer Runs | PlanToCode',
     description:
-      'Pre-plan for Cursor Composer and Agent mode with file discovery and multi-model synthesis. Generate file-by-file specs, review them, then execute with confidence.',
+      'Pre-plan for Cursor Composer and Agent with file discovery and multi-model synthesis. Generate specs, review, then execute with confidence.',
     canonical: 'https://www.plantocode.com/plan-mode/cursor',
   },
 

@@ -5,11 +5,15 @@ import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Code2, Edit3, Save, FileText, CheckCircle2, Terminal, Layers, Brain, Zap, Copy, AlertCircle, Target } from 'lucide-react';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
-  title: 'Human-in-the-loop implementation plans - safe AI planning | PlanToCode',
-  description: 'Generate implementation plans with AI, but review and approve every change before execution. Human-in-the-loop governance with file-by-file granularity prevents regressions. Used by teams managing legacy codebases.',
+  title: 'Implementation Plans for AI Coding - Human-in-the-Loop Planning | PlanToCode',
+  description: 'Generate file-by-file implementation plans with AI. Review and approve every change before execution. Prevent regressions in legacy codebases. Safe AI development workflow.',
   keywords: [
+    'implementation plan',
+    'ai code planning',
+    'human-in-the-loop ai',
     'implementation plans',
     'ai development planning',
     'monaco editor ai',
@@ -31,6 +35,13 @@ export const metadata: Metadata = {
     'plan approval workflow',
   ],
   openGraph: {
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
+    
     title: 'Human-in-the-Loop Implementation Plans: Safe AI Development',
     description: 'Generate implementation plans with AI, but review and approve every change before execution. Human-in-the-loop governance with file-by-file granularity prevents regressions in legacy codebases.',
     url: 'https://www.plantocode.com/features/plan-mode',
@@ -39,6 +50,10 @@ export const metadata: Metadata = {
   },
   alternates: {
     canonical: 'https://www.plantocode.com/features/plan-mode',
+    languages: {
+      'en-US': 'https://www.plantocode.com/features/plan-mode',
+      'en': 'https://www.plantocode.com/features/plan-mode',
+    },
   },
 };
 

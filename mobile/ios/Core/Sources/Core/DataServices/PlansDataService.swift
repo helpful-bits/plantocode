@@ -41,6 +41,7 @@ public class PlansDataService: ObservableObject {
     private let contentCache = NSCache<NSString, NSString>()
     private var currentListPlansRequestToken: UUID?
     @Published public private(set) var hasLoadedOnce = false
+    private var lastPlansFetch: [String: Date] = [:] // cacheKey -> timestamp
 
     // Real-time data publisher
     @Published public private(set) var lastUpdateEvent: RelayEvent?
@@ -83,6 +84,7 @@ public class PlansDataService: ObservableObject {
         }
 
         relayEventsCancellable = client.eventsPublisher
+            .receive(on: DispatchQueue.main)
             .filter { event in
                 event.eventType.hasPrefix("job:") ||
                 event.eventType == "PlanCreated" ||
@@ -117,6 +119,32 @@ public class PlansDataService: ObservableObject {
 
     /// List implementation plans with filtering and pagination
     public func listPlans(request: PlanListRequest) -> AnyPublisher<PlanListResponse, DataServiceError> {
+        // SessionId guard: return empty response if sessionId is missing or empty
+        if request.sessionId == nil || (request.sessionId?.isEmpty ?? true) {
+            return Just(PlanListResponse(
+                plans: [],
+                totalCount: 0,
+                page: request.page ?? 0,
+                pageSize: request.pageSize ?? 20,
+                hasMore: false
+            ))
+            .setFailureType(to: DataServiceError.self)
+            .eraseToAnyPublisher()
+        }
+
+        // Connection guard: return empty response if no active device connected
+        if MultiConnectionManager.shared.isActiveDeviceConnected == false {
+            return Just(PlanListResponse(
+                plans: [],
+                totalCount: 0,
+                page: request.page ?? 0,
+                pageSize: request.pageSize ?? 20,
+                hasMore: false
+            ))
+            .setFailureType(to: DataServiceError.self)
+            .eraseToAnyPublisher()
+        }
+
         isLoading = true
         error = nil
 
@@ -654,6 +682,27 @@ public class PlansDataService: ObservableObject {
     }
 
     private func listPlansViaRPC(request: PlanListRequest, cacheKey: String) -> AnyPublisher<PlanListResponse, DataServiceError> {
+        // SessionId guard: return empty response if sessionId is missing or empty
+        if request.sessionId == nil || (request.sessionId?.isEmpty ?? true) {
+            return Just(PlanListResponse(
+                plans: [],
+                totalCount: 0,
+                page: request.page ?? 0,
+                pageSize: request.pageSize ?? 20,
+                hasMore: false
+            ))
+            .setFailureType(to: DataServiceError.self)
+            .eraseToAnyPublisher()
+        }
+
+        // Time-based deduplication: if we fetched recently, return cached data
+        if let lastFetch = lastPlansFetch[cacheKey],
+           Date().timeIntervalSince(lastFetch) < 5.0 {
+            if let cached: PlanListResponse = CacheManager.shared.get(key: cacheKey) {
+                return Just(cached).setFailureType(to: DataServiceError.self).eraseToAnyPublisher()
+            }
+        }
+
         let token = UUID()
         return Future<PlanListResponse, DataServiceError> { [weak self] promise in
             Task {
@@ -794,14 +843,16 @@ public class PlansDataService: ObservableObject {
                         hasMore: false
                     )
 
-                    if let self = self, self.currentListPlansRequestToken == token {
-                        self.plans = response.plans
-                        self.hasLoadedOnce = true
-                        self.logger.debug("Loaded \(plansArray.count) plans from RPC for project: \(request.projectDirectory ?? "unknown")")
-                        self.cacheManager.set(response, forKey: cacheKey, ttl: 600)
-
-                        // Prefetch top plan contents
-                        self.prefetchTopPlanContents()
+                    if let self = self {
+                        await MainActor.run {
+                            guard self.currentListPlansRequestToken == token else { return }
+                            self.plans = response.plans
+                            self.hasLoadedOnce = true
+                            self.logger.debug("Loaded \(plansArray.count) plans from RPC for project: \(request.projectDirectory ?? "unknown")")
+                            self.cacheManager.set(response, forKey: cacheKey, ttl: 600)
+                            self.lastPlansFetch[cacheKey] = Date()
+                            self.prefetchTopPlanContents()
+                        }
                     }
                     promise(.success(response))
 
@@ -811,6 +862,7 @@ public class PlansDataService: ObservableObject {
                 }
             }
         }
+        .receive(on: DispatchQueue.main)
         .handleEvents(
             receiveOutput: { [weak self] _ in
                 guard let self = self else { return }
@@ -833,6 +885,13 @@ public class PlansDataService: ObservableObject {
     }
 
     private func getPlanContentViaRPC(request: PlanContentRequest, cacheKey: String) -> AnyPublisher<PlanContentResponse, DataServiceError> {
+        // Connection/device guard: fail early if no active device connection
+        guard MultiConnectionManager.shared.activeDeviceId != nil,
+              MultiConnectionManager.shared.isActiveDeviceConnected == true else {
+            return Fail(error: DataServiceError.connectionError("No active device connection"))
+                .eraseToAnyPublisher()
+        }
+
         guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
               let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
             return Fail(error: DataServiceError.connectionError("No active device connection"))
@@ -857,8 +916,12 @@ public class PlansDataService: ObservableObject {
                         if let error = response.error {
                             let errorMsg = "\(error)"
                             if errorMsg.lowercased().contains("job not found") || errorMsg.lowercased().contains("not found") {
-                                self?.plans.removeAll { $0.jobId == request.jobId }
-                                self?.cacheManager.invalidatePattern("plans_")
+                                if let self = self {
+                                    await MainActor.run {
+                                        self.plans.removeAll { $0.jobId == request.jobId }
+                                        self.cacheManager.invalidatePattern("plans_")
+                                    }
+                                }
                                 let deletedEvent = RelayEvent(
                                     eventType: "PlanDeleted",
                                     data: ["jobId": request.jobId]
@@ -1082,6 +1145,7 @@ public class PlansDataService: ObservableObject {
         }
 
         relayClient.events
+            .receive(on: DispatchQueue.main)
             .filter { event in
                 [
                     "PlansUpdated", "PlanCreated", "PlanDeleted", "PlanModified",

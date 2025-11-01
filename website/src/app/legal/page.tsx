@@ -1,9 +1,25 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
   title: 'Select Your Region - Legal Documents',
-  description: 'Choose your region to view the applicable terms of service and privacy policy.',
+  description: 'Choose your region (EU/UK or United States) to view applicable legal documents including terms of service, privacy policy, and regional compliance requirements.',
+  alternates: {
+    canonical: 'https://www.plantocode.com/legal',
+    languages: {
+      'en-US': 'https://www.plantocode.com/legal',
+      'en': 'https://www.plantocode.com/legal',
+    },
+  },
+  openGraph: {
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
+  },
 };
 
 export default function LegalRegionSelector() {

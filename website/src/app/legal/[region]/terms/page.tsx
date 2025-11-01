@@ -1,6 +1,7 @@
 import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import LegalContent from '@/components/legal/LegalContent';
+import { cdnUrl } from '@/lib/cdn';
 import EUTermsContent from '@/components/legal/eu/TermsContent';
 import USTermsContent from '@/components/legal/us/TermsContent';
 
@@ -29,7 +30,27 @@ export async function generateMetadata({ params }: TermsPageProps): Promise<Meta
       follow: true,
     },
     alternates: {
-      canonical: `/legal/${region}/terms`,
+      canonical: `https://www.plantocode.com/legal/${region}/terms`,
+      languages: {
+        'x-default': 'https://www.plantocode.com/legal/us/terms',
+        'en-US': 'https://www.plantocode.com/legal/us/terms',
+        'en-GB': 'https://www.plantocode.com/legal/eu/terms',
+        'en-EU': 'https://www.plantocode.com/legal/eu/terms',
+      },
+    },
+    openGraph: {
+      title: 'Terms of Service',
+      description: `Terms of service for our application outlining the rules and guidelines for using our AI-powered workflow automation platform. Applicable to ${regionName} users.`,
+      url: `https://www.plantocode.com/legal/${region}/terms`,
+      siteName: 'PlanToCode',
+      type: 'website',
+      locale: 'en_US',
+      images: [{
+        url: cdnUrl('/images/og-image.png'),
+        width: 1200,
+        height: 630,
+        alt: 'PlanToCode - AI Planning for Code',
+      }],
     },
   };
 }

@@ -1,6 +1,7 @@
 import { Metadata } from 'next';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Calendar, Sparkles, Zap, Bug, Trash2 } from 'lucide-react';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
   title: 'Changelog - Latest Updates | PlanToCode',
@@ -11,6 +12,24 @@ export const metadata: Metadata = {
   },
   alternates: {
     canonical: 'https://www.plantocode.com/changelog',
+    languages: {
+      'en-US': 'https://www.plantocode.com/changelog',
+      'en': 'https://www.plantocode.com/changelog',
+    },
+  },
+  openGraph: {
+    title: 'Changelog - Latest Updates | PlanToCode',
+    description: 'Latest features and improvements in PlanToCode. Multi-model AI planning updates for Claude Code, Cursor, and OpenAI Codex integration.',
+    url: 'https://www.plantocode.com/changelog',
+    siteName: 'PlanToCode',
+    type: 'website',
+    locale: 'en_US',
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
   },
 };
 

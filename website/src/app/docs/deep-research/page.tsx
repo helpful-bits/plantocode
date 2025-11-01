@@ -3,6 +3,7 @@ import { DocsArticle } from '@/components/docs/DocsArticle';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { StructuredData } from '@/components/seo/StructuredData';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
   title: 'Deep research - PlanToCode',
@@ -10,8 +11,19 @@ export const metadata: Metadata = {
     'Technical documentation for the web search workflow: API integration, query optimization, result processing, and development workflow integration.',
   alternates: {
     canonical: 'https://www.plantocode.com/docs/deep-research',
+    languages: {
+      'en-US': 'https://www.plantocode.com/docs/deep-research',
+      'en': 'https://www.plantocode.com/docs/deep-research',
+    },
   },
   openGraph: {
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
+    
     title: 'Deep research - PlanToCode',
     description:
       'Understand how web search operates within PlanToCode: from query generation to result processing and integration with development workflows.',

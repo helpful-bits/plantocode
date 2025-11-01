@@ -80,7 +80,7 @@ impl DeviceRepository {
                 app_version, local_ips, public_ip, relay_eligible, available_ports,
                 capabilities, status, last_heartbeat
             ) VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'online', NOW()
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CASE WHEN $10 THEN 'online' ELSE 'offline' END, NOW()
             )
             ON CONFLICT (device_id) DO UPDATE SET
                 device_name = EXCLUDED.device_name,
@@ -93,7 +93,7 @@ impl DeviceRepository {
                 relay_eligible = EXCLUDED.relay_eligible,
                 available_ports = EXCLUDED.available_ports,
                 capabilities = EXCLUDED.capabilities,
-                status = 'online',
+                status = CASE WHEN EXCLUDED.relay_eligible THEN 'online' ELSE 'offline' END,
                 last_heartbeat = NOW(),
                 updated_at = NOW()
             RETURNING

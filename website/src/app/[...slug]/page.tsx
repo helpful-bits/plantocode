@@ -9,9 +9,11 @@ import { StructuredData } from '@/components/seo/StructuredData';
 import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
+import { Breadcrumbs, buildPseoBreadcrumbs } from '@/components/Breadcrumbs';
+import { RelatedContent } from '@/components/RelatedContent';
 import {
   Code2, Terminal, GitMerge, Zap, CheckCircle2,
-  FileSearch, Brain, Layers, XCircle, ArrowRight, ChevronRight
+  FileSearch, Brain, Layers, XCircle, ArrowRight
 } from 'lucide-react';
 import pseoData from '@/data/pseo';
 
@@ -215,28 +217,8 @@ export default async function PseoPage({ params }: { params: Promise<PageParams>
         <main className="flex-grow">
           <section className="py-16 sm:py-20 md:py-24 lg:py-32 px-4">
             <div className="container mx-auto max-w-6xl">
-              {/* Breadcrumbs */}
-              <nav className="flex items-center gap-2 text-sm text-foreground/60 mb-8">
-                <Link href="/" className="hover:text-foreground transition-colors">
-                  Home
-                </Link>
-                <ChevronRight className="w-4 h-4" />
-                <Link href={`#`} className="hover:text-foreground transition-colors capitalize">
-                  {pageData.category.replace('-', ' ')}
-                </Link>
-                {pageData.tool_integration && (
-                  <>
-                    <ChevronRight className="w-4 h-4" />
-                    <span className="text-foreground">{formatToolName(pageData.tool_integration)}</span>
-                  </>
-                )}
-                {pageData.os && (
-                  <>
-                    <ChevronRight className="w-4 h-4" />
-                    <span className="text-foreground">{formatOS(pageData.os)}</span>
-                  </>
-                )}
-              </nav>
+              {/* Breadcrumbs with Schema.org markup */}
+              <Breadcrumbs items={buildPseoBreadcrumbs(pageData.category, pageData.headline)} />
 
               {/* Hero Section */}
               <div className="text-center mb-16">
@@ -536,34 +518,18 @@ export default async function PseoPage({ params }: { params: Promise<PageParams>
                 </div>
               </div>
 
-              {/* Related pSEO Pages - Internal Linking */}
-              <div className="mb-16">
-                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">Explore related topics</h2>
-                <div className="grid md:grid-cols-3 gap-6">
-                  {/* Related pages from same category */}
-                  {pseoData.pages
-                    .filter(p =>
-                      p.publish === true &&
-                      p.slug !== pageData.slug &&
-                      (p.category === pageData.category ||
-                       p.tool_integration === pageData.tool_integration ||
-                       p.os === pageData.os ||
-                       p.language === pageData.language)
-                    )
-                    .slice(0, 6)
-                    .map((relatedPage, i) => (
-                      <GlassCard key={i} className="p-6">
-                        <h3 className="font-semibold mb-2">{relatedPage.headline}</h3>
-                        <p className="text-sm text-foreground/70 mb-4">
-                          {relatedPage.subhead.substring(0, 100)}...
-                        </p>
-                        <LinkWithArrow href={`/${relatedPage.slug}`} className="text-sm">
-                          Learn more
-                        </LinkWithArrow>
-                      </GlassCard>
-                    ))}
-                </div>
-              </div>
+              {/* Related Content - Smart Internal Linking */}
+              <RelatedContent
+                currentSlug={pageData.slug}
+                category={pageData.category}
+                tool_integration={pageData.tool_integration}
+                os={pageData.os}
+                language={pageData.language}
+                framework={pageData.framework}
+                workflow={pageData.workflow}
+                maxItems={6}
+                title="Explore related topics"
+              />
 
               {/* Related Resources */}
               <div className="mb-16">
@@ -594,7 +560,7 @@ export default async function PseoPage({ params }: { params: Promise<PageParams>
                     <p className="text-sm text-foreground/70 mb-4">
                       Deep dive into how PlanToCode works
                     </p>
-                    <LinkWithArrow href="/docs/vibe-manager-architecture" className="text-sm">
+                    <LinkWithArrow href="/docs/architecture" className="text-sm">
                       Learn more
                     </LinkWithArrow>
                   </GlassCard>

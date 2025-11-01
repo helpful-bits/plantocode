@@ -20,11 +20,12 @@ import {
   Code2,
 } from 'lucide-react';
 import type { SoftwareApplication, HowTo, FAQPage } from 'schema-dts';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
   title: 'Specification Capture Mode - AI text enhancement | PlanToCode',
   description:
-    'Capture and refine specifications with two AI prompt types: Text Enhancement for clarity and grammar, Task Refinement for completeness. Create detailed, actionable specs for corporate development teams.',
+    'Refine specifications with two AI prompts: Text Enhancement for clarity, Task Refinement for completeness. Create actionable specs for development teams.',
   keywords: [
     'specification capture mode',
     'text enhancement',
@@ -47,9 +48,20 @@ export const metadata: Metadata = {
     url: 'https://www.plantocode.com/features/text-improvement',
     siteName: 'PlanToCode',
     type: 'website',
+    locale: 'en_US',
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
   },
   alternates: {
     canonical: 'https://www.plantocode.com/features/text-improvement',
+    languages: {
+      'en-US': 'https://www.plantocode.com/features/text-improvement',
+      'en': 'https://www.plantocode.com/features/text-improvement',
+    },
   },
 };
 

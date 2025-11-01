@@ -5,7 +5,7 @@
 "use client";
 
 import { ReactNode, useRef, useState, useEffect } from 'react';
-import { trackDemo } from '@/lib/track';
+import { trackDemo, track } from '@/lib/track';
 
 interface StepControllerProps {
   children: ReactNode | ((props: { 
@@ -48,6 +48,10 @@ export function StepController({ children, className, onEnter, onLeave, stepName
                 // Track demo interaction when entering view
                 if (stepName) {
                   trackDemo(stepName, 'view');
+                  // Track demo_start only for the first step
+                  if (stepName.toLowerCase().includes('step-1') || stepName.toLowerCase().includes('first')) {
+                    track({ event: 'demo_start', props: { location: 'interactive_demo_scroll' } });
+                  }
                 }
               } catch (error) {
                 console.warn('Error in onEnter callback:', error);

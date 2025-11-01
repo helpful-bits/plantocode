@@ -37,6 +37,12 @@ public class DataServicesManager: ObservableObject {
     private let logger = Logger(subsystem: "PlanToCode", category: "DataServicesManager")
     private var isApplyingRemoteActiveSession = false
     private var isInitialProjectFetchInProgress = false
+    private var lastAppliedConnectedState: Bool? = nil
+    private var isPerformingLiveBootstrap = false
+    private var lastSwitchDeviceId: UUID?
+    private var lastSwitchAt: Date?
+    private var orchestratorTriggerInFlight = false
+    private var authStateCancellable: AnyCancellable?
 
     // MARK: - Initialization
     public init(baseURL: URL, deviceId: String) {
@@ -91,6 +97,11 @@ public class DataServicesManager: ObservableObject {
     /// Set the current project and preload relevant data
     @MainActor
     public func setCurrentProject(_ project: ProjectInfo) {
+        // Only update if project actually changed
+        guard currentProject?.directory != project.directory else {
+            return
+        }
+
         // Since we're already @MainActor, update directly for immediate UI update
         self.currentProject = project
         self.objectWillChange.send()
@@ -256,9 +267,18 @@ public class DataServicesManager: ObservableObject {
         cacheManager.clear()
     }
 
-    /// Perform live bootstrap - fetch session, plans, and jobs data in parallel
+    /// Perform live bootstrap - fetch session sequentially, then rely on broadcasting to preload plans/jobs
     @MainActor
     public func performLiveBootstrap() async {
+        if let projectDir = currentProject?.directory,
+           sessionService.hasRecentSessionsFetch(for: projectDir, within: 10.0) {
+            logger.info("Skipping live bootstrap - session data already fresh")
+            return
+        }
+
+        isPerformingLiveBootstrap = true
+        defer { isPerformingLiveBootstrap = false }
+
         #if DEBUG
         let bootstrapStart = Date()
         logger.debug("Starting live bootstrap")
@@ -270,113 +290,20 @@ public class DataServicesManager: ObservableObject {
             return
         }
 
-        // Launch three concurrent tasks
-        async let sessionTask: Void = Task { @MainActor in
+        // Fetch active session - broadcasting will handle plans/jobs/files preload
+        #if DEBUG
+        let sessionStart = Date()
+        #endif
+
+        do {
+            _ = try await self.sessionService.fetchActiveSession()
             #if DEBUG
-            let start = Date()
+            let duration = Date().timeIntervalSince(sessionStart) * 1000
+            self.logger.debug("Session fetch completed in \(duration, format: .fixed(precision: 2))ms")
             #endif
-
-            // Fetch active session if method is available
-            do {
-                _ = try await self.sessionService.fetchActiveSession()
-                #if DEBUG
-                let duration = Date().timeIntervalSince(start) * 1000
-                self.logger.debug("Session fetch completed in \(duration, format: .fixed(precision: 2))ms")
-                #endif
-            } catch {
-                self.logger.error("Live bootstrap: Session fetch failed - \(error.localizedDescription)")
-            }
-        }.value
-
-        async let plansTask: Void = Task { @MainActor in
-            #if DEBUG
-            let start = Date()
-            #endif
-
-            let request = PlanListRequest(
-                projectDirectory: self.currentProject?.directory,
-                sessionId: self.sessionService.currentSession?.id,
-                page: 0,
-                pageSize: 20
-            )
-
-            // Use Combine to async/await bridge
-            do {
-                let response = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<PlanListResponse, Error>) in
-                    var cancellable: AnyCancellable?
-                    cancellable = self.plansService.listPlans(request: request)
-                        .sink(
-                            receiveCompletion: { completion in
-                                if case .failure(let error) = completion {
-                                    continuation.resume(throwing: error)
-                                }
-                                cancellable?.cancel()
-                            },
-                            receiveValue: { response in
-                                continuation.resume(returning: response)
-                            }
-                        )
-                }
-
-                // Publish results immediately (already published by listPlans)
-                self.logger.info("Live bootstrap: Fetched \(response.plans.count) plans")
-
-            } catch {
-                self.logger.error("Live bootstrap: Plans fetch failed - \(error.localizedDescription)")
-            }
-
-            #if DEBUG
-            let duration = Date().timeIntervalSince(start) * 1000
-            self.logger.debug("Plans fetch completed in \(duration, format: .fixed(precision: 2))ms")
-            #endif
-        }.value
-
-        async let jobsTask: Void = Task { @MainActor in
-            #if DEBUG
-            let start = Date()
-            #endif
-
-            let request = JobListRequest(
-                projectDirectory: self.currentProject?.directory,
-                sessionId: self.sessionService.currentSession?.id,
-                pageSize: 100
-            )
-
-            // Use Combine to async/await bridge
-            do {
-                let response = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<JobListResponse, Error>) in
-                    var cancellable: AnyCancellable?
-                    cancellable = self.jobsService.listJobs(request: request)
-                        .sink(
-                            receiveCompletion: { completion in
-                                if case .failure(let error) = completion {
-                                    continuation.resume(throwing: error)
-                                }
-                                cancellable?.cancel()
-                            },
-                            receiveValue: { response in
-                                continuation.resume(returning: response)
-                            }
-                        )
-                }
-
-                // Publish results immediately (already published by listJobs)
-                self.logger.info("Live bootstrap: Fetched \(response.jobs.count) jobs")
-
-            } catch {
-                self.logger.error("Live bootstrap: Jobs fetch failed - \(error.localizedDescription)")
-            }
-
-            #if DEBUG
-            let duration = Date().timeIntervalSince(start) * 1000
-            self.logger.debug("Jobs fetch completed in \(duration, format: .fixed(precision: 2))ms")
-            #endif
-        }.value
-
-        // Wait for all tasks to complete (they publish results as they complete)
-        await sessionTask
-        await plansTask
-        await jobsTask
+        } catch {
+            self.logger.error("Live bootstrap: Session fetch failed - \(error.localizedDescription)")
+        }
 
         #if DEBUG
         let totalDuration = Date().timeIntervalSince(bootstrapStart) * 1000
@@ -407,11 +334,63 @@ public class DataServicesManager: ObservableObject {
 
     // MARK: - Private Methods
 
+    @MainActor
+    private func triggerOrchestratorIfNeeded(context: String) {
+        if orchestratorTriggerInFlight { return }
+        if hasCompletedInitialLoad { return }
+        if AppState.shared.bootstrapState == .running { return }
+        guard AuthService.shared.isAuthenticated else { return }
+        guard let activeId = MultiConnectionManager.shared.activeDeviceId,
+              isConnected(deviceId: activeId) else { return }
+
+        orchestratorTriggerInFlight = true
+        Task { @MainActor in
+            defer { self.orchestratorTriggerInFlight = false }
+            await InitializationOrchestrator.shared.run()
+        }
+    }
+
+    private func isConnected(deviceId: UUID) -> Bool {
+        if let st = MultiConnectionManager.shared.connectionStates[deviceId], case .connected = st {
+            return true
+        }
+        return false
+    }
+
     private func setupConnectionMonitoring() {
         // Removed redundant 30-second polling timer that called terminal.getDefaultShell
         // Connection status is already monitored via MultiConnectionManager.$connectionStates publisher below
 
+        // Subscribe to auth state changes
+        authStateCancellable = AuthService.shared.$isAuthenticated
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] isAuthed in
+                guard let self = self else { return }
+                if isAuthed {
+                    self.triggerOrchestratorIfNeeded(context: "auth")
+                }
+            }
+
+        // Direct observation of activeDeviceId for deterministic device assignment/switch detection
+        MultiConnectionManager.shared.$activeDeviceId
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] newActive in
+                guard let self else { return }
+                
+                // Initial assignment
+                if self.activeDesktopDeviceId == nil, let newActive {
+                    self.handleInitialDeviceAssigned(newActive)
+                } else if let newActive, newActive != self.activeDesktopDeviceId {
+                    // Device switch
+                    self.handleDeviceSwitch(to: newActive)
+                }
+            }
+            .store(in: &cancellables)
+
         MultiConnectionManager.shared.$connectionStates
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] states in
                 guard let self = self else { return }
                 let isConnected = states.values.contains { state in
@@ -421,44 +400,11 @@ public class DataServicesManager: ObservableObject {
                     return false
                 }
 
-                // Detect active device change and propagate
-                let newActive = MultiConnectionManager.shared.activeDeviceId
-                if newActive != self.activeDesktopDeviceId {
-                    // Only reset if we're actually switching to a different device or initializing
-                    let isSwitching = self.activeDesktopDeviceId != nil && newActive != self.activeDesktopDeviceId
-                    let isInitializing = self.activeDesktopDeviceId == nil && newActive != nil
-
-                    if isSwitching {
-                        // Full device switch - reset all state
-                        self.onActiveDeviceSwitch(newId: newActive)
-                        self.activeDesktopDeviceId = newActive
-
-                        // Clear UI state immediately
-                        self.filesService.onActiveDeviceChanged()
-                        self.jobsService.onActiveDeviceChanged()
-                        self.sessionService.onActiveDeviceChanged()
-
-                        self.plansService.onActiveDeviceChanged(newActive)
-                        if let project = self.currentProject {
-                            self.plansService.preloadPlans(
-                                for: project.directory,
-                                sessionId: self.sessionService.currentSession?.id
-                            )
-                        }
-                        Task { @MainActor in
-                            await self.terminalService.bootstrapFromRemote()
-                        }
-                    } else if isInitializing {
-                        // Initial device assignment - just update reference
-                        self.activeDesktopDeviceId = newActive
-                        self.logger.info("Initial device assigned: \(newActive?.uuidString ?? "nil")")
-                    } else {
-                        // Device cleared - update reference
-                        self.activeDesktopDeviceId = newActive
-                    }
+                // Only handle connection state changes on transitions
+                if self.lastAppliedConnectedState != isConnected {
+                    self.lastAppliedConnectedState = isConnected
+                    self.handleConnectionStateChange(connected: isConnected)
                 }
-
-                self.handleConnectionStateChange(connected: isConnected)
 
                 // Re-subscribe to relay events when connection state changes
                 self.subscribeToRelayEvents()
@@ -467,14 +413,83 @@ public class DataServicesManager: ObservableObject {
 
         subscribeToRelayEvents()
     }
+    
+    private func handleInitialDeviceAssigned(_ newActive: UUID) {
+        // Debounce: if already the same, return early
+        if newActive == self.activeDesktopDeviceId { return }
+        self.activeDesktopDeviceId = newActive
+        self.logger.info("Initial device assigned: \(newActive.uuidString)")
+        
+        // Guard by authentication before triggering orchestrator
+        guard AuthService.shared.isAuthenticated else { return }
+        
+        // Trigger orchestrator once if not already running
+        if !orchestratorTriggerInFlight {
+            orchestratorTriggerInFlight = true
+            Task { [weak self] in
+                defer { 
+                    Task { @MainActor in
+                        self?.orchestratorTriggerInFlight = false
+                    }
+                }
+                await InitializationOrchestrator.shared.run()
+            }
+        }
+    }
+    
+    private func handleDeviceSwitch(to newId: UUID) {
+        // Debounce repeated signals for the same device in a short time window
+        if let last = lastSwitchDeviceId,
+           last == newId,
+           let ts = lastSwitchAt,
+           Date().timeIntervalSince(ts) < 2.0 {
+            return
+        }
+        
+        // Execute switch logic
+        self.onActiveDeviceSwitch(newId: newId)
+        self.activeDesktopDeviceId = newId
+        
+        // Update debounce tracking
+        self.lastSwitchDeviceId = newId
+        self.lastSwitchAt = Date()
+        
+        // Clear UI state immediately
+        self.filesService.onActiveDeviceChanged()
+        self.jobsService.onActiveDeviceChanged()
+        self.sessionService.onActiveDeviceChanged()
+        
+        self.plansService.onActiveDeviceChanged(newId)
+        if let project = self.currentProject {
+            self.plansService.preloadPlans(
+                for: project.directory,
+                sessionId: self.sessionService.currentSession?.id
+            )
+        }
+        
+        // Trigger orchestrator once
+        if !orchestratorTriggerInFlight {
+            orchestratorTriggerInFlight = true
+            Task { [weak self] in
+                defer { 
+                    Task { @MainActor in
+                        self?.orchestratorTriggerInFlight = false
+                    }
+                }
+                await InitializationOrchestrator.shared.run()
+            }
+        }
+    }
 
     private func setupSessionBroadcasting() {
-        sessionService.$currentSession
-            .dropFirst()
+        sessionService.currentSessionPublisher
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] session in
                 guard let self = self,
                       self.isApplyingRemoteActiveSession == false,
                       let s = session else { return }
+
+                guard !self.isPerformingLiveBootstrap else { return }
 
                 // Enable background event processing for jobs
                 // setActiveSession() already does an internal fetch, no need for duplicate request
@@ -511,6 +526,7 @@ public class DataServicesManager: ObservableObject {
 
         // Subscribe to relay events with proper AnyCodable decoding
         relayEventsCancellable = relayClient.events
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] event in
                 guard let self = self else { return }
                 let eventType = event.eventType
@@ -555,6 +571,9 @@ public class DataServicesManager: ObservableObject {
                 case "project-directory-updated":
                     // Handle project directory changes from desktop/other devices
                     if let projectDir = dict["projectDirectory"] as? String, !projectDir.isEmpty {
+                        if self.currentProject?.directory == projectDir {
+                            break
+                        }
                         let name = URL(fileURLWithPath: projectDir).lastPathComponent
                         let hash = String(projectDir.hashValue)
                         let project = ProjectInfo(name: name, directory: projectDir, hash: hash)
@@ -566,9 +585,15 @@ public class DataServicesManager: ObservableObject {
                     }
 
                 case "session-created", "session-updated", "session-deleted",
-                     "session-files-updated", "session-history-synced", "session:auto-files-applied":
+                     "session-history-synced", "session:auto-files-applied":
                     // Use incremental updates instead of full refetch
                     self.sessionService.applyRelayEvent(event)
+
+                case "session-files-updated":
+                    // Use incremental updates
+                    self.sessionService.applyRelayEvent(event)
+                    // Trigger files refresh after session-files-updated to update the "Selected" area in the Files tab
+                    self.filesService.performSearch(query: self.filesService.currentSearchTerm)
 
                 case "active-session-changed":
                     if let sessionId = dict["sessionId"] as? String,
@@ -581,20 +606,17 @@ public class DataServicesManager: ObservableObject {
 
                 default:
                     if eventType.hasPrefix("job:") {
-                        // Process job events continuously in background (like desktop)
-                        // This ensures jobs data is always fresh when user navigates to Jobs tab
+                        // Extract event sessionId to seed JobsDataService if needed
+                        let eventSessionId = dict["sessionId"] as? String
+                            ?? (dict["job"] as? [String: Any])?["sessionId"] as? String
 
-                        // Gate by current session
-                        guard let currentSessionId = self.sessionService.currentSession?.id else { return }
-
-                        // Parse and verify session ID
-                        if let sessionId = dict["sessionId"] as? String {
-                            guard sessionId == currentSessionId else { return }
-                        } else if let jobData = dict["job"] as? [String: Any],
-                                  let sessionId = jobData["sessionId"] as? String {
-                            guard sessionId == currentSessionId else { return }
+                        // Seed JobsDataService active session if unset and event matches current session
+                        if self.jobsService.activeSessionId == nil,
+                           let eventSessionId = eventSessionId,
+                           eventSessionId == self.sessionService.currentSession?.id,
+                           let projectDir = self.sessionService.currentSession?.projectDirectory {
+                            self.jobsService.setActiveSession(sessionId: eventSessionId, projectDirectory: projectDir)
                         }
-                        // If only jobId present, allow forwarding - JobsDataService will handle it
 
                         self.jobsService.applyRelayEvent(event)
                     }
@@ -607,10 +629,20 @@ public class DataServicesManager: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
 
+                // Early guards: prevent connection handler from running during initial bootstrap
+                if AppState.shared.bootstrapState == .running {
+                    logger.info("Bootstrap is running - skipping connection state change handler")
+                    return
+                }
+                guard self.hasCompletedInitialLoad else {
+                    self.triggerOrchestratorIfNeeded(context: "connection")
+                    return
+                }
+
                 logger.info("Connection established - starting reconnection sync")
 
                 await self.sessionService.processOfflineQueue()
-                await self.terminalService.bootstrapFromRemote()
+                // Terminal bootstrap handled by TerminalDataService itself
 
                 // Guard: Skip initial fetch if orchestrator has already set state
                 if !self.hasCompletedInitialLoad && self.currentProject == nil {
@@ -622,16 +654,24 @@ public class DataServicesManager: ObservableObject {
                 }
 
                 if let project = self.currentProject {
-                    logger.info("Preloading sessions for project: \(project.name)")
-                    try? await self.sessionService.fetchSessions(projectDirectory: project.directory)
+                    if self.sessionService.hasRecentSessionsFetch(for: project.directory, within: 10.0) {
+                        logger.info("Skipping session preload - recently fetched")
+                    } else {
+                        logger.info("Preloading sessions for project: \(project.name)")
+                        try? await self.sessionService.fetchSessions(projectDirectory: project.directory)
+                    }
                 }
 
-                guard let session = self.sessionService.currentSession,
-                      !session.id.isEmpty else {
-                    logger.info("Skipping jobs list - no valid session available")
+                // Guard session before preloading plans/jobs
+                guard let session = self.sessionService.currentSession else {
+                    logger.info("Skipping plans/jobs preload - no valid session available")
                     return
                 }
 
+                // Ensure JobsDataService accepts job events post-reconnect
+                self.jobsService.setActiveSession(sessionId: session.id, projectDirectory: session.projectDirectory)
+
+                // Trigger a one-time snapshot refresh for the active session to reconcile any missed events
                 if let projectDirectory = self.currentProject?.directory {
                     self.jobsService.listJobs(request: JobListRequest(
                         projectDirectory: projectDirectory,
@@ -668,6 +708,7 @@ public class DataServicesManager: ObservableObject {
 
     /// Fetch the initial project directory from desktop when connecting
     private func fetchInitialProjectDirectory() async {
+        if AppState.shared.bootstrapState == .running { return }
         guard !isInitialProjectFetchInProgress else { return }
         isInitialProjectFetchInProgress = true
         defer { isInitialProjectFetchInProgress = false }
@@ -817,13 +858,21 @@ public class DataServicesManager: ObservableObject {
     }
 
     private func preloadProjectData(_ project: ProjectInfo) {
-        // Preload plans
-        plansService.preloadPlans(
-            for: project.directory,
-            sessionId: sessionService.currentSession?.id
-        )
+        // Preload plans/jobs ONLY if session is available
+        if let sessionId = self.sessionService.currentSession?.id, !sessionId.isEmpty {
+            plansService.preloadPlans(
+                for: project.directory,
+                sessionId: sessionId
+            )
+            jobsService.listJobs(request: JobListRequest(
+                projectDirectory: project.directory,
+                sessionId: sessionId
+            ))
+            .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
+            .store(in: &cancellables)
+        }
 
-        // Preload files
+        // Always allow file preloads
         filesService.preloadProjectFiles(projectDirectory: project.directory)
 
         // Preload active tasks

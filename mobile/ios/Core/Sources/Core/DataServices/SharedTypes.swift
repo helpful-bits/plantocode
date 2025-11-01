@@ -76,19 +76,19 @@ public struct BackgroundJob: Codable, Identifiable {
 
     // New fields matching desktop implementation
     public let projectHash: String?
-    public let tokensSent: Int32?
-    public let tokensReceived: Int32?
+    public var tokensSent: Int32?
+    public var tokensReceived: Int32?
     public let modelUsed: String?
-    public let durationMs: Int32?
+    public var durationMs: Int32?
     public var metadata: String? // JSON string
     public let systemPromptTemplate: String?
-    public let startTime: Int64?
-    public let endTime: Int64?
-    public let cacheWriteTokens: Int32?
-    public let cacheReadTokens: Int32?
-    public let isFinalized: Bool?
+    public var startTime: Int64?
+    public var endTime: Int64?
+    public var cacheWriteTokens: Int32?
+    public var cacheReadTokens: Int32?
+    public var isFinalized: Bool?
     public let progressPercentage: Int32?
-    public let subStatusMessage: String?
+    public var subStatusMessage: String?
 
     public var jobStatus: JobStatus {
         JobStatus(rawValue: status) ?? .idle

@@ -1,70 +1,100 @@
-import { baseValueBullets, buildJsonLdHowTo } from './_base';
+import { buildJsonLdHowTo } from './_base';
 import type { PlanIntegrationContent } from '@/components/plan/PlanIntegrationLayout';
 
 export const codexContent: PlanIntegrationContent = {
   meta: {
-    title: 'Plan with Codex — Reviewable Specs and Approvals | PlanToCode',
+    title: 'Codex CLI × PlanToCode — Plan first. Execute with the right approvals.',
     description:
-      'Plan software changes before running Codex CLI. Generate file-by-file specs with exact paths, review with your team, then execute with Codex approval modes for governance.',
+      'See the exact files that will change, review a concrete per-file plan, then run Codex CLI in the approval mode your team allows.',
     canonical: 'https://www.plantocode.com/plan-mode/codex',
   },
 
   hero: {
-    eyebrow: 'Codex CLI • Pre-planning before execution',
-    h1: 'Plan first. Run Codex with clear approvals and full visibility.',
+    eyebrow: 'Codex CLI × PlanToCode',
+    h1: 'Plan first. Execute with the right approvals.',
     subhead:
-      'See impacted files, generate and merge multi-model plans, then execute Codex CLI with approval modes that match your governance needs.',
+      'See the exact files that will change, review a concrete per-file plan, then run Codex CLI in the approval mode your team allows.',
     supporting:
-      'PlanToCode provides the planning layer with file discovery and multi-model synthesis. You review file-by-file specs, then run Codex with Auto (default), Read-Only, or Full Access approval modes.',
+      '$5 free credits • Pay-as-you-go • Works with Codex CLI (and other CLIs via the built-in terminal)',
   },
 
   intro:
-    "This page shows how PlanToCode's reviewable, file-by-file implementation specs integrate with OpenAI Codex CLI, with all claims verified against official documentation.",
+    "Plan first. Execute with the right approvals. See the exact files that will change, review a concrete per-file plan, then run Codex CLI in the approval mode your team allows.",
 
-  valueBullets: [...baseValueBullets],
+  valueBullets: [
+    {
+      title: 'Human-in-the-loop control',
+      description:
+        'You approve the plan before anything runs. Edit steps, exclude files, and lock constraints. Every action is visible and auditable.',
+    },
+    {
+      title: 'Per-file specs with real paths',
+      description:
+        'Plans are expressed as a list of file edits (add/modify/delete) using your repository paths, so you can see exactly what will be touched.',
+    },
+    {
+      title: 'Intelligent file discovery',
+      description:
+        'Before prompting, we surface likely-relevant files using pattern groups + relevance scoring. You can stage, review, and prune the list.',
+    },
+    {
+      title: 'Integrated terminal',
+      description:
+        'Launch Codex (or any CLI) inside PlanToCode. We detect the Codex binary, preserve environment, and keep long jobs stable with health checks and auto-reconnect.',
+    },
+    {
+      title: 'Persistent sessions & logs',
+      description:
+        'Terminal output and planning sessions are stored locally. Close the app and pick up right where you left off.',
+    },
+    {
+      title: 'Privacy',
+      description:
+        'Sessions live in a local SQLite database. Before any AI call, PlanToCode shows you the request payload. No silent uploads.',
+    },
+  ],
 
   integrationNotes: [
     {
-      title: 'Run Codex CLI from integrated terminal',
+      title: 'Run Codex from the built-in terminal',
       description:
-        "Launch Codex CLI directly in PlanToCode's built-in terminal. Access your file discovery results and implementation plans while Codex runs.",
+        'Open a terminal in your repo, review the plan, and start Codex. Keep the plan and terminal side-by-side while Codex executes.',
     },
     {
-      title: 'Codex approval modes',
+      title: 'Choose the right approval mode',
       description:
-        'Codex CLI offers three approval modes: Auto (default - workspace freedom with approval required outside workspace), Read-Only (requires approval for all file actions), and Full Access (no approvals). Choose the mode that matches your governance needs.',
+        'Auto (default): Codex can read/edit/run inside the working directory without prompting; asks before leaving the workspace or using network. Read-Only: Plan and chat only—no edits or command execution. Full Access: Edits + commands (incl. network) without approval. Use only when policy allows.',
     },
     {
-      title: 'Windows and WSL support',
+      title: 'Windows support',
       description:
-        "Windows users run Codex CLI in WSL. PlanToCode's integrated terminal provides persistent logging and session management across WSL sessions.",
+        "On Windows, run Codex inside WSL2 for correct sandboxing and performance. PlanToCode's terminal persists across WSL sessions.",
     },
     {
-      title: 'File-by-file specifications',
+      title: 'Model note',
       description:
-        'PlanToCode generates file-by-file implementation plans with exact repository paths. Review these specs before running Codex CLI to ensure all impacted files are considered.',
+        'Codex defaults to GPT-5. Switch to GPT-5-Codex via /model in the Codex UI or --model gpt-5-codex if you prefer the coding-tuned model.',
     },
   ],
 
   quickstart: [
     {
       step: 'Install PlanToCode',
-      detail: 'Download the desktop app and connect it to your development workspace.',
+      detail: 'Download and connect to your repo/workspace.',
     },
     {
-      step: 'Discover relevant files',
-      detail:
-        'Run file discovery to identify which files Codex will need to consider for your task.',
+      step: 'Discover files',
+      detail: 'Run file discovery and confirm the set of impacted files.',
     },
     {
-      step: 'Generate and merge multi-model plans',
+      step: 'Generate the plan',
       detail:
-        'Create implementation plans from multiple AI models and merge them with custom instructions into a comprehensive specification.',
+        'Create one or more model drafts, merge them, and edit the per-file spec until it matches your intent.',
     },
     {
       step: 'Run Codex with approvals',
       detail:
-        "Open Codex CLI in PlanToCode's integrated terminal. Choose your approval mode (Auto, Read-Only, or Full Access) and execute the plan.",
+        'Open Codex in the integrated terminal. Pick Auto, Read-Only, or Full Access. Execute with confidence.',
     },
   ],
 
@@ -76,41 +106,36 @@ export const codexContent: PlanIntegrationContent = {
     },
     {
       claim:
-        'Codex CLI supports three approval modes controlled via the /approvals command: Auto (default), Read-Only, and Full Access.',
+        'Codex CLI offers three approval modes: Auto (default - workspace freedom with approval outside), Read-Only (requires approval for all actions), and Full Access (no approvals).',
       href: 'https://help.openai.com/en/articles/10274291-codex-cli-approvals',
       source: 'official',
     },
     {
       claim:
-        'Windows users can run Codex CLI in WSL (Windows Subsystem for Linux) for full compatibility.',
+        'Windows users should run Codex CLI in WSL2 for correct sandboxing and performance.',
       href: 'https://help.openai.com/en/articles/10274294-codex-cli-installation',
       source: 'official',
     },
     {
-      claim: 'Codex CLI uses GPT-5-Codex as its default model for code generation.',
-      href: 'https://help.openai.com/en/articles/10274290-codex-cli-models',
-      source: 'official',
-    },
-    {
       claim:
-        'Codex CLI traverses workspace files automatically to build context for code generation tasks.',
-      href: 'https://help.openai.com/en/articles/10274293-codex-cli-workspace',
+        'Codex CLI defaults to GPT-5. Users can switch to GPT-5-Codex via the /model command or --model flag.',
+      href: 'https://help.openai.com/en/articles/10274290-codex-cli-models',
       source: 'official',
     },
   ],
 
   faq: [
     {
-      q: 'Does PlanToCode replace Codex CLI?',
-      a: 'No. PlanToCode adds a pre-planning layer with file discovery, multi-model plan synthesis, and reviewable specifications. You still use Codex CLI for execution, but now with better context and clear approval modes.',
+      q: 'Does PlanToCode replace Codex?',
+      a: 'No. PlanToCode handles discovery and planning. Codex does the execution.',
     },
     {
-      q: 'How do Codex approval modes work?',
-      a: 'Codex CLI has three approval modes: Auto (default - allows workspace changes without approval, requires approval outside), Read-Only (requires approval for all file actions), and Full Access (no approvals needed). Use the /approvals command to switch modes.',
+      q: 'How do approval modes actually behave?',
+      a: 'Auto = free to operate within the working directory; prompts when going outside or using network. Read-Only = no edits/commands. Full Access = no prompts; use with caution per policy.',
     },
     {
       q: 'Which platforms are supported?',
-      a: "PlanToCode runs on macOS 11+ and Windows 10+. Windows users can run Codex CLI in WSL, and PlanToCode's integrated terminal provides persistent logging across WSL sessions.",
+      a: 'PlanToCode: macOS 11+ and Windows 10+. Codex CLI: macOS and Linux officially; on Windows use WSL2.',
     },
   ],
 
@@ -123,32 +148,31 @@ export const codexContent: PlanIntegrationContent = {
         operatingSystem: ['macOS 11.0+', 'Windows 10+'],
         url: 'https://www.plantocode.com/plan-mode/codex',
         description:
-          'Pre-planning workflow for OpenAI Codex CLI with file discovery and approval modes.',
+          'Plan first. Execute with the right approvals. See the exact files that will change, review a concrete per-file plan, then run Codex CLI in the approval mode your team allows.',
         offers: {
           '@type': 'Offer',
           price: 0,
           priceCurrency: 'USD',
         },
       },
-      buildJsonLdHowTo('Use PlanToCode planning workflow with OpenAI Codex CLI', [
+      buildJsonLdHowTo('Use PlanToCode with Codex CLI', [
         {
           step: 'Install PlanToCode',
-          detail: 'Download the desktop app and connect it to your development workspace.',
+          detail: 'Download and connect to your repo/workspace.',
         },
         {
-          step: 'Discover relevant files',
-          detail:
-            'Run file discovery to identify which files Codex will need to consider for your task.',
+          step: 'Discover files',
+          detail: 'Run file discovery and confirm the set of impacted files.',
         },
         {
-          step: 'Generate and merge multi-model plans',
+          step: 'Generate the plan',
           detail:
-            'Create implementation plans from multiple AI models and merge them with custom instructions into a comprehensive specification.',
+            'Create one or more model drafts, merge them, and edit the per-file spec until it matches your intent.',
         },
         {
           step: 'Run Codex with approvals',
           detail:
-            "Open Codex CLI in PlanToCode's integrated terminal. Choose your approval mode (Auto, Read-Only, or Full Access) and execute the plan.",
+            'Open Codex in the integrated terminal. Pick Auto, Read-Only, or Full Access. Execute with confidence.',
         },
       ]),
     ],

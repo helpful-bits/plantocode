@@ -12,6 +12,16 @@ interface TrackEventOptions {
 }
 
 /**
+ * Send event to Google Analytics 4
+ */
+const sendToGA4 = (eventName: string, eventParams?: Record<string, string | number | boolean>) => {
+  if (typeof window !== 'undefined' && 'gtag' in window) {
+    // @ts-ignore - gtag is injected by GA4 script
+    window.gtag('event', eventName, eventParams);
+  }
+};
+
+/**
  * Track an analytics event via server-side endpoint
  * This bypasses ad blockers and provides consistent tracking
  */
@@ -28,7 +38,7 @@ export const track = async (options: TrackEventOptions): Promise<void> => {
     screen_width: options.screen_width || (typeof window !== 'undefined' ? window.screen.width : undefined),
     // Add current URL if not provided
     url: options.url || (typeof window !== 'undefined' ? window.location.href : undefined),
-    // Add referrer if not provided  
+    // Add referrer if not provided
     referrer: options.referrer || (typeof document !== 'undefined' ? document.referrer : undefined),
     // Add additional context in props for enhanced tracking
     props: {
@@ -37,12 +47,15 @@ export const track = async (options: TrackEventOptions): Promise<void> => {
       ...(typeof Intl !== 'undefined' && !options.props?.timezone && {
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       }),
-      // Add language for better user context (if not already provided)  
+      // Add language for better user context (if not already provided)
       ...(typeof navigator !== 'undefined' && !options.props?.language && {
         language: navigator.language,
       }),
     },
   };
+
+  // Also send to GA4
+  sendToGA4(options.event, options.props);
 
   try {
     await fetch('/api/analytics/track', {
@@ -64,7 +77,7 @@ export const track = async (options: TrackEventOptions): Promise<void> => {
     } catch {
       // ignore beacon errors
     }
-    
+
     // Last-resort fetch without keepalive
     try {
       fetch('/api/analytics/track', {
@@ -77,7 +90,7 @@ export const track = async (options: TrackEventOptions): Promise<void> => {
     } catch {
       // ignore final fallback errors
     }
-    
+
     // Original debug logging
     console.debug('Tracking failed:', error);
   }
@@ -101,5 +114,17 @@ export const trackVideo = (videoTitle: string, action: 'play' | 'complete', dura
 export const trackScroll = (percentage: number) =>
   track({ event: 'scroll_depth', props: { percentage } });
 
-export const trackPageview = (url?: string) => 
+export const trackPageview = (url?: string) =>
   track({ event: 'pageview', ...(url && { url }) });
+
+export const trackCTA = (location: string, buttonText: string, destinationUrl: string) => {
+  const eventName = `cta_click_${location}`;
+  track({
+    event: eventName,
+    props: {
+      button_text: buttonText,
+      destination_url: destinationUrl,
+      page_location: location
+    }
+  });
+};

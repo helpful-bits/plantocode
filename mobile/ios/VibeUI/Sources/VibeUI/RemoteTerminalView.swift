@@ -197,7 +197,7 @@ public struct RemoteTerminalView: View {
                     do {
                         try await connectionManager.restoreConnections()
                     } catch {
-                        print("Failed to restore connections: \(error)")
+                        // Failed to restore connections
                     }
 
                     // Wait up to 10 seconds for connection
@@ -289,7 +289,7 @@ public struct RemoteTerminalView: View {
                     try await settingsService.loadPreferredTerminal()
                     preferredShell = settingsService.preferredTerminal
                 } catch {
-                    print("Failed to fetch shell preference: \(error)")
+                    // Failed to fetch shell preference
                 }
 
                 // Capture service and jobId before entering MainActor scope
@@ -318,9 +318,8 @@ public struct RemoteTerminalView: View {
                         Task {
                             do {
                                 try await terminalService.write(jobId: capturedJobId, bytes: bytes)
-                                print("[Terminal] Successfully sent \(bytes.count) bytes to desktop")
                             } catch {
-                                print("[Terminal] Failed to send bytes: \(error)")
+                                // Failed to send bytes
                             }
                         }
                     }
@@ -329,26 +328,22 @@ public struct RemoteTerminalView: View {
                     terminalController.onResize = { cols, rows in
                         Task {
                             do {
-                                print("[Terminal] Sending resize: \(cols)x\(rows) (initial=\(!hasInitialResize))")
                                 try await terminalService.resize(jobId: capturedJobId, cols: cols, rows: rows)
 
                                 if !hasInitialResize {
                                     hasInitialResize = true
-                                    print("[Terminal] First resize complete")
                                 }
                             } catch {
-                                print("[Terminal] Failed to resize: \(error)")
+                                // Failed to resize
                             }
                         }
                     }
 
                     // Start output stream immediately to receive live data
-                    print("[Terminal] Subscribing to hydrated output stream for session \(capturedJobId)")
                     outputCancellable = terminalService
                         .getHydratedRawOutputStream(for: capturedJobId)
                         .receive(on: DispatchQueue.main)
                         .sink { data in
-                            print("[Terminal] feedBytes called with \(data.count) bytes for session \(capturedJobId)")
                             terminalController.feedBytes(data: data)
                             DispatchQueue.main.async {
                                 // UI flush barrier after feedBytes
@@ -365,19 +360,14 @@ public struct RemoteTerminalView: View {
 
                         // ONLY resize if we have valid dimensions (not 0x0)
                         if cols > 0 && rows > 0 {
-                            print("[Terminal] Manual initial resize: \(cols)x\(rows)")
-
                             Task {
                                 do {
                                     try await terminalService.resize(jobId: capturedJobId, cols: cols, rows: rows)
                                     hasInitialResize = true
-                                    print("[Terminal] Manual resize complete")
                                 } catch {
-                                    print("[Terminal] Failed manual resize: \(error)")
+                                    // Failed manual resize
                                 }
                             }
-                        } else {
-                            print("[Terminal] Skipping manual resize - terminal not yet sized (\(cols)x\(rows))")
                         }
                     }
 
@@ -541,7 +531,6 @@ extension SwiftTermController: TerminalViewDelegate {
     func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) {
         // Skip invalid sizes (0x0 or unreasonably small)
         guard newCols > 10 && newRows > 5 else {
-            print("[Terminal] Skipping invalid resize: \(newCols)x\(newRows)")
             return
         }
 
@@ -549,7 +538,6 @@ extension SwiftTermController: TerminalViewDelegate {
         // Subsequent resizes are debounced to handle keyboard show/hide and rotation smoothly
         if isFirstResize {
             isFirstResize = false
-            print("[Terminal] Immediate first resize: \(newCols)x\(newRows)")
             onResize?(newCols, newRows)
         } else {
             // Debounce subsequent resize events with 200ms delay
@@ -668,6 +656,10 @@ struct SwiftTerminalView: UIViewRepresentable {
 
         // Enable keyboard input
         terminalView.isUserInteractionEnabled = true
+
+        // Add keyboard dismiss accessory view above the keyboard
+        let accessoryView = KeyboardDismissAccessoryView(attachedTo: terminalView)
+        terminalView.inputAccessoryView = accessoryView
 
         // Store reference to terminal view in controller
         controller.terminalView = terminalView

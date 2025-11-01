@@ -12,6 +12,7 @@ public class DeviceDiscoveryService: ObservableObject {
     @Published public private(set) var errorMessage: String? = nil
 
     private let logger = Logger(subsystem: "com.plantocode.app", category: "DeviceDiscovery")
+    private var lastRefreshAt: Date? = nil
 
     private init() {
         NotificationCenter.default.addObserver(
@@ -67,6 +68,12 @@ public class DeviceDiscoveryService: ObservableObject {
     }
 
     public func refreshDevices() async {
+        // Coalesce rapid refresh calls with 2s cool-down
+        if let last = lastRefreshAt, Date().timeIntervalSince(last) < 2.0 {
+            return
+        }
+        lastRefreshAt = Date()
+        
         if self.isLoading {
             return
         }
@@ -83,11 +90,18 @@ public class DeviceDiscoveryService: ObservableObject {
             let devices = try await ServerAPIClient.shared.getDevices(deviceType: "desktop")
             let beforeCount = devices.count
             let allowedPlatforms = Set(["macos", "windows", "linux"])
-            self.devices = devices.filter { device in
+            let allDesktops = devices.filter { device in
                 device.deviceType.lowercased() == "desktop"
                     && allowedPlatforms.contains(device.platform.lowercased())
                     && device.deviceName.lowercased() != "unknown"
             }
+            let connected = allDesktops.filter { $0.isConnected }
+            self.devices = connected
+
+            if !allDesktops.isEmpty && connected.isEmpty {
+                self.errorMessage = "Desktop is registered but not reachable. Enable 'Allow Remote Access' in Desktop settings."
+            }
+
             self.logger.info("DeviceDiscoveryService: filtered devices before=\(beforeCount) after=\(self.devices.count)")
             self.logger.info("Fetched \(self.devices.count) desktop devices from server at \(Config.serverURL)")
             self.logger.info("Device discovery completed: \(self.devices.count) devices found")

@@ -4,6 +4,7 @@ import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Terminal, Mic } from 'lucide-react';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
   title: 'Terminal for plans - persistent PTY sessions | PlanToCode',
@@ -23,9 +24,20 @@ export const metadata: Metadata = {
     url: 'https://www.plantocode.com/features/integrated-terminal',
     siteName: 'PlanToCode',
     type: 'website',
+    locale: 'en_US',
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
   },
   alternates: {
     canonical: 'https://www.plantocode.com/features/integrated-terminal',
+    languages: {
+      'en-US': 'https://www.plantocode.com/features/integrated-terminal',
+      'en': 'https://www.plantocode.com/features/integrated-terminal',
+    },
   },
 };
 
@@ -115,7 +127,7 @@ export default function IntegratedTerminalPage() {
                       Explore voice commands
                     </LinkWithArrow>
                     <span className="hidden sm:inline">•</span>
-                    <LinkWithArrow href="/docs/terminal">
+                    <LinkWithArrow href="/docs/terminal-sessions">
                       Read technical docs
                     </LinkWithArrow>
                   </div>

@@ -229,7 +229,7 @@ pub async fn create_and_queue_background_job(
             info!("Generating title asynchronously for job {} using GPT-5-mini", job_id_clone);
 
             // Force GPT-5-mini with appropriate limits for title generation
-            let title_model_override = Some(("openai/gpt-5-mini".to_string(), 0.3, 500));
+            let title_model_override = Some(("openai/gpt-5-mini".to_string(), 0.3, 1000));
 
             // Wrap entire title generation in timeout to prevent indefinite execution
             let title_generation_future = async {

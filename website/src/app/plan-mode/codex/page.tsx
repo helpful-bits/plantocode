@@ -2,6 +2,7 @@ import React from 'react';
 import type { Metadata } from 'next';
 import { PlanIntegrationLayout } from '@/components/plan/PlanIntegrationLayout';
 import { codexContent } from '@/content/plan-integrations/codex';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
   title: codexContent.meta.title,
@@ -20,6 +21,13 @@ export const metadata: Metadata = {
     'codex cli multi-model planning',
   ],
   openGraph: {
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
+    
     title: codexContent.meta.title,
     description: codexContent.meta.description,
     url: codexContent.meta.canonical,
@@ -28,6 +36,10 @@ export const metadata: Metadata = {
   },
   alternates: {
     canonical: codexContent.meta.canonical,
+    languages: {
+      'en-US': codexContent.meta.canonical,
+      'en': codexContent.meta.canonical,
+    },
   },
 };
 

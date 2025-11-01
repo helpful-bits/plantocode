@@ -170,12 +170,6 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
         web::post().to(handlers::proxy_handlers::transcription_handler),
     ));
 
-    // Featurebase SSO routes (/api/featurebase/*)
-    cfg.service(web::scope("/featurebase").route(
-        "/sso-token",
-        web::get().to(handlers::featurebase_handlers::get_sso_token),
-    ));
-
     // System prompts routes (/api/system-prompts/*)
     cfg.service(
         web::scope("/system-prompts")

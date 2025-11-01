@@ -33,8 +33,6 @@ public final class PlanToCodeCore {
 
     private func setupLogging(level: LogLevel) {
         // Setup logging framework
-        // For now, just print configuration
-        print("PlanToCode Core initialized with log level: \(level)")
     }
 }
 

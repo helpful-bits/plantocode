@@ -4,15 +4,27 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { StructuredData } from '@/components/seo/StructuredData';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
-  title: 'Human-in-the-loop implementation plans in PlanToCode',
+  title: 'Implementation Plans - Review AI Changes | PlanToCode',
   description:
-    'How the desktop app ensures safe AI development through human-in-the-loop governance, file-by-file granularity, and complete review workflows before any code modifications.',
+    'Guide to AI implementation planning. Generate, review, and approve file-by-file plans before execution. Prevent duplicates and wrong paths.',
   alternates: {
     canonical: 'https://www.plantocode.com/docs/implementation-plans',
+    languages: {
+      'en-US': 'https://www.plantocode.com/docs/implementation-plans',
+      'en': 'https://www.plantocode.com/docs/implementation-plans',
+    },
   },
   openGraph: {
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
+    
     title: 'Human-in-the-Loop Implementation Plans in PlanToCode',
     description:
       'Understand how human-in-the-loop governance and file-by-file review workflows ensure safe AI development with complete control over code modifications.',

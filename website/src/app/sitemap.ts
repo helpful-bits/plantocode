@@ -1,15 +1,26 @@
 import type { MetadataRoute } from 'next';
 import pseoData from '@/data/pseo';
+import comparisonsData from '@/data/pseo/comparisons.json';
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = 'https://www.plantocode.com';
   const now = new Date();
 
-  // Generate pSEO pages entries
+  // Generate pSEO pages entries (excluding comparisons - handled separately)
   const pseoPages = pseoData.pages
-    .filter(page => page.publish === true)
+    .filter(page => page.publish === true && page.category !== 'comparisons')
     .map(page => ({
       url: `${baseUrl}/${page.slug}`,
+      lastModified: now,
+      changeFrequency: 'weekly' as const,
+      priority: page.priority === 1 ? 0.85 : page.priority === 2 ? 0.75 : 0.7,
+    }));
+
+  // Generate comparison pages with /compare/ prefix
+  const comparisonPages = comparisonsData.pages
+    .filter(page => page.publish === true)
+    .map(page => ({
+      url: `${baseUrl}/compare/${page.slug}`,
       lastModified: now,
       changeFrequency: 'weekly' as const,
       priority: page.priority === 1 ? 0.85 : page.priority === 2 ? 0.75 : 0.7,
@@ -82,7 +93,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
     // Concepts & Architecture
     {
-      url: `${baseUrl}/docs/vibe-manager-architecture`,
+      url: `${baseUrl}/docs/architecture`,
       lastModified: now,
       changeFrequency: 'weekly',
       priority: 0.94,
@@ -166,6 +177,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
       lastModified: now,
       changeFrequency: 'weekly',
       priority: 0.82,
+    },
+    // SEO landing pages
+    {
+      url: `${baseUrl}/cursor-alternative`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.85,
     },
     // Legal pages
     {
@@ -253,6 +271,49 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'weekly',
       priority: 0.75,
     },
+    {
+      url: `${baseUrl}/solutions/prevent-duplicate-files`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.8,
+    },
+    {
+      url: `${baseUrl}/solutions/ai-wrong-paths`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.8,
+    },
+    {
+      url: `${baseUrl}/solutions/legacy-code-refactoring`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.8,
+    },
+    {
+      url: `${baseUrl}/solutions/safe-refactoring`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.8,
+    },
+    // Blog posts
+    {
+      url: `${baseUrl}/blog/what-is-ai-code-planning`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.85,
+    },
+    {
+      url: `${baseUrl}/blog/ai-code-planning-best-practices`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.8,
+    },
+    {
+      url: `${baseUrl}/blog/ai-pair-programming-vs-ai-planning`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.8,
+    },
     // Other pages
     {
       url: `${baseUrl}/about`,
@@ -296,7 +357,16 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'monthly',
       priority: 0.7,
     },
+    // Comparison pages
+    {
+      url: `${baseUrl}/compare/cursor-vs-windsurf`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.85,
+    },
     // Add all pSEO pages
     ...pseoPages,
+    // Add all comparison pages with /compare/ prefix
+    ...comparisonPages,
   ];
 }

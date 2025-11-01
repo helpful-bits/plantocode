@@ -477,6 +477,7 @@ class SessionListEventMonitor: ObservableObject {
         // Monitor plans service events for new/updated plans
         dataServices.plansService.$lastUpdateEvent
             .compactMap { $0 }
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] event in
                 guard let self = self else { return }
                 // Only refresh if event is relevant to current project

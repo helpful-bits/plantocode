@@ -103,20 +103,20 @@ public struct ProjectSelectionHeaderView: View {
             do {
                 for try await response in CommandRouter.appSetProjectDirectory(dir) {
                     if let error = response.error {
-                        print("[ProjectSelection] Desktop sync error: \(error.message)")
+                        // Sync error
                     } else if response.isFinal {
-                        print("[ProjectSelection] Desktop sync confirmed")
+                        // Desktop sync confirmed
                     }
                 }
             } catch {
-                print("[ProjectSelection] Failed to sync project directory to desktop: \(error)")
+                // Failed to sync project directory to desktop
             }
 
             // Refresh sessions for new project
             do {
                 try await container.sessionService.fetchSessions(projectDirectory: dir)
             } catch {
-                print("[ProjectSelection] Failed to fetch sessions: \(error)")
+                // Failed to fetch sessions
             }
 
             onProjectChanged?()

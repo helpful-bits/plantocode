@@ -103,8 +103,13 @@
       "migration_file": "migrations/features/history_state_v1.sql",
       "from_version": "*",
       "to_version": ">=1.0.0",
+      "description": "Add history state tracking with current index and metadata",
       "required": true,
-      "priority": 30
+      "priority": 30,
+      "run_if_absent_column": {
+        "table": "sessions",
+        "column": "task_history_current_index"
+      }
     },
     {
       "id": "add_history_versions",

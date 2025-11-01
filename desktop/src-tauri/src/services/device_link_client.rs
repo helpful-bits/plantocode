@@ -50,6 +50,8 @@ pub struct HeartbeatPayload {
     pub memory_usage: Option<f64>,
     pub disk_space_gb: Option<i64>,
     pub active_jobs: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_session_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -593,6 +595,21 @@ impl DeviceLinkClient {
                     }
                 }
 
+                // Compute active_session_id from most recently updated active job
+                let active_session_id = if let Some(pool) = app_handle_for_heartbeat.try_state::<Arc<sqlx::SqlitePool>>() {
+                    let job_repo = crate::db_utils::BackgroundJobRepository::new((*pool).clone());
+                    match job_repo.get_active_jobs().await {
+                        Ok(jobs) => {
+                            jobs.iter()
+                                .max_by_key(|job| job.updated_at.unwrap_or(0))
+                                .map(|job| job.session_id.clone())
+                        }
+                        Err(_) => None,
+                    }
+                } else {
+                    None
+                };
+
                 if tx_for_heartbeat.send(DeviceLinkMessage::Heartbeat {
                     payload: HeartbeatPayload {
                         status: "online".to_string(),
@@ -600,6 +617,7 @@ impl DeviceLinkClient {
                         memory_usage: None,
                         disk_space_gb: None,
                         active_jobs: Some(0),
+                        active_session_id,
                     },
                 }).is_err() {
                     debug!("Heartbeat channel closed, terminating heartbeat task");

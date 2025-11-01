@@ -51,7 +51,7 @@ async fn pick_fallback_model(app_handle: &AppHandle) -> AppResult<(String, f32, 
 }
 
 const MAX_TITLE_CHARS: usize = 500;
-const MAX_TITLE_TOKENS: u32 = 500;
+const MAX_TITLE_TOKENS: u32 = 1000;
 
 async fn resolve_model_defaults(app_handle: &AppHandle) -> AppResult<(String, f32, u32)> {
     let cache = app_handle.state::<ConfigCache>().inner().clone();

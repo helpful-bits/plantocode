@@ -9,10 +9,11 @@ import { Mic, Settings, Terminal, AlertCircle, Code2, Sparkles, Target } from 'l
 import type { SoftwareApplication, FAQPage } from 'schema-dts';
 import { AccuracySection } from '@/components/voice/AccuracySection';
 import { TranscriptionComparison } from '@/components/voice/TranscriptionComparison';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
   title: 'Voice to text for rapid specification capture | PlanToCode',
-  description: 'Capture specifications hands-free with voice. PlanToCode transcribes accurately and inserts your words where you work. Configure defaults per project. Supports multiple languages.',
+  description: 'Hands-free specification capture with voice. Accurate transcription inserts text where you work. Configure per project, supports multiple languages.',
   keywords: [
     'voice transcription',
     'specification capture',
@@ -26,9 +27,20 @@ export const metadata: Metadata = {
     url: 'https://www.plantocode.com/features/voice-transcription',
     siteName: 'PlanToCode',
     type: 'website',
+    locale: 'en_US',
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
   },
   alternates: {
     canonical: 'https://www.plantocode.com/features/voice-transcription',
+    languages: {
+      'en-US': 'https://www.plantocode.com/features/voice-transcription',
+      'en': 'https://www.plantocode.com/features/voice-transcription',
+    },
   },
 };
 

@@ -19,10 +19,15 @@ public class JobsDataService: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var progressSubscription: AnyCancellable?
     private var jobsIndex: [String: Int] = [:]
-    private var activeSessionId: String?
+    public private(set) var activeSessionId: String?
     private var activeProjectDirectory: String?
     private var currentListJobsRequestToken: UUID?
     @Published public private(set) var hasLoadedOnce = false
+    private var lastJobsFetch: [String: Date] = [:] // cacheKey -> timestamp
+    private var lastAccumulatedLengths: [String: Int] = [:]
+    private var hydrationWaiters: [String: [() -> Void]] = [:]
+    private var coalescedResyncWorkItem: DispatchWorkItem?
+    private var lastCoalescedResyncAt: Date?
 
     private var deviceKey: String {
         MultiConnectionManager.shared.activeDeviceId?.uuidString ?? "no_device"
@@ -60,6 +65,17 @@ public class JobsDataService: ObservableObject {
             // Replace jobs array with cached data
             self.jobs = cached.jobs
             self.jobsIndex = Dictionary(uniqueKeysWithValues: cached.jobs.enumerated().map { ($1.id, $0) })
+            self.lastAccumulatedLengths = Dictionary(uniqueKeysWithValues: cached.jobs.map { ($0.id, $0.response?.count ?? 0) })
+
+            let now = Date()
+            let shouldRefresh = lastJobsFetch[cacheKey].map { now.timeIntervalSince($0) > 5.0 } ?? true
+            if shouldRefresh {
+                lastJobsFetch[cacheKey] = now
+                listJobsViaRPC(request: request, cacheKey: cacheKey, shouldReplace: true)
+                    .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
+                    .store(in: &cancellables)
+            }
+
             return Just(cached)
                 .setFailureType(to: DataServiceError.self)
                 .eraseToAnyPublisher()
@@ -157,6 +173,7 @@ public class JobsDataService: ObservableObject {
             body: ["clientId": clientId]
         )
         .decode(type: JobProgressUpdate.self, decoder: JSONDecoder.apiDecoder)
+        .receive(on: DispatchQueue.main)
         .handleEvents(receiveOutput: { [weak self] update in
             self?.handleJobProgressUpdate(update)
         })
@@ -195,7 +212,16 @@ public class JobsDataService: ObservableObject {
 
         // No polling; rely on relay events while connected and reconnection snapshot orchestrated by DataServicesManager.
 
-        // Immediate fetch on enter to get the most recent jobs
+        // Perform a full list snapshot to establish authoritative baseline
+        listJobs(request: JobListRequest(
+            projectDirectory: projectDirectory,
+            sessionId: sessionId,
+            pageSize: 100
+        ))
+        .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
+        .store(in: &cancellables)
+
+        // Also refresh active jobs
         self.refreshActiveJobs()
     }
 
@@ -206,8 +232,12 @@ public class JobsDataService: ObservableObject {
 
     /// Clear jobs from memory
     public func clearJobs() {
-        self.jobs.removeAll()
-        self.jobsIndex.removeAll()
+        mutateJobs {
+            self.jobs.removeAll()
+            self.jobsIndex.removeAll()
+            self.lastAccumulatedLengths.removeAll()
+            self.hydrationWaiters.removeAll()
+        }
     }
 
     /// Reset jobs state when active device changes
@@ -340,6 +370,7 @@ public class JobsDataService: ObservableObject {
 
         // Fetch without replacing - we'll merge instead
         listJobsViaRPC(request: request, cacheKey: cacheKey, shouldReplace: false)
+            .receive(on: DispatchQueue.main)
             .sink(
                 receiveCompletion: { _ in },
                 receiveValue: { [weak self] response in
@@ -362,30 +393,34 @@ public class JobsDataService: ObservableObject {
     /// Note: This only updates/adds jobs, it doesn't remove completed jobs
     /// Completed jobs remain in memory and are updated only via events
     private func mergeJobs(fetchedJobs: [BackgroundJob]) {
-        for fetchedJob in fetchedJobs {
-            if let existingIndex = jobsIndex[fetchedJob.id] {
-                // Update existing job - the server data is source of truth
-                // Any event-based updates between fetch and now will be corrected by next event
-                jobs[existingIndex] = fetchedJob
-            } else {
-                // Add new job that we didn't know about
-                jobs.append(fetchedJob)
-                jobsIndex[fetchedJob.id] = jobs.count - 1
+        mutateJobs {
+            for fetchedJob in fetchedJobs {
+                if let existingIndex = jobsIndex[fetchedJob.id] {
+                    // Update existing job - the server data is source of truth
+                    // Any event-based updates between fetch and now will be corrected by next event
+                    jobs[existingIndex] = fetchedJob
+                } else {
+                    // Add new job that we didn't know about
+                    jobs.append(fetchedJob)
+                    jobsIndex[fetchedJob.id] = jobs.count - 1
+                }
             }
-        }
 
-        // Rebuild index to ensure consistency after any additions
-        jobsIndex = Dictionary(uniqueKeysWithValues: jobs.enumerated().map { ($1.id, $0) })
+            // Rebuild index to ensure consistency after any additions
+            jobsIndex = Dictionary(uniqueKeysWithValues: jobs.enumerated().map { ($1.id, $0) })
+        }
     }
 
     private func handleJobProgressUpdate(_ update: JobProgressUpdate) {
         // Update local job if it exists - use index for O(1) lookup
         guard let index = jobsIndex[update.jobId] else { return }
 
-        var job = jobs[index]
-        job.status = update.status.rawValue
-        job.updatedAt = update.timestamp
-        jobs[index] = job
+        mutateJobs {
+            var job = jobs[index]
+            job.status = update.status.rawValue
+            job.updatedAt = update.timestamp
+            jobs[index] = job
+        }
 
         // Invalidate relevant cache entries
         cacheManager.invalidatePattern("jobs_")
@@ -403,6 +438,14 @@ public class JobsDataService: ObservableObject {
 
     @MainActor
     private func listJobsViaRPC(request: JobListRequest, cacheKey: String, shouldReplace: Bool) -> AnyPublisher<JobListResponse, DataServiceError> {
+        // Time-based deduplication: if we fetched recently, return cached data
+        if let lastFetch = lastJobsFetch[cacheKey],
+           Date().timeIntervalSince(lastFetch) < 5.0 {
+            if let cached: JobListResponse = cacheManager.get(key: cacheKey) {
+                return Just(cached).setFailureType(to: DataServiceError.self).eraseToAnyPublisher()
+            }
+        }
+
         let token = UUID()
         return Future<JobListResponse, DataServiceError> { [weak self] promise in
             Task {
@@ -461,16 +504,20 @@ public class JobsDataService: ObservableObject {
                         hasMore: data["hasMore"] as? Bool ?? false
                     )
 
-                    if let strongSelf = self {
-                        if shouldReplace && token == strongSelf.currentListJobsRequestToken {
-                            strongSelf.jobs = response.jobs
-                            strongSelf.jobsIndex = Dictionary(uniqueKeysWithValues: response.jobs.enumerated().map { ($1.id, $0) })
-                            // REMOVED: prefetchTopJobsInternal() - this was causing 8+ second delays
-                            // Job details are fetched on-demand when user taps a job
-                            strongSelf.hasLoadedOnce = true
+                    if let self = self {
+                        await MainActor.run {
+                            if shouldReplace && token == self.currentListJobsRequestToken {
+                                self.jobs = response.jobs
+                                self.jobsIndex = Dictionary(uniqueKeysWithValues: response.jobs.enumerated().map { ($1.id, $0) })
+                                self.lastAccumulatedLengths = Dictionary(uniqueKeysWithValues: response.jobs.map { ($0.id, $0.response?.count ?? 0) })
+                                // REMOVED: prefetchTopJobsInternal() - this was causing 8+ second delays
+                                // Job details are fetched on-demand when user taps a job
+                                self.hasLoadedOnce = true
+                            }
+                            self.cacheManager.set(response, forKey: cacheKey, ttl: 300)
+                            self.lastJobsFetch[cacheKey] = Date()
                         }
                     }
-                    self?.cacheManager.set(response, forKey: cacheKey, ttl: 300)
                     promise(.success(response))
 
                 } catch {
@@ -479,6 +526,7 @@ public class JobsDataService: ObservableObject {
                 }
             }
         }
+        .receive(on: DispatchQueue.main)
         .handleEvents(
             receiveOutput: { [weak self] _ in
                 if let self = self, self.currentListJobsRequestToken == token {
@@ -597,10 +645,12 @@ public class JobsDataService: ObservableObject {
                                 promise(.success(true))
                                 return
                             }
-                            self.jobs.remove(at: index)
-                            self.jobsIndex.removeValue(forKey: jobId)
-                            // Rebuild index after deletion
-                            self.jobsIndex = Dictionary(uniqueKeysWithValues: self.jobs.enumerated().map { ($1.id, $0) })
+                            self.mutateJobs {
+                                self.jobs.remove(at: index)
+                                self.jobsIndex.removeValue(forKey: jobId)
+                                // Rebuild index after deletion
+                                self.jobsIndex = Dictionary(uniqueKeysWithValues: self.jobs.enumerated().map { ($1.id, $0) })
+                            }
                         }
                         promise(.success(true))
                         return
@@ -672,156 +722,440 @@ public class JobsDataService: ObservableObject {
         .eraseToAnyPublisher()
     }
 
+    private func shouldIgnore(job: BackgroundJob) -> Bool {
+        job.taskType == "file_finder_workflow" || job.taskType == "web_search_workflow"
+    }
+
+    private func insertOrReplace(job: BackgroundJob) {
+        guard shouldIgnore(job: job) == false else { return }
+
+        mutateJobs {
+            if let index = jobsIndex[job.id] {
+                jobs[index] = job
+            } else {
+                jobs.append(job)
+                jobsIndex[job.id] = jobs.count - 1
+            }
+            lastAccumulatedLengths[job.id] = job.response?.count ?? 0
+        }
+        
+        // Invalidate cache when jobs are modified via events to prevent stale data
+        let cacheKeyPrefix = "dev_\(deviceKey)_jobs_"
+        cacheManager.invalidatePattern(cacheKeyPrefix)
+    }
+
+    private func decodeJob(from dictionary: [String: Any]) -> BackgroundJob? {
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: dictionary)
+            let decoder = JSONDecoder()
+            return try decoder.decode(BackgroundJob.self, from: jsonData)
+        } catch {
+            let jobId = dictionary["id"] as? String ?? "unknown"
+            logger.error("Failed to decode job \(jobId): \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    private func intValue(from value: Any?) -> Int? {
+        switch value {
+        case let number as NSNumber:
+            return number.intValue
+        case let string as String:
+            return Int(string)
+        default:
+            return nil
+        }
+    }
+
+    private func doubleValue(from value: Any?) -> Double? {
+        switch value {
+        case let number as NSNumber:
+            return number.doubleValue
+        case let string as String:
+            return Double(string)
+        default:
+            return nil
+        }
+    }
+
+    private func boolValue(from value: Any?) -> Bool? {
+        switch value {
+        case let bool as Bool:
+            return bool
+        case let number as NSNumber:
+            return number.boolValue
+        case let string as String:
+            return Bool(string)
+        default:
+            return nil
+        }
+    }
+
+    private func hydrateJob(jobId: String, force: Bool, onReady: (() -> Void)?) {
+        if !force, jobsIndex[jobId] != nil {
+            onReady?()
+            return
+        }
+
+        if var waiters = hydrationWaiters[jobId] {
+            if let onReady = onReady {
+                waiters.append(onReady)
+                hydrationWaiters[jobId] = waiters
+            }
+            return
+        }
+
+        hydrationWaiters[jobId] = onReady.map { [$0] } ?? []
+
+        getJob(jobId: jobId)
+            .receive(on: DispatchQueue.main)
+            .sink(
+                receiveCompletion: { [weak self] completion in
+                    guard let self = self else { return }
+                    if case .failure(let error) = completion {
+                        self.logger.error("Hydration failed for job \(jobId): \(error.localizedDescription)")
+                        let waiters = self.hydrationWaiters.removeValue(forKey: jobId) ?? []
+                        for waiter in waiters {
+                            waiter()
+                        }
+                    }
+                },
+                receiveValue: { [weak self] jobDict in
+                    guard let self = self else { return }
+                    defer {
+                        let waiters = self.hydrationWaiters.removeValue(forKey: jobId) ?? []
+                        for waiter in waiters {
+                            waiter()
+                        }
+                    }
+                    guard let job = self.decodeJob(from: jobDict) else { return }
+                    self.insertOrReplace(job: job)
+                }
+            )
+            .store(in: &cancellables)
+    }
+
+    @discardableResult
+    private func ensureJobPresent(jobId: String, onReady: (() -> Void)? = nil) -> Bool {
+        if jobsIndex[jobId] != nil {
+            return true
+        }
+        hydrateJob(jobId: jobId, force: false, onReady: onReady)
+        return false
+    }
+
+    private func refreshJob(jobId: String, onReady: (() -> Void)? = nil) {
+        hydrateJob(jobId: jobId, force: true, onReady: onReady)
+    }
+
+    @MainActor
+    private func scheduleCoalescedListJobsForActiveSession() {
+        // Cancel any existing work item
+        coalescedResyncWorkItem?.cancel()
+
+        // Only schedule if we have an active session
+        guard let sessionId = activeSessionId else {
+            return
+        }
+
+        // Randomized delay between 0.4-0.7s to avoid server flooding
+        let delay = 0.4 + Double.random(in: 0...0.3)
+
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            Task { @MainActor in
+                // If in mobile-session mode, fetch all jobs (no session filter)
+                // Otherwise, fetch jobs for the specific session
+                let isMobileSession = sessionId.hasPrefix("mobile-session-")
+
+                let request = JobListRequest(
+                    projectDirectory: isMobileSession ? nil : self.activeProjectDirectory,
+                    sessionId: isMobileSession ? nil : sessionId,
+                    pageSize: 100
+                )
+
+                self.listJobs(request: request)
+                .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
+                .store(in: &self.cancellables)
+
+                self.lastCoalescedResyncAt = Date()
+            }
+        }
+
+        coalescedResyncWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+    }
+
+    // Centralized publisher for in-place mutations
+    private func mutateJobs(_ block: () -> Void) {
+        self.objectWillChange.send()
+        block()
+    }
+
+    // Extract jobId from relay event for early guard
+    private func extractJobId(from event: RelayEvent) -> String? {
+        let payload = event.data.mapValues { $0.value }
+        return payload["jobId"] as? String
+            ?? payload["id"] as? String
+            ?? (payload["job"] as? [String: Any])?["id"] as? String
+    }
+
     @MainActor
     public func applyRelayEvent(_ event: RelayEvent) {
         guard event.eventType.hasPrefix("job:") else { return }
 
-        // Process events continuously (like desktop) - only gate by session ID
-        guard let currentSessionId = activeSessionId else {
+        // Early guard: coalesced fallback for job:* events missing jobId
+        if event.eventType.hasPrefix("job:"),
+           extractJobId(from: event) == nil {
+            self.scheduleCoalescedListJobsForActiveSession()
             return
         }
 
-        let dict = event.data.mapValues { $0.value }
-        let jobId = dict["jobId"] as? String ?? dict["id"] as? String
+        let payload = event.data.mapValues { $0.value }
+        let jobId = payload["jobId"] as? String
+            ?? payload["id"] as? String
+            ?? (payload["job"] as? [String: Any])?["id"] as? String
 
-        // Check session ID in event data
-        if let eventSessionId = dict["sessionId"] as? String {
-            guard eventSessionId == currentSessionId else { return }
-        } else if let jobData = dict["job"] as? [String: Any],
-                  let eventSessionId = jobData["sessionId"] as? String {
-            guard eventSessionId == currentSessionId else { return }
-        } else if let jobId = jobId {
-            // Only allow if job already in our index
-            guard jobsIndex[jobId] != nil else { return }
-        }
+        // Process all job events regardless of session
+        // View layer handles filtering for display
 
         switch event.eventType {
         case "job:created":
-            if let jobData = dict["job"] as? [String: Any],
-               let id = jobData["id"] as? String,
-               jobsIndex[id] == nil {
-                do {
-                    let jsonData = try JSONSerialization.data(withJSONObject: jobData)
-                    let decoder = JSONDecoder()
-                    // Backend uses camelCase serialization - use default keys
-                    if let job = try? decoder.decode(BackgroundJob.self, from: jsonData) {
-                        // Filter out workflow orchestrator jobs from real-time events
-                        guard job.taskType != "file_finder_workflow" && job.taskType != "web_search_workflow" else {
-                            return
-                        }
-                        self.jobs.append(job)
-                        self.jobsIndex[job.id] = self.jobs.count - 1
-                    }
-                } catch {
-                    logger.error("Failed to decode job:created: \(error)")
-                }
-            }
+            // Attempt to decode job from payload
+            if let jobData = payload["job"] as? [String: Any],
+               let job = decodeJob(from: jobData) {
+                insertOrReplace(job: job)
+                // insertOrReplace already calls mutateJobs internally
+                // Schedule coalesced refresh to ensure convergence
+                scheduleCoalescedListJobsForActiveSession()
+            } else {
+                // Payload missing or decode failed - hydrate by jobId
+                let jobIdToHydrate = payload["jobId"] as? String
+                    ?? (payload["job"] as? [String: Any])?["id"] as? String
 
-        case "job:deleted":
-            if let id = jobId, let idx = jobsIndex[id] {
-                self.jobs.remove(at: idx)
-                self.jobsIndex.removeValue(forKey: id)
-                self.jobsIndex = Dictionary(uniqueKeysWithValues: self.jobs.enumerated().map { ($1.id, $0) })
-            }
-
-        case "job:metadata-updated":
-            if let id = jobId, let idx = jobsIndex[id] {
-                var job = self.jobs[idx]
-                guard job.taskType != "file_finder_workflow" && job.taskType != "web_search_workflow" else {
+                guard let jobIdToHydrate = jobIdToHydrate else {
+                    logger.warning("job:created event missing both job payload and jobId")
+                    self.scheduleCoalescedListJobsForActiveSession()
                     return
                 }
 
-                if let metadataPatch = dict["metadataPatch"] as? [String: Any] {
-                    if let existingMetadata = job.metadata,
-                       let metadataData = existingMetadata.data(using: .utf8),
-                       var metadataDict = try? JSONSerialization.jsonObject(with: metadataData) as? [String: Any] {
+                // Hydrate and re-apply or insert once ready
+                hydrateJob(jobId: jobIdToHydrate, force: false, onReady: { [weak self] in
+                    guard let self = self else { return }
+                    // Job is now present and valid
+                    self.scheduleCoalescedListJobsForActiveSession()
+                })
+            }
 
-                        for (key, value) in metadataPatch {
-                            if let existingValue = metadataDict[key] as? [String: Any],
-                               let newValue = value as? [String: Any] {
-                                var mergedDict = existingValue
-                                for (nestedKey, nestedValue) in newValue {
-                                    mergedDict[nestedKey] = nestedValue
-                                }
-                                metadataDict[key] = mergedDict
-                            } else {
-                                metadataDict[key] = value
+        case "job:deleted":
+            guard let jobId = jobId else { return }
+            if let index = jobsIndex[jobId] {
+                mutateJobs {
+                    lastAccumulatedLengths.removeValue(forKey: jobId)
+                    jobs.remove(at: index)
+                    jobsIndex.removeValue(forKey: jobId)
+                    jobsIndex = Dictionary(uniqueKeysWithValues: jobs.enumerated().map { ($1.id, $0) })
+                }
+                
+                // Invalidate cache when jobs are deleted via events
+                let cacheKeyPrefix = "dev_\(deviceKey)_jobs_"
+                cacheManager.invalidatePattern(cacheKeyPrefix)
+            }
+
+        case "job:metadata-updated":
+            guard let jobId = jobId else { return }
+            if ensureJobPresent(jobId: jobId, onReady: { [weak self] in
+                self?.applyRelayEvent(event)
+            }) == false {
+                return
+            }
+            guard let index = jobsIndex[jobId] else { return }
+            var job = jobs[index]
+            guard shouldIgnore(job: job) == false else { return }
+
+            if let metadataPatch = payload["metadataPatch"] as? [String: Any] {
+                if let existingMetadata = job.metadata,
+                   let metadataData = existingMetadata.data(using: .utf8),
+                   var metadataDict = try? JSONSerialization.jsonObject(with: metadataData) as? [String: Any] {
+
+                    for (key, value) in metadataPatch {
+                        if let existingValue = metadataDict[key] as? [String: Any],
+                           let newValue = value as? [String: Any] {
+                            var mergedDict = existingValue
+                            for (nestedKey, nestedValue) in newValue {
+                                mergedDict[nestedKey] = nestedValue
                             }
+                            metadataDict[key] = mergedDict
+                        } else {
+                            metadataDict[key] = value
                         }
+                    }
 
-                        if let updatedData = try? JSONSerialization.data(withJSONObject: metadataDict),
-                           let updatedString = String(data: updatedData, encoding: .utf8) {
+                    if let updatedData = try? JSONSerialization.data(withJSONObject: metadataDict),
+                       let updatedString = String(data: updatedData, encoding: .utf8) {
+                        mutateJobs {
                             job.metadata = updatedString
                             job.updatedAt = Int64(Date().timeIntervalSince1970 * 1000)
-                            self.jobs[idx] = job
+                            jobs[index] = job
                         }
-                    } else {
-                        if let patchData = try? JSONSerialization.data(withJSONObject: metadataPatch),
-                           let patchString = String(data: patchData, encoding: .utf8) {
-                            job.metadata = patchString
-                            job.updatedAt = Int64(Date().timeIntervalSince1970 * 1000)
-                            self.jobs[idx] = job
-                        }
+                    }
+                } else if let patchData = try? JSONSerialization.data(withJSONObject: metadataPatch),
+                          let patchString = String(data: patchData, encoding: .utf8) {
+                    mutateJobs {
+                        job.metadata = patchString
+                        job.updatedAt = Int64(Date().timeIntervalSince1970 * 1000)
+                        jobs[index] = job
                     }
                 }
             }
 
         case "job:status-changed", "job:tokens-updated", "job:cost-updated", "job:finalized":
-            if let id = jobId, let idx = jobsIndex[id] {
-                var job = self.jobs[idx]
-                guard job.taskType != "file_finder_workflow" && job.taskType != "web_search_workflow" else {
-                    return
+            guard let jobId = jobId else { return }
+            if ensureJobPresent(jobId: jobId, onReady: { [weak self] in
+                self?.applyRelayEvent(event)
+            }) == false {
+                return
+            }
+            guard let index = jobsIndex[jobId] else { return }
+            var job = jobs[index]
+            guard shouldIgnore(job: job) == false else { return }
+
+            if let status = payload["status"] as? String {
+                job.status = status
+            }
+            if let subStatus = payload["subStatusMessage"] as? String {
+                job.subStatusMessage = subStatus
+            }
+            if let updatedAt = intValue(from: payload["updatedAt"]) {
+                job.updatedAt = Int64(updatedAt)
+            }
+            if let startTime = intValue(from: payload["startTime"]) {
+                job.startTime = Int64(startTime)
+            }
+            if let endTime = intValue(from: payload["endTime"]) {
+                job.endTime = Int64(endTime)
+            }
+            if let actualCost = doubleValue(from: payload["actualCost"]) {
+                job.actualCost = actualCost
+            }
+            if let tokensSent = intValue(from: payload["tokensSent"]) {
+                job.tokensSent = Int32(tokensSent)
+            }
+            if let tokensReceived = intValue(from: payload["tokensReceived"]) {
+                job.tokensReceived = Int32(tokensReceived)
+            }
+            if let cacheWrite = intValue(from: payload["cacheWriteTokens"]) {
+                job.cacheWriteTokens = Int32(cacheWrite)
+            }
+            if let cacheRead = intValue(from: payload["cacheReadTokens"]) {
+                job.cacheReadTokens = Int32(cacheRead)
+            }
+            if let finalized = boolValue(from: payload["isFinalized"]) {
+                job.isFinalized = finalized
+            }
+            if let duration = intValue(from: payload["durationMs"]) {
+                job.durationMs = Int32(duration)
+            }
+
+            mutateJobs {
+                if event.eventType == "job:finalized" {
+                    lastAccumulatedLengths.removeValue(forKey: jobId)
+                    if let response = payload["response"] as? String {
+                        job.response = response
+                        lastAccumulatedLengths[jobId] = response.count
+                    }
                 }
-                if let status = dict["status"] as? String {
-                    job.status = status
-                }
-                if let updatedAt = dict["updatedAt"] as? Int64 {
-                    job.updatedAt = updatedAt
-                }
-                if let actualCost = dict["actualCost"] as? Double {
-                    job.actualCost = actualCost
-                }
-                self.jobs[idx] = job
+                jobs[index] = job
+            }
+            
+            if event.eventType == "job:finalized" {
+                // Schedule coalesced refresh after finalized to ensure convergence
+                scheduleCoalescedListJobsForActiveSession()
+            }
+            
+            // Invalidate cache when jobs are modified via events
+            if event.eventType == "job:finalized" || event.eventType == "job:status-changed" {
+                let cacheKeyPrefix = "dev_\(deviceKey)_jobs_"
+                cacheManager.invalidatePattern(cacheKeyPrefix)
             }
 
         case "job:response-appended":
-            if let id = jobId, let idx = jobsIndex[id], let chunk = dict["chunk"] as? String {
-                var job = self.jobs[idx]
-                let currentResponse = job.response ?? ""
-                job.response = currentResponse + chunk
-                self.jobs[idx] = job
+            guard let jobId = jobId,
+                  let chunk = payload["chunk"] as? String else { return }
+            if ensureJobPresent(jobId: jobId, onReady: { [weak self] in
+                self?.applyRelayEvent(event)
+            }) == false {
+                return
+            }
+            guard let index = jobsIndex[jobId] else { return }
+            var job = jobs[index]
+            guard shouldIgnore(job: job) == false else { return }
+
+            let accumulatedLength = intValue(from: payload["accumulatedLength"]) ??
+                intValue(from: payload["accumulated_length"])
+            let currentResponse = job.response ?? ""
+            let currentLength = currentResponse.count
+            let expectedLength = lastAccumulatedLengths[jobId] ?? currentLength
+
+            if let accLength = accumulatedLength {
+                if accLength <= expectedLength {
+                    return
+                }
+                if currentLength + chunk.count == accLength {
+                    mutateJobs {
+                        job.response = currentResponse + chunk
+                        lastAccumulatedLengths[jobId] = accLength
+                        job.updatedAt = intValue(from: payload["updatedAt"]).map(Int64.init) ?? job.updatedAt
+                        jobs[index] = job
+                    }
+                } else {
+                    refreshJob(jobId: jobId)
+                }
+            } else {
+                mutateJobs {
+                    job.response = currentResponse + chunk
+                    let newLength = currentLength + chunk.count
+                    lastAccumulatedLengths[jobId] = newLength
+                    job.updatedAt = intValue(from: payload["updatedAt"]).map(Int64.init) ?? job.updatedAt
+                    jobs[index] = job
+                }
             }
 
         case "job:stream-progress":
-            if let id = jobId, let idx = jobsIndex[id] {
-                var job = self.jobs[idx]
-                guard job.taskType != "file_finder_workflow" && job.taskType != "web_search_workflow" else {
-                    return
+            guard let jobId = jobId else { return }
+            if ensureJobPresent(jobId: jobId, onReady: { [weak self] in
+                self?.applyRelayEvent(event)
+            }) == false {
+                return
+            }
+            guard let index = jobsIndex[jobId] else { return }
+            var job = jobs[index]
+            guard shouldIgnore(job: job) == false else { return }
+
+            if let existingMetadata = job.metadata,
+               let metadataData = existingMetadata.data(using: .utf8),
+               var metadataDict = try? JSONSerialization.jsonObject(with: metadataData) as? [String: Any] {
+
+                var taskData = metadataDict["taskData"] as? [String: Any] ?? [:]
+
+                if let progress = doubleValue(from: payload["progress"]) {
+                    taskData["streamProgress"] = progress
+                }
+                if let responseLength = intValue(from: payload["responseLength"]) {
+                    taskData["responseLength"] = responseLength
+                }
+                if let lastStreamUpdateTime = intValue(from: payload["lastStreamUpdateTime"]) {
+                    taskData["lastStreamUpdateTime"] = lastStreamUpdateTime
                 }
 
-                if let existingMetadata = job.metadata,
-                   let metadataData = existingMetadata.data(using: .utf8),
-                   var metadataDict = try? JSONSerialization.jsonObject(with: metadataData) as? [String: Any] {
+                metadataDict["taskData"] = taskData
 
-                    var taskData = metadataDict["taskData"] as? [String: Any] ?? [:]
-
-                    if let progress = dict["progress"] as? Double {
-                        taskData["streamProgress"] = progress
-                    }
-                    if let responseLength = dict["responseLength"] as? Int {
-                        taskData["responseLength"] = responseLength
-                    }
-                    if let lastStreamUpdateTime = dict["lastStreamUpdateTime"] as? Int64 {
-                        taskData["lastStreamUpdateTime"] = lastStreamUpdateTime
-                    }
-
-                    metadataDict["taskData"] = taskData
-
-                    if let updatedData = try? JSONSerialization.data(withJSONObject: metadataDict),
-                       let updatedString = String(data: updatedData, encoding: .utf8) {
+                if let updatedData = try? JSONSerialization.data(withJSONObject: metadataDict),
+                   let updatedString = String(data: updatedData, encoding: .utf8) {
+                    mutateJobs {
                         job.metadata = updatedString
                         job.updatedAt = Int64(Date().timeIntervalSince1970 * 1000)
-                        self.jobs[idx] = job
+                        jobs[index] = job
                     }
                 }
             }

@@ -4,10 +4,11 @@ import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { GitMerge, MessageSquare, CheckCircle2, Layers, Target, Brain } from 'lucide-react';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
   title: 'Architectural Plan Synthesis - Intelligent Multi-Plan Merging | PlanToCode',
-  description: 'Advanced architectural synthesis that goes beyond simple merging. AI analyzes multiple implementation plans, resolves conflicts using SOLID principles, and creates emergent solutions with full source traceability.',
+  description: 'Architectural synthesis beyond simple merging. AI analyzes plans, resolves conflicts with SOLID principles, and creates emergent solutions with traceability.',
   keywords: [
     'architectural synthesis',
     'implementation plan merge',
@@ -25,9 +26,20 @@ export const metadata: Metadata = {
     url: 'https://www.plantocode.com/features/merge-instructions',
     siteName: 'PlanToCode',
     type: 'website',
+    locale: 'en_US',
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
   },
   alternates: {
     canonical: 'https://www.plantocode.com/features/merge-instructions',
+    languages: {
+      'en-US': 'https://www.plantocode.com/features/merge-instructions',
+      'en': 'https://www.plantocode.com/features/merge-instructions',
+    },
   },
 };
 
@@ -448,7 +460,7 @@ export default function MergeInstructionsPage() {
                       Explore plan generation
                     </LinkWithArrow>
                     <span className="hidden sm:inline">•</span>
-                    <LinkWithArrow href="/docs/demo">
+                    <LinkWithArrow href="/demo">
                       Watch it in action
                     </LinkWithArrow>
                   </div>

@@ -103,7 +103,7 @@ export const docsManifest: DocGroup[] = [
     title: 'Architecture',
     items: [
       {
-        slug: '/docs/plantocode-architecture',
+        slug: '/docs/architecture',
         title: 'Architecture Overview',
         shortTitle: 'Architecture',
         description: 'How the React front end, Tauri commands, and persistence fit together.',

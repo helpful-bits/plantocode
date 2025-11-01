@@ -46,7 +46,6 @@ public class RegionSettingsRepository {
                     return defaultRegion
                 }
             } catch {
-                print("Error getting active region: \(error)")
                 return getDefaultRegion()
             }
         }
@@ -60,7 +59,6 @@ public class RegionSettingsRepository {
         queue.async {
             do {
                 guard let db = self.db else {
-                    print("Database not initialized")
                     return
                 }
 
@@ -85,7 +83,7 @@ public class RegionSettingsRepository {
                     ))
                 }
             } catch {
-                print("Error setting active region: \(error)")
+                // Error setting active region
             }
         }
     }
@@ -146,7 +144,7 @@ public class RegionSettingsRepository {
 
             createTableIfNeeded()
         } catch {
-            print("Database setup error: \(error)")
+            // Database setup error
         }
     }
 
@@ -161,7 +159,7 @@ public class RegionSettingsRepository {
                 t.column(updatedAt)
             })
         } catch {
-            print("Create table error: \(error)")
+            // Create table error
         }
     }
 

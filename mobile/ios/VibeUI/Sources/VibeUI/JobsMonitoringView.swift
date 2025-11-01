@@ -4,6 +4,7 @@ import Combine
 
 public struct JobsMonitoringView: View {
     @EnvironmentObject private var container: AppContainer
+    @ObservedObject private var jobsService: JobsDataService
     @StateObject private var multiConnectionManager = MultiConnectionManager.shared
     @Environment(\.colorScheme) var colorScheme
     @State private var searchQuery: String = ""
@@ -13,11 +14,11 @@ public struct JobsMonitoringView: View {
     @State private var deletingJobs = Set<String>()
     @State private var errorMessage: String?
     @State private var showingError = false
-    @State private var refreshTrigger = UUID()
     @State private var cancellables = Set<AnyCancellable>()
-
-    private var jobsService: JobsDataService {
-        container.jobsService
+    @State private var refreshToken = UUID()
+    
+    public init(jobsService: JobsDataService) {
+        self._jobsService = ObservedObject(wrappedValue: jobsService)
     }
 
     // Base filtered jobs (session + job type filtering, no search)
@@ -64,11 +65,8 @@ public struct JobsMonitoringView: View {
             .sorted { ($0.updatedAt ?? $0.createdAt) > ($1.updatedAt ?? $1.createdAt) }
     }
 
-    public init() {}
-
     public var body: some View {
-        let _ = refreshTrigger // Force view dependency
-
+        let _ = refreshToken // bind into body to force recompute when changed
         VStack(spacing: 0) {
             VStack(spacing: 0) {
                 // Search and Summary Section
@@ -181,7 +179,7 @@ public struct JobsMonitoringView: View {
             JobDetailsSheet(jobId: identifiableJobId.value)
                 .environmentObject(container)
         }
-        .onReceive(container.sessionService.$currentSession.compactMap { $0 }) { newSession in
+        .onReceive(container.sessionService.currentSessionPublisher.compactMap { $0 }) { newSession in
             selectedJobId = nil
             Task { await loadJobs() }
         }
@@ -219,6 +217,9 @@ public struct JobsMonitoringView: View {
             }
         } message: {
             Text(errorMessage ?? "An error occurred")
+        }
+        .onReceive(jobsService.$jobs) { _ in
+            refreshToken = UUID()
         }
     }
 
@@ -506,8 +507,3 @@ struct IdentifiableString: Identifiable {
     let value: String
 }
 
-#Preview {
-    NavigationStack {
-        JobsMonitoringView()
-    }
-}

@@ -29,10 +29,13 @@ public struct StatusAlertView: View {
           .font(.subheadline)
           .fontWeight(.semibold)
           .foregroundColor(textColor)
+          .fixedSize(horizontal: false, vertical: true)
 
         Text(message)
           .font(.caption)
           .foregroundColor(Color.appMutedForeground)
+          .fixedSize(horizontal: false, vertical: true)
+          .lineLimit(nil)
       }
 
       Spacer(minLength: 0)
