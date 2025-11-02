@@ -6,7 +6,7 @@ import { ComparisonPageClient } from '@/components/compare/ComparisonPageClient'
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'PlanToCode vsVS Code Tasks - Development Workflow Comparison',
+  title: 'vsVS Code Tasks - Development Workflow Comparison',
   description: 'Compare PlanToCode\'sdynamic AI planning with VS Code\'s static task system. AI generation, adaptability, context awareness.',
   keywords: [
     'vscode-tasks',
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     },
   },
   openGraph: {
-    title: 'PlanToCode vsVS Code Tasks - Development Workflow Comparison',
+    title: 'vsVS Code Tasks - Development Workflow Comparison',
     description: 'Compare PlanToCode\'sdynamic AI planning with VS Code\'s static task system. AI generation, adaptability, context awareness.',
     url: 'https://www.plantocode.com/compare/plantocode-vs-vscode-tasks',
     siteName: 'PlanToCode',

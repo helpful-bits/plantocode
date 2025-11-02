@@ -5,8 +5,8 @@ import { cdnUrl } from '@/lib/cdn';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'What is AI Code Planning? A Developer\'s Guide to Safe Refactoring',
-  description: 'Learn what AI code planning is, why it matters for large codebases, and how planning-first development prevents the chaos that direct AI code generation creates.',
+  title: 'What is AI Code Planning? Developer Guide',
+  description: 'What AI code planning is, why it matters for large codebases, how planning-first development prevents AI coding chaos.',
   keywords: [
     'ai code planning',
     'ai coding assistant',
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     },
   },
   openGraph: {
-    title: 'What is AI Code Planning? A Developer\'s Guide to Safe Refactoring',
+    title: 'What is AI Code Planning? Developer Guide',
     description: 'Learn what AI code planning is, why it matters for large codebases, and how planning-first development prevents AI coding chaos.',
     url: 'https://www.plantocode.com/blog/what-is-ai-code-planning',
     siteName: 'PlanToCode',

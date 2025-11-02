@@ -28,12 +28,12 @@ export async function generateMetadata({ params }: WithdrawalPolicyPageProps): P
     },
     alternates: {
       canonical: `https://www.plantocode.com/legal/${region}/withdrawal-policy`,
-      languages: {
-        'en-US': `https://www.plantocode.com/legal/${region}/withdrawal-policy`,
-        'en': `https://www.plantocode.com/legal/${region}/withdrawal-policy`,
-      },
     },
     openGraph: {
+      type: 'website',
+      url: `https://www.plantocode.com/legal/${region}/withdrawal-policy`,
+      title: 'Consumer Right of Withdrawal',
+      siteName: 'PlanToCode',
       images: [{
         url: cdnUrl('/images/og-image.png'),
         width: 1200,

@@ -23,7 +23,7 @@ import type { SoftwareApplication, HowTo, FAQPage } from 'schema-dts';
 import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
-  title: 'Specification Capture Mode - AI text enhancement | PlanToCode',
+  title: 'Spec Capture Mode - AI Text Enhancement',
   description:
     'Refine specifications with two AI prompts: Text Enhancement for clarity, Task Refinement for completeness. Create actionable specs for development teams.',
   keywords: [

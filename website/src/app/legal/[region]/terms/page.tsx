@@ -24,23 +24,17 @@ export async function generateMetadata({ params }: TermsPageProps): Promise<Meta
   
   return {
     title: 'Terms of Service',
-    description: `Terms of service for our application outlining the rules and guidelines for using our AI-powered workflow automation platform. Applicable to ${regionName} users.`,
+    description: `Terms of service outlining rules for using our AI workflow platform. Applicable to ${regionName} users.`,
     robots: {
       index: true,
       follow: true,
     },
     alternates: {
-      canonical: `https://www.plantocode.com/legal/${region}/terms`,
-      languages: {
-        'x-default': 'https://www.plantocode.com/legal/us/terms',
-        'en-US': 'https://www.plantocode.com/legal/us/terms',
-        'en-GB': 'https://www.plantocode.com/legal/eu/terms',
-        'en-EU': 'https://www.plantocode.com/legal/eu/terms',
-      },
+      canonical: `https://www.plantocode.com/legal/${region}/terms`
     },
     openGraph: {
       title: 'Terms of Service',
-      description: `Terms of service for our application outlining the rules and guidelines for using our AI-powered workflow automation platform. Applicable to ${regionName} users.`,
+      description: `Terms of service outlining rules for using our AI workflow platform. Applicable to ${regionName} users.`,
       url: `https://www.plantocode.com/legal/${region}/terms`,
       siteName: 'PlanToCode',
       type: 'website',

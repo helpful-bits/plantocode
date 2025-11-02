@@ -6,7 +6,7 @@ import { ComparisonPageClient } from '@/components/compare/ComparisonPageClient'
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'PlanToCode vsClaude Code Standalone - AI Development Comparison',
+  title: 'vs Claude Code - AI Dev Comparison',
   description: 'Compare PlanToCode\'smulti-model approach with standalone Claude Code. Plan merging, file discovery, session recording advantages.',
   keywords: [
     'claude-code-standalone',
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     },
   },
   openGraph: {
-    title: 'PlanToCode vsClaude Code Standalone - AI Development Comparison',
+    title: 'vs Claude Code - AI Dev Comparison',
     description: 'Compare PlanToCode\'smulti-model approach with standalone Claude Code. Plan merging, file discovery, session recording advantages.',
     url: 'https://www.plantocode.com/compare/plantocode-vs-claude-code-standalone',
     siteName: 'PlanToCode',

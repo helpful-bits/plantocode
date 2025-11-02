@@ -28,12 +28,12 @@ export async function generateMetadata({ params }: ImprintPageProps): Promise<Me
     },
     alternates: {
       canonical: `https://www.plantocode.com/legal/${region}/imprint`,
-      languages: {
-        'en-US': `https://www.plantocode.com/legal/${region}/imprint`,
-        'en': `https://www.plantocode.com/legal/${region}/imprint`,
-      },
     },
     openGraph: {
+      type: 'website',
+      url: `https://www.plantocode.com/legal/${region}/imprint`,
+      title: 'Imprint (Impressum)',
+      siteName: 'PlanToCode',
       images: [{
         url: cdnUrl('/images/og-image.png'),
         width: 1200,

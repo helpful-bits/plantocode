@@ -9,8 +9,10 @@ export async function GET(request: NextRequest) {
   // For bots, use consistent redirect to EU (GDPR-compliant) version
   // This ensures consistent indexing and follows 2025 SEO best practices
   if (isBot) {
+    const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'plantocode.com';
+    const proto = request.headers.get('x-forwarded-proto') || 'https';
     return NextResponse.redirect(
-      new URL('/legal/eu/terms', request.url),
+      new URL('/legal/eu/terms', `${proto}://${host}`),
       { status: 301 } // Permanent redirect for SEO
     );
   }
@@ -34,14 +36,15 @@ export async function GET(request: NextRequest) {
     region = 'eu';
   }
   
-  // Build the redirect URL - use production domain as fallback
-  const protocol = request.headers.get('x-forwarded-proto') || 'https';
-  const host = request.headers.get('host') || 'www.plantocode.com';
-  const baseUrl = `${protocol}://${host}`;
+  // Get the proper host and protocol from headers (nginx proxy passes these)
+  const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'plantocode.com';
+  const proto = request.headers.get('x-forwarded-proto') || 'https';
 
-  // Redirect to the appropriate regional terms page
+  // Build the redirect URL using the correct host and protocol
+  const redirectUrl = new URL(`/legal/${region}/terms`, `${proto}://${host}`);
+
   return NextResponse.redirect(
-    new URL(`/legal/${region}/terms`, baseUrl),
+    redirectUrl,
     { status: 302 } // Temporary for geo-based user redirects
   );
 }

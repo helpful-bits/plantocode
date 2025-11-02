@@ -9,8 +9,10 @@ export async function GET(request: NextRequest) {
   // For bots, use consistent redirect to EU (GDPR-compliant) version
   // This ensures consistent indexing and follows 2025 SEO best practices
   if (isBot) {
+    const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'plantocode.com';
+    const proto = request.headers.get('x-forwarded-proto') || 'https';
     return NextResponse.redirect(
-      new URL('/legal/eu/privacy', request.url),
+      new URL('/legal/eu/privacy', `${proto}://${host}`),
       { status: 301 } // Permanent redirect for SEO
     );
   }
@@ -34,17 +36,17 @@ export async function GET(request: NextRequest) {
     region = 'eu';
   }
   
+  // Get the proper host and protocol from headers (nginx proxy passes these)
+  const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'plantocode.com';
+  const proto = request.headers.get('x-forwarded-proto') || 'https';
+
   // Check if there's a hash fragment (like #cookies) to preserve
   const url = new URL(request.url);
   const hash = url.hash;
-  
-  // Build the redirect URL - use production domain as fallback
-  const protocol = request.headers.get('x-forwarded-proto') || 'https';
-  const host = request.headers.get('host') || 'www.plantocode.com';
-  const baseUrl = `${protocol}://${host}`;
 
-  const redirectUrl = new URL(`/legal/${region}/privacy${hash}`, baseUrl);
-  
+  // Build the redirect URL using the correct host and protocol
+  const redirectUrl = new URL(`/legal/${region}/privacy${hash}`, `${proto}://${host}`);
+
   return NextResponse.redirect(
     redirectUrl,
     { status: 302 } // Temporary for geo-based user redirects

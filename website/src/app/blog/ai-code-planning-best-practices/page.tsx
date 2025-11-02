@@ -5,7 +5,7 @@ import { cdnUrl } from '@/lib/cdn';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'AI Code Planning Best Practices (2025) - Production-Ready Workflow Guide',
+  title: 'AI Code Planning Best Practices 2025 - Workflow Guide',
   description: 'Master AI code planning with proven best practices: multi-model planning, dependency mapping, review checklists, and team workflows for production codebases.',
   keywords: [
     'ai code planning best practices',
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     },
   },
   openGraph: {
-    title: 'AI Code Planning Best Practices (2025) - Production-Ready Workflow Guide',
+    title: 'AI Code Planning Best Practices 2025 - Workflow Guide',
     description: 'Master AI code planning with proven best practices: multi-model planning, dependency mapping, review checklists for production code.',
     url: 'https://www.plantocode.com/blog/ai-code-planning-best-practices',
     siteName: 'PlanToCode',

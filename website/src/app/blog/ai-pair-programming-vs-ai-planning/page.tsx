@@ -5,7 +5,7 @@ import { cdnUrl } from '@/lib/cdn';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'AI Pair Programming vs AI Planning: Which Workflow Fits Your Team?',
+  title: 'AI Pair Programming vs Planning - Team Guide',
   description: 'Compare AI pair programming (Copilot, Cursor) with AI planning (PlanToCode). When to use each approach for production codebases, teams, and complex refactoring.',
   keywords: [
     'ai pair programming',
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     },
   },
   openGraph: {
-    title: 'AI Pair Programming vs AI Planning: Which Workflow Fits Your Team?',
+    title: 'AI Pair Programming vs Planning - Team Guide',
     description: 'Compare AI pair programming with AI planning. When to use each approach for production codebases, teams, and complex refactoring.',
     url: 'https://www.plantocode.com/blog/ai-pair-programming-vs-ai-planning',
     siteName: 'PlanToCode',

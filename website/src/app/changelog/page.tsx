@@ -4,7 +4,7 @@ import { Calendar, Sparkles, Zap, Bug, Trash2 } from 'lucide-react';
 import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
-  title: 'Changelog - Latest Updates | PlanToCode',
+  title: 'Changelog - Latest Updates',
   description: 'Latest features and improvements in PlanToCode. Multi-model AI planning updates for Claude Code, Cursor, and OpenAI Codex integration.',
   robots: {
     index: true,
@@ -18,7 +18,7 @@ export const metadata: Metadata = {
     },
   },
   openGraph: {
-    title: 'Changelog - Latest Updates | PlanToCode',
+    title: 'Changelog - Latest Updates',
     description: 'Latest features and improvements in PlanToCode. Multi-model AI planning updates for Claude Code, Cursor, and OpenAI Codex integration.',
     url: 'https://www.plantocode.com/changelog',
     siteName: 'PlanToCode',

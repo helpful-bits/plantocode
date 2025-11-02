@@ -6,7 +6,7 @@ import { ComparisonPageClient } from '@/components/compare/ComparisonPageClient'
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'PlanToCode vsAider - AI Development Tool Comparison',
+  title: 'vsAider - AI Development Tool Comparison',
   description: 'Compare PlanToCode\'splan-first approach with Aider\'s agent-first CLI. Planning workflow, file discovery, session persistence, multi-model support.',
   keywords: [
     'aider',
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     },
   },
   openGraph: {
-    title: 'PlanToCode vsAider - AI Development Tool Comparison',
+    title: 'vsAider - AI Development Tool Comparison',
     description: 'Compare PlanToCode\'splan-first approach with Aider\'s agent-first CLI. Planning workflow, file discovery, session persistence, multi-model support.',
     url: 'https://www.plantocode.com/compare/plantocode-vs-aider',
     siteName: 'PlanToCode',

@@ -1,4 +1,5 @@
 import { Metadata } from 'next';
+import Link from 'next/link';
 import { Header } from '@/components/landing/Header';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
@@ -85,6 +86,18 @@ export default function ComparisonsHubPage() {
                     </LinkWithArrow>
                   </GlassCard>
                 ))}
+              </div>
+
+              {/* Cursor Users Note */}
+              <div className="mb-12">
+                <GlassCard className="p-6 bg-primary/5 border-primary/20">
+                  <p className="text-center text-foreground/80">
+                    <strong>Looking for a Cursor alternative?</strong> PlanToCode works <em>with</em> Cursor, not instead of it.{' '}
+                    <Link href="/cursor-alternative" className="text-primary hover:underline font-medium">
+                      Learn how PlanToCode complements Cursor →
+                    </Link>
+                  </p>
+                </GlassCard>
               </div>
 
               {/* What Makes PlanToCode Different */}

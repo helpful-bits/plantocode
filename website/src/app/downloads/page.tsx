@@ -119,7 +119,7 @@ export default function DownloadPage() {
                             <div>
                               <h4 className="font-semibold text-foreground mb-1">Professional Ready</h4>
                               <p className="text-sm text-foreground/80 leading-relaxed">
-                                Fully notarized by Apple. Code signed. Integrated terminal with CLI auto-detection and session persistence.
+                                Fully <a href="/security/notarization" className="underline hover:text-primary">notarized by Apple</a>. Code signed. Integrated terminal with CLI auto-detection and session persistence.
                               </p>
                             </div>
                           </div>

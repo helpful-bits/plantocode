@@ -7,7 +7,7 @@ import { GitMerge, MessageSquare, CheckCircle2, Layers, Target, Brain } from 'lu
 import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
-  title: 'Architectural Plan Synthesis - Intelligent Multi-Plan Merging | PlanToCode',
+  title: 'Plan Synthesis - Multi-Model Merging',
   description: 'Architectural synthesis beyond simple merging. AI analyzes plans, resolves conflicts with SOLID principles, and creates emergent solutions with traceability.',
   keywords: [
     'architectural synthesis',

@@ -6,7 +6,7 @@ import { ComparisonPageClient } from '@/components/compare/ComparisonPageClient'
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'PlanToCode vsRaycast AI - Developer Tool Comparison',
+  title: 'vsRaycast AI - Developer Tool Comparison',
   description: 'Compare PlanToCode\'sdeep architectural planning with Raycast AI\'s quick commands. File discovery, multi-model planning, terminal integration.',
   keywords: [
     'raycast',
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     },
   },
   openGraph: {
-    title: 'PlanToCode vsRaycast AI - Developer Tool Comparison',
+    title: 'vsRaycast AI - Developer Tool Comparison',
     description: 'Compare PlanToCode\'sdeep architectural planning with Raycast AI\'s quick commands. File discovery, multi-model planning, terminal integration.',
     url: 'https://www.plantocode.com/compare/plantocode-vs-raycast-ai',
     siteName: 'PlanToCode',

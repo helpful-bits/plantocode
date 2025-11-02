@@ -3,7 +3,7 @@ import { baseValueBullets, buildJsonLdHowTo } from './_base';
 
 export const cursorContent: PlanIntegrationContent = {
   meta: {
-    title: 'Plan for Cursor Agent — Reviewed Specs and Safer Runs | PlanToCode',
+    title: 'Cursor Agent Planning - Reviewed Specs',
     description:
       'Pre-plan for Cursor Composer and Agent with file discovery and multi-model synthesis. Generate specs, review, then execute with confidence.',
     canonical: 'https://www.plantocode.com/plan-mode/cursor',

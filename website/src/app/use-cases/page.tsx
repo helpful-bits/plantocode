@@ -3,16 +3,25 @@ import { Header } from '@/components/landing/Header';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Breadcrumbs } from '@/components/Breadcrumbs';
+import { cdnUrl } from '@/lib/cdn';
 import { getPagesByCategory } from '@/data/pseo';
 import { Users } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'Use Cases by Role - AI Tools for Engineers | PlanToCode',
+  title: 'Use Cases by Role - AI Tools for Engineers',
   description: 'Explore PlanToCode use cases by engineering role: Backend, Frontend, Mobile, Platform, Security, Data, ML, DevOps, QA, and more.',
   openGraph: {
-    title: 'Use Cases by Role - AI Tools for Engineers | PlanToCode',
+    title: 'Use Cases by Role - AI Tools for Engineers',
     description: 'AI-powered development tools tailored for your engineering role.',
     url: 'https://www.plantocode.com/use-cases',
+    type: 'website',
+    siteName: 'PlanToCode',
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
   },
   alternates: {
     canonical: 'https://www.plantocode.com/use-cases',

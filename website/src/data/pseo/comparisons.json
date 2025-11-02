@@ -2,11 +2,11 @@
   "category": "comparisons",
   "pages": [
     {
-      "slug": "plantocode-vs-tmux-script-asciinema",
+      "slug": "compare/plantocode-vs-tmux-script-asciinema",
       "competitor": "tmux-script-asciinema",
       "headline": "PlanToCode vs tmux, script & asciinema",
       "subhead": "Why modern AI workflows need more than Unix recording tools",
-      "meta_title": "PlanToCode vs tmux, script, asciinema - Terminal Recording Comparison",
+      "meta_title": "vs tmux, script, asciinema - Terminal",
       "meta_description": "Compare PlanToCode's AI-integrated terminal with tmux, script, and asciinema. Voice input, plan execution, persistent sessions, rich playback.",
       "primary_cta": "Try Modern Terminal Recording",
       "publish": true,
@@ -62,11 +62,11 @@
       ]
     },
     {
-      "slug": "plantocode-vs-warp-ai-terminal",
+      "slug": "compare/plantocode-vs-warp-ai-terminal",
       "competitor": "warp",
       "headline": "PlanToCode vs Warp AI Terminal",
       "subhead": "Architectural awareness vs terminal suggestions",
-      "meta_title": "PlanToCode vs Warp - AI Terminal Comparison for Developers",
+      "meta_title": "vs Warp - AI Terminal Comparison",
       "meta_description": "Compare PlanToCode's architectural AI planning with Warp's terminal AI. File discovery, multi-model plans, implementation workflows.",
       "primary_cta": "Try Architectural AI",
       "publish": true,
@@ -96,7 +96,7 @@
           {
             "name": "Pricing",
             "plantocode": "$5 credits, pay-as-you-go",
-            "competitor": "Free, Pro, Turbo, Business, Lightspeed (as of 2025‑09‑26)."
+            "competitor": "Free, Pro, Turbo, Business, Lightspeed (as of 2025\u201109\u201126)."
           }
         ]
       },
@@ -122,7 +122,7 @@
       ]
     },
     {
-      "slug": "plantocode-vs-raycast-ai",
+      "slug": "compare/plantocode-vs-raycast-ai",
       "competitor": "raycast",
       "headline": "PlanToCode vsRaycast AI",
       "subhead": "Deep code understanding vs quick AI commands",
@@ -152,7 +152,7 @@
       }
     },
     {
-      "slug": "plantocode-vs-aider",
+      "slug": "compare/plantocode-vs-aider",
       "competitor": "aider",
       "headline": "PlanToCode vsAider",
       "subhead": "Plan-first terminal vs agent-first CLI",
@@ -181,7 +181,7 @@
           {
             "name": "Multi-Model Support",
             "plantocode": "Claude, GPT-4, multiple providers",
-            "competitor": "OpenAI, Anthropic (Claude), Google Gemini, DeepSeek, OpenRouter (many providers), and local models (Ollama/OpenAI‑compatible)"
+            "competitor": "OpenAI, Anthropic (Claude), Google Gemini, DeepSeek, OpenRouter (many providers), and local models (Ollama/OpenAI\u2011compatible)"
           },
           {
             "name": "Execution Safety",
@@ -212,7 +212,7 @@
       ]
     },
     {
-      "slug": "plantocode-vs-cursor-agents",
+      "slug": "compare/plantocode-vs-cursor-agents",
       "competitor": "cursor-agents",
       "headline": "PlanToCode vsCursor Agents",
       "subhead": "Architectural planning vs editor-first AI",
@@ -272,7 +272,7 @@
       ]
     },
     {
-      "slug": "plantocode-vs-claude-code-standalone",
+      "slug": "compare/plantocode-vs-claude-code-standalone",
       "competitor": "claude-code-standalone",
       "headline": "PlanToCode vsClaude Code (Standalone)",
       "subhead": "Multi-model synthesis vs single-model sessions",
@@ -332,11 +332,11 @@
       ]
     },
     {
-      "slug": "plantocode-vs-vscode-tasks",
+      "slug": "compare/plantocode-vs-vscode-tasks",
       "competitor": "vscode-tasks",
       "headline": "PlanToCode vsVS Code Tasks",
       "subhead": "Dynamic AI plans vs static task runners",
-      "meta_title": "PlanToCode vsVS Code Tasks - Development Workflow Comparison",
+      "meta_title": "vs VS Code Tasks - Dev Workflow",
       "meta_description": "Compare PlanToCode'sdynamic AI planning with VS Code's static task system. AI generation, adaptability, context awareness.",
       "primary_cta": "Try Dynamic AI Planning",
       "publish": true,
@@ -392,7 +392,7 @@
       ]
     },
     {
-      "slug": "plantocode-vs-github-copilot-cli",
+      "slug": "compare/plantocode-vs-github-copilot-cli",
       "competitor": "github-copilot-cli",
       "headline": "PlanToCode vsGitHub Copilot CLI",
       "subhead": "Full architectural awareness vs command suggestions",

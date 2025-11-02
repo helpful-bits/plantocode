@@ -5,8 +5,8 @@ import { cdnUrl } from '@/lib/cdn';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Safe Refactoring Tools - AI-Powered Planning for Risk-Free Code Changes',
-  description: 'Stop breaking production with refactoring. PlanToCode provides a safety layer for AI-assisted refactoring with pre-execution review, dependency mapping, and multi-file change visibility.',
+  title: 'Safe Refactoring - AI Planning for Risk-Free Changes',
+  description: 'Stop breaking production. AI refactoring safety layer with pre-execution review, dependency mapping, multi-file visibility.',
   keywords: [
     'safe refactoring tools',
     'ai refactoring',
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     },
   },
   openGraph: {
-    title: 'Safe Refactoring Tools - AI-Powered Planning for Risk-Free Code Changes',
+    title: 'Safe Refactoring - AI Planning for Risk-Free Changes',
     description: 'Stop breaking production with refactoring. PlanToCode provides a safety layer for AI-assisted refactoring with pre-execution review and dependency mapping.',
     url: 'https://www.plantocode.com/solutions/safe-refactoring',
     siteName: 'PlanToCode',

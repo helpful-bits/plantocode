@@ -5,7 +5,7 @@ import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
   title: 'Voice transcription - PlanToCode',
-  description: 'Learn how PlanToCode records audio, streams real-time transcripts into prompts using OpenAI Whisper, manages device permissions, and respects project-specific settings.',
+  description: 'How PlanToCode records audio, streams real-time transcripts using gpt-4o-transcribe, manages permissions, project settings.',
   alternates: {
     canonical: 'https://www.plantocode.com/docs/voice-transcription',
     languages: {

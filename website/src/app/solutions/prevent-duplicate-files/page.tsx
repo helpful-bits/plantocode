@@ -7,9 +7,9 @@ import { Copy, FileSearch, AlertTriangle, CheckCircle2, FolderOpen, GitBranch } 
 import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
-  title: 'Prevent AI from Creating Duplicate Files | PlanToCode',
+  title: 'Prevent AI from Creating Duplicate Files',
   description:
-    'Stop AI coding tools from creating duplicate files. See how PlanToCode\'s file discovery prevents duplicates before execution. Real solutions for Cursor, Copilot users.',
+    'Stop AI tools from creating duplicate files. PlanToCode file discovery prevents duplicates before execution for Cursor, Copilot users.',
   openGraph: {
     images: [{
       url: cdnUrl('/images/og-image.png'),
@@ -18,7 +18,7 @@ export const metadata: Metadata = {
       alt: 'PlanToCode - AI Planning for Code',
     }],
 
-    title: 'Prevent AI from Creating Duplicate Files | PlanToCode',
+    title: 'Prevent AI from Creating Duplicate Files',
     description:
       'Stop AI coding tools from creating duplicate files. See how PlanToCode\'s file discovery prevents duplicates before execution. Real solutions for Cursor, Copilot users.',
     url: 'https://www.plantocode.com/solutions/prevent-duplicate-files',

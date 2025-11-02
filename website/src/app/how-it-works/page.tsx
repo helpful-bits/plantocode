@@ -22,7 +22,7 @@ import { Button } from '@/components/ui/button';
 import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
-  title: 'How PlanToCode Works - AI Implementation Planning Workflow',
+  title: 'How It Works - AI Planning Workflow',
   description: 'AI implementation planning prevents chaos. File discovery, multi-model plans, human review, and safe execution with any coding agent.',
   keywords: [
     'implementation plan',

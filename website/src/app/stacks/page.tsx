@@ -3,16 +3,25 @@ import { Header } from '@/components/landing/Header';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Breadcrumbs } from '@/components/Breadcrumbs';
+import { cdnUrl } from '@/lib/cdn';
 import { getPagesByCategory } from '@/data/pseo';
 import { Code2, Layers } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'AI Development by Technology Stack - Python, TypeScript, Rust | PlanToCode',
+  title: 'AI Dev by Tech Stack - Python, TS, Rust',
   description: 'Stack-specific AI development workflows. Python Django, TypeScript Next.js, Rust systems programming, and more with architectural awareness.',
   openGraph: {
     title: 'Technology Stack Workflows - PlanToCode',
     description: 'AI development workflows tailored to your tech stack.',
     url: 'https://www.plantocode.com/stacks',
+    type: 'website',
+    siteName: 'PlanToCode',
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
   },
   alternates: {
     canonical: 'https://www.plantocode.com/stacks',

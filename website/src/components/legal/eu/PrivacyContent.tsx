@@ -1,5 +1,7 @@
 'use client';
 
+import { ObfuscatedEmail } from '@/components/ui/ObfuscatedEmail';
+
 export default function EUPrivacyContent() {
   
   return (
@@ -7,7 +9,7 @@ export default function EUPrivacyContent() {
       <blockquote className="border-l-4 border-primary/50 pl-6 py-4 my-6 bg-muted/30 dark:bg-muted/20 rounded-lg">
         <h3 className="font-semibold mb-2">Key Information Summary</h3>
         <p className="text-sm text-muted-foreground">
-          We employ a hybrid data processing model combining local storage with cloud-based AI services. As the data controller based in Germany, we comply with GDPR requirements. We process personal data based on consent and legitimate interests, and do not sell or share your personal information. Contact legal@plantocode.com to exercise your privacy rights.
+          We employ a hybrid data processing model combining local storage with cloud-based AI services. As the data controller based in Germany, we comply with GDPR requirements. We process personal data based on consent and legitimate interests, and do not sell or share your personal information. Contact <ObfuscatedEmail user="legal" domain="plantocode.com" className="link-primary" /> to exercise your privacy rights.
         </p>
       </blockquote>
 
@@ -27,13 +29,11 @@ export default function EUPrivacyContent() {
           helpful bits GmbH<br />
           Südliche Münchner Straße 55<br />
           82031 Grünwald, Germany<br />
-          Email: legal@plantocode.com
+          Email: <ObfuscatedEmail user="legal" domain="plantocode.com" className="link-primary" />
         </address>
         <p className="mt-4">
           <strong>Data Protection Contact:</strong> For data protection inquiries, please contact our Data Protection Contact at{' '}
-          <a href="mailto:legal@plantocode.com" className="link-primary">
-            legal@plantocode.com
-          </a>.
+          <ObfuscatedEmail user="legal" domain="plantocode.com" className="link-primary" />.
         </p>
       </section>
 
@@ -291,9 +291,7 @@ export default function EUPrivacyContent() {
         <h3 className="text-xl font-medium mb-3 mt-6">How to Exercise Your Rights</h3>
         <p>
           Contact us at{' '}
-          <a href="mailto:legal@plantocode.com" className="link-primary">
-            legal@plantocode.com
-          </a>{' '}
+          <ObfuscatedEmail user="legal" domain="plantocode.com" className="link-primary" />{' '}
           with your request. We will respond within <strong>one month</strong> of receiving your request, as required by GDPR Article 12(3). In complex cases, this period may be extended by two additional months.
         </p>
 
@@ -306,9 +304,7 @@ export default function EUPrivacyContent() {
           Promenade 18<br />
           91522 Ansbach, Germany<br />
           Email:{' '}
-          <a href="mailto:poststelle@lda.bayern.de" className="link-primary">
-            poststelle@lda.bayern.de
-          </a>
+          <ObfuscatedEmail user="poststelle" domain="lda.bayern.de" className="link-primary" />
         </address>
       </section>
 
@@ -401,9 +397,7 @@ export default function EUPrivacyContent() {
         <h2 id="contact-us" className="text-2xl font-semibold mb-4">Contact Us</h2>
         <p>
           If you have any questions about this privacy policy or our data practices, please contact us at{' '}
-          <a href="mailto:legal@plantocode.com" className="link-primary">
-            legal@plantocode.com
-          </a>. You also have the right to lodge a complaint with your local data protection authority if you believe your rights have been violated.
+          <ObfuscatedEmail user="legal" domain="plantocode.com" className="link-primary" />. You also have the right to lodge a complaint with your local data protection authority if you believe your rights have been violated.
         </p>
       </section>
 
@@ -418,9 +412,7 @@ export default function EUPrivacyContent() {
         <h2 id="cpra-compliance" className="text-2xl font-semibold mb-4">CPRA Compliance</h2>
         <p>
           California residents have additional rights under the California Privacy Rights Act (CPRA). You may exercise these rights by contacting us at{' '}
-          <a href="mailto:legal@plantocode.com" className="link-primary">
-            legal@plantocode.com
-          </a>.
+          <ObfuscatedEmail user="legal" domain="plantocode.com" className="link-primary" />.
         </p>
 
         <h3 className="text-xl font-medium mb-3 mt-6">Additional California Rights</h3>
@@ -448,9 +440,7 @@ export default function EUPrivacyContent() {
         </p>
         <ul className="list-disc list-inside space-y-2 mt-2">
           <li>Email us at{' '}
-            <a href="mailto:legal@plantocode.com" className="link-primary">
-              legal@plantocode.com
-            </a>
+            <ObfuscatedEmail user="legal" domain="plantocode.com" className="link-primary" />
           </li>
           <li>Use Global Privacy Control (GPC) browser settings, which we will honor</li>
         </ul>
