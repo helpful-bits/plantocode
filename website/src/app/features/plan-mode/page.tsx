@@ -8,8 +8,8 @@ import { Code2, Edit3, Save, FileText, CheckCircle2, Terminal, Layers, Brain, Za
 import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
-  title: 'Implementation Plans for AI Coding - Human-in-the-Loop Planning | PlanToCode',
-  description: 'Generate file-by-file implementation plans with AI. Review and approve every change before execution. Prevent regressions in legacy codebases. Safe AI development workflow.',
+  title: 'AI Implementation Plans - Human-in-Loop',
+  description: 'Generate file-by-file AI plans. Review every change before execution. Prevent regressions in legacy code. Safe AI development.',
   keywords: [
     'implementation plan',
     'ai code planning',

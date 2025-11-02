@@ -14,7 +14,7 @@ import type { SoftwareApplication, HowTo, FAQPage } from 'schema-dts';
 import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
-  title: 'Plan Software Changes Before You Code — Reviewable Specs | PlanToCode',
+  title: 'Plan Before You Code - Reviewable Specs',
   description: 'Plan software changes before you code. Generate file-by-file implementation specs, review with your team, then execute with full visibility and governance.',
   keywords: [
     'codex cli planning workflow',
@@ -39,6 +39,9 @@ export const metadata: Metadata = {
     },
   },
   openGraph: {
+    type: 'website',
+    siteName: 'PlanToCode',
+    title: 'Plan Before You Code - Reviewable Specs',
     images: [{
       url: cdnUrl('/images/og-image.png'),
       width: 1200,
@@ -59,6 +62,7 @@ export default function HirePage() {
     offers: {
       '@type': 'Offer',
       price: 0,
+      priceCurrency: 'USD',
       description: 'Free app with pay-as-you-go API usage. $5 free credits on signup.',
     },
   };

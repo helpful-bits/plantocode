@@ -11,7 +11,7 @@ import { Metadata } from 'next';
 import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
-  title: 'All Pages - pSEO Review | PlanToCode',
+  title: 'All Pages - pSEO Review',
   description: 'Internal review page for all programmatic SEO pages',
   robots: {
     index: false,

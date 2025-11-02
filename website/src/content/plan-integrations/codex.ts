@@ -3,7 +3,7 @@ import type { PlanIntegrationContent } from '@/components/plan/PlanIntegrationLa
 
 export const codexContent: PlanIntegrationContent = {
   meta: {
-    title: 'Codex CLI × PlanToCode — Plan first. Execute with the right approvals.',
+    title: 'Codex CLI Planning - Reviewed Approvals',
     description:
       'See the exact files that will change, review a concrete per-file plan, then run Codex CLI in the approval mode your team allows.',
     canonical: 'https://www.plantocode.com/plan-mode/codex',

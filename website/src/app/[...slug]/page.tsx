@@ -16,6 +16,7 @@ import {
   FileSearch, Brain, Layers, XCircle, ArrowRight
 } from 'lucide-react';
 import pseoData from '@/data/pseo';
+import { cdnUrl } from '@/lib/cdn';
 
 // List of existing pages to exclude from pSEO routing
 const EXISTING_PAGES = [
@@ -91,11 +92,17 @@ export async function generateMetadata(
     title: pageData.meta_title,
     description: pageData.meta_description,
     openGraph: {
-      title: pageData.headline,
+      type: 'website',
+      siteName: 'PlanToCode',
+      title: pageData.meta_title,
       description: pageData.meta_description,
       url: `https://www.plantocode.com/${slugString}`,
-      siteName: 'PlanToCode',
-      type: 'website',
+      images: [{
+        url: cdnUrl('/images/og-image.png'),
+        width: 1200,
+        height: 630,
+        alt: 'PlanToCode - AI Planning for Code',
+      }],
     },
     alternates: {
       canonical: `https://www.plantocode.com/${slugString}`,

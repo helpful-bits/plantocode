@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: '451 - Service Not Available in Your Region | PlanToCode',
+  title: '451 - Service Not Available in Your Region',
   description: 'This service is not available in your geographic region.',
   robots: {
     index: false,

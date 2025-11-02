@@ -31,12 +31,6 @@ export async function generateMetadata({ params }: PrivacyPageProps): Promise<Me
     },
     alternates: {
       canonical: `https://www.plantocode.com/legal/${region}/privacy`,
-      languages: {
-        'x-default': 'https://www.plantocode.com/legal/us/privacy',
-        'en-US': 'https://www.plantocode.com/legal/us/privacy',
-        'en-GB': 'https://www.plantocode.com/legal/eu/privacy',
-        'en-EU': 'https://www.plantocode.com/legal/eu/privacy',
-      },
     },
     openGraph: {
       title: 'Privacy Policy',

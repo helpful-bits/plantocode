@@ -5,7 +5,7 @@ import type { BreadcrumbList } from 'schema-dts';
 
 interface BreadcrumbItem {
   label: string;
-  href?: string;
+  href?: string | undefined;
 }
 
 interface BreadcrumbsProps {
@@ -30,12 +30,12 @@ export function Breadcrumbs({ items, includeHome = true }: BreadcrumbsProps) {
   const breadcrumbSchema: BreadcrumbList = {
     '@type': 'BreadcrumbList',
     itemListElement: breadcrumbs
-      .filter(item => item.href) // Only include items with hrefs
+      .filter((item): item is BreadcrumbItem & { href: string } => !!item.href) // Only include items with hrefs
       .map((item, index) => ({
         '@type': 'ListItem',
         position: index + 1,
         name: item.label,
-        item: item.href ? `https://www.plantocode.com${item.href}` : undefined,
+        item: `https://www.plantocode.com${item.href}`,
       })),
   };
 
@@ -96,6 +96,8 @@ export function buildBreadcrumbsFromPath(
   let currentPath = '';
   for (let i = 0; i < segments.length; i++) {
     const segment = segments[i];
+    if (!segment) continue;
+
     currentPath += `/${segment}`;
 
     // Use custom label if provided, otherwise format the segment
@@ -155,6 +157,8 @@ export function buildDocsBreadcrumbs(
   let currentPath = '/docs';
   for (let i = 0; i < segments.length; i++) {
     const segment = segments[i];
+    if (!segment) continue;
+
     currentPath += `/${segment}`;
 
     const label =

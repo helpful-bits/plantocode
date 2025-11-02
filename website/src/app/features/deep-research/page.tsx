@@ -8,8 +8,8 @@ import { Search, Globe, Database, Brain, Zap, Shield, CheckCircle2, Network, Tre
 import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
-  title: 'Deep research - web search for developers | PlanToCode',
-  description: 'AI-powered research assistant that generates sophisticated research queries and executes parallel research tasks. Context-aware analysis with project integration for comprehensive, development-focused insights.',
+  title: 'Deep research - web search for developers',
+  description: 'AI research assistant generates sophisticated queries and parallel tasks. Context-aware analysis with project integration.',
   keywords: [
     'ai web search',
     'intelligent research',

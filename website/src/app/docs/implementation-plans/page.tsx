@@ -7,7 +7,7 @@ import { StructuredData } from '@/components/seo/StructuredData';
 import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
-  title: 'Implementation Plans - Review AI Changes | PlanToCode',
+  title: 'Implementation Plans - Review AI Changes',
   description:
     'Guide to AI implementation planning. Generate, review, and approve file-by-file plans before execution. Prevent duplicates and wrong paths.',
   alternates: {

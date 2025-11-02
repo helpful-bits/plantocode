@@ -1,19 +1,18 @@
-import Link from 'next/link';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
-import { getPublishedPages, type PseoPage } from '@/data/pseo';
+import { getPublishedPages } from '@/data/pseo';
 
 interface RelatedContentProps {
-  currentSlug?: string;
-  category?: string;
-  tool_integration?: string;
-  os?: string;
-  language?: string;
-  framework?: string;
-  workflow?: string;
-  maxItems?: number;
-  title?: string;
-  description?: string;
+  currentSlug?: string | undefined;
+  category?: string | undefined;
+  tool_integration?: string | undefined;
+  os?: string | undefined;
+  language?: string | undefined;
+  framework?: string | undefined;
+  workflow?: string | undefined;
+  maxItems?: number | undefined;
+  title?: string | undefined;
+  description?: string | undefined;
 }
 
 /**

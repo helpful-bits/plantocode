@@ -3,7 +3,7 @@ import type { PlanIntegrationContent } from '@/components/plan/PlanIntegrationLa
 
 export const claudeCodeContent: PlanIntegrationContent = {
   meta: {
-    title: 'Plan with Claude Code Plan Mode — Reviewable Specs First | PlanToCode',
+    title: 'Claude Code Plan Mode - Reviewable Specs',
     description:
       "Enhance Claude Code Plan Mode with file discovery, multi-model synthesis, and reviewable specs. Enterprise governance for AI coding.",
     canonical: 'https://www.plantocode.com/plan-mode/claude-code',

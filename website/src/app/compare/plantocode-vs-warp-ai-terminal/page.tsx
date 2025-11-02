@@ -6,7 +6,7 @@ import { ComparisonPageClient } from '@/components/compare/ComparisonPageClient'
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'PlanToCode vs Warp - AI Terminal Comparison for Developers',
+  title: 'vs Warp - AI Terminal Comparison for Developers',
   description: 'Compare PlanToCode\'s architectural AI planning with Warp\'s terminal AI. File discovery, multi-model plans, implementation workflows.',
   keywords: [
     'warp',
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     },
   },
   openGraph: {
-    title: 'PlanToCode vs Warp - AI Terminal Comparison for Developers',
+    title: 'vs Warp - AI Terminal Comparison for Developers',
     description: 'Compare PlanToCode\'s architectural AI planning with Warp\'s terminal AI. File discovery, multi-model plans, implementation workflows.',
     url: 'https://www.plantocode.com/compare/plantocode-vs-warp-ai-terminal',
     siteName: 'PlanToCode',

@@ -9,8 +9,8 @@ import { Video, Upload, Eye, Settings, Zap, Target, CheckCircle2, Clock, Sparkle
 import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
-  title: 'Meeting & recording analysis - multimodal AI extraction | PlanToCode',
-  description: 'Capture Microsoft Teams meetings and screen recordings. Multimodal AI analyzes audio transcripts and visual content to extract actionable requirements. Used by corporate teams for requirements gathering.',
+  title: 'Meeting Analysis - Multimodal AI',
+  description: 'Capture Teams meetings and screen recordings. AI analyzes audio and visuals to extract requirements for corporate teams.',
   keywords: [
     'meeting analysis',
     'teams meeting capture',
@@ -123,7 +123,7 @@ export default function VideoAnalysisPage() {
     "operatingSystem": "Windows, macOS, Linux",
     "offers": {
       "@type": "Offer",
-      "price": "0",
+      "price": 0,
       "priceCurrency": "USD"
     },
     "featureList": [
