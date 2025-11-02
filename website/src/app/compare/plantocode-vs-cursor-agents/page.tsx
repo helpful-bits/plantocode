@@ -6,7 +6,7 @@ import { ComparisonPageClient } from '@/components/compare/ComparisonPageClient'
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'PlanToCode vsCursor Agents - AI Planning Tool Comparison',
+  title: 'vsCursor Agents - AI Planning Tool Comparison',
   description: 'Compare PlanToCode\'sarchitectural planning with Cursor Agents\' editor-first approach. Context awareness, execution control, plan review.',
   keywords: [
     'cursor-agents',
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     },
   },
   openGraph: {
-    title: 'PlanToCode vsCursor Agents - AI Planning Tool Comparison',
+    title: 'vsCursor Agents - AI Planning Tool Comparison',
     description: 'Compare PlanToCode\'sarchitectural planning with Cursor Agents\' editor-first approach. Context awareness, execution control, plan review.',
     url: 'https://www.plantocode.com/compare/plantocode-vs-cursor-agents',
     siteName: 'PlanToCode',

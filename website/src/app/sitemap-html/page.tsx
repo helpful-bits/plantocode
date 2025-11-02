@@ -6,11 +6,11 @@ import { Breadcrumbs } from '@/components/Breadcrumbs';
 import { getPublishedPages, getPagesByCategory } from '@/data/pseo';
 import {
   FileText, GitMerge, Terminal, Code2, Layers, Zap,
-  BookOpen, HelpCircle, Settings, Download
+  BookOpen, HelpCircle, Settings
 } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'Sitemap - All Pages | PlanToCode',
+  title: 'Sitemap - All Pages',
   description: 'Complete sitemap of all PlanToCode pages including documentation, workflows, integrations, comparisons, and technology stacks.',
   alternates: {
     canonical: 'https://www.plantocode.com/sitemap-html',
@@ -25,7 +25,6 @@ export default function HtmlSitemapPage() {
   const comparisons = getPagesByCategory('comparisons').filter(p => p.publish);
   const stacks = getPagesByCategory('stacks').filter(p => p.publish);
   const useCases = getPagesByCategory('use-cases').filter(p => p.publish);
-  const features = getPagesByCategory('features').filter(p => p.publish);
 
   const mainPages = [
     { href: '/', label: 'Home', description: 'AI-powered implementation planning' },

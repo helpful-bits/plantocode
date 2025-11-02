@@ -13,6 +13,9 @@ export const metadata: Metadata = {
     },
   },
   openGraph: {
+    type: 'website',
+    siteName: 'PlanToCode',
+    title: 'macOS Notarization & Security',
     images: [{
       url: cdnUrl('/images/og-image.png'),
       width: 1200,

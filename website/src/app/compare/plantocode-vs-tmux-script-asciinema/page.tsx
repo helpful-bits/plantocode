@@ -6,7 +6,7 @@ import { ComparisonPageClient } from '@/components/compare/ComparisonPageClient'
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'PlanToCode vs tmux, script, asciinema - Terminal Recording Comparison',
+  title: 'vs tmux, script, asciinema - Terminal Recording Comparison',
   description: 'Compare PlanToCode\'s AI-integrated terminal with tmux, script, and asciinema. Voice input, plan execution, persistent sessions, rich playback.',
   keywords: [
     'tmux-script-asciinema',
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     },
   },
   openGraph: {
-    title: 'PlanToCode vs tmux, script, asciinema - Terminal Recording Comparison',
+    title: 'vs tmux, script, asciinema - Terminal Recording Comparison',
     description: 'Compare PlanToCode\'s AI-integrated terminal with tmux, script, and asciinema. Voice input, plan execution, persistent sessions, rich playback.',
     url: 'https://www.plantocode.com/compare/plantocode-vs-tmux-script-asciinema',
     siteName: 'PlanToCode',

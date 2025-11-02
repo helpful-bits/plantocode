@@ -16,11 +16,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: page.priority === 1 ? 0.85 : page.priority === 2 ? 0.75 : 0.7,
     }));
 
-  // Generate comparison pages with /compare/ prefix
+  // Generate comparison pages (slug already includes /compare/ prefix)
   const comparisonPages = comparisonsData.pages
     .filter(page => page.publish === true)
     .map(page => ({
-      url: `${baseUrl}/compare/${page.slug}`,
+      url: `${baseUrl}/${page.slug}`,
       lastModified: now,
       changeFrequency: 'weekly' as const,
       priority: page.priority === 1 ? 0.85 : page.priority === 2 ? 0.75 : 0.7,

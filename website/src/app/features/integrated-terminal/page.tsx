@@ -7,7 +7,7 @@ import { Terminal, Mic } from 'lucide-react';
 import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
-  title: 'Terminal for plans - persistent PTY sessions | PlanToCode',
+  title: 'Terminal for plans - persistent PTY sessions',
   description: 'A persistent, integrated terminal for running plans and commands inside PlanToCode. Real shells, project-aware context, and seamless copy-to-terminal.',
   keywords: [
     'pty terminal',
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
     'terminal integration',
   ],
   openGraph: {
-    title: 'Integrated PTY Terminal for Plans | PlanToCode',
+    title: 'Integrated PTY Terminal for Plans',
     description: 'A persistent, integrated terminal for running plans and commands inside PlanToCode. Real shells, project-aware context, and seamless copy-to-terminal.',
     url: 'https://www.plantocode.com/features/integrated-terminal',
     siteName: 'PlanToCode',

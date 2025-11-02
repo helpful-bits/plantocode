@@ -58,7 +58,7 @@
     "autoprefixer": "10.4.20",
     "babel-plugin-react-compiler": "latest",
     "clsx": "2.1.1",
-    "cssnano": "^7.1.1",
+    "cssnano": "^7.1.2",
     "eslint": "9.31.0",
     "eslint-config-next": "15.3.5",
     "lighthouse": "12.2.1",

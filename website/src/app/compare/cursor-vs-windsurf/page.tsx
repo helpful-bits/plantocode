@@ -7,7 +7,7 @@ import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
   title: 'Cursor vs Windsurf vs PlanToCode 2025 | Comparison',
-  description: 'Honest comparison of Cursor, Windsurf, and PlanToCode for preventing duplicate files and wrong path issues in AI-assisted development. Data-driven analysis with real bug reports.',
+  description: 'Compare Cursor, Windsurf, PlanToCode for preventing duplicate files and wrong paths in AI dev. Data-driven analysis with bug reports.',
   keywords: [
     'cursor vs windsurf',
     'windsurf vs cursor',

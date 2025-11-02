@@ -27,13 +27,7 @@ export async function generateMetadata({ params }: DPAPageProps): Promise<Metada
       follow: true,
     },
     alternates: {
-      canonical: `https://www.plantocode.com/legal/${region}/dpa`,
-      languages: {
-        'x-default': 'https://www.plantocode.com/legal/us/dpa',
-        'en-US': 'https://www.plantocode.com/legal/us/dpa',
-        'en-GB': 'https://www.plantocode.com/legal/eu/dpa',
-        'en-EU': 'https://www.plantocode.com/legal/eu/dpa',
-      },
+      canonical: `https://www.plantocode.com/legal/${region}/dpa`
     },
     openGraph: {
       title: 'Data Processing Addendum (DPA)',

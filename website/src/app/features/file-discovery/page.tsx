@@ -7,7 +7,7 @@ import { Search, Workflow, Target, DollarSign, GitBranch, CheckCircle2, Brain, L
 import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
-  title: 'AI file discovery - find impacted files | PlanToCode',
+  title: 'AI file discovery - find impacted files',
   description:
     'Multi-stage AI workflow that discovers and selects relevant files. Cost-effective at $0.10-0.15 per workflow with real-time progress tracking.',
   keywords: [

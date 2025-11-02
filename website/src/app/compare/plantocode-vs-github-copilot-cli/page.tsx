@@ -6,7 +6,7 @@ import { ComparisonPageClient } from '@/components/compare/ComparisonPageClient'
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'PlanToCode vsGitHub Copilot CLI - AI Terminal Comparison',
+  title: 'vsGitHub Copilot CLI - AI Terminal Comparison',
   description: 'Compare PlanToCode\'sarchitectural planning with GitHub Copilot CLI\'s command suggestions. Planning depth, file context, execution safety.',
   keywords: [
     'github-copilot-cli',
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     },
   },
   openGraph: {
-    title: 'PlanToCode vsGitHub Copilot CLI - AI Terminal Comparison',
+    title: 'vsGitHub Copilot CLI - AI Terminal Comparison',
     description: 'Compare PlanToCode\'sarchitectural planning with GitHub Copilot CLI\'s command suggestions. Planning depth, file context, execution safety.',
     url: 'https://www.plantocode.com/compare/plantocode-vs-github-copilot-cli',
     siteName: 'PlanToCode',

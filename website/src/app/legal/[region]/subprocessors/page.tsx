@@ -30,13 +30,7 @@ export async function generateMetadata({ params }: SubprocessorsPageProps): Prom
       follow: true,
     },
     alternates: {
-      canonical: `https://www.plantocode.com/legal/${region}/subprocessors`,
-      languages: {
-        'x-default': 'https://www.plantocode.com/legal/us/subprocessors',
-        'en-US': 'https://www.plantocode.com/legal/us/subprocessors',
-        'en-GB': 'https://www.plantocode.com/legal/eu/subprocessors',
-        'en-EU': 'https://www.plantocode.com/legal/eu/subprocessors',
-      },
+      canonical: `https://www.plantocode.com/legal/${region}/subprocessors`
     },
     openGraph: {
       title: 'Sub-processors',

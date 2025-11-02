@@ -5,7 +5,7 @@ import { cdnUrl } from '@/lib/cdn';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Legacy Code Refactoring Tools - AI-Powered Planning for Safe Modernization',
+  title: 'Legacy Code Refactoring - AI Safe Modernization',
   description: 'Refactor legacy code safely with AI planning. Map dependencies, generate migration strategies, and modernize 100K+ line codebases without breaking production.',
   keywords: [
     'legacy code refactoring tools',
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     },
   },
   openGraph: {
-    title: 'Legacy Code Refactoring Tools - AI-Powered Planning for Safe Modernization',
+    title: 'Legacy Code Refactoring - AI Safe Modernization',
     description: 'Refactor legacy code safely with AI planning. Map dependencies, generate migration strategies without breaking production.',
     url: 'https://www.plantocode.com/solutions/legacy-code-refactoring',
     siteName: 'PlanToCode',

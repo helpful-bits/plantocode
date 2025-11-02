@@ -3,6 +3,7 @@ import { Header } from '@/components/landing/Header';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Breadcrumbs } from '@/components/Breadcrumbs';
+import { cdnUrl } from '@/lib/cdn';
 import {
   FileSearch, Brain, Mic, Video, Copy, GitMerge, MessageSquare, Terminal, Zap
 } from 'lucide-react';
@@ -14,6 +15,14 @@ export const metadata: Metadata = {
     title: 'PlanToCode Features - AI Development Planning Tools',
     description: 'Comprehensive AI development features for large codebases.',
     url: 'https://www.plantocode.com/features',
+    type: 'website',
+    siteName: 'PlanToCode',
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
   },
   alternates: {
     canonical: 'https://www.plantocode.com/features',

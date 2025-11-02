@@ -20,7 +20,7 @@ import {
 import type { Article, FAQPage, BreadcrumbList } from 'schema-dts';
 
 export const metadata: Metadata = {
-  title: 'Cursor Alternative? No—Your Cursor Safety Companion | PlanToCode',
+  title: 'Cursor Safety Companion - Not Alternative',
   description: 'Not looking for a Cursor replacement? PlanToCode works WITH Cursor to prevent duplicate files, wrong paths, and production bugs. Use both together.',
   keywords: [
     'cursor alternative',
@@ -50,7 +50,7 @@ export const metadata: Metadata = {
     },
   },
   openGraph: {
-    title: 'Cursor Alternative? No—Your Cursor Safety Companion | PlanToCode',
+    title: 'Cursor Safety Companion - Not Alternative',
     description: 'Not looking for a Cursor replacement? PlanToCode works WITH Cursor to prevent duplicate files, wrong paths, and production bugs. Use both together.',
     url: 'https://www.plantocode.com/cursor-alternative',
     siteName: 'PlanToCode',

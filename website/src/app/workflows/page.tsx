@@ -3,6 +3,7 @@ import { Header } from '@/components/landing/Header';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Breadcrumbs } from '@/components/Breadcrumbs';
+import { cdnUrl } from '@/lib/cdn';
 import { getPagesByCategory } from '@/data/pseo';
 import { GitMerge, Code2, Terminal } from 'lucide-react';
 
@@ -13,6 +14,14 @@ export const metadata: Metadata = {
     title: 'AI Coding Workflows - PlanToCode Integration Patterns',
     description: 'Explore AI-powered development workflows for complex tasks.',
     url: 'https://www.plantocode.com/workflows',
+    type: 'website',
+    siteName: 'PlanToCode',
+    images: [{
+      url: cdnUrl('/images/og-image.png'),
+      width: 1200,
+      height: 630,
+      alt: 'PlanToCode - AI Planning for Code',
+    }],
   },
   alternates: {
     canonical: 'https://www.plantocode.com/workflows',

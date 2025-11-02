@@ -12,7 +12,7 @@ import { TranscriptionComparison } from '@/components/voice/TranscriptionCompari
 import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
-  title: 'Voice to text for rapid specification capture | PlanToCode',
+  title: 'Voice to text for rapid specification capture',
   description: 'Hands-free specification capture with voice. Accurate transcription inserts text where you work. Configure per project, supports multiple languages.',
   keywords: [
     'voice transcription',
@@ -52,6 +52,12 @@ export default function VoiceTranscriptionFeaturePage() {
     operatingSystem: ['Windows 10+', 'macOS 11.0+'],
     url: 'https://www.plantocode.com/features/voice-transcription',
     description: 'Voice transcription system for developers powered by OpenAI Whisper (GPT-4o-transcribe). Speak task descriptions and terminal commands with language selection, temperature control, real-time audio monitoring, and per-project configuration.',
+    offers: {
+      '@type': 'Offer',
+      price: 0,
+      priceCurrency: 'USD',
+      description: 'Free desktop app with pay-as-you-go API usage. $5 free credits on signup.',
+    },
     featureList: [
       'Hands-free specification capture',
       'Multiple language support',

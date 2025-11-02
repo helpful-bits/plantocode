@@ -47,7 +47,7 @@ const CallToAction = dynamic(() => import('@/components/landing/CallToAction').t
 
 
 export const metadata: Metadata = {
-  title: 'AI Implementation Planning for Safe Coding | PlanToCode',
+  title: 'AI Implementation Planning for Safe Coding',
   description: 'AI implementation planning for large codebases. Review changes before execution. Prevent bugs and duplicates. Integrates with Cursor, Copilot, Claude Code.',
   keywords: [
     'ai code planning',
@@ -130,6 +130,10 @@ export default function Home() {
     logo: 'https://www.plantocode.com/images/icon.png',
     description: 'Plan and ship code changes - find files, generate and merge AI plans, run them in a persistent terminal.',
     foundingDate: '2024',
+    sameAs: [
+      'https://github.com/plantocode',
+      'https://twitter.com/plantocode',
+    ],
     contactPoint: {
       '@type': 'ContactPoint',
       contactType: 'Customer Support',
@@ -163,6 +167,8 @@ export default function Home() {
     description: 'Plan and ship code changes. Find the right files, generate and merge implementation plans from multiple AI models, then run them in a persistent terminal. Available for Windows and macOS.',
     offers: {
       '@type': 'Offer',
+      price: 0,
+      priceCurrency: 'USD',
       description: 'Pay-as-you-go API usage. No subscriptions or seat licenses.',
     },
     downloadUrl: 'https://www.plantocode.com/downloads',

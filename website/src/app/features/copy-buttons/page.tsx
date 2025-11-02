@@ -8,8 +8,8 @@ import { Copy, Settings, Terminal, Edit3, Zap, GripVertical, CheckCircle2, Code2
 import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
-  title: 'Copy buttons - turn prompts into one-click workflows | PlanToCode',
-  description: 'Transform any prompt into a reusable button. Server-configured templates with smart placeholders, drag-drop reordering, and terminal integration. Stop copy-pasting - automate your workflows.',
+  title: 'Copy Buttons - One-Click Workflows',
+  description: 'Transform prompts into reusable buttons. Templates with placeholders, drag-drop ordering, terminal integration.',
   keywords: [
     'copy buttons',
     'workflow automation',

@@ -155,6 +155,7 @@ export function generateMetadata(options: ContentMetadataOptions): Metadata {
   if ((type === 'blog' || type === 'docs') && (publishedTime || modifiedTime)) {
     metadata.openGraph = {
       ...metadata.openGraph,
+      type: 'article',
       publishedTime,
       modifiedTime,
       authors,
@@ -285,13 +286,13 @@ export function validateMetadata(metadata: Metadata): string[] {
 
   if (!metadata.title) {
     errors.push('Missing required field: title');
-  } else if (metadata.title.length > 60) {
+  } else if (typeof metadata.title === 'string' && metadata.title.length > 60) {
     errors.push(`Title too long (${metadata.title.length} chars, max 60): "${metadata.title}"`);
   }
 
   if (!metadata.description) {
     errors.push('Missing required field: description');
-  } else if (metadata.description.length < 120 || metadata.description.length > 160) {
+  } else if (typeof metadata.description === 'string' && (metadata.description.length < 120 || metadata.description.length > 160)) {
     errors.push(
       `Description length suboptimal (${metadata.description.length} chars, recommended 150-160): "${metadata.description}"`
     );
@@ -305,11 +306,11 @@ export function validateMetadata(metadata: Metadata): string[] {
     errors.push('Missing OpenGraph description');
   }
 
-  if (!metadata.openGraph?.images || metadata.openGraph.images.length === 0) {
+  if (!metadata.openGraph?.images || (Array.isArray(metadata.openGraph.images) && metadata.openGraph.images.length === 0)) {
     errors.push('Missing OpenGraph images');
   }
 
-  if (!metadata.twitter?.card) {
+  if (!metadata.twitter) {
     errors.push('Missing Twitter card type');
   }
 
