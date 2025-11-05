@@ -360,7 +360,7 @@
         "title": "Cost-Effective Operation"
       },
       "multiStage": {
-        "description": "5-stage AI workflow with regex filtering, relevance assessment, and path discovery to identify the most relevant files.",
+        "description": "4-stage AI workflow with regex filtering, relevance assessment, and relationship analysis to identify the most relevant files.",
         "title": "Multi-Stage Intelligence"
       },
       "realTimeProgress": {
@@ -479,16 +479,7 @@
         ],
         "title": "Extended Path Discovery"
       },
-      "stage5": {
-        "description": "Validates file paths and corrects inconsistencies. Ensures all discovered files exist, are accessible, and have normalized paths for cross-platform compatibility.",
-        "features": [
-          "File existence validation",
-          "Path normalization",
-          "Symbolic link resolution"
-        ],
-        "title": "Path Validation & Correction"
-      },
-      "title": "The 5-Stage Discovery Process"
+      "title": "The 4-Stage Discovery Process"
     }
   },
   "hub": {

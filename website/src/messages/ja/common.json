@@ -1,0 +1,115 @@
+{
+  "aria": {
+    "closeMenu": "ナビゲーションメニューを閉じる",
+    "homePageLink": "PlanToCodeホームページ",
+    "toggleMenu": "ナビゲーションメニューを切り替える"
+  },
+  "breadcrumb": {
+    "blog": "ブログ",
+    "comparisons": "比較",
+    "docs": "ドキュメント",
+    "features": "機能",
+    "home": "ホーム",
+    "integrations": "統合",
+    "solutions": "ソリューション",
+    "stacks": "テクノロジースタック",
+    "useCases": "ユースケース",
+    "workflows": "ワークフロー"
+  },
+  "cta": {
+    "download": "ダウンロード",
+    "talkToArchitect": "アーキテクトと話す"
+  },
+  "feature": {
+    "copyButtons": {
+      "description": "設定可能なワークフロー自動化",
+      "label": "コピーボタン"
+    },
+    "deepResearch": {
+      "description": "Web検索と情報統合",
+      "label": "詳細リサーチ"
+    },
+    "fileDiscovery": {
+      "description": "AI駆動のインテリジェントなファイル選択",
+      "label": "ファイル発見"
+    },
+    "integratedTerminal": {
+      "description": "自動起動CLI付きの永続的なセッション",
+      "label": "統合ターミナル"
+    },
+    "mergeInstructions": {
+      "description": "プランのマージを制御",
+      "label": "マージ指示"
+    },
+    "planEditor": {
+      "description": "AIプラン用の完全なMonacoエディタ",
+      "label": "プランエディタ"
+    },
+    "planModeGuides": {
+      "description": "Codex、Claude、Cursorのワークフロー",
+      "label": "プランモードガイド"
+    },
+    "textImprovement": {
+      "description": "Monacoとタスク入力でのインライン改善",
+      "label": "テキスト改善"
+    },
+    "voiceTranscription": {
+      "description": "タスクとターミナルのハンズフリー入力",
+      "label": "音声文字起こし"
+    }
+  },
+  "footer": {
+    "about": "私たちについて",
+    "architecture": "アーキテクチャ",
+    "changelog": "変更履歴",
+    "company": "企業情報",
+    "copyright": "© {year} helpful bits GmbH",
+    "documentation": "ドキュメント",
+    "downloads": "ダウンロード",
+    "feedback": "フィードバック",
+    "howItWorks": "仕組み",
+    "imprint": "インプリント",
+    "interactiveDemo": "インタラクティブデモ",
+    "legal": "法的情報",
+    "madeInGermany": "ドイツ企業によるドイツ製",
+    "notAffiliated": "Anthropic、Cursor、OpenAI、Clineとは提携していません。",
+    "pricing": "価格",
+    "privacy": "プライバシー",
+    "product": "製品",
+    "resources": "リソース",
+    "support": "サポート",
+    "tagline": "コード変更の計画と実装 - ファイルを見つけ、AIプランを生成・マージし、永続的なターミナルで実行します。",
+    "talkToArchitect": "アーキテクトと話す",
+    "terms": "利用規約"
+  },
+  "label": {
+    "english": "英語",
+    "german": "ドイツ語"
+  },
+  "nav": {
+    "compare": "比較",
+    "demo": "デモ",
+    "docs": "ドキュメント",
+    "downloads": "ダウンロード",
+    "features": "機能",
+    "solutions": "ソリューション"
+  },
+  "solution": {
+    "hardBugs": {
+      "description": "画面キャプチャによるビジュアルデバッグ",
+      "label": "複雑なバグ"
+    },
+    "largeFeatures": {
+      "description": "マルチファイル機能の計画",
+      "label": "大規模機能"
+    },
+    "libraryUpgrades": {
+      "description": "依存関係管理",
+      "label": "ライブラリアップグレード"
+    },
+    "maintenance": {
+      "description": "技術的負債のクリーンアップ",
+      "label": "メンテナンス"
+    }
+  }
+}

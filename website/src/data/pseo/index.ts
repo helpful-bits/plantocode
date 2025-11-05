@@ -1,4 +1,5 @@
 // Import all category JSONs
+import type { Locale } from '@/i18n/config';
 import workflows from './workflows.json';
 import integrations from './integrations.json';
 import comparisons from './comparisons.json';
@@ -53,6 +54,8 @@ export type Translations = {
   de?: LocalizedOverrides;
   fr?: LocalizedOverrides;
   es?: LocalizedOverrides;
+  ko?: LocalizedOverrides;
+  ja?: LocalizedOverrides;
 };
 
 export type PseoPageWithTranslations = PseoPage & {
@@ -104,7 +107,7 @@ export { workflows, integrations, comparisons, stacks, useCases, features };
  */
 export function mergeTranslations(
   base: PseoPageWithTranslations,
-  locale: 'en' | 'de' | 'fr' | 'es',
+  locale: Locale,
   overlays: Record<string, LocalizedOverrides>
 ): PseoPage {
   // Start with base page
@@ -166,7 +169,7 @@ export async function loadDeOverlays(): Promise<Record<string, LocalizedOverride
  */
 export async function getPageBySlugLocalized(
   slug: string,
-  locale: 'en' | 'de' | 'fr' | 'es'
+  locale: Locale
 ): Promise<PseoPage | undefined> {
   const page = getPageBySlug(slug);
 
@@ -184,8 +187,15 @@ export async function getPageBySlugLocalized(
   try {
     if (locale === 'de') {
       overlays = await loadDeOverlays();
+    } else if (locale === 'fr') {
+      // fr overlays can be added when available
+    } else if (locale === 'es') {
+      // es overlays can be added when available
+    } else if (locale === 'ko') {
+      // ko overlays can be added when available
+    } else if (locale === 'ja') {
+      // ja overlays can be added when available
     }
-    // fr and es overlays can be added when available
   } catch {
     // If overlays don't exist, return base page
     return page;
@@ -198,7 +208,7 @@ export async function getPageBySlugLocalized(
  * Get all published pages with localization support
  */
 export async function getPublishedPagesLocalized(
-  locale: 'en' | 'de' | 'fr' | 'es'
+  locale: Locale
 ): Promise<PseoPage[]> {
   const pages = getPublishedPages();
 
@@ -207,8 +217,17 @@ export async function getPublishedPagesLocalized(
     return pages;
   }
 
-  // For German, load overlays and merge all pages
-  const overlays = await loadDeOverlays();
+  // Load overlays for the specific locale
+  let overlays: Record<string, LocalizedOverrides> = {};
+  try {
+    if (locale === 'de') {
+      overlays = await loadDeOverlays();
+    }
+    // fr, es, ko, ja overlays can be added when available
+  } catch {
+    // Return pages without overlays if loading fails
+  }
+
   return pages.map(page =>
     mergeTranslations(page as PseoPageWithTranslations, locale, overlays)
   );

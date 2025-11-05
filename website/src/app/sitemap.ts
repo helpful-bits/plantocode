@@ -60,6 +60,8 @@ function createMultiLingualEntry(
           de: `${baseUrl}/de${path}`,
           fr: `${baseUrl}/fr${path}`,
           es: `${baseUrl}/es${path}`,
+          ko: `${baseUrl}/ko${path}`,
+          ja: `${baseUrl}/ja${path}`,
           'x-default': `${baseUrl}${path}`
         }
       }
@@ -74,10 +76,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
 
   // Load overlay maps for all non-default locales to determine which pages have translations
-  const [deOverlays, frOverlays, esOverlays] = await Promise.all([
+  const [deOverlays, frOverlays, esOverlays, koOverlays, jaOverlays] = await Promise.all([
     loadLocaleOverlayMap('de'),
     loadLocaleOverlayMap('fr'),
     loadLocaleOverlayMap('es'),
+    loadLocaleOverlayMap('ko'),
+    loadLocaleOverlayMap('ja'),
   ]);
 
   // Static routes that should have all locale versions
@@ -102,6 +106,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       de: `${baseUrl}/de/${page.slug}`,
       fr: `${baseUrl}/fr/${page.slug}`,
       es: `${baseUrl}/es/${page.slug}`,
+      ko: `${baseUrl}/ko/${page.slug}`,
+      ja: `${baseUrl}/ja/${page.slug}`,
     };
 
     // Always add English version with all alternates
@@ -116,6 +122,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
           de: localeUrls.de,
           fr: localeUrls.fr,
           es: localeUrls.es,
+          ko: localeUrls.ko,
+          ja: localeUrls.ja,
           'x-default': localeUrls.en
         }
       }
@@ -134,6 +142,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
             de: localeUrls.de,
             fr: localeUrls.fr,
             es: localeUrls.es,
+            ko: localeUrls.ko,
+            ja: localeUrls.ja,
             'x-default': localeUrls.en
           }
         }
@@ -153,6 +163,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
             de: localeUrls.de,
             fr: localeUrls.fr,
             es: localeUrls.es,
+            ko: localeUrls.ko,
+            ja: localeUrls.ja,
             'x-default': localeUrls.en
           }
         }
@@ -172,6 +184,50 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
             de: localeUrls.de,
             fr: localeUrls.fr,
             es: localeUrls.es,
+            ko: localeUrls.ko,
+            ja: localeUrls.ja,
+            'x-default': localeUrls.en
+          }
+        }
+      });
+    }
+
+    // Add Korean version if slug has a KO overlay
+    if (koOverlays.has(page.slug)) {
+      pseoPages.push({
+        url: localeUrls.ko!,
+        lastModified: now,
+        changeFrequency: 'weekly' as const,
+        priority,
+        alternates: {
+          languages: {
+            en: localeUrls.en,
+            de: localeUrls.de,
+            fr: localeUrls.fr,
+            es: localeUrls.es,
+            ko: localeUrls.ko,
+            ja: localeUrls.ja,
+            'x-default': localeUrls.en
+          }
+        }
+      });
+    }
+
+    // Add Japanese version if slug has a JA overlay
+    if (jaOverlays.has(page.slug)) {
+      pseoPages.push({
+        url: localeUrls.ja!,
+        lastModified: now,
+        changeFrequency: 'weekly' as const,
+        priority,
+        alternates: {
+          languages: {
+            en: localeUrls.en,
+            de: localeUrls.de,
+            fr: localeUrls.fr,
+            es: localeUrls.es,
+            ko: localeUrls.ko,
+            ja: localeUrls.ja,
             'x-default': localeUrls.en
           }
         }

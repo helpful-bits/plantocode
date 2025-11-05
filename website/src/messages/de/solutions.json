@@ -36,10 +36,6 @@
         "description": "Führt git ls-files aus, generiert Patterns, filtert Binärdateien",
         "title": "Regex-Filterung mit Git-Integration"
       },
-      "stage5": {
-        "description": "Validiert entdeckte Pfade, korrigiert nicht existierende Pfade, löst Monorepo-Referenzen auf",
-        "title": "Pfad-Validierung und Korrektur"
-      },
       "title": "File Discovery in Aktion"
     },
     "faq": {

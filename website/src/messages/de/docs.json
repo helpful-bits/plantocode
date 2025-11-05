@@ -304,13 +304,8 @@
         "description": "Entdeckt zusätzliche relevante Dateien durch Beziehungsanalyse und Abhängigkeitsverfolgung. Diese Stufe identifiziert Dateien, die möglicherweise nicht mit initialen Mustern übereinstimmen, aber kontextuell wichtig sind.",
         "heading": "Stufe 4: Erweiterte Pfad-Finder",
         "relationship": "Beziehungsanalyse: Analysiert Import-Anweisungen, Konfigurationsdateien und Projektstruktur, um verwandte Dateien zu finden, die den Kontext für die spezifische Aufgabe verbessern."
-      },
-      "stage5": {
-        "description": "Validiert und korrigiert Dateipfade und stellt sicher, dass alle ausgewählten Dateien existieren und zugänglich sind. Diese finale Stufe führt Konsistenzprüfungen und Pfad-Normalisierung über verschiedene Betriebssysteme hinweg durch.",
-        "heading": "Stufe 5: Pfad-Korrektur",
-        "validation": "Validierungsprozess: Verifiziert Dateiexistenz, normalisiert Pfad-Separatoren, löst symbolische Links auf und entfernt alle Pfade, die während der Workflow-Ausführung ungültig geworden sind."
       }
-    },
+      },
     "stateManagement": {
       "eventDriven": {
         "description": "Das System veröffentlicht Echtzeitevents für Workflow-Statusänderungen, Phasenabschlüsse und Fehlerbedingungen. Diese Ereignisse ermöglichen responsive Benutzeroberflächen und Integration mit externen Überwachungssystemen.",

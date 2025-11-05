@@ -1,1 +1,115 @@
-{}
+{
+  "aria": {
+    "closeMenu": "Fermer le menu de navigation",
+    "homePageLink": "Page d'accueil PlanToCode",
+    "toggleMenu": "Basculer le menu de navigation"
+  },
+  "breadcrumb": {
+    "blog": "Blog",
+    "comparisons": "Comparaisons",
+    "docs": "Documentation",
+    "features": "Fonctionnalités",
+    "home": "Accueil",
+    "integrations": "Intégrations",
+    "solutions": "Solutions",
+    "stacks": "Piles technologiques",
+    "useCases": "Cas d'usage",
+    "workflows": "Workflows"
+  },
+  "cta": {
+    "download": "Télécharger",
+    "talkToArchitect": "Parler à un architecte"
+  },
+  "feature": {
+    "copyButtons": {
+      "description": "Automatisation de workflow configurable",
+      "label": "Boutons de copie"
+    },
+    "deepResearch": {
+      "description": "Recherche web et synthèse d'informations",
+      "label": "Recherche approfondie"
+    },
+    "fileDiscovery": {
+      "description": "Sélection intelligente de fichiers alimentée par l'IA",
+      "label": "Découverte de fichiers"
+    },
+    "integratedTerminal": {
+      "description": "Sessions persistantes avec démarrage automatique CLI",
+      "label": "Terminal intégré"
+    },
+    "mergeInstructions": {
+      "description": "Contrôle de la fusion des plans",
+      "label": "Instructions de fusion"
+    },
+    "planEditor": {
+      "description": "Éditeur Monaco complet pour les plans IA",
+      "label": "Éditeur de plan"
+    },
+    "planModeGuides": {
+      "description": "Workflows pour Codex, Claude et Cursor",
+      "label": "Guides du mode plan"
+    },
+    "textImprovement": {
+      "description": "Reformulation en ligne dans Monaco et les entrées de tâches",
+      "label": "Amélioration de texte"
+    },
+    "voiceTranscription": {
+      "description": "Saisie mains libres pour les tâches et le terminal",
+      "label": "Transcription vocale"
+    }
+  },
+  "footer": {
+    "about": "À propos",
+    "architecture": "Architecture",
+    "changelog": "Journal des modifications",
+    "company": "Entreprise",
+    "copyright": "© {year} helpful bits GmbH",
+    "documentation": "Documentation",
+    "downloads": "Téléchargements",
+    "feedback": "Commentaires",
+    "howItWorks": "Comment ça marche",
+    "imprint": "Mentions légales",
+    "interactiveDemo": "Démo interactive",
+    "legal": "Juridique",
+    "madeInGermany": "Fabriqué en Allemagne par une entreprise allemande",
+    "notAffiliated": "Non affilié à Anthropic, Cursor, OpenAI ou Cline.",
+    "pricing": "Tarification",
+    "privacy": "Confidentialité",
+    "product": "Produit",
+    "resources": "Ressources",
+    "support": "Support",
+    "tagline": "Planifiez et livrez des modifications de code - trouvez des fichiers, générez et fusionnez des plans IA, exécutez-les dans un terminal persistant.",
+    "talkToArchitect": "Parler à un architecte",
+    "terms": "Conditions"
+  },
+  "label": {
+    "english": "Anglais",
+    "german": "Allemand"
+  },
+  "nav": {
+    "compare": "Comparer",
+    "demo": "Démo",
+    "docs": "Documentation",
+    "downloads": "Téléchargements",
+    "features": "Fonctionnalités",
+    "solutions": "Solutions"
+  },
+  "solution": {
+    "hardBugs": {
+      "description": "Débogage visuel avec capture d'écran",
+      "label": "Bugs complexes"
+    },
+    "largeFeatures": {
+      "description": "Planification de fonctionnalités multi-fichiers",
+      "label": "Grandes fonctionnalités"
+    },
+    "libraryUpgrades": {
+      "description": "Gestion des dépendances",
+      "label": "Mises à jour de bibliothèques"
+    },
+    "maintenance": {
+      "description": "Nettoyage de dette technique",
+      "label": "Maintenance"
+    }
+  }
+}
