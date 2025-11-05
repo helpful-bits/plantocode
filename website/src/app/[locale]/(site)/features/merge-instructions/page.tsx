@@ -242,7 +242,7 @@ export default async function MergeInstructionsPage({ params }: { params: Promis
                       {[0, 1, 2, 3, 4, 5, 6].map((i) => (
                         <li key={i} className="flex items-start gap-2">
                           <span className="text-primary mt-0.5">•</span>
-                          <span>{t[`features.mergeInstructions.capabilities.whatAIDoes.items.${i}`]}</span>
+                          <span>{t[`mergeInstructions.capabilities.whatAIDoes.items.${i}`]}</span>
                         </li>
                       ))}
                     </ul>
@@ -251,7 +251,8 @@ export default async function MergeInstructionsPage({ params }: { params: Promis
                     <h3 className="text-lg font-semibold mb-4 text-primary">{t['mergeInstructions.capabilities.instructionControl.title']}</h3>
                     <ul className="space-y-3 text-sm">
                       {[0, 1, 2, 3, 4, 5, 6].map((i) => {
-                        const item = JSON.parse(t[`features.mergeInstructions.capabilities.instructionControl.examples.${i}`] || '{}');
+                        const item = t[`mergeInstructions.capabilities.instructionControl.examples.${i}`] as { type: string; example: string } | undefined;
+                        if (!item) return null;
                         return (
                           <li key={i} className="flex items-start gap-2">
                             <span className="text-yellow-500 dark:text-yellow-400 font-semibold">{item.type}:</span>
@@ -291,7 +292,7 @@ export default async function MergeInstructionsPage({ params }: { params: Promis
                         </p>
                         <ul className="text-xs text-foreground/60 space-y-1">
                           {[0, 1, 2, 3, 4].map((i) => (
-                            <li key={i}>• {t[`features.mergeInstructions.implementation.backend.features.${i}`]}</li>
+                            <li key={i}>• {t[`mergeInstructions.implementation.backend.features.${i}`]}</li>
                           ))}
                         </ul>
                       </div>
@@ -309,7 +310,7 @@ export default async function MergeInstructionsPage({ params }: { params: Promis
                         </p>
                         <ul className="text-xs text-foreground/60 space-y-1">
                           {[0, 1, 2, 3, 4].map((i) => (
-                            <li key={i}>• {t[`features.mergeInstructions.implementation.aiPrompt.features.${i}`]}</li>
+                            <li key={i}>• {t[`mergeInstructions.implementation.aiPrompt.features.${i}`]}</li>
                           ))}
                         </ul>
                       </div>
@@ -327,7 +328,7 @@ export default async function MergeInstructionsPage({ params }: { params: Promis
                         </p>
                         <ul className="text-xs text-foreground/60 space-y-1">
                           {[0, 1, 2, 3, 4].map((i) => (
-                            <li key={i}>• {t[`features.mergeInstructions.implementation.frontend.features.${i}`]}</li>
+                            <li key={i}>• {t[`mergeInstructions.implementation.frontend.features.${i}`]}</li>
                           ))}
                         </ul>
                       </div>
@@ -345,7 +346,7 @@ export default async function MergeInstructionsPage({ params }: { params: Promis
                         </p>
                         <ul className="text-xs text-foreground/60 space-y-1">
                           {[0, 1, 2, 3, 4].map((i) => (
-                            <li key={i}>• {t[`features.mergeInstructions.implementation.metadata.features.${i}`]}</li>
+                            <li key={i}>• {t[`mergeInstructions.implementation.metadata.features.${i}`]}</li>
                           ))}
                         </ul>
                       </div>

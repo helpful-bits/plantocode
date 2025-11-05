@@ -6,6 +6,7 @@
  */
 
 import type { Metadata } from 'next';
+import type { Locale } from '@/i18n/config';
 import { cdnUrl } from '@/lib/cdn';
 
 // Base metadata that all pages should have
@@ -24,7 +25,7 @@ export const BASE_METADATA = {
 /**
  * Generate locale-aware URL for a given pathname
  */
-export function localizedUrl(pathname: string, locale: 'en' | 'de' | 'fr' | 'es'): string {
+export function localizedUrl(pathname: string, locale: Locale): string {
   if (locale === 'en') {
     return pathname;
   }
@@ -35,13 +36,15 @@ export function localizedUrl(pathname: string, locale: 'en' | 'de' | 'fr' | 'es'
  * Build language alternates for a pathname
  * Note: x-default is excluded per architecture (sitemap only)
  */
-export function buildAlternates(pathname: string): { en: string; de: string; fr: string; es: string } {
+export function buildAlternates(pathname: string): { en: string; de: string; fr: string; es: string; ko: string; ja: string } {
   const siteUrl = BASE_METADATA.siteUrl.replace(/\/$/, '');
   return {
     en: `${siteUrl}${localizedUrl(pathname, 'en')}`,
     de: `${siteUrl}${localizedUrl(pathname, 'de')}`,
     fr: `${siteUrl}${localizedUrl(pathname, 'fr')}`,
     es: `${siteUrl}${localizedUrl(pathname, 'es')}`,
+    ko: `${siteUrl}${localizedUrl(pathname, 'ko')}`,
+    ja: `${siteUrl}${localizedUrl(pathname, 'ja')}`,
   };
 }
 
@@ -49,7 +52,7 @@ export function buildAlternates(pathname: string): { en: string; de: string; fr:
  * Generate complete page metadata with locale support
  */
 export function generatePageMetadata(opts: {
-  locale: 'en' | 'de' | 'fr' | 'es';
+  locale: Locale;
   slug: string;
   title: string;
   description?: string;
@@ -167,7 +170,7 @@ export interface ContentMetadataOptions {
   publishedTime?: string;
   modifiedTime?: string;
   authors?: string[];
-  locale?: 'en' | 'de' | 'fr' | 'es';
+  locale?: Locale;
 }
 
 

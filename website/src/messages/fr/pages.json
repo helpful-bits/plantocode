@@ -1,1 +1,940 @@
-{}
+{
+  "about": {
+    "architecture": {
+      "comment": "Conçu pour les workflows de développement complexes, pas pour le simple chat IA",
+      "title": "Fondation Technique"
+    },
+    "capabilities": {
+      "automation": {
+        "description": "Boutons de copie configurables avec modèles intelligents. Transformez n'importe quel prompt en workflow réutilisable avec substitution de variables et intégration de terminal.",
+        "title": "Automatisation des Workflows"
+      },
+      "discovery": {
+        "description": "Workflow multi-étapes : sélection du dossier racine, filtrage par motif regex, évaluation de la pertinence par IA. Sélection ciblée de fichiers avec validation des chemins.",
+        "title": "Découverte Intelligente de Fichiers"
+      },
+      "planning": {
+        "description": "Chargement complet du contexte sans politique de troncature. Plans XML structurés avec étapes numérotées. Génération multi-modèles et synthèse architecturale.",
+        "title": "Planification d'Implémentation"
+      },
+      "synthesis": {
+        "description": "Au-delà de la simple fusion - analyse architecturale approfondie utilisant les principes SOLID. Traçabilité des sources avec attribution [src:P1 step 2] pour chaque décision.",
+        "title": "Synthèse Architecturale"
+      },
+      "terminal": {
+        "description": "Sessions PTY avec surveillance de santé de 5 secondes, actions de récupération automatique et détection de l'attention de l'agent. Les sessions persistent entre les redémarrages de l'application.",
+        "title": "Terminal Centré sur les Tâches"
+      },
+      "title": "Capacités Principales",
+      "voice": {
+        "description": "Intégration OpenAI Whisper pour les commandes de terminal. Amélioration de texte basée sur la sélection avec traitement contextuel et suivi des tâches en temps réel.",
+        "title": "Intégration Voix & Texte"
+      }
+    },
+    "company": {
+      "contact": "Contact",
+      "jurisdiction": "Allemagne",
+      "name": "helpful bits GmbH",
+      "title": "Informations sur l'Entreprise"
+    },
+    "hero": {
+      "subtitle": "PlanToCode aide les développeurs à planifier et livrer des modifications de code en trouvant les fichiers impactés, en générant et fusionnant des plans, et en les exécutant dans un terminal.",
+      "title": "À Propos de PlanToCode"
+    },
+    "meta": {
+      "description": "Planification de développement IA avec intégration multi-modèles, terminaux persistants, transcription vocale et synthèse architecturale.",
+      "title": "À Propos de PlanToCode - Outil de Planification de Développement IA"
+    },
+    "philosophy": {
+      "noTruncation": {
+        "description": "Nous chargeons le contenu complet des fichiers. Pas de troncature préventive - juste des avertissements intelligents. Vous obtenez le contexte complet nécessaire pour un travail de développement sérieux.",
+        "title": "Politique Sans Troncature"
+      },
+      "title": "Notre Philosophie",
+      "tooling": {
+        "description": "Éditeur Monaco, xterm.js, intégration complète de l'environnement de développement. Pas seulement une autre interface de chat - une plateforme complète de planification de développement.",
+        "title": "Outillage Professionnel"
+      },
+      "traceability": {
+        "description": "Chaque décision IA inclut l'attribution de la source. Pistes d'audit complètes, suivi des coûts et persistance des sessions. Vous savez exactement ce qui s'est passé et pourquoi.",
+        "title": "Traçabilité Complète"
+      },
+      "transparency": {
+        "description": "Stockage local, communication transparente avec les fournisseurs IA et contrôle total sur ce qui est envoyé. Vous voyez toujours le contexte avant de confirmer les appels API.",
+        "title": "Transparence & Contrôle"
+      }
+    },
+    "whatWeBuilt": {
+      "environment": {
+        "description": "Intégration de l'éditeur Monaco, sessions de terminal persistantes avec surveillance de santé, transcription vocale et tampons circulaires SQLite de 5 Mo. Conçu pour les workflows de développement réels.",
+        "title": "Environnement de Développement Professionnel"
+      },
+      "intro": "PlanToCode est un environnement complet de planification de développement conçu pour un travail de développement sérieux où le contexte, la traçabilité et l'outillage professionnel comptent plus que les interactions rapides avec l'IA. Nous avons construit un système pour les implémentations complexes en plusieurs étapes où les outils IA traditionnels sont insuffisants.",
+      "multiModel": {
+        "description": "Intégration avec GPT-5, Claude Sonnet 4 et Gemini 2.5 Pro. Pas seulement des appels API - orchestration intelligente avec configurations spécifiques au projet, streaming en temps réel et traçabilité complète.",
+        "title": "Intelligence Multi-Modèles"
+      },
+      "title": "Ce Que Nous Avons Construit"
+    }
+  },
+  "comparisons": {
+    "hub": {
+      "badge": "Comparaisons d'Outils",
+      "card": {
+        "badge": "Comparaison",
+        "viewLink": "Voir la comparaison",
+        "whySwitchLabel": "Pourquoi les développeurs migrent :"
+      },
+      "cta": {
+        "button": "Essayer PlanToCode Gratuitement",
+        "footer": "$5 de crédits gratuits • Aucune carte de crédit requise",
+        "subtitle": "Découvrez pourquoi les développeurs migrent vers PlanToCode pour un travail complexe et mission-critique.",
+        "title": "Découvrez la Différence"
+      },
+      "cursorNote": {
+        "link": "Découvrez comment PlanToCode complète Cursor →",
+        "strong": "Vous cherchez une alternative à Cursor ?",
+        "text": "PlanToCode fonctionne avec Cursor, pas à la place."
+      },
+      "description": "Découvrez comment l'approche de planification architecturale de PlanToCode se compare aux outils de terminal traditionnels, aux assistants de codage IA et à d'autres workflows de développement.",
+      "meta": {
+        "description": "Comparez PlanToCode avec tmux, script, asciinema, Cursor, Claude Code et d'autres outils de développement. Voyez comment la planification architecturale améliore votre workflow.",
+        "title": "PlanToCode vs Alternatives - Comparaisons de Fonctionnalités"
+      },
+      "title": "PlanToCode vs Alternatives",
+      "whatMakesDifferent": {
+        "architectural": {
+          "description": "La découverte de fichiers multi-étapes cartographie toute l'architecture de votre codebase avant d'effectuer des modifications. La plupart des outils ne voient que ce que vous leur montrez.",
+          "title": "Conscience Architecturale"
+        },
+        "humanInLoop": {
+          "description": "Examinez, modifiez et approuvez chaque plan avant l'exécution. Les sessions de terminal persistantes vous permettent de mettre en pause, d'enquêter et de reprendre à tout moment.",
+          "title": "Humain dans la Boucle"
+        },
+        "multiModel": {
+          "description": "Générez des plans à partir de plusieurs modèles IA (GPT-5, Claude 4.5, Gemini 2.5 Pro) et fusionnez les meilleures idées. Les outils à modèle unique manquent des perspectives.",
+          "title": "Planification Multi-Modèles"
+        },
+        "title": "Ce Qui Rend PlanToCode Différent"
+      }
+    }
+  },
+  "cursorAlternative": {
+    "comparison": {
+      "intro": "Ce n'est pas une comparaison compétitive - c'est montrer comment les outils se complètent :",
+      "table": {
+        "approval": {
+          "cursor": "Non intégré",
+          "name": "Workflows d'Approbation d'Équipe",
+          "plan": "Piste d'audit complète",
+          "together": "Approuver dans PlanToCode, implémenter dans Cursor"
+        },
+        "autocomplete": {
+          "cursor": "Leader du secteur",
+          "name": "Autocomplétion & IntelliSense",
+          "plan": "Non inclus",
+          "together": "Cursor gère l'autocomplétion"
+        },
+        "capability": "Capacité",
+        "chat": {
+          "cursor": "Excellente UX",
+          "name": "Interface de Chat",
+          "plan": "Interface basée sur les tâches",
+          "together": "Le chat de Cursor est naturel"
+        },
+        "cursor": "Cursor",
+        "discovery": {
+          "cursor": "Indexation de base",
+          "name": "Découverte & Analyse de Fichiers",
+          "plan": "Workflow avancé",
+          "together": "PlanToCode trouve les fichiers, Cursor les modifie"
+        },
+        "duplicates": {
+          "cursor": "Non intégré",
+          "name": "Prévention des Fichiers Dupliqués",
+          "plan": "Détecté lors de la révision",
+          "together": "PlanToCode prévient, Cursor exécute correctement"
+        },
+        "multiModel": {
+          "cursor": "Un seul modèle par requête",
+          "name": "Synthèse Multi-Modèles",
+          "plan": "Comparer & fusionner les modèles",
+          "together": "Meilleur plan de plusieurs modèles → Cursor"
+        },
+        "planning": {
+          "cursor": "Non disponible",
+          "name": "Planification d'Implémentation",
+          "plan": "Fonctionnalité principale",
+          "together": "PlanToCode guide Cursor"
+        },
+        "plantocode": "PlanToCode",
+        "pricing": {
+          "cursor": "Abonnement 20$/mois",
+          "name": "Modèle Tarifaire",
+          "plan": "Paiement à l'usage (sans abonnement)",
+          "together": "20$/mois + utilisation réelle (5-15$ typique)"
+        },
+        "review": {
+          "cursor": "Manuel via chat",
+          "name": "Révision Pré-Exécution",
+          "plan": "Workflow intégré",
+          "together": "Réviser dans PlanToCode, exécuter dans Cursor"
+        },
+        "speed": {
+          "cursor": "Excellent",
+          "name": "Vitesse de Génération de Code",
+          "plan": "Non inclus",
+          "together": "Cursor gère la génération"
+        },
+        "together": "Meilleurs Ensemble"
+      },
+      "title": "Comparaison de Fonctionnalités : Forces Complémentaires"
+    },
+    "faq": {
+      "q1": {
+        "answer": "Non, PlanToCode n'est pas un remplacement de Cursor. C'est un outil complémentaire qui fonctionne aux côtés de Cursor. Alors que Cursor excelle dans la génération de code et l'autocomplétion, PlanToCode ajoute une couche de sécurité grâce à la planification d'implémentation. Utilisez Cursor pour la vitesse, PlanToCode pour la sécurité.",
+        "question": "PlanToCode est-il une alternative ou un remplacement à Cursor ?"
+      },
+      "q2": {
+        "answer": "L'utilisation conjointe des deux outils prévient les problèmes courants de Cursor : création de fichiers dupliqués, chemins de fichiers incorrects (surtout dans les projets multi-espaces de travail), modifications de fichiers inattendues et bugs en production dus à des modifications non révisées. La phase de planification de PlanToCode détecte ces problèmes avant l'exécution.",
+        "question": "Quels problèmes résout l'utilisation conjointe de Cursor et PlanToCode ?"
+      },
+      "q3": {
+        "answer": "Le workflow est : 1) Générer un plan d'implémentation fichier par fichier dans PlanToCode, 2) Réviser et approuver le plan (détectant toute erreur de chemin ou duplication), 3) Coller le plan approuvé dans Cursor Agent ou Composer, 4) Laisser Cursor exécuter la génération de code avec un contexte architectural clair.",
+        "question": "Comment utiliser PlanToCode avec Cursor ?"
+      },
+      "q4": {
+        "answer": "Cursor coûte 20$/mois en abonnement. PlanToCode utilise une tarification à l'usage sans abonnement. Coût total : 20$/mois pour Cursor + votre utilisation réelle de l'API dans PlanToCode (généralement 5-15$/mois pour une utilisation régulière). Beaucoup de développeurs trouvent cela moins cher que de passer des heures à nettoyer des fichiers dupliqués.",
+        "question": "À quoi ressemble la tarification combinée ?"
+      },
+      "q5": {
+        "answer": "Absolument. Cursor fonctionne très bien seul pour les petits projets, le développement greenfield et les prototypes rapides. Ajoutez PlanToCode lors du travail sur de grandes codebases (50k+ LOC), des refactorisations complexes, des environnements d'équipe nécessitant des approbations, ou si vous avez rencontré des problèmes de fichiers dupliqués.",
+        "question": "Puis-je utiliser Cursor sans PlanToCode ?"
+      },
+      "q6": {
+        "answer": "Oui. Générez votre plan d'implémentation dans PlanToCode, révisez-le, puis collez le plan approuvé dans Cursor Agent Terminal ou fournissez-le aux Background Agents. Ils exécuteront avec un contexte architectural complet, évitant les erreurs courantes de chemin et de duplication.",
+        "question": "PlanToCode fonctionne-t-il avec Cursor Agent et Background Agents ?"
+      },
+      "q7": {
+        "answer": "La phase de planification ajoute 3-5 minutes au départ mais économise des heures de débogage, de nettoyage de fichiers dupliqués et de corrections de chemins. La plupart des développeurs rapportent un gain de temps net, surtout sur les tâches complexes dans de grandes codebases. Pour les prototypes rapides où les erreurs sont peu coûteuses à corriger, vous pouvez sauter la planification et utiliser Cursor seul.",
+        "question": "L'utilisation des deux outils ralentira-t-elle mon workflow ?"
+      },
+      "q8": {
+        "answer": "Oui, absolument. PlanToCode n'interfère pas avec l'autocomplétion de Cursor ou toute autre fonctionnalité de Cursor. Ce sont des outils séparés qui fonctionnent ensemble. Utilisez l'autocomplétion de Cursor pour le codage normal, et passez à PlanToCode lorsque vous avez besoin de planification d'implémentation pour des modifications plus importantes.",
+        "question": "Puis-je toujours utiliser l'autocomplétion de Cursor avec PlanToCode ?"
+      },
+      "title": "Questions Fréquemment Posées"
+    },
+    "finalCta": {
+      "description": "La réponse n'est pas de remplacer Cursor - c'est d'ajouter la couche de sécurité qui prévient les fichiers dupliqués, les chemins incorrects et les bugs en production.",
+      "download": "Télécharger PlanToCode (Gratuit)",
+      "footer": "Téléchargement gratuit. Utilisation API à l'usage. Fonctionne avec votre configuration Cursor existante.",
+      "guide": "Lire le Guide d'Intégration",
+      "title": "Arrêtez de Chercher des Alternatives à Cursor"
+    },
+    "gettingStarted": {
+      "guide": "Guide de Configuration : Cursor + PlanToCode",
+      "quickWins": {
+        "duplicates": "Détecter les fichiers dupliqués avant leur création",
+        "existing": "Fonctionne avec votre configuration Cursor existante",
+        "paths": "Réviser les chemins de fichiers exacts avant l'exécution",
+        "plan": "Premier plan généré en moins de 5 minutes",
+        "subscription": "Aucun abonnement requis pour PlanToCode",
+        "title": "Gains Rapides"
+      },
+      "resources": {
+        "comparison": "Comparaison Détaillée des Outils",
+        "discovery": "Workflow de Découverte de Fichiers",
+        "documentation": "Documentation Complète",
+        "integration": "Guide d'Intégration Cursor",
+        "title": "Ressources Gratuites"
+      },
+      "step1": {
+        "cursor": "Téléchargez Cursor depuis cursor.sh (20$/mois après l'essai)",
+        "install": "Installez les deux sur la même machine pour un workflow transparent",
+        "plan": "Téléchargez PlanToCode depuis notre page de téléchargements (gratuit, utilisation API à l'usage)",
+        "title": "Étape 1 : Installer les Deux Outils"
+      },
+      "step2": {
+        "items": {
+          "1": "Ouvrez votre projet dans Cursor (pour le contexte) et PlanToCode (pour la planification)",
+          "2": "Dans PlanToCode : Décrivez une tâche, exécutez la découverte de fichiers, générez le plan d'implémentation",
+          "3": "Révisez le plan dans l'éditeur Monaco - vérifiez les chemins de fichiers, vérifiez qu'il n'y a pas de doublons",
+          "4": "Copiez le plan approuvé",
+          "5": "Dans Cursor : Ouvrez Agent Terminal ou Composer, collez le plan, laissez Cursor exécuter",
+          "6": "Révisez le code généré par Cursor (architecture déjà vérifiée)"
+        },
+        "title": "Étape 2 : Essayer Votre Premier Workflow Combiné"
+      },
+      "step3": {
+        "comparison": "Voir la comparaison détaillée pour savoir quand utiliser quel outil",
+        "docs": "Explorez la documentation de planification d'implémentation pour les meilleures pratiques",
+        "integration": "Lisez notre guide d'intégration Cursor pour les workflows détaillés",
+        "title": "Étape 3 : Apprendre les Workflows Avancés"
+      },
+      "title": "Démarrer avec les Deux Outils"
+    },
+    "hero": {
+      "badge": "Pas un remplacement - un compagnon de sécurité",
+      "download": "Télécharger PlanToCode (Gratuit)",
+      "guide": "Voir le Guide d'Intégration Cursor",
+      "subtitle": "Arrêtez de chercher des alternatives à Cursor. La vraie solution n'est pas de remplacer Cursor - c'est d'ajouter une couche de sécurité qui prévient les fichiers dupliqués, les chemins incorrects et les bugs en production avant qu'ils ne se produisent.",
+      "title": "Alternative à Cursor ?",
+      "titleHighlight": "Non - Votre Compagnon de Sécurité Cursor"
+    },
+    "meta": {
+      "description": "Vous ne cherchez pas un remplacement de Cursor ? PlanToCode fonctionne AVEC Cursor pour prévenir les fichiers dupliqués, les chemins incorrects et les bugs en production. Utilisez les deux ensemble.",
+      "title": "Compagnon de Sécurité Cursor - Pas une Alternative"
+    },
+    "prevention": {
+      "bugs": {
+        "generate": "Approche Générer d'Abord de Cursor : Les modifications sont appliquées immédiatement. Vous pourriez ne pas remarquer que Cursor a modifié utils/helpers.ts ce qui casse 15 autres fichiers. Vous découvrez la casse en production ou pendant les tests.",
+        "plan": "Approche Planifier d'Abord de PlanToCode : Le plan montre toutes les modifications de fichiers avant l'exécution. Vous voyez que utils/helpers.ts va changer. Vous exécutez l'analyse de dépendances. Vous réalisez que 15 fichiers en dépendent. Vous ajustez le plan en conséquence.",
+        "title": "Prévention des Bugs en Production"
+      },
+      "duplicates": {
+        "generate": "Approche Générer d'Abord de Cursor : L'IA génère du code immédiatement. Si elle ne trouve pas le bon fichier ou est confuse par des noms similaires, elle crée un nouveau fichier. Vous découvrez les doublons après la génération.",
+        "plan": "Approche Planifier d'Abord de PlanToCode : Le plan liste les chemins de fichiers exacts avant toute génération de code. Vous voyez components/Button.tsx et components/ui/Button.tsx dans le plan. Vous détectez le problème de nommage dupliqué lors de la révision.",
+        "title": "Prévention des Fichiers Dupliqués"
+      },
+      "intro": "Les problèmes que les développeurs rencontrent avec Cursor ne sont pas aléatoires - ce sont des conséquences prévisibles des workflows générer-d'abord. Voici comment planifier-d'abord prévient chacun d'eux :",
+      "paths": {
+        "generate": "Approche Générer d'Abord de Cursor : Surtout dans les projets multi-espaces de travail, Cursor peut générer du code dans le mauvais espace de travail ou utiliser incorrectement les chemins relatifs. Vous découvrez les erreurs de chemin lorsque le code ne fonctionne pas.",
+        "plan": "Approche Planifier d'Abord de PlanToCode : La découverte de fichiers montre la structure complète du dépôt. Les plans utilisent des chemins absolus. Vous vérifiez que les chemins correspondent à votre structure réelle pendant la phase de révision. Cursor obtient les chemins corrects du plan.",
+        "title": "Prévention des Chemins de Fichiers Incorrects"
+      },
+      "scope": {
+        "generate": "Approche Générer d'Abord de Cursor : Invité à \"ajouter un toggle mode sombre\", Cursor pourrait aussi refactoriser tout votre système de thème, mettre à jour 30 composants et changer votre architecture CSS. Vous découvrez l'explosion de portée après la génération.",
+        "plan": "Approche Planifier d'Abord de PlanToCode : Le plan montre \"Modifications : 47 fichiers incluant refactorisation complète du thème\". Vous voyez la portée immédiatement. Vous affinez le prompt : \"Juste ajouter un composant toggle, pas de refactorisation\". Régénérez le plan. Maintenant c'est 3 fichiers. Approuvez et exécutez.",
+        "title": "Prévention de l'Expansion de Portée"
+      },
+      "title": "Pourquoi Planifier-D'Abord Prévient les Problèmes Courants de Cursor"
+    },
+    "problem": {
+      "bugs": {
+        "description": "Modifications appliquées directement sans révision, cassant le code en production sans chemin de retour clair.",
+        "source": "— Plainte courante dans les grandes codebases",
+        "title": "Bugs en Production"
+      },
+      "duplicates": {
+        "description": "\"Pourquoi Cursor crée-t-il une structure de fichiers dupliquée ? J'ai complètement abandonné des projets à cause de l'accumulation de doublons.\"",
+        "source": "— Forum Cursor #47028 (14+ réponses)",
+        "title": "Chaos des Fichiers Dupliqués"
+      },
+      "insight": "Voici l'insight : Ce ne sont pas des bugs Cursor - ils sont inhérents à l'approche générer-d'abord, réviser-après. La solution n'est pas un générateur de code différent. C'est d'ajouter une couche de sécurité planifier-d'abord.",
+      "intro": "Vous ne cherchez pas une alternative à Cursor parce que Cursor est mauvais en génération de code. Vous cherchez parce que vous avez rencontré un (ou tous) de ces problèmes :",
+      "paths": {
+        "description": "\"Cursor se trompe très souvent dans les chemins de fichiers, presque toujours avec plusieurs espaces de travail.\"",
+        "source": "— Issue Cursor #31402",
+        "title": "Erreurs de Chemins Incorrects"
+      },
+      "title": "Pourquoi les Développeurs Cherchent \"Alternative à Cursor\"",
+      "unexpected": {
+        "description": "\"Appliquer la mise à jour du code depuis le chat crée un nouveau fichier au lieu de modifier l'existant.\"",
+        "source": "— Issue Cursor #22347",
+        "title": "Création de Fichiers Inattendue"
+      }
+    },
+    "testimonials": {
+      "enterprise": {
+        "quote": "Notre équipe de conformité exige que toutes les modifications IA soient révisées par un ingénieur senior avant l'exécution. PlanToCode nous donne le workflow d'approbation dont nous avons besoin. Les développeurs juniors génèrent des plans, les seniors révisent et approuvent, puis les juniors collent les plans approuvés dans Cursor. Tout le monde est content.",
+        "title": "Équipe d'Entreprise, Codebase Héritée (400k LOC)",
+        "tools": "Outils : Cursor Pro pour 8 développeurs (160$/mois) + serveur PlanToCode auto-hébergé"
+      },
+      "freelancer": {
+        "quote": "Je facture les clients à l'heure. Je ne peux pas me permettre de passer 2 heures à nettoyer des fichiers dupliqués. PlanToCode détecte tout pendant la phase de révision de 5 minutes. Je montre le plan aux clients pour approbation, ils voient exactement ce pour quoi ils paient, puis j'exécute dans Cursor. Super professionnel.",
+        "title": "Freelance, Projets Clients",
+        "tools": "Outils : Cursor Pro (20$/mois) + PlanToCode (~6$/mois d'utilisation)"
+      },
+      "intro": "Ces workflows montrent comment les développeurs utilisent les deux outils ensemble :",
+      "solo": {
+        "quote": "J'avais constamment des fichiers dupliqués dans mon monorepo. Cursor créait packages/api/auth.ts et packages/api/src/auth.ts. Maintenant je génère le plan dans PlanToCode, vérifie que les chemins sont corrects, puis colle dans Cursor Agent. Zéro doublon depuis le changement.",
+        "title": "Développeur Solo, Monorepo (120k LOC)",
+        "tools": "Outils : Cursor Pro (20$/mois) + PlanToCode (~8$/mois d'utilisation)"
+      },
+      "startup": {
+        "quote": "Les erreurs de chemin de Cursor dans les projets multi-espaces de travail nous tuaient. La découverte de fichiers de PlanToCode montre la structure complète à travers tous les espaces de travail. Je vérifie les chemins dans le plan, puis Cursor exécute parfaitement parce qu'il a le bon contexte.",
+        "title": "CTO de Startup, Projet Multi-Espaces de Travail",
+        "tools": "Outils : Cursor Pro (20$/mois) + PlanToCode (~12$/mois d'utilisation)"
+      },
+      "title": "Vrais Utilisateurs de Cursor Qui Ont Ajouté PlanToCode"
+    },
+    "twist": {
+      "complement": "PlanToCode ne remplace pas Cursor. Il ajoute la pièce manquante : la planification d'implémentation avant l'exécution. Pensez-y comme une couche de sécurité qui détecte les erreurs avant qu'elles ne deviennent du code.",
+      "cursorFor": {
+        "autocomplete": "Autocomplétion intelligente",
+        "commands": "Commandes en langage naturel",
+        "ide": "Intégration IDE",
+        "prototypes": "Prototypes rapides",
+        "speed": "Vitesse de génération de code",
+        "title": "Utilisez Cursor Pour :"
+      },
+      "planFor": {
+        "approval": "Workflows d'approbation d'équipe",
+        "duplicates": "Prévention des fichiers dupliqués",
+        "paths": "Détection précoce des erreurs de chemin",
+        "planning": "Planification d'implémentation",
+        "review": "Révision avant exécution",
+        "title": "Utilisez PlanToCode Pour :"
+      },
+      "strength": "Cursor excelle dans ce qu'il fait : génération de code ultra-rapide, autocomplétion intelligente et interfaces de chat intuitives. Mais il génère du code immédiatement, ce qui est à la fois sa force et sa faiblesse.",
+      "title": "Le Twist : PlanToCode N'est Pas un Remplacement"
+    },
+    "whenToUse": {
+      "enterprise": {
+        "cursor": "Utilisez Cursor pour les Contributeurs Individuels",
+        "cursorDesc": "Les développeurs utilisent Cursor quotidiennement. Les plans de PlanToCode guident leur travail.",
+        "plan": "Utilisez PlanToCode pour les Workflows d'Approbation",
+        "planDesc": "Les parties prenantes révisent les plans avant l'exécution. Piste d'audit pour la conformité et la gouvernance.",
+        "title": "Environnements d'Équipe & Entreprise"
+      },
+      "greenfield": {
+        "cursor": "Utilisez Cursor Seul",
+        "cursorDesc": "Nouveaux projets avec structure simple où vous pouvez détecter rapidement les erreurs. L'organisation des fichiers n'est pas encore complexe.",
+        "plan": "PlanToCode Optionnel",
+        "planDesc": "Pas critique pour les petits projets avec structure claire.",
+        "title": "Projets Greenfield & Prototypes Rapides"
+      },
+      "large": {
+        "cursor": "Exécuter avec Cursor",
+        "cursorDesc": "Coller le plan approuvé dans Cursor Agent. Laissez-le gérer la génération de code avec un contexte clair.",
+        "plan": "Commencer avec la Planification PlanToCode",
+        "planDesc": "Générer un plan fichier par fichier, détecter les chemins incorrects et les doublons pendant la phase de révision.",
+        "title": "Grandes/Anciennes Codebases (50k+ LOC)"
+      },
+      "medium": {
+        "cursor": "Utilisez Cursor pour l'Implémentation",
+        "cursorDesc": "Encore assez rapide pour réviser les modifications manuellement. Bonne autocomplétion fait gagner du temps.",
+        "plan": "Ajoutez PlanToCode pour les Tâches Complexes",
+        "planDesc": "Utilisez la planification pour le refactoring, les modifications multi-packages, ou lorsque vous avez rencontré des erreurs de chemin.",
+        "title": "Codebases Moyennes (10k-50k LOC)"
+      },
+      "title": "Quand Utiliser Cursor vs PlanToCode (Côte à Côte)"
+    },
+    "workflow": {
+      "combined": "Workflow Combiné : Planifier → Exécuter → Réviser",
+      "example": {
+        "title": "Exemple Réel : Refactorisation du Système d'Authentification",
+        "with": "Avec PlanToCode : Générer un plan montrant tous les 12 fichiers nécessitant des modifications. Détecter que le plan initial de Cursor a manqué 3 routes API. Approuver le plan corrigé. Coller dans Cursor. Terminé en 30 minutes, zéro doublon.",
+        "without": "Sans PlanToCode : Demander à Cursor de \"refactoriser l'auth pour utiliser JWT au lieu de sessions\". Cursor crée auth-new.ts, middleware/auth.ts (doublon), manque la mise à jour de api/login.ts. Passer 2 heures à corriger."
+      },
+      "intro": "Le workflow le plus efficace combine les deux outils, utilisant chacun pour ce qu'il fait de mieux :",
+      "step1": {
+        "catch": "Ce que vous détectez : Chemins de fichiers incorrects, fichiers dupliqués, dépendances manquantes, expansion de portée",
+        "description": "Décrivez votre tâche (voix ou texte), exécutez la découverte de fichiers pour trouver tous les fichiers impactés, générez des plans d'implémentation à partir de plusieurs modèles IA (Claude, GPT, Gemini).",
+        "title": "Planifier dans PlanToCode"
+      },
+      "step2": {
+        "description": "Ouvrez le plan dans l'éditeur Monaco. Vérifiez que les chemins de fichiers exacts correspondent à votre structure de dépôt. Vérifiez les doublons. Modifiez toutes les étapes nécessitant un raffinement. Fusionnez les plans de différents modèles si nécessaire.",
+        "gate": "Porte de sécurité : Rien ne se passe sans votre approbation explicite",
+        "title": "Réviser & Approuver"
+      },
+      "step3": {
+        "alternative": "Alternative : Exécuter directement dans le terminal intégré de PlanToCode avec journalisation complète",
+        "description": "Copiez le plan approuvé. Collez-le dans Cursor Agent Terminal ou Composer. Cursor a maintenant un contexte architectural complet - il sait exactement quels fichiers modifier, quoi changer et pourquoi.",
+        "title": "Exécuter dans Cursor"
+      },
+      "step4": {
+        "description": "Cursor génère le code en suivant votre plan approuvé. Révisez l'implémentation réelle. Puisque vous avez déjà approuvé l'architecture, vous vérifiez seulement la qualité du code - pas la détection d'erreurs structurelles.",
+        "saved": "Temps économisé : Pas de nettoyage de fichiers dupliqués, pas de corrections de chemins, pas de refonte architecturale",
+        "title": "Réviser l'Implémentation"
+      },
+      "title": "Comment Utiliser Cursor + PlanToCode Ensemble"
+    }
+  },
+  "demo": {
+    "cta": {
+      "button": "Voir Toutes les Captures d'Écran",
+      "description": "Explorez de vraies captures d'écran de workflows réels - découverte de fichiers, plans d'implémentation, sessions de terminal et plus encore.",
+      "title": "Vous Voulez Voir Plus ?"
+    },
+    "hero": {
+      "screenshots": "Voir les Vraies Captures d'Écran",
+      "subtitle": "Découvrez comment PlanToCode planifie et exécute les modifications de code.",
+      "title": "Démo interactive",
+      "video": "Voir la Démo Courte"
+    },
+    "meta": {
+      "description": "Découvrez comment PlanToCode planifie et exécute les modifications de code.",
+      "title": "Démo interactive"
+    }
+  },
+  "downloads": {
+    "cta": {
+      "architect": "Parler à un architecte",
+      "docs": "Documentation du terminal",
+      "footer": "Fabriqué en Allemagne • Conforme RGPD • Stockage de Session Local",
+      "professional": "Options professionnelles",
+      "title": "Prêt à Passer au Niveau Supérieur ?"
+    },
+    "hero": {
+      "subtitle": "Planifiez les modifications de code avec un seul outil - trouvez les fichiers pertinents, générez et fusionnez des plans, et exécutez des commandes dans un terminal persistant.",
+      "title": "Télécharger PlanToCode"
+    },
+    "macos": {
+      "professional": {
+        "description": "Entièrement notarisé par Apple. Code signé. Terminal intégré avec détection automatique CLI et persistance de session.",
+        "title": "Prêt pour les Professionnels"
+      },
+      "requirements": {
+        "internet": "Connexion Internet requise pour les fonctionnalités IA",
+        "os": "macOS 11.0 (Big Sur) ou ultérieur",
+        "processor": "Processeur Apple Silicon (M1/M2/M3/M4)",
+        "ram": "4 Go de RAM minimum (8 Go recommandé)",
+        "title": "Configuration Système Requise"
+      },
+      "subtitle": "Pour les Utilisateurs Intensifs d'Agents de Codage",
+      "title": "macOS"
+    },
+    "meta": {
+      "description": "Téléchargez PlanToCode pour macOS et Windows. 5$ de crédits gratuits. Planifiez les modifications multi-fichiers avec IA, révisez avant l'exécution. Aucune carte de crédit requise.",
+      "title": "Télécharger PlanToCode - macOS & Windows | Essai Gratuit"
+    },
+    "mobile": {
+      "button": "Bientôt sur l'App Store",
+      "connected": {
+        "description": "Rejoignez notre liste d'attente pour être notifié lors du lancement de l'application iOS. Accès anticipé pour les utilisateurs intensifs d'agents de codage.",
+        "title": "Restez Connecté"
+      },
+      "features": {
+        "design": "Langage de design natif iOS/iPadOS",
+        "monitor": "Surveiller les sessions de terminal à distance",
+        "review": "Réviser et modifier les plans d'implémentation en déplacement",
+        "sync": "Synchroniser avec l'espace de travail de bureau de manière transparente",
+        "title": "Fonctionnalités Prévues",
+        "voice": "Transcription vocale pour capture rapide d'idées"
+      },
+      "subtitle": "Bientôt pour iPhone & iPad",
+      "title": "Application Mobile iOS"
+    },
+    "trust": {
+      "planning": {
+        "description": "GPT-5, Claude Sonnet 4, Gemini 2.5 Pro, o3/o4-mini, Grok 4, DeepSeek R1, Kimi K2. Approche Conseil de LLMs.",
+        "title": "Planification Multi-Modèles"
+      },
+      "pricing": {
+        "description": "Commencez immédiatement. Paiement à l'usage. Pas d'abonnements. Transparence des tokens pour les utilisateurs avancés qui suivent les coûts.",
+        "title": "Tarification Basée sur l'Utilisation"
+      },
+      "professional": {
+        "description": "Serveurs mono-tenant. Déploiement sur site. Gouvernance de terminal. Conçu pour les équipes qui ne peuvent pas utiliser le cloud uniquement.",
+        "title": "Options Professionnelles"
+      },
+      "terminal": {
+        "description": "Exécutez claude, cursor, codex ou gemini directement. La transcription vocale est disponible, et les journaux persistent localement pour que vous puissiez reprendre le travail sans changement de contexte.",
+        "title": "Terminal Intégré"
+      },
+      "title": "Conçu pour les Utilisateurs Intensifs d'Agents de Codage"
+    },
+    "windows": {
+      "integration": {
+        "description": "Support PowerShell et Command Prompt. Exécutez claude, cursor, codex ou gemini avec surveillance de santé et récupération.",
+        "title": "Intégration de Terminal"
+      },
+      "requirements": {
+        "internet": "Connexion Internet requise pour les fonctionnalités IA",
+        "os1": "Windows 10 version 1903 (Build 18362) ou ultérieur",
+        "os2": "Windows 11 supporté",
+        "processor": "Processeur x64 ou ARM64",
+        "ram": "4 Go de RAM minimum (8 Go recommandé)",
+        "title": "Configuration Système Requise"
+      },
+      "subtitle": "Microsoft Store - Prêt pour les Professionnels",
+      "title": "Windows"
+    }
+  },
+  "howItWorks": {
+    "cta": {
+      "links": {
+        "demo": "Essayer la démo interactive",
+        "docs": "Voir la documentation",
+        "planning": "En savoir plus sur l'édition de plans"
+      },
+      "subtitle": "De la capture de réunion à l'exécution sécurisée - le workflow complet pour les équipes d'entreprise adoptant les agents de codage IA en toute confiance. Capturez les exigences de n'importe quelle source, affinez avec l'IA, générez des plans granulaires, révisez avec un contrôle total et exécutez en toute sécurité.",
+      "title": "Prêt à Transformer Votre Workflow de Développement d'Entreprise ?"
+    },
+    "demo": {
+      "button": "Essayer la Démo Interactive",
+      "description": "Regardez la démo interactive pour voir le workflow complet",
+      "title": "Voyez-le en Action"
+    },
+    "hero": {
+      "badge": "Workflow de Planification IA Professionnel",
+      "subtitle": "De la capture de réunion à l'exécution sécurisée - le workflow complet de développement IA d'entreprise",
+      "title": "Comment ça marche"
+    },
+    "keyFeatures": {
+      "deploy": {
+        "description": "Utilisez le serveur proxy Rust inclus avec vos propres clés API lorsque vous devez garder les requêtes sur l'infrastructure que vous contrôlez.",
+        "title": "Déployez selon vos conditions"
+      },
+      "governance": {
+        "description": "Révisez chaque plan avant l'exécution. Modifiez les approches, fusionnez les stratégies, approuvez ou rejetez. L'IA assiste, les humains contrôlent. Conçu pour les équipes où la qualité du code compte.",
+        "title": "Gouvernance Humain-dans-la-Boucle"
+      },
+      "sessions": {
+        "description": "La sortie du terminal est stockée localement et les sessions se restaurent au lancement. Fermez l'application, revenez la semaine prochaine, continuez le débogage.",
+        "title": "Sessions Persistantes"
+      },
+      "title": "Pourquoi les Équipes d'Entreprise Choisissent Ce Workflow"
+    },
+    "meta": {
+      "description": "La planification d'implémentation IA prévient le chaos. Découverte de fichiers, plans multi-modèles, révision humaine et exécution sécurisée avec n'importe quel agent de codage.",
+      "title": "Comment Ça Marche - Workflow de Planification IA"
+    },
+    "useCases": {
+      "bugs": {
+        "description": "Enregistrez des captures d'écran de bugs, obtenez une analyse IA, générez des plans de débogage, exécutez avec un contrôle total du terminal.",
+        "items": {
+          "persistent": "Journal de terminal persistant",
+          "systematic": "Approches de débogage systématiques",
+          "visual": "Contexte visuel avec enregistrement d'écran"
+        },
+        "title": "Investigation de Bugs Complexes"
+      },
+      "features": {
+        "description": "Fonctionnalités multi-fichiers nécessitant une planification minutieuse. Générez plusieurs approches, fusionnez les meilleures parties, modifiez pour votre codebase spécifique.",
+        "items": {
+          "api": "Conception et intégration d'API",
+          "cross": "Implémentation de fonctionnalités transversales",
+          "schema": "Modifications de schéma de base de données"
+        },
+        "title": "Développement de Grandes Fonctionnalités"
+      },
+      "legacy": {
+        "description": "L'IA comprend les patterns hérités et la dette technique. Générez des plans de refactorisation sécurisés, des mises à niveau de bibliothèques et des améliorations architecturales.",
+        "items": {
+          "breaking": "Plans de migration avec breaking changes",
+          "cleanup": "Nettoyage de dette technique",
+          "dependency": "Stratégies de mise à niveau de dépendances"
+        },
+        "title": "Maintenance de Codebase Héritée"
+      },
+      "professional": {
+        "description": "Approbations de commandes, rétention de session, déploiement mono-tenant. Conçu pour les équipes où une mauvaise commande coûte des millions.",
+        "items": {
+          "audit": "Pistes d'audit complètes",
+          "governance": "Gouvernance et approbations de terminal",
+          "onprem": "Options de déploiement sur site"
+        },
+        "title": "Développement Professionnel"
+      },
+      "title": "Conçu pour les Équipes de Développement d'Entreprise"
+    },
+    "workflow": {
+      "step1": {
+        "description": "Commencez par capturer les exigences initiales à partir de plusieurs sources. Téléchargez des enregistrements de réunions Microsoft Teams pour une analyse multimodale, enregistrez des présentations d'écran pour capturer le contexte visuel, ou utilisez la dictée vocale pour une capture rapide d'idées. Toutes les méthodes d'entrée alimentent le même workflow de raffinement.",
+        "meetings": {
+          "description": "Téléchargez des réunions Teams. L'IA multimodale analyse les transcriptions audio (avec identification des locuteurs) et le contenu visuel (écrans partagés, documents) pour extraire les exigences, décisions et éléments d'action.",
+          "title": "Enregistrements de Réunions"
+        },
+        "screen": {
+          "description": "Enregistrez des workflows, bugs ou présentations d'interface. Gemini Vision analyse à la fois la narration audio et le contenu visuel pour capturer le contexte complet pour la collecte d'exigences.",
+          "title": "Enregistrements d'Écran"
+        },
+        "subtitle": "Enregistrements de réunions, captures d'écran et dictée vocale",
+        "title": "Capturer Idées & Contexte",
+        "voice": {
+          "description": "Énoncez les exigences naturellement. OpenAI Whisper transcrit avec insertion de texte intelligente et identification des locuteurs pour une capture rapide de spécifications.",
+          "title": "Dictée Vocale"
+        }
+      },
+      "step2": {
+        "description": "Transformez les transcriptions brutes de réunions, les enregistrements vocaux et les notes approximatives en spécifications claires et prêtes à l'implémentation en utilisant deux types distincts de prompts IA qui fonctionnent ensemble pour garantir à la fois clarté et exhaustivité.",
+        "subtitle": "Deux types de prompts IA pour la clarté et l'exhaustivité",
+        "taskRefinement": {
+          "description": "Développe les descriptions de tâches en identifiant les exigences implicites, en comblant les lacunes négligées, en clarifiant le comportement attendu et les cas limites, et en ajoutant des considérations techniques pour la préparation à l'implémentation.",
+          "title": "Raffinement de Tâche"
+        },
+        "textEnhancement": {
+          "description": "Améliore la grammaire, la structure des phrases, la clarté et la concision tout en maintenant votre intention originale, ton et niveau de détail technique. Parfait pour polir les transcriptions vocales et les notes de réunion.",
+          "title": "Amélioration de Texte"
+        },
+        "title": "Raffiner en Spécifications Actionnables"
+      },
+      "step3": {
+        "description": "La découverte de fichiers IA identifie les fichiers pertinents dans votre codebase. Plusieurs modèles IA génèrent des plans d'implémentation avec granularité fichier par fichier - chemins de fichiers exacts, plages de lignes spécifiques et types d'opérations clairs (modifier/créer/supprimer). Cette granularité rend l'évaluation d'impact cristalline.",
+        "features": {
+          "dependencies": "Analyse de dépendances et évaluation d'impact",
+          "models": "Support multi-modèles (GPT-5, Claude 4, Gemini 2.5 Pro)",
+          "multiple": "Génération de plans multiples pour comparaison d'approches",
+          "operations": "Types d'opérations clairs (modifier, créer, supprimer)",
+          "paths": "Chemins de fichiers exacts de votre structure de dépôt",
+          "ranges": "Plages de lignes spécifiques et détails de modification"
+        },
+        "subtitle": "Plans fichier par fichier avec chemins de dépôt exacts",
+        "title": "Générer des Plans d'Implémentation Granulaires"
+      },
+      "step4": {
+        "capabilities": {
+          "approve": "Approuver pour exécution ou rejeter avec piste d'audit",
+          "editing": "Édition directe de toutes les étapes et détails du plan",
+          "editor": "Éditeur Monaco professionnel avec coloration syntaxique",
+          "merge": "Fusionner plusieurs plans avec instructions personnalisées",
+          "modifications": "Demander des modifications ou approches alternatives",
+          "visibility": "Visibilité complète sur les modifications proposées"
+        },
+        "description": "Les plans s'ouvrent dans l'éditeur Monaco pour une révision complète. Les chefs d'équipe examinent chaque modification proposée, éditent directement les étapes, fusionnent plusieurs approches avec instructions personnalisées, ou rejettent complètement les plans. Aucune modification de code ne se produit sans approbation humaine explicite - garantissant l'alignement avec les exigences d'entreprise et les workflows d'équipe.",
+        "subtitle": "Contrôle total avant toute modification de code",
+        "title": "Réviser, Éditer & Approuver (Humain-dans-la-Boucle)"
+      },
+      "step5": {
+        "description": "Après approbation, transmettez en toute sécurité le plan à votre agent de codage choisi (Claude Code, Cursor, Codex) ou développeur assigné. La granularité fichier par fichier prévient les régressions et modifications non intentionnelles - garantissant une exécution sécurisée. Terminal intégré avec sessions persistantes permet l'exécution et le débogage immédiats.",
+        "subtitle": "Transfert sécurisé aux développeurs ou agents de codage",
+        "title": "Exécuter en Toute Confiance",
+        "tools": {
+          "audit": "Piste d'audit complète de l'exécution",
+          "claude": "Claude Code CLI avec support du mode plan",
+          "codex": "Exécution OpenAI Codex CLI",
+          "cursor": "Intégration Cursor CLI",
+          "sessions": "Sessions de terminal persistantes avec récupération automatique",
+          "terminal": "Terminal intégré avec transcription vocale"
+        }
+      },
+      "title": "Le Workflow Complet"
+    }
+  },
+  "planMode": {
+    "capabilities": {
+      "architect": {
+        "capability": "L'architecte IA fusionne les plans avec vos conseils",
+        "details": "Guidez la fusion avec vos exigences architecturales. L'IA consolide les détails complémentaires de plusieurs exécutions en un plan complet"
+      },
+      "execution": {
+        "capability": "Exécution avec contrôle total",
+        "details": "Révisez le plan, vérifiez la portée, puis exécutez. Ou collez dans le chat de votre IDE."
+      },
+      "know": {
+        "capability": "Sachez ce qui sera modifié avant que cela ne se produise",
+        "details": "La découverte de fichiers montre l'impact exact. Voyez quels fichiers chaque plan touche. Pas de surprises.",
+        "link": "Voir comment ça marche"
+      },
+      "prompts": {
+        "capability": "Prompts en un clic qui fonctionnent",
+        "details": "Boutons de copie pour vos prompts éprouvés. Plus besoin de retaper \"rendre type-safe\" 20 fois."
+      },
+      "title": "Ce que vous obtenez réellement"
+    },
+    "circumstances": {
+      "footer": "Ce ne sont pas des \"points de douleur\". Ce sont des moments où vous avez besoin de visibilité et de contrôle avant de vous engager dans une approche. C'est ce que nous avons construit.",
+      "items": {
+        "breaks": {
+          "moment": "Votre modification casse trois services en aval, découvert en prod",
+          "progress": "La découverte de fichiers cartographie toutes les dépendances en amont, détecte les impacts tôt"
+        },
+        "drift": {
+          "moment": "L'IA dérive de vos exigences, construit ce qu'elle pense que vous voulez",
+          "progress": "L'architecte IA garde les plans alignés avec vos objectifs réels, aucune dérive"
+        },
+        "plans": {
+          "moment": "Un plan détecte les cas limites, un autre gère les états d'erreur, le troisième ajoute les types",
+          "progress": "L'architecte IA combine les insights complémentaires en implémentation complète"
+        },
+        "symptom": {
+          "moment": "L'IA corrige le symptôme dans /components, manque la cause dans /config",
+          "progress": "Guidez-la vers la bonne couche d'abstraction avec la découverte de fichiers"
+        }
+      },
+      "title": "Quand l'IA a besoin de contexte architectural"
+    },
+    "cta": {
+      "book": "Réserver une session d'architecte",
+      "demo": "Essayer d'abord la démo interactive",
+      "pricing": "Crédits à l'usage. 5$ gratuits en promo pour les nouveaux utilisateurs. Pas d'abonnements.",
+      "subtitle": "Rejoignez les développeurs qui livrent de grands changements avec clarté, traçabilité et fiabilité opérationnelle.",
+      "title": "Prêt à embaucher votre architecte ?"
+    },
+    "faq": {
+      "q1": {
+        "answer": "PlanToCode fournit une pré-planification architecturale **avant** d'utiliser Codex, Claude Code ou Cursor. Il ajoute la découverte de fichiers, la synthèse multi-modèles et les instructions de fusion qui complètent la phase d'exécution de ces outils.",
+        "question": "En quoi est-ce différent de Codex CLI ou Claude Code ?"
+      },
+      "q2": {
+        "answer": "Oui. PlanToCode fonctionne aux côtés de Codex CLI, Claude Code, Cursor et Windsurf. Générez des plans dans PlanToCode, puis exécutez dans votre outil préféré avec le contexte complet.",
+        "question": "Puis-je l'utiliser avec mon outil de codage IA existant ?"
+      },
+      "q3": {
+        "answer": "Exécutez la même tâche plusieurs fois avec différents modèles IA. Chaque exécution fait ressortir différents détails d'implémentation. PlanToCode les fusionne en un plan complet avec attribution de source.",
+        "question": "Que signifie la synthèse multi-modèles ?"
+      },
+      "title": "Questions Fréquemment Posées"
+    },
+    "hero": {
+      "badge": "Pour les développeurs qui révisent avant d'exécuter",
+      "credits": "5$ de crédits gratuits • Paiement à l'usage • Fonctionne avec tout outil de codage IA",
+      "guidance": "Voyez la portée complète, guidez vers les bons fichiers, choisissez l'approche qui convient à votre système.",
+      "insight": "Les modèles les plus récents et avancés sont brillants pour le code, aveugles à l'architecture.",
+      "install": "Installer PlanToCode",
+      "subtitle": "Vous ne pouvez pas vous souvenir de mentionner chaque webhook, cache, tâche de fond et consommateur d'API qui dépend de cette fonction. C'est comme ça que les régressions s'infiltrent.",
+      "title": "Planification Architecturale pour Codex CLI, Claude Code & Cursor"
+    },
+    "integrations": {
+      "claude": {
+        "description": "Améliorez le Mode Plan natif de Claude Code avec la synthèse multi-modèles, la découverte de fichiers et les instructions de fusion.",
+        "link": "Ouvrir le guide de workflow de planification Claude Code",
+        "title": "Workflow de planification Claude Code"
+      },
+      "codex": {
+        "description": "Cartographiez chaque dépendance, fusionnez les plans multi-modèles, puis exécutez avec les modes d'approbation Codex pour une itération sûre.",
+        "link": "Ouvrir le guide de workflow de planification Codex CLI",
+        "title": "Workflow de planification Codex CLI"
+      },
+      "cursor": {
+        "description": "Donnez à Cursor Composer et au mode Agent un contexte architectural complet avec des garde-fous d'exécution compatibles WSL.",
+        "link": "Ouvrir le guide de workflow de planification Cursor",
+        "title": "Workflow de planification Cursor"
+      },
+      "title": "Choisissez votre workflow de planification CLI"
+    },
+    "meta": {
+      "description": "Planifiez les modifications logicielles avant de coder. Générez des spécifications d'implémentation fichier par fichier, révisez avec votre équipe, puis exécutez avec visibilité et gouvernance complètes.",
+      "title": "Planifier Avant de Coder - Spécifications Révisables"
+    },
+    "progress": {
+      "execute": {
+        "description": "Voyez la portée exacte avant d'exécuter. Terminal intégré ou collez dans votre IDE",
+        "title": "Exécuter avec visibilité complète"
+      },
+      "guide": {
+        "description": "Dites à l'IA ce que vous aimez, ce qu'il faut éviter. Elle suit vos décisions architecturales étonnamment bien",
+        "title": "Guider les fusions avec votre expertise"
+      },
+      "quote": "L'IA génère le code. Vous architecturez la solution.",
+      "ship": {
+        "description": "L'architecte IA fusionne les insights complémentaires de plusieurs plans en implémentation complète",
+        "title": "Livrer des fonctionnalités complexes en toute confiance"
+      },
+      "title": "Le progrès que vous faites réellement"
+    },
+    "users": {
+      "cli": {
+        "quote": "Mon agent CLI manquait les cas limites ou cassait les fonctionnalités existantes. Maintenant l'architecte IA détecte les lacunes et régressions dans les plans avant qu'ils n'atteignent ma codebase.",
+        "title": "Utilisateurs d'agents CLI"
+      },
+      "ide": {
+        "quote": "Les agents IDE manquent de contexte architectural. Maintenant mon architecte IA pré-planifie la bonne approche, considérant tous les impacts système. Ensuite je colle le plan validé dans Cursor.",
+        "title": "Utilisateurs Cursor & Windsurf"
+      },
+      "senior": {
+        "quote": "L'IA continuait à corriger les symptômes, pas les causes. Maintenant je la guide vers la bonne couche d'abstraction d'abord. La découverte de fichiers montre l'architecture réelle avant qu'aucun code ne soit écrit.",
+        "title": "Ingénieurs seniors"
+      },
+      "title": "Qui utilise cela"
+    },
+    "whyNow": {
+      "ide": {
+        "detail": "Les outils de codage IA populaires sont brillants au niveau micro. Vous avez besoin de quelque chose qui voit le macro.",
+        "reason": "Chaque IDE a l'IA maintenant"
+      },
+      "models": {
+        "detail": "Les modèles modernes sont capables. Mais ils ne connaissent pas **votre** architecture, **vos** patterns, **vos** contraintes.",
+        "reason": "Les modèles IA écrivent un excellent code"
+      },
+      "systems": {
+        "detail": "Changez le service utilisateur, cassez l'application mobile. Mettez à jour cette interface, affectez trois microservices. L'IA ne voit pas ces connexions.",
+        "reason": "Les codebases sont des systèmes interconnectés"
+      },
+      "title": "Pourquoi c'est important maintenant"
+    },
+    "workflow": {
+      "discovery": {
+        "description": "Le workflow multi-étapes fait ressortir les bons fichiers avant de planifier",
+        "step": "Découverte de Fichiers"
+      },
+      "execute": {
+        "description": "Exécuter dans le terminal ou coller dans votre outil de codage IA",
+        "step": "Exécuter"
+      },
+      "generate": {
+        "description": "Exécutez plusieurs modèles avec différentes perspectives et garde-fous de tokens",
+        "step": "Générer des Plans"
+      },
+      "link": "Voir le workflow détaillé",
+      "merge": {
+        "description": "Fournissez des instructions de fusion, l'IA consolide les détails complémentaires de plusieurs exécutions",
+        "step": "L'IA Fusionne + Vous Guidez"
+      },
+      "title": "Comment ça marche"
+    }
+  },
+  "schedule": {
+    "benefits": {
+      "review": {
+        "description": "Discutez de l'intégration avec vos workflows existants Claude Code, Cursor ou Aider.",
+        "title": "Revue d'Architecture"
+      },
+      "session": {
+        "description": "Consultation ciblée sur les besoins de votre équipe et comment PlanToCode peut aider.",
+        "title": "Session de 30 Minutes"
+      },
+      "team": {
+        "description": "Découvrez les fonctionnalités d'entreprise, la gouvernance de terminal et les options de déploiement.",
+        "title": "Solutions d'Équipe"
+      }
+    },
+    "footer": "Vous ne trouvez pas d'horaire approprié ? Envoyez-nous un e-mail à",
+    "hero": {
+      "subtitle": "Obtenez des conseils d'experts sur l'utilisation de PlanToCode pour les besoins spécifiques de votre équipe. Nous discuterons des patterns d'architecture, des stratégies d'intégration et des options de déploiement.",
+      "title": "Parler à un Architecte"
+    },
+    "meta": {
+      "description": "Obtenez des conseils d'experts sur l'utilisation de PlanToCode pour les besoins spécifiques de votre équipe. Nous discuterons des patterns d'architecture, des stratégies d'intégration et des options de déploiement.",
+      "title": "Parler à un Architecte"
+    },
+    "topics": {
+      "items": {
+        "cost": "Optimisation des coûts pour grandes équipes",
+        "deployment": "Exigences de déploiement sur site",
+        "integration": "Intégration avec les workflows existants Claude Code/Cursor",
+        "orchestration": "Orchestration de terminal pour pipelines CI/CD",
+        "planning": "Stratégies de planification multi-modèles pour code hérité",
+        "security": "Considérations de sécurité & conformité"
+      },
+      "title": "Sujets Courants Que Nous Couvrons"
+    }
+  },
+  "support": {
+    "button": "Contacter le Support",
+    "hero": {
+      "subtitle": "Obtenez de l'aide avec PlanToCode",
+      "title": "Support"
+    },
+    "meta": {
+      "description": "Obtenez de l'aide avec l'installation de PlanToCode, l'intégration de Claude Code, Cursor et Codex. Dépannage et demandes de fonctionnalités. Temps de réponse 24h.",
+      "title": "Support PlanToCode - Aide & Dépannage"
+    },
+    "resources": {
+      "changelog": "Journal des modifications",
+      "feedback": "Commentaires",
+      "help": "Centre d'aide",
+      "roadmap": "Feuille de route",
+      "title": "Ressources FeatureBase"
+    }
+  },
+  "workflows": {
+    "hub": {
+      "badge": "Workflows de Développement IA",
+      "card": {
+        "solves": "Résout :",
+        "viewLink": "Voir le workflow"
+      },
+      "cta": {
+        "downloadLink": "Télécharger PlanToCode",
+        "subtitle": "Commencez par la découverte de fichiers, générez des plans complets et exécutez en toute confiance.",
+        "title": "Prêt à Transformer Votre Workflow de Développement ?"
+      },
+      "description": "Découvrez des workflows éprouvés pour les tâches de développement complexes. Chaque workflow combine la découverte de fichiers, la planification multi-modèles et l'exécution en terminal intégré pour résoudre de vrais défis d'ingénierie.",
+      "meta": {
+        "description": "Workflows de développement IA pour tâches complexes. Intégrez avec Claude Code, Cursor, Codex pour refactorisations, triage de bugs et migrations.",
+        "title": "Workflows de Codage IA - Patterns d'Intégration PlanToCode"
+      },
+      "title": "Workflows de Développement Propulsés par l'IA",
+      "toolCategories": {
+        "claudeCode": "Workflows Claude Code",
+        "codexCli": "Workflows Codex CLI",
+        "cursor": "Workflows Cursor",
+        "general": "Workflows Généraux"
+      }
+    }
+  }
+}

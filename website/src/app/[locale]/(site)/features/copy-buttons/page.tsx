@@ -122,7 +122,7 @@ export default async function CopyButtonsPage({ params }: { params: Promise<{ lo
                           {((t['copyButtons.templateSystem.placeholders.examples'] ?? []) as string[]).map((example, index) => (
                             <li key={index} className="flex items-start gap-2">
                               <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
-                              <span className="text-xs"><code className="bg-black/30 px-1 rounded">{example}</code></span>
+                              <span className="text-xs"><code className="bg-muted px-1 rounded text-foreground">{example}</code></span>
                             </li>
                           ))}
                         </ul>
@@ -219,19 +219,19 @@ export default async function CopyButtonsPage({ params }: { params: Promise<{ lo
                         ))}
                       </ul>
                     </div>
-                    <div className="bg-black/70 dark:bg-black/50 rounded-lg p-6">
-                      <div className="text-green-400 mb-3 text-sm font-mono">Example Button Configuration:</div>
+                    <div className="bg-muted rounded-lg p-6 border border-border">
+                      <div className="text-green-600 dark:text-green-400 mb-3 text-sm font-mono">Example Button Configuration:</div>
                       <div className="font-mono text-xs space-y-2">
-                        <div className="text-cyan-400">Label: "Parallel Claude Agents"</div>
-                        <div className="text-yellow-400">Template:</div>
-                        <div className="text-white ml-2 text-wrap break-words">
+                        <div className="text-cyan-600 dark:text-cyan-400">Label: "Parallel Claude Agents"</div>
+                        <div className="text-yellow-600 dark:text-yellow-400">Template:</div>
+                        <div className="text-foreground ml-2 text-wrap break-words">
                           {`{{IMPLEMENTATION_PLAN}}`}<br/>
                           <br/>
                           <strong>Now, think deeply!</strong> Read the files mentioned,<br/>
                           understand them and launch parallel Claude<br/>
                           coding agents that run <strong>at the same time</strong>...
                         </div>
-                        <div className="text-green-400 mt-3">→ One click = Full workflow execution</div>
+                        <div className="text-green-600 dark:text-green-400 mt-3">→ One click = Full workflow execution</div>
                       </div>
                     </div>
                   </div>
@@ -240,26 +240,26 @@ export default async function CopyButtonsPage({ params }: { params: Promise<{ lo
               {/* Technical Architecture */}
               <div className="mb-16">
                 <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">{t['copyButtons.technical.title'] ?? ''}</h2>
-                <GlassCard className="p-8 bg-black/50">
+                <GlassCard className="p-8">
                   <div className="font-mono text-sm">
-                    <div className="text-gray-500 mb-4"># Copy Button System Architecture</div>
+                    <div className="text-muted-foreground mb-4"># Copy Button System Architecture</div>
                     <div className="mb-6">
-                      <div className="text-green-400 mb-2">## 1. Configuration Storage</div>
-                      <div className="text-white ml-4" dangerouslySetInnerHTML={{__html: (t['copyButtons.technical.architecture.storage'] ?? '').replace(/→/g, '<br />→')}} />
+                      <div className="text-green-500 dark:text-green-400 mb-2">## 1. Configuration Storage</div>
+                      <div className="text-card-foreground ml-4" dangerouslySetInnerHTML={{__html: (t['copyButtons.technical.architecture.storage'] ?? '').replace(/→/g, '<br />→')}} />
                     </div>
                     <div className="mb-6">
-                      <div className="text-green-400 mb-2">## 2. Template Processing</div>
-                      <div className="text-white ml-4" dangerouslySetInnerHTML={{__html: (t['copyButtons.technical.architecture.processing'] ?? '').replace(/→/g, '<br />→')}} />
+                      <div className="text-green-500 dark:text-green-400 mb-2">## 2. Template Processing</div>
+                      <div className="text-card-foreground ml-4" dangerouslySetInnerHTML={{__html: (t['copyButtons.technical.architecture.processing'] ?? '').replace(/→/g, '<br />→')}} />
                     </div>
                     <div className="mb-6">
-                      <div className="text-green-400 mb-2">## 3. UI Integration</div>
-                      <div className="text-white ml-4" dangerouslySetInnerHTML={{__html: (t['copyButtons.technical.architecture.ui'] ?? '').replace(/→/g, '<br />→')}} />
+                      <div className="text-green-500 dark:text-green-400 mb-2">## 3. UI Integration</div>
+                      <div className="text-card-foreground ml-4" dangerouslySetInnerHTML={{__html: (t['copyButtons.technical.architecture.ui'] ?? '').replace(/→/g, '<br />→')}} />
                     </div>
                     <div className="mb-6">
-                      <div className="text-green-400 mb-2">## 4. Execution Flow</div>
-                      <div className="text-white ml-4" dangerouslySetInnerHTML={{__html: (t['copyButtons.technical.architecture.execution'] ?? '').replace(/→/g, '<br />→')}} />
+                      <div className="text-green-500 dark:text-green-400 mb-2">## 4. Execution Flow</div>
+                      <div className="text-card-foreground ml-4" dangerouslySetInnerHTML={{__html: (t['copyButtons.technical.architecture.execution'] ?? '').replace(/→/g, '<br />→')}} />
                     </div>
-                    <div className="text-cyan-400 mt-4">
+                    <div className="text-cyan-500 dark:text-cyan-400 mt-4">
                       [Extensible system: Add new placeholders and templates as needed]
                     </div>
                   </div>
@@ -274,9 +274,9 @@ export default async function CopyButtonsPage({ params }: { params: Promise<{ lo
                     <p className="text-foreground/80 text-sm mb-3">
                       {t['copyButtons.useCases.parallel.description'] ?? ''}
                     </p>
-                    <div className="bg-black/30 rounded p-3 font-mono text-xs">
-                      <span className="text-green-400">Button:</span> "Parallel Claude Agents"<br/>
-                      <span className="text-cyan-400">Saves:</span> Complex multi-agent setup instructions
+                    <div className="bg-muted rounded p-3 font-mono text-xs text-foreground">
+                      <span className="text-green-600 dark:text-green-400">Button:</span> "Parallel Claude Agents"<br/>
+                      <span className="text-cyan-600 dark:text-cyan-400">Saves:</span> Complex multi-agent setup instructions
                     </div>
                   </GlassCard>
                   <GlassCard className="p-6">
@@ -284,9 +284,9 @@ export default async function CopyButtonsPage({ params }: { params: Promise<{ lo
                     <p className="text-foreground/80 text-sm mb-3">
                       {t['copyButtons.useCases.investigation.description'] ?? ''}
                     </p>
-                    <div className="bg-black/30 rounded p-3 font-mono text-xs">
-                      <span className="text-green-400">Button:</span> "Investigate Results"<br/>
-                      <span className="text-cyan-400">Saves:</span> Thorough validation workflows
+                    <div className="bg-muted rounded p-3 font-mono text-xs text-foreground">
+                      <span className="text-green-600 dark:text-green-400">Button:</span> "Investigate Results"<br/>
+                      <span className="text-cyan-600 dark:text-cyan-400">Saves:</span> Thorough validation workflows
                     </div>
                   </GlassCard>
                   <GlassCard className="p-6">
@@ -294,9 +294,9 @@ export default async function CopyButtonsPage({ params }: { params: Promise<{ lo
                     <p className="text-foreground/80 text-sm mb-3">
                       {t['copyButtons.useCases.customTeam.description'] ?? ''}
                     </p>
-                    <div className="bg-black/30 rounded p-3 font-mono text-xs">
-                      <span className="text-green-400">Template:</span> {`{{PROJECT_CONTEXT}}`}<br/>
-                      <span className="text-cyan-400">Dynamic:</span> Project-aware instructions
+                    <div className="bg-muted rounded p-3 font-mono text-xs text-foreground">
+                      <span className="text-green-600 dark:text-green-400">Template:</span> {`{{PROJECT_CONTEXT}}`}<br/>
+                      <span className="text-cyan-600 dark:text-cyan-400">Dynamic:</span> Project-aware instructions
                     </div>
                   </GlassCard>
                   <GlassCard className="p-6">
@@ -304,9 +304,9 @@ export default async function CopyButtonsPage({ params }: { params: Promise<{ lo
                     <p className="text-foreground/80 text-sm mb-3">
                       {t['copyButtons.useCases.stepByStep.description'] ?? ''}
                     </p>
-                    <div className="bg-black/30 rounded p-3 font-mono text-xs">
-                      <span className="text-green-400">Template:</span> {`{{STEP_CONTENT}}`}<br/>
-                      <span className="text-cyan-400">Result:</span> Focused step execution
+                    <div className="bg-muted rounded p-3 font-mono text-xs text-foreground">
+                      <span className="text-green-600 dark:text-green-400">Template:</span> {`{{STEP_CONTENT}}`}<br/>
+                      <span className="text-cyan-600 dark:text-cyan-400">Result:</span> Focused step execution
                     </div>
                   </GlassCard>
                 </div>

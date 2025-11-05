@@ -216,7 +216,7 @@
         "question": "Does PlanToCode work with Cursor Agent and Background Agents?"
       },
       "q7": {
-        "answer": "The planning phase adds 3-5 minutes upfront but saves hours of debugging, duplicate file cleanup, and path corrections. Most developers report net time savings, especially on complex tasks in large codebases. For quick prototypes where mistakes are cheap to fix, you can skip planning and use Cursor alone.",
+        "answer": "The planning phase adds 3-5 minutes upfront but saves hours of debugging, duplicate file cleanups. Most developers report net time savings, especially on complex tasks in large codebases. For quick prototypes where mistakes are cheap to fix, you can skip planning and use Cursor alone.",
         "question": "Will using both tools slow down my workflow?"
       },
       "q8": {
@@ -436,7 +436,7 @@
       },
       "step4": {
         "description": "Cursor generates the code following your approved plan. Review the actual implementation. Since you already approved the architecture, you're only checking code quality—not catching structural mistakes.",
-        "saved": "Time saved: No duplicate file cleanup, no path corrections, no architectural rework",
+        "saved": "Time saved: No duplicate file cleanup, no import errors, no architectural rework",
         "title": "Review Implementation"
       },
       "title": "How to Use Cursor + PlanToCode Together"

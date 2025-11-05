@@ -1,0 +1,940 @@
+{
+  "about": {
+    "architecture": {
+      "comment": "단순한 AI 채팅이 아닌 복잡한 개발 워크플로우를 위해 설계되었습니다",
+      "title": "기술 기반"
+    },
+    "capabilities": {
+      "automation": {
+        "description": "스마트 템플릿을 사용한 구성 가능한 복사 버튼. 플레이스홀더 치환 및 터미널 통합으로 모든 프롬프트를 재사용 가능한 워크플로우로 변환하세요.",
+        "title": "워크플로우 자동화"
+      },
+      "discovery": {
+        "description": "다단계 워크플로우: 루트 폴더 선택, 정규식 패턴 필터링, AI 관련성 평가. 경로 검증을 통한 집중된 파일 선택.",
+        "title": "지능형 파일 검색"
+      },
+      "planning": {
+        "description": "절단 정책 없이 전체 컨텍스트 로딩. 번호가 매겨진 단계가 있는 구조화된 XML 계획. 다중 모델 생성 및 아키텍처 합성.",
+        "title": "구현 계획"
+      },
+      "synthesis": {
+        "description": "단순한 병합을 넘어 - SOLID 원칙을 사용한 심층 아키텍처 분석. 모든 결정에 대한 [src:P1 step 2] 속성을 통한 소스 추적 가능성.",
+        "title": "아키텍처 합성"
+      },
+      "terminal": {
+        "description": "5초 상태 모니터링, 자동 복구 작업 및 에이전트 주의 감지 기능이 있는 PTY 세션. 앱 재시작 후에도 세션이 유지됩니다.",
+        "title": "작업 중심 터미널"
+      },
+      "title": "핵심 기능",
+      "voice": {
+        "description": "터미널 명령을 위한 OpenAI Whisper 통합. 컨텍스트 인식 처리 및 실시간 작업 추적을 통한 선택 기반 텍스트 개선.",
+        "title": "음성 및 텍스트 통합"
+      }
+    },
+    "company": {
+      "contact": "연락처",
+      "jurisdiction": "독일",
+      "name": "helpful bits GmbH",
+      "title": "회사 정보"
+    },
+    "hero": {
+      "subtitle": "PlanToCode는 개발자가 영향을 받는 파일을 찾고, 계획을 생성 및 병합하며, 터미널에서 실행하여 코드 변경 사항을 계획하고 배포할 수 있도록 지원합니다.",
+      "title": "PlanToCode 소개"
+    },
+    "meta": {
+      "description": "다중 모델 통합, 영구 터미널, 음성 전사 및 아키텍처 합성을 갖춘 AI 개발 계획.",
+      "title": "PlanToCode 소개 - AI 개발 계획 도구"
+    },
+    "philosophy": {
+      "noTruncation": {
+        "description": "전체 파일 내용을 로드합니다. 선제적 절단 없이 스마트 경고만 제공합니다. 진지한 개발 작업에 필요한 전체 컨텍스트를 제공합니다.",
+        "title": "무절단 정책"
+      },
+      "title": "우리의 철학",
+      "tooling": {
+        "description": "Monaco 에디터, xterm.js, 적절한 개발 환경 통합. 단순한 채팅 인터페이스가 아닌 완전한 개발 계획 플랫폼입니다.",
+        "title": "전문적인 도구"
+      },
+      "traceability": {
+        "description": "모든 AI 결정에는 소스 속성이 포함됩니다. 완전한 감사 추적, 비용 추적 및 세션 지속성. 무슨 일이 일어났고 왜 일어났는지 정확히 알 수 있습니다.",
+        "title": "완전한 추적 가능성"
+      },
+      "transparency": {
+        "description": "로컬 저장소, 투명한 AI 제공업체 통신 및 전송되는 내용에 대한 완전한 제어. API 호출을 확인하기 전에 항상 컨텍스트를 확인할 수 있습니다.",
+        "title": "투명성 및 제어"
+      }
+    },
+    "whatWeBuilt": {
+      "environment": {
+        "description": "Monaco 에디터 통합, 상태 모니터링이 있는 영구 터미널 세션, 음성 전사 및 5MB SQLite 링 버퍼. 실제 개발 워크플로우를 위해 구축되었습니다.",
+        "title": "전문 개발 환경"
+      },
+      "intro": "PlanToCode는 빠른 AI 상호 작용보다 컨텍스트, 추적 가능성 및 전문 도구가 더 중요한 진지한 개발 작업을 위해 설계된 포괄적인 개발 계획 환경입니다. 기존 AI 도구가 부족한 복잡한 다단계 구현을 위한 시스템을 구축했습니다.",
+      "multiModel": {
+        "description": "GPT-5, Claude Sonnet 4 및 Gemini 2.5 Pro와의 통합. 단순한 API 호출이 아닌 프로젝트별 구성, 실시간 스트리밍 및 완전한 추적 가능성을 갖춘 지능형 오케스트레이션입니다.",
+        "title": "다중 모델 인텔리전스"
+      },
+      "title": "우리가 구축한 것"
+    }
+  },
+  "comparisons": {
+    "hub": {
+      "badge": "도구 비교",
+      "card": {
+        "badge": "비교",
+        "viewLink": "비교 보기",
+        "whySwitchLabel": "개발자가 전환하는 이유:"
+      },
+      "cta": {
+        "button": "PlanToCode 무료로 시도하기",
+        "footer": "$5 무료 크레딧 • 신용카드 불필요",
+        "subtitle": "복잡하고 미션 크리티컬한 작업을 위해 개발자들이 PlanToCode로 전환하는 이유를 확인하세요.",
+        "title": "차이를 경험하세요"
+      },
+      "cursorNote": {
+        "link": "PlanToCode가 Cursor를 어떻게 보완하는지 알아보기 →",
+        "strong": "Cursor 대안을 찾고 계신가요?",
+        "text": "PlanToCode는 Cursor를 대체하는 것이 아니라 함께 작동합니다."
+      },
+      "description": "PlanToCode의 아키텍처 계획 접근 방식이 기존 터미널 도구, AI 코딩 어시스턴트 및 기타 개발 워크플로우와 어떻게 비교되는지 확인하세요.",
+      "meta": {
+        "description": "PlanToCode를 tmux, script, asciinema, Cursor, Claude Code 및 기타 개발 도구와 비교하세요. 아키텍처 계획이 워크플로우를 어떻게 개선하는지 확인하세요.",
+        "title": "PlanToCode vs 대안 - 기능 비교"
+      },
+      "title": "PlanToCode vs 대안",
+      "whatMakesDifferent": {
+        "architectural": {
+          "description": "다단계 파일 검색은 변경하기 전에 전체 코드베이스 아키텍처를 매핑합니다. 대부분의 도구는 표시하는 내용만 볼 수 있습니다.",
+          "title": "아키텍처 인식"
+        },
+        "humanInLoop": {
+          "description": "실행하기 전에 모든 계획을 검토, 편집 및 승인합니다. 영구 터미널 세션을 통해 언제든지 일시 중지, 조사 및 재개할 수 있습니다.",
+          "title": "휴먼 인 더 루프"
+        },
+        "multiModel": {
+          "description": "여러 AI 모델(GPT-5, Claude 4.5, Gemini 2.5 Pro)에서 계획을 생성하고 최고의 통찰력을 병합합니다. 단일 모델 도구는 관점을 놓칩니다.",
+          "title": "다중 모델 계획"
+        },
+        "title": "PlanToCode를 차별화하는 요소"
+      }
+    }
+  },
+  "cursorAlternative": {
+    "comparison": {
+      "intro": "이것은 경쟁적 비교가 아니라 도구가 서로를 어떻게 보완하는지 보여주는 것입니다:",
+      "table": {
+        "approval": {
+          "cursor": "기본 제공 안됨",
+          "name": "팀 승인 워크플로우",
+          "plan": "완전한 감사 추적",
+          "together": "PlanToCode에서 승인, Cursor에서 구현"
+        },
+        "autocomplete": {
+          "cursor": "업계 선도",
+          "name": "자동완성 및 IntelliSense",
+          "plan": "포함 안됨",
+          "together": "Cursor가 자동완성 처리"
+        },
+        "capability": "기능",
+        "chat": {
+          "cursor": "우수한 UX",
+          "name": "채팅 인터페이스",
+          "plan": "작업 기반 UI",
+          "together": "Cursor의 채팅이 자연스러움"
+        },
+        "cursor": "Cursor",
+        "discovery": {
+          "cursor": "기본 인덱싱",
+          "name": "파일 검색 및 분석",
+          "plan": "고급 워크플로우",
+          "together": "PlanToCode가 파일을 찾고, Cursor가 수정"
+        },
+        "duplicates": {
+          "cursor": "기본 제공 안됨",
+          "name": "중복 파일 방지",
+          "plan": "검토 중 포착",
+          "together": "PlanToCode가 방지, Cursor가 올바르게 실행"
+        },
+        "multiModel": {
+          "cursor": "요청당 단일 모델",
+          "name": "다중 모델 합성",
+          "plan": "모델 비교 및 병합",
+          "together": "여러 모델의 최고 계획 → Cursor"
+        },
+        "planning": {
+          "cursor": "사용 불가",
+          "name": "구현 계획",
+          "plan": "핵심 기능",
+          "together": "PlanToCode가 Cursor 안내"
+        },
+        "plantocode": "PlanToCode",
+        "pricing": {
+          "cursor": "$20/월 구독",
+          "name": "가격 모델",
+          "plan": "사용량 기반 (구독 없음)",
+          "together": "$20/월 + 실제 사용량 (일반적으로 $5-15)"
+        },
+        "review": {
+          "cursor": "채팅을 통한 수동",
+          "name": "실행 전 검토",
+          "plan": "기본 제공 워크플로우",
+          "together": "PlanToCode에서 검토, Cursor에서 실행"
+        },
+        "speed": {
+          "cursor": "우수",
+          "name": "코드 생성 속도",
+          "plan": "포함 안됨",
+          "together": "Cursor가 생성 처리"
+        },
+        "together": "함께 더 나음"
+      },
+      "title": "기능 비교: 상호 보완적 강점"
+    },
+    "faq": {
+      "q1": {
+        "answer": "아니요, PlanToCode는 Cursor 대체품이 아닙니다. Cursor와 함께 작동하는 보완 도구입니다. Cursor는 코드 생성 및 자동완성에 탁월하지만 PlanToCode는 구현 계획을 통해 안전 계층을 추가합니다. 속도를 위해서는 Cursor를, 안전을 위해서는 PlanToCode를 사용하세요.",
+        "question": "PlanToCode는 Cursor 대안 또는 대체품인가요?"
+      },
+      "q2": {
+        "answer": "두 도구를 함께 사용하면 일반적인 Cursor 문제를 방지할 수 있습니다: 중복 파일 생성, 잘못된 파일 경로(특히 다중 워크스페이스 프로젝트에서), 예기치 않은 파일 수정 및 검토되지 않은 변경 사항으로 인한 프로덕션 버그. PlanToCode의 계획 단계에서 실행 전에 이러한 문제를 포착합니다.",
+        "question": "Cursor와 PlanToCode를 함께 사용하면 어떤 문제가 해결되나요?"
+      },
+      "q3": {
+        "answer": "워크플로우는 다음과 같습니다: 1) PlanToCode에서 파일별 구현 계획 생성, 2) 계획 검토 및 승인 (경로 오류 또는 중복 포착), 3) 승인된 계획을 Cursor Agent 또는 Composer에 붙여넣기, 4) Cursor가 명확한 아키텍처 컨텍스트로 코드 생성 실행.",
+        "question": "PlanToCode를 Cursor와 함께 사용하려면 어떻게 해야 하나요?"
+      },
+      "q4": {
+        "answer": "Cursor 구독은 월 $20입니다. PlanToCode는 구독 없이 사용량 기반 가격을 사용합니다. 총 비용: Cursor에 월 $20 + PlanToCode의 실제 API 사용량 (일반 사용 시 일반적으로 월 $5-15). 많은 개발자들이 이것이 중복 파일 정리에 소요되는 시간보다 저렴하다고 생각합니다.",
+        "question": "결합된 가격은 어떻게 되나요?"
+      },
+      "q5": {
+        "answer": "물론입니다. Cursor는 소규모 프로젝트, 그린필드 개발 및 빠른 프로토타입에 독립적으로 잘 작동합니다. 대규모 코드베이스(50k+ LOC), 복잡한 리팩토링, 승인이 필요한 팀 환경에서 작업하거나 중복 파일 문제를 경험한 경우 PlanToCode를 추가하세요.",
+        "question": "PlanToCode 없이 Cursor를 사용할 수 있나요?"
+      },
+      "q6": {
+        "answer": "예. PlanToCode에서 구현 계획을 생성하고 검토한 다음 승인된 계획을 Cursor Agent Terminal에 붙여넣거나 Background Agents에 제공하세요. 완전한 아키텍처 컨텍스트로 실행하여 일반적인 경로 및 중복 오류를 방지합니다.",
+        "question": "PlanToCode는 Cursor Agent 및 Background Agents와 함께 작동하나요?"
+      },
+      "q7": {
+        "answer": "계획 단계는 초기에 3-5분을 추가하지만 디버깅, 중복 파일 정리 및 경로 수정에 소요되는 시간을 절약합니다. 대부분의 개발자는 특히 대규모 코드베이스의 복잡한 작업에서 순 시간 절약을 보고합니다. 실수를 수정하는 것이 저렴한 빠른 프로토타입의 경우 계획을 건너뛰고 Cursor만 사용할 수 있습니다.",
+        "question": "두 도구를 함께 사용하면 워크플로우가 느려지나요?"
+      },
+      "q8": {
+        "answer": "예, 물론입니다. PlanToCode는 Cursor의 자동완성이나 다른 Cursor 기능을 방해하지 않습니다. 함께 작동하는 별도의 도구입니다. 일반 코딩에는 Cursor의 자동완성을 사용하고 더 큰 변경 사항에 대한 구현 계획이 필요할 때 PlanToCode로 전환하세요.",
+        "question": "PlanToCode로 Cursor의 자동완성을 계속 사용할 수 있나요?"
+      },
+      "title": "자주 묻는 질문"
+    },
+    "finalCta": {
+      "description": "답은 Cursor를 대체하는 것이 아니라 중복 파일, 잘못된 경로 및 프로덕션 버그를 방지하는 안전 계층을 추가하는 것입니다.",
+      "download": "PlanToCode 다운로드 (무료)",
+      "footer": "무료 다운로드. 사용량 기반 API 사용량. 기존 Cursor 설정과 함께 작동합니다.",
+      "guide": "통합 가이드 읽기",
+      "title": "Cursor 대안 찾기 중단"
+    },
+    "gettingStarted": {
+      "guide": "설정 가이드: Cursor + PlanToCode",
+      "quickWins": {
+        "duplicates": "생성되기 전에 중복 파일 포착",
+        "existing": "기존 Cursor 설정과 함께 작동",
+        "paths": "실행하기 전에 정확한 파일 경로 검토",
+        "plan": "5분 안에 생성된 첫 번째 계획",
+        "subscription": "PlanToCode에 구독 불필요",
+        "title": "빠른 승리"
+      },
+      "resources": {
+        "comparison": "상세한 도구 비교",
+        "discovery": "파일 검색 워크플로우",
+        "documentation": "전체 문서",
+        "integration": "Cursor 통합 가이드",
+        "title": "무료 리소스"
+      },
+      "step1": {
+        "cursor": "cursor.sh에서 Cursor 다운로드 (평가판 후 월 $20)",
+        "install": "원활한 워크플로우를 위해 같은 시스템에 둘 다 설치",
+        "plan": "다운로드 페이지에서 PlanToCode 다운로드 (무료, 사용량 기반 API 사용량)",
+        "title": "1단계: 두 도구 모두 설치"
+      },
+      "step2": {
+        "items": {
+          "1": "Cursor(컨텍스트용) 및 PlanToCode(계획용)에서 프로젝트 열기",
+          "2": "PlanToCode에서: 작업 설명, 파일 검색 실행, 구현 계획 생성",
+          "3": "Monaco 에디터에서 계획 검토—파일 경로 확인, 중복 없음 확인",
+          "4": "승인된 계획 복사",
+          "5": "Cursor에서: Agent Terminal 또는 Composer 열기, 계획 붙여넣기, Cursor 실행",
+          "6": "Cursor가 생성한 코드 검토 (아키텍처는 이미 확인됨)"
+        },
+        "title": "2단계: 첫 번째 결합 워크플로우 시도"
+      },
+      "step3": {
+        "comparison": "어떤 도구를 언제 사용할지 자세한 비교 보기",
+        "docs": "모범 사례를 위한 구현 계획 문서 살펴보기",
+        "integration": "자세한 워크플로우를 위한 Cursor 통합 가이드 읽기",
+        "title": "3단계: 고급 워크플로우 학습"
+      },
+      "title": "두 도구 시작하기"
+    },
+    "hero": {
+      "badge": "대체품이 아닌 안전 동반자",
+      "download": "PlanToCode 다운로드 (무료)",
+      "guide": "Cursor 통합 가이드 보기",
+      "subtitle": "Cursor 대안 찾기를 중단하세요. 진짜 해결책은 Cursor를 대체하는 것이 아니라 발생하기 전에 중복 파일, 잘못된 경로 및 프로덕션 버그를 방지하는 안전 계층을 추가하는 것입니다.",
+      "title": "Cursor 대안?",
+      "titleHighlight": "아니요—당신의 Cursor 안전 동반자"
+    },
+    "meta": {
+      "description": "Cursor 대체품을 찾지 않으시나요? PlanToCode는 중복 파일, 잘못된 경로 및 프로덕션 버그를 방지하기 위해 Cursor와 함께 작동합니다. 함께 사용하세요.",
+      "title": "Cursor 안전 동반자 - 대안 아님"
+    },
+    "prevention": {
+      "bugs": {
+        "generate": "Cursor의 생성 우선 접근 방식: 변경 사항이 즉시 적용됩니다. Cursor가 utils/helpers.ts를 수정하여 15개의 다른 파일을 손상시켰다는 것을 눈치채지 못할 수 있습니다. 프로덕션 또는 테스트 중에 손상을 발견합니다.",
+        "plan": "PlanToCode의 계획 우선 접근 방식: 계획은 실행하기 전에 모든 파일 수정을 보여줍니다. utils/helpers.ts가 변경될 것을 볼 수 있습니다. 종속성 분석을 실행합니다. 15개 파일이 의존하고 있음을 깨닫습니다. 그에 따라 계획을 조정합니다.",
+        "title": "프로덕션 버그 방지"
+      },
+      "duplicates": {
+        "generate": "Cursor의 생성 우선 접근 방식: AI가 즉시 코드를 생성합니다. 올바른 파일을 찾을 수 없거나 유사한 이름으로 혼동되면 새 파일을 만듭니다. 생성 후 중복을 발견합니다.",
+        "plan": "PlanToCode의 계획 우선 접근 방식: 계획은 코드 생성 전에 정확한 파일 경로를 나열합니다. 계획에서 components/Button.tsx 및 components/ui/Button.tsx를 볼 수 있습니다. 검토 중 중복 명명 문제를 포착합니다.",
+        "title": "중복 파일 방지"
+      },
+      "intro": "개발자가 Cursor에서 경험하는 문제는 무작위가 아니라 생성 우선 워크플로우의 예측 가능한 결과입니다. 계획 우선이 각각을 방지하는 방법은 다음과 같습니다:",
+      "paths": {
+        "generate": "Cursor의 생성 우선 접근 방식: 특히 다중 워크스페이스 프로젝트에서 Cursor는 잘못된 워크스페이스에서 코드를 생성하거나 상대 경로를 잘못 사용할 수 있습니다. 코드가 실행되지 않을 때 경로 오류를 발견합니다.",
+        "plan": "PlanToCode의 계획 우선 접근 방식: 파일 검색은 완전한 리포지토리 구조를 보여줍니다. 계획은 절대 경로를 사용합니다. 검토 단계에서 경로가 실제 구조와 일치하는지 확인합니다. Cursor는 계획에서 올바른 경로를 가져옵니다.",
+        "title": "잘못된 파일 경로 방지"
+      },
+      "scope": {
+        "generate": "Cursor의 생성 우선 접근 방식: \"다크 모드 토글 추가\"를 요청하면 Cursor가 전체 테마 시스템을 리팩토링하고, 30개 구성 요소를 업데이트하고, CSS 아키텍처를 변경할 수 있습니다. 생성 후 범위 확장을 발견합니다.",
+        "plan": "PlanToCode의 계획 우선 접근 방식: 계획은 \"변경 사항: 완전한 테마 리팩토링을 포함한 47개 파일\"을 보여줍니다. 범위를 즉시 볼 수 있습니다. 프롬프트를 개선합니다: \"토글 구성 요소만 추가, 리팩토링 없음.\" 계획을 재생성합니다. 이제 3개 파일입니다. 승인하고 실행합니다.",
+        "title": "범위 확장 방지"
+      },
+      "title": "계획 우선이 Cursor의 일반적인 문제를 방지하는 이유"
+    },
+    "problem": {
+      "bugs": {
+        "description": "검토 없이 직접 적용된 변경 사항으로 명확한 롤백 경로 없이 프로덕션 코드가 손상됩니다.",
+        "source": "— 대규모 코드베이스의 일반적인 불만",
+        "title": "프로덕션 버그"
+      },
+      "duplicates": {
+        "description": "\"Cursor는 왜 중복 파일 구조를 만드나요? 누적된 중복으로 인해 프로젝트를 완전히 포기했습니다.\"",
+        "source": "— Cursor 포럼 #47028 (14개 이상의 답변)",
+        "title": "중복 파일 혼란"
+      },
+      "insight": "여기 통찰력이 있습니다: 이것들은 Cursor 버그가 아니라 생성 우선, 나중 검토 접근 방식에 내재된 것입니다. 해결책은 다른 코드 생성기가 아닙니다. 계획 우선 안전 계층을 추가하는 것입니다.",
+      "intro": "Cursor가 코드 생성에서 나쁘기 때문에 Cursor 대안을 찾는 것이 아닙니다. 다음 문제 중 하나(또는 모두)를 경험했기 때문에 찾고 있습니다:",
+      "paths": {
+        "description": "\"Cursor는 파일 경로를 매우 자주 잘못 가져오며, 특히 여러 워크스페이스에서 거의 항상 그렇습니다.\"",
+        "source": "— Cursor 이슈 #31402",
+        "title": "잘못된 경로 오류"
+      },
+      "title": "개발자가 \"Cursor 대안\"을 검색하는 이유",
+      "unexpected": {
+        "description": "\"채팅에서 코드 업데이트 적용이 기존 파일을 수정하는 대신 새 파일을 만듭니다.\"",
+        "source": "— Cursor 이슈 #22347",
+        "title": "예기치 않은 파일 생성"
+      }
+    },
+    "testimonials": {
+      "enterprise": {
+        "quote": "우리 규정 준수 팀은 실행하기 전에 모든 AI 변경 사항을 선임 엔지니어가 검토하도록 요구합니다. PlanToCode는 우리에게 필요한 승인 워크플로우를 제공합니다. 주니어 개발자가 계획을 생성하고, 시니어가 검토 및 승인한 다음 주니어가 승인된 계획을 Cursor에 붙여넣습니다. 모두가 만족합니다.",
+        "title": "기업 팀, 레거시 코드베이스 (400k LOC)",
+        "tools": "도구: 8명의 개발자를 위한 Cursor Pro (월 $160) + PlanToCode 자체 호스팅 서버"
+      },
+      "freelancer": {
+        "quote": "고객에게 시간당 청구합니다. 중복 파일 정리에 2시간을 소비할 여유가 없습니다. PlanToCode는 5분 검토 단계에서 모든 것을 포착합니다. 승인을 위해 고객에게 계획을 보여주고, 그들은 정확히 무엇을 지불하는지 볼 수 있으며, 그런 다음 Cursor에서 실행합니다. 매우 전문적입니다.",
+        "title": "프리랜서, 클라이언트 프로젝트",
+        "tools": "도구: Cursor Pro (월 $20) + PlanToCode (월 ~$6 사용량)"
+      },
+      "intro": "이러한 워크플로우는 개발자가 두 도구를 함께 사용하는 방법을 보여줍니다:",
+      "solo": {
+        "quote": "모노레포에서 중복 파일이 계속 발생했습니다. Cursor가 packages/api/auth.ts와 packages/api/src/auth.ts를 만들곤 했습니다. 이제 PlanToCode에서 계획을 생성하고 경로가 올바른지 확인한 다음 Cursor Agent에 붙여넣습니다. 전환 이후 중복이 없습니다.",
+        "title": "단독 개발자, 모노레포 (120k LOC)",
+        "tools": "도구: Cursor Pro (월 $20) + PlanToCode (월 ~$8 사용량)"
+      },
+      "startup": {
+        "quote": "다중 워크스페이스 프로젝트에서 Cursor의 경로 오류가 우리를 죽이고 있었습니다. PlanToCode의 파일 검색은 모든 워크스페이스에서 완전한 구조를 보여줍니다. 계획에서 경로를 확인한 다음 Cursor가 올바른 컨텍스트를 가지고 있기 때문에 완벽하게 실행합니다.",
+        "title": "스타트업 CTO, 다중 워크스페이스 프로젝트",
+        "tools": "도구: Cursor Pro (월 $20) + PlanToCode (월 ~$12 사용량)"
+      },
+      "title": "PlanToCode를 추가한 실제 Cursor 사용자"
+    },
+    "twist": {
+      "complement": "PlanToCode는 Cursor를 대체하지 않습니다. 누락된 부분을 추가합니다: 실행 전 구현 계획. 실수가 코드가 되기 전에 잡아내는 안전 계층으로 생각하세요.",
+      "cursorFor": {
+        "autocomplete": "스마트 자동완성",
+        "commands": "자연어 명령",
+        "ide": "IDE 통합",
+        "prototypes": "빠른 프로토타입",
+        "speed": "코드 생성 속도",
+        "title": "Cursor 사용 용도:"
+      },
+      "planFor": {
+        "approval": "팀 승인 워크플로우",
+        "duplicates": "중복 파일 방지",
+        "paths": "조기 경로 오류 포착",
+        "planning": "구현 계획",
+        "review": "실행 전 검토",
+        "title": "PlanToCode 사용 용도:"
+      },
+      "strength": "Cursor는 번개처럼 빠른 코드 생성, 스마트 자동완성 및 직관적인 채팅 인터페이스라는 자신이 하는 일에 탁월합니다. 그러나 즉시 코드를 생성하는데, 이것은 강점이자 약점입니다.",
+      "title": "반전: PlanToCode는 대체품이 아닙니다"
+    },
+    "whenToUse": {
+      "enterprise": {
+        "cursor": "개별 기여자를 위한 Cursor 사용",
+        "cursorDesc": "개발자는 매일 Cursor를 사용합니다. PlanToCode의 계획이 작업을 안내합니다.",
+        "plan": "승인 워크플로우를 위한 PlanToCode 사용",
+        "planDesc": "이해관계자가 실행하기 전에 계획을 검토합니다. 규정 준수 및 거버넌스를 위한 감사 추적.",
+        "title": "팀 환경 및 기업"
+      },
+      "greenfield": {
+        "cursor": "Cursor 독립 실행형 사용",
+        "cursorDesc": "실수를 빠르게 포착할 수 있는 간단한 구조의 새 프로젝트. 파일 구성이 아직 복잡하지 않습니다.",
+        "plan": "PlanToCode 선택 사항",
+        "planDesc": "명확한 구조의 소규모 프로젝트에는 중요하지 않습니다.",
+        "title": "그린필드 프로젝트 및 빠른 프로토타입"
+      },
+      "large": {
+        "cursor": "Cursor로 실행",
+        "cursorDesc": "승인된 계획을 Cursor Agent에 붙여넣습니다. 명확한 컨텍스트로 코드 생성을 처리하도록 합니다.",
+        "plan": "PlanToCode 계획으로 시작",
+        "planDesc": "파일별 계획 생성, 검토 단계에서 잘못된 경로 및 중복 포착.",
+        "title": "대형/레거시 코드베이스 (50k+ LOC)"
+      },
+      "medium": {
+        "cursor": "구현을 위한 Cursor 사용",
+        "cursorDesc": "수동으로 변경 사항을 검토하기에 여전히 충분히 빠릅니다. 좋은 자동완성이 시간을 절약합니다.",
+        "plan": "복잡한 작업을 위한 PlanToCode 추가",
+        "planDesc": "리팩토링, 다중 패키지 변경 또는 경로 오류가 발생한 경우 계획에 사용합니다.",
+        "title": "중간 코드베이스 (10k-50k LOC)"
+      },
+      "title": "Cursor vs PlanToCode 사용 시기 (나란히)"
+    },
+    "workflow": {
+      "combined": "결합 워크플로우: 계획 → 실행 → 검토",
+      "example": {
+        "title": "실제 예: 인증 시스템 리팩토링",
+        "with": "PlanToCode 사용: 변경이 필요한 모든 12개 파일을 보여주는 계획 생성. Cursor의 초기 계획이 3개 API 경로를 놓쳤음을 포착. 수정된 계획 승인. Cursor에 붙여넣기. 30분 만에 완료, 중복 없음.",
+        "without": "PlanToCode 없이: Cursor에게 \"세션 대신 JWT를 사용하도록 인증 리팩토링\"을 요청. Cursor가 auth-new.ts, middleware/auth.ts (중복)를 만들고 api/login.ts 업데이트를 놓침. 수정에 2시간 소요."
+      },
+      "intro": "가장 효과적인 워크플로우는 두 도구를 결합하여 각각이 가장 잘하는 일에 사용합니다:",
+      "step1": {
+        "catch": "포착하는 것: 잘못된 파일 경로, 중복 파일, 누락된 종속성, 범위 확장",
+        "description": "작업 설명 (음성 또는 텍스트), 영향을 받는 모든 파일을 찾기 위해 파일 검색 실행, 여러 AI 모델(Claude, GPT, Gemini)에서 구현 계획 생성.",
+        "title": "PlanToCode에서 계획"
+      },
+      "step2": {
+        "description": "Monaco 에디터에서 계획을 엽니다. 정확한 파일 경로가 리포지토리 구조와 일치하는지 확인합니다. 중복 확인. 개선이 필요한 단계 편집. 필요한 경우 다른 모델의 계획 병합.",
+        "gate": "안전 게이트: 명시적 승인 없이는 아무 일도 일어나지 않습니다",
+        "title": "검토 및 승인"
+      },
+      "step3": {
+        "alternative": "대안: 전체 로깅과 함께 PlanToCode의 통합 터미널에서 직접 실행",
+        "description": "승인된 계획을 복사합니다. Cursor Agent Terminal 또는 Composer에 붙여넣습니다. 이제 Cursor는 완전한 아키텍처 컨텍스트를 가지고 있습니다—수정할 파일, 변경할 내용 및 이유를 정확히 알고 있습니다.",
+        "title": "Cursor에서 실행"
+      },
+      "step4": {
+        "description": "Cursor는 승인된 계획에 따라 코드를 생성합니다. 실제 구현을 검토합니다. 이미 아키텍처를 승인했으므로 구조적 실수를 잡는 것이 아니라 코드 품질만 확인합니다.",
+        "saved": "절약된 시간: 중복 파일 정리 없음, 경로 수정 없음, 아키텍처 재작업 없음",
+        "title": "구현 검토"
+      },
+      "title": "Cursor + PlanToCode를 함께 사용하는 방법"
+    }
+  },
+  "demo": {
+    "cta": {
+      "button": "모든 스크린샷 보기",
+      "description": "실제 워크플로우의 실제 스크린샷 탐색 - 파일 검색, 구현 계획, 터미널 세션 등.",
+      "title": "더 보고 싶으신가요?"
+    },
+    "hero": {
+      "screenshots": "실제 스크린샷 보기",
+      "subtitle": "PlanToCode가 코드 변경 사항을 계획하고 실행하는 방법을 확인하세요.",
+      "title": "인터랙티브 데모",
+      "video": "짧은 데모 보기"
+    },
+    "meta": {
+      "description": "PlanToCode가 코드 변경 사항을 계획하고 실행하는 방법을 확인하세요.",
+      "title": "인터랙티브 데모"
+    }
+  },
+  "downloads": {
+    "cta": {
+      "architect": "아키텍트와 상담",
+      "docs": "터미널 문서",
+      "footer": "Made in Germany • GDPR 준수 • 로컬 세션 저장소",
+      "professional": "전문 옵션",
+      "title": "레벨업할 준비가 되셨나요?"
+    },
+    "hero": {
+      "subtitle": "하나의 도구로 코드 변경 사항 계획 - 관련 파일 찾기, 계획 생성 및 병합, 영구 터미널에서 명령 실행.",
+      "title": "PlanToCode 다운로드"
+    },
+    "macos": {
+      "professional": {
+        "description": "Apple의 완전한 공증. 코드 서명. CLI 자동 감지 및 세션 지속성을 갖춘 통합 터미널.",
+        "title": "전문가 준비"
+      },
+      "requirements": {
+        "internet": "AI 기능에 인터넷 연결 필요",
+        "os": "macOS 11.0 (Big Sur) 이상",
+        "processor": "Apple Silicon (M1/M2/M3/M4) 프로세서",
+        "ram": "4GB RAM 최소 (8GB 권장)",
+        "title": "시스템 요구 사항"
+      },
+      "subtitle": "헤비 코딩 에이전트 사용자용",
+      "title": "macOS"
+    },
+    "meta": {
+      "description": "macOS 및 Windows용 PlanToCode 다운로드. 무료 $5 크레딧. AI로 다중 파일 변경 계획, 실행 전 검토. 신용카드 불필요.",
+      "title": "PlanToCode 다운로드 - macOS 및 Windows | 무료 평가판"
+    },
+    "mobile": {
+      "button": "곧 App Store에 출시",
+      "connected": {
+        "description": "iOS 앱 출시 시 알림을 받으려면 대기자 명단에 가입하세요. 헤비 코딩 에이전트 사용자를 위한 조기 액세스.",
+        "title": "연결 유지"
+      },
+      "features": {
+        "design": "네이티브 iOS/iPadOS 디자인 언어",
+        "monitor": "원격으로 터미널 세션 모니터링",
+        "review": "이동 중에도 구현 계획 검토 및 편집",
+        "sync": "데스크톱 워크스페이스와 원활하게 동기화",
+        "title": "계획된 기능",
+        "voice": "빠른 아이디어 캡처를 위한 음성 전사"
+      },
+      "subtitle": "곧 iPhone 및 iPad 출시",
+      "title": "iOS 모바일 앱"
+    },
+    "trust": {
+      "planning": {
+        "description": "GPT-5, Claude Sonnet 4, Gemini 2.5 Pro, o3/o4-mini, Grok 4, DeepSeek R1, Kimi K2. LLM 협의회 접근 방식.",
+        "title": "다중 모델 계획"
+      },
+      "pricing": {
+        "description": "즉시 시작. 사용량 기반. 구독 없음. 비용을 추적하는 파워 유저를 위한 토큰 투명성.",
+        "title": "사용량 기반 가격"
+      },
+      "professional": {
+        "description": "단일 테넌트 서버. 온프레미스 배포. 터미널 거버넌스. 클라우드 전용을 사용할 수 없는 팀을 위해 구축되었습니다.",
+        "title": "전문 옵션"
+      },
+      "terminal": {
+        "description": "claude, cursor, codex 또는 gemini를 직접 실행합니다. 음성 전사를 사용할 수 있으며 로그는 로컬에 유지되므로 컨텍스트 전환 없이 작업을 재개할 수 있습니다.",
+        "title": "통합 터미널"
+      },
+      "title": "헤비 코딩 에이전트 사용자를 위해 구축됨"
+    },
+    "windows": {
+      "integration": {
+        "description": "PowerShell 및 Command Prompt 지원. 상태 모니터링 및 복구를 통해 claude, cursor, codex 또는 gemini를 실행합니다.",
+        "title": "터미널 통합"
+      },
+      "requirements": {
+        "internet": "AI 기능에 인터넷 연결 필요",
+        "os1": "Windows 10 버전 1903 (빌드 18362) 이상",
+        "os2": "Windows 11 지원",
+        "processor": "x64 또는 ARM64 프로세서",
+        "ram": "4GB RAM 최소 (8GB 권장)",
+        "title": "시스템 요구 사항"
+      },
+      "subtitle": "Microsoft Store - 전문가 준비",
+      "title": "Windows"
+    }
+  },
+  "howItWorks": {
+    "cta": {
+      "links": {
+        "demo": "인터랙티브 데모 시도",
+        "docs": "문서 보기",
+        "planning": "계획 편집에 대해 알아보기"
+      },
+      "subtitle": "회의 캡처부터 안전한 실행까지—AI 코딩 에이전트를 자신 있게 채택하는 기업 팀을 위한 완전한 워크플로우. 모든 소스에서 요구 사항을 캡처하고, AI로 개선하고, 세분화된 계획을 생성하고, 완전한 제어로 검토하고, 안전하게 실행합니다.",
+      "title": "기업 개발 워크플로우를 혁신할 준비가 되셨나요?"
+    },
+    "demo": {
+      "button": "인터랙티브 데모 시도",
+      "description": "완전한 워크플로우를 보려면 인터랙티브 데모를 시청하세요",
+      "title": "실제로 보기"
+    },
+    "hero": {
+      "badge": "전문 AI 계획 워크플로우",
+      "subtitle": "회의 캡처부터 안전한 실행까지—완전한 기업 AI 개발 워크플로우",
+      "title": "작동 방식"
+    },
+    "keyFeatures": {
+      "deploy": {
+        "description": "제어하는 인프라에 요청을 유지해야 할 때 자체 API 키와 함께 포함된 Rust 프록시 서버를 사용하세요.",
+        "title": "조건에 따라 배포"
+      },
+      "governance": {
+        "description": "실행하기 전에 모든 계획을 검토합니다. 접근 방식, 병합 전략을 편집하고 승인하거나 거부합니다. AI는 지원하고 인간은 제어합니다. 코드 품질이 중요한 팀을 위해 구축되었습니다.",
+        "title": "휴먼 인 더 루프 거버넌스"
+      },
+      "sessions": {
+        "description": "터미널 출력은 로컬에 저장되고 세션은 시작 시 복원됩니다. 앱을 닫고 다음 주에 돌아와서 디버깅을 계속합니다.",
+        "title": "영구 세션"
+      },
+      "title": "기업 팀이 이 워크플로우를 선택하는 이유"
+    },
+    "meta": {
+      "description": "AI 구현 계획은 혼란을 방지합니다. 파일 검색, 다중 모델 계획, 인간 검토 및 모든 코딩 에이전트와의 안전한 실행.",
+      "title": "작동 방식 - AI 계획 워크플로우"
+    },
+    "useCases": {
+      "bugs": {
+        "description": "버그의 화면 캡처 녹화, AI 분석 받기, 디버깅 계획 생성, 전체 터미널 제어로 실행.",
+        "items": {
+          "persistent": "영구 터미널 로그",
+          "systematic": "체계적인 디버깅 접근 방식",
+          "visual": "화면 녹화를 통한 시각적 컨텍스트"
+        },
+        "title": "복잡한 버그 조사"
+      },
+      "features": {
+        "description": "신중한 계획이 필요한 다중 파일 기능. 여러 접근 방식을 생성하고 최상의 부분을 병합하고 특정 코드베이스에 맞게 편집합니다.",
+        "items": {
+          "api": "API 설계 및 통합",
+          "cross": "교차 구성 요소 기능 구현",
+          "schema": "데이터베이스 스키마 변경"
+        },
+        "title": "대형 기능 개발"
+      },
+      "legacy": {
+        "description": "AI는 레거시 패턴과 기술 부채를 이해합니다. 안전한 리팩토링 계획, 라이브러리 업그레이드 및 아키텍처 개선을 생성합니다.",
+        "items": {
+          "breaking": "중단 변경 마이그레이션 계획",
+          "cleanup": "기술 부채 정리",
+          "dependency": "종속성 업그레이드 전략"
+        },
+        "title": "레거시 코드베이스 유지 관리"
+      },
+      "professional": {
+        "description": "명령 승인, 세션 보존, 단일 테넌트 배포. 잘못된 명령 하나가 수백만 달러의 비용을 초래하는 팀을 위해 구축되었습니다.",
+        "items": {
+          "audit": "완전한 감사 추적",
+          "governance": "터미널 거버넌스 및 승인",
+          "onprem": "온프레미스 배포 옵션"
+        },
+        "title": "전문 개발"
+      },
+      "title": "기업 개발 팀을 위해 구축됨"
+    },
+    "workflow": {
+      "step1": {
+        "description": "여러 소스에서 초기 요구 사항을 캡처하는 것으로 시작합니다. 다중 모드 분석을 위해 Microsoft Teams 회의 녹음을 업로드하고, 시각적 컨텍스트를 캡처하기 위해 화면 프레젠테이션을 녹화하거나, 빠른 아이디어 캡처를 위해 음성 받아쓰기를 사용합니다. 모든 입력 방법은 동일한 개선 워크플로우로 피드됩니다.",
+        "meetings": {
+          "description": "Teams 회의를 업로드합니다. 다중 모드 AI는 오디오 전사(화자 식별 포함) 및 시각적 콘텐츠(공유 화면, 문서)를 분석하여 요구 사항, 결정 및 작업 항목을 추출합니다.",
+          "title": "회의 녹음"
+        },
+        "screen": {
+          "description": "워크플로우, 버그 또는 UI 프레젠테이션을 녹화합니다. Gemini Vision은 오디오 내레이션과 시각적 콘텐츠를 모두 분석하여 요구 사항 수집을 위한 완전한 컨텍스트를 캡처합니다.",
+          "title": "화면 녹화"
+        },
+        "subtitle": "회의 녹음, 화면 캡처 및 음성 받아쓰기",
+        "title": "아이디어 및 컨텍스트 캡처",
+        "voice": {
+          "description": "요구 사항을 자연스럽게 말합니다. OpenAI Whisper는 빠른 사양 캡처를 위해 스마트 텍스트 삽입 및 화자 식별로 전사합니다.",
+          "title": "음성 받아쓰기"
+        }
+      },
+      "step2": {
+        "description": "명확성과 완전성을 모두 보장하기 위해 함께 작동하는 두 가지 고유한 AI 프롬프트 유형을 사용하여 원시 회의 전사, 음성 녹음 및 대략적인 메모를 명확하고 구현 준비가 된 사양으로 변환합니다.",
+        "subtitle": "명확성과 완전성을 위한 두 가지 AI 프롬프트 유형",
+        "taskRefinement": {
+          "description": "암시된 요구 사항 식별, 간과된 격차 채우기, 예상 동작 및 엣지 케이스 명확화, 구현 준비를 위한 기술적 고려 사항 추가로 작업 설명을 확장합니다.",
+          "title": "작업 개선"
+        },
+        "textEnhancement": {
+          "description": "원래 의도, 어조 및 기술적 세부 수준을 유지하면서 문법, 문장 구조, 명확성 및 간결성을 개선합니다. 음성 전사 및 회의 노트를 다듬는 데 완벽합니다.",
+          "title": "텍스트 향상"
+        },
+        "title": "실행 가능한 사양으로 개선"
+      },
+      "step3": {
+        "description": "AI 파일 검색은 코드베이스 전체에서 관련 파일을 식별합니다. 여러 AI 모델이 파일별 세분성—정확한 파일 경로, 특정 줄 범위 및 명확한 작업 유형(수정/생성/삭제)—을 갖춘 구현 계획을 생성합니다. 이러한 세분성은 영향 평가를 매우 명확하게 만듭니다.",
+        "features": {
+          "dependencies": "종속성 분석 및 영향 평가",
+          "models": "다중 모델 지원 (GPT-5, Claude 4, Gemini 2.5 Pro)",
+          "multiple": "접근 방식 비교를 위한 여러 계획 생성",
+          "operations": "명확한 작업 유형 (수정, 생성, 삭제)",
+          "paths": "리포지토리 구조의 정확한 파일 경로",
+          "ranges": "특정 줄 범위 및 수정 세부 사항"
+        },
+        "subtitle": "정확한 리포지토리 경로가 있는 파일별 계획",
+        "title": "세분화된 구현 계획 생성"
+      },
+      "step4": {
+        "capabilities": {
+          "approve": "실행을 위해 승인하거나 감사 추적으로 거부",
+          "editing": "모든 계획 단계 및 세부 사항의 직접 편집",
+          "editor": "구문 강조가 있는 전문 Monaco 에디터",
+          "merge": "사용자 지정 지침으로 여러 계획 병합",
+          "modifications": "수정 또는 대체 접근 방식 요청",
+          "visibility": "제안된 변경 사항에 대한 완전한 가시성"
+        },
+        "description": "계획은 포괄적인 검토를 위해 Monaco 에디터에서 열립니다. 팀 리더는 제안된 모든 변경 사항을 검사하고, 단계를 직접 편집하고, 사용자 지정 지침으로 여러 접근 방식을 병합하거나, 계획을 완전히 거부합니다. 명시적인 인간 승인 없이는 코드 변경이 발생하지 않습니다—기업 요구 사항 및 팀 워크플로우와의 일치를 보장합니다.",
+        "subtitle": "코드 변경 전 완전한 제어",
+        "title": "검토, 편집 및 승인 (휴먼 인 더 루프)"
+      },
+      "step5": {
+        "description": "승인 후 선택한 코딩 에이전트(Claude Code, Cursor, Codex) 또는 할당된 소프트웨어 개발자에게 계획을 안전하게 전송합니다. 파일별 세분성은 회귀 및 의도하지 않은 수정을 방지하여 안전한 실행을 보장합니다. 영구 세션이 있는 통합 터미널을 통해 즉시 실행 및 디버깅이 가능합니다.",
+        "subtitle": "개발자 또는 코딩 에이전트에게 안전한 인계",
+        "title": "자신 있게 실행",
+        "tools": {
+          "audit": "실행의 완전한 감사 추적",
+          "claude": "계획 모드 지원이 있는 Claude Code CLI",
+          "codex": "OpenAI Codex CLI 실행",
+          "cursor": "Cursor CLI 통합",
+          "sessions": "자동 복구가 있는 영구 터미널 세션",
+          "terminal": "음성 전사가 있는 통합 터미널"
+        }
+      },
+      "title": "완전한 워크플로우"
+    }
+  },
+  "planMode": {
+    "capabilities": {
+      "architect": {
+        "capability": "AI 아키텍트가 지침에 따라 계획을 병합합니다",
+        "details": "아키텍처 요구 사항으로 병합을 안내합니다. AI는 여러 실행의 상호 보완적인 세부 사항을 하나의 포괄적인 계획으로 통합합니다"
+      },
+      "execution": {
+        "capability": "완전한 제어로 실행",
+        "details": "계획을 검토하고 범위를 확인한 다음 실행합니다. 또는 IDE의 채팅에 붙여넣습니다."
+      },
+      "know": {
+        "capability": "발생하기 전에 무엇이 변경될지 알기",
+        "details": "파일 검색은 정확한 영향을 보여줍니다. 각 계획이 어떤 파일을 건드리는지 확인합니다. 놀라움 없음.",
+        "link": "작동 방식 보기"
+      },
+      "prompts": {
+        "capability": "작동하는 원클릭 프롬프트",
+        "details": "검증된 프롬프트를 위한 복사 버튼. \"타입 안전하게 만들기\"를 20번 다시 입력할 필요가 없습니다."
+      },
+      "title": "실제로 얻는 것"
+    },
+    "circumstances": {
+      "footer": "이것들은 \"고충\"이 아닙니다. 접근 방식을 커밋하기 전에 가시성과 제어가 필요한 순간입니다. 그것이 우리가 구축한 것입니다.",
+      "items": {
+        "breaks": {
+          "moment": "변경 사항이 3개의 다운스트림 서비스를 손상시키고 프로덕션에서 발견됩니다",
+          "progress": "파일 검색은 모든 종속성을 사전에 매핑하고 영향을 조기에 포착합니다"
+        },
+        "drift": {
+          "moment": "AI가 요구 사항에서 벗어나 자신이 원한다고 생각하는 것을 구축합니다",
+          "progress": "AI 아키텍트는 계획을 실제 목표와 일치시키고 벗어나지 않습니다"
+        },
+        "plans": {
+          "moment": "한 계획은 엣지 케이스를 포착하고 다른 계획은 오류 상태를 처리하고 세 번째 계획은 타입을 추가합니다",
+          "progress": "AI 아키텍트는 상호 보완적인 통찰력을 완전한 구현으로 결합합니다"
+        },
+        "symptom": {
+          "moment": "AI가 /components의 증상을 수정하고 /config의 원인을 놓칩니다",
+          "progress": "파일 검색으로 올바른 추상화 계층으로 안내합니다"
+        }
+      },
+      "title": "AI가 아키텍처 컨텍스트가 필요한 경우"
+    },
+    "cta": {
+      "book": "아키텍트 세션 예약",
+      "demo": "먼저 인터랙티브 데모 시도",
+      "pricing": "사용량 기반 크레딧. 신규 사용자에게 $5 무료 프로모션. 구독 없음.",
+      "subtitle": "명확성, 추적 가능성 및 운영 신뢰성으로 큰 변경 사항을 배포하는 개발자와 함께하세요.",
+      "title": "아키텍트를 고용할 준비가 되셨나요?"
+    },
+    "faq": {
+      "q1": {
+        "answer": "PlanToCode는 Codex, Claude Code 또는 Cursor를 사용하기 **전에** 아키텍처 사전 계획을 제공합니다. 해당 도구의 실행 단계를 보완하는 파일 검색, 다중 모델 합성 및 병합 지침을 추가합니다.",
+        "question": "이것이 Codex CLI 또는 Claude Code와 어떻게 다른가요?"
+      },
+      "q2": {
+        "answer": "예. PlanToCode는 Codex CLI, Claude Code, Cursor 및 Windsurf와 함께 작동합니다. PlanToCode에서 계획을 생성한 다음 선호하는 도구에서 전체 컨텍스트로 실행합니다.",
+        "question": "기존 AI 코딩 도구와 함께 사용할 수 있나요?"
+      },
+      "q3": {
+        "answer": "다른 AI 모델로 동일한 작업을 여러 번 실행합니다. 각 실행은 다른 구현 세부 사항을 표면화합니다. PlanToCode는 소스 속성을 사용하여 하나의 포괄적인 계획으로 병합합니다.",
+        "question": "다중 모델 합성은 무엇을 의미하나요?"
+      },
+      "title": "자주 묻는 질문"
+    },
+    "hero": {
+      "badge": "실행하기 전에 검토하는 개발자를 위해",
+      "credits": "$5 무료 크레딧 • 사용량 기반 • 모든 AI 코딩 도구와 함께 작동",
+      "guidance": "전체 범위를 보고, 올바른 파일로 안내하고, 시스템에 맞는 접근 방식을 선택합니다.",
+      "insight": "가장 새롭고 가장 발전된 모델은 코드에 뛰어나지만 아키텍처에는 눈이 멀었습니다.",
+      "install": "PlanToCode 설치",
+      "subtitle": "그 하나의 함수에 의존하는 모든 웹훅, 캐시, 백그라운드 작업 및 API 소비자를 언급하는 것을 기억할 수 없습니다. 그것이 회귀가 스며드는 방법입니다.",
+      "title": "Codex CLI, Claude Code 및 Cursor를 위한 아키텍처 계획"
+    },
+    "integrations": {
+      "claude": {
+        "description": "다중 모델 합성, 파일 검색 및 병합 지침으로 Claude Code의 네이티브 계획 모드를 향상시킵니다.",
+        "link": "Claude Code 계획 워크플로우 가이드 열기",
+        "title": "Claude Code 계획 워크플로우"
+      },
+      "codex": {
+        "description": "모든 종속성을 매핑하고 다중 모델 계획을 병합한 다음 안전한 반복을 위해 Codex 승인 모드로 실행합니다.",
+        "link": "Codex CLI 계획 워크플로우 가이드 열기",
+        "title": "Codex CLI 계획 워크플로우"
+      },
+      "cursor": {
+        "description": "Cursor Composer 및 Agent 모드에 WSL 친화적인 실행 가드레일과 함께 전체 아키텍처 컨텍스트를 제공합니다.",
+        "link": "Cursor 계획 워크플로우 가이드 열기",
+        "title": "Cursor 계획 워크플로우"
+      },
+      "title": "CLI 계획 워크플로우 선택"
+    },
+    "meta": {
+      "description": "코딩하기 전에 소프트웨어 변경 사항을 계획합니다. 파일별 구현 사양을 생성하고, 팀과 검토하고, 완전한 가시성과 거버넌스로 실행합니다.",
+      "title": "코드하기 전에 계획 - 검토 가능한 사양"
+    },
+    "progress": {
+      "execute": {
+        "description": "실행하기 전에 정확한 범위를 확인합니다. 통합 터미널 또는 IDE에 붙여넣기",
+        "title": "완전한 가시성으로 실행"
+      },
+      "guide": {
+        "description": "AI에게 좋아하는 것과 피해야 할 것을 알려줍니다. 놀랍게도 아키텍처 결정을 잘 따릅니다",
+        "title": "전문 지식으로 병합 안내"
+      },
+      "quote": "AI가 코드를 생성합니다. 당신이 솔루션을 설계합니다.",
+      "ship": {
+        "description": "AI 아키텍트는 여러 계획의 상호 보완적인 통찰력을 완전한 구현으로 병합합니다",
+        "title": "자신 있게 복잡한 기능 배포"
+      },
+      "title": "실제로 만드는 진전"
+    },
+    "users": {
+      "cli": {
+        "quote": "내 CLI 에이전트는 엣지 케이스를 놓치거나 기존 기능을 손상시킬 것입니다. 이제 AI 아키텍트는 코드베이스에 도달하기 전에 계획에서 격차와 회귀를 포착합니다.",
+        "title": "CLI 에이전트 사용자"
+      },
+      "ide": {
+        "quote": "IDE 에이전트는 아키텍처 컨텍스트가 부족합니다. 이제 내 AI 아키텍트는 모든 시스템 영향을 고려하여 올바른 접근 방식을 사전 계획합니다. 그런 다음 검증된 계획을 Cursor에 붙여넣습니다.",
+        "title": "Cursor 및 Windsurf 사용자"
+      },
+      "senior": {
+        "quote": "AI는 원인이 아닌 증상을 계속 수정했습니다. 이제 먼저 올바른 추상화 계층으로 안내합니다. 파일 검색은 코드가 작성되기 전에 실제 아키텍처를 보여줍니다.",
+        "title": "선임 엔지니어"
+      },
+      "title": "사용 중인 사람"
+    },
+    "whyNow": {
+      "ide": {
+        "detail": "인기 있는 AI 코딩 도구는 미시 수준에서 뛰어납니다. 거시를 보는 무언가가 필요합니다.",
+        "reason": "모든 IDE에 이제 AI가 있습니다"
+      },
+      "models": {
+        "detail": "현대 모델은 유능합니다. 그러나 **당신의** 아키텍처, **당신의** 패턴, **당신의** 제약을 알지 못합니다.",
+        "reason": "AI 모델은 우수한 코드를 작성합니다"
+      },
+      "systems": {
+        "detail": "사용자 서비스를 변경하면 모바일 앱이 손상됩니다. 이 인터페이스를 업데이트하면 3개의 마이크로서비스에 영향을 미칩니다. AI는 이러한 연결을 보지 못합니다.",
+        "reason": "코드베이스는 상호 연결된 시스템입니다"
+      },
+      "title": "지금 이것이 중요한 이유"
+    },
+    "workflow": {
+      "discovery": {
+        "description": "다단계 워크플로우는 계획하기 전에 올바른 파일을 표면화합니다",
+        "step": "파일 검색"
+      },
+      "execute": {
+        "description": "터미널에서 실행하거나 AI 코딩 도구에 붙여넣기",
+        "step": "실행"
+      },
+      "generate": {
+        "description": "다양한 관점과 토큰 가드레일로 여러 모델 실행",
+        "step": "계획 생성"
+      },
+      "link": "자세한 워크플로우 보기",
+      "merge": {
+        "description": "병합 지침 제공, AI가 여러 실행의 상호 보완적인 세부 사항을 통합",
+        "step": "AI 병합 + 사용자 안내"
+      },
+      "title": "작동 방식"
+    }
+  },
+  "schedule": {
+    "benefits": {
+      "review": {
+        "description": "기존 Claude Code, Cursor 또는 Aider 워크플로우와의 통합에 대해 논의합니다.",
+        "title": "아키텍처 검토"
+      },
+      "session": {
+        "description": "팀의 요구 사항과 PlanToCode가 어떻게 도움이 될 수 있는지에 대한 집중 상담.",
+        "title": "30분 세션"
+      },
+      "team": {
+        "description": "기업 기능, 터미널 거버넌스 및 배포 옵션에 대해 알아보세요.",
+        "title": "팀 솔루션"
+      }
+    },
+    "footer": "적합한 시간을 찾을 수 없나요? 이메일 보내기:",
+    "hero": {
+      "subtitle": "팀의 특정 요구 사항에 PlanToCode를 사용하는 방법에 대한 전문가 지침을 받으세요. 아키텍처 패턴, 통합 전략 및 배포 옵션에 대해 논의합니다.",
+      "title": "아키텍트와 상담"
+    },
+    "meta": {
+      "description": "팀의 특정 요구 사항에 PlanToCode를 사용하는 방법에 대한 전문가 지침을 받으세요. 아키텍처 패턴, 통합 전략 및 배포 옵션에 대해 논의합니다.",
+      "title": "아키텍트와 상담"
+    },
+    "topics": {
+      "items": {
+        "cost": "대규모 팀을 위한 비용 최적화",
+        "deployment": "온프레미스 배포 요구 사항",
+        "integration": "기존 Claude Code/Cursor 워크플로우와 통합",
+        "orchestration": "CI/CD 파이프라인을 위한 터미널 오케스트레이션",
+        "planning": "레거시 코드를 위한 다중 모델 계획 전략",
+        "security": "보안 및 규정 준수 고려 사항"
+      },
+      "title": "다루는 일반적인 주제"
+    }
+  },
+  "support": {
+    "button": "지원 문의",
+    "hero": {
+      "subtitle": "PlanToCode에 대한 도움 받기",
+      "title": "지원"
+    },
+    "meta": {
+      "description": "PlanToCode 설치, Claude Code, Cursor 및 Codex 통합에 대한 도움을 받으세요. 문제 해결 및 기능 요청. 24시간 응답 시간.",
+      "title": "PlanToCode 지원 - 도움말 및 문제 해결"
+    },
+    "resources": {
+      "changelog": "변경 로그",
+      "feedback": "피드백",
+      "help": "도움말 센터",
+      "roadmap": "로드맵",
+      "title": "FeatureBase 리소스"
+    }
+  },
+  "workflows": {
+    "hub": {
+      "badge": "AI 개발 워크플로우",
+      "card": {
+        "solves": "해결:",
+        "viewLink": "워크플로우 보기"
+      },
+      "cta": {
+        "downloadLink": "PlanToCode 다운로드",
+        "subtitle": "파일 검색으로 시작하고 포괄적인 계획을 생성하고 자신 있게 실행합니다.",
+        "title": "개발 워크플로우를 혁신할 준비가 되셨나요?"
+      },
+      "description": "복잡한 개발 작업을 위한 입증된 워크플로우를 발견하세요. 각 워크플로우는 파일 검색, 다중 모델 계획 및 통합 터미널 실행을 결합하여 실제 엔지니어링 문제를 해결합니다.",
+      "meta": {
+        "description": "복잡한 작업을 위한 AI 개발 워크플로우. 리팩토링, 버그 분류 및 마이그레이션을 위해 Claude Code, Cursor, Codex와 통합합니다.",
+        "title": "AI 코딩 워크플로우 - PlanToCode 통합 패턴"
+      },
+      "title": "AI 기반 개발 워크플로우",
+      "toolCategories": {
+        "claudeCode": "Claude Code 워크플로우",
+        "codexCli": "Codex CLI 워크플로우",
+        "cursor": "Cursor 워크플로우",
+        "general": "일반 워크플로우"
+      }
+    }
+  }
+}

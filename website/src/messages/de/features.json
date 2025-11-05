@@ -479,15 +479,6 @@
         ],
         "title": "Erweiterte Pfad-Discovery"
       },
-      "stage5": {
-        "description": "Validiert Dateipfade und korrigiert Inkonsistenzen. Stellt sicher, dass alle entdeckten Dateien existieren, zugänglich sind und normalisierte Pfade für plattformübergreifende Kompatibilität haben.",
-        "features": [
-          "Dateiexistenz-Validierung",
-          "Pfad-Normalisierung",
-          "Auflösung symbolischer Links"
-        ],
-        "title": "Pfadvalidierung & Korrektur"
-      },
       "title": "Der 5-stufige Discovery-Prozess"
     }
   },

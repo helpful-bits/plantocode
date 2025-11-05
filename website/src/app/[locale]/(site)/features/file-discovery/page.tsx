@@ -114,7 +114,7 @@ export default async function FileDiscoveryFeaturePage({ params }: { params: Pro
                 </div>
               </div>
 
-              {/* 5-Stage Workflow */}
+              {/* 4-Stage Workflow */}
               <div className="mb-16">
                 <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">{t['fileDiscovery.workflow.title']}</h2>
 
@@ -225,34 +225,6 @@ export default async function FileDiscoveryFeaturePage({ params }: { params: Pro
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
                             <span>{t['fileDiscovery.workflow.stage4.features.2']}</span>
-                          </li>
-                        </ul>
-                      </div>
-                    </div>
-                  </GlassCard>
-
-                  <GlassCard className="p-8">
-                    <div className="flex items-start gap-4">
-                      <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-primary to-primary/70 text-primary-foreground flex items-center justify-center font-bold">
-                        5
-                      </div>
-                      <div>
-                        <h3 className="text-xl font-bold mb-3">{t['fileDiscovery.workflow.stage5.title']}</h3>
-                        <p className="text-foreground/80 mb-4">
-                          {t['fileDiscovery.workflow.stage5.description']}
-                        </p>
-                        <ul className="space-y-2 text-foreground/70 text-sm">
-                          <li className="flex items-start gap-2">
-                            <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
-                            <span>{t['fileDiscovery.workflow.stage5.features.0']}</span>
-                          </li>
-                          <li className="flex items-start gap-2">
-                            <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
-                            <span>{t['fileDiscovery.workflow.stage5.features.1']}</span>
-                          </li>
-                          <li className="flex items-start gap-2">
-                            <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
-                            <span>{t['fileDiscovery.workflow.stage5.features.2']}</span>
                           </li>
                         </ul>
                       </div>
