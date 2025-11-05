@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "lenis/dist/lenis.css";
 @import "../styles/desktop-compat.css";
+@import "../styles/blog-content.css";
 
 @tailwind base;
 @tailwind components;

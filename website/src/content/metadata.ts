@@ -21,6 +21,101 @@ export const BASE_METADATA = {
   twitterHandle: '@plantocode',
 } as const;
 
+/**
+ * Generate locale-aware URL for a given pathname
+ */
+export function localizedUrl(pathname: string, locale: 'en' | 'de' | 'fr' | 'es'): string {
+  if (locale === 'en') {
+    return pathname;
+  }
+  return `/${locale}${pathname}`;
+}
+
+/**
+ * Build language alternates for a pathname
+ * Note: x-default is excluded per architecture (sitemap only)
+ */
+export function buildAlternates(pathname: string): { en: string; de: string; fr: string; es: string } {
+  const siteUrl = BASE_METADATA.siteUrl.replace(/\/$/, '');
+  return {
+    en: `${siteUrl}${localizedUrl(pathname, 'en')}`,
+    de: `${siteUrl}${localizedUrl(pathname, 'de')}`,
+    fr: `${siteUrl}${localizedUrl(pathname, 'fr')}`,
+    es: `${siteUrl}${localizedUrl(pathname, 'es')}`,
+  };
+}
+
+/**
+ * Generate complete page metadata with locale support
+ */
+export function generatePageMetadata(opts: {
+  locale: 'en' | 'de' | 'fr' | 'es';
+  slug: string;
+  title: string;
+  description?: string;
+  images?: Array<{
+    url: string;
+    width?: number;
+    height?: number;
+    alt?: string;
+  }>;
+}): Metadata {
+  const {
+    locale,
+    slug,
+    title,
+    description = '',
+    images = [BASE_METADATA.defaultImage],
+  } = opts;
+
+  // Build pathname (slug should start with /)
+  const pathname = slug.startsWith('/') ? slug : `/${slug}`;
+
+  // Generate canonical URL
+  const siteUrl = BASE_METADATA.siteUrl.replace(/\/$/, '');
+  const canonical = `${siteUrl}${localizedUrl(pathname, locale)}`;
+
+  // Build alternates (returns absolute URLs)
+  const alternateUrls = buildAlternates(pathname);
+
+  // Determine OpenGraph locale values
+  const ogLocale = locale === 'de' ? 'de_DE' : locale === 'fr' ? 'fr_FR' : locale === 'es' ? 'es_ES' : 'en_US';
+  const ogAlternateLocale = locale === 'en' ? ['de_DE', 'fr_FR', 'es_ES'] : ['en_US'];
+
+  return {
+    title,
+    description: description || undefined,
+    openGraph: {
+      title,
+      description: description || undefined,
+      url: canonical,
+      siteName: BASE_METADATA.siteName,
+      images: images.map(img => ({
+        url: img.url,
+        width: img.width || BASE_METADATA.defaultImage.width,
+        height: img.height || BASE_METADATA.defaultImage.height,
+        alt: img.alt || BASE_METADATA.defaultImage.alt,
+      })),
+      locale: ogLocale,
+      alternateLocale: ogAlternateLocale,
+      type: 'website',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description: description || undefined,
+      images: images.map(img => ({
+        url: img.url,
+        alt: img.alt || BASE_METADATA.defaultImage.alt,
+      })),
+    },
+    alternates: {
+      canonical,
+      languages: alternateUrls,
+    },
+  };
+}
+
 // Common keywords that can be reused
 export const COMMON_KEYWORDS = {
   core: [
@@ -72,7 +167,9 @@ export interface ContentMetadataOptions {
   publishedTime?: string;
   modifiedTime?: string;
   authors?: string[];
+  locale?: 'en' | 'de' | 'fr' | 'es';
 }
+
 
 /**
  * Generate complete metadata object for a page
@@ -88,6 +185,7 @@ export function generateMetadata(options: ContentMetadataOptions): Metadata {
     publishedTime,
     modifiedTime,
     authors = ['PlanToCode Team'],
+    locale = 'en',
   } = options;
 
   // Determine the base path for canonical URL
@@ -111,9 +209,27 @@ export function generateMetadata(options: ContentMetadataOptions): Metadata {
   };
 
   const basePath = getBasePath();
-  const canonicalUrl = basePath
-    ? `${BASE_METADATA.siteUrl}/${basePath}/${slug}`
-    : `${BASE_METADATA.siteUrl}/${slug}`;
+
+  // Generate canonical path without locale prefix
+  const baseCanonicalPath = basePath
+    ? `/${basePath}/${slug}`
+    : `/${slug}`;
+
+  // Generate locale-aware canonical path using new helper
+  const canonicalPath = localizedUrl(baseCanonicalPath, locale);
+
+  // Remove trailing slash from siteUrl if present
+  const siteUrl = BASE_METADATA.siteUrl.replace(/\/$/, '');
+
+  // Build full canonical URL
+  const canonicalUrl = `${siteUrl}${canonicalPath}`;
+
+  // Create language alternate URLs (buildAlternates returns absolute URLs)
+  const languageAlternates = buildAlternates(baseCanonicalPath);
+
+  // Determine OpenGraph locale values
+  const ogLocale = locale === 'de' ? 'de_DE' : locale === 'fr' ? 'fr_FR' : locale === 'es' ? 'es_ES' : 'en_US';
+  const ogAlternateLocale = locale === 'en' ? ['de_DE', 'fr_FR', 'es_ES'] : ['en_US'];
 
   const metadata: Metadata = {
     title,
@@ -130,7 +246,8 @@ export function generateMetadata(options: ContentMetadataOptions): Metadata {
         height: image.height || BASE_METADATA.defaultImage.height,
         alt: image.alt || BASE_METADATA.defaultImage.alt,
       }],
-      locale: 'en_US',
+      locale: ogLocale,
+      alternateLocale: ogAlternateLocale,
       type: type === 'blog' || type === 'docs' ? 'article' : 'website',
     },
     twitter: {
@@ -144,10 +261,7 @@ export function generateMetadata(options: ContentMetadataOptions): Metadata {
     },
     alternates: {
       canonical: canonicalUrl,
-      languages: {
-        'en-US': canonicalUrl,
-        'en': canonicalUrl,
-      },
+      languages: languageAlternates,
     },
   };
 

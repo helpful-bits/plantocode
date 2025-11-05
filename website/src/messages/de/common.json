@@ -1,0 +1,115 @@
+{
+  "aria": {
+    "closeMenu": "Navigationsmenü schließen",
+    "homePageLink": "PlanToCode Startseite",
+    "toggleMenu": "Navigationsmenü umschalten"
+  },
+  "breadcrumb": {
+    "blog": "Blog",
+    "comparisons": "Vergleiche",
+    "docs": "Dokumentation",
+    "features": "Features",
+    "home": "Startseite",
+    "integrations": "Integrationen",
+    "solutions": "Lösungen",
+    "stacks": "Technologie-Stacks",
+    "useCases": "Anwendungsfälle",
+    "workflows": "Workflows"
+  },
+  "cta": {
+    "download": "Herunterladen",
+    "talkToArchitect": "Architekt kontaktieren"
+  },
+  "feature": {
+    "copyButtons": {
+      "description": "Konfigurierbare Workflow-Automatisierung",
+      "label": "Copy Buttons"
+    },
+    "deepResearch": {
+      "description": "Web-Suche und Informationssynthese",
+      "label": "Deep Research"
+    },
+    "fileDiscovery": {
+      "description": "KI-gestützte intelligente Dateiauswahl",
+      "label": "File Discovery"
+    },
+    "integratedTerminal": {
+      "description": "Persistente Sessions mit Auto-Start der CLI",
+      "label": "Integriertes Terminal"
+    },
+    "mergeInstructions": {
+      "description": "Kontrolle über Plan-Zusammenführung",
+      "label": "Merge Instructions"
+    },
+    "planEditor": {
+      "description": "Vollständiger Monaco-Editor für KI-Pläne",
+      "label": "Plan-Editor"
+    },
+    "planModeGuides": {
+      "description": "Workflows für Codex, Claude und Cursor",
+      "label": "Plan Mode Guides"
+    },
+    "textImprovement": {
+      "description": "Inline-Neuformulierung in Monaco und Task-Eingaben",
+      "label": "Textverbesserung"
+    },
+    "voiceTranscription": {
+      "description": "Freihändige Eingabe für Tasks und Terminal",
+      "label": "Spracherkennung"
+    }
+  },
+  "footer": {
+    "about": "Über uns",
+    "architecture": "Architektur",
+    "changelog": "Changelog",
+    "company": "Unternehmen",
+    "copyright": "© {year} helpful bits GmbH",
+    "documentation": "Dokumentation",
+    "downloads": "Downloads",
+    "feedback": "Feedback",
+    "howItWorks": "So funktioniert's",
+    "imprint": "Impressum",
+    "interactiveDemo": "Interaktive Demo",
+    "legal": "Rechtliches",
+    "madeInGermany": "Made in Germany von einem deutschen Unternehmen",
+    "notAffiliated": "Nicht verbunden mit Anthropic, Cursor, OpenAI oder Cline.",
+    "pricing": "Preise",
+    "privacy": "Datenschutz",
+    "product": "Produkt",
+    "resources": "Ressourcen",
+    "support": "Support",
+    "tagline": "Planen und versenden Sie Code-Änderungen - finden Sie Dateien, generieren und mergen Sie KI-Pläne und führen Sie sie in einem persistenten Terminal aus.",
+    "talkToArchitect": "Architekt kontaktieren",
+    "terms": "AGB"
+  },
+  "label": {
+    "english": "Englisch",
+    "german": "Deutsch"
+  },
+  "nav": {
+    "compare": "Vergleich",
+    "demo": "Demo",
+    "docs": "Dokumentation",
+    "downloads": "Downloads",
+    "features": "Features",
+    "solutions": "Lösungen"
+  },
+  "solution": {
+    "hardBugs": {
+      "description": "Visuelles Debugging mit Bildschirmaufnahme",
+      "label": "Komplexe Bugs"
+    },
+    "largeFeatures": {
+      "description": "Planung von Multi-File-Features",
+      "label": "Große Features"
+    },
+    "libraryUpgrades": {
+      "description": "Dependency-Management",
+      "label": "Library-Upgrades"
+    },
+    "maintenance": {
+      "description": "Bereinigung technischer Schulden",
+      "label": "Wartung"
+    }
+  }
+}

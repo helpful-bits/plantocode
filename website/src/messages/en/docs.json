@@ -1,0 +1,525 @@
+{
+  "architecture": {
+    "category": "Architecture",
+    "date": "2025-09-19",
+    "description": "How the desktop shell, background workflows, and shared services are organised.",
+    "frontend": {
+      "heading": "Frontend surface",
+      "providers": "Shared providers handle notifications, runtime configuration, and plan state. The Implementation Plans panel keeps plan metadata, manages modal visibility, and requests token estimates or prompt content as needed.",
+      "ui": "The desktop UI is built with React components. Implementation plan content is displayed through a Monaco-based viewer that virtualises large plans, detects languages, and supports copy actions so reviewers can examine plan text without performance issues. Terminal sessions render inside a buffered view that attaches to PTY output and shows connection status updates."
+    },
+    "intro": "PlanToCode is a Tauri desktop application with a React front end. The UI renders implementation plans, terminals, and configuration controls, while the Rust backend exposes commands for workflows, token estimation, and persistent terminal sessions. This overview summarises how those pieces fit together.",
+    "metaDescription": "Desktop, orchestration, and persistence layers that power implementation plans, workflows, and terminal sessions.",
+    "metaTitle": "PlanToCode architecture overview",
+    "ogDescription": "Learn how the React front end, Tauri commands, and background services cooperate inside the desktop app.",
+    "ogTitle": "PlanToCode architecture overview",
+    "persistence": {
+      "database": "Terminal output and session metadata are stored in SQLite via the terminal sessions repository. Each record includes identifiers, timestamps, working directories, environment variables, and the accumulated log so that restarts can recover prior output. The same repository emits events when session state changes.",
+      "heading": "Persistence and configuration",
+      "modelConfig": "Model defaults live in the application configuration table. Each task defines a default model, a list of allowed alternatives, token budgets, and optional copy-button presets. The React layer reads these settings to populate the model selector and guardrails."
+    },
+    "readTime": "7 min",
+    "tauriCommands": {
+      "commands": "The Rust side of the application exposes commands for workflows, terminal sessions, and model tooling. The workflow commands start background jobs through the Workflow Orchestrator, validating inputs and emitting progress events as the file discovery pipeline runs. Token estimation commands calculate prompt sizes for the currently selected model.",
+      "heading": "Tauri commands and services",
+      "terminal": "Terminal commands manage PTY processes, track remote clients, and verify whether supported CLI binaries are available before launching a session. Health checks combine PTY status with database records to report whether a session is still alive."
+    },
+    "title": "PlanToCode Architecture",
+    "voicePipeline": {
+      "description": "Voice transcription is implemented as a React hook that coordinates media permissions, microphone selection, and streaming transcription requests. The hook integrates with the plan terminal and prompt editors, inserting recognised text directly into the active component and surfacing notifications if transcription fails.",
+      "heading": "Voice transcription pipeline"
+    }
+  },
+  "deepResearch": {
+    "apiIntegration": {
+      "heading": "API Integration Details",
+      "pipeline": {
+        "description": "Retrieved content passes through a standardized processing pipeline that extracts meaningful information while preserving formatting and context. The pipeline handles various content types including documentation, code repositories, and technical discussions.",
+        "heading": "Content Processing Pipeline"
+      },
+      "providerConfig": {
+        "description": "The system integrates with multiple search providers to ensure comprehensive coverage and redundancy. Provider selection is automatic based on query type, geographic restrictions, and availability. API keys and rate limiting are managed transparently within the application configuration.",
+        "heading": "Search Provider Configuration"
+      }
+    },
+    "architecture": {
+      "description": "The web search system operates as a pipeline: query generation, search execution, result processing, and integration. Each stage is designed for reliability, cost efficiency, and contextual relevance. The architecture supports both standalone research tasks and integrated development workflows.",
+      "heading": "Architecture Overview"
+    },
+    "bestPractices": {
+      "examples": {
+        "description": "Common integration patterns demonstrate how web search results enhance different development scenarios, from debugging specific errors to implementing new features with unfamiliar APIs.",
+        "heading": "Integration Examples"
+      },
+      "heading": "Best Practices and Examples",
+      "strategies": {
+        "description": "To maximize the value of web search integration, follow these proven strategies for formulating queries, interpreting results, and integrating findings into your development workflow.",
+        "heading": "Effective Search Strategies",
+        "queryFormulation": {
+          "constraints": "Include platform or environment constraints",
+          "errors": "Combine library names with specific error messages",
+          "heading": "Query Formulation",
+          "practices": "Use \"best practices\" or \"recommended approach\" for pattern searches",
+          "versions": "Include specific version numbers when relevant"
+        },
+        "resultEvaluation": {
+          "crossReference": "Cross-reference solutions across multiple sources",
+          "dates": "Check publication dates for time-sensitive information",
+          "heading": "Result Evaluation",
+          "official": "Prioritize official documentation over third-party sources",
+          "verify": "Verify code examples in your development environment"
+        }
+      }
+    },
+    "category": "Technical Reference",
+    "configuration": {
+      "heading": "Configuration and Customization",
+      "preferences": {
+        "description": "Users can customize search behavior through preference settings that control result filtering, source prioritization, and integration depth. These settings are project-aware and can be configured per workspace to match team preferences and project requirements.",
+        "filters": "Language and framework-specific search filters",
+        "heading": "Search Preferences",
+        "limits": "Result count and processing depth limits",
+        "optionsHeading": "Configurable Options",
+        "patterns": "Integration patterns for different file types",
+        "sources": "Preferred documentation sources and authorities",
+        "triggers": "Automatic vs. manual search trigger modes"
+      },
+      "projectSettings": {
+        "description": "Search configuration can be tailored to specific projects and technologies. The system automatically detects project frameworks, languages, and dependencies to optimize search parameters. Custom domain filters and source preferences can be configured per project to ensure relevant results.",
+        "heading": "Project-Specific Settings"
+      }
+    },
+    "costs": {
+      "heading": "Cost Considerations and Limits",
+      "optimization": {
+        "description": "Multiple strategies are employed to optimize search costs without compromising functionality. These include intelligent query batching, result caching, provider fallbacks, and user education about efficient search patterns. Cost monitoring and alerting help teams stay within budget limits.",
+        "heading": "Cost Optimization"
+      },
+      "rateLimiting": {
+        "cacheFirst": "Cache-first responses to minimize API calls",
+        "description": "The system implements intelligent rate limiting to manage API costs while ensuring search functionality remains available when needed. Rate limits are applied per user, per project, and globally, with automatic fallback to cached results when limits are approached.",
+        "guidelinesHeading": "Rate Limit Guidelines",
+        "heading": "Rate Limiting and Quotas",
+        "personal": "Personal usage: 100 searches per hour, 1000 per day",
+        "team": "Team workspaces: Shared quotas based on subscription tier",
+        "throttling": "Automatic throttling when approaching limits"
+      }
+    },
+    "cta": {
+      "description": "The Deep Research and Web Search features are available in the PlanToCode desktop application. Download the build for your platform to start integrating web research into your development workflow.",
+      "heading": "Ready to use Deep Research?"
+    },
+    "date": "2025-09-20",
+    "description": "How PlanToCode performs web searches, processes results, and integrates findings into development workflows.",
+    "devIntegration": {
+      "caching": {
+        "description": "Search results are intelligently cached to improve performance and reduce API costs. The caching system considers content freshness, query similarity, and usage patterns to provide fast responses while ensuring information accuracy. Cache invalidation occurs automatically based on content age and relevance decay.",
+        "heading": "Caching and Performance"
+      },
+      "contextAware": {
+        "description": "Research requests are automatically enhanced with context from the current development session. The system analyzes open files, recent changes, error messages, and project dependencies to formulate more targeted search queries and filter results for maximum relevance.",
+        "heading": "Context-Aware Research"
+      },
+      "heading": "Development Workflow Integration",
+      "resultIntegration": {
+        "description": "Search results are seamlessly integrated into the development workflow. Code snippets can be directly inserted, documentation links are preserved for reference, and key findings are summarized in context-appropriate formats. The integration respects existing code style and project conventions.",
+        "heading": "Result Integration"
+      }
+    },
+    "intro": "The Deep Research feature enables PlanToCode to perform intelligent web searches, gather up-to-date information, and integrate findings directly into development workflows. This system combines query optimization, result processing, and contextual integration to enhance code generation and problem-solving capabilities.",
+    "metaDescription": "Technical documentation for the web search workflow: API integration, query optimization, result processing, and development workflow integration.",
+    "metaTitle": "Deep research - PlanToCode",
+    "ogDescription": "Understand how web search operates within PlanToCode: from query generation to result processing and integration with development workflows.",
+    "ogTitle": "Deep research - PlanToCode",
+    "readTime": "8 min",
+    "title": "Deep Research & Web Search",
+    "troubleshooting": {
+      "commonIssues": {
+        "description": "Most web search issues stem from connectivity problems, rate limiting, or overly broad queries. The system provides clear error messages and suggested remediation steps for common failure scenarios.",
+        "geographic": "Geographic Restrictions",
+        "geographicSolution": "Search functionality limited to supported regions",
+        "heading": "Common Issues",
+        "noResults": "No Results Found",
+        "noResultsSolution": "Broaden query terms or check spelling",
+        "rateLimit": "Rate Limit Exceeded",
+        "rateLimitSolution": "Wait for reset period or try cached results"
+      },
+      "heading": "Troubleshooting and Support",
+      "performance": {
+        "description": "For optimal performance, the system monitors search patterns and suggests optimizations. This includes query refinement recommendations, cache hit rate improvements, and integration efficiency metrics.",
+        "heading": "Performance Optimization"
+      }
+    },
+    "workflow": {
+      "execution": {
+        "blogs": "Blog posts from recognized technical authorities",
+        "description": "Web searches are performed through integrated search APIs that prioritize developer-focused content. The system automatically filters results to focus on technical documentation, official sources, and community discussions from platforms like GitHub, Stack Overflow, and official project documentation.",
+        "documentation": "Official project documentation and wikis",
+        "forums": "Technical forums and community Q&A sites",
+        "github": "GitHub repositories, issues, and discussions",
+        "heading": "Search Execution",
+        "releases": "Release notes and changelogs",
+        "sourcesHeading": "Search Sources"
+      },
+      "heading": "Search Workflow Stages",
+      "processing": {
+        "deduplication": "Duplicate detection and content deduplication",
+        "description": "Search results undergo intelligent processing to extract relevant information, remove noise, and prioritize content based on recency, authority, and contextual relevance. The system converts web content into structured data that can be efficiently integrated into development workflows.",
+        "extraction": "Content extraction and HTML-to-markdown conversion",
+        "heading": "Result Processing & Filtering",
+        "scoring": "Relevance scoring based on query match and source authority",
+        "snippets": "Code snippet extraction and syntax validation",
+        "stepsHeading": "Processing Steps",
+        "timestamp": "Timestamp analysis for content freshness"
+      },
+      "queryGeneration": {
+        "api": "API documentation searches for specific libraries or frameworks",
+        "compatibility": "Version compatibility and migration information",
+        "description": "Search queries are automatically generated based on the current development context, user intent, and task requirements. The system analyzes project files, active discussions, and error messages to formulate targeted search queries that prioritize recent documentation, technical discussions, and authoritative sources.",
+        "errors": "Error message resolution and troubleshooting guides",
+        "heading": "Query Generation & Optimization",
+        "practices": "Best practices and implementation patterns",
+        "security": "Security advisories and vulnerability reports",
+        "typesHeading": "Query Types"
+      }
+    }
+  },
+  "fileDiscovery": {
+    "apiUsage": {
+      "heading": "API Usage Examples",
+      "monitoring": "Monitoring Progress",
+      "retrieving": "Retrieving Results",
+      "starting": "Starting a Workflow"
+    },
+    "architecture": {
+      "caching": "Caching of intermediate results for performance optimization",
+      "costTracking": "Cost tracking and timeout management for AI operations",
+      "distributed": "The system uses a distributed job architecture where each stage runs as an independent background job, enabling cancellation, retry logic, and detailed progress tracking. Real-time events are published throughout execution to provide immediate feedback to the user interface.",
+      "errorHandling": "Comprehensive error handling with automatic retry mechanisms",
+      "eventDriven": "Event-driven progress reporting with WebSocket-like updates",
+      "featuresHeading": "Key Architecture Features:",
+      "gitIntegration": "Git integration with fallback to directory traversal",
+      "heading": "Workflow Architecture",
+      "overview": "The workflow operates as an orchestrated background job system with five distinct stages that execute sequentially. Each stage builds upon the previous stage's output, progressively refining the file selection based on task requirements."
+    },
+    "category": "Technical Guide",
+    "configuration": {
+      "exclusion": {
+        "description": "Define directories and file patterns to exclude from the discovery process.",
+        "heading": "Exclusion Patterns"
+      },
+      "heading": "Configuration Options",
+      "retry": {
+        "description": "Set maximum retry attempts for failed stages with exponential backoff.",
+        "heading": "Retry Configuration"
+      },
+      "timeout": {
+        "description": "Configure maximum execution time for the entire workflow or individual stages to prevent indefinite hanging.",
+        "heading": "Timeout Management"
+      },
+      "workflowConfig": "Workflow Configuration"
+    },
+    "cta": {
+      "description": "The file discovery workflow runs inside the desktop client alongside implementation planning and terminal sessions.",
+      "heading": "Need the desktop app?"
+    },
+    "date": "2025-09-21",
+    "description": "Comprehensive technical guide to the 5-stage AI workflow that identifies and filters relevant files for task execution.",
+    "errorHandling": {
+      "commonIssues": {
+        "binaryDetection": "Binary file detection: Uses both extension-based and content-based binary detection",
+        "gitNotFound": "Git repository not found: Falls back to directory traversal with standard exclusions",
+        "heading": "Common Issues",
+        "networkTimeout": "Network timeouts: Automatic retry with exponential backoff for transient failures",
+        "tokenLimit": "Token limit exceeded: Implements intelligent batching and provides clear error messages"
+      },
+      "debugging": {
+        "description": "The workflow provides comprehensive logging, performance metrics export, and detailed error context including stage information, retry attempts, and intermediate data for troubleshooting.",
+        "heading": "Debugging Tools"
+      },
+      "errorCategories": {
+        "billing": "Billing Errors: Insufficient credits or payment failures with actionable guidance",
+        "heading": "Error Categories",
+        "system": "System Errors: File system access, git command failures, or memory constraints",
+        "validation": "Validation Errors: Invalid session ID, missing task description, or invalid project directory",
+        "workflow": "Workflow Errors: Stage-specific failures with detailed context and retry suggestions"
+      },
+      "heading": "Error Handling & Troubleshooting"
+    },
+    "integration": {
+      "desktop": {
+        "description": "The workflow integrates seamlessly with the desktop application through Tauri commands, providing native file system access and event-driven updates via the WorkflowTracker class.",
+        "heading": "Desktop Application"
+      },
+      "heading": "Integration Patterns",
+      "implementationPlans": {
+        "description": "Selected files are automatically fed into the Implementation Plans panel, ensuring that plan generation uses the same optimized file context without requiring re-execution of the discovery workflow.",
+        "heading": "Implementation Plans Integration"
+      },
+      "sessionManagement": {
+        "description": "Workflow results are cached per session, allowing multiple operations within the same session to reuse the discovered file context, significantly improving performance for iterative development workflows.",
+        "heading": "Session Management"
+      }
+    },
+    "intro": "PlanToCode identifies the right files before you plan or run commands. The 5-stage workflow narrows scope and keeps context tight.",
+    "metaDescription": "Comprehensive technical guide to the 5-stage AI workflow that identifies and filters relevant files for task execution.",
+    "metaTitle": "File discovery workflow - PlanToCode",
+    "ogDescription": "Technical documentation for the multi-stage file discovery workflow architecture.",
+    "ogTitle": "File discovery workflow - PlanToCode",
+    "performance": {
+      "costOptimization": {
+        "description": "AI stages track actual costs from API responses, implement intelligent batching to minimize token usage, and provide cost estimates before execution to help manage expenses.",
+        "heading": "Cost Optimization"
+      },
+      "heading": "Performance Considerations",
+      "memory": {
+        "description": "The workflow implements intelligent memory management with file caching (30-second TTL), batch processing (100 files per batch), and automatic cleanup of intermediate data to prevent memory exhaustion.",
+        "heading": "Memory Management"
+      },
+      "monitoring": {
+        "description": "Built-in performance tracking monitors execution times, memory usage, throughput metrics, and provides recommendations for optimization based on historical data analysis.",
+        "heading": "Performance Monitoring"
+      }
+    },
+    "readTime": "12 min",
+    "stages": {
+      "heading": "5-Stage Workflow Process",
+      "stage1": {
+        "description": "Determines the project root directory and validates git repository status. This stage establishes the base directory for all subsequent file operations and configures exclusion patterns.",
+        "heading": "Stage 1: Root Folder Selection",
+        "technical": "Technical Details: Uses git detection with fallback to directory validation, applies user-defined exclusion patterns, and establishes the working directory context for the entire workflow."
+      },
+      "stage2": {
+        "binaryDetection": "Binary Detection: Filters out files with binary extensions (.jpg, .png, .pdf, .exe, etc.) and uses content analysis to detect binary files by null bytes and non-printable character ratios.",
+        "description": "Generates intelligent regex patterns based on the task description to perform initial file filtering. This stage combines git ls-files output with binary file detection to create a preliminary file list.",
+        "gitIntegration": "Git Integration: Executes `git ls-files --cached --others --exclude-standard` to respect .gitignore rules while including both tracked and untracked files.",
+        "heading": "Stage 2: Regex File Filter"
+      },
+      "stage3": {
+        "aiProcessing": "AI Processing: Uses large language models to evaluate file content against task requirements, with intelligent batching to manage token limits and cost optimization.",
+        "description": "Employs AI models to analyze file content and assess relevance to the specific task description. This stage performs deep content analysis to identify files that are most likely to be useful for the given task.",
+        "heading": "Stage 3: AI File Relevance Assessment"
+      },
+      "stage4": {
+        "description": "Discovers additional relevant files through relationship analysis and dependency tracking. This stage identifies files that might not match initial patterns but are contextually important.",
+        "heading": "Stage 4: Extended Path Finder",
+        "relationship": "Relationship Analysis: Analyzes import statements, configuration files, and project structure to find related files that enhance the context for the specific task."
+      },
+      "stage5": {
+        "description": "Validates and corrects file paths, ensuring all selected files exist and are accessible. This final stage performs consistency checks and path normalization across different operating systems.",
+        "heading": "Stage 5: Path Correction",
+        "validation": "Validation Process: Verifies file existence, normalizes path separators, resolves symbolic links, and removes any paths that have become invalid during the workflow execution."
+      }
+    },
+    "stateManagement": {
+      "eventDriven": {
+        "description": "The system publishes real-time events for workflow status changes, stage completions, and error conditions. These events enable responsive user interfaces and integration with external monitoring systems.",
+        "heading": "Event-Driven Updates"
+      },
+      "heading": "Workflow State Management",
+      "intermediateData": {
+        "description": "Each stage stores its output in a structured intermediate data format, including directory tree content, regex patterns, filtered file lists, and path correction results. This data is accessible for debugging and can be used to resume workflows from specific stages.",
+        "heading": "Intermediate Data Storage"
+      },
+      "transitions": {
+        "description": "The workflow progresses through clearly defined states: Created → Running → Paused (optional) → Completed/Failed/Canceled. Each state transition publishes events that can be monitored for real-time updates.",
+        "heading": "State Transitions"
+      }
+    },
+    "title": "File Discovery Workflow"
+  },
+  "hub": {
+    "ctaDescription": "Download PlanToCode to access the implementation planner, model guardrails, terminal sessions, and transcription features described in this documentation.",
+    "ctaHeading": "Ready to try these workflows?",
+    "description": "Learn how to plan and ship code changes with PlanToCode: file discovery, implementation plans, terminal sessions, model guardrails, and voice.",
+    "exploreHeading": "Explore Documentation",
+    "learnMore": "Learn More",
+    "searchAriaLabel": "Search documentation",
+    "searchPlaceholder": "Search documentation...",
+    "searchShortcut": "⌘K",
+    "title": "PlanToCode documentation"
+  },
+  "implementationPlans": {
+    "category": "Product Guide",
+    "context": {
+      "audit": "All metadata persists with the plan for audit purposes. Corporate teams can track which stakeholders reviewed which plans, what modifications were requested, and the complete reasoning chain from initial task description through file discovery to final approved plan.",
+      "heading": "Context and Metadata for Corporate Governance",
+      "storage": "The panel stores which repository roots were selected during the file discovery workflow so that follow-up actions reuse the same scope. It also records plan-specific metadata, such as the project directory and any prepared prompt content, so downstream prompts can be generated or copied without recomputing the workflow.",
+      "tokenEstimation": "Token estimation runs before prompts are copied. The panel calls the token estimation command with the project directory, selected files, and the currently chosen model, surfacing both system and user prompt totals so teams can stay under model limits."
+    },
+    "cta": {
+      "claudeCodeLink": "See Claude plan mode workflow",
+      "codexLink": "See Codex plan mode workflow",
+      "cursorLink": "See Cursor plan mode workflow",
+      "description": "Human-in-the-loop implementation plans are available inside the PlanToCode desktop application. Download the build for your platform to experience safe, governed AI-assisted development.",
+      "heading": "Ready to adopt AI coding agents safely?"
+    },
+    "date": "2025-09-19",
+    "description": "How PlanToCode enables confident adoption of AI coding agents through human-in-the-loop governance, granular file-by-file plans, and comprehensive review workflows.",
+    "fileGranularity": {
+      "created": "Created (with complete file paths and initial content structure)",
+      "declaredFiles": "Each step in a plan explicitly declares which files will be:",
+      "deleted": "Deleted (with justification and dependency analysis)",
+      "heading": "File-by-File Granularity",
+      "impact": "This level of detail makes the impact of proposed changes crystal clear before any code is touched. Team leads can immediately identify if critical legacy code will be modified, if breaking changes are proposed, or if the plan touches files that require additional scrutiny.",
+      "intro": "Implementation plans use a highly granular structure that breaks down development tasks on a file-by-file basis, with exact file paths corresponding to the project's repository structure. This granularity is fundamental to preventing regressions and enabling confident adoption of AI coding agents in corporate environments.",
+      "modified": "Modified (with specific line ranges and changes described)",
+      "referenced": "Referenced (for context but not modified)",
+      "transmission": "The file-by-file approach also enables precise transmission of approved plans to coding agents. Instead of vague instructions like \"update the authentication system,\" agents receive exact specifications: \"modify src/auth/session_manager.rs lines 45-67 to add token rotation, create src/auth/token_store.rs with the following structure...\""
+    },
+    "hitl": {
+      "approve": "Approve:",
+      "approveDesc": "Only after explicit approval can plans be securely transmitted to the chosen coding agent or assigned software developer for execution.",
+      "conclusion": "This workflow ensures all development efforts align with corporate product requirements, team workflows, and business objectives. No code changes occur without explicit human approval.",
+      "edit": "Edit:",
+      "editDesc": "Stakeholders can directly modify steps, adjust approaches, add constraints, or remove risky operations using VS Code editing features.",
+      "heading": "Human-in-the-Loop Governance",
+      "intro": "PlanToCode implements a comprehensive human-in-the-loop (HITL) workflow that ensures team leads and stakeholders retain full control over every aspect of AI-generated implementation plans. This governance model prevents the regressions, bugs, and unintended modifications that can occur when AI coding agents operate autonomously.",
+      "reject": "Reject:",
+      "rejectDesc": "Plans that don't meet requirements can be rejected entirely, with full audit trails maintained for compliance and learning.",
+      "requestChanges": "Request Changes:",
+      "requestChangesDesc": "Teams can request modifications from the AI system, generating alternative approaches or merging multiple plans with custom instructions.",
+      "review": "Review:",
+      "reviewDesc": "Plans open in Monaco editor where reviewers can examine every proposed change with full syntax highlighting and professional editing tools.",
+      "workflow": "Every plan must pass through a structured review workflow before any code modifications begin:"
+    },
+    "intro": "Review and approve every plan before execution. Human-in-the-loop governance with file-by-file granularity ensures AI-generated changes align with corporate requirements and team workflows.",
+    "metaDescription": "Guide to AI implementation planning. Generate, review, and approve file-by-file plans before execution. Prevent duplicates and wrong paths.",
+    "metaTitle": "Implementation Plans - Review AI Changes",
+    "multiplePlans": {
+      "description": "Plans can be merged, deleted, or reopened later. The panel keeps a list of selected plan identifiers, manages a dedicated modal for terminal output tied to a plan, and exposes navigation helpers so reviewers can page through earlier plans without closing the viewer. Terminal access, prompt copy controls, and merge instructions all share the same job identifier so audit history stays consistent.",
+      "heading": "Working with multiple plans"
+    },
+    "ogDescription": "Understand how human-in-the-loop governance and file-by-file review workflows ensure safe AI development with complete control over code modifications.",
+    "ogTitle": "Human-in-the-Loop Implementation Plans in PlanToCode",
+    "plansOrigin": {
+      "description": "Each plan corresponds to a background job in the current session. The panel subscribes to plan data, keeps track of which plan is currently open, and exposes navigation between earlier and newer jobs. This behaviour lives inside {code} and the surrounding panel component.",
+      "heading": "Where the plans come from"
+    },
+    "readTime": "6 min",
+    "reviewingPlans": {
+      "description": "Plan content is rendered through the shared {code}, which wraps Monaco Editor. The viewer automatically detects common languages, supports copy-to-clipboard actions, virtualises very large plans, and offers optional metrics such as character counts and syntax-aware highlighting.",
+      "heading": "Reviewing plans with Monaco",
+      "opening": "When a plan is opened, the panel resolves the active plan by job identifier, passes the content to Monaco, and lets reviewers move between neighbouring jobs without losing the currently open modal."
+    },
+    "title": "Implementation Plans"
+  },
+  "modelConfiguration": {
+    "category": "Product Guide",
+    "date": "2025-09-20",
+    "description": "Task-level model lists, selector controls, and token guardrails in the desktop client.",
+    "intro": "PlanToCode treats model selection as a task-level decision. Each workflow ships with a default model and an allowed list, and the desktop client exposes these options through a toggle that prevents sending prompts that exceed the active context window.",
+    "metaDescription": "How PlanToCode lets you pick allowed models per task and keeps prompts within the active context window.",
+    "metaTitle": "Model configuration and guardrails - PlanToCode",
+    "ogDescription": "Learn how task-level model settings, selector toggles, and token estimates work together.",
+    "ogTitle": "Model configuration and guardrails - PlanToCode",
+    "promptEstimation": {
+      "description": "Token counts are calculated through the token estimation command. The panel submits the session id, task description, relevant files, and the selected model so the backend can return system, user, and total token values. These numbers feed directly into the selector guardrails and let teams spot over-limit prompts before copying them into another tool.",
+      "heading": "Prompt estimation"
+    },
+    "readTime": "5 min",
+    "selectorToggle": {
+      "description": "The Implementation Plans panel renders allowed models with the {code}. The toggle displays each allowed model, tracks the active selection, and checks whether the estimated prompt plus planned output tokens fit within the model's advertised context window before allowing a switch.",
+      "guardrails": "If a model cannot support the total token requirement, the toggle disables the button and surfaces a tooltip with the computed overage, keeping reviewers within safe limits before they send work to an agent.",
+      "heading": "Selector toggle in the client"
+    },
+    "taskDefaults": {
+      "description": "Default models and allowed alternatives are stored server-side in the application configuration. Each task type - such as implementation plans, merges, prompt generation, or voice transcription - defines a preferred model, a list of allowed options, and token limits that the desktop app reads at runtime.",
+      "heading": "Task-driven defaults"
+    },
+    "title": "Model Configuration"
+  },
+  "terminalSessions": {
+    "attentionDetection": {
+      "conclusion": "This approach helps you track when agents have finished tasks or need guidance, without trying to guess why they stopped. Attention indicators clear automatically when new output is received.",
+      "heading": "Agent attention detection",
+      "intro": "The terminal monitors agent activity through a two-level inactivity detection system. When an agent stops producing output, the system progressively alerts you to check what has happened:",
+      "level1": "Level 1 (30 seconds): \"Agent idle - may have completed task\" with yellow indicator",
+      "level2": "Level 2 (2 minutes): \"Agent requires attention - check terminal\" with red indicator and desktop notification"
+    },
+    "category": "Product Guide",
+    "date": "2025-09-22",
+    "dependencyChecks": {
+      "description": "Before launching commands, the terminal checks for the presence of supported CLI tools such as claude, cursor, codex, and gemini. The same command also reports the default shell so users know which environment will run. This prevents launching into a session that cannot find the required binary.",
+      "heading": "Dependency checks"
+    },
+    "description": "Persistent PTY sessions, agent attention detection, and recovery behaviour in the Implementation Plans terminal.",
+    "intro": "Run commands in a persistent PTY with health checks and logging. Voice transcription is available when you need it.",
+    "lifecycle": {
+      "description": "When a terminal opens, the UI component creates a PTY session and streams output through a buffered view. The component shows immediate connection status, forwards keystrokes to the PTY, and automatically retries if the session fails. Session metadata is stored in SQLite with timestamps, exit codes, working directories, and the full output log so that restarts can resume previous context.",
+      "heading": "Session lifecycle"
+    },
+    "metaDescription": "Technical guide to PTY terminal implementation in PlanToCode. Learn how sessions persist, agent inactivity detection works, and recovery mechanisms.",
+    "metaTitle": "Terminal sessions - PlanToCode",
+    "ogDescription": "Understand session persistence, agent attention detection, and recovery in the plan terminal.",
+    "ogTitle": "Terminal sessions - PlanToCode",
+    "readTime": "6 min",
+    "title": "Terminal Sessions",
+    "voiceRecovery": {
+      "heading": "Voice transcription and recovery",
+      "recovery": "If a PTY session disconnects, the terminal surface displays recovery controls and retries the connection with exponential backoff. Health checks continue monitoring session state and provide automatic recovery actions when connection issues are detected.",
+      "voice": "Inside the terminal modal, voice transcription can capture speech and paste it into the terminal input area. The recording hook looks up project-level transcription settings, keeps track of recording state, and streams recognised text into the active plan session."
+    }
+  },
+  "textImprovement": {
+    "category": "Product Guide",
+    "cta": {
+      "description": "Download PlanToCode to combine voice capture, video context, and inline rewriting before you generate implementation plans.",
+      "heading": "Try text improvement in the desktop app"
+    },
+    "date": "2025-09-21",
+    "description": "How PlanToCode rewrites highlighted text without changing formatting and links the result back to your workspace.",
+    "intro": "Refine text with AI context. Select text in any editor, trigger a background job, and get improved content that keeps your formatting intact.",
+    "metaDescription": "How the desktop workspace rewrites highlighted text, preserves formatting, and links the feature to voice and video inputs.",
+    "metaTitle": "Text improvement - PlanToCode",
+    "ogDescription": "Understand the selection popover, job queue, model configuration, and integrations that power text improvement.",
+    "ogTitle": "Text improvement - PlanToCode",
+    "readTime": "7 min",
+    "selectionPopover": {
+      "component": "The popover itself is a minimal component rendered by {code}, which simply triggers the provider hook and shows a loading indicator while a rewrite is running. Because the provider registers global listeners, the popover appears in Monaco plan viewers, the plan terminal dictation field, and any task description inputs without extra wiring.",
+      "heading": "Selection popover behaviour",
+      "provider": "The {code} listens for selection events on standard inputs and Monaco editors. When you highlight non-empty text it positions a popover near the cursor, stores the selected range, and tracks whether the popover should be visible. Clicking the button kicks off the job and disables the control until the result returns. When the job completes the provider applies the improved text back into the same selection and flushes any pending saves to keep session state in sync."
+    },
+    "title": "Text Improvement",
+    "triggerImprovement": {
+      "action": "Pressing the popover button calls {code}. The action validates the selection, ensures a session identifier exists, and invokes the Rust command {code} via Tauri. The command builds a {code} containing the original text and queues a background job against the active session.",
+      "backend": "On the backend, the {code} resolves the configured model for the {code} task, wraps the selection in XML tags, and runs the request through the {code} without streaming. When the model response returns it records token usage, cost, and the system prompt template before emitting the improved text back to the UI. The default configuration ships with Claude Sonnet 4 and Gemini 2.5 Flash as the approved models, capped at 4,096 tokens with a temperature of 0.7.",
+      "heading": "What happens when you trigger an improvement",
+      "metadata": "The background jobs sidebar records the original text in job metadata, so you can review what was sent alongside the rewritten copy. If the selection changes while a job is running, the provider skips replacing the text to avoid clobbering manual edits."
+    },
+    "videoCapture": {
+      "dialog": "Screen recordings pass through the video analysis dialog, which combines your current task description with an optional prompt block wrapped in semantic XML tags before sending the request to the Gemini video analysis job. Any notes you dictate during the recording are available as text once analysis completes, so you can feed the resulting summary back through the improvement popover to tighten the instructions before planning.",
+      "features": "Video jobs include frame-rate controls, audio capture toggles, and cost reporting. Results appear in the same background jobs sidebar as text improvements, keeping all prompt preparation artefacts in one place.",
+      "heading": "Video capture and prompt scaffolding"
+    },
+    "voiceIntegration": {
+      "heading": "Voice transcription integration",
+      "hook": "Voice recordings use the {code} hook. It loads per-project transcription defaults, requests microphone access, and inserts transcripts at the cursor inside the task description or terminal dictation buffer. The inserted text can immediately be highlighted and passed through the same improvement popover, and the original transcription job identifier is stored with the improvement payload for auditing.",
+      "preferences": "Language, model, and temperature preferences persist at the project level, so teams get consistent transcription quality before refining the copy. Silence detection warns about bad audio levels, and a ten-minute cap prevents oversized recordings from blocking improvement jobs with large payloads."
+    }
+  },
+  "voiceTranscription": {
+    "category": "Product Guide",
+    "date": "2025-09-22",
+    "description": "Recording lifecycle, device management, and streaming behaviour for voice-driven prompts.",
+    "deviceManagement": {
+      "description": "The feature requests microphone permission, enumerates available audio inputs, and lets users switch devices during a session. Audio levels are monitored live so the UI can surface silence warnings if the microphone is muted or disconnected.",
+      "heading": "Device management"
+    },
+    "intro": "Voice transcription is available anywhere the desktop app exposes dictation controls, including the plan terminal and prompt editors. The feature records audio locally, sends chunks to the transcription service, and inserts recognised text into the active input field without blocking manual typing.",
+    "metaDescription": "How PlanToCode records audio, streams real-time transcripts using gpt-4o-transcribe, manages permissions, project settings.",
+    "metaTitle": "Voice transcription - PlanToCode",
+    "ogDescription": "Learn how the recording hook manages devices, permissions, and streaming text.",
+    "ogTitle": "Voice transcription - PlanToCode",
+    "projectSettings": {
+      "description": "When a recording session starts, the hook looks up the active project's transcription configuration. Language codes, preferred models, and other settings are retrieved before capturing audio so recordings follow the project's preferences.",
+      "heading": "Project-aware settings"
+    },
+    "readTime": "5 min",
+    "recordingWorkflow": {
+      "description": "The recording hook keeps a state machine with idle, recording, processing, and error states. It tracks duration, manages silence detection, and ensures recordings stop automatically after ten minutes. Chunks are buffered and forwarded to the transcription action, which returns recognised text for insertion.",
+      "heading": "Recording workflow"
+    },
+    "title": "Voice Transcription"
+  }
+}

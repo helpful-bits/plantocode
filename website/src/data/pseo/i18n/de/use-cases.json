@@ -1,0 +1,421 @@
+{
+  "staff-engineer/architectural-decisions": {
+    "headline": "Unterstützung bei Architekturentscheidungen für Staff Engineers",
+    "subhead": "KI, die die Einschränkungen und Muster Ihres Systems versteht",
+    "meta_title": "Staff Engineer KI-Tools - Unterstützung bei Architekturentscheidungen",
+    "meta_description": "KI-Planungstools für Staff Engineers. Multi-Modell-Architekturanalyse, Dependency-Mapping, Impact-Assessment.",
+    "primary_cta": "Tools für Staff Engineers",
+    "pain_points": [
+      {
+        "problem": "Junior-Entwickler + KI = technische Schulden in der Architektur",
+        "solution": "KI-Architekt setzt Ihre Muster und Prinzipien durch"
+      },
+      {
+        "problem": "Unmöglich, jeden PR auf Architekturverletzungen zu prüfen",
+        "solution": "Planüberprüfung vor der Ausführung erkennt Probleme frühzeitig"
+      },
+      {
+        "problem": "KI kennt die Einschränkungen Ihres Systems nicht",
+        "solution": "Projektspezifische Konfiguration und Kontext"
+      }
+    ],
+    "workflow_steps": [
+      "Architekturprinzipien definieren",
+      "KI generiert konforme Pläne",
+      "Überprüfung vor Team-Ausführung",
+      "Architekturintegrität wahren"
+    ],
+    "key_features": [
+      "SOLID-Prinzipien-Durchsetzung",
+      "Design-Pattern-Erkennung",
+      "Erkennung von Architektur-Drift"
+    ]
+  },
+  "platform-engineer/infrastructure-changes": {
+    "headline": "Infrastrukturänderungen für Platform Engineers",
+    "subhead": "KI, die sowohl Anwendungs- als auch Infrastrukturebenen versteht",
+    "meta_title": "Platform Engineer KI-Tools - Infrastrukturplanung",
+    "meta_description": "KI-Planung für Platform Engineers. Terraform, Kubernetes, Cloud-Ressourcen - mit vollständiger Impact-Analyse.",
+    "primary_cta": "Platform Engineering KI",
+    "workflow_steps": [
+      "Infrastruktur-Abhängigkeiten mappen",
+      "Änderungspläne generieren",
+      "In Staging validieren",
+      "Mit Zuversicht deployen"
+    ]
+  },
+  "tech-lead/code-reviews": {
+    "headline": "KI-gestützte Code-Reviews für Tech Leads",
+    "subhead": "Pläne überprüfen vor Code, nicht Code nach Schaden",
+    "meta_title": "Tech Lead KI-Tools - Proaktive Code-Reviews",
+    "meta_description": "KI-gestützte Code-Reviews für Tech Leads. Implementierungspläne vor Ausführung prüfen, Probleme frühzeitig erkennen.",
+    "primary_cta": "Code-Reviews verbessern",
+    "workflow_steps": [
+      "Team generiert Pläne",
+      "KI analysiert auf Probleme",
+      "Tech Lead überprüft Pläne",
+      "Genehmigte Pläne ausführen"
+    ]
+  },
+  "devops-engineer/ci-pipeline-optimization": {
+    "headline": "CI/CD-Pipeline-Optimierung für DevOps Engineers",
+    "subhead": "KI-gestütztes Pipeline-Debugging und Performance-Verbesserungen",
+    "meta_title": "DevOps Engineer KI-Tools - CI/CD-Pipeline-Optimierung",
+    "meta_description": "KI-Tools für DevOps Engineers. CI/CD-Pipeline-Debugging, Performance-Optimierung, Infrastructure-as-Code-Verbesserungen.",
+    "primary_cta": "CI/CD-Pipelines optimieren",
+    "pain_points": [
+      {
+        "problem": "Pipeline-Fehler sind schwer über mehrere Stages hinweg zu diagnostizieren",
+        "solution": "KI analysiert Logs und Abhängigkeiten zur Identifikation der Ursachen"
+      },
+      {
+        "problem": "Performance-Engpässe in komplexen Pipeline-Konfigurationen versteckt",
+        "solution": "KI mappt Pipeline-Ausführung und schlägt Optimierungspunkte vor"
+      },
+      {
+        "problem": "Manuelle Pipeline-Updates riskieren bestehende Workflows zu brechen",
+        "solution": "Pipeline-Änderungen generieren und prüfen vor Deployment"
+      }
+    ],
+    "workflow_steps": [
+      "Aktuelle Pipeline-Performance analysieren",
+      "Optimierungspläne generieren",
+      "Impact auf bestehende Workflows prüfen",
+      "Verbesserungen sicher deployen"
+    ],
+    "key_features": [
+      "Pipeline-Dependency-Mapping",
+      "Performance-Engpass-Erkennung",
+      "Sichere Deployment-Planung"
+    ]
+  },
+  "sdet/test-automation-modernization": {
+    "headline": "Test-Automation-Modernisierung für SDETs",
+    "subhead": "KI-gestütztes Refactoring und Modernisierung von Test-Suites",
+    "meta_title": "SDET KI-Tools - Test-Automation-Modernisierung",
+    "meta_description": "KI-Tools für SDETs. Test-Suite-Refactoring, Framework-Migrationen, Test-Coverage-Analyse und -Verbesserungen.",
+    "primary_cta": "Test-Automation modernisieren",
+    "pain_points": [
+      {
+        "problem": "Legacy-Test-Suites sind fragil und schwer zu warten",
+        "solution": "KI analysiert Muster und generiert Modernisierungspläne"
+      },
+      {
+        "problem": "Framework-Migrationen riskieren bestehende Test-Coverage zu brechen",
+        "solution": "Migrationspläne mit Test-Äquivalenz-Validierung generieren"
+      },
+      {
+        "problem": "Test-Coverage-Lücken sind schwer zu identifizieren und zu beheben",
+        "solution": "KI mappt Code-Coverage und schlägt gezielte Test-Ergänzungen vor"
+      }
+    ],
+    "workflow_steps": [
+      "Bestehende Test-Architektur analysieren",
+      "Modernisierungs-Roadmap generieren",
+      "Inkrementelle Migrationsschritte planen",
+      "Test-Coverage-Äquivalenz validieren"
+    ],
+    "key_features": [
+      "Test-Pattern-Analyse",
+      "Framework-Migrations-Planung",
+      "Coverage-Gap-Erkennung"
+    ]
+  },
+  "security-engineer/vulnerability-patching": {
+    "headline": "Vulnerability-Patching-Workflows für Security Engineers",
+    "subhead": "KI-unterstützte Sicherheitsremediation mit Impact-Analyse",
+    "meta_title": "Security Engineer KI-Tools - Vulnerability-Patching",
+    "meta_description": "KI-Tools für Security Engineers. Vulnerability-Analyse, Remediation-Planung, Security-Patch-Impact-Assessment.",
+    "primary_cta": "Security-Workflows verbessern",
+    "pain_points": [
+      {
+        "problem": "Security-Patches können Funktionalität auf unerwartete Weise brechen",
+        "solution": "KI analysiert Code-Abhängigkeiten und prognostiziert Patch-Auswirkungen"
+      },
+      {
+        "problem": "Vulnerability-Remediation erfordert tiefes Code-Verständnis",
+        "solution": "KI mappt verwundbare Code-Muster und schlägt Fixes vor"
+      },
+      {
+        "problem": "Priorisierung von Security-Fixes ohne Business-Kontext",
+        "solution": "KI bewertet Risiko-Impact über die Anwendungsarchitektur hinweg"
+      }
+    ],
+    "workflow_steps": [
+      "Vulnerability-Scope und -Impact analysieren",
+      "Remediation-Pläne generieren",
+      "Security- und Funktionalitäts-Trade-offs prüfen",
+      "Patches mit Monitoring deployen"
+    ],
+    "key_features": [
+      "Vulnerability-Impact-Mapping",
+      "Security-Pattern-Erkennung",
+      "Risk-Assessment-Automatisierung"
+    ]
+  },
+  "data-engineer/etl-pipeline-migration": {
+    "headline": "ETL-Pipeline-Migration für Data Engineers",
+    "subhead": "KI-gestützte Data-Pipeline-Modernisierung und -Migration",
+    "meta_title": "Data Engineer KI-Tools - ETL-Pipeline-Migration",
+    "meta_description": "KI-Tools für Data Engineers. ETL-Pipeline-Migrationen, Data-Flow-Analyse, Modern-Data-Stack-Übergänge.",
+    "primary_cta": "Data-Pipelines modernisieren",
+    "pain_points": [
+      {
+        "problem": "Legacy-ETL-Systeme sind komplex und schlecht dokumentiert",
+        "solution": "KI re-engineert Pipeline-Logik und Data-Flows"
+      },
+      {
+        "problem": "Datenmigrationen riskieren Verlust kritischer Transformationen",
+        "solution": "KI validiert Transformations-Äquivalenz über Systeme hinweg"
+      },
+      {
+        "problem": "Performance-Impact neuer Pipeline-Architektur unbekannt",
+        "solution": "KI modelliert Data-Flow und prognostiziert Performance-Charakteristiken"
+      }
+    ],
+    "workflow_steps": [
+      "Bestehende Data-Flows und Transformationen mappen",
+      "Moderne Pipeline-Architektur designen",
+      "Inkrementelle Migrationsstrategie planen",
+      "Datenintegrität und Performance validieren"
+    ],
+    "key_features": [
+      "Data-Flow-Visualisierung",
+      "Transformations-Validierung",
+      "Performance-Modellierung"
+    ]
+  },
+  "ml-engineer/model-deployment-planning": {
+    "headline": "Model-Deployment-Planung für ML Engineers",
+    "subhead": "KI-unterstützte ML-Model-Deployment- und Infrastrukturplanung",
+    "meta_title": "ML Engineer KI-Tools - Model-Deployment-Planung",
+    "meta_description": "KI-Planungstools für ML Engineers. Model-Deployment-Strategien mit ausführbaren Terminal-Befehlen, Infrastrukturplanung, MLOps-Workflow-Optimierung.",
+    "primary_cta": "ML-Deployments optimieren",
+    "pain_points": [
+      {
+        "problem": "Docker/Packaging-Drift zwischen Training und Serving",
+        "solution": "Plan schlägt einheitliches Dockerfile + Build-Args vor"
+      },
+      {
+        "problem": "Env/Config-Verteilung (Model-Pfade, Tokens)",
+        "solution": "Plan mappt .env/.yaml-Dateien und injiziert Variablen sicher"
+      },
+      {
+        "problem": "Model-Deployment erfordert komplexe Infrastruktur-Koordination",
+        "solution": "KI generiert Deployment-Pläne mit Infrastruktur-Anforderungen"
+      },
+      {
+        "problem": "Performance- und Scaling-Charakteristiken schwer vorhersagbar",
+        "solution": "KI modelliert Ressourcen-Nutzung und Scaling-Muster"
+      },
+      {
+        "problem": "Model-Versionierung und Rollback-Strategien unklar",
+        "solution": "KI plant Deployment-Strategien mit sicheren Rollback-Optionen"
+      }
+    ],
+    "workflow_steps": [
+      "Serving-Code, Env/Config und Infra-Manifeste mit File-Discovery lokalisieren",
+      "Deployment-Plan (Container, Env-Vars, Ressourcen-Targets) mit Validierungs-Gates entwerfen",
+      "Build/Publish-Befehle im Terminal mit schrittweisen Genehmigungen ausführen",
+      "Endpoints smoke-testen und Logs für Rollback-Bereitschaft erfassen"
+    ],
+    "key_features": [
+      "File-Path-Inventar und Diffs",
+      "Container-Build/Run-Befehle",
+      "Rollout-Checkpoints und Verifikationsschritte"
+    ]
+  },
+  "frontend-engineer/component-refactoring": {
+    "headline": "React-Component-Refactoring für Frontend Engineers",
+    "subhead": "KI-gesteuerte Component-Architektur-Verbesserungen und Modernisierung",
+    "meta_title": "Frontend Engineer KI-Tools - Component-Refactoring",
+    "meta_description": "KI-Tools für Frontend Engineers. React-Component-Refactoring, Architektur-Verbesserungen, Modern-Framework-Migrationen.",
+    "primary_cta": "Frontend-Components refactoren",
+    "pain_points": [
+      {
+        "problem": "Große Component-Trees sind schwer sicher zu refactoren",
+        "solution": "KI mappt Component-Abhängigkeiten und schlägt sichere Refactoring-Pfade vor"
+      },
+      {
+        "problem": "State-Management-Patterns inkonsistent über Components hinweg",
+        "solution": "KI identifiziert Patterns und generiert konsistente Implementierungen"
+      },
+      {
+        "problem": "Performance-Implikationen von Component-Änderungen unklar",
+        "solution": "KI analysiert Render-Patterns und schlägt Optimierungen vor"
+      }
+    ],
+    "workflow_steps": [
+      "Component-Architektur und Abhängigkeiten analysieren",
+      "Refactoring-Roadmap generieren",
+      "Inkrementelle Component-Updates planen",
+      "Performance und Funktionalität validieren"
+    ],
+    "key_features": [
+      "Component-Dependency-Mapping",
+      "State-Pattern-Analyse",
+      "Performance-Impact-Prognose"
+    ]
+  },
+  "backend-engineer/api-versioning": {
+    "headline": "API-Versions-Migrationsplanung für Backend Engineers",
+    "subhead": "KI-unterstützte API-Evolution und Backward-Compatibility-Planung",
+    "meta_title": "Backend Engineer KI-Tools - API-Versionierung",
+    "meta_description": "KI-Tools für Backend Engineers. API-Versions-Migrationen, Backward-Compatibility, Breaking-Change-Analyse.",
+    "primary_cta": "API-Migrationen planen",
+    "pain_points": [
+      {
+        "problem": "API-Änderungen können Client-Integrationen unerwartet brechen",
+        "solution": "KI analysiert API-Nutzungsmuster und prognostiziert Breaking Changes"
+      },
+      {
+        "problem": "Backward-Compatibility-Strategien sind komplex zu implementieren",
+        "solution": "KI generiert Migrationspläne mit Compatibility-Layern"
+      },
+      {
+        "problem": "Client-Migrations-Koordination erfordert tiefes Integrations-Wissen",
+        "solution": "KI mappt Client-Abhängigkeiten und schlägt Migrationssequenzen vor"
+      }
+    ],
+    "workflow_steps": [
+      "Aktuelle API-Nutzung und Client-Abhängigkeiten analysieren",
+      "Neue API-Version mit Compatibility-Strategie designen",
+      "Client-Migrations-Timeline planen",
+      "Versionierung mit Monitoring ausführen"
+    ],
+    "key_features": [
+      "API-Nutzungs-Analyse",
+      "Breaking-Change-Erkennung",
+      "Client-Migrations-Planung"
+    ]
+  },
+  "mobile-engineer/cross-platform-refactor": {
+    "headline": "Cross-Platform-Mobile-Refactoring für Mobile Engineers",
+    "subhead": "KI-gesteuerte Mobile-App-Architektur und Framework-Migrationen",
+    "meta_title": "Mobile Engineer KI-Tools - Cross-Platform-Refactoring",
+    "meta_description": "KI-Tools für Mobile Engineers. Cross-Platform-Refactoring, Framework-Migrationen, Mobile-Architektur-Verbesserungen.",
+    "primary_cta": "Mobile-Architektur refactoren",
+    "pain_points": [
+      {
+        "problem": "Plattformspezifischer Code macht Refactoring komplex",
+        "solution": "KI identifiziert gemeinsame Logik und schlägt Abstraktions-Patterns vor"
+      },
+      {
+        "problem": "Framework-Migrationen riskieren Plattform-Integrationen zu brechen",
+        "solution": "KI mappt Plattform-Abhängigkeiten und generiert Migrationspläne"
+      },
+      {
+        "problem": "Performance-Implikationen unterscheiden sich über Mobile-Plattformen",
+        "solution": "KI analysiert plattformspezifische Performance-Charakteristiken"
+      }
+    ],
+    "workflow_steps": [
+      "Plattformspezifischen Code und Abhängigkeiten analysieren",
+      "Cross-Platform-Architektur designen",
+      "Inkrementelle Migrationsstrategie planen",
+      "Performance über Plattformen hinweg validieren"
+    ],
+    "key_features": [
+      "Plattform-Abstraktions-Planung",
+      "Dependency-Mapping",
+      "Performance-Analyse"
+    ]
+  },
+  "qa-lead/regression-test-planning": {
+    "headline": "Regressions-Test-Planung für QA Leads",
+    "subhead": "KI-gestützte Test-Coverage-Strategien und Risikobewertung",
+    "meta_title": "QA Lead KI-Tools - Regressions-Test-Planung",
+    "meta_description": "KI-Tools für QA Leads. Regressions-Test-Planung, Risikobewertung, Test-Coverage-Optimierung, Quality-Assurance-Strategien.",
+    "primary_cta": "Test-Coverage optimieren",
+    "pain_points": [
+      {
+        "problem": "Regressions-Test-Coverage ist unvollständig oder ineffizient",
+        "solution": "KI analysiert Code-Änderungen und schlägt gezielte Test-Szenarien vor"
+      },
+      {
+        "problem": "Risikobewertung für Releases fehlt systematischer Ansatz",
+        "solution": "KI mappt Change-Impact und priorisiert Testing-Aufwand"
+      },
+      {
+        "problem": "Test-Automatisierungs-Lücken führen zu manuellen Testing-Engpässen",
+        "solution": "KI identifiziert Automatisierungs-Möglichkeiten und generiert Test-Pläne"
+      }
+    ],
+    "workflow_steps": [
+      "Code-Änderungen und Impact-Scope analysieren",
+      "Risikobasierte Test-Strategie generieren",
+      "Automatisierte und manuelle Testing-Mix planen",
+      "Testing mit Coverage-Validierung ausführen"
+    ],
+    "key_features": [
+      "Change-Impact-Analyse",
+      "Risikobasierte Test-Priorisierung",
+      "Coverage-Optimierung"
+    ]
+  },
+  "engineering-manager/tech-debt-reduction": {
+    "headline": "Technische-Schulden-Reduktion für Engineering Manager",
+    "subhead": "KI-gesteuerte technische Schulden-Priorisierung und Remediation-Planung",
+    "meta_title": "Engineering Manager KI-Tools - Tech-Debt-Reduktion",
+    "meta_description": "KI-Tools für Engineering Manager. Technische-Schulden-Assessment, Priorisierungs-Strategien, Team-Produktivitäts-Optimierung.",
+    "primary_cta": "Technische Schulden reduzieren",
+    "pain_points": [
+      {
+        "problem": "Technische Schulden sind schwer zu quantifizieren und zu priorisieren",
+        "solution": "KI analysiert Codebase-Gesundheit und generiert Schulden-Metriken"
+      },
+      {
+        "problem": "Team-Kapazitätsplanung für Schulden-Reduktion unklar",
+        "solution": "KI schätzt Aufwand und schlägt Sprint-Allokations-Strategien vor"
+      },
+      {
+        "problem": "Business-Impact technischer Verbesserungen schwer zu kommunizieren",
+        "solution": "KI generiert Business-fokussierte Impact-Assessments"
+      }
+    ],
+    "workflow_steps": [
+      "Aktuelle technische Schulden über Projekte hinweg bewerten",
+      "Schulden-Reduktion basierend auf Impact priorisieren",
+      "Team-Kapazität und Sprint-Allokation planen",
+      "Fortschritt und Business-Impact tracken"
+    ],
+    "key_features": [
+      "Technische-Schulden-Quantifizierung",
+      "Impact-basierte Priorisierung",
+      "Business-Value-Kommunikation"
+    ]
+  },
+  "vibe-code-cleanup-specialist": {
+    "headline": "KI-generierter Code-Cleanup & Technische-Schulden-Reduktion",
+    "subhead": "KI-generierte technische Schulden in wartbare, dokumentierte Systeme verwandeln",
+    "meta_title": "KI-generierte Technische Schulden beheben | Code-Cleanup-Tool",
+    "meta_description": "KI-generierten Code aufräumen mit Architektur-Analyse, Dependency-Mapping und Multi-Modell-Refactoring-Plänen. Black-Box-KI-Code in wartbare Systeme umwandeln.",
+    "primary_cta": "KI-Code aufräumen",
+    "pain_points": [
+      {
+        "problem": "KI-generierter Code fehlt Architektur-Dokumentation",
+        "solution": "Multi-Modell-Analyse dokumentiert Intent und Abhängigkeiten"
+      },
+      {
+        "problem": "Technische Schulden aus schnellem KI-Prototyping häufen sich schnell",
+        "solution": "Systematische Refactoring-Pläne mit Impact-Analyse"
+      },
+      {
+        "problem": "Black-Box-KI-Code ist schwer zu debuggen und zu warten",
+        "solution": "KI-Entscheidungen in klare Patterns reverse-engineeren"
+      }
+    ],
+    "workflow_steps": [
+      "KI-generierte Codebase und Patterns analysieren",
+      "Technische-Schulden-Hotspots identifizieren",
+      "Refactoring-Pläne von mehreren Modellen generieren",
+      "Cleanup mit Validierung ausführen"
+    ],
+    "key_features": [
+      "KI-Code-Pattern-Analyse",
+      "Technische-Schulden-Quantifizierung",
+      "Multi-Modell-Refactoring-Synthese",
+      "Dependency-Mapping für sicheren Cleanup"
+    ]
+  }
+}

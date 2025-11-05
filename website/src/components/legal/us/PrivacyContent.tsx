@@ -1,5 +1,6 @@
 'use client';
 
+import { Link } from '@/i18n/navigation';
 import { ObfuscatedEmail } from '@/components/ui/ObfuscatedEmail';
 
 export default function USPrivacyContent() {
@@ -225,7 +226,7 @@ export default function USPrivacyContent() {
         </p>
         
         <p className="mt-4">
-          For a complete and up-to-date list of our service providers and their locations, please visit our <a href="/legal/us/subprocessors" className="link-primary">subprocessors page</a>.
+          For a complete and up-to-date list of our service providers and their locations, please visit our <Link href="/legal/us/subprocessors" className="link-primary">subprocessors page</Link>.
         </p>
       </section>
 

@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { Link } from '@/i18n/navigation';
 import { ObfuscatedEmail } from '@/components/ui/ObfuscatedEmail';
 
 export default function USTermsContent() {

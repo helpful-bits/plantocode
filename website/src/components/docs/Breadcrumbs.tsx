@@ -1,5 +1,5 @@
 import { buildBreadcrumbs } from '@/lib/docs-nav';
-import Link from 'next/link';
+import { Link } from '@/i18n/navigation';
 
 interface BreadcrumbsProps {
   currentPath: string;

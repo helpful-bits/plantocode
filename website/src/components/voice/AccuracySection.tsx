@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { WERExplainer } from './WERExplainer';
 import { WERBarChart, type ModelWer } from '@/components/visualizations/WERBarChart';
 
