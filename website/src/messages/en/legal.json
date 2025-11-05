@@ -1,0 +1,30 @@
+{
+  "regionSelector": {
+    "eu": {
+      "documents": "Includes: Terms, Privacy, Imprint, Sub-processors, Withdrawal Policy",
+      "features": [
+        "GDPR data protection rights",
+        "14-day withdrawal period",
+        "German law applies",
+        "Consumer protections"
+      ],
+      "title": "European Union / UK"
+    },
+    "notice": {
+      "content": "PlanToCode is only available to residents of and users accessing from the European Union/EEA, United Kingdom, and United States. Access from all other regions is restricted. We use IP geolocation, payment verification, and other methods to enforce these restrictions. VPN or proxy use to circumvent regional restrictions is prohibited.",
+      "title": "Service Availability Notice"
+    },
+    "subtitle": "Choose your region to view the applicable legal documents",
+    "title": "Select Your Region",
+    "us": {
+      "documents": "Includes: Terms of Service, Privacy Policy, Sub-processors",
+      "features": [
+        "CCPA/State privacy rights",
+        "US law applies",
+        "DMCA process",
+        "Standard commercial terms"
+      ],
+      "title": "United States"
+    }
+  }
+}

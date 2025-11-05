@@ -1,0 +1,292 @@
+{
+  "capture": {
+    "cards": {
+      "taskRefinement": {
+        "description": "Erweitern Sie Task-Beschreibungen durch Identifizierung impliziter Anforderungen, Klärung erwarteten Verhaltens und Edge Cases sowie Hinzufügen technischer Überlegungen.",
+        "link": "Mehr erfahren →",
+        "title": "Task-Verfeinerung"
+      },
+      "textEnhancement": {
+        "description": "Verbessern Sie Grammatik, Satzstruktur, Klarheit und Prägnanz unter Beibehaltung Ihrer ursprünglichen Absicht, Ihres Tons und des technischen Detailgrads.",
+        "link": "Mehr erfahren →",
+        "title": "Textverbesserung"
+      },
+      "voice": {
+        "description": "Erfassen Sie initiale Anforderungen durch Spracheingabe, die Sie dann manuell für Präzision und Klarheit verfeinern können.",
+        "link": "Mehr erfahren →",
+        "title": "Sprachdiktat"
+      }
+    },
+    "subtitle": "Kristallisieren Sie Ideen schnell in klare, umsetzbare Spezifikationen mit Sprachdiktat und KI-gestützter Verbesserung.",
+    "title": "Spezifikations-Erfassung & -Verfeinerung"
+  },
+  "cta": {
+    "badge": "Human-in-the-loop KI-Planung",
+    "buttons": {
+      "download": "Kostenlos herunterladen",
+      "talk": "Mit einem Architekten sprechen"
+    },
+    "description": "Planen, prüfen und führen Sie KI-unterstützte Änderungen aus einem Workspace aus. Halten Sie Modelle, Prompts, Dateien und Terminal-Output ausgerichtet.",
+    "features": {
+      "instant": "Sofort einsatzbereit",
+      "noCard": "Keine Kreditkarte erforderlich"
+    },
+    "title": "Bereit, Ihren nächsten Implementierungsplan zu koordinieren?"
+  },
+  "faq": {
+    "items": {
+      "q1": {
+        "a": "Ja. PlanToCode bietet einen Human-in-the-loop-Workflow, bei dem Teamleiter und Stakeholder generierte Implementierungspläne prüfen, Details bearbeiten, Modifikationen anfordern und Änderungen genehmigen können, bevor diese von Coding-Agents oder Entwicklern ausgeführt werden. Dies gewährleistet Corporate Governance und verhindert Regressionen.",
+        "q": "Können Stakeholder Pläne vor der Ausführung prüfen und genehmigen?"
+      },
+      "q10": {
+        "a": "Absolut. Pläne öffnen sich in einem Monaco-Editor mit Syntax-Highlighting, diff-freundlicher Formatierung und Clipboard-Helfern. Sie können den Prompt anpassen, einzelne Schritte kopieren und die Generierung neu ausführen, ohne den Workspace zu verlassen.",
+        "q": "Kann ich KI-generierte Pläne vor der Ausführung bearbeiten?"
+      },
+      "q11": {
+        "a": "Wählen Sie zwei oder mehr Pläne aus, schreiben Sie die Merge-Anleitung und senden Sie ab. Das zusammengeführte Ergebnis wird neben den Originalen gespeichert, sodass Sie Entwürfe vergleichen, Notizen behalten oder den Merge mit unterschiedlichen Instructions neu ausführen können.",
+        "q": "Wie funktionieren Merge-Instructions?"
+      },
+      "q12": {
+        "a": "Token-Schätzungen, Prompt-Vorschauen, Terminal-Health-Monitoring und persistente Sessions reduzieren Nacharbeit. Sie entscheiden, wann Commands ausgeführt werden und welchem Modell Sie vertrauen, während die App Orchestrierungs-Details handhabt.",
+        "q": "Warum nutzen Senior-Engineers dies?"
+      },
+      "q13": {
+        "a": "Task beschreiben (Tippen oder Sprache) → File-Finder-Workflow ausführen → einen oder mehrere Implementierungspläne generieren → Pläne im Monaco-Editor bearbeiten oder mergen → das integrierte Terminal starten, um den Plan auszuführen und Logs zu überwachen. Sessions und Logs bleiben beim nächsten Öffnen der App verfügbar.",
+        "q": "Wie sieht ein typischer Workflow aus?"
+      },
+      "q2": {
+        "a": "Laden Sie Microsoft Teams Meeting-Aufzeichnungen oder Bildschirmaufnahmen in PlanToCode hoch. Fortgeschrittene multimodale Modelle analysieren sowohl Audio-Transkripte (inklusive Sprecher-Identifikation) als auch visuelle Inhalte (geteilte Bildschirme, Dokumente), um Spezifikationsanforderungen zu extrahieren. Sie prüfen die extrahierten Insights - Entscheidungen, Action Items, Diskussionspunkte - und integrieren sie in Implementierungspläne.",
+        "q": "Wie werden Teams-Meetings zu Spezifikationen?"
+      },
+      "q3": {
+        "a": "Ja. Implementierungspläne zerlegen Änderungen auf Datei-für-Datei-Basis mit exakten Repository-Pfaden entsprechend Ihrer Projektstruktur. Dieser granulare Ansatz stellt sicher, dass Sie genau wissen, was vor der Ausführung modifiziert wird, und bietet vollständige Transparenz und Kontrolle.",
+        "q": "Verweisen Pläne auf exakte Dateien in unserem Repo?"
+      },
+      "q4": {
+        "a": "PlanToCode ist ein Desktop-Planungs-Workspace. Sie führen den File-Discovery-Workflow aus, prüfen Implementierungspläne in einem Monaco-Editor, passen Prompts an und starten dann das Terminal aus derselben Session. Chat-Tools geben Ihnen eine einzelne Antwort; hier stagen Sie die Arbeit bevor etwas ausgeführt wird.",
+        "q": "Wie unterscheidet sich dies von Chat-basierten Coding-Agents?"
+      },
+      "q5": {
+        "a": "Ja. Die App setzt voraus, dass Sie bereits in großen Repositories arbeiten und mit Terminals, Dependency Graphs und Architektur-Trade-offs vertraut sind. Die Software hält den Kontext organisiert, sodass Sie Ihr Urteilsvermögen schneller anwenden können.",
+        "q": "Muss ich programmieren können?"
+      },
+      "q6": {
+        "a": "Die Standard-Konfiguration wird mit Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet, o3, Grok 4, DeepSeek R1 und Kimi K2 ausgeliefert. Sie können Modelle pro Task aus dem Einstellungspanel wechseln, bevor Sie einen Job absenden.",
+        "q": "Welche KI-Modelle können Pläne generieren?"
+      },
+      "q7": {
+        "a": "Projektstatus, Terminal-Logs und Plan-Entwürfe werden lokal in SQLite gespeichert. Nur der von Ihnen genehmigte Prompt plus die von Ihnen ausgewählten Dateien werden durch Ihren konfigurierten Server-Proxy gesendet. Der Rust-Server in diesem Repo kann selbst gehostet werden, wenn Sie Traffic auf Ihrer eigenen Infrastruktur halten müssen.",
+        "q": "Was passiert mit meinem Quellcode?"
+      },
+      "q8": {
+        "a": "Das Terminal bootet dieselbe Shell, die Sie auf der Host-Maschine verwenden, und erkennt automatisch claude, cursor, codex und gemini Binaries. Sie können weiterhin jedes andere Tool manuell ausführen - die PTY-Session ist eine reguläre Shell mit verfügbarem Sprachdiktat, wenn Sie freihändige Eingabe benötigen.",
+        "q": "Welche CLI-Tools funktionieren im Terminal?"
+      },
+      "q9": {
+        "a": "Starten Sie den File-Finder-Workflow zur Generierung von Suchmustern, Relevanz-Scoring und priorisierten Dateilisten. Jede Stufe läuft als eigener Background-Job, sodass Sie Ergebnisse inspizieren können, bevor Sie die Auswahl auf Ihre Session anwenden.",
+        "q": "Wie bewältigt es große Codebasen?"
+      }
+    },
+    "subtitle": "Alles, was Sie über PlanToCode wissen müssen",
+    "title": "Häufig gestellte Fragen"
+  },
+  "features": {
+    "cards": {
+      "fileDiscovery": {
+        "description": "Stufenweise Hintergrund-Jobs für Regex-Muster-Generierung, Relevanz-Bewertung und Pfad-Korrektur starten. Jede Stufe prüfen, bevor die Ergebnisse auf Ihre Sitzung angewendet werden.",
+        "title": "Datei-Ermittlungs-Workflow"
+      },
+      "implementation": {
+        "description": "Datei-für-Datei-Implementierungspläne mit exakten Repository-Pfaden generieren. Änderungen vor Ausführung prüfen, bearbeiten und genehmigen, um Regressionen zu verhindern und Übereinstimmung mit Anforderungen sicherzustellen.",
+        "title": "Von Menschen geprüfte Implementierungspläne"
+      },
+      "integratedTerminal": {
+        "description": "Claude, Cursor, Codex oder Gemini direkt im integrierten Terminal starten. Gesundheitsüberwachung, Auto-Wiederherstellung und Größenanpassung halten langwierige Jobs stabil.",
+        "title": "Integriertes PTY-Terminal mit CLI-Erkennung"
+      },
+      "meeting": {
+        "description": "Microsoft Teams Meetings oder Bildschirmaufzeichnungen hochladen. Multimodale Analyse extrahiert Spezifikationen aus Audio-Transkripten und visuellem Inhalt zur Prüfung und Einbindung.",
+        "title": "Meeting-Aufzeichnungs-Erfassung"
+      },
+      "mergePlans": {
+        "description": "Mehrere Pläne auswählen, Zusammenführungs-Leitfaden schreiben und die zusammengeführte Ausgabe neben den Originalen behalten. Iterieren, bis der Ansatz Ihren Standards entspricht.",
+        "title": "Pläne mit Anweisungen zusammenführen"
+      },
+      "modelConfiguration": {
+        "description": "Wählen Sie zwischen Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet, Grok 4, DeepSeek R1 und Kimi K2 für Implementierungspläne. Einstellungen bleiben pro Projekt bestehen.",
+        "title": "Modell-Konfiguration pro Aufgabe"
+      },
+      "monacoEditor": {
+        "description": "Pläne öffnen sich in einem Monaco-Editor mit Syntax-Hervorhebung, Diff-freundlicher Formatierung und Zwischenablage-Helfern. Schritte bearbeiten, Entwürfe speichern und Vorlagen für die nächste Aufgabe bereithalten.",
+        "title": "Monaco-Implementierungsplan-Editor"
+      },
+      "persistentSessions": {
+        "description": "Terminal-Ausgabe wird in einem 5 MB Ring-Puffer gespeichert und Projekt-Sitzungen werden beim Start neu geladen. Ausstehende Arbeit fortsetzen, ohne Kontext neu aufzubauen.",
+        "title": "Persistente Sitzungen und Logs"
+      },
+      "specification": {
+        "description": "Sprach-Diktat für schnelle Eingabe, Text-Verbesserung für Klarheit und Aufgaben-Verfeinerung zur Identifizierung impliziter Anforderungen und Grenzfälle.",
+        "title": "Spezifikations-Erfassung & Verfeinerung"
+      },
+      "textImprovement": {
+        "description": "Beliebige Auswahl markieren, um den Text-Verbesserungs-Job mit Claude 4.5 Sonnet oder Gemini 2.5 Flash auszuführen. Die Neuschreibung erhält die Formatierung und wird in Monaco-Editoren, Aufgaben-Eingaben und Terminal-Diktat angewendet.",
+        "title": "Text-Verbesserungs-Popover"
+      },
+      "tokenGuardrails": {
+        "description": "Den exakten Prompt, geschätzte Token-Anzahl und Kontext-Fenster-Warnungen anzeigen, bevor Sie einen Job absenden. Anweisungen mit voller Transparenz anpassen.",
+        "title": "Token-Leitplanken & Prompt-Vorschau"
+      },
+      "voiceTranscription": {
+        "description": "Aufgabenbeschreibungen oder Terminal-Befehle aufzeichnen und durch den Transkriptions-Service senden. Sprache und Temperatur-Standardwerte für jedes Projekt konfigurieren.",
+        "title": "Sprach-Transkriptions-Pipeline"
+      }
+    },
+    "linkText": "Mehr erfahren",
+    "subtitle": "Entwickelt für Entwickler, die große & Legacy-Codebasen bewältigen. Wenn Sie Claude Code, Cursor oder Aider nutzen - dies ist Ihre Planungsebene.",
+    "title": "Mechanismen"
+  },
+  "governance": {
+    "cards": {
+      "filePlans": {
+        "description": "Implementierungspläne zerlegen Änderungen auf Datei-für-Datei-Basis mit exakten Repository-Pfaden und gewährleisten vollständige Transparenz darüber, was modifiziert wird.",
+        "title": "Datei-für-Datei-Pläne mit exakten Pfaden"
+      },
+      "handoff": {
+        "description": "Nach der Genehmigung werden Pläne sicher an Ihren gewählten Coding-Agent übermittelt oder Entwicklern zugewiesen, um Regressionen zu verhindern und Übereinstimmung mit Anforderungen sicherzustellen.",
+        "title": "Sichere Übergabe an Agents"
+      },
+      "workflow": {
+        "description": "Teamleiter und Stakeholder können vorgeschlagene Änderungen prüfen, Plan-Details direkt bearbeiten, Modifikationen anfordern und Pläne vor der Ausführung genehmigen.",
+        "title": "Review-, Edit- & Approve-Workflow"
+      }
+    },
+    "subtitle": "Behalten Sie die volle Kontrolle über KI-generierte Implementierungspläne. Prüfen, bearbeiten, genehmigen und auditieren Sie jeden Schritt vor der Ausführung.",
+    "title": "Human-in-the-loop Governance"
+  },
+  "hero": {
+    "cta": {
+      "demo": "Interaktive Demo testen →",
+      "download": "Kostenlos herunterladen",
+      "howItWorks": "So funktioniert es"
+    },
+    "panel1": {
+      "description": "Suchmuster generieren, Relevanz-Scoring durchführen und gestaffelte Ergebnisse prüfen, bevor Dateien in Ihren Plan aufgenommen werden.",
+      "descriptionDesktop": "Die richtigen Dateien finden, bevor Sie Prompts schreiben.",
+      "features": {
+        "context": "Kontext-Optimierung",
+        "patterns": "Mustergruppen",
+        "progress": "Echtzeit-Fortschritt",
+        "relevance": "Relevanz-Scores",
+        "stage": "Stufen-Reviews"
+      },
+      "link": "So funktioniert es",
+      "linkDesktop": "Mehr erfahren",
+      "title": "Datei-Discovery-Workflow"
+    },
+    "panel2": {
+      "description": "Implementierungspläne von GPT-5, Gemini 2.5 Pro, Claude 4 Sonnet, Grok 4 und DeepSeek R1 generieren und die besten Ideen zusammenführen.",
+      "link": "Workflow erkunden",
+      "models": {
+        "claude": "Claude Sonnet 4",
+        "gemini": "Gemini 2.5 Pro",
+        "gpt5": "GPT-5"
+      },
+      "title": "Multi-Modell-Planung"
+    },
+    "panel3": {
+      "description": "Claude, Cursor, Codex oder Gemini starten ohne den Workspace zu verlassen. Health-Monitoring und Recovery halten lange Jobs am Laufen.",
+      "link": "Terminal-Details",
+      "terminal": {
+        "line1": "$ codex | claude | cursor | gemini",
+        "line2": "> Sprachtranskription verfügbar",
+        "line3": "> Prompt-Vorschau vor Ausführung",
+        "line4": "> Token-Guardrails aktiv",
+        "line5": "> Logs lokal gespeichert"
+      },
+      "title": "Integriertes Terminal"
+    },
+    "srOnly": {
+      "description": "PlanToCode hilft Ihnen die richtigen Dateien zu finden, Implementierungspläne zu generieren und zusammenzuführen, dann in einem persistenten Terminal auszuführen. Sie sehen den Scope bevor etwas läuft. Pläne sind editierbar und nachvollziehbar.",
+      "heading": "Software-Änderungen planen bevor Sie coden"
+    },
+    "subtitle": "KI generiert detaillierte Implementierungspläne mit exakten Dateipfaden. Sie prüfen und genehmigen jede Änderung vor der Ausführung. Null Risiko, volle Kontrolle.",
+    "title": "Komplexe Änderungen planen ohne Production zu brechen"
+  },
+  "integrations": {
+    "cards": {
+      "allIntegrations": {
+        "description": "Erkunden Sie alle unterstützten KI-Coding-Tools und Integrations-Patterns",
+        "link": "Integrationen anzeigen →",
+        "title": "Alle Integrationen"
+      },
+      "claudeCode": {
+        "description": "Claude Code in persistenten Terminals ausführen mit vollständiger Session-Aufzeichnung und Health-Monitoring",
+        "link": "Setup-Anleitung →",
+        "title": "Claude Code Integration"
+      },
+      "cursor": {
+        "description": "Geben Sie Cursor Composer Architektur-Kontext und Datei-Discovery-Funktionen",
+        "link": "Setup-Anleitung →",
+        "title": "Cursor Enhancement"
+      }
+    },
+    "subtitle": "Erweitern Sie Claude Code, Cursor und Codex CLI mit Architektur-Planung",
+    "title": "Funktioniert mit Ihren bevorzugten KI-Tools"
+  },
+  "meetings": {
+    "cards": {
+      "insights": {
+        "description": "Extrahierte Insights - zusammengefasste Entscheidungen, Action Items und Schlüssel-Diskussionspunkte - werden in einer intuitiven Oberfläche präsentiert, wo Teamleiter diese prüfen, auswählen und in umsetzbare Implementierungspläne einbinden können.",
+        "link": "Mehr erfahren →",
+        "title": "Insights prüfen & einbinden"
+      },
+      "multimodal": {
+        "description": "Laden Sie Microsoft Teams Meetings oder Bildschirmaufzeichnungen hoch. Fortgeschrittene multimodale Modelle analysieren sowohl Audio-Transkripte (mit Sprecher-Identifikation) als auch relevante visuelle Inhalte (geteilte Bildschirme, präsentierte Dokumente, Schlüsselmomente), um Spezifikationsanforderungen zu extrahieren.",
+        "link": "Mehr erfahren →",
+        "title": "Multimodale Analyse"
+      }
+    },
+    "subtitle": "Transformieren Sie Microsoft Teams Meetings und Bildschirmaufzeichnungen in umsetzbare Implementierungsanforderungen.",
+    "title": "Meeting- & Aufzeichnungs-Ingestion"
+  },
+  "pricing": {
+    "card": {
+      "description": "Starten Sie mit nutzungsbasierter Preisgestaltung zur Validierung der Ergebnisse. Keine Abonnements. Nur transparente API-Kosten.",
+      "pricing": {
+        "description": "Testen Sie Plan Editor, Merge Instructions, Terminal Integration. Auto-Aufladung wenn Sie überzeugt sind.",
+        "subtitle": "Zahlen Sie nur für das, was Sie nutzen.",
+        "title": "Nutzungsbasierte Preisgestaltung"
+      },
+      "title": "Transparente Preisgestaltung"
+    },
+    "subtitle": "Zahlen Sie nur für KI-Inferenz mit transparenten Token-Kosten. Beobachten Sie Ihren ROI in Echtzeit - ein verhindeter Production-Incident zahlt Monate der Nutzung.",
+    "title": "Entwickelt für professionelle Entwicklung"
+  },
+  "problems": {
+    "cards": {
+      "browseAll": {
+        "description": "Erkunden Sie Workflows für Refactorings, Migrationen, Incident Response und mehr",
+        "link": "Alle Workflows anzeigen →",
+        "title": "Alle Workflows durchsuchen"
+      },
+      "hardBugs": {
+        "description": "Debuggen mit erhaltenem Kontext, reproduzierbaren Schritten und vollständiger Untersuchungshistorie",
+        "link": "Mehr erfahren →",
+        "title": "Schwierige Production-Bugs"
+      },
+      "largeFeatures": {
+        "description": "Komplexe Implementierungen mit Architektur-Awareness und Impact-Analyse planen",
+        "link": "Mehr erfahren →",
+        "title": "Große Features"
+      },
+      "libraryUpgrades": {
+        "description": "Abhängigkeiten sicher aktualisieren mit Breaking-Change-Erkennung und Migrations-Planung",
+        "link": "Mehr erfahren →",
+        "title": "Library-Upgrades"
+      }
+    },
+    "subtitle": "Echte Lösungen für die schwierigsten Probleme in der Software-Entwicklung",
+    "title": "Komplexe Entwicklungs-Herausforderungen lösen"
+  }
+}

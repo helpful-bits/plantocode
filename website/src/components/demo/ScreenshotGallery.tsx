@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
-import Link from 'next/link';
+import { Link } from '@/i18n/navigation';
 import { cdnUrl } from '@/lib/cdn';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';

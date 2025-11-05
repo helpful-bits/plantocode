@@ -1,7 +1,5 @@
 'use client';
 
-import React from 'react';
-import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { CALENDLY_URL } from '@/lib/brand';
 import { GlassCard } from '@/components/ui/GlassCard';
@@ -9,13 +7,10 @@ import { motion } from 'framer-motion';
 import { CheckCircle2, Zap } from 'lucide-react';
 import Reveal from '@/components/motion/Reveal';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
+import { useMessages } from '@/components/i18n/useMessages';
 
-interface CallToActionProps {
-  title: string;
-  description: string;
-}
-
-export function CallToAction({ title, description }: CallToActionProps) {
+export function CallToAction() {
+  const { t } = useMessages();
 
 
   return (
@@ -90,15 +85,15 @@ export function CallToAction({ title, description }: CallToActionProps) {
 
                 <Reveal className="inline-flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-primary/10 dark:bg-primary/15 text-primary mb-4 sm:mb-6 text-xs sm:text-sm font-medium" delay={0.1}>
                   <Zap className="w-3 h-3 sm:w-4 sm:h-4" />
-                  <span>Human-in-the-loop AI Planning</span>
+                  <span>{t('cta.badge', 'Human-in-the-loop AI Planning')}</span>
                 </Reveal>
 
                 <Reveal as="h2" className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl mb-4 sm:mb-6 text-primary-emphasis relative z-10 font-bold" delay={0.15}>
-                  {title}
+                  {t('cta.title', 'Ready to coordinate your next implementation plan?')}
                 </Reveal>
 
                 <Reveal as="p" className="text-base sm:text-lg md:text-xl lg:text-2xl mb-8 sm:mb-10 max-w-2xl mx-auto leading-relaxed font-medium text-foreground/80 relative z-10" delay={0.2}>
-                  {description}
+                  {t('cta.description', 'Plan, review, and run AI-assisted changes from one workspace. Keep models, prompts, files, and terminal output aligned.')}
                 </Reveal>
 
                 <Reveal delay={0.25}>
@@ -111,9 +106,9 @@ export function CallToAction({ title, description }: CallToActionProps) {
                     </motion.div>
                     <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                       <Button asChild variant="outline" size="lg">
-                        <Link href={CALENDLY_URL} target="_blank" rel="noopener noreferrer">
-                          Talk to an Architect
-                        </Link>
+                        <a href={CALENDLY_URL} target="_blank" rel="noopener noreferrer">
+                          {t('cta.buttons.talk', 'Talk to an Architect')}
+                        </a>
                       </Button>
                     </motion.div>
                   </div>
@@ -122,11 +117,11 @@ export function CallToAction({ title, description }: CallToActionProps) {
                 <Reveal className="mt-6 sm:mt-8 flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-8 text-xs sm:text-sm text-foreground/60" delay={0.3}>
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-primary/70" />
-                    <span>No credit card required</span>
+                    <span>{t('cta.features.noCard', 'No credit card required')}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-primary/70" />
-                    <span>Start working instantly</span>
+                    <span>{t('cta.features.instant', 'Start working instantly')}</span>
                   </div>
                 </Reveal>
               </div>

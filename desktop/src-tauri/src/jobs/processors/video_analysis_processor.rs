@@ -104,7 +104,7 @@ impl JobProcessor for VideoAnalysisProcessor {
                     &payload.model,
                     payload.temperature,
                     payload.system_prompt.clone(),
-                    payload.duration_ms,
+                    duration_ms,
                     payload.framerate.max(1.0).round() as u32,
                     Some(job.id.to_string()),
                 )
@@ -138,7 +138,7 @@ impl JobProcessor for VideoAnalysisProcessor {
                     analysis_response.usage.completion_tokens as i64,
                     None,                                                    // cache_write_tokens
                     analysis_response.usage.cached_tokens.map(|t| t as i64), // cache_read_tokens
-                    Some(payload.duration_ms),
+                    Some(duration_ms),
                 )
                 .await
             {

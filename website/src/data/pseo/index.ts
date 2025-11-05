@@ -42,6 +42,23 @@ export interface PseoPage {
   competitor?: string;
 }
 
+// Localization types
+export type LocalizedOverrides = Partial<Pick<PseoPage,
+  'headline' | 'subhead' | 'meta_title' | 'meta_description' | 'primary_cta' |
+  'pain_points' | 'workflow_steps' | 'key_features'
+>>;
+
+export type Translations = {
+  en?: LocalizedOverrides;
+  de?: LocalizedOverrides;
+  fr?: LocalizedOverrides;
+  es?: LocalizedOverrides;
+};
+
+export type PseoPageWithTranslations = PseoPage & {
+  translations?: Translations;
+};
+
 // Combine all pages and add category from parent
 const allPages: PseoPage[] = [
   ...workflows.pages.map(page => ({ ...page, category: workflows.category })),
@@ -79,6 +96,123 @@ export const getPageBySlug = (slug: string): PseoPage | undefined => {
 
 // Export individual categories for direct access
 export { workflows, integrations, comparisons, stacks, useCases, features };
+
+// Localization functions
+
+/**
+ * Merges base page with inline translations and overlay translations
+ */
+export function mergeTranslations(
+  base: PseoPageWithTranslations,
+  locale: 'en' | 'de' | 'fr' | 'es',
+  overlays: Record<string, LocalizedOverrides>
+): PseoPage {
+  // Start with base page
+  const result: PseoPage = { ...base };
+
+  // For English, return as-is (no translations needed)
+  if (locale === 'en') {
+    return result;
+  }
+
+  // For German, merge inline translations first, then overlays
+  const inlineTranslations = base.translations?.[locale];
+  const overlayTranslations = overlays[base.slug];
+
+  // Merge inline translations
+  if (inlineTranslations) {
+    Object.assign(result, inlineTranslations);
+  }
+
+  // Merge overlay translations (takes precedence)
+  if (overlayTranslations) {
+    Object.assign(result, overlayTranslations);
+  }
+
+  return result;
+}
+
+/**
+ * Loads all German overlay files and merges them into a single map
+ */
+export async function loadDeOverlays(): Promise<Record<string, LocalizedOverrides>> {
+  try {
+    const [workflows, integrations, stacks, useCases, features, comparisons] = await Promise.all([
+      import('./i18n/de/workflows.json').catch(() => ({ default: {} })),
+      import('./i18n/de/integrations.json').catch(() => ({ default: {} })),
+      import('./i18n/de/stacks.json').catch(() => ({ default: {} })),
+      import('./i18n/de/use-cases.json').catch(() => ({ default: {} })),
+      import('./i18n/de/features.json').catch(() => ({ default: {} })),
+      import('./i18n/de/comparisons.json').catch(() => ({ default: {} })),
+    ]);
+
+    // Merge all overlays into a single map by slug
+    return {
+      ...workflows.default,
+      ...integrations.default,
+      ...stacks.default,
+      ...useCases.default,
+      ...features.default,
+      ...comparisons.default,
+    };
+  } catch (error) {
+    // Return empty object on any error
+    return {};
+  }
+}
+
+/**
+ * Get a page by slug with localization support
+ */
+export async function getPageBySlugLocalized(
+  slug: string,
+  locale: 'en' | 'de' | 'fr' | 'es'
+): Promise<PseoPage | undefined> {
+  const page = getPageBySlug(slug);
+
+  if (!page) {
+    return undefined;
+  }
+
+  // For English, return as-is
+  if (locale === 'en') {
+    return page;
+  }
+
+  // Load overlays for the specific locale
+  let overlays: Record<string, LocalizedOverrides> = {};
+  try {
+    if (locale === 'de') {
+      overlays = await loadDeOverlays();
+    }
+    // fr and es overlays can be added when available
+  } catch {
+    // If overlays don't exist, return base page
+    return page;
+  }
+
+  return mergeTranslations(page as PseoPageWithTranslations, locale, overlays);
+}
+
+/**
+ * Get all published pages with localization support
+ */
+export async function getPublishedPagesLocalized(
+  locale: 'en' | 'de' | 'fr' | 'es'
+): Promise<PseoPage[]> {
+  const pages = getPublishedPages();
+
+  // For English, return as-is
+  if (locale === 'en') {
+    return pages;
+  }
+
+  // For German, load overlays and merge all pages
+  const overlays = await loadDeOverlays();
+  return pages.map(page =>
+    mergeTranslations(page as PseoPageWithTranslations, locale, overlays)
+  );
+}
 
 // Default export for backward compatibility
 export default pseoData;

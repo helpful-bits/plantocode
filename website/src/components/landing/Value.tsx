@@ -11,10 +11,11 @@
 
 import React, { memo, useEffect, useRef, useState } from 'react';
 import { useReducedMotion, motion } from 'framer-motion';
-import Link from 'next/link';
+import { Link } from '@/i18n/navigation';
 import Reveal from '@/components/motion/Reveal';
 import { Button } from '@/components/ui/button';
 import { CheckCircle, Code, Zap, Users, Shield, ArrowRight } from 'lucide-react';
+import { useMessages } from '@/components/i18n/useMessages';
 
 interface ValueProposition {
   title: string;
@@ -137,6 +138,7 @@ const ValueCard = memo(function ValueCard({
 
 // Memoized main component for performance
 export const Value = memo(function Value({ propositions = defaultPropositions }: ValueProps) {
+  const { t } = useMessages();
   const prefersReducedMotion = useReducedMotion();
 
   return (
@@ -178,7 +180,7 @@ export const Value = memo(function Value({ propositions = defaultPropositions }:
             >
               <Link href="/downloads">
                 <ArrowRight className="w-4 h-4 mr-2" />
-                Get Started
+                {t('cta.buttons.download', 'Download for Free')}
               </Link>
             </Button>
           </motion.div>

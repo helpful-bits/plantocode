@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -12,7 +16,7 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "exactOptionalPropertyTypes": true,
-    "jsx": "preserve",
+    "jsx": "react-jsx",
     "incremental": true,
     "tsBuildInfoFile": ".next/cache/tsconfig.tsbuildinfo",
     "noUnusedLocals": true,
@@ -27,14 +31,28 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"],
-      "@/components/*": ["./src/components/*"],
-      "@/lib/*": ["./src/lib/*"],
-      "@/hooks/*": ["./src/hooks/*"],
-      "@/utils/*": ["./src/utils/*"],
-      "@/types/*": ["./src/types/*"]
+      "@/*": [
+        "./src/*"
+      ],
+      "@/components/*": [
+        "./src/components/*"
+      ],
+      "@/lib/*": [
+        "./src/lib/*"
+      ],
+      "@/hooks/*": [
+        "./src/hooks/*"
+      ],
+      "@/utils/*": [
+        "./src/utils/*"
+      ],
+      "@/types/*": [
+        "./src/types/*"
+      ]
     },
-    "typeRoots": ["./node_modules/@types"]
+    "typeRoots": [
+      "./node_modules/@types"
+    ]
   },
   "include": [
     "next-env.d.ts",
@@ -42,7 +60,12 @@
     "**/*.tsx",
     "**/*.d.ts",
     ".next/types/**/*.ts",
-    "shader.d.ts"
+    "shader.d.ts",
+    ".next/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules", "deploy", "deploy/**/*"]
+  "exclude": [
+    "node_modules",
+    "deploy",
+    "deploy/**/*"
+  ]
 }

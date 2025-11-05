@@ -1,0 +1,226 @@
+{
+  "python/django/web-apps": {
+    "headline": "Python Django Web-Entwicklung mit KI",
+    "subhead": "KI, die Django-Konventionen und Ihre App-Architektur versteht",
+    "meta_title": "Python Django KI-Entwicklung - Web-App-Planung",
+    "meta_description": "KI-gestützte Django-Entwicklung mit Architektur-Bewusstsein. Models, Views, Templates, Migrations - alles mit vollem Kontext.",
+    "primary_cta": "Mit Django KI entwickeln",
+    "pain_points": [
+      {
+        "problem": "KI versteht Django's MVT-Pattern nicht",
+        "solution": "Kontext umfasst Django-Architektur und ORM-Beziehungen"
+      },
+      {
+        "problem": "Datenbank-Migrationen brechen ohne richtige Planung",
+        "solution": "Migrations-bewusste Planung mit Abhängigkeitsanalyse"
+      },
+      {
+        "problem": "Template- und View-Änderungen verlieren oft den Zusammenhang",
+        "solution": "Full-Stack-Kontext umfasst Templates, Views und URLs"
+      }
+    ],
+    "workflow_steps": [
+      "Django-App-Struktur erfassen",
+      "Model-bewusste Pläne generieren",
+      "Migrationen sicher handhaben",
+      "Mit Django-Tools testen"
+    ],
+    "key_features": [
+      "Django ORM Verständnis",
+      "Migrations-Sicherheitschecks",
+      "MVT-Pattern-Bewusstsein"
+    ]
+  },
+  "typescript/nextjs/saas-apps": {
+    "headline": "TypeScript Next.js SaaS-Entwicklung",
+    "subhead": "Produktions-SaaS mit KI entwickeln, die Next.js App Router versteht",
+    "meta_title": "TypeScript Next.js SaaS-Entwicklung - KI-Planung",
+    "meta_description": "KI-gestützte Next.js-Entwicklung für SaaS. App Router, Server Components, API Routes - mit vollständigem Architektur-Kontext.",
+    "primary_cta": "SaaS mit KI entwickeln",
+    "pain_points": [
+      {
+        "problem": "App-Router-Komplexität verwirrt KI-Assistenten",
+        "solution": "Tiefes Verständnis der Next.js 13+ Architektur"
+      },
+      {
+        "problem": "Server- vs. Client-Component-Grenzen sind unklar",
+        "solution": "Pläne spezifizieren Component-Grenzen und Datenfluss"
+      },
+      {
+        "problem": "TypeScript-Typen geraten über Layer hinweg aus dem Sync",
+        "solution": "Typ-bewusste Planung über API-Routes und Components"
+      }
+    ],
+    "workflow_steps": [
+      "Next.js-App-Struktur analysieren",
+      "App-Router-bewusste Pläne generieren",
+      "Server/Client-Components handhaben",
+      "Mit Zuversicht deployen"
+    ],
+    "key_features": [
+      "App Router Meisterung",
+      "Server Component Planung",
+      "TypeScript Integration"
+    ]
+  },
+  "go/gin/microservices": {
+    "headline": "Go + Gin Microservices-Entwicklung",
+    "subhead": "Microservice-Änderungen mit Abhängigkeits-Bewusstsein planen",
+    "meta_title": "Go Gin Microservices-Entwicklung - KI-Planung",
+    "meta_description": "KI-gestützte Go-Entwicklung für Gin Microservices. Behandelt Concurrency, Service Mesh, API-Design mit vollem Architektur-Kontext.",
+    "primary_cta": "Microservices mit Go entwickeln",
+    "pain_points": [
+      {
+        "problem": "Microservice-Änderungen brechen abhängige Services",
+        "solution": "Service-Abhängigkeits-Mapping und Impact-Analyse"
+      },
+      {
+        "problem": "Go's Concurrency-Patterns sind komplex zu planen",
+        "solution": "Goroutine- und Channel-bewusste Implementierungsplanung"
+      },
+      {
+        "problem": "API-Versionierung über Services wird unübersichtlich",
+        "solution": "Service-übergreifendes API-Contract-Bewusstsein und Versionierung"
+      }
+    ],
+    "workflow_steps": [
+      "Microservice-Abhängigkeiten erfassen",
+      "Gin-Handler-Pläne generieren",
+      "Nebenläufige Operationen planen",
+      "Service-Contracts testen"
+    ],
+    "key_features": [
+      "Service-Mesh-Bewusstsein",
+      "Go-Concurrency-Planung",
+      "API-Contract-Validierung"
+    ]
+  },
+  "nodejs/nestjs/enterprise-apis": {
+    "headline": "NestJS Enterprise-API-Planung",
+    "subhead": "Enterprise-Grade API-Änderungen sicher architekturieren",
+    "meta_title": "NestJS Enterprise-API-Entwicklung - KI-Planung",
+    "meta_description": "KI-gestützte NestJS-Entwicklung für Enterprise-APIs. Decorators, Module, DI-Patterns mit vollständigem Architektur-Bewusstsein.",
+    "primary_cta": "Enterprise-APIs entwickeln",
+    "pain_points": [
+      {
+        "problem": "NestJS Dependency Injection bricht ohne richtige Planung",
+        "solution": "DI-Container-Bewusstsein und Modul-Abhängigkeits-Mapping"
+      },
+      {
+        "problem": "Decorator-lastiger Code verwirrt KI-Assistenten",
+        "solution": "Tiefes Verständnis von NestJS-Decorators und Metadaten"
+      },
+      {
+        "problem": "Enterprise-API-Änderungen betreffen mehrere Consumer",
+        "solution": "API-Contract-Analyse und Rückwärtskompatibilitätschecks"
+      }
+    ],
+    "workflow_steps": [
+      "Modul-Abhängigkeiten analysieren",
+      "Decorator-Änderungen planen",
+      "DI-bewussten Code generieren",
+      "API-Contracts validieren"
+    ],
+    "key_features": [
+      "Dependency Injection Meisterung",
+      "Decorator-Pattern-Support",
+      "Enterprise-Grade-Validierung"
+    ]
+  },
+  "java/spring-boot/backend-services": {
+    "headline": "Spring Boot Service-Refactoring",
+    "subhead": "Java-Service-Änderungen mit vollem Kontext planen",
+    "meta_title": "Java Spring Boot Entwicklung - KI-Planung",
+    "meta_description": "KI-gestützte Spring Boot Entwicklung. Annotations, Beans, Auto-Configuration mit vollständigem Architektur-Verständnis.",
+    "primary_cta": "Mit Spring Boot refaktorieren",
+    "pain_points": [
+      {
+        "problem": "Spring's Annotation-Magic bricht ohne Kontext",
+        "solution": "Annotation-bewusste Planung mit Bean-Lifecycle-Verständnis"
+      },
+      {
+        "problem": "Konfigurations-Änderungen kaskadieren unvorhersehbar",
+        "solution": "Auto-Configuration-Impact-Analyse und Property-Mapping"
+      },
+      {
+        "problem": "JPA-Beziehungen werden beim Refactoring inkonsistent",
+        "solution": "Entity-Relationship-Bewusstsein und Datenbank-Schema-Planung"
+      }
+    ],
+    "workflow_steps": [
+      "Spring-Bean-Abhängigkeiten erfassen",
+      "Annotation-Änderungen planen",
+      "Konfigurations-Updates handhaben",
+      "Mit Spring-Profilen testen"
+    ],
+    "key_features": [
+      "Spring IoC Verständnis",
+      "Auto-Configuration-Bewusstsein",
+      "JPA-Relationship-Planung"
+    ]
+  },
+  "kotlin/android/mobile-development": {
+    "headline": "Android Kotlin App-Architektur",
+    "subhead": "Mobile-App-Refactorings systematisch planen",
+    "meta_title": "Android Kotlin Entwicklung - KI-Planung",
+    "meta_description": "KI-gestützte Android-Kotlin-Entwicklung. Activities, Fragments, ViewModels mit vollständigem App-Architektur-Bewusstsein.",
+    "primary_cta": "Android-Apps entwickeln",
+    "pain_points": [
+      {
+        "problem": "Android-Lifecycle-Komplexität bricht KI-Planung",
+        "solution": "Lifecycle-bewusste Planung mit State-Management"
+      },
+      {
+        "problem": "Fragment-Transactions und Navigation verheddern sich",
+        "solution": "Navigation-Graph-Bewusstsein und Fragment-Lifecycle-Planung"
+      },
+      {
+        "problem": "ViewBinding- und Data-Binding-Änderungen betreffen mehrere Layer",
+        "solution": "UI-Binding-Impact-Analyse über Activities und Fragments"
+      }
+    ],
+    "workflow_steps": [
+      "Android-App-Architektur erfassen",
+      "Lifecycle-bewusste Änderungen planen",
+      "Binding-sicheren Code generieren",
+      "Über Gerätekonfigurationen testen"
+    ],
+    "key_features": [
+      "Android-Lifecycle-Meisterung",
+      "Fragment-Navigation-Planung",
+      "Kotlin-Coroutine-Integration"
+    ]
+  },
+  "ruby/rails/web-applications": {
+    "headline": "Rails-Application-Modernisierung",
+    "subhead": "Rails-Apps mit Zuversicht upgraden",
+    "meta_title": "Ruby on Rails Entwicklung - KI-Planung",
+    "meta_description": "KI-gestützte Ruby on Rails Entwicklung. Models, Controllers, Migrations, ActiveRecord mit vollständigem MVC-Bewusstsein.",
+    "primary_cta": "Mit Rails modernisieren",
+    "pain_points": [
+      {
+        "problem": "Rails-Konventionen werden von generischer KI nicht verstanden",
+        "solution": "Tiefes Rails-Konventions-Bewusstsein und Magic-Method-Verständnis"
+      },
+      {
+        "problem": "ActiveRecord-Änderungen brechen Assoziationen",
+        "solution": "Model-Relationship-Mapping und Migrations-Sicherheitschecks"
+      },
+      {
+        "problem": "Controller- und Route-Änderungen verlieren Verbindung zu Views",
+        "solution": "MVC-Kohärenz-Validierung und Routing-Bewusstsein"
+      }
+    ],
+    "workflow_steps": [
+      "Rails-App-Struktur analysieren",
+      "ActiveRecord-Änderungen planen",
+      "Konventions-bewussten Code generieren",
+      "Mit Rails-Testing-Tools testen"
+    ],
+    "key_features": [
+      "Rails-Konventions-Meisterung",
+      "ActiveRecord-Relationship-Planung",
+      "MVC-Pattern-Enforcement"
+    ]
+  }
+}

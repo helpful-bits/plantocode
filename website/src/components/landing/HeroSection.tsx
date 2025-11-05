@@ -1,14 +1,16 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Search, BarChart3, CheckCircle2, Target, Zap } from 'lucide-react';
-import Link from 'next/link';
+import { Link } from '@/i18n/navigation';
 import { Button } from '@/components/ui/button';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { trackCTA } from '@/lib/track';
+import { useMessages } from '@/components/i18n/useMessages';
 
 export function HeroSection() {
+  const { t } = useMessages();
 
   // Start with null to match server/client
   const [isMobile, setIsMobile] = useState<boolean | null>(null);
@@ -47,12 +49,10 @@ export function HeroSection() {
             backgroundClip: 'text',
           }}
         >
-          Plan Complex Changes Without Breaking Production
+          {t('hero.title', 'Plan Complex Changes Without Breaking Production')}
         </h2>
         <p className="mt-6 text-lg sm:text-xl text-foreground/80 max-w-4xl mx-auto">
-          AI generates detailed implementation plans with exact file paths.
-          You review and approve every change before execution.
-          Zero risk, full control.
+          {t('hero.subtitle', 'AI generates detailed implementation plans with exact file paths. You review and approve every change before execution. Zero risk, full control.')}
         </p>
       </div>
 
@@ -70,38 +70,38 @@ export function HeroSection() {
                 {/* Panel 1: Find Files */}
                 {isMobile ? (
               <div className="vibe-panel w-full" style={{minHeight: 'auto'}}>
-                <h2 className="vibe-panel__title">File discovery workflow</h2>
+                <h2 className="vibe-panel__title">{t('hero.panel1.title', 'File discovery workflow')}</h2>
                 <p className="text-foreground/80 text-base leading-relaxed">
-                  Generate search patterns, run relevance scoring, and review staged results before including files in your plan. <LinkWithArrow href="/features/file-discovery">See how it works</LinkWithArrow>
+                  {t('hero.panel1.description', 'Generate search patterns, run relevance scoring, and review staged results before including files in your plan.')} <LinkWithArrow href="/features/file-discovery">{t('hero.panel1.link', 'See how it works')}</LinkWithArrow>
                 </p>
               </div>
             ) : (
               <div className="vibe-panel flex-shrink-0" style={{width: 'min(380px, 32vw)', height: 'min(420px, 50vh)'}}>
-                <h2 className="vibe-panel__title">File discovery workflow</h2>
+                <h2 className="vibe-panel__title">{t('hero.panel1.title', 'File discovery workflow')}</h2>
                 <div className="vibe-intent-box">
                   <div className="vibe-intent-box__item text-base flex items-center gap-3 justify-start">
                     <Search className="w-5 h-5 text-foreground/60" />
-                    <span>Pattern groups</span>
+                    <span>{t('hero.panel1.features.patterns', 'Pattern groups')}</span>
                   </div>
                   <div className="vibe-intent-box__item text-base flex items-center gap-3 justify-start">
                     <BarChart3 className="w-5 h-5 text-foreground/60" />
-                    <span>Relevance scores</span>
+                    <span>{t('hero.panel1.features.relevance', 'Relevance scores')}</span>
                   </div>
                   <div className="vibe-intent-box__item text-base flex items-center gap-3 justify-start">
                     <CheckCircle2 className="w-5 h-5 text-foreground/60" />
-                    <span>Stage reviews</span>
+                    <span>{t('hero.panel1.features.stage', 'Stage reviews')}</span>
                   </div>
                   <div className="vibe-intent-box__item text-base flex items-center gap-3 justify-start">
                     <Target className="w-5 h-5 text-foreground/60" />
-                    <span>Context optimization</span>
+                    <span>{t('hero.panel1.features.context', 'Context optimization')}</span>
                   </div>
                   <div className="vibe-intent-box__item text-base flex items-center gap-3 justify-start">
                     <Zap className="w-5 h-5 text-foreground/60" />
-                    <span>Real-time progress</span>
+                    <span>{t('hero.panel1.features.progress', 'Real-time progress')}</span>
                   </div>
                 </div>
                 <p className="vibe-panel__description text-base">
-                  Surface the right files before you write prompts. <LinkWithArrow href="/features/file-discovery">Learn more</LinkWithArrow>
+                  {t('hero.panel1.descriptionDesktop', 'Surface the right files before you write prompts.')} <LinkWithArrow href="/features/file-discovery">{t('hero.panel1.linkDesktop', 'Learn more')}</LinkWithArrow>
                 </p>
               </div>
             )}
@@ -143,11 +143,11 @@ export function HeroSection() {
 
             {/* Panel 2: Multi-Model Planning */}
             <div className={isMobile ? "vibe-panel vibe-panel--accent vibe-panel--glow w-full" : "vibe-panel vibe-panel--accent vibe-panel--glow flex-shrink-0"} style={isMobile ? {minHeight: 'auto'} : {width: 'min(360px, 32vw)', height: 'min(420px, 50vh)'}}>
-              <h2 className="vibe-panel__title vibe-panel__title--accent">Multi-model planning</h2>
+              <h2 className="vibe-panel__title vibe-panel__title--accent">{t('hero.panel2.title', 'Multi-model planning')}</h2>
               <div className="vibe-models-container">
                 <div className="vibe-model-card">
                   <div className="vibe-model-card__header">
-                    <span className="vibe-model-card__name">GPT-5</span>
+                    <span className="vibe-model-card__name">{t('hero.panel2.models.gpt5', 'GPT-5')}</span>
                     <span className="vibe-model-card__progress">72%</span>
                   </div>
                   <div className="vibe-progress-bar">
@@ -156,7 +156,7 @@ export function HeroSection() {
                 </div>
                 <div className="vibe-model-card">
                   <div className="vibe-model-card__header">
-                    <span className="vibe-model-card__name">Gemini 2.5 Pro</span>
+                    <span className="vibe-model-card__name">{t('hero.panel2.models.gemini', 'Gemini 2.5 Pro')}</span>
                     <span className="vibe-model-card__progress">91%</span>
                   </div>
                   <div className="vibe-progress-bar">
@@ -165,7 +165,7 @@ export function HeroSection() {
                 </div>
                 <div className="vibe-model-card">
                   <div className="vibe-model-card__header">
-                    <span className="vibe-model-card__name">Claude Sonnet 4</span>
+                    <span className="vibe-model-card__name">{t('hero.panel2.models.claude', 'Claude Sonnet 4')}</span>
                     <span className="vibe-model-card__progress">85%</span>
                   </div>
                   <div className="vibe-progress-bar">
@@ -174,7 +174,7 @@ export function HeroSection() {
                 </div>
               </div>
               <p className="vibe-panel__description">
-                Generate implementation plans from GPT-5, Gemini 2.5 Pro, Claude 4 Sonnet, Grok 4, and DeepSeek R1 and merge the best ideas. <LinkWithArrow href="/docs">Explore the workflow</LinkWithArrow>
+                {t('hero.panel2.description', 'Generate implementation plans from GPT-5, Gemini 2.5 Pro, Claude 4 Sonnet, Grok 4, and DeepSeek R1 and merge the best ideas.')} <LinkWithArrow href="/docs">{t('hero.panel2.link', 'Explore the workflow')}</LinkWithArrow>
               </p>
             </div>
 
@@ -216,16 +216,16 @@ export function HeroSection() {
 
             {/* Panel 3: Integrated Terminal - Always render to prevent layout shift */}
             <div className={isMobile ? "vibe-panel w-full" : "vibe-panel flex-shrink-0"} style={isMobile ? {minHeight: 'auto'} : {width: 'min(380px, 32vw)', height: 'min(420px, 50vh)'}}>
-              <h2 className="vibe-panel__title">Integrated terminal</h2>
+              <h2 className="vibe-panel__title">{t('hero.panel3.title', 'Integrated terminal')}</h2>
                 <div className="vibe-code-block">
-                  <pre className="vibe-code-block__content">{`$ codex | claude | cursor | gemini
-> Voice transcription available
-> Prompt preview before run
-> Token guardrails in place
-> Logs persist locally`}</pre>
+                  <pre className="vibe-code-block__content">{`${t('hero.panel3.terminal.line1', '$ codex | claude | cursor | gemini')}
+${t('hero.panel3.terminal.line2', '> Voice transcription available')}
+${t('hero.panel3.terminal.line3', '> Prompt preview before run')}
+${t('hero.panel3.terminal.line4', '> Token guardrails in place')}
+${t('hero.panel3.terminal.line5', '> Logs persist locally')}`}</pre>
                 </div>
                 <p className="vibe-panel__description">
-                  Launch claude, cursor, codex, or gemini without leaving the workspace. Health monitoring and recovery keep long jobs running. <LinkWithArrow href="/docs/terminal-sessions">Terminal details</LinkWithArrow>
+                  {t('hero.panel3.description', 'Launch claude, cursor, codex, or gemini without leaving the workspace. Health monitoring and recovery keep long jobs running.')} <LinkWithArrow href="/docs/terminal-sessions">{t('hero.panel3.link', 'Terminal details')}</LinkWithArrow>
                 </p>
                 </div>
           </motion.div>
@@ -238,7 +238,7 @@ export function HeroSection() {
               asChild
               onClick={() => trackCTA('hero', 'Try Interactive Demo', '/demo')}
             >
-              <Link href="/demo">Try Interactive Demo →</Link>
+              <Link href="/demo">{t('hero.cta.demo', 'Try Interactive Demo →')}</Link>
             </Button>
 
             <Button
@@ -247,14 +247,14 @@ export function HeroSection() {
               asChild
               onClick={() => trackCTA('hero', 'Download for Free', '/downloads')}
             >
-              <Link href="/downloads">Download for Free</Link>
+              <Link href="/downloads">{t('hero.cta.download', 'Download for Free')}</Link>
             </Button>
 
             <Link
               href="/how-it-works"
               className="text-sm text-foreground/60 hover:text-foreground/80 underline"
             >
-              See how it works
+              {t('hero.cta.howItWorks', 'See how it works')}
             </Link>
 
             {/* Social Proof - Commented out for now */}

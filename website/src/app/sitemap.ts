@@ -1,372 +1,348 @@
 import type { MetadataRoute } from 'next';
-import pseoData from '@/data/pseo';
-import comparisonsData from '@/data/pseo/comparisons.json';
+import { getPublishedPages } from '@/data/pseo';
+import { locales as SUPPORTED_LOCALES, defaultLocale } from '@/i18n/config';
 
-export default function sitemap(): MetadataRoute.Sitemap {
+/**
+ * Dynamically loads overlay files for a specific locale and returns a Set of slugs that have translations
+ */
+async function loadLocaleOverlayMap(locale: string): Promise<Set<string>> {
+  try {
+    const [workflows, integrations, stacks, useCases, features, comparisons] = await Promise.all([
+      import(`@/data/pseo/i18n/${locale}/workflows.json`).catch(() => ({ default: {} })),
+      import(`@/data/pseo/i18n/${locale}/integrations.json`).catch(() => ({ default: {} })),
+      import(`@/data/pseo/i18n/${locale}/stacks.json`).catch(() => ({ default: {} })),
+      import(`@/data/pseo/i18n/${locale}/use-cases.json`).catch(() => ({ default: {} })),
+      import(`@/data/pseo/i18n/${locale}/features.json`).catch(() => ({ default: {} })),
+      import(`@/data/pseo/i18n/${locale}/comparisons.json`).catch(() => ({ default: {} })),
+    ]);
+
+    const allOverlays = {
+      ...workflows.default,
+      ...integrations.default,
+      ...stacks.default,
+      ...useCases.default,
+      ...features.default,
+      ...comparisons.default,
+    };
+
+    return new Set(Object.keys(allOverlays));
+  } catch (error) {
+    // If locale directory doesn't exist, return empty set
+    return new Set();
+  }
+}
+
+/**
+ * Helper to create multi-lingual sitemap entries with alternates for all supported locales
+ */
+function createMultiLingualEntry(
+  baseUrl: string,
+  path: string,
+  lastModified: Date,
+  changeFrequency: 'always' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'never',
+  priority: number
+): MetadataRoute.Sitemap {
+  const entries: MetadataRoute.Sitemap = [];
+
+  for (const locale of SUPPORTED_LOCALES) {
+    const url = locale === defaultLocale
+      ? `${baseUrl}${path}`
+      : `${baseUrl}/${locale}${path}`;
+
+    entries.push({
+      url,
+      lastModified,
+      changeFrequency,
+      priority,
+      alternates: {
+        languages: {
+          en: `${baseUrl}${path}`,
+          de: `${baseUrl}/de${path}`,
+          fr: `${baseUrl}/fr${path}`,
+          es: `${baseUrl}/es${path}`,
+          'x-default': `${baseUrl}${path}`
+        }
+      }
+    });
+  }
+
+  return entries;
+}
+
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = 'https://www.plantocode.com';
   const now = new Date();
 
-  // Generate pSEO pages entries (excluding comparisons - handled separately)
-  const pseoPages = pseoData.pages
-    .filter(page => page.publish === true && page.category !== 'comparisons')
-    .map(page => ({
-      url: `${baseUrl}/${page.slug}`,
+  // Load overlay maps for all non-default locales to determine which pages have translations
+  const [deOverlays, frOverlays, esOverlays] = await Promise.all([
+    loadLocaleOverlayMap('de'),
+    loadLocaleOverlayMap('fr'),
+    loadLocaleOverlayMap('es'),
+  ]);
+
+  // Static routes that should have all locale versions
+  const staticRoutes = ['/', '/docs', '/features', '/downloads', '/solutions', '/compare', '/blog'];
+  const staticPages: MetadataRoute.Sitemap = [];
+
+  for (const route of staticRoutes) {
+    const priority = route === '/' ? 1 : 0.9;
+    staticPages.push(...createMultiLingualEntry(baseUrl, route, now, 'weekly', priority));
+  }
+
+  // Generate pSEO pages entries
+  const pseoPages: MetadataRoute.Sitemap = [];
+  const publishedPages = getPublishedPages();
+
+  for (const page of publishedPages) {
+    const priority = page.priority === 1 ? 0.85 : page.priority === 2 ? 0.75 : 0.7;
+
+    // Generate URLs for all locales
+    const localeUrls: Record<string, string> = {
+      en: `${baseUrl}/${page.slug}`, // English unprefixed
+      de: `${baseUrl}/de/${page.slug}`,
+      fr: `${baseUrl}/fr/${page.slug}`,
+      es: `${baseUrl}/es/${page.slug}`,
+    };
+
+    // Always add English version with all alternates
+    pseoPages.push({
+      url: localeUrls.en!,
       lastModified: now,
       changeFrequency: 'weekly' as const,
-      priority: page.priority === 1 ? 0.85 : page.priority === 2 ? 0.75 : 0.7,
-    }));
+      priority,
+      alternates: {
+        languages: {
+          en: localeUrls.en,
+          de: localeUrls.de,
+          fr: localeUrls.fr,
+          es: localeUrls.es,
+          'x-default': localeUrls.en
+        }
+      }
+    });
 
-  // Generate comparison pages (slug already includes /compare/ prefix)
-  const comparisonPages = comparisonsData.pages
-    .filter(page => page.publish === true)
-    .map(page => ({
-      url: `${baseUrl}/${page.slug}`,
-      lastModified: now,
-      changeFrequency: 'weekly' as const,
-      priority: page.priority === 1 ? 0.85 : page.priority === 2 ? 0.75 : 0.7,
-    }));
+    // Add German version if slug has a DE overlay
+    if (deOverlays.has(page.slug)) {
+      pseoPages.push({
+        url: localeUrls.de!,
+        lastModified: now,
+        changeFrequency: 'weekly' as const,
+        priority,
+        alternates: {
+          languages: {
+            en: localeUrls.en,
+            de: localeUrls.de,
+            fr: localeUrls.fr,
+            es: localeUrls.es,
+            'x-default': localeUrls.en
+          }
+        }
+      });
+    }
 
-  return [
-    // Homepage
-    {
-      url: baseUrl,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 1,
-    },
-    // Main pages
-    {
-      url: `${baseUrl}/downloads`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.9,
-    },
-    // Documentation pages - all verified to exist
-    {
-      url: `${baseUrl}/docs`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.95,
-    },
-    // Documentation pages - verified feature coverage
-    {
-      url: `${baseUrl}/docs/implementation-plans`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.94,
-    },
-    {
-      url: `${baseUrl}/docs/file-discovery`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.93,
-    },
-    {
-      url: `${baseUrl}/docs/model-configuration`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.92,
-    },
-    {
-      url: `${baseUrl}/docs/terminal-sessions`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.91,
-    },
-    {
-      url: `${baseUrl}/docs/voice-transcription`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.91,
-    },
-    {
-      url: `${baseUrl}/docs/text-improvement`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.91,
-    },
-    {
-      url: `${baseUrl}/docs/deep-research`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.91,
-    },
-    // Concepts & Architecture
-    {
-      url: `${baseUrl}/docs/architecture`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.94,
-    },
-    // Feature pages
-    {
-      url: `${baseUrl}/demo`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.85,
-    },
-    {
-      url: `${baseUrl}/features/text-improvement`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/features/voice-transcription`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/features/integrated-terminal`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/features/merge-instructions`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/features/plan-mode`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/features/file-discovery`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/features/deep-research`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/features/copy-buttons`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.8,
-    },
-    // Plan mode page
-    {
-      url: `${baseUrl}/plan-mode`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.85,
-    },
-    {
-      url: `${baseUrl}/plan-mode/codex`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.82,
-    },
-    {
-      url: `${baseUrl}/plan-mode/claude-code`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.82,
-    },
-    {
-      url: `${baseUrl}/plan-mode/cursor`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.82,
-    },
-    // SEO landing pages
-    {
-      url: `${baseUrl}/cursor-alternative`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.85,
-    },
-    // Legal pages
-    {
-      url: `${baseUrl}/legal`,
-      lastModified: now,
-      changeFrequency: 'monthly',
-      priority: 0.6,
-    },
-    {
-      url: `${baseUrl}/legal/eu/terms`,
-      lastModified: now,
-      changeFrequency: 'monthly',
-      priority: 0.5,
-    },
-    {
-      url: `${baseUrl}/legal/eu/privacy`,
-      lastModified: now,
-      changeFrequency: 'monthly',
-      priority: 0.5,
-    },
-    {
-      url: `${baseUrl}/legal/eu/imprint`,
-      lastModified: now,
-      changeFrequency: 'monthly',
-      priority: 0.5,
-    },
-    {
-      url: `${baseUrl}/legal/eu/subprocessors`,
-      lastModified: now,
-      changeFrequency: 'monthly',
-      priority: 0.5,
-    },
-    {
-      url: `${baseUrl}/legal/eu/withdrawal-policy`,
-      lastModified: now,
-      changeFrequency: 'monthly',
-      priority: 0.5,
-    },
-    {
-      url: `${baseUrl}/legal/eu/dpa`,
-      lastModified: now,
-      changeFrequency: 'monthly',
-      priority: 0.5,
-    },
+    // Add French version if slug has a FR overlay
+    if (frOverlays.has(page.slug)) {
+      pseoPages.push({
+        url: localeUrls.fr!,
+        lastModified: now,
+        changeFrequency: 'weekly' as const,
+        priority,
+        alternates: {
+          languages: {
+            en: localeUrls.en,
+            de: localeUrls.de,
+            fr: localeUrls.fr,
+            es: localeUrls.es,
+            'x-default': localeUrls.en
+          }
+        }
+      });
+    }
+
+    // Add Spanish version if slug has an ES overlay
+    if (esOverlays.has(page.slug)) {
+      pseoPages.push({
+        url: localeUrls.es!,
+        lastModified: now,
+        changeFrequency: 'weekly' as const,
+        priority,
+        alternates: {
+          languages: {
+            en: localeUrls.en,
+            de: localeUrls.de,
+            fr: localeUrls.fr,
+            es: localeUrls.es,
+            'x-default': localeUrls.en
+          }
+        }
+      });
+    }
+  }
+
+  // Documentation pages
+  const docPages: MetadataRoute.Sitemap = [];
+  const docRoutes = [
+    { path: '/docs/implementation-plans', priority: 0.94 },
+    { path: '/docs/file-discovery', priority: 0.93 },
+    { path: '/docs/model-configuration', priority: 0.92 },
+    { path: '/docs/terminal-sessions', priority: 0.91 },
+    { path: '/docs/voice-transcription', priority: 0.91 },
+    { path: '/docs/text-improvement', priority: 0.91 },
+    { path: '/docs/deep-research', priority: 0.91 },
+    { path: '/docs/architecture', priority: 0.94 },
+  ];
+
+  for (const route of docRoutes) {
+    docPages.push(...createMultiLingualEntry(baseUrl, route.path, now, 'weekly', route.priority));
+  }
+
+  // Feature pages
+  const featurePages: MetadataRoute.Sitemap = [];
+  const featureRoutes = [
+    { path: '/demo', priority: 0.85 },
+    { path: '/features/text-improvement', priority: 0.8 },
+    { path: '/features/voice-transcription', priority: 0.8 },
+    { path: '/features/integrated-terminal', priority: 0.8 },
+    { path: '/features/merge-instructions', priority: 0.8 },
+    { path: '/features/plan-mode', priority: 0.8 },
+    { path: '/features/file-discovery', priority: 0.8 },
+    { path: '/features/deep-research', priority: 0.8 },
+    { path: '/features/copy-buttons', priority: 0.8 },
+    { path: '/features/video-analysis', priority: 0.8 },
+  ];
+
+  for (const route of featureRoutes) {
+    featurePages.push(...createMultiLingualEntry(baseUrl, route.path, now, 'weekly', route.priority));
+  }
+
+  // Plan mode pages
+  const planModePages: MetadataRoute.Sitemap = [];
+  const planModeRoutes = [
+    { path: '/plan-mode', priority: 0.85 },
+    { path: '/plan-mode/codex', priority: 0.82 },
+    { path: '/plan-mode/claude-code', priority: 0.82 },
+    { path: '/plan-mode/cursor', priority: 0.82 },
+  ];
+
+  for (const route of planModeRoutes) {
+    planModePages.push(...createMultiLingualEntry(baseUrl, route.path, now, 'weekly', route.priority));
+  }
+
+  // SEO landing pages
+  const seoLandingPages: MetadataRoute.Sitemap = [];
+  const seoLandingRoutes = [
+    { path: '/cursor-alternative', priority: 0.85 },
+  ];
+
+  for (const route of seoLandingRoutes) {
+    seoLandingPages.push(...createMultiLingualEntry(baseUrl, route.path, now, 'weekly', route.priority));
+  }
+
+  // Legal pages - EU
+  const legalEUPages: MetadataRoute.Sitemap = [];
+  const legalEURoutes = [
+    { path: '/legal', priority: 0.6, changeFrequency: 'monthly' as const },
+    { path: '/legal/eu/terms', priority: 0.5, changeFrequency: 'monthly' as const },
+    { path: '/legal/eu/privacy', priority: 0.5, changeFrequency: 'monthly' as const },
+    { path: '/legal/eu/imprint', priority: 0.5, changeFrequency: 'monthly' as const },
+    { path: '/legal/eu/subprocessors', priority: 0.5, changeFrequency: 'monthly' as const },
+    { path: '/legal/eu/withdrawal-policy', priority: 0.5, changeFrequency: 'monthly' as const },
+    { path: '/legal/eu/dpa', priority: 0.5, changeFrequency: 'monthly' as const },
+  ];
+
+  for (const route of legalEURoutes) {
+    legalEUPages.push(...createMultiLingualEntry(baseUrl, route.path, now, route.changeFrequency, route.priority));
+  }
+
+  // Legal pages - US (EN only, no DE versions for US legal docs)
+  const legalUSPages: MetadataRoute.Sitemap = [
     {
       url: `${baseUrl}/legal/us/terms`,
       lastModified: now,
-      changeFrequency: 'monthly',
+      changeFrequency: 'monthly' as const,
       priority: 0.5,
     },
     {
       url: `${baseUrl}/legal/us/privacy`,
       lastModified: now,
-      changeFrequency: 'monthly',
+      changeFrequency: 'monthly' as const,
       priority: 0.5,
     },
     {
       url: `${baseUrl}/legal/us/dpa`,
       lastModified: now,
-      changeFrequency: 'monthly',
+      changeFrequency: 'monthly' as const,
       priority: 0.5,
     },
-    // Solutions pages
-    {
-      url: `${baseUrl}/solutions/hard-bugs`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.75,
-    },
-    {
-      url: `${baseUrl}/solutions/large-features`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.75,
-    },
-    {
-      url: `${baseUrl}/solutions/library-upgrades`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.75,
-    },
-    {
-      url: `${baseUrl}/solutions/maintenance-enhancements`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.75,
-    },
-    {
-      url: `${baseUrl}/solutions/prevent-duplicate-files`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/solutions/ai-wrong-paths`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/solutions/legacy-code-refactoring`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/solutions/safe-refactoring`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.8,
-    },
-    // Blog posts
-    {
-      url: `${baseUrl}/blog/what-is-ai-code-planning`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.85,
-    },
-    {
-      url: `${baseUrl}/blog/ai-code-planning-best-practices`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/blog/ai-pair-programming-vs-ai-planning`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.8,
-    },
-    // Other pages
-    {
-      url: `${baseUrl}/about`,
-      lastModified: now,
-      changeFrequency: 'monthly',
-      priority: 0.7,
-    },
-    {
-      url: `${baseUrl}/how-it-works`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/screenshots`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.7,
-    },
-    {
-      url: `${baseUrl}/schedule`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.7,
-    },
-    {
-      url: `${baseUrl}/changelog`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.6,
-    },
-    {
-      url: `${baseUrl}/support`,
-      lastModified: now,
-      changeFrequency: 'monthly',
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/security/notarization`,
-      lastModified: now,
-      changeFrequency: 'monthly',
-      priority: 0.7,
-    },
-    // Comparison pages
-    {
-      url: `${baseUrl}/compare/cursor-vs-windsurf`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.85,
-    },
-    // Add all pSEO pages
+  ];
+
+  // Solutions pages
+  const solutionPages: MetadataRoute.Sitemap = [];
+  const solutionRoutes = [
+    { path: '/solutions/hard-bugs', priority: 0.75 },
+    { path: '/solutions/large-features', priority: 0.75 },
+    { path: '/solutions/library-upgrades', priority: 0.75 },
+    { path: '/solutions/maintenance-enhancements', priority: 0.75 },
+    { path: '/solutions/prevent-duplicate-files', priority: 0.8 },
+    { path: '/solutions/ai-wrong-paths', priority: 0.8 },
+    { path: '/solutions/legacy-code-refactoring', priority: 0.8 },
+    { path: '/solutions/safe-refactoring', priority: 0.8 },
+  ];
+
+  for (const route of solutionRoutes) {
+    solutionPages.push(...createMultiLingualEntry(baseUrl, route.path, now, 'weekly', route.priority));
+  }
+
+  // Blog posts
+  const blogPages: MetadataRoute.Sitemap = [];
+  const blogRoutes = [
+    { path: '/blog/what-is-ai-code-planning', priority: 0.85 },
+    { path: '/blog/ai-code-planning-best-practices', priority: 0.8 },
+    { path: '/blog/ai-pair-programming-vs-ai-planning', priority: 0.8 },
+  ];
+
+  for (const route of blogRoutes) {
+    blogPages.push(...createMultiLingualEntry(baseUrl, route.path, now, 'weekly', route.priority));
+  }
+
+  // Other pages
+  const otherPages: MetadataRoute.Sitemap = [];
+  const otherRoutes = [
+    { path: '/about', priority: 0.7, changeFrequency: 'monthly' as const },
+    { path: '/how-it-works', priority: 0.8, changeFrequency: 'weekly' as const },
+    { path: '/screenshots', priority: 0.7, changeFrequency: 'weekly' as const },
+    { path: '/schedule', priority: 0.7, changeFrequency: 'weekly' as const },
+    { path: '/changelog', priority: 0.6, changeFrequency: 'weekly' as const },
+    { path: '/support', priority: 0.8, changeFrequency: 'monthly' as const },
+    { path: '/security/notarization', priority: 0.7, changeFrequency: 'monthly' as const },
+  ];
+
+  for (const route of otherRoutes) {
+    otherPages.push(...createMultiLingualEntry(baseUrl, route.path, now, route.changeFrequency, route.priority));
+  }
+
+  // Comparison pages
+  const comparisonPages: MetadataRoute.Sitemap = [];
+  const comparisonRoutes = [
+    { path: '/compare/cursor-vs-windsurf', priority: 0.85 },
+  ];
+
+  for (const route of comparisonRoutes) {
+    comparisonPages.push(...createMultiLingualEntry(baseUrl, route.path, now, 'weekly', route.priority));
+  }
+
+  return [
+    ...staticPages,
     ...pseoPages,
-    // Add all comparison pages with /compare/ prefix
+    ...docPages,
+    ...featurePages,
+    ...planModePages,
+    ...seoLandingPages,
+    ...legalEUPages,
+    ...legalUSPages,
+    ...solutionPages,
+    ...blogPages,
+    ...otherPages,
     ...comparisonPages,
   ];
 }

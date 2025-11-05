@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import { Link } from '@/i18n/navigation';
 import { Download } from 'lucide-react';
 import { Button } from './button';
 import { DownloadButton } from './DownloadButton';

@@ -1,5 +1,4 @@
-import React from 'react';
-import Link from 'next/link';
+import { Link } from '@/i18n/navigation';
 import { Button } from '@/components/ui/button';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { VideoButton } from '@/components/ui/VideoButton';
@@ -221,7 +220,7 @@ export function PlanIntegrationLayout({ content, location }: PlanIntegrationLayo
 
               {/* FAQ section */}
               {faq && faq.length > 0 && (
-                <FAQ items={faq.map(item => ({ question: item.q, answer: item.a }))} />
+                <FAQ />
               )}
 
               {/* CTA footer */}

@@ -1,0 +1,1347 @@
+{
+  "copyButtons": {
+    "comparison": {
+      "plantocode": {
+        "items": [
+          "Ein-Klick-Automatisierung",
+          "Dynamische Inhalts-Substitution",
+          "Intelligentes Platzhalter-System",
+          "Kontextbewusste Verarbeitung",
+          "Persistente, wiederverwendbare Workflows"
+        ],
+        "title": "PlanToCode Kopierschaltflächen"
+      },
+      "title": "Was dies anders macht",
+      "traditional": {
+        "items": [
+          "Manuelle Copy-Paste-Workflows",
+          "Statische, unveränderliche Vorlagen",
+          "Kein Kontextbewusstsein",
+          "Fehleranfällige manuelle Bearbeitungen",
+          "Im Laufe der Zeit verlorene Workflows"
+        ],
+        "title": "Traditionelles Copy-Paste"
+      }
+    },
+    "concept": {
+      "dragDrop": {
+        "description": "Visuelles Workflow-Management mit @dnd-kit-Integration. Ordnen Sie Schaltflächen neu, um Ihrem Prozess zu entsprechen.",
+        "title": "Drag-and-Drop-Neuordnung"
+      },
+      "serverConfigured": {
+        "description": "Dynamische Schaltflächen mit Platzhalter-Substitution. Projektspezifische Overrides mit einheitlicher Prompt-Verarbeitung.",
+        "title": "Serverkonfigurierte Vorlagen"
+      },
+      "terminal": {
+        "description": "Ein-Klick-Ausführung in persistenten Terminal-Sitzungen. Chunked-Sending für große Inhalte.",
+        "title": "Terminal-Integration"
+      }
+    },
+    "configuration": {
+      "projectSettings": {
+        "description": "Kopierschaltflächen in Aufgabeneinstellungen gespeichert mit Projekt-Level-Overrides und serverseitigen Standards.",
+        "features": [
+          "SQLite-Datenbank-Persistenz",
+          "Serververwaltete Standardkonfigurationen",
+          "Projektverzeichnis-Scoping",
+          "Echtzeit-Konfigurations-Updates"
+        ],
+        "title": "Projektspezifische Einstellungen"
+      },
+      "title": "Konfiguration & Verwaltung",
+      "visualUI": {
+        "description": "Intuitive Bearbeitung mit Drag-and-Drop-Neuordnung, Debounced-Input-Handling und Echtzeit-Vorschau.",
+        "features": [
+          "Drag-Handles für visuelle Neuordnung",
+          "300ms Debounced-Input-Verarbeitung",
+          "Nur-Lesen-Modus für System-Schaltflächen",
+          "Anpassungs-Workflow-Unterstützung"
+        ],
+        "title": "Visuelle Konfigurations-UI"
+      }
+    },
+    "cta": {
+      "description": "Jeder Prompt wird zur Schaltfläche. Intelligente Vorlagen mit Platzhaltern. Komplexe Workflows, sofortiger Start. Ihre besten Tricks, immer bereit.",
+      "links": {
+        "planMode": "Implementierungspläne ansehen",
+        "terminal": "Terminal-Integration erkunden"
+      },
+      "title": "Verwandeln Sie Prompts in Workflows"
+    },
+    "hero": {
+      "badge": "Konfigurierbares Workflow-Automatisierungssystem",
+      "description": "Speichern Sie Ihre besten Prompts als Schaltflächen. Ersetzen Sie Planinhalte und führen Sie sie im Terminal aus.",
+      "title": "Workflows. Ein Klick."
+    },
+    "technical": {
+      "architecture": {
+        "execution": "Schaltflächen-Klick löst Vorlagenverarbeitung aus → Platzhalter-Substitution mit Planinhalt → Terminal-Sitzungs-Validierung → Chunked-Inhalts-Übertragung",
+        "processing": "Regex-basiertes Platzhalter-Matching → Dynamische Inhalts-Substitution → Kontextbewusste Datenextraktion → Fehlerbehandlung für undefined-Werte",
+        "storage": "CopyButtonConfig[] in Aufgabeneinstellungen → Projektspezifische Datenbankspeicherung → Serverseitige Standardkonfigurationen → Echtzeit-Synchronisation",
+        "ui": "Implementierungsplan-Karten → Inhaltsansichts-Modals → Terminal-Oberflächen-Header → Drag-Drop-Konfigurations-Editor"
+      },
+      "title": "Technische Implementierung"
+    },
+    "templateSystem": {
+      "placeholders": {
+        "description": "Dynamischer Inhaltsersat mit {{PLACEHOLDER}}-Syntax. Kontextbewusste Verarbeitung mit Implementierungsplänen.",
+        "examples": [
+          "{{IMPLEMENTATION_PLAN}} - Vollständiger Planinhalt",
+          "{{STEP_CONTENT}} - Ausgewählter Schrittinhalt",
+          "{{PROJECT_CONTEXT}} - Projektspezifischer Kontext",
+          "Benutzerdefinierte Platzhalter für Erweiterbarkeit"
+        ],
+        "title": "Platzhalter-Substitution"
+      },
+      "processor": {
+        "description": "Fortgeschrittene Vorlagen-Engine mit bedingten Abschnitten, XML-Formatierung und intelligenter Bereinigung.",
+        "features": [
+          "Regex-basiertes Platzhalter-Matching",
+          "Escape-Zeichen-Behandlung",
+          "Multi-Zeilen-Inhalts-Unterstützung",
+          "Gnädige undefined-Behandlung"
+        ],
+        "title": "Einheitliche Prompt-Verarbeitung"
+      },
+      "title": "Intelligentes Vorlagensystem"
+    },
+    "terminalIntegration": {
+      "oneClick": {
+        "description": "Kopierschaltflächen integrieren sich direkt mit Terminal-Sitzungen für sofortige Ausführung. Intelligente Inhaltsbehandlung verhindert Terminal-Überlauf.",
+        "features": [
+          "Automatisches Einfügen in aktives Terminal",
+          "Chunked-Sending für große Inhalte",
+          "Sitzungs-Zustandsüberwachung",
+          "Clipboard-Fallback für Sicherheit"
+        ],
+        "title": "Ein-Klick-Automatisierung"
+      },
+      "title": "Nahtlose Terminal-Ausführung"
+    },
+    "useCases": {
+      "customTeam": {
+        "description": "Teamspezifische Prozesse mit Projektkontext und Coding-Standards.",
+        "title": "Benutzerdefinierte Team-Workflows"
+      },
+      "investigation": {
+        "description": "Standardisierte Review-Prozesse für Implementierungsplan-Ergebnisse.",
+        "title": "Untersuchung & Review"
+      },
+      "parallel": {
+        "description": "Starten Sie mehrere Claude-Coding-Agents gleichzeitig mit vorkonfigurierten Anweisungen.",
+        "title": "Parallele Agent-Workflows"
+      },
+      "stepByStep": {
+        "description": "Extrahieren und führen Sie einzelne Implementierungsschritte mit Kontext aus.",
+        "title": "Schritt-für-Schritt-Ausführung"
+      },
+      "title": "Reale Anwendungsfälle"
+    }
+  },
+  "deepResearch": {
+    "advanced": {
+      "features": [
+        {
+          "title": "Intelligentes Abfrage-Design",
+          "description": "KI erstellt ausgefeilte Rechercheabfragen, die mehrere Winkel und Perspektiven für umfassende Abdeckung erkunden."
+        },
+        {
+          "title": "Kontextbewusste Analyse",
+          "description": "Recherche ist auf Ihren spezifischen Projektkontext, Technologie-Stack und Entwicklungsanforderungen zugeschnitten."
+        },
+        {
+          "title": "Hintergrundverarbeitung",
+          "description": "Langläufige Rechercheaufgaben werden im Hintergrund mit Echtzeit-Fortschritts-Updates und Benachrichtigungen ausgeführt."
+        },
+        {
+          "title": "Ergebnis-Integration",
+          "description": "Rechercheergebnisse werden automatisch formatiert und zur sofortigen Verwendung in Ihre Aufgabenbeschreibungen integriert."
+        },
+        {
+          "title": "Kostenoptimierung",
+          "description": "Intelligente Modellauswahl und Abfrageoptimierung zum Ausbalancieren von Recherchequalität und Kosteneffizienz."
+        },
+        {
+          "title": "Fortschrittsüberwachung",
+          "description": "Echtzeit-Verfolgung des Recherchefortschritts mit detaillierten Status-Updates und Abschlussbenachrichtigungen."
+        }
+      ],
+      "title": "Erweiterte Recherchefähigkeiten"
+    },
+    "aiCapabilities": {
+      "multiModel": {
+        "description": "Nutzt mehrere KI-Modelle zur Ausführung von Rechercheaufgaben mit unterschiedlichen Perspektiven und Fachgebieten.",
+        "models": [
+          "OpenAI GPT Modelle",
+          "Anthropic Claude",
+          "Google Gemini",
+          "Spezialisierte Recherchemodelle"
+        ],
+        "title": "Multi-Modell-Recherche"
+      },
+      "parallel": {
+        "description": "Führen Sie mehrere Rechercheaufgaben gleichzeitig mit intelligenter Ergebnisaggregation und -synthese aus.",
+        "features": [
+          "Gleichzeitige Ausführung",
+          "Fortschrittsverfolgung",
+          "Fehlerwiederherstellung",
+          "Ergebnissynthese"
+        ],
+        "title": "Parallele Verarbeitung"
+      },
+      "projectContext": {
+        "description": "KI analysiert Ihre Projektstruktur, Technologie-Stack und Codebasis zur Generierung hochrelevanter Recherche.",
+        "features": [
+          "Dateistruktur-Analyse",
+          "Technologie-Stack-Erkennung",
+          "Abhängigkeits-Mapping",
+          "Kontextbewusste Erkenntnisse"
+        ],
+        "title": "Projekt-Kontext-Analyse"
+      },
+      "title": "KI-Recherchefähigkeiten"
+    },
+    "cta": {
+      "description": "Von intelligenten Abfragen zu synthetisierten Erkenntnissen, integriert mit Ihrem Entwicklungs-Workflow. So sollte Recherche funktionieren – umfassend, intelligent, umsetzbar.",
+      "links": {
+        "planMode": "Implementierungsplanung ansehen",
+        "textImprovement": "Textverbesserung erkunden"
+      },
+      "title": "Transformieren Sie Ihren Recherche-Workflow"
+    },
+    "developmentFocus": {
+      "contextFiltering": {
+        "description": "Rechercheumfang automatisch angepasst basierend auf Ihrem Projektkontext und Entwicklungs-Stack.",
+        "features": [
+          "Technologie-Stack-Bewusstsein",
+          "Versionskompatibilitätsprüfung",
+          "Projektanforderungs-Filterung",
+          "Skalierbarkeits-Überlegungs-Priorität"
+        ],
+        "title": "Kontextbewusste Filterung"
+      },
+      "implementationReady": {
+        "description": "Rechercheergebnisse optimiert für Entwicklungs-Workflows. Code-Beispiele, API-Dokumentation und Best Practices.",
+        "features": [
+          "Code-Snippet-Extraktion",
+          "API-Referenz-Zusammenstellung",
+          "Architekturmuster-Analyse",
+          "Performance-Überlegungshinweise"
+        ],
+        "title": "Implementierungsbereite Erkenntnisse"
+      },
+      "title": "Entwicklungsfokussierte Recherche"
+    },
+    "features": {
+      "parallelExecution": {
+        "description": "Führen Sie mehrere ausgefeilte Rechercheaufgaben gleichzeitig aus. KI synthetisiert Erkenntnisse zu umsetzbaren Entwicklungs-Insights.",
+        "title": "Parallele Rechercheausführung"
+      },
+      "projectIntegration": {
+        "description": "Recherche ist auf Ihre spezifische Projektstruktur, Technologie-Stack und Entwicklungskontext zugeschnitten für maximale Relevanz.",
+        "title": "Projekt-Kontext-Integration"
+      },
+      "queryGeneration": {
+        "description": "KI erweitert Ihre Rechercheabfragen mit kontextbewussten Variationen. Multi-Winkel-Exploration für umfassende Abdeckung.",
+        "title": "Intelligente Abfragegenerierung"
+      }
+    },
+    "hero": {
+      "badge": "KI-gestützte Recherche-Intelligenz",
+      "description": "Generieren Sie intelligente Abfragen, führen Sie Suchen durch und integrieren Sie relevante Erkenntnisse in Ihre Aufgabe – ohne Ballast.",
+      "title": "Tiefenrecherche – von der Abfrage zur Erkenntnis"
+    },
+    "intelligence": {
+      "contextIntegration": {
+        "description": "Rechercheergebnisse werden automatisch mit Ihrer Aufgabenbeschreibung integriert und bereichern sie mit relevanten Erkenntnissen und Empfehlungen.",
+        "features": [
+          "Automatische Aufgaben-Verbesserung",
+          "Strukturierte Ergebnisformatierung",
+          "Implementierungsplan-Integration",
+          "Entwicklungs-Workflow-Ausrichtung"
+        ],
+        "title": "Kontext-Integration"
+      },
+      "execution": {
+        "description": "Hochentwickelte KI-Modelle führen Rechercheaufgaben parallel aus und liefern umfassende Analysen und Erkenntnisse.",
+        "features": [
+          "Parallele Rechercheaufgaben-Ausführung",
+          "Streaming-Ergebnisse mit Fortschrittsverfolgung",
+          "Kontextbewusste Analyse und Synthese",
+          "Entwicklungsfokussierte Erkenntnisse"
+        ],
+        "title": "KI-Rechercheausführung"
+      },
+      "queryExpansion": {
+        "description": "KI analysiert Ihre initiale Abfrage und generiert strategische Variationen für umfassende Rechercheabdeckung.",
+        "features": [
+          "Kontextbewusste Abfragevariationen",
+          "Semantische Synonym-Erweiterung",
+          "Domänenspezifische Terminologie",
+          "Multi-Perspektiven-Recherchewinkel"
+        ],
+        "title": "Intelligente Abfrage-Erweiterung"
+      },
+      "synthesis": {
+        "description": "Fortgeschrittene KI-Modelle analysieren Ihren Projektkontext und generieren zielgerichtete Recherche-Insights, die auf Ihre Entwicklungsbedürfnisse zugeschnitten sind.",
+        "features": [
+          "Projektbewusste Recherchegenerierung",
+          "Kontextsensitive Analyse",
+          "Entwicklungsfokussierte Erkenntnisse",
+          "Implementierungsbereite Empfehlungen"
+        ],
+        "title": "KI-Recherchesynthese"
+      },
+      "title": "Recherche-Intelligenz-Engine"
+    },
+    "process": {
+      "stage1": {
+        "description": "KI analysiert Ihre Aufgabenbeschreibung und Projektkontext zur Generierung ausgefeilter Rechercheabfragen. Erstellt mehrere strategische Recherchewinkel für umfassende Abdeckung.",
+        "title": "Rechercheabfrage-Generierung"
+      },
+      "stage2": {
+        "description": "Mehrere KI-Modelle führen Rechercheaufgaben gleichzeitig aus, jedes fokussiert auf unterschiedliche Aspekte Ihrer Anforderungen. Ergebnisse werden zu umsetzbaren Entwicklungs-Insights synthetisiert.",
+        "title": "Parallele Rechercheausführung"
+      },
+      "title": "Zweistufiger KI-Rechercheprozess"
+    }
+  },
+  "features": {
+    "copyButtons": {
+      "description": "Verwandeln Sie jeden Prompt in eine wiederverwendbare Schaltfläche mit intelligenten Platzhaltern und Drag-and-Drop",
+      "slug": "/features/copy-buttons",
+      "title": "Kopierschaltflächen"
+    },
+    "deepResearch": {
+      "description": "KI-gestützte Recherche mit ausgefeilten Abfragen und parallelen Rechercheaufgaben",
+      "slug": "/features/deep-research",
+      "title": "Tiefenrecherche"
+    },
+    "fileDiscovery": {
+      "description": "Intelligenter mehrstufiger Workflow, der relevante Dateien aus Ihrer Codebasis findet und auswählt",
+      "slug": "/features/file-discovery",
+      "title": "KI-Dateisuche"
+    },
+    "integratedTerminal": {
+      "description": "Persistente Terminal-Sitzungen mit Zustandsüberwachung und Befehlsüberprüfung",
+      "slug": "/features/integrated-terminal",
+      "title": "Integriertes Terminal"
+    },
+    "mergeInstructions": {
+      "description": "KI analysiert mehrere Implementierungspläne, löst Konflikte und erstellt emergente Lösungen",
+      "slug": "/features/merge-instructions",
+      "title": "Architektonische Plansynthese"
+    },
+    "planMode": {
+      "description": "Generieren Sie dateiweise Implementierungspläne mit KI. Prüfen und genehmigen Sie jede Änderung vor der Ausführung",
+      "slug": "/features/plan-mode",
+      "title": "Implementierungspläne"
+    },
+    "textImprovement": {
+      "description": "Verfeinern Sie Spezifikationen mit KI-Textverbesserung und Aufgabenverfeinerungsprompts",
+      "slug": "/features/text-improvement",
+      "title": "Spezifikationserfassungsmodus"
+    },
+    "videoAnalysis": {
+      "description": "Multimodale KI analysiert Audio- und visuelle Inhalte, um umsetzbare Anforderungen zu extrahieren",
+      "slug": "/features/video-analysis",
+      "title": "Meeting- & Aufzeichnungsanalyse"
+    },
+    "voiceTranscription": {
+      "description": "Erfassen Sie Spezifikationen freihändig mit Sprachtranskription in mehreren Sprachen",
+      "slug": "/features/voice-transcription",
+      "title": "Sprache zu Text"
+    }
+  },
+  "fileDiscovery": {
+    "benefits": {
+      "costEffective": {
+        "description": "Token-optimierter Workflow mit intelligenter Stapelverarbeitung. Kostenverfolgung in jeder Phase integriert.",
+        "title": "Kosteneffektiver Betrieb"
+      },
+      "multiStage": {
+        "description": "5-stufiger KI-Workflow mit Regex-Filterung, Relevanzbewertung und Pfad-Discovery zur Identifizierung der relevantesten Dateien.",
+        "title": "Mehrstufige Intelligenz"
+      },
+      "realTimeProgress": {
+        "description": "Live-Fortschrittsverfolgung mit stufenweisen Updates. Sehen Sie genau, was die KI entdeckt.",
+        "title": "Echtzeit-Fortschritt"
+      }
+    },
+    "capabilities": {
+      "git": {
+        "description": "Führt `git ls-files --cached --others --exclude-standard` aus, um .gitignore-Regeln zu respektieren. Fallback auf git2-Bibliothek bei Befehlsfehlschlag.",
+        "features": [
+          "Git ls-files mit .gitignore-Beachtung",
+          "Binärdatei-Erkennung und -Filterung",
+          "Erweiterungsbasierter Ausschluss (97 Typen)",
+          "Inhaltsanalyse zur Binärerkennung"
+        ],
+        "title": "Git-Repository-Integration"
+      },
+      "planIntegration": {
+        "description": "Entdeckte Dateien fließen direkt in das Implementierungsplanungssystem. Kontext wird erhalten und für Plangenerierung optimiert, um umfassende und genaue Ergebnisse zu gewährleisten.",
+        "features": [
+          "Nahtlose Plangenerierungs-Integration",
+          "Kontexterhaltung über Sitzungen hinweg",
+          "Multi-Modell-Plangenerierungs-Unterstützung",
+          "Vorbereitung architektonischer Synthese"
+        ],
+        "title": "Implementierungsplan-Integration"
+      },
+      "title": "Erweiterte Discovery-Funktionen",
+      "tokenManagement": {
+        "description": "Inhaltsbasierte Token-Schätzung optimiert die Stapelverarbeitung. Unterschiedliche Verhältnisse für JSON/XML (5 Zeichen/Token), Code (3 Zeichen/Token) und Text (4 Zeichen/Token) gewährleisten effiziente Verarbeitung.",
+        "features": [
+          "Dynamische Chunk-Größe pro Dateityp",
+          "2000-Token-Prompt-Overhead-Reservierung",
+          "Stapelverarbeitung (100 Dateien Standard)",
+          "30-Sekunden-Datei-Caching TTL"
+        ],
+        "title": "Intelligentes Token-Management"
+      },
+      "workflow": {
+        "description": "WorkflowOrchestrator verwaltet den Lebenszyklus mit Lazy-Initialisierung, Abhängigkeitsplanung und Wiederherstellung verwaister Jobs. Jede Stufe läuft als unabhängiger Hintergrund-Job.",
+        "features": [
+          "Stufenabhängigkeits-Verwaltung",
+          "Ereignisgesteuerte Fortschritts-Updates via Tauri",
+          "WorkflowIntermediateData-Persistenz",
+          "Exponentieller Backoff-Wiederholungs-Logik"
+        ],
+        "title": "Verteilte Workflow-Orchestrierung"
+      }
+    },
+    "cta": {
+      "description": "Lassen Sie KI intelligent durch Ihre Codebasis navigieren. Von Repository-Analyse bis zu implementierungsbereitem Kontext – so sollte Datei-Discovery funktionieren: intelligent, effizient, kosteneffektiv.",
+      "links": {
+        "docs": "Technische Dokumentation lesen",
+        "planMode": "Implementierungsplanung ansehen"
+      },
+      "title": "Erleben Sie intelligente Datei-Discovery"
+    },
+    "hero": {
+      "badge": "KI-gestützte Repository-Navigation",
+      "description": "PlanToCode kartiert betroffene Dateien, bevor Sie etwas ausführen. Sie erhalten einen fokussierten Kontext, dem Sie vertrauen können.",
+      "title": "Finden Sie automatisch, was in Ihrer Codebasis wichtig ist"
+    },
+    "performance": {
+      "accuracy": {
+        "description": "Mehrstufige Verfeinerung mit KI-gestützter Relevanzbewertung und Beziehungsanalyse.",
+        "title": "Genauigkeitsrate",
+        "value": "Hoch"
+      },
+      "cost": {
+        "description": "Pro Workflow-Durchlauf. Intelligente Token-Optimierung hält Kosten minimal bei maximaler Discovery-Qualität.",
+        "title": "Typische Kosten",
+        "value": "$0.10-0.15"
+      },
+      "speed": {
+        "description": "Abhängig von Repository-Größe und Komplexität. Echtzeit-Fortschrittsverfolgung mit stufenweisen Updates.",
+        "title": "Verarbeitungszeit",
+        "value": "Variabel"
+      },
+      "title": "Kosteneffektiv und schnell"
+    },
+    "workflow": {
+      "stage1": {
+        "description": "KI analysiert Ihre Verzeichnisstruktur (bis zu 2 Ebenen tief), um relevante Projektbereiche zu identifizieren. Nutzt hierarchische Intelligenz zur Auswahl von Überordnern vs. Unterverzeichnissen.",
+        "features": [
+          "Hierarchische Verzeichnisanalyse",
+          "Intelligente Auswahl von Über-/Unterordnern",
+          "Vermeidet redundante verschachtelte Auswahlen"
+        ],
+        "title": "Stammordner-Auswahl"
+      },
+      "stage2": {
+        "description": "Generiert intelligente Regex-Muster und führt initiale Dateifilterung durch. Integration mit Git zur Beachtung von .gitignore-Regeln und Filterung von Binärdateien.",
+        "features": [
+          "Dynamische Regex-Mustererstellung",
+          "Git ls-files Integration",
+          "Binärdatei-Erkennung und -Ausschluss"
+        ],
+        "title": "Regex-Mustergenerierung & Filterung"
+      },
+      "stage3": {
+        "description": "Tiefgehende Inhaltsanalyse mit LLM zur Bewertung der Dateirelevanz für Ihre Aufgabe. Nutzt intelligente Stapelverarbeitung mit inhaltsbasierter Token-Schätzung für optimale Verarbeitung.",
+        "features": [
+          "Inhaltsbasierte Relevanzbewertung",
+          "Intelligente token-bewusste Stapelverarbeitung",
+          "2000-Token-Overhead-Verwaltung"
+        ],
+        "title": "KI-Datei-Relevanzbewertung"
+      },
+      "stage4": {
+        "description": "Entdeckt zusätzliche kontextuell relevante Dateien durch Beziehungsanalyse. Analysiert Imports, Konfigurationen und Projektstruktur, um verwandte Dateien zu finden.",
+        "features": [
+          "Import-Statement-Analyse",
+          "Abhängigkeitsgraph-Durchquerung",
+          "Konfigurationsdatei-Discovery"
+        ],
+        "title": "Erweiterte Pfad-Discovery"
+      },
+      "stage5": {
+        "description": "Validiert Dateipfade und korrigiert Inkonsistenzen. Stellt sicher, dass alle entdeckten Dateien existieren, zugänglich sind und normalisierte Pfade für plattformübergreifende Kompatibilität haben.",
+        "features": [
+          "Dateiexistenz-Validierung",
+          "Pfad-Normalisierung",
+          "Auflösung symbolischer Links"
+        ],
+        "title": "Pfadvalidierung & Korrektur"
+      },
+      "title": "Der 5-stufige Discovery-Prozess"
+    }
+  },
+  "hub": {
+    "badge": "Leistungsstarke Funktionen",
+    "cta": {
+      "button": "PlanToCode herunterladen",
+      "description": "Laden Sie PlanToCode herunter und beginnen Sie, Ihre Code-Änderungen mit Vertrauen zu planen.",
+      "title": "Bereit für sichere KI-Entwicklung?"
+    },
+    "description": "Umfassende Werkzeuge zur Planung, Überprüfung und Ausführung komplexer Code-Änderungen. Von der Dateisuche bis zur Terminal-Ausführung – alles, was Sie für sichere KI-gestützte Entwicklung benötigen.",
+    "learnMore": "Mehr erfahren",
+    "title": "KI-Funktionen für Entwicklungsplanung"
+  },
+  "integratedTerminal": {
+    "cta": {
+      "description": "Ein Terminal für Planung und Ausführung gebaut – integriert, persistent und schnell.",
+      "links": {
+        "docs": "Technische Dokumentation lesen",
+        "voice": "Sprachbefehle erkunden"
+      },
+      "title": "Erleben Sie das Terminal, das nie Kontext verliert"
+    },
+    "features": {
+      "integratedPlanning": {
+        "description": "Führen Sie Implementierungspläne aus und kopieren Sie Schritte direkt ins Terminal, ohne die Anwendung zu verlassen.",
+        "title": "Mit Planung integriert"
+      },
+      "persistent": {
+        "description": "Ihre Terminal-Sitzungen bleiben bei Ihrer Arbeit und bewahren Kontext zwischen Aufgaben und Neustarts.",
+        "title": "Persistente Sitzungen"
+      },
+      "title": "Ein Terminal für Ihren Workflow gebaut",
+      "voiceSupport": {
+        "description": "Nutzen Sie Ein-Klick-Copy-Paste für Befehle oder diktieren Sie sie direkt per Spracheingabe für mehr Geschwindigkeit.",
+        "title": "Sprach- und Kopier-Unterstützung"
+      }
+    },
+    "hero": {
+      "badge": "Integriertes PTY-Terminal",
+      "description": "Führen Sie Ihren Plan in einem persistenten Terminal aus. Gebaut für schnelle, fokussierte Ausführung.",
+      "title": "Job-zentriertes Terminal, das Kontext behält"
+    }
+  },
+  "mergeInstructions": {
+    "capabilities": {
+      "instructionControl": {
+        "examples": [
+          {
+            "type": "Priorisierung",
+            "example": "\"Fokus auf Plan 2s Sicherheit\""
+          },
+          {
+            "type": "Struktur",
+            "example": "\"Nach Komponente organisieren\""
+          },
+          {
+            "type": "Ansatz",
+            "example": "\"Verwende Plan 1s Datenbankstrategie\""
+          },
+          {
+            "type": "Qualität",
+            "example": "\"Umfassendes Testen einschließen\""
+          },
+          {
+            "type": "Umfang",
+            "example": "\"Deployment-Schritte ausschließen\""
+          },
+          {
+            "type": "Integration",
+            "example": "\"Beispiel aus Dokumentation verwenden\""
+          },
+          {
+            "type": "Auflösung",
+            "example": "\"Bevorzuge Microservices statt Monolith\""
+          }
+        ],
+        "title": "Wie Anweisungen die Synthese steuern"
+      },
+      "title": "Tatsächliche Systemfähigkeiten",
+      "whatAIDoes": {
+        "items": [
+          "Studiert alle Quellpläne zur Identifizierung einzigartiger Erkenntnisse",
+          "Löst architektonische Konflikte mit SOLID-Prinzipien",
+          "Erstellt emergente Lösungen jenseits einfacher Kombination",
+          "Fügt Inline-Quellen-Markierungen für jede Entscheidung hinzu",
+          "Validiert architektonische Kohärenz durchgehend",
+          "Behandelt externe Beispielintegration",
+          "Erhält Relevanz zur ursprünglichen Aufgabe"
+        ],
+        "title": "Was die KI tatsächlich tut"
+      }
+    },
+    "cta": {
+      "description": "Jenseits von Zusammenführung – intelligente architektonische Analyse mit SOLID-Prinzipien. So sollte Plansynthese funktionieren – intelligent, nachverfolgbar, emergent.",
+      "links": {
+        "demo": "In Aktion sehen",
+        "planMode": "Plangenerierung erkunden"
+      },
+      "title": "Erleben Sie echte architektonische Synthese"
+    },
+    "features": {
+      "architecturalAnalysis": {
+        "description": "Nicht nur Verkettung. KI analysiert tiefgehend die Architektur jedes Plans und identifiziert einzigartige Erkenntnisse und Ansätze.",
+        "title": "Echte architektonische Analyse"
+      },
+      "solidResolution": {
+        "description": "Konflikte werden mit Software-Engineering-Best-Practices gelöst. Erstellt architektonisch solide Lösungen.",
+        "title": "SOLID-Prinzip-Auflösung"
+      },
+      "sourceTraceability": {
+        "description": "Jedes zusammengeführte Element enthält Inline-Attributionsmarkierungen, die genau zeigen, aus welchem Quellplan es stammt.",
+        "title": "Quellen-Nachverfolgbarkeit [src:P1]"
+      }
+    },
+    "hero": {
+      "badge": "Architektonische Synthese mit Quellen-Nachverfolgbarkeit",
+      "description": "KI führt tiefgehende architektonische Analyse mehrerer Pläne durch, löst Konflikte mit SOLID-Prinzipien und synthetisiert emergente Lösungen. Jede Entscheidung enthält Quellenattribution [src:P1 step 2] für vollständige Nachverfolgbarkeit.",
+      "title": "Jenseits einfacher Zusammenführung: Architektonische Synthese"
+    },
+    "implementation": {
+      "aiPrompt": {
+        "description": "Ausgefeilter Prompt erzwingt Qualität und Nachverfolgbarkeit.",
+        "features": [
+          "Experten-Software-Architekten-Persona",
+          "SOLID-Prinzip-Konfliktlösung",
+          "Obligatorische Quellenattribution",
+          "Emergente Lösungserstellung",
+          "Qualitäts-Validierungs-Gates"
+        ],
+        "title": "KI-System-Prompt"
+      },
+      "backend": {
+        "description": "ImplementationPlanMergeProcessor orchestriert die gesamte Synthese.",
+        "features": [
+          "Holt rohes XML aus Quellplänen",
+          "Extrahiert relevante Dateikontexte",
+          "Generiert Projektstrukturbaum",
+          "Baut umfassenden LLM-Prompt",
+          "Streamt Antwort mit Echtzeit-Updates"
+        ],
+        "title": "Backend-Verarbeitung"
+      },
+      "frontend": {
+        "description": "Reichhaltiges UI für Planauswahl und Anweisungseingabe.",
+        "features": [
+          "MergePlansSection mit klappbarem UI",
+          "FloatingMergeInstructions (verschiebbar)",
+          "Echtzeit-Textverbesserungs-Unterstützung",
+          "Debounced State-Management",
+          "Sitzungs-Persistenz für Anweisungen"
+        ],
+        "title": "Frontend-Komponenten"
+      },
+      "metadata": {
+        "description": "Vollständiger Audit-Trail und Debug-Fähigkeit.",
+        "features": [
+          "Quell-Job-IDs bewahrt",
+          "Vollständiger Prompt für Debugging gespeichert",
+          "Merge-Anweisungen verfolgt",
+          "Dateioperationen extrahiert",
+          "Priorität 2 Job-Planung"
+        ],
+        "title": "Metadaten & Speicherung"
+      },
+      "title": "Technische Implementierungsdetails"
+    },
+    "process": {
+      "deepAnalysis": {
+        "description": "KI führt umfassende Analyse vor Synthese durch, keine einfache Verkettung.",
+        "features": [
+          "Identifiziert einzigartige Erkenntnisse aus jedem Plan",
+          "Löst Konflikte mit SOLID-Prinzipien",
+          "Bewahrt wertvolle architektonische Entscheidungen",
+          "Erstellt emergente Lösungen jenseits der Quellen"
+        ],
+        "title": "Tiefgehende architektonische Analyse"
+      },
+      "instructions": {
+        "description": "Ihre Anweisungen steuern die Synthese direkt. KI versteht komplexe architektonische Anweisungen.",
+        "examples": [
+          "Priorisierung: \"Fokus auf Sicherheit aus Plan 2\"",
+          "Struktur: \"Chronologisch organisieren\"",
+          "Ansatz: \"Verwende Plan 1s Datenbankstrategie\"",
+          "Umfang: \"Schließe Tests aus, fokussiere auf Kern\""
+        ],
+        "title": "Intelligente Anweisungsverarbeitung"
+      },
+      "multiModel": {
+        "description": "Führen Sie GPT-5 und Gemini mehrfach aus. Jeder Durchlauf geht unterschiedlich mit großem Kontext um und bringt komplementäre Implementierungsdetails hervor.",
+        "features": [
+          "Jeder Plan mit vollständigen Metadaten gespeichert",
+          "Relevante Dateien automatisch extrahiert",
+          "Projektstrukturkontext enthalten",
+          "Temperaturvariationen für Vielfalt"
+        ],
+        "title": "Multi-Modell-Plangenerierung"
+      },
+      "synthesis": {
+        "description": "Erstellt umfassende Lösung mit vollständiger Quellenattribution für jede Entscheidung.",
+        "features": [
+          "Inline-Markierungen: [src:P1 step 2, P3 step 5]",
+          "Unterstützung externer Beispielintegration",
+          "Qualitäts-Validierungs-Checkpoints",
+          "Architektonische Kohärenz beibehalten"
+        ],
+        "title": "Synthese mit voller Nachverfolgbarkeit"
+      },
+      "title": "Der architektonische Syntheseprozess"
+    },
+    "value": {
+      "architecturalSynthesis": {
+        "description": "Keine Verkettung. KI führt tiefgehende architektonische Analyse durch und erstellt emergente Lösungen, die jenseits einzelner Quellpläne gehen.",
+        "title": "Architektonische Synthese"
+      },
+      "completeTraceability": {
+        "description": "Jede Entscheidung enthält [src:P1 step 2] Markierungen. Wissen Sie genau, woher jede architektonische Wahl stammt.",
+        "title": "Vollständige Nachverfolgbarkeit"
+      },
+      "solidPractices": {
+        "description": "Konflikte werden mit Software-Engineering-Prinzipien gelöst, nicht willkürlichen Entscheidungen. Architektonisch solide Ergebnisse.",
+        "title": "SOLID-Engineering-Praktiken"
+      },
+      "title": "Der wahre Wert: Jenseits einfacher Zusammenführung"
+    }
+  },
+  "planMode": {
+    "copyButtons": {
+      "serverConfigured": {
+        "description": "Dynamische Kopierschaltflächen serverseitig konfiguriert mit Template-Platzhaltern.",
+        "title": "Serverkonfigurierte Schaltflächen"
+      },
+      "stepExtraction": {
+        "description": "Kopieren Sie einzelne Schritte oder vollständige Pläne mit automatischer Inhaltsextraktion.",
+        "title": "Intelligente Schritt-Extraktion"
+      },
+      "title": "Konfigurierbares Kopierschaltflächen-System"
+    },
+    "cta": {
+      "description": "Von KI-gestützter Generierung über menschliche Überprüfung bis zu kontrollierter Ausführung. So übernehmen Unternehmensteams KI-Coding-Agents selbstbewusst – mit Human-in-the-Loop-Governance, Datei-für-Datei-Granularität und voller Kontrolle bei jedem Schritt.",
+      "links": {
+        "mergePlans": "Erfahren Sie mehr über architektonische Synthese",
+        "terminal": "Terminal-Integration ansehen"
+      },
+      "title": "Erleben Sie sichere, menschlich kontrollierte KI-Entwicklung"
+    },
+    "editing": {
+      "monaco": {
+        "description": "Vollständige VS Code-Editor-Erfahrung. Kein Textbereich – ein professioneller Code-Editor mit allen Features.",
+        "features": [
+          "XML-Syntax-Highlighting",
+          "Suchen & Ersetzen mit Regex",
+          "Multi-Cursor-Bearbeitung",
+          "Auto-Save in Datenbank"
+        ],
+        "title": "Monaco-Editor-Integration"
+      },
+      "terminal": {
+        "description": "Führen Sie Pläne direkt in persistenten Terminal-Sitzungen aus. Spracheingabe, Zustandsüberwachung, volle Kontrolle.",
+        "features": [
+          "Persistente Terminal-Sitzungen",
+          "Sprachtranskriptions-Eingabe",
+          "Plan/Schritte ins Terminal kopieren",
+          "Sitzungs-Zustandsüberwachung"
+        ],
+        "title": "Integrierte Terminal-Ausführung"
+      },
+      "title": "Professionelle Bearbeitung & Ausführung"
+    },
+    "features": {
+      "intelligentGeneration": {
+        "description": "Vollständiges Laden von Dateiinhalten (keine Kürzung). Intelligente Verzeichnisbäume. Multi-Modell-Unterstützung mit Projektkonfigurationen.",
+        "title": "Intelligente Generierung"
+      },
+      "monacoEditor": {
+        "description": "VS Codes Editor mit XML-Syntax-Highlighting. Echtzeit-Bearbeitung mit Auto-Save in Datenbank.",
+        "title": "Monaco-Editor"
+      },
+      "terminalExecution": {
+        "description": "Führen Sie Pläne direkt im integrierten Terminal aus. Kopieren Sie Schritte oder vollständige Pläne. Sprachtranskriptions-Unterstützung.",
+        "title": "Terminal-Ausführung"
+      }
+    },
+    "fileByFile": {
+      "description": "Pläne gliedern Entwicklungsaufgaben mit exakten Dateipfaden entsprechend Ihrer Projekt-Repository-Struktur. Diese Granularität macht die Auswirkung von Änderungen kristallklar und verhindert Regressionen, Bugs und unbeabsichtigte Modifikationen, die bei autonomen Coding-Agents auftreten können.",
+      "exactPaths": {
+        "description": "Jeder Schritt spezifiziert exakte Dateipfade aus Ihrem Repository. Keine Mehrdeutigkeit darüber, welche Dateien modifiziert, erstellt oder gelöscht werden.",
+        "title": "Exakte Dateipfade"
+      },
+      "preventRegressions": {
+        "description": "Sehen Sie genau, welcher Legacy-Code berührt wird. Identifizieren Sie potenzielle Breaking Changes, bevor sie passieren. Selbstbewusste Adoption von KI-Coding-Agents.",
+        "features": [
+          "Klare Auswirkungsbewertung",
+          "Breaking-Change-Erkennung",
+          "Legacy-Code-Schutz"
+        ],
+        "title": "Regressionen verhindern"
+      },
+      "title": "Datei-für-Datei-Granularität für maximale Sicherheit"
+    },
+    "generation": {
+      "fullContext": {
+        "description": "Anders als andere Systeme laden wir vollständige Dateiinhalte. Keine präventive Kürzung – nur intelligente Warnungen.",
+        "features": [
+          "Vollständiger Dateiinhalt, keine Kürzung",
+          "Paralleles Dateiladen für Geschwindigkeit",
+          "Token-Warnungen bei >100k Tokens",
+          "Intelligente Verzeichnisbaum-Generierung"
+        ],
+        "title": "Vollständiges Kontext-Laden"
+      },
+      "multiModel": {
+        "description": "Wählen Sie aus mehreren KI-Modellen mit projektspezifischen Konfigurationen und Temperatureinstellungen.",
+        "features": [
+          "GPT-5, Claude Sonnet 4, Gemini 2.5 Pro",
+          "Projektspezifische Modelleinstellungen",
+          "Echtzeit-Token-Schätzung",
+          "Kontextfenster-Validierung"
+        ],
+        "title": "Multi-Modell-Architektur"
+      },
+      "streaming": {
+        "description": "Beobachten Sie Pläne in Echtzeit mit Live-Fortschrittsbalken und Streaming-Content-Updates.",
+        "features": [
+          "Live-Streaming mit Fortschrittsbalken",
+          "Echtzeit-Syntax-Highlighting",
+          "Token-Zähler-Updates während Generierung",
+          "Hintergrund-Job-Status-Verfolgung"
+        ],
+        "title": "Echtzeit-Streaming"
+      },
+      "title": "KI-gestützte Plangenerierung mit vollem Kontext",
+      "xmlFormat": {
+        "description": "Pläne verwenden strukturiertes XML mit nummerierten Schritten, was programmatische Manipulation und Extraktion ermöglicht.",
+        "features": [
+          "<step number=\"X\"> Organisation",
+          "Titel und Beschreibung pro Schritt",
+          "Dateioperations-Tracking",
+          "Schritt-für-Schritt-Extraktions-Unterstützung"
+        ],
+        "title": "Strukturiertes XML-Format"
+      }
+    },
+    "guides": {
+      "claudeCode": {
+        "description": "Verbessern Sie Claude Codes nativen Plan-Modus mit Multi-Modell-Synthese und Dateisuche.",
+        "link": "Öffnen Sie die Anleitung zum Claude Code Planungs-Workflow",
+        "name": "Claude Code Planungs-Workflow"
+      },
+      "codex": {
+        "description": "Vorplanen von Codex-Durchläufen mit Dateisuche, Multi-Modell-Merges und Genehmigungsmodi.",
+        "link": "Öffnen Sie die Anleitung zum Codex CLI Planungs-Workflow",
+        "name": "Codex CLI Planungs-Workflow"
+      },
+      "cursor": {
+        "description": "Geben Sie Cursor Composer vollständiges architektonisches Bewusstsein, einschließlich WSL-sicherer Ausführung.",
+        "link": "Öffnen Sie die Anleitung zum Cursor Plan-Workflow",
+        "name": "Cursor Plan-Workflow"
+      },
+      "title": "Anleitungen für Ihren IDE-Planmodus"
+    },
+    "hero": {
+      "badge": "Vollständiges Implementierungsplanungssystem",
+      "description": "Human-in-the-Loop-Governance mit dateispezifischer Granularität für sichere KI-gestützte Entwicklung",
+      "title": "Implementierungspläne: generieren - bearbeiten - ausführen"
+    },
+    "humanInLoop": {
+      "approve": {
+        "description": "Wenn Sie zufrieden sind, übertragen Sie den genehmigten Plan sicher an Ihren gewählten Coding-Agent oder zugewiesenen Entwickler. Vollständiger Audit-Trail wird gepflegt.",
+        "title": "Genehmigen & übertragen"
+      },
+      "description": "Teamleiter und Stakeholder behalten die volle Kontrolle zur Überprüfung, Bearbeitung und Genehmigung jedes Aspekts von Implementierungsplänen, bevor Code-Änderungen beginnen. Dies stellt sicher, dass alle Entwicklungsbemühungen mit Unternehmensproduktanforderungen, Team-Workflows und Geschäftszielen übereinstimmen.",
+      "edit": {
+        "description": "Volle Bearbeitungsmöglichkeiten mit VS Code-Features. Passen Sie Ansätze an, fügen Sie Einschränkungen hinzu, entfernen Sie riskante Schritte. Der Plan gehört Ihnen zur Perfektionierung.",
+        "title": "Pläne bearbeiten & modifizieren"
+      },
+      "review": {
+        "description": "Jeder KI-generierte Plan öffnet sich im Monaco-Editor zur gründlichen Überprüfung. Keine autonome Ausführung – Sie sehen und genehmigen jede vorgeschlagene Änderung.",
+        "title": "Überprüfung vor Ausführung"
+      },
+      "title": "Human-in-the-Loop-Governance"
+    },
+    "technical": {
+      "noTruncation": {
+        "description": "Vollständiger Dateiinhalt geladen. Warnt bei >100k Tokens, kürzt aber nicht. Sie erhalten vollständigen Kontext.",
+        "title": "Keine-Kürzungs-Richtlinie"
+      },
+      "persistence": {
+        "description": "Pläne gespeichert mit Metadaten, Kostenverfolgung und vollständiger Prompt-Historie. Alles ist auditierbar.",
+        "title": "Datenbank-Persistenz"
+      },
+      "templates": {
+        "description": "Serverseitige Prompts mit Projekt-Overrides. Einheitlicher Prompt-Prozessor mit intelligenten Platzhaltern.",
+        "title": "Template-System"
+      },
+      "title": "Unter der Haube"
+    },
+    "workflow": {
+      "steps": [
+        {
+          "title": "KI-Dateisuche",
+          "description": "Intelligenter Dateifinder identifiziert relevante Dateien. Wählen Sie Stammverzeichnisse für fokussierten Kontext. Keine Kürzung."
+        },
+        {
+          "title": "Multi-Modell-Generierung",
+          "description": "Führen Sie Modelle mehrfach aus (3x GPT-5, 2x Gemini). Jeder Durchlauf bringt komplementäre Implementierungsdetails hervor. Echtzeit-Streaming mit Fortschrittsverfolgung."
+        },
+        {
+          "title": "In Monaco bearbeiten",
+          "description": "Professionelle Bearbeitung mit VS Code-Features. Fügen Sie Schritte hinzu, modifizieren Sie Ansätze, strukturieren Sie Pläne um."
+        },
+        {
+          "title": "Architektonische Synthese",
+          "description": "Verschmelzen Sie mehrere Pläne mit benutzerdefinierten Anweisungen. SOLID-Prinzip-Auflösung, Quellen-Nachverfolgbarkeit."
+        },
+        {
+          "title": "Im Terminal ausführen",
+          "description": "Führen Sie Ihren Plan im integrierten Terminal aus. Sprachbefehle, persistente Sitzungen, echte Ergebnisse."
+        }
+      ],
+      "title": "Der vollständige Planungs-Workflow"
+    }
+  },
+  "textImprovement": {
+    "capabilities": {
+      "contextAware": {
+        "description": "KI versteht Ihre Projektstruktur, enthaltene Dateien und benutzerdefinierte Anweisungen bei der Textverfeinerung.",
+        "title": "Kontextbewusste Verfeinerung"
+      },
+      "customizable": {
+        "description": "Definieren Sie projektspezifische Prompts mit Platzhaltern für Dateiinhalte, Verzeichnisbaum und benutzerdefinierte Anweisungen.",
+        "title": "Anpassbare System-Prompts"
+      },
+      "instant": {
+        "description": "Nicht-Streaming-Verarbeitung für Geschwindigkeit. Ergebnisse direkt angewendet mit Konflikterkennung zum Schutz Ihrer Bearbeitungen.",
+        "title": "Sofortige Anwendung"
+      },
+      "mentalModel": {
+        "description": "Iterative Verfeinerung hilft KI, Ihre Absicht zu verstehen. Auswählen → verfeinern → erneut verfeinern bis perfekt.",
+        "title": "Erfassung mentaler Modelle"
+      },
+      "title": "Hauptfähigkeiten"
+    },
+    "cta": {
+      "description": "Schluss mit vagen Anforderungen. Erfassen Sie Ideen mit Sprache, verfeinern Sie sie mit KI-Prompts und erstellen Sie Spezifikationen, die Entwicklungsteams selbstbewusst umsetzen können.",
+      "links": {
+        "demo": "Demo ansehen",
+        "voice": "Sprachfunktionen ansehen"
+      },
+      "title": "Beginnen Sie mit KI klare Spezifikationen zu erfassen"
+    },
+    "faq": {
+      "codeEditor": {
+        "answer": "Ja. Funktioniert in Aufgabenbeschreibungsfeldern und Monaco-Code-Editoren. Text auswählen → Popover erscheint → Aktion wählen.",
+        "question": "Funktioniert es in Code-Editoren?"
+      },
+      "conflicts": {
+        "answer": "Konflikterkennung verhindert das Überschreiben Ihrer Bearbeitungen. Wenn sich Text während der Verarbeitung änderte, wird die Verbesserung mit Warnung übersprungen.",
+        "question": "Was passiert, wenn ich Text während laufender Verbesserung bearbeite?"
+      },
+      "customize": {
+        "answer": "Ja. Definieren Sie projektspezifische System-Prompts mit Platzhaltern für Dateiinhalte, Verzeichnisbaum, benutzerdefinierte Anweisungen und mehr.",
+        "question": "Kann ich die Verbesserungs-Prompts anpassen?"
+      },
+      "model": {
+        "answer": "Standard: Claude Sonnet 3.5 über OpenRouter. Sie können unterschiedliche Modelle pro Projekt in Einstellungen konfigurieren.",
+        "question": "Welches KI-Modell verwendet Textverbesserung?"
+      }
+    },
+    "hero": {
+      "badge": "Spezifikationserfassungsmodus • Zwei KI-Prompt-Typen",
+      "credits": "$5 Gratis-Guthaben • Pay-as-you-go • Funktioniert auf macOS und Windows",
+      "description": "Der Spezifikationserfassungsmodus bietet ZWEI UNTERSCHIEDLICHE KI-Prompt-Typen, die Unternehmensteams helfen, Anforderungen zu erfassen und zu verfeinern, die Entwicklungsteams selbstbewusst umsetzen können.",
+      "installButton": "PlanToCode installieren",
+      "subtitle": "Textverbesserung verbessert Klarheit und Grammatik. Aufgabenverfeinerung erweitert Vollständigkeit und Implementierungsbereitschaft. Beide sind essenzielle Werkzeuge für Unternehmensteams, die komplexe Entwicklungs-Workflows und detaillierte Anforderungserfassung verwalten.",
+      "title": "Spezifikationserfassungsmodus"
+    },
+    "howItWorks": {
+      "steps": [
+        {
+          "step": "Text in Aufgabenbeschreibung auswählen",
+          "description": "Markieren Sie beliebigen Text in Ihrer Aufgabenbeschreibung oder im Code-Editor. Ein Popover erscheint sofort."
+        },
+        {
+          "step": "\"Verbessern\" oder \"Aufgabe verfeinern\" wählen",
+          "description": "Verbessern: Schnelle Stil-/Klarheitskorrekturen. Aufgabe verfeinern: Tiefgehende kontextuelle Verbesserung mit Projektdateien."
+        },
+        {
+          "step": "KI verarbeitet mit vollem Kontext",
+          "description": "Claude Sonnet 3.5 analysiert mit Projektdateien, Verzeichnisstruktur und anpassbaren Prompts."
+        },
+        {
+          "step": "Verfeinerter Text inline angewendet",
+          "description": "Verbesserter Text ersetzt Auswahl automatisch. Bewahrt Formatierung und Cursor-Position."
+        }
+      ],
+      "title": "So funktioniert es"
+    },
+    "painPoints": {
+      "mentalModels": {
+        "description": "Was Sie sich vorstellen, stimmt nicht mit dem überein, was niedergeschrieben wird, was zu Implementierungsdrift führt.",
+        "title": "Mentale Modelle gehen in der Übersetzung verloren"
+      },
+      "rewriting": {
+        "description": "Manuelle Verfeinerung mehrdeutiger Beschreibungen verlangsamt die Planung und schafft Fehlausrichtungen.",
+        "title": "Umschreiben von Aufgabenbeschreibungen verschwendet Zeit"
+      },
+      "title": "Warum Unternehmensteams den Spezifikationserfassungsmodus nutzen",
+      "vague": {
+        "description": "KI generiert Code basierend auf unklaren Aufgabenbeschreibungen und übersieht kritische Einschränkungen und Randfälle.",
+        "title": "Vage Anforderungen führen zu falschen Implementierungen"
+      }
+    },
+    "promptTypes": {
+      "note": "Beide Prompt-Typen nutzen große Sprachmodelle zur Inhaltsverbesserung unter Beibehaltung der ursprünglichen Absicht und Kernbedeutung der Benutzereingabe. Dies stellt sicher, dass Ihre Spezifikationen Ihrer Vision treu bleiben und gleichzeitig klarer und vollständiger werden.",
+      "taskRefinement": {
+        "description": "Erweitert Aufgabenbeschreibungen durch Identifizierung impliziter Anforderungen, Füllung übersehener Lücken, Klärung erwarteten Verhaltens und Randfälle sowie Hinzufügen technischer Überlegungen, um Aufgaben vollständiger und implementierungsbereiter zu machen.",
+        "features": [
+          "Identifiziert implizite Anforderungen",
+          "Klärt Randfälle und Einschränkungen",
+          "Fügt technische Implementierungsdetails hinzu",
+          "Macht Aufgaben für Entwickler umsetzbar"
+        ],
+        "title": "Aufgabenverfeinerung"
+      },
+      "textEnhancement": {
+        "description": "Verbessert Grammatik, Satzstruktur, Klarheit und Prägnanz unter Beibehaltung der ursprünglichen Absicht, des Tons und der technischen Detailtiefe des Benutzers. Perfekt zum Polieren von Rohentwürfen und Sprachtranskriptionen.",
+        "features": [
+          "Bewahrt ursprüngliche Bedeutung und Absicht",
+          "Korrigiert Grammatik und Interpunktion",
+          "Verbessert Satzfluss und Lesbarkeit",
+          "Erhält technische Genauigkeit"
+        ],
+        "title": "Textverbesserung"
+      },
+      "title": "Zwei unterschiedliche KI-Prompt-Typen"
+    },
+    "useCases": {
+      "clarify": {
+        "description": "Verwandeln Sie \"Auth-Bug beheben\" in spezifische Schritte mit Randfällen, betroffenen Services und Validierungsprüfungen.",
+        "title": "Vage Anforderungen vor Planung klären"
+      },
+      "expand": {
+        "description": "Konvertieren Sie Kurzschrift wie \"User-Service refactoren\" in detaillierte Aufgabe mit Einschränkungen, Abhängigkeiten und Rollback-Plan.",
+        "title": "Abgekürzte Notizen in vollen Kontext erweitern"
+      },
+      "refine": {
+        "description": "Stellen Sie sicher, dass Aufgabenbeschreibungen für Reviewer und nachgelagerte Implementierung klar sind.",
+        "title": "Aufgabenbeschreibungen für Team-Ausrichtung verfeinern"
+      },
+      "title": "Häufige Anwendungsfälle"
+    }
+  },
+  "videoAnalysis": {
+    "capabilities": {
+      "fileUpload": {
+        "description": "Laden Sie vorhandene Aufzeichnungen, Kunden-Bug-Reports oder Demo-Videos hoch. Unterstützt alle gängigen Videoformate.",
+        "features": [
+          "MP4, WebM, MOV, AVI-Formate",
+          "Drag-and-Drop-Oberfläche",
+          "Batch-Upload für mehrere Videos"
+        ],
+        "title": "Datei-Upload-Unterstützung"
+      },
+      "fpsControl": {
+        "description": "Passen Sie Frame-Extraktionsrate an, um Analysedetails mit Kosten auszubalancieren. Höheres FPS für detaillierte Interaktionen, niedriger für Kostenoptimierung.",
+        "features": [
+          "1-2 FPS: Kosteneffektive Übersicht",
+          "3-5 FPS: Ausgewogene Analyse",
+          "6-10 FPS: Detaillierte UI-Zustandserfassung"
+        ],
+        "title": "FPS-Kontrolle (1-10 FPS)"
+      },
+      "gemini": {
+        "description": "Angetrieben von Google Gemini 2.5 Pro oder Flash für fortgeschrittenes Vision-Verständnis. Extrahiert Fehler, Muster und liefert Vorschläge.",
+        "features": [
+          "Fehlermeldungs-Extraktion",
+          "UI-Zustands-Erkennung und -Übergänge",
+          "Mustererkennung und Vorschläge"
+        ],
+        "title": "Gemini Vision-Analyse"
+      },
+      "screenRecording": {
+        "description": "Erfassen Sie Bugs, UI-Interaktionen oder Demo-Flows direkt in der App. Keine Notwendigkeit für externe Aufzeichnungstools oder Kontextwechsel.",
+        "features": [
+          "Ein-Klick-Bildschirmerfassung",
+          "Vollbildschirm oder spezifische Fenster aufzeichnen",
+          "Automatische Format-Optimierung"
+        ],
+        "title": "Integrierte Bildschirmaufzeichnung"
+      },
+      "title": "Leistungsstarke Analysefähigkeiten"
+    },
+    "cta": {
+      "description": "Von Teams-Meetings zu Implementierungsplänen. Stoppen Sie das Verlieren von Anforderungen in stundenlangen Anrufen. Lassen Sie multimodale KI jede Entscheidung, jeden Aktionspunkt und jeden visuellen Kontext automatisch extrahieren.",
+      "links": {
+        "fileDiscovery": "Dateisuche erkunden",
+        "research": "KI-Recherchefähigkeiten ansehen"
+      },
+      "title": "Verwandeln Sie Meeting-Notizen in umsetzbare Anforderungen"
+    },
+    "faq": {
+      "formats": {
+        "answer": "PlanToCode unterstützt MP4, WebM, MOV und AVI-Videoformate. Videos werden lokal verarbeitet und Frames werden basierend auf Ihren FPS-Einstellungen extrahiert, bevor sie an Gemini Vision zur Analyse gesendet werden. Die meisten Bildschirmaufzeichnungstools geben standardmäßig kompatible Formate aus.",
+        "question": "Welche Videoformate werden unterstützt?"
+      },
+      "fps": {
+        "answer": "FPS-Empfehlungen basierend auf Anwendungsfall: 1-2 FPS für allgemeine Bug-Reports, lange Aufzeichnungen und Kostenoptimierung - erfasst Schlüsselmomente ohne übermäßige Frames. 3-5 FPS für ausgewogene Analyse für die meisten Anwendungsfälle - gut für UI-Walkthroughs und Standard-Bug-Erfassungen. 6-10 FPS für detaillierte UI-Interaktionen, Animationsprobleme und schnelle Zustandsänderungen - höhere Kosten, aber umfassender.",
+        "question": "Welche FPS-Einstellungen sollte ich verwenden?"
+      },
+      "model": {
+        "answer": "Verwenden Sie Gemini 2.5 Flash für einfache Bug-Erfassungen, schnelle UI-Demos und Dokumentation, wo Geschwindigkeit und Kosten wichtig sind. Wählen Sie Gemini 2.5 Pro für komplexe UI-Probleme, detaillierte Musteranalyse und wenn Sie tieferes kontextuelles Verständnis benötigen. Pro liefert nuanciertere Erkenntnisse, kostet aber mehr pro Frame.",
+        "question": "Welches KI-Modell sollte ich wählen?"
+      },
+      "optimization": {
+        "answer": "Kostenoptimierungs-Strategien: Verwenden Sie niedrigere FPS-Einstellungen (1-2 FPS) für längere Videos oder einfache Analyse. Wählen Sie Gemini Flash statt Pro, wenn detaillierte Analyse nicht kritisch ist. Kürzen Sie Videos nur auf relevante Abschnitte vor dem Hochladen. Verwenden Sie Bildschirmaufzeichnung, um nur notwendige Interaktionen zu erfassen, anstatt lange Aufzeichnungen hochzuladen.",
+        "question": "Wie kann ich Analysekosten optimieren?"
+      }
+    },
+    "hero": {
+      "badge": "Multimodale Meeting- & Aufzeichnungsanalyse",
+      "description": "Zeichnen Sie Microsoft Teams-Meetings auf oder erfassen Sie Bildschirmpräsentationen. Multimodale KI analysiert Audio-Transkripte und visuelle Inhalte, um umsetzbare Anforderungen und Entscheidungen zu extrahieren.",
+      "title": "Meeting- & Präsentationserfassung zur Anforderungsextraktion"
+    },
+    "howItWorks": {
+      "steps": [
+        {
+          "title": "Meeting aufzeichnen oder hochladen",
+          "description": "Erfassen Sie Microsoft Teams-Meetings, zeichnen Sie Bildschirmpräsentationen auf, während Sie Aufgaben aus Jira oder ähnlichen Unternehmenstools präsentieren, oder laden Sie vorhandene Aufzeichnungen hoch. Unterstützt MP4, WebM, MOV und AVI-Formate für maximale Kompatibilität mit Unternehmens-Meeting-Tools."
+        },
+        {
+          "title": "Gemini Vision analysiert Frames",
+          "description": "Video wird bei Ihrem gewählten FPS (1-10) verarbeitet, und Frames werden von Gemini 2.5 Pro oder Flash analysiert. KI identifiziert Fehler, UI-Zustände, Benutzerinteraktionen und visuelle Muster."
+        },
+        {
+          "title": "Umsetzbare Details extrahieren",
+          "description": "KI extrahiert Fehlermeldungen, UI-Zustandsübergänge, Interaktionsmuster und generiert Verbesserungsvorschläge mit Zeitstempeln."
+        },
+        {
+          "title": "Auto-Anhang an Aufgabenbeschreibung",
+          "description": "Vollständige Analyse wird formatiert und automatisch an Ihre Aufgabenbeschreibung angehängt, bereit für Implementierungsplanung oder Bug-Behebung."
+        }
+      ],
+      "title": "So funktioniert Meeting-Analyse"
+    },
+    "insights": {
+      "actionItems": {
+        "description": "Konkrete Aktionspunkte mit Verantwortlichen und identifizierten impliziten Abhängigkeiten",
+        "title": "Aktionspunkte"
+      },
+      "decisions": {
+        "description": "Schlüsselentscheidungen mit Kontext extrahiert und spezifischen Sprechern zugeordnet",
+        "title": "Zusammengefasste Entscheidungen"
+      },
+      "description": "Nach Verarbeitung Ihrer Meeting-Aufzeichnung analysiert das System sowohl Audio-Transkripte als auch visuelle Inhalte (geteilte Bildschirme, Dokumente, wichtige Momente), um umsetzbare Erkenntnisse zu extrahieren. Die extrahierten Erkenntnisse – zusammengefasste Entscheidungen, Aktionspunkte und wichtige Diskussionspunkte – werden in einer intuitiven Oberfläche präsentiert, wo Teamleiter sie überprüfen, auswählen und in umsetzbare Implementierungspläne einbinden können.",
+      "discussionPoints": {
+        "description": "Wichtiger Kontext, geäußerte Bedenken und diskutierte alternative Ansätze",
+        "title": "Diskussionspunkte"
+      },
+      "title": "Extraktion umsetzbarer Erkenntnisse"
+    },
+    "models": {
+      "flash": {
+        "description": "Schnelle, kosteneffektive Analyse für einfache Bug-Erfassungen und Dokumentation. Ideal für Hochvolumen-Nutzung.",
+        "features": [
+          "Niedrigere Kosten pro Frame",
+          "Schnellere Verarbeitungszeit",
+          "Gut für einfache UI-Analyse"
+        ],
+        "title": "Gemini 2.5 Flash"
+      },
+      "pro": {
+        "description": "Umfassende Analyse mit tieferen Erkenntnissen. Am besten für komplexe UI-Probleme, detaillierte Mustererkennung und fortgeschrittenes Debugging.",
+        "features": [
+          "Fortgeschrittene Mustererkennung",
+          "Tieferes kontextuelles Verständnis",
+          "Besser für komplexe UI-Flows"
+        ],
+        "title": "Gemini 2.5 Pro"
+      },
+      "title": "Wählen Sie Ihr Analysemodell"
+    },
+    "multimodal": {
+      "audioTranscript": {
+        "description": "Vollständige Audio-Transkription von Meeting-Diskussionen. Extrahieren Sie Schlüsselanforderungen, Entscheidungen und Aktionspunkte aus Meeting-Audio.",
+        "features": [
+          "Vollständige Audio-Transkription",
+          "Entscheidungspunkt-Extraktion",
+          "Aktionspunkt-Identifikation"
+        ],
+        "title": "Audio-Transkript-Analyse"
+      },
+      "title": "Multimodale Analyse von Meetings",
+      "visualContent": {
+        "description": "KI analysiert geteilte Bildschirme, präsentierte Dokumente und wichtige visuelle Momente. Erfasst UI-Mockups, Architekturdiagramme und anderen visuellen Kontext, der für Anforderungen kritisch ist.",
+        "features": [
+          "Bildschirmfreigabe-Inhaltsextraktion",
+          "Dokument- und Diagrammanalyse",
+          "Wichtige Moment-Identifikation"
+        ],
+        "title": "Visuelle Inhaltsanalyse"
+      }
+    },
+    "painPoints": {
+      "incompleteNotes": {
+        "description": "Notiz-Nehmer können nicht alles erfassen – wer was sagte, was auf dem Bildschirm gezeigt wurde, subtile Anforderungsänderungen. Wichtiger Kontext geht zwischen Meetings und Implementierung verloren.",
+        "title": "Manuelle Meeting-Notizen sind unvollständig"
+      },
+      "requirementsLost": {
+        "description": "Kritische Entscheidungen und Anforderungen, die in Meetings diskutiert werden, werden vergessen oder falsch interpretiert. Manuelle Notizen verpassen Kontext, Sprecher-Absicht und visuelle Referenzen.",
+        "title": "Anforderungen gehen in Meetings verloren"
+      },
+      "reviewTime": {
+        "description": "Teams verbringen Stunden damit, Meeting-Aufzeichnungen manuell zu überprüfen, um Schlüsselentscheidungen zu extrahieren. In stundenlangen Anrufen vergrabene Anforderungen sind schwer zu finden und zu dokumentieren.",
+        "title": "Review-Zeit verschwendet Team-Ressourcen"
+      },
+      "title": "Warum Meeting-Analyse für Unternehmensteams wichtig ist"
+    },
+    "useCases": {
+      "bugCapture": {
+        "description": "Zeichnen Sie den Bug auf, während er passiert. KI extrahiert Fehlermeldungen, identifiziert UI-Zustände vor und nach dem Problem und erfasst Interaktionsmuster, die zum Bug führten.",
+        "title": "Bug-Erfassung mit vollem Kontext"
+      },
+      "onboarding": {
+        "description": "Zeichnen Sie Feature-Walkthroughs auf und generieren Sie automatische Dokumentation. KI erstellt Schritt-für-Schritt-Anleitungen mit Screenshots und Beschreibungen aus Ihren Aufzeichnungen.",
+        "title": "Onboarding-Dokumentation"
+      },
+      "title": "Reale Anwendungsfälle",
+      "uiDemo": {
+        "description": "Analysieren Sie Kunden-Demos, Benutzersitzungs-Aufzeichnungen oder Design-Walkthroughs. Extrahieren Sie UI-Muster, Benutzerverhalten-Insights und Verbesserungsmöglichkeiten.",
+        "title": "UI-Demo-Analyse"
+      }
+    }
+  },
+  "voiceTranscription": {
+    "accuracy": {
+      "bottomLine": "Fazit: Weniger Fehler bedeuten weniger mehrdeutige Tickets und weniger Nacharbeit. gpt-4o-transcribe hilft Teams, präzise, implementierungsbereite Spezifikationen beim ersten Versuch zu erfassen.",
+      "models": {
+        "aws": "AWS Transcribe — verwaltete Spracherkennung von Amazon Web Services.",
+        "google": "Google Speech-to-Text v2 — Cloud-Spracherkennung von Google.",
+        "gpt": "OpenAI gpt-4o-transcribe — fortgeschrittenes mehrsprachiges Sprachmodell optimiert für Genauigkeit und Latenz.",
+        "whisper": "Whisper large-v2 — Open-Source-Large-Model-Baseline zum Vergleich."
+      },
+      "title": "Genauigkeits-Benchmarks"
+    },
+    "capabilities": {
+      "multiLanguage": {
+        "description": "OpenAI-Transkription unterstützt mehrere Sprachen.",
+        "title": "Mehrsprachige Unterstützung"
+      },
+      "perProject": {
+        "description": "Setzen Sie Projektstandards. Ihr Team teilt sinnvolle Standards.",
+        "title": "Pro-Projekt-Konfiguration"
+      },
+      "terminalDictation": {
+        "description": "Diktieren Sie Befehle direkt in Ihre Terminal-Sitzung.",
+        "title": "Terminal-Diktat"
+      },
+      "title": "Hauptfähigkeiten"
+    },
+    "cta": {
+      "description": "Von Sprache zu verfeinerten Spezifikationen, nahtlos. Erfassen Sie Anforderungen freihändig, verfeinern Sie dann mit KI-Prompts. So sollten Unternehmensteams Anforderungen erfassen und klären.",
+      "links": {
+        "terminal": "Terminal-Integration ansehen",
+        "textImprovement": "Textverbesserung erkunden"
+      },
+      "title": "Beginnen Sie, Spezifikationen mit Sprache zu erfassen"
+    },
+    "example": {
+      "competitor": {
+        "label": "Konkurrenzmodell",
+        "text": "Erstellen Sie ein Postgres-Replica in us-east mit 2 CPUs, 8GB RAM und aktivieren Sie Replikation; setzen Sie wal level logical und max senders gleich zehn."
+      },
+      "gpt": "Erstellen Sie ein Postgres-Read-Replica in us-east-1 mit 2 vCPU, 8 GB RAM und aktivieren Sie logische Replikation; setzen Sie wal_level=logical und max_wal_senders=10.",
+      "reference": "Erstellen Sie ein Postgres-Read-Replica in us-east-1 mit 2 vCPU, 8GB RAM und aktivieren Sie logische Replikation; setzen Sie wal_level=logical und max_wal_senders=10.",
+      "title": "Anschauliches Beispiel: Spezifikationserfassung"
+    },
+    "faq": {
+      "customize": {
+        "answer": "Ja. Sie können Sprach- und Modelleinstellungen für jedes Projekt konfigurieren. Einstellungen werden in der Projektkonfiguration gespeichert und über Teammitglieder hinweg geteilt.",
+        "question": "Kann ich Transkriptionseinstellungen pro Projekt anpassen?"
+      },
+      "languages": {
+        "answer": "OpenAI-Transkription unterstützt mehrere Sprachen. Sie können eine Standardsprache pro Projekt festlegen.",
+        "question": "Welche Sprachen werden für Sprachtranskription unterstützt?"
+      },
+      "model": {
+        "answer": "Wir verwenden OpenAI-Transkription für genaue Ergebnisse.",
+        "question": "Welches KI-Modell wird für Transkription verwendet?"
+      },
+      "offline": {
+        "answer": "Nein, Sprachtranskription erfordert eine Internetverbindung, um Audio an OpenAI Whisper API zu senden. Die Transkription erfolgt in Echtzeit mit minimaler Latenz.",
+        "question": "Funktioniert Sprachtranskription offline?"
+      },
+      "whereToUse": {
+        "answer": "Sprachtranskription funktioniert an zwei Stellen: (1) Aufgabenbeschreibungs-Panel - diktieren Sie Implementierungsanforderungen, und (2) Terminal-Modal - diktieren Sie Befehle, die an Ihre aktive Shell-Sitzung angehängt werden.",
+        "question": "Wo kann ich Sprachtranskription in der App verwenden?"
+      }
+    },
+    "hero": {
+      "badge": "Sprachtranskription für Entwickler",
+      "description": "Sprechen Sie Ihre Anforderungen und Ideen natürlich. Dies ist der erste Schritt in Ihrem Spezifikations-Workflow: Erfassen Sie Ideen schnell mit Sprache, verfeinern Sie sie dann manuell mit KI-gestützten Prompts. Der schnellste Weg zur Erfassung initialer Spezifikationen vor Verfeinerung.",
+      "title": "Schnelle Spezifikationserfassung mit Sprache"
+    },
+    "nextSteps": {
+      "description": "Sprachtranskription ist der erste Schritt in unserem Spezifikationserfassungs-Workflow. Sobald Sie Ihre Anforderungen erfasst haben, verwenden Sie KI-gestützte Prompts, um rohe Transkripte in klare, implementierungsbereite Spezifikationen zu verwandeln.",
+      "link": "Erfahren Sie mehr über Spezifikationserfassungsmodus",
+      "taskRefinement": {
+        "description": "Erweitern Sie Beschreibungen mit impliziten Anforderungen, Randfällen und technischen Überlegungen.",
+        "title": "Aufgabenverfeinerung"
+      },
+      "textEnhancement": {
+        "description": "Polieren Sie Grammatik, verbessern Sie Klarheit und erhöhen Sie Lesbarkeit unter Beibehaltung Ihrer ursprünglichen Absicht.",
+        "title": "Textverbesserung"
+      },
+      "title": "Verfeinern Sie Ihre erfassten Spezifikationen"
+    },
+    "painPoints": {
+      "captureIdeas": {
+        "description": "Stakeholder denken schneller als sie tippen. Anforderungen und Kontext gehen verloren, während Finger aufholen. Sprache lässt Sie die vollständige Spezifikation erfassen, bevor kritische Details verblassen.",
+        "title": "Erfassen Sie Ideen, bevor sie verblassen"
+      },
+      "contextSwitching": {
+        "description": "Stoppen Sie, was Sie tun, um eine Notiz-App zu öffnen, zu tippen, dann zurückzukehren. Jeder Wechsel unterbricht die Konzentration. Sprache bleibt im selben Workspace.",
+        "title": "Kontextwechsel tötet Momentum"
+      },
+      "handsBusy": {
+        "description": "Code reviewen? Debuggen? Architekturdiagramme zeichnen? Ihre Hände sind beschäftigt, aber Sie müssen die Aufgabe protokollieren. Sprachtranskription hält Sie im Flow.",
+        "title": "Schwer zu beschreiben, während Hände beschäftigt sind"
+      },
+      "title": "Warum Sprache die Spezifikationserfassung beschleunigt"
+    },
+    "useCases": {
+      "codeReview": {
+        "outcome": "Aufgabe mit vollem Kontext erstellt, null Tippen, kein Kontextwechsel.",
+        "scenario": "Code-Review enthüllt Refactoring-Möglichkeit. Ihre Hände sind am Diff, Augen am Bildschirm. Sprache erfasst die Aufgabenbeschreibung.",
+        "title": "Während Code-Review diktieren"
+      },
+      "fasterEntry": {
+        "outcome": "10x schnellere Aufgabenerfassung. QA-Feedback in Minuten statt Stunden verarbeitet.",
+        "scenario": "Sie haben 10 ähnliche Bugs nach QA-Tests zu protokollieren. Jedes zu tippen dauert 2 Minuten. Sprachtranskription dauert 20 Sekunden.",
+        "title": "Schnellere Aufgabenerfassung für repetitive Arbeit"
+      },
+      "handsFree": {
+        "outcome": "Ideen sofort protokolliert. Zurück zum Debuggen ohne Flow-Unterbrechung.",
+        "scenario": "Sie sind tief in einer Debugging-Sitzung. Sie entdecken drei verwandte Probleme, die behoben werden müssen. Sprechen Sie sie ins Sprachaufzeichnungsgerät, ohne Ihr Terminal zu verlassen.",
+        "title": "Ideen freihändig erfassen"
+      },
+      "terminalCommands": {
+        "outcome": "Befehle korrekt eingegeben, schneller als Dokumentation nachzuschlagen.",
+        "scenario": "Benötigen Sie einen komplexen Git-Befehl mit Flags, die Sie immer vergessen. Diktieren Sie ihn natürlich, lassen Sie Transkription die Syntax handhaben.",
+        "title": "Terminal-Befehle ohne Syntax-Auswendiglernen"
+      },
+      "title": "Reale Anwendungsfälle"
+    }
+  }
+}

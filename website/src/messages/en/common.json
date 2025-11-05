@@ -1,0 +1,115 @@
+{
+  "aria": {
+    "closeMenu": "Close navigation menu",
+    "homePageLink": "PlanToCode home page",
+    "toggleMenu": "Toggle navigation menu"
+  },
+  "breadcrumb": {
+    "blog": "Blog",
+    "comparisons": "Comparisons",
+    "docs": "Documentation",
+    "features": "Features",
+    "home": "Home",
+    "integrations": "Integrations",
+    "solutions": "Solutions",
+    "stacks": "Technology Stacks",
+    "useCases": "Use Cases",
+    "workflows": "Workflows"
+  },
+  "cta": {
+    "download": "Download",
+    "talkToArchitect": "Talk to an Architect"
+  },
+  "feature": {
+    "copyButtons": {
+      "description": "Configurable workflow automation",
+      "label": "Copy Buttons"
+    },
+    "deepResearch": {
+      "description": "Web search and information synthesis",
+      "label": "Deep Research"
+    },
+    "fileDiscovery": {
+      "description": "AI-powered intelligent file selection",
+      "label": "File Discovery"
+    },
+    "integratedTerminal": {
+      "description": "Persistent sessions with auto-start CLI",
+      "label": "Integrated Terminal"
+    },
+    "mergeInstructions": {
+      "description": "Control over plan merging",
+      "label": "Merge Instructions"
+    },
+    "planEditor": {
+      "description": "Full Monaco editor for AI plans",
+      "label": "Plan Editor"
+    },
+    "planModeGuides": {
+      "description": "Workflows for Codex, Claude, and Cursor",
+      "label": "Plan Mode Guides"
+    },
+    "textImprovement": {
+      "description": "Inline rephrasing in Monaco and task inputs",
+      "label": "Text Improvement"
+    },
+    "voiceTranscription": {
+      "description": "Hands-free input for tasks and terminal",
+      "label": "Voice Transcription"
+    }
+  },
+  "footer": {
+    "about": "About Us",
+    "architecture": "Architecture",
+    "changelog": "Changelog",
+    "company": "Company",
+    "copyright": "© {year} helpful bits GmbH",
+    "documentation": "Documentation",
+    "downloads": "Downloads",
+    "feedback": "Feedback",
+    "howItWorks": "How It Works",
+    "imprint": "Imprint",
+    "interactiveDemo": "Interactive Demo",
+    "legal": "Legal",
+    "madeInGermany": "Made in Germany by a German Company",
+    "notAffiliated": "Not affiliated with Anthropic, Cursor, OpenAI, or Cline.",
+    "pricing": "Pricing",
+    "privacy": "Privacy",
+    "product": "Product",
+    "resources": "Resources",
+    "support": "Support",
+    "tagline": "Plan and ship code changes - find files, generate and merge AI plans, run them in a persistent terminal.",
+    "talkToArchitect": "Talk to an Architect",
+    "terms": "Terms"
+  },
+  "label": {
+    "english": "English",
+    "german": "German"
+  },
+  "nav": {
+    "compare": "Compare",
+    "demo": "Demo",
+    "docs": "Documentation",
+    "downloads": "Downloads",
+    "features": "Features",
+    "solutions": "Solutions"
+  },
+  "solution": {
+    "hardBugs": {
+      "description": "Visual debugging with screen capture",
+      "label": "Complex Bugs"
+    },
+    "largeFeatures": {
+      "description": "Planning multi-file features",
+      "label": "Large Features"
+    },
+    "libraryUpgrades": {
+      "description": "Dependency management",
+      "label": "Library Upgrades"
+    },
+    "maintenance": {
+      "description": "Technical debt cleanup",
+      "label": "Maintenance"
+    }
+  }
+}

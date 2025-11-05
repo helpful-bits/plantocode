@@ -1,5 +1,3 @@
-import React from 'react';
-
 export default function TechnicalAccuracy() {
   return (
     <section aria-labelledby="technical-accuracy-title" className="mt-12 border rounded-lg p-5 bg-muted/30">

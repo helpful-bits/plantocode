@@ -1,5 +1,6 @@
 'use client';
 
+import { Link } from '@/i18n/navigation';
 import { ObfuscatedEmail } from '@/components/ui/ObfuscatedEmail';
 
 export default function EUPrivacyContent() {
@@ -132,9 +133,9 @@ export default function EUPrivacyContent() {
         
         <p className="mt-4">
           For a complete and up-to-date list of our data processors and their locations, please visit our{' '}
-          <a href="/legal/eu/subprocessors" className="link-primary">
+          <Link href="/legal/eu/subprocessors" className="link-primary">
             subprocessors page
-          </a>.
+          </Link>.
         </p>
       </section>
 
@@ -178,9 +179,9 @@ export default function EUPrivacyContent() {
         </ul>
         <p className="mt-4">
           For the complete and current list of AI providers we work with, please check our{' '}
-          <a href="/legal/eu/subprocessors" className="link-primary">
+          <Link href="/legal/eu/subprocessors" className="link-primary">
             subprocessors page
-          </a>.
+          </Link>.
         </p>
       </section>
 
@@ -197,9 +198,9 @@ export default function EUPrivacyContent() {
         </ul>
         <p className="mt-4">
           For detailed information about our current data processors, their locations, and the specific safeguards in place, please visit our{' '}
-          <a href="/legal/eu/subprocessors" className="link-primary">
+          <Link href="/legal/eu/subprocessors" className="link-primary">
             subprocessors page
-          </a>.
+          </Link>.
         </p>
       </section>
 
