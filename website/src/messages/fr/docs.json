@@ -1,1 +1,520 @@
-{}
+{
+  "architecture": {
+    "category": "Architecture",
+    "date": "2025-09-19",
+    "description": "Comment le shell de bureau, les flux de travail en arrière-plan et les services partagés sont organisés.",
+    "frontend": {
+      "heading": "Interface utilisateur",
+      "providers": "Les fournisseurs partagés gèrent les notifications, la configuration d'exécution et l'état du plan. Le panneau Plans d'implémentation conserve les métadonnées du plan, gère la visibilité des modales et demande des estimations de jetons ou du contenu de prompt selon les besoins.",
+      "ui": "L'interface de bureau est construite avec des composants React. Le contenu du plan d'implémentation est affiché via un visualiseur basé sur Monaco qui virtualise les grands plans, détecte les langages et prend en charge les actions de copie afin que les réviseurs puissent examiner le texte du plan sans problèmes de performance. Les sessions de terminal se rendent dans une vue tampon qui se connecte à la sortie PTY et affiche les mises à jour de l'état de connexion."
+    },
+    "intro": "PlanToCode est une application de bureau Tauri avec une interface React. L'interface affiche les plans d'implémentation, les terminaux et les contrôles de configuration, tandis que le backend Rust expose des commandes pour les flux de travail, l'estimation de jetons et les sessions de terminal persistantes. Cette vue d'ensemble résume comment ces éléments s'assemblent.",
+    "metaDescription": "Couches de bureau, d'orchestration et de persistance qui alimentent les plans d'implémentation, les flux de travail et les sessions de terminal.",
+    "metaTitle": "Vue d'ensemble de l'architecture PlanToCode",
+    "ogDescription": "Découvrez comment l'interface React, les commandes Tauri et les services en arrière-plan coopèrent dans l'application de bureau.",
+    "ogTitle": "Vue d'ensemble de l'architecture PlanToCode",
+    "persistence": {
+      "database": "La sortie du terminal et les métadonnées de session sont stockées dans SQLite via le référentiel de sessions de terminal. Chaque enregistrement comprend des identifiants, des horodatages, des répertoires de travail, des variables d'environnement et le journal accumulé afin que les redémarrages puissent récupérer la sortie précédente. Le même référentiel émet des événements lorsque l'état de la session change.",
+      "heading": "Persistance et configuration",
+      "modelConfig": "Les paramètres par défaut des modèles résident dans la table de configuration de l'application. Chaque tâche définit un modèle par défaut, une liste d'alternatives autorisées, des budgets de jetons et des préréglages de bouton de copie optionnels. La couche React lit ces paramètres pour remplir le sélecteur de modèle et les garde-fous."
+    },
+    "readTime": "7 min",
+    "tauriCommands": {
+      "commands": "Le côté Rust de l'application expose des commandes pour les flux de travail, les sessions de terminal et les outils de modèle. Les commandes de flux de travail démarrent des tâches en arrière-plan via l'Orchestrateur de flux de travail, validant les entrées et émettant des événements de progression au fur et à mesure que le pipeline de découverte de fichiers s'exécute. Les commandes d'estimation de jetons calculent les tailles de prompt pour le modèle actuellement sélectionné.",
+      "heading": "Commandes et services Tauri",
+      "terminal": "Les commandes de terminal gèrent les processus PTY, suivent les clients distants et vérifient si les binaires CLI pris en charge sont disponibles avant de lancer une session. Les vérifications de santé combinent l'état PTY avec les enregistrements de base de données pour signaler si une session est toujours active."
+    },
+    "title": "Architecture PlanToCode",
+    "voicePipeline": {
+      "description": "La transcription vocale est implémentée sous forme de hook React qui coordonne les autorisations médias, la sélection du microphone et les demandes de transcription en streaming. Le hook s'intègre au terminal de plan et aux éditeurs de prompt, insérant le texte reconnu directement dans le composant actif et affichant des notifications si la transcription échoue.",
+      "heading": "Pipeline de transcription vocale"
+    }
+  },
+  "deepResearch": {
+    "apiIntegration": {
+      "heading": "Détails de l'intégration API",
+      "pipeline": {
+        "description": "Le contenu récupéré passe par un pipeline de traitement standardisé qui extrait des informations significatives tout en préservant le formatage et le contexte. Le pipeline gère divers types de contenu, y compris la documentation, les référentiels de code et les discussions techniques.",
+        "heading": "Pipeline de traitement du contenu"
+      },
+      "providerConfig": {
+        "description": "Le système s'intègre à plusieurs fournisseurs de recherche pour garantir une couverture complète et une redondance. La sélection du fournisseur est automatique en fonction du type de requête, des restrictions géographiques et de la disponibilité. Les clés API et la limitation de débit sont gérées de manière transparente dans la configuration de l'application.",
+        "heading": "Configuration des fournisseurs de recherche"
+      }
+    },
+    "architecture": {
+      "description": "Le système de recherche web fonctionne comme un pipeline : génération de requêtes, exécution de recherche, traitement des résultats et intégration. Chaque étape est conçue pour la fiabilité, l'efficacité des coûts et la pertinence contextuelle. L'architecture prend en charge à la fois les tâches de recherche autonomes et les flux de travail de développement intégrés.",
+      "heading": "Vue d'ensemble de l'architecture"
+    },
+    "bestPractices": {
+      "examples": {
+        "description": "Les modèles d'intégration courants démontrent comment les résultats de recherche web améliorent différents scénarios de développement, du débogage d'erreurs spécifiques à l'implémentation de nouvelles fonctionnalités avec des API non familières.",
+        "heading": "Exemples d'intégration"
+      },
+      "heading": "Meilleures pratiques et exemples",
+      "strategies": {
+        "description": "Pour maximiser la valeur de l'intégration de la recherche web, suivez ces stratégies éprouvées pour formuler des requêtes, interpréter les résultats et intégrer les résultats dans votre flux de travail de développement.",
+        "heading": "Stratégies de recherche efficaces",
+        "queryFormulation": {
+          "constraints": "Inclure les contraintes de plateforme ou d'environnement",
+          "errors": "Combiner les noms de bibliothèque avec des messages d'erreur spécifiques",
+          "heading": "Formulation de requête",
+          "practices": "Utiliser « best practices » ou « recommended approach » pour les recherches de modèles",
+          "versions": "Inclure des numéros de version spécifiques le cas échéant"
+        },
+        "resultEvaluation": {
+          "crossReference": "Vérifier les solutions par recoupement entre plusieurs sources",
+          "dates": "Vérifier les dates de publication pour les informations sensibles au temps",
+          "heading": "Évaluation des résultats",
+          "official": "Prioriser la documentation officielle par rapport aux sources tierces",
+          "verify": "Vérifier les exemples de code dans votre environnement de développement"
+        }
+      }
+    },
+    "category": "Référence technique",
+    "configuration": {
+      "heading": "Configuration et personnalisation",
+      "preferences": {
+        "description": "Les utilisateurs peuvent personnaliser le comportement de recherche via des paramètres de préférence qui contrôlent le filtrage des résultats, la priorisation des sources et la profondeur d'intégration. Ces paramètres sont conscients du projet et peuvent être configurés par espace de travail pour correspondre aux préférences de l'équipe et aux exigences du projet.",
+        "filters": "Filtres de recherche spécifiques au langage et au framework",
+        "heading": "Préférences de recherche",
+        "limits": "Limites de nombre de résultats et de profondeur de traitement",
+        "optionsHeading": "Options configurables",
+        "patterns": "Modèles d'intégration pour différents types de fichiers",
+        "sources": "Sources de documentation préférées et autorités",
+        "triggers": "Modes de déclenchement de recherche automatique vs manuel"
+      },
+      "projectSettings": {
+        "description": "La configuration de recherche peut être adaptée à des projets et technologies spécifiques. Le système détecte automatiquement les frameworks, les langages et les dépendances du projet pour optimiser les paramètres de recherche. Des filtres de domaine personnalisés et des préférences de source peuvent être configurés par projet pour garantir des résultats pertinents.",
+        "heading": "Paramètres spécifiques au projet"
+      }
+    },
+    "costs": {
+      "heading": "Considérations de coût et limites",
+      "optimization": {
+        "description": "Plusieurs stratégies sont employées pour optimiser les coûts de recherche sans compromettre la fonctionnalité. Celles-ci incluent le regroupement intelligent de requêtes, la mise en cache des résultats, les solutions de repli des fournisseurs et l'éducation des utilisateurs sur des modèles de recherche efficaces. La surveillance et l'alerte des coûts aident les équipes à rester dans les limites budgétaires.",
+        "heading": "Optimisation des coûts"
+      },
+      "rateLimiting": {
+        "cacheFirst": "Réponses prioritaires au cache pour minimiser les appels API",
+        "description": "Le système met en œuvre une limitation de débit intelligente pour gérer les coûts API tout en garantissant que la fonctionnalité de recherche reste disponible en cas de besoin. Les limites de débit sont appliquées par utilisateur, par projet et globalement, avec un repli automatique sur les résultats mis en cache lorsque les limites sont approchées.",
+        "guidelinesHeading": "Directives de limitation de débit",
+        "heading": "Limitation de débit et quotas",
+        "personal": "Usage personnel : 100 recherches par heure, 1000 par jour",
+        "team": "Espaces de travail d'équipe : Quotas partagés basés sur le niveau d'abonnement",
+        "throttling": "Régulation automatique lors de l'approche des limites"
+      }
+    },
+    "cta": {
+      "description": "Les fonctionnalités de recherche approfondie et de recherche web sont disponibles dans l'application de bureau PlanToCode. Téléchargez la version pour votre plateforme pour commencer à intégrer la recherche web dans votre flux de travail de développement.",
+      "heading": "Prêt à utiliser la recherche approfondie ?"
+    },
+    "date": "2025-09-20",
+    "description": "Comment PlanToCode effectue des recherches web, traite les résultats et intègre les résultats dans les flux de travail de développement.",
+    "devIntegration": {
+      "caching": {
+        "description": "Les résultats de recherche sont mis en cache intelligemment pour améliorer les performances et réduire les coûts API. Le système de mise en cache prend en compte la fraîcheur du contenu, la similarité des requêtes et les modèles d'utilisation pour fournir des réponses rapides tout en garantissant l'exactitude des informations. L'invalidation du cache se produit automatiquement en fonction de l'âge du contenu et de la dégradation de la pertinence.",
+        "heading": "Mise en cache et performance"
+      },
+      "contextAware": {
+        "description": "Les demandes de recherche sont automatiquement enrichies avec le contexte de la session de développement actuelle. Le système analyse les fichiers ouverts, les modifications récentes, les messages d'erreur et les dépendances du projet pour formuler des requêtes de recherche plus ciblées et filtrer les résultats pour une pertinence maximale.",
+        "heading": "Recherche contextuelle"
+      },
+      "heading": "Intégration du flux de travail de développement",
+      "resultIntegration": {
+        "description": "Les résultats de recherche sont intégrés de manière transparente dans le flux de travail de développement. Les extraits de code peuvent être insérés directement, les liens de documentation sont conservés pour référence et les résultats clés sont résumés dans des formats appropriés au contexte. L'intégration respecte le style de code existant et les conventions du projet.",
+        "heading": "Intégration des résultats"
+      }
+    },
+    "intro": "La fonctionnalité de recherche approfondie permet à PlanToCode d'effectuer des recherches web intelligentes, de recueillir des informations à jour et d'intégrer les résultats directement dans les flux de travail de développement. Ce système combine l'optimisation des requêtes, le traitement des résultats et l'intégration contextuelle pour améliorer les capacités de génération de code et de résolution de problèmes.",
+    "metaDescription": "Documentation technique du flux de travail de recherche web : intégration API, optimisation de requêtes, traitement des résultats et intégration du flux de travail de développement.",
+    "metaTitle": "Recherche approfondie - PlanToCode",
+    "ogDescription": "Comprenez comment la recherche web fonctionne dans PlanToCode : de la génération de requêtes au traitement des résultats et à l'intégration avec les flux de travail de développement.",
+    "ogTitle": "Recherche approfondie - PlanToCode",
+    "readTime": "8 min",
+    "title": "Recherche approfondie et recherche web",
+    "troubleshooting": {
+      "commonIssues": {
+        "description": "La plupart des problèmes de recherche web proviennent de problèmes de connectivité, de limitation de débit ou de requêtes trop larges. Le système fournit des messages d'erreur clairs et des étapes de remédiation suggérées pour les scénarios d'échec courants.",
+        "geographic": "Restrictions géographiques",
+        "geographicSolution": "Fonctionnalité de recherche limitée aux régions prises en charge",
+        "heading": "Problèmes courants",
+        "noResults": "Aucun résultat trouvé",
+        "noResultsSolution": "Élargir les termes de requête ou vérifier l'orthographe",
+        "rateLimit": "Limite de débit dépassée",
+        "rateLimitSolution": "Attendre la période de réinitialisation ou essayer les résultats en cache"
+      },
+      "heading": "Dépannage et support",
+      "performance": {
+        "description": "Pour des performances optimales, le système surveille les modèles de recherche et suggère des optimisations. Cela comprend des recommandations de raffinement de requête, des améliorations du taux de réussite du cache et des métriques d'efficacité d'intégration.",
+        "heading": "Optimisation des performances"
+      }
+    },
+    "workflow": {
+      "execution": {
+        "blogs": "Articles de blog d'autorités techniques reconnues",
+        "description": "Les recherches web sont effectuées via des API de recherche intégrées qui priorisent le contenu axé sur les développeurs. Le système filtre automatiquement les résultats pour se concentrer sur la documentation technique, les sources officielles et les discussions communautaires de plateformes comme GitHub, Stack Overflow et la documentation officielle du projet.",
+        "documentation": "Documentation officielle du projet et wikis",
+        "forums": "Forums techniques et sites de questions-réponses communautaires",
+        "github": "Référentiels GitHub, problèmes et discussions",
+        "heading": "Exécution de recherche",
+        "releases": "Notes de version et journaux de modifications",
+        "sourcesHeading": "Sources de recherche"
+      },
+      "heading": "Étapes du flux de travail de recherche",
+      "processing": {
+        "deduplication": "Détection de doublons et déduplication du contenu",
+        "description": "Les résultats de recherche subissent un traitement intelligent pour extraire les informations pertinentes, supprimer le bruit et prioriser le contenu en fonction de la récence, de l'autorité et de la pertinence contextuelle. Le système convertit le contenu web en données structurées qui peuvent être efficacement intégrées dans les flux de travail de développement.",
+        "extraction": "Extraction de contenu et conversion HTML vers markdown",
+        "heading": "Traitement et filtrage des résultats",
+        "scoring": "Notation de pertinence basée sur la correspondance de requête et l'autorité de la source",
+        "snippets": "Extraction d'extraits de code et validation de syntaxe",
+        "stepsHeading": "Étapes de traitement",
+        "timestamp": "Analyse d'horodatage pour la fraîcheur du contenu"
+      },
+      "queryGeneration": {
+        "api": "Recherches de documentation API pour des bibliothèques ou frameworks spécifiques",
+        "compatibility": "Informations de compatibilité de version et de migration",
+        "description": "Les requêtes de recherche sont automatiquement générées en fonction du contexte de développement actuel, de l'intention de l'utilisateur et des exigences de la tâche. Le système analyse les fichiers du projet, les discussions actives et les messages d'erreur pour formuler des requêtes de recherche ciblées qui priorisent la documentation récente, les discussions techniques et les sources faisant autorité.",
+        "errors": "Résolution de messages d'erreur et guides de dépannage",
+        "heading": "Génération et optimisation de requêtes",
+        "practices": "Meilleures pratiques et modèles d'implémentation",
+        "security": "Avis de sécurité et rapports de vulnérabilité",
+        "typesHeading": "Types de requêtes"
+      }
+    }
+  },
+  "fileDiscovery": {
+    "apiUsage": {
+      "heading": "Exemples d'utilisation de l'API",
+      "monitoring": "Surveillance de la progression",
+      "retrieving": "Récupération des résultats",
+      "starting": "Démarrage d'un flux de travail"
+    },
+    "architecture": {
+      "caching": "Mise en cache des résultats intermédiaires pour l'optimisation des performances",
+      "costTracking": "Suivi des coûts et gestion du délai d'attente pour les opérations AI",
+      "distributed": "Le système utilise une architecture de tâche distribuée où chaque étape s'exécute comme une tâche en arrière-plan indépendante, permettant l'annulation, la logique de nouvelle tentative et le suivi détaillé de la progression. Des événements en temps réel sont publiés tout au long de l'exécution pour fournir un retour immédiat à l'interface utilisateur.",
+      "errorHandling": "Gestion complète des erreurs avec mécanismes de nouvelle tentative automatique",
+      "eventDriven": "Rapports de progression basés sur les événements avec des mises à jour de type WebSocket",
+      "featuresHeading": "Fonctionnalités clés de l'architecture :",
+      "gitIntegration": "Intégration Git avec repli sur le parcours de répertoire",
+      "heading": "Architecture du flux de travail",
+      "overview": "Le flux de travail fonctionne comme un système de tâches en arrière-plan orchestré avec cinq étapes distinctes qui s'exécutent séquentiellement. Chaque étape s'appuie sur la sortie de l'étape précédente, affinant progressivement la sélection de fichiers en fonction des exigences de la tâche."
+    },
+    "category": "Guide technique",
+    "configuration": {
+      "exclusion": {
+        "description": "Définir les répertoires et les modèles de fichiers à exclure du processus de découverte.",
+        "heading": "Modèles d'exclusion"
+      },
+      "heading": "Options de configuration",
+      "retry": {
+        "description": "Définir le nombre maximum de tentatives pour les étapes échouées avec un recul exponentiel.",
+        "heading": "Configuration de nouvelle tentative"
+      },
+      "timeout": {
+        "description": "Configurer le temps d'exécution maximum pour l'ensemble du flux de travail ou des étapes individuelles pour éviter un blocage indéfini.",
+        "heading": "Gestion du délai d'attente"
+      },
+      "workflowConfig": "Configuration du flux de travail"
+    },
+    "cta": {
+      "description": "Le flux de travail de découverte de fichiers s'exécute dans le client de bureau aux côtés de la planification d'implémentation et des sessions de terminal.",
+      "heading": "Besoin de l'application de bureau ?"
+    },
+    "date": "2025-09-21",
+    "description": "Guide technique complet du flux de travail AI en 5 étapes qui identifie et filtre les fichiers pertinents pour l'exécution de tâches.",
+    "errorHandling": {
+      "commonIssues": {
+        "binaryDetection": "Détection de fichier binaire : Utilise une détection basée sur l'extension et le contenu",
+        "gitNotFound": "Référentiel Git introuvable : Repli sur le parcours de répertoire avec exclusions standard",
+        "heading": "Problèmes courants",
+        "networkTimeout": "Délais d'attente réseau : Nouvelle tentative automatique avec recul exponentiel pour les échecs transitoires",
+        "tokenLimit": "Limite de jetons dépassée : Implémente un regroupement intelligent et fournit des messages d'erreur clairs"
+      },
+      "debugging": {
+        "description": "Le flux de travail fournit une journalisation complète, une exportation de métriques de performance et un contexte d'erreur détaillé incluant les informations d'étape, les tentatives de nouvelle tentative et les données intermédiaires pour le dépannage.",
+        "heading": "Outils de débogage"
+      },
+      "errorCategories": {
+        "billing": "Erreurs de facturation : Crédits insuffisants ou échecs de paiement avec des conseils exploitables",
+        "heading": "Catégories d'erreurs",
+        "system": "Erreurs système : Accès au système de fichiers, échecs de commande git ou contraintes de mémoire",
+        "validation": "Erreurs de validation : ID de session non valide, description de tâche manquante ou répertoire de projet non valide",
+        "workflow": "Erreurs de flux de travail : Échecs spécifiques à l'étape avec contexte détaillé et suggestions de nouvelle tentative"
+      },
+      "heading": "Gestion des erreurs et dépannage"
+    },
+    "integration": {
+      "desktop": {
+        "description": "Le flux de travail s'intègre de manière transparente à l'application de bureau via les commandes Tauri, fournissant un accès natif au système de fichiers et des mises à jour basées sur les événements via la classe WorkflowTracker.",
+        "heading": "Application de bureau"
+      },
+      "heading": "Modèles d'intégration",
+      "implementationPlans": {
+        "description": "Les fichiers sélectionnés sont automatiquement alimentés dans le panneau Plans d'implémentation, garantissant que la génération de plan utilise le même contexte de fichier optimisé sans nécessiter de réexécution du flux de travail de découverte.",
+        "heading": "Intégration des plans d'implémentation"
+      },
+      "sessionManagement": {
+        "description": "Les résultats du flux de travail sont mis en cache par session, permettant à plusieurs opérations au sein de la même session de réutiliser le contexte de fichier découvert, améliorant considérablement les performances pour les flux de travail de développement itératifs.",
+        "heading": "Gestion de session"
+      }
+    },
+    "intro": "PlanToCode identifie les bons fichiers avant de planifier ou d'exécuter des commandes. Le flux de travail en 5 étapes réduit la portée et maintient le contexte serré.",
+    "metaDescription": "Guide technique complet du flux de travail AI en 5 étapes qui identifie et filtre les fichiers pertinents pour l'exécution de tâches.",
+    "metaTitle": "Flux de travail de découverte de fichiers - PlanToCode",
+    "ogDescription": "Documentation technique de l'architecture du flux de travail de découverte de fichiers en plusieurs étapes.",
+    "ogTitle": "Flux de travail de découverte de fichiers - PlanToCode",
+    "performance": {
+      "costOptimization": {
+        "description": "Les étapes AI suivent les coûts réels à partir des réponses API, implémentent un regroupement intelligent pour minimiser l'utilisation des jetons et fournissent des estimations de coûts avant l'exécution pour aider à gérer les dépenses.",
+        "heading": "Optimisation des coûts"
+      },
+      "heading": "Considérations de performance",
+      "memory": {
+        "description": "Le flux de travail implémente une gestion intelligente de la mémoire avec mise en cache de fichiers (TTL de 30 secondes), traitement par lots (100 fichiers par lot) et nettoyage automatique des données intermédiaires pour éviter l'épuisement de la mémoire.",
+        "heading": "Gestion de la mémoire"
+      },
+      "monitoring": {
+        "description": "Le suivi des performances intégré surveille les temps d'exécution, l'utilisation de la mémoire, les métriques de débit et fournit des recommandations d'optimisation basées sur l'analyse des données historiques.",
+        "heading": "Surveillance des performances"
+      }
+    },
+    "readTime": "12 min",
+    "stages": {
+      "heading": "Processus de flux de travail en 5 étapes",
+      "stage1": {
+        "description": "Détermine le répertoire racine du projet et valide l'état du référentiel git. Cette étape établit le répertoire de base pour toutes les opérations de fichiers ultérieures et configure les modèles d'exclusion.",
+        "heading": "Étape 1 : Sélection du dossier racine",
+        "technical": "Détails techniques : Utilise la détection git avec repli sur la validation de répertoire, applique des modèles d'exclusion définis par l'utilisateur et établit le contexte du répertoire de travail pour l'ensemble du flux de travail."
+      },
+      "stage2": {
+        "binaryDetection": "Détection binaire : Filtre les fichiers avec des extensions binaires (.jpg, .png, .pdf, .exe, etc.) et utilise l'analyse de contenu pour détecter les fichiers binaires par des octets nuls et des ratios de caractères non imprimables.",
+        "description": "Génère des modèles regex intelligents basés sur la description de la tâche pour effectuer un filtrage initial des fichiers. Cette étape combine la sortie git ls-files avec la détection de fichiers binaires pour créer une liste préliminaire de fichiers.",
+        "gitIntegration": "Intégration Git : Exécute `git ls-files --cached --others --exclude-standard` pour respecter les règles .gitignore tout en incluant les fichiers suivis et non suivis.",
+        "heading": "Étape 2 : Filtre de fichiers Regex"
+      },
+      "stage3": {
+        "aiProcessing": "Traitement AI : Utilise de grands modèles de langage pour évaluer le contenu des fichiers par rapport aux exigences de la tâche, avec un regroupement intelligent pour gérer les limites de jetons et l'optimisation des coûts.",
+        "description": "Utilise des modèles AI pour analyser le contenu des fichiers et évaluer la pertinence par rapport à la description de tâche spécifique. Cette étape effectue une analyse approfondie du contenu pour identifier les fichiers les plus susceptibles d'être utiles pour la tâche donnée.",
+        "heading": "Étape 3 : Évaluation de la pertinence des fichiers par AI"
+      },
+      "stage4": {
+        "description": "Découvre des fichiers pertinents supplémentaires grâce à l'analyse de relations et au suivi des dépendances. Cette étape identifie les fichiers qui peuvent ne pas correspondre aux modèles initiaux mais qui sont contextuellement importants.",
+        "heading": "Étape 4 : Recherche de chemin étendu",
+        "relationship": "Analyse de relations : Analyse les instructions d'importation, les fichiers de configuration et la structure du projet pour trouver des fichiers connexes qui améliorent le contexte pour la tâche spécifique."
+      }
+      },
+    "stateManagement": {
+      "eventDriven": {
+        "description": "Le système publie des événements en temps réel pour les changements d'état du flux de travail, les achèvements d'étape et les conditions d'erreur. Ces événements permettent des interfaces utilisateur réactives et l'intégration avec des systèmes de surveillance externes.",
+        "heading": "Mises à jour basées sur les événements"
+      },
+      "heading": "Gestion de l'état du flux de travail",
+      "intermediateData": {
+        "description": "Chaque étape stocke sa sortie dans un format de données intermédiaires structuré, incluant le contenu de l'arborescence de répertoires, les modèles regex, les listes de fichiers filtrées et les résultats de correction de chemin. Ces données sont accessibles pour le débogage et peuvent être utilisées pour reprendre les flux de travail à partir d'étapes spécifiques.",
+        "heading": "Stockage de données intermédiaires"
+      },
+      "transitions": {
+        "description": "Le flux de travail progresse à travers des états clairement définis : Créé → En cours → En pause (optionnel) → Terminé/Échoué/Annulé. Chaque transition d'état publie des événements qui peuvent être surveillés pour des mises à jour en temps réel.",
+        "heading": "Transitions d'état"
+      }
+    },
+    "title": "Flux de travail de découverte de fichiers"
+  },
+  "hub": {
+    "ctaDescription": "Téléchargez PlanToCode pour accéder au planificateur d'implémentation, aux garde-fous de modèle, aux sessions de terminal et aux fonctionnalités de transcription décrites dans cette documentation.",
+    "ctaHeading": "Prêt à essayer ces flux de travail ?",
+    "description": "Apprenez à planifier et à livrer des modifications de code avec PlanToCode : découverte de fichiers, plans d'implémentation, sessions de terminal, garde-fous de modèle et voix.",
+    "exploreHeading": "Explorer la documentation",
+    "learnMore": "En savoir plus",
+    "searchAriaLabel": "Rechercher dans la documentation",
+    "searchPlaceholder": "Rechercher dans la documentation...",
+    "searchShortcut": "⌘K",
+    "title": "Documentation PlanToCode"
+  },
+  "implementationPlans": {
+    "category": "Guide produit",
+    "context": {
+      "audit": "Toutes les métadonnées persistent avec le plan à des fins d'audit. Les équipes d'entreprise peuvent suivre quels intervenants ont examiné quels plans, quelles modifications ont été demandées et la chaîne de raisonnement complète de la description initiale de la tâche à travers la découverte de fichiers jusqu'au plan final approuvé.",
+      "heading": "Contexte et métadonnées pour la gouvernance d'entreprise",
+      "storage": "Le panneau stocke quelles racines de référentiel ont été sélectionnées pendant le flux de travail de découverte de fichiers afin que les actions de suivi réutilisent la même portée. Il enregistre également les métadonnées spécifiques au plan, telles que le répertoire du projet et tout contenu de prompt préparé, afin que les prompts en aval puissent être générés ou copiés sans recalculer le flux de travail.",
+      "tokenEstimation": "L'estimation de jetons s'exécute avant que les prompts ne soient copiés. Le panneau appelle la commande d'estimation de jetons avec le répertoire du projet, les fichiers sélectionnés et le modèle actuellement choisi, affichant à la fois les totaux de prompt système et utilisateur afin que les équipes puissent rester sous les limites du modèle."
+    },
+    "cta": {
+      "claudeCodeLink": "Voir le flux de travail du mode plan Claude",
+      "codexLink": "Voir le flux de travail du mode plan Codex",
+      "cursorLink": "Voir le flux de travail du mode plan Cursor",
+      "description": "Les plans d'implémentation avec intervention humaine sont disponibles dans l'application de bureau PlanToCode. Téléchargez la version pour votre plateforme pour expérimenter un développement assisté par AI sûr et gouverné.",
+      "heading": "Prêt à adopter les agents de codage AI en toute sécurité ?"
+    },
+    "date": "2025-09-19",
+    "description": "Comment PlanToCode permet une adoption confiante des agents de codage AI grâce à une gouvernance avec intervention humaine, des plans granulaires fichier par fichier et des flux de travail de révision complets.",
+    "fileGranularity": {
+      "created": "Créés (avec chemins de fichiers complets et structure de contenu initiale)",
+      "declaredFiles": "Chaque étape d'un plan déclare explicitement quels fichiers seront :",
+      "deleted": "Supprimés (avec justification et analyse de dépendance)",
+      "heading": "Granularité fichier par fichier",
+      "impact": "Ce niveau de détail rend l'impact des modifications proposées parfaitement clair avant que tout code ne soit touché. Les chefs d'équipe peuvent immédiatement identifier si du code legacy critique sera modifié, si des modifications avec rupture sont proposées, ou si le plan touche des fichiers nécessitant un examen supplémentaire.",
+      "intro": "Les plans d'implémentation utilisent une structure hautement granulaire qui décompose les tâches de développement fichier par fichier, avec des chemins de fichiers exacts correspondant à la structure du référentiel du projet. Cette granularité est fondamentale pour prévenir les régressions et permettre une adoption confiante des agents de codage AI dans les environnements d'entreprise.",
+      "modified": "Modifiés (avec plages de lignes spécifiques et modifications décrites)",
+      "referenced": "Référencés (pour le contexte mais non modifiés)",
+      "transmission": "L'approche fichier par fichier permet également une transmission précise des plans approuvés aux agents de codage. Au lieu d'instructions vagues comme « mettre à jour le système d'authentification », les agents reçoivent des spécifications exactes : « modifier src/auth/session_manager.rs lignes 45-67 pour ajouter la rotation de jeton, créer src/auth/token_store.rs avec la structure suivante... »"
+    },
+    "hitl": {
+      "approve": "Approuver :",
+      "approveDesc": "Ce n'est qu'après approbation explicite que les plans peuvent être transmis en toute sécurité à l'agent de codage choisi ou au développeur logiciel désigné pour exécution.",
+      "conclusion": "Ce flux de travail garantit que tous les efforts de développement sont alignés avec les exigences du produit d'entreprise, les flux de travail d'équipe et les objectifs commerciaux. Aucune modification de code ne se produit sans approbation humaine explicite.",
+      "edit": "Modifier :",
+      "editDesc": "Les intervenants peuvent directement modifier les étapes, ajuster les approches, ajouter des contraintes ou supprimer des opérations risquées à l'aide des fonctionnalités d'édition VS Code.",
+      "heading": "Gouvernance avec intervention humaine",
+      "intro": "PlanToCode met en œuvre un flux de travail complet avec intervention humaine (HITL) qui garantit que les chefs d'équipe et les intervenants conservent un contrôle total sur chaque aspect des plans d'implémentation générés par AI. Ce modèle de gouvernance empêche les régressions, les bugs et les modifications involontaires qui peuvent se produire lorsque les agents de codage AI opèrent de manière autonome.",
+      "reject": "Rejeter :",
+      "rejectDesc": "Les plans qui ne répondent pas aux exigences peuvent être entièrement rejetés, avec des pistes d'audit complètes maintenues pour la conformité et l'apprentissage.",
+      "requestChanges": "Demander des modifications :",
+      "requestChangesDesc": "Les équipes peuvent demander des modifications au système AI, générant des approches alternatives ou fusionnant plusieurs plans avec des instructions personnalisées.",
+      "review": "Réviser :",
+      "reviewDesc": "Les plans s'ouvrent dans l'éditeur Monaco où les réviseurs peuvent examiner chaque modification proposée avec une coloration syntaxique complète et des outils d'édition professionnels.",
+      "workflow": "Chaque plan doit passer par un flux de travail de révision structuré avant que toute modification de code ne commence :"
+    },
+    "intro": "Examinez et approuvez chaque plan avant l'exécution. La gouvernance avec intervention humaine et la granularité fichier par fichier garantissent que les modifications générées par AI sont alignées avec les exigences d'entreprise et les flux de travail d'équipe.",
+    "metaDescription": "Guide de planification d'implémentation AI. Générez, examinez et approuvez des plans fichier par fichier avant l'exécution. Évitez les doublons et les mauvais chemins.",
+    "metaTitle": "Plans d'implémentation - Révision des modifications AI",
+    "multiplePlans": {
+      "description": "Les plans peuvent être fusionnés, supprimés ou rouverts plus tard. Le panneau conserve une liste d'identifiants de plan sélectionnés, gère une modale dédiée pour la sortie de terminal liée à un plan et expose des aides à la navigation afin que les réviseurs puissent parcourir les plans antérieurs sans fermer le visualiseur. L'accès au terminal, les contrôles de copie de prompt et les instructions de fusion partagent tous le même identifiant de tâche afin que l'historique d'audit reste cohérent.",
+      "heading": "Travailler avec plusieurs plans"
+    },
+    "ogDescription": "Comprenez comment la gouvernance avec intervention humaine et les flux de travail de révision fichier par fichier garantissent un développement AI sûr avec un contrôle complet sur les modifications de code.",
+    "ogTitle": "Plans d'implémentation avec intervention humaine dans PlanToCode",
+    "plansOrigin": {
+      "description": "Chaque plan correspond à une tâche en arrière-plan dans la session actuelle. Le panneau s'abonne aux données de plan, garde une trace du plan actuellement ouvert et expose la navigation entre les tâches antérieures et plus récentes. Ce comportement réside dans {code} et le composant de panneau environnant.",
+      "heading": "D'où viennent les plans"
+    },
+    "readTime": "6 min",
+    "reviewingPlans": {
+      "description": "Le contenu du plan est rendu via le {code} partagé, qui encapsule l'éditeur Monaco. Le visualiseur détecte automatiquement les langages courants, prend en charge les actions de copie dans le presse-papiers, virtualise les très grands plans et offre des métriques optionnelles telles que le nombre de caractères et la mise en évidence sensible à la syntaxe.",
+      "heading": "Révision des plans avec Monaco",
+      "opening": "Lorsqu'un plan est ouvert, le panneau résout le plan actif par identifiant de tâche, transmet le contenu à Monaco et permet aux réviseurs de se déplacer entre les tâches voisines sans perdre la modale actuellement ouverte."
+    },
+    "title": "Plans d'implémentation"
+  },
+  "modelConfiguration": {
+    "category": "Guide produit",
+    "date": "2025-09-20",
+    "description": "Listes de modèles par tâche, contrôles de sélecteur et garde-fous de jetons dans le client de bureau.",
+    "intro": "PlanToCode traite la sélection de modèle comme une décision au niveau de la tâche. Chaque flux de travail est livré avec un modèle par défaut et une liste autorisée, et le client de bureau expose ces options via un bouton qui empêche l'envoi de prompts dépassant la fenêtre de contexte active.",
+    "metaDescription": "Comment PlanToCode vous permet de choisir des modèles autorisés par tâche et de maintenir les prompts dans la fenêtre de contexte active.",
+    "metaTitle": "Configuration de modèle et garde-fous - PlanToCode",
+    "ogDescription": "Découvrez comment les paramètres de modèle au niveau de la tâche, les boutons de sélection et les estimations de jetons fonctionnent ensemble.",
+    "ogTitle": "Configuration de modèle et garde-fous - PlanToCode",
+    "promptEstimation": {
+      "description": "Les nombres de jetons sont calculés via la commande d'estimation de jetons. Le panneau soumet l'ID de session, la description de la tâche, les fichiers pertinents et le modèle sélectionné afin que le backend puisse retourner les valeurs de jetons système, utilisateur et total. Ces chiffres alimentent directement les garde-fous de sélecteur et permettent aux équipes de repérer les prompts au-delà de la limite avant de les copier dans un autre outil.",
+      "heading": "Estimation de prompt"
+    },
+    "readTime": "5 min",
+    "selectorToggle": {
+      "description": "Le panneau Plans d'implémentation affiche les modèles autorisés avec le {code}. Le bouton affiche chaque modèle autorisé, suit la sélection active et vérifie si le prompt estimé plus les jetons de sortie planifiés rentrent dans la fenêtre de contexte annoncée du modèle avant d'autoriser un changement.",
+      "guardrails": "Si un modèle ne peut pas supporter l'exigence totale de jetons, le bouton désactive le bouton et affiche une info-bulle avec le dépassement calculé, maintenant les réviseurs dans les limites sûres avant qu'ils n'envoient du travail à un agent.",
+      "heading": "Bouton de sélection dans le client"
+    },
+    "taskDefaults": {
+      "description": "Les modèles par défaut et les alternatives autorisées sont stockés côté serveur dans la configuration de l'application. Chaque type de tâche - tels que les plans d'implémentation, les fusions, la génération de prompt ou la transcription vocale - définit un modèle préféré, une liste d'options autorisées et des limites de jetons que l'application de bureau lit au moment de l'exécution.",
+      "heading": "Valeurs par défaut basées sur la tâche"
+    },
+    "title": "Configuration de modèle"
+  },
+  "terminalSessions": {
+    "attentionDetection": {
+      "conclusion": "Cette approche vous aide à suivre quand les agents ont terminé des tâches ou ont besoin de conseils, sans essayer de deviner pourquoi ils se sont arrêtés. Les indicateurs d'attention se vident automatiquement lorsqu'une nouvelle sortie est reçue.",
+      "heading": "Détection d'attention de l'agent",
+      "intro": "Le terminal surveille l'activité de l'agent via un système de détection d'inactivité à deux niveaux. Lorsqu'un agent cesse de produire une sortie, le système vous alerte progressivement pour vérifier ce qui s'est passé :",
+      "level1": "Niveau 1 (30 secondes) : « Agent inactif - peut avoir terminé la tâche » avec indicateur jaune",
+      "level2": "Niveau 2 (2 minutes) : « L'agent nécessite une attention - vérifier le terminal » avec indicateur rouge et notification de bureau"
+    },
+    "category": "Guide produit",
+    "date": "2025-09-22",
+    "dependencyChecks": {
+      "description": "Avant de lancer des commandes, le terminal vérifie la présence d'outils CLI pris en charge tels que claude, cursor, codex et gemini. La même commande signale également le shell par défaut afin que les utilisateurs sachent quel environnement s'exécutera. Cela empêche le lancement dans une session qui ne peut pas trouver le binaire requis.",
+      "heading": "Vérifications de dépendance"
+    },
+    "description": "Sessions PTY persistantes, détection d'attention de l'agent et comportement de récupération dans le terminal Plans d'implémentation.",
+    "intro": "Exécutez des commandes dans un PTY persistant avec vérifications de santé et journalisation. La transcription vocale est disponible quand vous en avez besoin.",
+    "lifecycle": {
+      "description": "Lorsqu'un terminal s'ouvre, le composant d'interface utilisateur crée une session PTY et diffuse la sortie via une vue tampon. Le composant affiche l'état de connexion immédiat, transmet les touches au PTY et réessaie automatiquement si la session échoue. Les métadonnées de session sont stockées dans SQLite avec des horodatages, des codes de sortie, des répertoires de travail et le journal de sortie complet afin que les redémarrages puissent reprendre le contexte précédent.",
+      "heading": "Cycle de vie de la session"
+    },
+    "metaDescription": "Guide technique de l'implémentation du terminal PTY dans PlanToCode. Découvrez comment les sessions persistent, comment fonctionne la détection d'inactivité de l'agent et les mécanismes de récupération.",
+    "metaTitle": "Sessions de terminal - PlanToCode",
+    "ogDescription": "Comprenez la persistance de session, la détection d'attention de l'agent et la récupération dans le terminal de plan.",
+    "ogTitle": "Sessions de terminal - PlanToCode",
+    "readTime": "6 min",
+    "title": "Sessions de terminal",
+    "voiceRecovery": {
+      "heading": "Transcription vocale et récupération",
+      "recovery": "Si une session PTY se déconnecte, la surface du terminal affiche des contrôles de récupération et réessaie la connexion avec un recul exponentiel. Les vérifications de santé continuent à surveiller l'état de la session et fournissent des actions de récupération automatique lorsque des problèmes de connexion sont détectés.",
+      "voice": "Dans la modale de terminal, la transcription vocale peut capturer la parole et la coller dans la zone de saisie du terminal. Le hook d'enregistrement recherche les paramètres de transcription au niveau du projet, garde une trace de l'état d'enregistrement et diffuse le texte reconnu dans la session de plan active."
+    }
+  },
+  "textImprovement": {
+    "category": "Guide produit",
+    "cta": {
+      "description": "Téléchargez PlanToCode pour combiner la capture vocale, le contexte vidéo et la réécriture en ligne avant de générer des plans d'implémentation.",
+      "heading": "Essayez l'amélioration de texte dans l'application de bureau"
+    },
+    "date": "2025-09-21",
+    "description": "Comment PlanToCode réécrit le texte en surbrillance sans changer le formatage et lie le résultat à votre espace de travail.",
+    "intro": "Affinez le texte avec le contexte AI. Sélectionnez du texte dans n'importe quel éditeur, déclenchez une tâche en arrière-plan et obtenez un contenu amélioré qui préserve votre formatage intact.",
+    "metaDescription": "Comment l'espace de travail de bureau réécrit le texte en surbrillance, préserve le formatage et lie la fonctionnalité aux entrées vocales et vidéo.",
+    "metaTitle": "Amélioration de texte - PlanToCode",
+    "ogDescription": "Comprenez le popover de sélection, la file d'attente de tâches, la configuration de modèle et les intégrations qui alimentent l'amélioration de texte.",
+    "ogTitle": "Amélioration de texte - PlanToCode",
+    "readTime": "7 min",
+    "selectionPopover": {
+      "component": "Le popover lui-même est un composant minimal rendu par {code}, qui déclenche simplement le hook du fournisseur et affiche un indicateur de chargement pendant qu'une réécriture est en cours. Parce que le fournisseur enregistre des écouteurs globaux, le popover apparaît dans les visualiseurs de plan Monaco, le champ de dictée du terminal de plan et toutes les entrées de description de tâche sans câblage supplémentaire.",
+      "heading": "Comportement du popover de sélection",
+      "provider": "Le {code} écoute les événements de sélection sur les entrées standard et les éditeurs Monaco. Lorsque vous mettez en surbrillance du texte non vide, il positionne un popover près du curseur, stocke la plage sélectionnée et suit si le popover doit être visible. Cliquer sur le bouton lance la tâche et désactive le contrôle jusqu'au retour du résultat. Lorsque la tâche se termine, le fournisseur applique le texte amélioré dans la même sélection et vide toutes les sauvegardes en attente pour maintenir l'état de la session synchronisé."
+    },
+    "title": "Amélioration de texte",
+    "triggerImprovement": {
+      "action": "Appuyer sur le bouton du popover appelle {code}. L'action valide la sélection, s'assure qu'un identifiant de session existe et invoque la commande Rust {code} via Tauri. La commande construit un {code} contenant le texte original et met en file d'attente une tâche en arrière-plan contre la session active.",
+      "backend": "Côté backend, le {code} résout le modèle configuré pour la tâche {code}, enveloppe la sélection dans des balises XML et exécute la demande via le {code} sans streaming. Lorsque la réponse du modèle revient, il enregistre l'utilisation de jetons, le coût et le modèle de prompt système avant d'émettre le texte amélioré vers l'interface utilisateur. La configuration par défaut est livrée avec Claude Sonnet 4 et Gemini 2.5 Flash comme modèles approuvés, plafonnés à 4 096 jetons avec une température de 0,7.",
+      "heading": "Ce qui se passe lorsque vous déclenchez une amélioration",
+      "metadata": "La barre latérale des tâches en arrière-plan enregistre le texte original dans les métadonnées de la tâche, afin que vous puissiez examiner ce qui a été envoyé aux côtés de la copie réécrite. Si la sélection change pendant qu'une tâche est en cours, le fournisseur ignore le remplacement du texte pour éviter d'écraser les modifications manuelles."
+    },
+    "videoCapture": {
+      "dialog": "Les enregistrements d'écran passent par le dialogue d'analyse vidéo, qui combine votre description de tâche actuelle avec un bloc de prompt optionnel enveloppé dans des balises XML sémantiques avant d'envoyer la demande à la tâche d'analyse vidéo Gemini. Toutes les notes que vous dictez pendant l'enregistrement sont disponibles sous forme de texte une fois l'analyse terminée, afin que vous puissiez alimenter le résumé résultant via le popover d'amélioration pour resserrer les instructions avant la planification.",
+      "features": "Les tâches vidéo incluent des contrôles de fréquence d'images, des boutons de capture audio et des rapports de coûts. Les résultats apparaissent dans la même barre latérale de tâches en arrière-plan que les améliorations de texte, gardant tous les artefacts de préparation de prompt au même endroit.",
+      "heading": "Capture vidéo et échafaudage de prompt"
+    },
+    "voiceIntegration": {
+      "heading": "Intégration de la transcription vocale",
+      "hook": "Les enregistrements vocaux utilisent le hook {code}. Il charge les paramètres par défaut de transcription par projet, demande l'accès au microphone et insère les transcriptions au curseur dans la description de tâche ou le tampon de dictée du terminal. Le texte inséré peut immédiatement être mis en surbrillance et passé à travers le même popover d'amélioration, et l'identifiant de tâche de transcription d'origine est stocké avec la charge utile d'amélioration pour l'audit.",
+      "preferences": "Les préférences de langue, de modèle et de température persistent au niveau du projet, afin que les équipes obtiennent une qualité de transcription cohérente avant d'affiner la copie. La détection de silence avertit des mauvais niveaux audio, et un plafond de dix minutes empêche les enregistrements surdimensionnés de bloquer les tâches d'amélioration avec de grandes charges utiles."
+    }
+  },
+  "voiceTranscription": {
+    "category": "Guide produit",
+    "date": "2025-09-22",
+    "description": "Cycle de vie d'enregistrement, gestion des périphériques et comportement de streaming pour les prompts vocaux.",
+    "deviceManagement": {
+      "description": "La fonctionnalité demande l'autorisation du microphone, énumère les entrées audio disponibles et permet aux utilisateurs de changer de périphérique pendant une session. Les niveaux audio sont surveillés en direct afin que l'interface utilisateur puisse afficher des avertissements de silence si le microphone est coupé ou déconnecté.",
+      "heading": "Gestion des périphériques"
+    },
+    "intro": "La transcription vocale est disponible partout où l'application de bureau expose des contrôles de dictée, y compris le terminal de plan et les éditeurs de prompt. La fonctionnalité enregistre l'audio localement, envoie des fragments au service de transcription et insère le texte reconnu dans le champ de saisie actif sans bloquer la saisie manuelle.",
+    "metaDescription": "Comment PlanToCode enregistre l'audio, diffuse les transcriptions en temps réel à l'aide de gpt-4o-transcribe, gère les autorisations et les paramètres de projet.",
+    "metaTitle": "Transcription vocale - PlanToCode",
+    "ogDescription": "Découvrez comment le hook d'enregistrement gère les périphériques, les autorisations et le texte en streaming.",
+    "ogTitle": "Transcription vocale - PlanToCode",
+    "projectSettings": {
+      "description": "Lorsqu'une session d'enregistrement démarre, le hook recherche la configuration de transcription du projet actif. Les codes de langue, les modèles préférés et d'autres paramètres sont récupérés avant de capturer l'audio afin que les enregistrements suivent les préférences du projet.",
+      "heading": "Paramètres sensibles au projet"
+    },
+    "readTime": "5 min",
+    "recordingWorkflow": {
+      "description": "Le hook d'enregistrement maintient une machine à états avec des états inactif, enregistrement, traitement et erreur. Il suit la durée, gère la détection de silence et garantit que les enregistrements s'arrêtent automatiquement après dix minutes. Les fragments sont mis en tampon et transmis à l'action de transcription, qui renvoie le texte reconnu pour insertion.",
+      "heading": "Flux de travail d'enregistrement"
+    },
+    "title": "Transcription vocale"
+  }
+}

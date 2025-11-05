@@ -1,0 +1,115 @@
+{
+  "aria": {
+    "closeMenu": "탐색 메뉴 닫기",
+    "homePageLink": "PlanToCode 홈페이지",
+    "toggleMenu": "탐색 메뉴 전환"
+  },
+  "breadcrumb": {
+    "blog": "블로그",
+    "comparisons": "비교",
+    "docs": "문서",
+    "features": "기능",
+    "home": "홈",
+    "integrations": "통합",
+    "solutions": "솔루션",
+    "stacks": "기술 스택",
+    "useCases": "사용 사례",
+    "workflows": "워크플로우"
+  },
+  "cta": {
+    "download": "다운로드",
+    "talkToArchitect": "아키텍트와 상담"
+  },
+  "feature": {
+    "copyButtons": {
+      "description": "구성 가능한 워크플로우 자동화",
+      "label": "복사 버튼"
+    },
+    "deepResearch": {
+      "description": "웹 검색 및 정보 통합",
+      "label": "심층 연구"
+    },
+    "fileDiscovery": {
+      "description": "AI 기반 지능형 파일 선택",
+      "label": "파일 발견"
+    },
+    "integratedTerminal": {
+      "description": "자동 시작 CLI를 갖춘 영구 세션",
+      "label": "통합 터미널"
+    },
+    "mergeInstructions": {
+      "description": "플랜 병합 제어",
+      "label": "병합 지침"
+    },
+    "planEditor": {
+      "description": "AI 플랜을 위한 완전한 Monaco 에디터",
+      "label": "플랜 에디터"
+    },
+    "planModeGuides": {
+      "description": "Codex, Claude, Cursor를 위한 워크플로우",
+      "label": "플랜 모드 가이드"
+    },
+    "textImprovement": {
+      "description": "Monaco 및 작업 입력에서 인라인 수정",
+      "label": "텍스트 개선"
+    },
+    "voiceTranscription": {
+      "description": "작업 및 터미널용 핸즈프리 입력",
+      "label": "음성 전사"
+    }
+  },
+  "footer": {
+    "about": "소개",
+    "architecture": "아키텍처",
+    "changelog": "변경 로그",
+    "company": "회사",
+    "copyright": "© {year} helpful bits GmbH",
+    "documentation": "문서",
+    "downloads": "다운로드",
+    "feedback": "피드백",
+    "howItWorks": "작동 방식",
+    "imprint": "법적 고지",
+    "interactiveDemo": "인터랙티브 데모",
+    "legal": "법적 정보",
+    "madeInGermany": "독일 기업이 독일에서 제작",
+    "notAffiliated": "Anthropic, Cursor, OpenAI, Cline과 제휴 관계가 없습니다.",
+    "pricing": "가격",
+    "privacy": "개인정보 보호",
+    "product": "제품",
+    "resources": "리소스",
+    "support": "지원",
+    "tagline": "코드 변경 계획 및 배포 - 파일 찾기, AI 플랜 생성 및 병합, 영구 터미널에서 실행.",
+    "talkToArchitect": "아키텍트와 상담",
+    "terms": "이용 약관"
+  },
+  "label": {
+    "english": "영어",
+    "german": "독일어"
+  },
+  "nav": {
+    "compare": "비교",
+    "demo": "데모",
+    "docs": "문서",
+    "downloads": "다운로드",
+    "features": "기능",
+    "solutions": "솔루션"
+  },
+  "solution": {
+    "hardBugs": {
+      "description": "화면 캡처를 통한 시각적 디버깅",
+      "label": "복잡한 버그"
+    },
+    "largeFeatures": {
+      "description": "다중 파일 기능 계획",
+      "label": "대규모 기능"
+    },
+    "libraryUpgrades": {
+      "description": "종속성 관리",
+      "label": "라이브러리 업그레이드"
+    },
+    "maintenance": {
+      "description": "기술 부채 정리",
+      "label": "유지보수"
+    }
+  }
+}

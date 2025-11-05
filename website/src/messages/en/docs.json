@@ -224,7 +224,7 @@
       "heading": "Need the desktop app?"
     },
     "date": "2025-09-21",
-    "description": "Comprehensive technical guide to the 5-stage AI workflow that identifies and filters relevant files for task execution.",
+    "description": "Comprehensive technical guide to the 4-stage AI workflow that identifies and filters relevant files for task execution.",
     "errorHandling": {
       "commonIssues": {
         "binaryDetection": "Binary file detection: Uses both extension-based and content-based binary detection",
@@ -261,8 +261,8 @@
         "heading": "Session Management"
       }
     },
-    "intro": "PlanToCode identifies the right files before you plan or run commands. The 5-stage workflow narrows scope and keeps context tight.",
-    "metaDescription": "Comprehensive technical guide to the 5-stage AI workflow that identifies and filters relevant files for task execution.",
+    "intro": "PlanToCode identifies the right files before you plan or run commands. The 4-stage workflow narrows scope and keeps context tight.",
+    "metaDescription": "Comprehensive technical guide to the 4-stage AI workflow that identifies and filters relevant files for task execution.",
     "metaTitle": "File discovery workflow - PlanToCode",
     "ogDescription": "Technical documentation for the multi-stage file discovery workflow architecture.",
     "ogTitle": "File discovery workflow - PlanToCode",
@@ -283,7 +283,7 @@
     },
     "readTime": "12 min",
     "stages": {
-      "heading": "5-Stage Workflow Process",
+      "heading": "4-Stage Workflow Process",
       "stage1": {
         "description": "Determines the project root directory and validates git repository status. This stage establishes the base directory for all subsequent file operations and configures exclusion patterns.",
         "heading": "Stage 1: Root Folder Selection",
@@ -304,13 +304,8 @@
         "description": "Discovers additional relevant files through relationship analysis and dependency tracking. This stage identifies files that might not match initial patterns but are contextually important.",
         "heading": "Stage 4: Extended Path Finder",
         "relationship": "Relationship Analysis: Analyzes import statements, configuration files, and project structure to find related files that enhance the context for the specific task."
-      },
-      "stage5": {
-        "description": "Validates and corrects file paths, ensuring all selected files exist and are accessible. This final stage performs consistency checks and path normalization across different operating systems.",
-        "heading": "Stage 5: Path Correction",
-        "validation": "Validation Process: Verifies file existence, normalizes path separators, resolves symbolic links, and removes any paths that have become invalid during the workflow execution."
       }
-    },
+      },
     "stateManagement": {
       "eventDriven": {
         "description": "The system publishes real-time events for workflow status changes, stage completions, and error conditions. These events enable responsive user interfaces and integration with external monitoring systems.",
@@ -318,7 +313,7 @@
       },
       "heading": "Workflow State Management",
       "intermediateData": {
-        "description": "Each stage stores its output in a structured intermediate data format, including directory tree content, regex patterns, filtered file lists, and path correction results. This data is accessible for debugging and can be used to resume workflows from specific stages.",
+        "description": "Each stage stores its output in a structured intermediate data format, including directory tree content, regex patterns, filtered file lists results. This data is accessible for debugging and can be used to resume workflows from specific stages.",
         "heading": "Intermediate Data Storage"
       },
       "transitions": {

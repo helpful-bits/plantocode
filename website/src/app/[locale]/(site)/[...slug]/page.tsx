@@ -17,8 +17,7 @@ import {
   FileSearch, Brain, Layers, XCircle, ArrowRight
 } from 'lucide-react';
 import pseoData from '@/data/pseo';
-import type { Locale } from '@/lib/i18n';
-import { locales } from '@/i18n/config';
+import { locales, type Locale } from '@/i18n/config';
 import { getPageBySlugLocalized } from '@/data/pseo';
 
 // List of existing pages to exclude from pSEO routing

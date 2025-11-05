@@ -94,7 +94,7 @@
   "features": {
     "cards": {
       "fileDiscovery": {
-        "description": "Start staged background jobs for regex pattern generation, relevance scoring, and path correction. Review each stage before applying the results to your session.",
+        "description": "Start staged background jobs for regex pattern generation, relevance scoring. Review each stage before applying the results to your session.",
         "title": "File discovery workflow"
       },
       "implementation": {

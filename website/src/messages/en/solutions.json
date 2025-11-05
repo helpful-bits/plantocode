@@ -36,15 +36,11 @@
         "description": "Running git ls-files, generating patterns, filtering binary files",
         "title": "Regex filtering with git integration"
       },
-      "stage5": {
-        "description": "Validating discovered paths, correcting non-existent paths, resolving monorepo references",
-        "title": "Path validation and correction"
-      },
       "title": "File discovery in action"
     },
     "faq": {
       "cost": {
-        "answer": "Typically $0.10-0.15 per complete workflow, depending on repository size and complexity. The 5-stage discovery process uses intelligent token batching and content-aware estimation to minimize API costs while maximizing accuracy. Cost tracking is built into every stage.",
+        "answer": "Typically $0.10-0.15 per complete workflow, depending on repository size and complexity. The 4-stage discovery process uses intelligent token batching and content-aware estimation to minimize API costs while maximizing accuracy. Cost tracking is built into every stage.",
         "question": "How much does file discovery cost per run?"
       },
       "excludeDirectories": {
@@ -107,7 +103,7 @@
         "title": "Path validation pipeline"
       },
       "preExecutionDiscovery": {
-        "description": "Before AI generates any code, PlanToCode runs a 5-stage file discovery workflow that maps your actual filesystem. Every file path is verified to exist before being included in context.",
+        "description": "Before AI generates any code, PlanToCode runs a 4-stage file discovery workflow that maps your actual filesystem. Every file path is verified to exist before being included in context.",
         "features": [
           "Scans repository with git ls-files integration",
           "Validates file existence against actual filesystem",
@@ -133,7 +129,7 @@
       "forDevelopers": {
         "benefits": [
           "Stop debugging phantom imports. No more hunting through directory trees to find the correct path AI should have generated in the first place.",
-          "Ship faster. When AI-generated code works on first paste, your velocity increases dramatically. Focus on logic, not path corrections.",
+          "Ship faster. When AI-generated code works on first paste, your velocity increases dramatically. Focus on logic, not import issues.",
           "Trust AI output. Path verification builds confidence. You know imports are correct before you copy code to your editor.",
           "Work with legacy code. Complex, undocumented codebases become navigable when every path is verified against reality."
         ],
@@ -142,7 +138,7 @@
       "forTeams": {
         "benefits": [
           "Onboard faster. New team members understand codebase structure through verified file discovery. No guessing at import conventions.",
-          "Reduce PR noise. Eliminate commits that solely fix incorrect import paths. Code reviews focus on logic, not path corrections.",
+          "Reduce PR noise. Eliminate commits that solely fix incorrect import paths. Code reviews focus on logic, not import issues.",
           "Scale monorepos confidently. As your workspace grows, path verification prevents the exponential increase in import confusion.",
           "Standardize AI usage. When everyone uses verified paths, AI-generated code maintains consistency across the team."
         ],
@@ -183,7 +179,7 @@
         "title": "With PlanToCode verification"
       },
       "without": {
-        "description": "Scenario demonstrating path hallucination issues when refactoring without verification, resulting in broken imports and manual path correction work.",
+        "description": "Scenario demonstrating path hallucination issues when refactoring without verification, resulting in broken imports and manual rework.",
         "title": "Without path verification"
       }
     },
@@ -654,7 +650,7 @@
             "detail": "File discovery workflow starts automatically"
           },
           {
-            "label": "5-stage discovery maps entire codebase",
+            "label": "4-stage discovery maps entire codebase",
             "detail": "Finds authService.ts, auth-helpers.ts, related config files"
           },
           {
@@ -773,7 +769,7 @@
         "title": "Step 3: Describe Your Task"
       },
       "step4": {
-        "description": "PlanToCode will run the 5-stage file discovery workflow in the background. You'll see real-time progress updates as it discovers relevant files. The workflow typically completes in 30-90 seconds depending on codebase size. Once complete, review the list of discovered files. You'll see which files PlanToCode identified as relevant to your task. This is your first checkpoint to ensure the system has proper context about existing files.",
+        "description": "PlanToCode will run the 4-stage file discovery workflow in the background. You'll see real-time progress updates as it discovers relevant files. The workflow typically completes in 30-90 seconds depending on codebase size. Once complete, review the list of discovered files. You'll see which files PlanToCode identified as relevant to your task. This is your first checkpoint to ensure the system has proper context about existing files.",
         "link": "Learn more about the discovery process",
         "title": "Step 4: Review the File Discovery"
       },
@@ -797,7 +793,7 @@
     },
     "howPlanToCodePrevents": {
       "comprehensiveDiscovery": {
-        "description": "PlanToCode runs a 5-stage file discovery workflow before generating any implementation plan. This workflow uses git integration, regex filtering, AI-powered relevance assessment, relationship analysis, and path validation to build a complete map of your codebase.",
+        "description": "PlanToCode runs a 4-stage file discovery workflow before generating any implementation plan. This workflow uses git integration, regex filtering, AI-powered relevance assessment, relationship analysis, and path validation to build a complete map of your codebase.",
         "link": "Technical documentation",
         "process": {
           "steps": [
@@ -805,7 +801,7 @@
             "Generate task-specific regex patterns",
             "AI relevance assessment of file contents",
             "Extended path discovery via relationships",
-            "Final path correction and validation"
+            "Final validation"
           ],
           "title": "Discovery Process:"
         },

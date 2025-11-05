@@ -1,1 +1,292 @@
-{}
+{
+  "capture": {
+    "cards": {
+      "taskRefinement": {
+        "description": "Développez les descriptions de tâches en identifiant les exigences implicites, en clarifiant le comportement attendu et les cas limites, et en ajoutant des considérations techniques.",
+        "link": "En savoir plus →",
+        "title": "Raffinement de tâche"
+      },
+      "textEnhancement": {
+        "description": "Améliorez la grammaire, la structure des phrases, la clarté et la concision tout en préservant votre intention originale, votre ton et votre niveau de détail technique.",
+        "link": "En savoir plus →",
+        "title": "Amélioration de texte"
+      },
+      "voice": {
+        "description": "Capturez les exigences initiales par saisie vocale, que vous pouvez ensuite affiner manuellement pour plus de précision et de clarté.",
+        "link": "En savoir plus →",
+        "title": "Dictée vocale"
+      }
+    },
+    "subtitle": "Cristallisez rapidement vos idées en spécifications claires et actionnables avec dictée vocale et amélioration alimentée par l'IA.",
+    "title": "Capture et raffinement de spécifications"
+  },
+  "cta": {
+    "badge": "Planification IA avec humain dans la boucle",
+    "buttons": {
+      "download": "Télécharger gratuitement",
+      "talk": "Parler à un architecte"
+    },
+    "description": "Planifiez, examinez et exécutez des modifications assistées par l'IA depuis un seul espace de travail. Gardez les modèles, les invites, les fichiers et la sortie du terminal alignés.",
+    "features": {
+      "instant": "Commencez à travailler instantanément",
+      "noCard": "Aucune carte de crédit requise"
+    },
+    "title": "Prêt à coordonner votre prochain plan de mise en œuvre ?"
+  },
+  "faq": {
+    "items": {
+      "q1": {
+        "a": "Oui. PlanToCode fournit un workflow avec humain dans la boucle où les chefs d'équipe et les parties prenantes peuvent examiner les plans de mise en œuvre générés, modifier les détails, demander des modifications et approuver les changements avant leur exécution par des agents de codage ou des développeurs. Cela garantit la gouvernance d'entreprise et prévient les régressions.",
+        "q": "Les parties prenantes peuvent-elles examiner et approuver les plans avant l'exécution ?"
+      },
+      "q10": {
+        "a": "Absolument. Les plans s'ouvrent dans un éditeur Monaco avec coloration syntaxique, formatage compatible diff et assistants de presse-papiers. Vous pouvez modifier l'invite, copier des étapes individuelles et relancer la génération sans quitter l'espace de travail.",
+        "q": "Puis-je modifier les plans générés par l'IA avant l'exécution ?"
+      },
+      "q11": {
+        "a": "Sélectionnez deux plans ou plus, rédigez les instructions de fusion et soumettez. Le résultat fusionné est enregistré à côté des originaux pour que vous puissiez comparer les brouillons, garder des notes ou relancer la fusion avec des instructions différentes.",
+        "q": "Comment fonctionnent les instructions de fusion ?"
+      },
+      "q12": {
+        "a": "Les estimations de jetons, les aperçus d'invites, la surveillance de l'état du terminal et les sessions persistantes réduisent le retravail. Vous décidez quand exécuter les commandes et quel modèle faire confiance, tandis que l'application gère les détails d'orchestration.",
+        "q": "Pourquoi les ingénieurs seniors utilisent-ils cela ?"
+      },
+      "q13": {
+        "a": "Décrivez la tâche (en tapant ou à la voix) → exécutez le workflow de recherche de fichiers → générez un ou plusieurs plans de mise en œuvre → modifiez ou fusionnez les plans dans l'éditeur Monaco → lancez le terminal intégré pour exécuter le plan et surveiller les logs. Les sessions et les logs restent disponibles la prochaine fois que vous ouvrez l'application.",
+        "q": "À quoi ressemble un workflow typique ?"
+      },
+      "q2": {
+        "a": "Téléchargez des enregistrements de réunions Microsoft Teams ou des captures d'écran vers PlanToCode. Des modèles multimodaux avancés analysent à la fois les transcriptions audio (y compris l'identification des locuteurs) et le contenu visuel (écrans partagés, documents) pour extraire les exigences de spécification. Vous examinez les informations extraites - décisions, éléments d'action, points de discussion - et les incorporez dans les plans de mise en œuvre.",
+        "q": "Comment les réunions Teams deviennent-elles des spécifications ?"
+      },
+      "q3": {
+        "a": "Oui. Les plans de mise en œuvre décomposent les changements fichier par fichier avec des chemins de référentiel exacts correspondant à votre structure de projet. Cette approche granulaire garantit que vous savez exactement ce qui sera modifié avant l'exécution, offrant une visibilité et un contrôle complets.",
+        "q": "Les plans correspondent-ils aux fichiers exacts de notre dépôt ?"
+      },
+      "q4": {
+        "a": "PlanToCode est un espace de travail de planification de bureau. Vous exécutez le workflow de découverte de fichiers, examinez les plans de mise en œuvre dans un éditeur Monaco, ajustez les invites, puis lancez le terminal depuis la même session. Les outils de chat vous donnent une seule réponse ; ici, vous préparez le travail avant l'exécution.",
+        "q": "En quoi est-ce différent des agents de codage basés sur le chat ?"
+      },
+      "q5": {
+        "a": "Oui. L'application suppose que vous travaillez déjà dans de grands référentiels et que vous êtes à l'aise avec les terminaux, les graphes de dépendances et les compromis architecturaux. Le logiciel garde le contexte organisé pour que vous puissiez appliquer votre jugement plus rapidement.",
+        "q": "Dois-je savoir coder ?"
+      },
+      "q6": {
+        "a": "La configuration par défaut est livrée avec Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet, o3, Grok 4, DeepSeek R1 et Kimi K2. Vous pouvez changer de modèle par tâche depuis le panneau des paramètres avant de soumettre un travail.",
+        "q": "Quels modèles d'IA peuvent générer des plans ?"
+      },
+      "q7": {
+        "a": "L'état du projet, les logs du terminal et les brouillons de plans sont stockés localement dans SQLite. Seule l'invite que vous approuvez plus les fichiers que vous sélectionnez sont envoyés via votre serveur proxy configuré. Le serveur Rust dans ce dépôt peut être auto-hébergé lorsque vous devez garder le trafic sur votre propre infrastructure.",
+        "q": "Qu'arrive-t-il à mon code source ?"
+      },
+      "q8": {
+        "a": "Le terminal démarre le même shell que vous utilisez sur la machine hôte et détecte automatiquement les binaires claude, cursor, codex et gemini. Vous pouvez toujours exécuter n'importe quel autre outil manuellement - la session PTY est un shell régulier avec dictée vocale disponible lorsque vous avez besoin d'une saisie mains libres.",
+        "q": "Quels outils CLI fonctionnent à l'intérieur du terminal ?"
+      },
+      "q9": {
+        "a": "Lancez le workflow de recherche de fichiers pour générer des modèles de recherche, un scoring de pertinence et des listes de fichiers priorisées. Chaque étape s'exécute comme son propre travail en arrière-plan pour que vous puissiez inspecter les résultats avant d'appliquer les sélections à votre session.",
+        "q": "Comment gère-t-il les grandes bases de code ?"
+      }
+    },
+    "subtitle": "Tout ce que vous devez savoir sur PlanToCode",
+    "title": "Questions fréquemment posées"
+  },
+  "features": {
+    "cards": {
+      "fileDiscovery": {
+        "description": "Lancez des travaux en arrière-plan échelonnés pour la génération de modèles regex, le scoring de pertinence et la correction de chemin. Examinez chaque étape avant d'appliquer les résultats à votre session.",
+        "title": "Workflow de découverte de fichiers"
+      },
+      "implementation": {
+        "description": "Générez des plans de mise en œuvre fichier par fichier avec des chemins de référentiel exacts. Examinez, modifiez et approuvez les changements avant l'exécution pour prévenir les régressions et garantir l'alignement avec les exigences.",
+        "title": "Plans de mise en œuvre examinés par des humains"
+      },
+      "integratedTerminal": {
+        "description": "Lancez claude, cursor, codex ou gemini directement dans le terminal intégré. La surveillance de l'état, la récupération automatique et la gestion du redimensionnement maintiennent les travaux de longue durée stables.",
+        "title": "Terminal PTY intégré avec détection CLI"
+      },
+      "meeting": {
+        "description": "Téléchargez des réunions Microsoft Teams ou des enregistrements d'écran. L'analyse multimodale extrait les spécifications des transcriptions audio et du contenu visuel pour examen et incorporation.",
+        "title": "Ingestion d'enregistrements de réunions"
+      },
+      "mergePlans": {
+        "description": "Sélectionnez plusieurs plans, rédigez des instructions de fusion et gardez la sortie fusionnée à côté des originaux. Itérez jusqu'à ce que l'approche corresponde à vos normes.",
+        "title": "Fusionner les plans avec des instructions"
+      },
+      "modelConfiguration": {
+        "description": "Choisissez parmi Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet, Grok 4, DeepSeek R1 et Kimi K2 pour les plans de mise en œuvre. Les paramètres persistent par projet.",
+        "title": "Configuration du modèle par tâche"
+      },
+      "monacoEditor": {
+        "description": "Les plans s'ouvrent dans un éditeur Monaco avec coloration syntaxique, formatage compatible diff et assistants de presse-papiers. Modifiez les étapes, stockez les brouillons et gardez les modèles prêts pour la prochaine tâche.",
+        "title": "Éditeur de plan de mise en œuvre Monaco"
+      },
+      "persistentSessions": {
+        "description": "La sortie du terminal est stockée dans un tampon circulaire de 5 Mo et les sessions de projet se rechargent au démarrage. Reprenez le travail en cours sans reconstruire le contexte.",
+        "title": "Sessions et logs persistants"
+      },
+      "specification": {
+        "description": "Dictée vocale pour saisie rapide, amélioration de texte pour la clarté et raffinement de tâche pour identifier les exigences implicites et les cas limites.",
+        "title": "Capture et raffinement de spécifications"
+      },
+      "textImprovement": {
+        "description": "Surlignez n'importe quelle sélection pour exécuter le travail d'amélioration de texte avec Claude 4.5 Sonnet ou Gemini 2.5 Flash. La réécriture préserve le formatage et s'applique dans les éditeurs Monaco, les entrées de tâches et la dictée du terminal.",
+        "title": "Popover d'amélioration de texte"
+      },
+      "tokenGuardrails": {
+        "description": "Visualisez l'invite exacte, les estimations de jetons et les avertissements de fenêtre de contexte avant de soumettre un travail. Ajustez les instructions avec une visibilité complète.",
+        "title": "Garde-fous de jetons et aperçu d'invite"
+      },
+      "voiceTranscription": {
+        "description": "Enregistrez des descriptions de tâches ou des commandes de terminal et envoyez-les via le service de transcription. Configurez les paramètres par défaut de langue et de température pour chaque projet.",
+        "title": "Pipeline de transcription vocale"
+      }
+    },
+    "linkText": "En savoir plus",
+    "subtitle": "Conçu pour les développeurs s'attaquant à des bases de code volumineuses et héritées. Si vous utilisez Claude Code, Cursor ou Aider - c'est votre couche de planification.",
+    "title": "Mécanismes"
+  },
+  "governance": {
+    "cards": {
+      "filePlans": {
+        "description": "Les plans de mise en œuvre décomposent les changements fichier par fichier avec des chemins de référentiel exacts, garantissant une visibilité complète sur ce qui sera modifié.",
+        "title": "Plans fichier par fichier avec chemins exacts"
+      },
+      "handoff": {
+        "description": "Une fois approuvés, les plans sont transmis en toute sécurité à votre agent de codage choisi ou assignés aux développeurs, prévenant les régressions et garantissant l'alignement avec les exigences.",
+        "title": "Transfert sécurisé aux agents"
+      },
+      "workflow": {
+        "description": "Les chefs d'équipe et les parties prenantes peuvent examiner les changements proposés, modifier directement les détails du plan, demander des modifications et approuver les plans avant l'exécution.",
+        "title": "Workflow d'examen, modification et approbation"
+      }
+    },
+    "subtitle": "Maintenez un contrôle total sur les plans de mise en œuvre générés par l'IA. Examinez, modifiez, approuvez et auditez chaque étape avant l'exécution.",
+    "title": "Gouvernance avec humain dans la boucle"
+  },
+  "hero": {
+    "cta": {
+      "demo": "Essayer la démo interactive →",
+      "download": "Télécharger gratuitement",
+      "howItWorks": "Voir comment ça marche"
+    },
+    "panel1": {
+      "description": "Générez des modèles de recherche, exécutez le scoring de pertinence et examinez les résultats échelonnés avant d'inclure les fichiers dans votre plan.",
+      "descriptionDesktop": "Faites ressortir les bons fichiers avant d'écrire les invites.",
+      "features": {
+        "context": "Optimisation du contexte",
+        "patterns": "Groupes de modèles",
+        "progress": "Progression en temps réel",
+        "relevance": "Scores de pertinence",
+        "stage": "Examens d'étape"
+      },
+      "link": "Voir comment ça marche",
+      "linkDesktop": "En savoir plus",
+      "title": "Workflow de découverte de fichiers"
+    },
+    "panel2": {
+      "description": "Générez des plans de mise en œuvre depuis GPT-5, Gemini 2.5 Pro, Claude 4 Sonnet, Grok 4 et DeepSeek R1 et fusionnez les meilleures idées.",
+      "link": "Explorer le workflow",
+      "models": {
+        "claude": "Claude Sonnet 4",
+        "gemini": "Gemini 2.5 Pro",
+        "gpt5": "GPT-5"
+      },
+      "title": "Planification multi-modèle"
+    },
+    "panel3": {
+      "description": "Lancez claude, cursor, codex ou gemini sans quitter l'espace de travail. La surveillance de l'état et la récupération maintiennent les longs travaux en cours d'exécution.",
+      "link": "Détails du terminal",
+      "terminal": {
+        "line1": "$ codex | claude | cursor | gemini",
+        "line2": "> Transcription vocale disponible",
+        "line3": "> Aperçu de l'invite avant l'exécution",
+        "line4": "> Garde-fous de jetons en place",
+        "line5": "> Logs persistants localement"
+      },
+      "title": "Terminal intégré"
+    },
+    "srOnly": {
+      "description": "PlanToCode vous aide à trouver les bons fichiers, générer et fusionner des plans de mise en œuvre, puis les exécuter dans un terminal persistant. Vous voyez la portée avant d'exécuter quoi que ce soit. Les plans sont modifiables et traçables.",
+      "heading": "Planifiez les modifications logicielles avant de coder"
+    },
+    "subtitle": "L'IA génère des plans de mise en œuvre détaillés avec des chemins de fichiers exacts. Vous examinez et approuvez chaque changement avant l'exécution. Zéro risque, contrôle total.",
+    "title": "Planifiez des changements complexes sans casser la production"
+  },
+  "integrations": {
+    "cards": {
+      "allIntegrations": {
+        "description": "Explorez tous les outils de codage IA pris en charge et les modèles d'intégration",
+        "link": "Voir les intégrations →",
+        "title": "Toutes les intégrations"
+      },
+      "claudeCode": {
+        "description": "Exécutez Claude Code dans des terminaux persistants avec enregistrement de session complet et surveillance de l'état",
+        "link": "Guide d'installation →",
+        "title": "Intégration Claude Code"
+      },
+      "cursor": {
+        "description": "Donnez à Cursor Composer un contexte architectural et des capacités de découverte de fichiers",
+        "link": "Guide d'installation →",
+        "title": "Amélioration Cursor"
+      }
+    },
+    "subtitle": "Améliorez Claude Code, Cursor et Codex CLI avec la planification architecturale",
+    "title": "Fonctionne avec vos outils IA préférés"
+  },
+  "meetings": {
+    "cards": {
+      "insights": {
+        "description": "Les informations extraites - décisions résumées, éléments d'action et points de discussion clés - sont présentées dans une interface intuitive où les chefs d'équipe peuvent examiner, sélectionner et les incorporer dans des plans de mise en œuvre actionnables.",
+        "link": "En savoir plus →",
+        "title": "Examiner et incorporer les informations"
+      },
+      "multimodal": {
+        "description": "Téléchargez des réunions Microsoft Teams ou des enregistrements d'écran. Des modèles multimodaux avancés analysent à la fois les transcriptions audio (avec identification des locuteurs) et le contenu visuel pertinent (écrans partagés, documents présentés, moments clés) pour extraire les exigences de spécification.",
+        "link": "En savoir plus →",
+        "title": "Analyse multimodale"
+      }
+    },
+    "subtitle": "Transformez les réunions Microsoft Teams et les enregistrements d'écran en exigences de mise en œuvre actionnables.",
+    "title": "Ingestion de réunions et d'enregistrements"
+  },
+  "pricing": {
+    "card": {
+      "description": "Commencez avec une tarification basée sur l'utilisation pour valider les résultats. Pas d'abonnements. Juste des coûts API transparents.",
+      "pricing": {
+        "description": "Testez l'éditeur de plan, les instructions de fusion, l'intégration du terminal. Rechargement automatique quand vous êtes convaincu.",
+        "subtitle": "Payez uniquement ce que vous utilisez.",
+        "title": "Tarification basée sur l'utilisation"
+      },
+      "title": "Tarification transparente"
+    },
+    "subtitle": "Payez uniquement pour l'inférence IA avec des coûts de jetons transparents. Surveillez votre ROI en temps réel - un incident de production évité paie des mois d'utilisation.",
+    "title": "Conçu pour le développement professionnel"
+  },
+  "problems": {
+    "cards": {
+      "browseAll": {
+        "description": "Explorez les workflows pour les refactorisations, les migrations, la réponse aux incidents et plus encore",
+        "link": "Voir tous les workflows →",
+        "title": "Parcourir tous les workflows"
+      },
+      "hardBugs": {
+        "description": "Déboguez avec un contexte préservé, des étapes reproductibles et un historique d'enquête complet",
+        "link": "En savoir plus →",
+        "title": "Bugs de production difficiles"
+      },
+      "largeFeatures": {
+        "description": "Planifiez des mises en œuvre complexes avec conscience architecturale et analyse d'impact",
+        "link": "En savoir plus →",
+        "title": "Grandes fonctionnalités"
+      },
+      "libraryUpgrades": {
+        "description": "Mettez à jour les dépendances en toute sécurité avec détection de changements de rupture et planification de migration",
+        "link": "En savoir plus →",
+        "title": "Mises à jour de bibliothèques"
+      }
+    },
+    "subtitle": "Des solutions réelles pour les problèmes les plus difficiles du développement logiciel",
+    "title": "Résolvez les défis de développement complexes"
+  }
+}

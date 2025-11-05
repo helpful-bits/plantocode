@@ -1,1 +1,940 @@
-{}
+{
+  "about": {
+    "architecture": {
+      "comment": "Construido para flujos de trabajo de desarrollo complejos, no para simples chats con IA",
+      "title": "Fundamento Técnico"
+    },
+    "capabilities": {
+      "automation": {
+        "description": "Botones de copia configurables con plantillas inteligentes. Transforma cualquier prompt en un flujo de trabajo reutilizable con sustitución de marcadores e integración de terminal.",
+        "title": "Automatización de Flujos de Trabajo"
+      },
+      "discovery": {
+        "description": "Flujo de trabajo multi-etapa: selección de carpeta raíz, filtrado de patrones regex, evaluación de relevancia por IA. Selección de archivos enfocada con validación de rutas.",
+        "title": "Descubrimiento Inteligente de Archivos"
+      },
+      "planning": {
+        "description": "Carga de contexto completo sin política de truncamiento. Planes XML estructurados con pasos numerados. Generación multi-modelo y síntesis arquitectónica.",
+        "title": "Planificación de Implementación"
+      },
+      "synthesis": {
+        "description": "Más allá de la simple fusión - análisis arquitectónico profundo usando principios SOLID. Trazabilidad de origen con atribución [src:P1 step 2] para cada decisión.",
+        "title": "Síntesis Arquitectónica"
+      },
+      "terminal": {
+        "description": "Sesiones PTY con monitoreo de salud cada 5 segundos, acciones de auto-recuperación y detección de atención del agente. Las sesiones persisten tras reinicios de la app.",
+        "title": "Terminal Centrado en Trabajos"
+      },
+      "title": "Capacidades Principales",
+      "voice": {
+        "description": "Integración de OpenAI Whisper para comandos de terminal. Mejora de texto basada en selección con procesamiento consciente del contexto y seguimiento de trabajos en tiempo real.",
+        "title": "Integración de Voz y Texto"
+      }
+    },
+    "company": {
+      "contact": "Contacto",
+      "jurisdiction": "Alemania",
+      "name": "helpful bits GmbH",
+      "title": "Información de la Empresa"
+    },
+    "hero": {
+      "subtitle": "PlanToCode ayuda a los desarrolladores a planificar y enviar cambios de código encontrando archivos impactados, generando y fusionando planes, y ejecutándolos en una terminal.",
+      "title": "Acerca de PlanToCode"
+    },
+    "meta": {
+      "description": "Planificación de desarrollo con IA con integración multi-modelo, terminales persistentes, transcripción de voz y síntesis arquitectónica.",
+      "title": "Acerca de PlanToCode - Herramienta de Planificación de Desarrollo con IA"
+    },
+    "philosophy": {
+      "noTruncation": {
+        "description": "Cargamos contenido completo de archivos. Sin truncamiento preventivo - solo advertencias inteligentes. Obtienes el contexto completo necesario para trabajo de desarrollo serio.",
+        "title": "Política de No Truncamiento"
+      },
+      "title": "Nuestra Filosofía",
+      "tooling": {
+        "description": "Editor Monaco, xterm.js, integración apropiada con entorno de desarrollo. No solo otra interfaz de chat - una plataforma completa de planificación de desarrollo.",
+        "title": "Herramientas Profesionales"
+      },
+      "traceability": {
+        "description": "Cada decisión de IA incluye atribución de origen. Pistas de auditoría completas, seguimiento de costos y persistencia de sesión. Sabes exactamente qué sucedió y por qué.",
+        "title": "Trazabilidad Completa"
+      },
+      "transparency": {
+        "description": "Almacenamiento local, comunicación transparente con proveedores de IA y control completo sobre lo que se envía. Siempre ves el contexto antes de confirmar llamadas API.",
+        "title": "Transparencia y Control"
+      }
+    },
+    "whatWeBuilt": {
+      "environment": {
+        "description": "Integración de editor Monaco, sesiones de terminal persistentes con monitoreo de salud, transcripción de voz y búferes anillo SQLite de 5MB. Construido para flujos de trabajo de desarrollo reales.",
+        "title": "Entorno de Desarrollo Profesional"
+      },
+      "intro": "PlanToCode es un entorno integral de planificación de desarrollo diseñado para trabajo de desarrollo serio donde el contexto, la trazabilidad y las herramientas profesionales importan más que las interacciones rápidas con IA. Hemos construido un sistema para implementaciones complejas de múltiples pasos donde las herramientas tradicionales de IA se quedan cortas.",
+      "multiModel": {
+        "description": "Integración con GPT-5, Claude Sonnet 4 y Gemini 2.5 Pro. No solo llamadas API - orquestación inteligente con configuraciones específicas de proyecto, streaming en tiempo real y trazabilidad completa.",
+        "title": "Inteligencia Multi-Modelo"
+      },
+      "title": "Lo Que Construimos"
+    }
+  },
+  "comparisons": {
+    "hub": {
+      "badge": "Comparaciones de Herramientas",
+      "card": {
+        "badge": "Comparación",
+        "viewLink": "Ver comparación",
+        "whySwitchLabel": "Por qué los desarrolladores cambian:"
+      },
+      "cta": {
+        "button": "Prueba PlanToCode Gratis",
+        "footer": "$5 créditos gratis • Sin tarjeta de crédito requerida",
+        "subtitle": "Descubre por qué los desarrolladores están cambiando a PlanToCode para trabajo complejo y crítico.",
+        "title": "Experimenta la Diferencia"
+      },
+      "cursorNote": {
+        "link": "Aprende cómo PlanToCode complementa a Cursor →",
+        "strong": "¿Buscas una alternativa a Cursor?",
+        "text": "PlanToCode funciona con Cursor, no en su lugar."
+      },
+      "description": "Descubre cómo el enfoque de planificación arquitectónica de PlanToCode se compara con herramientas de terminal tradicionales, asistentes de codificación con IA y otros flujos de trabajo de desarrollo.",
+      "meta": {
+        "description": "Compara PlanToCode con tmux, script, asciinema, Cursor, Claude Code y otras herramientas de desarrollo. Descubre cómo la planificación arquitectónica mejora tu flujo de trabajo.",
+        "title": "PlanToCode vs Alternativas - Comparaciones de Características"
+      },
+      "title": "PlanToCode vs Alternativas",
+      "whatMakesDifferent": {
+        "architectural": {
+          "description": "El descubrimiento de archivos multi-etapa mapea toda la arquitectura de tu base de código antes de hacer cambios. La mayoría de las herramientas solo ven lo que les muestras.",
+          "title": "Conciencia Arquitectónica"
+        },
+        "humanInLoop": {
+          "description": "Revisa, edita y aprueba cada plan antes de la ejecución. Las sesiones de terminal persistentes te permiten pausar, investigar y reanudar en cualquier momento.",
+          "title": "Humano en el Bucle"
+        },
+        "multiModel": {
+          "description": "Genera planes desde múltiples modelos de IA (GPT-5, Claude 4.5, Gemini 2.5 Pro) y fusiona las mejores perspectivas. Las herramientas de un solo modelo pierden perspectivas.",
+          "title": "Planificación Multi-Modelo"
+        },
+        "title": "Qué Hace Diferente a PlanToCode"
+      }
+    }
+  },
+  "cursorAlternative": {
+    "comparison": {
+      "intro": "Esta no es una comparación competitiva—muestra cómo las herramientas se complementan entre sí:",
+      "table": {
+        "approval": {
+          "cursor": "No incorporado",
+          "name": "Flujos de Aprobación de Equipo",
+          "plan": "Pista de auditoría completa",
+          "together": "Aprueba en PlanToCode, implementa en Cursor"
+        },
+        "autocomplete": {
+          "cursor": "Líder de la industria",
+          "name": "Autocompletado e IntelliSense",
+          "plan": "No incluido",
+          "together": "Cursor maneja el autocompletado"
+        },
+        "capability": "Capacidad",
+        "chat": {
+          "cursor": "Excelente UX",
+          "name": "Interfaz de Chat",
+          "plan": "UI basada en tareas",
+          "together": "El chat de Cursor se siente natural"
+        },
+        "cursor": "Cursor",
+        "discovery": {
+          "cursor": "Indexación básica",
+          "name": "Descubrimiento y Análisis de Archivos",
+          "plan": "Flujo de trabajo avanzado",
+          "together": "PlanToCode encuentra archivos, Cursor los modifica"
+        },
+        "duplicates": {
+          "cursor": "No incorporado",
+          "name": "Prevención de Archivos Duplicados",
+          "plan": "Detectado durante revisión",
+          "together": "PlanToCode previene, Cursor ejecuta correctamente"
+        },
+        "multiModel": {
+          "cursor": "Un solo modelo por solicitud",
+          "name": "Síntesis Multi-Modelo",
+          "plan": "Compara y fusiona modelos",
+          "together": "Mejor plan de múltiples modelos → Cursor"
+        },
+        "planning": {
+          "cursor": "No disponible",
+          "name": "Planificación de Implementación",
+          "plan": "Característica principal",
+          "together": "PlanToCode guía a Cursor"
+        },
+        "plantocode": "PlanToCode",
+        "pricing": {
+          "cursor": "Suscripción de $20/mes",
+          "name": "Modelo de Precios",
+          "plan": "Pago por uso (sin suscripción)",
+          "together": "$20/mes + uso real ($5-15 típico)"
+        },
+        "review": {
+          "cursor": "Manual vía chat",
+          "name": "Revisión Pre-Ejecución",
+          "plan": "Flujo de trabajo incorporado",
+          "together": "Revisa en PlanToCode, ejecuta en Cursor"
+        },
+        "speed": {
+          "cursor": "Excelente",
+          "name": "Velocidad de Generación de Código",
+          "plan": "No incluido",
+          "together": "Cursor maneja la generación"
+        },
+        "together": "Mejor Juntos"
+      },
+      "title": "Comparación de Características: Fortalezas Complementarias"
+    },
+    "faq": {
+      "q1": {
+        "answer": "No, PlanToCode no es un reemplazo de Cursor. Es una herramienta complementaria que funciona junto a Cursor. Mientras Cursor sobresale en generación de código y autocompletado, PlanToCode agrega una capa de seguridad a través de planificación de implementación. Usa Cursor para velocidad, PlanToCode para seguridad.",
+        "question": "¿Es PlanToCode una alternativa o reemplazo de Cursor?"
+      },
+      "q2": {
+        "answer": "Usar ambas herramientas juntas previene problemas comunes de Cursor: creación de archivos duplicados, rutas de archivo incorrectas (especialmente en proyectos multi-workspace), modificaciones inesperadas de archivos y errores de producción por cambios no revisados. La fase de planificación de PlanToCode detecta estos problemas antes de la ejecución.",
+        "question": "¿Qué problemas resuelve usar Cursor y PlanToCode juntos?"
+      },
+      "q3": {
+        "answer": "El flujo de trabajo es: 1) Genera un plan de implementación archivo por archivo en PlanToCode, 2) Revisa y aprueba el plan (detectando errores de ruta o duplicados), 3) Pega el plan aprobado en Cursor Agent o Composer, 4) Deja que Cursor ejecute la generación de código con contexto arquitectónico claro.",
+        "question": "¿Cómo uso PlanToCode con Cursor?"
+      },
+      "q4": {
+        "answer": "Cursor cuesta $20/mes por suscripción. PlanToCode usa precios de pago por uso sin suscripción. Costo total: $20/mes para Cursor + tu uso real de API en PlanToCode (típicamente $5-15/mes para uso regular). Muchos desarrolladores encuentran esto más barato que lidiar con horas de limpieza de archivos duplicados.",
+        "question": "¿Cómo es el precio combinado?"
+      },
+      "q5": {
+        "answer": "Absolutamente. Cursor funciona excelente de forma independiente para proyectos pequeños, desarrollo greenfield y prototipos rápidos. Agrega PlanToCode cuando trabajes en bases de código grandes (50k+ LOC), refactorizaciones complejas, entornos de equipo que requieren aprobaciones, o si has experimentado problemas de archivos duplicados.",
+        "question": "¿Puedo usar Cursor sin PlanToCode?"
+      },
+      "q6": {
+        "answer": "Sí. Genera tu plan de implementación en PlanToCode, revísalo, luego pega el plan aprobado en Cursor Agent Terminal o proporciónalo a Background Agents. Ejecutarán con contexto arquitectónico completo, previniendo errores comunes de ruta y duplicación.",
+        "question": "¿Funciona PlanToCode con Cursor Agent y Background Agents?"
+      },
+      "q7": {
+        "answer": "La fase de planificación agrega 3-5 minutos al principio pero ahorra horas de depuración, limpieza de archivos duplicados y correcciones de rutas. La mayoría de los desarrolladores reportan ahorros netos de tiempo, especialmente en tareas complejas en bases de código grandes. Para prototipos rápidos donde los errores son baratos de corregir, puedes omitir la planificación y usar Cursor solo.",
+        "question": "¿Usar ambas herramientas ralentizará mi flujo de trabajo?"
+      },
+      "q8": {
+        "answer": "Sí, absolutamente. PlanToCode no interfiere con el autocompletado de Cursor ni con ninguna otra característica de Cursor. Son herramientas separadas que funcionan juntas. Usa el autocompletado de Cursor para codificación normal, y cambia a PlanToCode cuando necesites planificación de implementación para cambios más grandes.",
+        "question": "¿Puedo seguir usando el autocompletado de Cursor con PlanToCode?"
+      },
+      "title": "Preguntas Frecuentes"
+    },
+    "finalCta": {
+      "description": "La respuesta no es reemplazar Cursor—es agregar la capa de seguridad que previene archivos duplicados, rutas incorrectas y errores de producción.",
+      "download": "Descargar PlanToCode (Gratis)",
+      "footer": "Descarga gratuita. Uso de API de pago por uso. Funciona con tu configuración existente de Cursor.",
+      "guide": "Leer Guía de Integración",
+      "title": "Deja de Buscar Alternativas a Cursor"
+    },
+    "gettingStarted": {
+      "guide": "Guía de Configuración: Cursor + PlanToCode",
+      "quickWins": {
+        "duplicates": "Detecta archivos duplicados antes de que se creen",
+        "existing": "Funciona con tu configuración existente de Cursor",
+        "paths": "Revisa rutas exactas de archivos antes de la ejecución",
+        "plan": "Primer plan generado en menos de 5 minutos",
+        "subscription": "No se requiere suscripción para PlanToCode",
+        "title": "Logros Rápidos"
+      },
+      "resources": {
+        "comparison": "Comparación Detallada de Herramientas",
+        "discovery": "Flujo de Trabajo de Descubrimiento de Archivos",
+        "documentation": "Documentación Completa",
+        "integration": "Guía de Integración con Cursor",
+        "title": "Recursos Gratuitos"
+      },
+      "step1": {
+        "cursor": "Descarga Cursor de cursor.sh ($20/mes después del periodo de prueba)",
+        "install": "Instala ambas en la misma máquina para un flujo de trabajo sin interrupciones",
+        "plan": "Descarga PlanToCode de nuestra página de descargas (gratis, uso de API de pago por uso)",
+        "title": "Paso 1: Instalar Ambas Herramientas"
+      },
+      "step2": {
+        "items": {
+          "1": "Abre tu proyecto en Cursor (para contexto) y PlanToCode (para planificación)",
+          "2": "En PlanToCode: Describe una tarea, ejecuta descubrimiento de archivos, genera plan de implementación",
+          "3": "Revisa el plan en el editor Monaco—verifica rutas de archivos, verifica que no haya duplicados",
+          "4": "Copia el plan aprobado",
+          "5": "En Cursor: Abre Agent Terminal o Composer, pega el plan, deja que Cursor ejecute",
+          "6": "Revisa el código generado por Cursor (arquitectura ya verificada)"
+        },
+        "title": "Paso 2: Prueba tu Primer Flujo de Trabajo Combinado"
+      },
+      "step3": {
+        "comparison": "Ver comparación detallada de cuándo usar qué herramienta",
+        "docs": "Explora la documentación de planificación de implementación para mejores prácticas",
+        "integration": "Lee nuestra guía de integración con Cursor para flujos de trabajo detallados",
+        "title": "Paso 3: Aprende Flujos de Trabajo Avanzados"
+      },
+      "title": "Comenzando con Ambas Herramientas"
+    },
+    "hero": {
+      "badge": "No un reemplazo—un compañero de seguridad",
+      "download": "Descargar PlanToCode (Gratis)",
+      "guide": "Ver Guía de Integración con Cursor",
+      "subtitle": "Deja de buscar alternativas a Cursor. La solución real no es reemplazar Cursor—es agregar una capa de seguridad que previene archivos duplicados, rutas incorrectas y errores de producción antes de que ocurran.",
+      "title": "¿Alternativa a Cursor?",
+      "titleHighlight": "No—Tu Compañero de Seguridad para Cursor"
+    },
+    "meta": {
+      "description": "¿No buscas un reemplazo para Cursor? PlanToCode funciona CON Cursor para prevenir archivos duplicados, rutas incorrectas y errores de producción. Usa ambos juntos.",
+      "title": "Compañero de Seguridad para Cursor - No Alternativa"
+    },
+    "prevention": {
+      "bugs": {
+        "generate": "Enfoque Generar-Primero de Cursor: Los cambios se aplican inmediatamente. Podrías no notar que Cursor modificó utils/helpers.ts lo cual rompe 15 otros archivos. Descubres la rotura en producción o durante las pruebas.",
+        "plan": "Enfoque Planificar-Primero de PlanToCode: El plan muestra todas las modificaciones de archivos antes de la ejecución. Ves que utils/helpers.ts cambiará. Ejecutas análisis de dependencias. Te das cuenta de que 15 archivos dependen de él. Ajustas el plan en consecuencia.",
+        "title": "Prevención de Errores de Producción"
+      },
+      "duplicates": {
+        "generate": "Enfoque Generar-Primero de Cursor: La IA genera código inmediatamente. Si no puede encontrar el archivo correcto o se confunde con nombres similares, crea un nuevo archivo. Descubres duplicados después de la generación.",
+        "plan": "Enfoque Planificar-Primero de PlanToCode: El plan enumera rutas exactas de archivos antes de cualquier generación de código. Ves components/Button.tsx y components/ui/Button.tsx en el plan. Detectas el problema de nomenclatura duplicada durante la revisión.",
+        "title": "Prevención de Archivos Duplicados"
+      },
+      "intro": "Los problemas que los desarrolladores experimentan con Cursor no son aleatorios—son consecuencias predecibles de flujos de trabajo generar-primero. Así es como planificar-primero previene cada uno:",
+      "paths": {
+        "generate": "Enfoque Generar-Primero de Cursor: Especialmente en proyectos multi-workspace, Cursor puede generar código en el workspace incorrecto o usar rutas relativas incorrectamente. Descubres errores de ruta cuando el código no se ejecuta.",
+        "plan": "Enfoque Planificar-Primero de PlanToCode: El descubrimiento de archivos muestra la estructura completa del repositorio. Los planes usan rutas absolutas. Verificas que las rutas coincidan con tu estructura real durante la fase de revisión. Cursor obtiene las rutas correctas del plan.",
+        "title": "Prevención de Rutas de Archivo Incorrectas"
+      },
+      "scope": {
+        "generate": "Enfoque Generar-Primero de Cursor: Al pedir \"agregar toggle de modo oscuro,\" Cursor podría también refactorizar todo tu sistema de temas, actualizar 30 componentes y cambiar tu arquitectura CSS. Descubres la explosión de alcance después de la generación.",
+        "plan": "Enfoque Planificar-Primero de PlanToCode: El plan muestra \"Cambios: 47 archivos incluyendo refactorización completa de temas.\" Ves el alcance inmediatamente. Refinas el prompt: \"Solo agrega un componente toggle, sin refactorización.\" Regeneras el plan. Ahora son 3 archivos. Apruebas y ejecutas.",
+        "title": "Prevención de Expansión de Alcance"
+      },
+      "title": "Por Qué Planificar-Primero Previene Problemas Comunes de Cursor"
+    },
+    "problem": {
+      "bugs": {
+        "description": "Cambios aplicados directamente sin revisión, rompiendo código de producción sin ruta clara de reversión.",
+        "source": "— Queja común en bases de código grandes",
+        "title": "Errores de Producción"
+      },
+      "duplicates": {
+        "description": "\"¿Por qué Cursor crea estructura de archivos duplicada? He abandonado proyectos completamente debido a duplicados acumulados.\"",
+        "source": "— Foro de Cursor #47028 (14+ respuestas)",
+        "title": "Caos de Archivos Duplicados"
+      },
+      "insight": "Aquí está la perspectiva: Estos no son errores de Cursor—son inherentes al enfoque generar-primero, revisar-después. La solución no es un generador de código diferente. Es agregar una capa de seguridad planificar-primero.",
+      "intro": "No estás buscando una alternativa a Cursor porque Cursor sea malo en generación de código. Estás buscando porque has experimentado uno (o todos) estos problemas:",
+      "paths": {
+        "description": "\"Cursor se equivoca con las rutas de archivos muy a menudo, casi siempre con múltiples workspaces.\"",
+        "source": "— Issue de Cursor #31402",
+        "title": "Errores de Ruta Incorrecta"
+      },
+      "title": "Por Qué los Desarrolladores Buscan \"Alternativa a Cursor\"",
+      "unexpected": {
+        "description": "\"Aplicar actualización de código del chat crea un nuevo archivo en lugar de modificar el existente.\"",
+        "source": "— Issue de Cursor #22347",
+        "title": "Creación Inesperada de Archivos"
+      }
+    },
+    "testimonials": {
+      "enterprise": {
+        "quote": "Nuestro equipo de cumplimiento requiere que todos los cambios de IA sean revisados por un ingeniero senior antes de la ejecución. PlanToCode nos da el flujo de trabajo de aprobación que necesitamos. Los desarrolladores junior generan planes, los seniors revisan y aprueban, luego los juniors pegan planes aprobados en Cursor. Todos contentos.",
+        "title": "Equipo Empresarial, Base de Código Legacy (400k LOC)",
+        "tools": "Herramientas: Cursor Pro para 8 desarrolladores ($160/mes) + servidor auto-alojado de PlanToCode"
+      },
+      "freelancer": {
+        "quote": "Cobro a los clientes por hora. No puedo permitirme pasar 2 horas limpiando archivos duplicados. PlanToCode detecta todo durante la fase de revisión de 5 minutos. Muestro a los clientes el plan para aprobación, ven exactamente por qué están pagando, luego ejecuto en Cursor. Super profesional.",
+        "title": "Freelancer, Proyectos de Clientes",
+        "tools": "Herramientas: Cursor Pro ($20/mes) + PlanToCode (~$6/mes de uso)"
+      },
+      "intro": "Estos flujos de trabajo muestran cómo los desarrolladores usan ambas herramientas juntas:",
+      "solo": {
+        "quote": "Obtenía archivos duplicados constantemente en mi monorepo. Cursor creaba packages/api/auth.ts y packages/api/src/auth.ts. Ahora genero el plan en PlanToCode, verifico que las rutas sean correctas, luego pego en Cursor Agent. Cero duplicados desde el cambio.",
+        "title": "Desarrollador Solo, Monorepo (120k LOC)",
+        "tools": "Herramientas: Cursor Pro ($20/mes) + PlanToCode (~$8/mes de uso)"
+      },
+      "startup": {
+        "quote": "Los errores de ruta de Cursor en proyectos multi-workspace nos estaban matando. El descubrimiento de archivos de PlanToCode muestra la estructura completa a través de todos los workspaces. Verifico rutas en el plan, luego Cursor ejecuta perfectamente porque tiene el contexto correcto.",
+        "title": "CTO de Startup, Proyecto Multi-Workspace",
+        "tools": "Herramientas: Cursor Pro ($20/mes) + PlanToCode (~$12/mes de uso)"
+      },
+      "title": "Usuarios Reales de Cursor Que Agregaron PlanToCode"
+    },
+    "twist": {
+      "complement": "PlanToCode no reemplaza a Cursor. Agrega la pieza faltante: planificación de implementación antes de la ejecución. Piénsalo como una capa de seguridad que detecta errores antes de que se conviertan en código.",
+      "cursorFor": {
+        "autocomplete": "Autocompletado inteligente",
+        "commands": "Comandos en lenguaje natural",
+        "ide": "Integración con IDE",
+        "prototypes": "Prototipos rápidos",
+        "speed": "Velocidad de generación de código",
+        "title": "Usa Cursor Para:"
+      },
+      "planFor": {
+        "approval": "Flujos de trabajo de aprobación de equipo",
+        "duplicates": "Prevenir archivos duplicados",
+        "paths": "Detectar errores de ruta temprano",
+        "planning": "Planificación de implementación",
+        "review": "Revisión antes de la ejecución",
+        "title": "Usa PlanToCode Para:"
+      },
+      "strength": "Cursor es excelente en lo que hace: generación de código ultrarrápida, autocompletado inteligente e interfaces de chat intuitivas. Pero genera código inmediatamente, lo cual es tanto su fortaleza como su debilidad.",
+      "title": "El Giro: PlanToCode No Es un Reemplazo"
+    },
+    "whenToUse": {
+      "enterprise": {
+        "cursor": "Usa Cursor para Contribuidores Individuales",
+        "cursorDesc": "Los desarrolladores usan Cursor diariamente. Los planes de PlanToCode guían su trabajo.",
+        "plan": "Usa PlanToCode para Flujos de Trabajo de Aprobación",
+        "planDesc": "Las partes interesadas revisan planes antes de la ejecución. Pista de auditoría para cumplimiento y gobernanza.",
+        "title": "Entornos de Equipo y Empresariales"
+      },
+      "greenfield": {
+        "cursor": "Usa Cursor de Forma Independiente",
+        "cursorDesc": "Proyectos nuevos con estructura simple donde puedes detectar errores rápidamente. La organización de archivos aún no es compleja.",
+        "plan": "PlanToCode Opcional",
+        "planDesc": "No crítico para proyectos pequeños con estructura clara.",
+        "title": "Proyectos Greenfield y Prototipos Rápidos"
+      },
+      "large": {
+        "cursor": "Ejecuta con Cursor",
+        "cursorDesc": "Pega el plan aprobado en Cursor Agent. Déjalo manejar la generación de código con contexto claro.",
+        "plan": "Comienza con Planificación de PlanToCode",
+        "planDesc": "Genera plan archivo por archivo, detecta rutas incorrectas y duplicados durante la fase de revisión.",
+        "title": "Bases de Código Grandes/Legacy (50k+ LOC)"
+      },
+      "medium": {
+        "cursor": "Usa Cursor para Implementación",
+        "cursorDesc": "Aún suficientemente rápido para revisar cambios manualmente. El buen autocompletado ahorra tiempo.",
+        "plan": "Agrega PlanToCode para Tareas Complejas",
+        "planDesc": "Usa planificación para refactorizaciones, cambios multi-paquete, o cuando hayas encontrado errores de ruta.",
+        "title": "Bases de Código Medianas (10k-50k LOC)"
+      },
+      "title": "Cuándo Usar Cursor vs PlanToCode (Lado a Lado)"
+    },
+    "workflow": {
+      "combined": "Flujo de Trabajo Combinado: Planificar → Ejecutar → Revisar",
+      "example": {
+        "title": "Ejemplo Real: Refactorización del Sistema de Autenticación",
+        "with": "Con PlanToCode: Genera plan mostrando los 12 archivos que necesitan cambios. Detecta que el plan inicial de Cursor omitió 3 rutas API. Aprueba plan corregido. Pega en Cursor. Hecho en 30 minutos, cero duplicados.",
+        "without": "Sin PlanToCode: Pide a Cursor \"refactorizar auth para usar JWT en lugar de sesiones.\" Cursor crea auth-new.ts, middleware/auth.ts (duplicado), omite actualizar api/login.ts. Pasa 2 horas arreglando."
+      },
+      "intro": "El flujo de trabajo más efectivo combina ambas herramientas, usando cada una para lo que hace mejor:",
+      "step1": {
+        "catch": "Lo que detectas: Rutas de archivo incorrectas, archivos duplicados, dependencias faltantes, expansión de alcance",
+        "description": "Describe tu tarea (voz o texto), ejecuta descubrimiento de archivos para encontrar todos los archivos impactados, genera planes de implementación desde múltiples modelos de IA (Claude, GPT, Gemini).",
+        "title": "Planifica en PlanToCode"
+      },
+      "step2": {
+        "description": "Abre el plan en el editor Monaco. Verifica que las rutas exactas de archivos coincidan con la estructura de tu repositorio. Verifica duplicados. Edita cualquier paso que necesite refinamiento. Fusiona planes de diferentes modelos si es necesario.",
+        "gate": "Puerta de seguridad: Nada sucede sin tu aprobación explícita",
+        "title": "Revisa y Aprueba"
+      },
+      "step3": {
+        "alternative": "Alternativa: Ejecuta directamente en la terminal integrada de PlanToCode con registro completo",
+        "description": "Copia el plan aprobado. Pégalo en Cursor Agent Terminal o Composer. Cursor ahora tiene contexto arquitectónico completo—sabe exactamente qué archivos modificar, qué cambiar y por qué.",
+        "title": "Ejecuta en Cursor"
+      },
+      "step4": {
+        "description": "Cursor genera el código siguiendo tu plan aprobado. Revisa la implementación real. Como ya aprobaste la arquitectura, solo estás verificando calidad de código—no detectando errores estructurales.",
+        "saved": "Tiempo ahorrado: Sin limpieza de archivos duplicados, sin correcciones de rutas, sin reelaboración arquitectónica",
+        "title": "Revisa Implementación"
+      },
+      "title": "Cómo Usar Cursor + PlanToCode Juntos"
+    }
+  },
+  "demo": {
+    "cta": {
+      "button": "Ver Todas las Capturas de Pantalla",
+      "description": "Explora capturas de pantalla reales de flujos de trabajo reales - descubrimiento de archivos, planes de implementación, sesiones de terminal y más.",
+      "title": "¿Quieres Ver Más?"
+    },
+    "hero": {
+      "screenshots": "Ver Capturas de Pantalla Reales",
+      "subtitle": "Descubre cómo PlanToCode planifica y ejecuta cambios de código.",
+      "title": "Demo interactiva",
+      "video": "Ver Demo Corta"
+    },
+    "meta": {
+      "description": "Descubre cómo PlanToCode planifica y ejecuta cambios de código.",
+      "title": "Demo interactiva"
+    }
+  },
+  "downloads": {
+    "cta": {
+      "architect": "Habla con un arquitecto",
+      "docs": "Documentación de terminal",
+      "footer": "Hecho en Alemania • Cumple GDPR • Almacenamiento Local de Sesiones",
+      "professional": "Opciones profesionales",
+      "title": "¿Listo para Subir de Nivel?"
+    },
+    "hero": {
+      "subtitle": "Planifica cambios de código con una herramienta - encuentra archivos relevantes, genera y fusiona planes, y ejecuta comandos en una terminal persistente.",
+      "title": "Descargar PlanToCode"
+    },
+    "macos": {
+      "professional": {
+        "description": "Completamente notarizado por Apple. Firmado con código. Terminal integrada con auto-detección CLI y persistencia de sesión.",
+        "title": "Listo para Profesionales"
+      },
+      "requirements": {
+        "internet": "Conexión a internet requerida para características de IA",
+        "os": "macOS 11.0 (Big Sur) o posterior",
+        "processor": "Procesador Apple Silicon (M1/M2/M3/M4)",
+        "ram": "4GB RAM mínimo (8GB recomendado)",
+        "title": "Requisitos del Sistema"
+      },
+      "subtitle": "Para Usuarios Intensivos de Agentes de Código",
+      "title": "macOS"
+    },
+    "meta": {
+      "description": "Descarga PlanToCode para macOS y Windows. $5 créditos gratis. Planifica cambios multi-archivo con IA, revisa antes de ejecutar. Sin tarjeta de crédito requerida.",
+      "title": "Descargar PlanToCode - macOS y Windows | Prueba Gratis"
+    },
+    "mobile": {
+      "button": "Próximamente en App Store",
+      "connected": {
+        "description": "Únete a nuestra lista de espera para ser notificado cuando lance la app iOS. Acceso anticipado para usuarios intensivos de agentes de código.",
+        "title": "Mantente Conectado"
+      },
+      "features": {
+        "design": "Lenguaje de diseño nativo de iOS/iPadOS",
+        "monitor": "Monitorea sesiones de terminal remotamente",
+        "review": "Revisa y edita planes de implementación sobre la marcha",
+        "sync": "Sincroniza con workspace de escritorio sin problemas",
+        "title": "Características Planificadas",
+        "voice": "Transcripción de voz para captura rápida de ideas"
+      },
+      "subtitle": "Próximamente para iPhone e iPad",
+      "title": "App Móvil iOS"
+    },
+    "trust": {
+      "planning": {
+        "description": "GPT-5, Claude Sonnet 4, Gemini 2.5 Pro, o3/o4-mini, Grok 4, DeepSeek R1, Kimi K2. Enfoque de Consejo de LLMs.",
+        "title": "Planificación Multi-Modelo"
+      },
+      "pricing": {
+        "description": "Comienza inmediatamente. Pago por uso. Sin suscripciones. Transparencia de tokens para usuarios avanzados que rastrean costos.",
+        "title": "Precios Basados en Uso"
+      },
+      "professional": {
+        "description": "Servidores mono-inquilino. Despliegue on-premise. Gobernanza de terminal. Construido para equipos que no pueden usar solo la nube.",
+        "title": "Opciones Profesionales"
+      },
+      "terminal": {
+        "description": "Ejecuta claude, cursor, codex o gemini directamente. La transcripción de voz está disponible, y los registros persisten localmente para que puedas reanudar el trabajo sin cambio de contexto.",
+        "title": "Terminal Integrada"
+      },
+      "title": "Construido para Usuarios Intensivos de Agentes de Código"
+    },
+    "windows": {
+      "integration": {
+        "description": "Soporte para PowerShell y Command Prompt. Ejecuta claude, cursor, codex o gemini con monitoreo de salud y recuperación.",
+        "title": "Integración de Terminal"
+      },
+      "requirements": {
+        "internet": "Conexión a internet requerida para características de IA",
+        "os1": "Windows 10 versión 1903 (Build 18362) o posterior",
+        "os2": "Windows 11 soportado",
+        "processor": "Procesador x64 o ARM64",
+        "ram": "4GB RAM mínimo (8GB recomendado)",
+        "title": "Requisitos del Sistema"
+      },
+      "subtitle": "Microsoft Store - Listo para Profesionales",
+      "title": "Windows"
+    }
+  },
+  "howItWorks": {
+    "cta": {
+      "links": {
+        "demo": "Prueba la demo interactiva",
+        "docs": "Ver documentación",
+        "planning": "Aprende sobre edición de planes"
+      },
+      "subtitle": "Desde captura de reuniones hasta ejecución segura—el flujo de trabajo completo para equipos corporativos que adoptan agentes de código con IA con confianza. Captura requisitos de cualquier fuente, refina con IA, genera planes granulares, revisa con control completo y ejecuta de forma segura.",
+      "title": "¿Listo para Transformar Tu Flujo de Trabajo de Desarrollo Corporativo?"
+    },
+    "demo": {
+      "button": "Prueba la Demo Interactiva",
+      "description": "Mira la demo interactiva para ver el flujo de trabajo completo",
+      "title": "Véalo en Acción"
+    },
+    "hero": {
+      "badge": "Flujo de Trabajo Profesional de Planificación con IA",
+      "subtitle": "Desde captura de reuniones hasta ejecución segura—el flujo de trabajo completo de desarrollo corporativo con IA",
+      "title": "Cómo funciona"
+    },
+    "keyFeatures": {
+      "deploy": {
+        "description": "Usa el servidor proxy Rust incluido con tus propias claves API cuando necesites mantener las solicitudes en infraestructura que controlas.",
+        "title": "Despliega en tus términos"
+      },
+      "governance": {
+        "description": "Revisa cada plan antes de la ejecución. Edita enfoques, fusiona estrategias, aprueba o rechaza. La IA asiste, los humanos controlan. Construido para equipos donde la calidad del código importa.",
+        "title": "Gobernanza Humano-en-el-Bucle"
+      },
+      "sessions": {
+        "description": "La salida del terminal se almacena localmente y las sesiones se restauran al iniciar. Cierra la app, vuelve la próxima semana, continúa depurando.",
+        "title": "Sesiones Persistentes"
+      },
+      "title": "Por Qué los Equipos Corporativos Eligen Este Flujo de Trabajo"
+    },
+    "meta": {
+      "description": "La planificación de implementación con IA previene el caos. Descubrimiento de archivos, planes multi-modelo, revisión humana y ejecución segura con cualquier agente de código.",
+      "title": "Cómo Funciona - Flujo de Trabajo de Planificación con IA"
+    },
+    "useCases": {
+      "bugs": {
+        "description": "Graba capturas de pantalla de errores, obtén análisis de IA, genera planes de depuración, ejecuta con control completo de terminal.",
+        "items": {
+          "persistent": "Registro de terminal persistente",
+          "systematic": "Enfoques sistemáticos de depuración",
+          "visual": "Contexto visual con grabación de pantalla"
+        },
+        "title": "Investigación de Errores Complejos"
+      },
+      "features": {
+        "description": "Características multi-archivo que requieren planificación cuidadosa. Genera múltiples enfoques, fusiona las mejores partes, edita para tu base de código específica.",
+        "items": {
+          "api": "Diseño e integración de API",
+          "cross": "Implementación de características entre componentes",
+          "schema": "Cambios de esquema de base de datos"
+        },
+        "title": "Desarrollo de Características Grandes"
+      },
+      "legacy": {
+        "description": "La IA entiende patrones legacy y deuda técnica. Genera planes seguros de refactorización, actualizaciones de bibliotecas y mejoras arquitectónicas.",
+        "items": {
+          "breaking": "Planes de migración de cambios importantes",
+          "cleanup": "Limpieza de deuda técnica",
+          "dependency": "Estrategias de actualización de dependencias"
+        },
+        "title": "Mantenimiento de Base de Código Legacy"
+      },
+      "professional": {
+        "description": "Aprobaciones de comandos, retención de sesiones, despliegue mono-inquilino. Construido para equipos donde un comando incorrecto cuesta millones.",
+        "items": {
+          "audit": "Pistas de auditoría completas",
+          "governance": "Gobernanza y aprobaciones de terminal",
+          "onprem": "Opciones de despliegue on-premise"
+        },
+        "title": "Desarrollo Profesional"
+      },
+      "title": "Construido para Equipos de Desarrollo Corporativos"
+    },
+    "workflow": {
+      "step1": {
+        "description": "Comienza capturando requisitos iniciales de múltiples fuentes. Sube grabaciones de reuniones de Microsoft Teams para análisis multimodal, graba presentaciones de pantalla para capturar contexto visual, o usa dictado de voz para captura rápida de ideas. Todos los métodos de entrada alimentan el mismo flujo de trabajo de refinamiento.",
+        "meetings": {
+          "description": "Sube reuniones de Teams. La IA multimodal analiza transcripciones de audio (con identificación de hablante) y contenido visual (pantallas compartidas, documentos) para extraer requisitos, decisiones y elementos de acción.",
+          "title": "Grabaciones de Reuniones"
+        },
+        "screen": {
+          "description": "Graba flujos de trabajo, errores o presentaciones de UI. Gemini Vision analiza tanto narración de audio como contenido visual para capturar contexto completo para recopilación de requisitos.",
+          "title": "Grabaciones de Pantalla"
+        },
+        "subtitle": "Grabaciones de reuniones, capturas de pantalla y dictado de voz",
+        "title": "Captura Ideas y Contexto",
+        "voice": {
+          "description": "Habla requisitos naturalmente. OpenAI Whisper transcribe con inserción de texto inteligente e identificación de hablante para captura rápida de especificaciones.",
+          "title": "Dictado de Voz"
+        }
+      },
+      "step2": {
+        "description": "Transforma transcripciones crudas de reuniones, grabaciones de voz y notas aproximadas en especificaciones claras y listas para implementación usando dos tipos distintos de prompts de IA que trabajan juntos para asegurar tanto claridad como completitud.",
+        "subtitle": "Dos tipos de prompts de IA para claridad y completitud",
+        "taskRefinement": {
+          "description": "Expande descripciones de tareas identificando requisitos implícitos, llenando vacíos pasados por alto, aclarando comportamiento esperado y casos límite, y agregando consideraciones técnicas para preparación de implementación.",
+          "title": "Refinamiento de Tareas"
+        },
+        "textEnhancement": {
+          "description": "Mejora gramática, estructura de oraciones, claridad y concisión mientras mantiene tu intención original, tono y nivel de detalle técnico. Perfecto para pulir transcripciones de voz y notas de reuniones.",
+          "title": "Mejora de Texto"
+        },
+        "title": "Refina en Especificaciones Accionables"
+      },
+      "step3": {
+        "description": "El descubrimiento de archivos con IA identifica archivos relevantes en tu base de código. Múltiples modelos de IA generan planes de implementación con granularidad archivo por archivo—rutas exactas de archivos, rangos específicos de líneas y tipos claros de operación (modificar/crear/eliminar). Esta granularidad hace que la evaluación de impacto sea cristalina.",
+        "features": {
+          "dependencies": "Análisis de dependencias y evaluación de impacto",
+          "models": "Soporte multi-modelo (GPT-5, Claude 4, Gemini 2.5 Pro)",
+          "multiple": "Generación de múltiples planes para comparación de enfoques",
+          "operations": "Tipos claros de operación (modificar, crear, eliminar)",
+          "paths": "Rutas exactas de archivos de la estructura de tu repositorio",
+          "ranges": "Rangos específicos de líneas y detalles de modificación"
+        },
+        "subtitle": "Planes archivo por archivo con rutas exactas de repositorio",
+        "title": "Genera Planes de Implementación Granulares"
+      },
+      "step4": {
+        "capabilities": {
+          "approve": "Aprobar para ejecución o rechazar con pista de auditoría",
+          "editing": "Edición directa de todos los pasos y detalles del plan",
+          "editor": "Editor profesional Monaco con resaltado de sintaxis",
+          "merge": "Fusionar múltiples planes con instrucciones personalizadas",
+          "modifications": "Solicitar modificaciones o enfoques alternativos",
+          "visibility": "Visibilidad completa de los cambios propuestos"
+        },
+        "description": "Los planes se abren en el editor Monaco para revisión integral. Los líderes de equipo examinan cada cambio propuesto, editan pasos directamente, fusionan múltiples enfoques con instrucciones personalizadas, o rechazan planes completamente. No ocurren cambios de código sin aprobación humana explícita—asegurando alineación con requisitos corporativos y flujos de trabajo de equipo.",
+        "subtitle": "Control completo antes de cualquier cambio de código",
+        "title": "Revisa, Edita y Aprueba (Humano-en-el-Bucle)"
+      },
+      "step5": {
+        "description": "Después de la aprobación, transmite de forma segura el plan a tu agente de código elegido (Claude Code, Cursor, Codex) o desarrollador de software asignado. La granularidad archivo por archivo previene regresiones y modificaciones no intencionadas—asegurando ejecución segura. Terminal integrada con sesiones persistentes permite ejecución inmediata y depuración.",
+        "subtitle": "Transferencia segura a desarrolladores o agentes de código",
+        "title": "Ejecuta con Confianza",
+        "tools": {
+          "audit": "Pista de auditoría completa de ejecución",
+          "claude": "CLI de Claude Code con soporte de modo plan",
+          "codex": "Ejecución CLI de OpenAI Codex",
+          "cursor": "Integración CLI de Cursor",
+          "sessions": "Sesiones de terminal persistentes con auto-recuperación",
+          "terminal": "Terminal integrada con transcripción de voz"
+        }
+      },
+      "title": "El Flujo de Trabajo Completo"
+    }
+  },
+  "planMode": {
+    "capabilities": {
+      "architect": {
+        "capability": "El arquitecto IA fusiona planes con tu guía",
+        "details": "Guía la fusión con tus requisitos arquitectónicos. La IA consolida detalles complementarios de múltiples ejecuciones en un plan integral"
+      },
+      "execution": {
+        "capability": "Ejecución con control completo",
+        "details": "Revisa el plan, verifica el alcance, luego ejecuta. O pega en el chat de tu IDE."
+      },
+      "know": {
+        "capability": "Sabe qué se cambiará antes de que suceda",
+        "details": "El descubrimiento de archivos muestra el impacto exacto. Ve qué archivos toca cada plan. Sin sorpresas.",
+        "link": "Ver cómo funciona"
+      },
+      "prompts": {
+        "capability": "Prompts de un clic que funcionan",
+        "details": "Botones de copia para tus prompts probados en batalla. No más volver a escribir \"hazlo type-safe\" 20 veces."
+      },
+      "title": "Lo que realmente obtienes"
+    },
+    "circumstances": {
+      "footer": "Estos no son \"puntos de dolor.\" Son momentos donde necesitas visibilidad y control antes de comprometerte con un enfoque. Eso es lo que construimos.",
+      "items": {
+        "breaks": {
+          "moment": "Tu cambio rompe tres servicios downstream, descubierto en producción",
+          "progress": "El descubrimiento de archivos mapea todas las dependencias por adelantado, detecta impactos temprano"
+        },
+        "drift": {
+          "moment": "La IA se desvía de tus requisitos, construye lo que cree que quieres",
+          "progress": "El arquitecto IA mantiene planes alineados con tus objetivos reales, sin desviación"
+        },
+        "plans": {
+          "moment": "Un plan detecta casos límite, otro maneja estados de error, el tercero agrega tipos",
+          "progress": "El arquitecto IA combina perspectivas complementarias en implementación completa"
+        },
+        "symptom": {
+          "moment": "La IA arregla el síntoma en /components, omite la causa en /config",
+          "progress": "Guíala a la capa de abstracción correcta con descubrimiento de archivos"
+        }
+      },
+      "title": "Cuando la IA necesita contexto arquitectónico"
+    },
+    "cta": {
+      "book": "Reservar sesión con arquitecto",
+      "demo": "Prueba la demo interactiva primero",
+      "pricing": "Créditos de pago por uso. $5 gratis promocionales para nuevos usuarios. Sin suscripciones.",
+      "subtitle": "Únete a los desarrolladores que envían grandes cambios con claridad, trazabilidad y confiabilidad operacional.",
+      "title": "¿Listo para contratar a tu arquitecto?"
+    },
+    "faq": {
+      "q1": {
+        "answer": "PlanToCode proporciona pre-planificación arquitectónica **antes** de que uses Codex, Claude Code o Cursor. Agrega descubrimiento de archivos, síntesis multi-modelo e instrucciones de fusión que complementan la fase de ejecución de esas herramientas.",
+        "question": "¿En qué se diferencia esto de Codex CLI o Claude Code?"
+      },
+      "q2": {
+        "answer": "Sí. PlanToCode funciona junto a Codex CLI, Claude Code, Cursor y Windsurf. Genera planes en PlanToCode, luego ejecuta en tu herramienta preferida con contexto completo.",
+        "question": "¿Puedo usar esto con mi herramienta de código con IA existente?"
+      },
+      "q3": {
+        "answer": "Ejecuta la misma tarea múltiples veces con diferentes modelos de IA. Cada ejecución revela diferentes detalles de implementación. PlanToCode los fusiona en un plan integral con atribución de origen.",
+        "question": "¿Qué significa síntesis multi-modelo?"
+      },
+      "title": "Preguntas Frecuentes"
+    },
+    "hero": {
+      "badge": "Para desarrolladores que revisan antes de ejecutar",
+      "credits": "$5 créditos gratis • Pago por uso • Funciona con cualquier herramienta de código con IA",
+      "guidance": "Ve el alcance completo, guíala a los archivos correctos, elige el enfoque que se ajusta a tu sistema.",
+      "insight": "Los modelos más nuevos y avanzados son brillantes en código, ciegos a la arquitectura.",
+      "install": "Instalar PlanToCode",
+      "subtitle": "No puedes posiblemente recordar mencionar cada webhook, caché, trabajo en segundo plano y consumidor de API que depende de esa función. Así es como las regresiones se cuelan.",
+      "title": "Planificación Arquitectónica para Codex CLI, Claude Code y Cursor"
+    },
+    "integrations": {
+      "claude": {
+        "description": "Mejora el modo Plan nativo de Claude Code con síntesis multi-modelo, descubrimiento de archivos e instrucciones de fusión.",
+        "link": "Abrir la guía de flujo de trabajo de planificación de Claude Code",
+        "title": "Flujo de trabajo de planificación de Claude Code"
+      },
+      "codex": {
+        "description": "Mapea cada dependencia, fusiona planes multi-modelo, luego ejecuta con modos de aprobación de Codex para iteración segura.",
+        "link": "Abrir la guía de flujo de trabajo de planificación de Codex CLI",
+        "title": "Flujo de trabajo de planificación de Codex CLI"
+      },
+      "cursor": {
+        "description": "Da a Cursor Composer y modo Agent contexto arquitectónico completo con barreras de ejecución amigables con WSL.",
+        "link": "Abrir la guía de flujo de trabajo de planificación de Cursor",
+        "title": "Flujo de trabajo de planificación de Cursor"
+      },
+      "title": "Elige tu flujo de trabajo de planificación CLI"
+    },
+    "meta": {
+      "description": "Planifica cambios de software antes de codificar. Genera especificaciones de implementación archivo por archivo, revisa con tu equipo, luego ejecuta con visibilidad y gobernanza completas.",
+      "title": "Planifica Antes de Codificar - Especificaciones Revisables"
+    },
+    "progress": {
+      "execute": {
+        "description": "Ve el alcance exacto antes de ejecutar. Terminal integrada o pega en tu IDE",
+        "title": "Ejecuta con visibilidad completa"
+      },
+      "guide": {
+        "description": "Dile a la IA qué te gusta, qué evitar. Sigue tus decisiones arquitectónicas sorprendentemente bien",
+        "title": "Guía fusiones con tu experiencia"
+      },
+      "quote": "La IA genera el código. Tú arquitectas la solución.",
+      "ship": {
+        "description": "El arquitecto IA fusiona perspectivas complementarias de múltiples planes en implementación completa",
+        "title": "Envía características complejas con confianza"
+      },
+      "title": "El progreso que realmente haces"
+    },
+    "users": {
+      "cli": {
+        "quote": "Mi agente CLI omitía casos límite o rompía características existentes. Ahora el arquitecto IA detecta vacíos y regresiones en planes antes de que lleguen a mi base de código.",
+        "title": "Usuarios de agente CLI"
+      },
+      "ide": {
+        "quote": "Los agentes IDE carecen de contexto arquitectónico. Ahora mi arquitecto IA pre-planifica el enfoque correcto, considerando todos los impactos del sistema. Luego pego el plan validado en Cursor.",
+        "title": "Usuarios de Cursor y Windsurf"
+      },
+      "senior": {
+        "quote": "La IA seguía arreglando síntomas, no causas. Ahora la guío a la capa de abstracción correcta primero. El descubrimiento de archivos muestra la arquitectura real antes de que se escriba cualquier código.",
+        "title": "Ingenieros senior"
+      },
+      "title": "Quién está usando esto"
+    },
+    "whyNow": {
+      "ide": {
+        "detail": "Las populares herramientas de código con IA son brillantes a nivel micro. Necesitas algo que vea el macro.",
+        "reason": "Cada IDE tiene IA ahora"
+      },
+      "models": {
+        "detail": "Los modelos modernos son capaces. Pero no conocen **tu** arquitectura, **tus** patrones, **tus** restricciones.",
+        "reason": "Los modelos de IA escriben código excelente"
+      },
+      "systems": {
+        "detail": "Cambia el servicio de usuario, rompe la app móvil. Actualiza esta interfaz, afecta tres microservicios. La IA no ve estas conexiones.",
+        "reason": "Las bases de código son sistemas interconectados"
+      },
+      "title": "Por qué esto importa ahora"
+    },
+    "workflow": {
+      "discovery": {
+        "description": "El flujo de trabajo multi-etapa identifica los archivos correctos antes de planificar",
+        "step": "Descubrimiento de Archivos"
+      },
+      "execute": {
+        "description": "Ejecuta en terminal o pega en tu herramienta de código con IA",
+        "step": "Ejecutar"
+      },
+      "generate": {
+        "description": "Ejecuta múltiples modelos con diferentes perspectivas y barreras de tokens",
+        "step": "Generar Planes"
+      },
+      "link": "Ver flujo de trabajo detallado",
+      "merge": {
+        "description": "Proporciona instrucciones de fusión, la IA consolida detalles complementarios de múltiples ejecuciones",
+        "step": "IA Fusiona + Tú Guías"
+      },
+      "title": "Cómo funciona"
+    }
+  },
+  "schedule": {
+    "benefits": {
+      "review": {
+        "description": "Discute la integración con tus flujos de trabajo existentes de Claude Code, Cursor o Aider.",
+        "title": "Revisión de Arquitectura"
+      },
+      "session": {
+        "description": "Consultoría enfocada en los requisitos de tu equipo y cómo PlanToCode puede ayudar.",
+        "title": "Sesión de 30 Minutos"
+      },
+      "team": {
+        "description": "Aprende sobre características empresariales, gobernanza de terminal y opciones de despliegue.",
+        "title": "Soluciones para Equipos"
+      }
+    },
+    "footer": "¿No puedes encontrar un horario adecuado? Envíanos un correo a",
+    "hero": {
+      "subtitle": "Obtén orientación experta sobre el uso de PlanToCode para las necesidades específicas de tu equipo. Discutiremos patrones de arquitectura, estrategias de integración y opciones de despliegue.",
+      "title": "Habla con un Arquitecto"
+    },
+    "meta": {
+      "description": "Obtén orientación experta sobre el uso de PlanToCode para las necesidades específicas de tu equipo. Discutiremos patrones de arquitectura, estrategias de integración y opciones de despliegue.",
+      "title": "Habla con un Arquitecto"
+    },
+    "topics": {
+      "items": {
+        "cost": "Optimización de costos para equipos grandes",
+        "deployment": "Requisitos de despliegue on-premise",
+        "integration": "Integración con flujos de trabajo existentes de Claude Code/Cursor",
+        "orchestration": "Orquestación de terminal para pipelines CI/CD",
+        "planning": "Estrategias de planificación multi-modelo para código legacy",
+        "security": "Consideraciones de seguridad y cumplimiento"
+      },
+      "title": "Temas Comunes que Cubrimos"
+    }
+  },
+  "support": {
+    "button": "Contactar Soporte",
+    "hero": {
+      "subtitle": "Obtén ayuda con PlanToCode",
+      "title": "Soporte"
+    },
+    "meta": {
+      "description": "Obtén ayuda con instalación de PlanToCode, integración de Claude Code, Cursor y Codex. Solución de problemas y solicitudes de características. Tiempo de respuesta de 24h.",
+      "title": "Soporte de PlanToCode - Ayuda y Solución de Problemas"
+    },
+    "resources": {
+      "changelog": "Registro de Cambios",
+      "feedback": "Retroalimentación",
+      "help": "Centro de Ayuda",
+      "roadmap": "Hoja de Ruta",
+      "title": "Recursos de FeatureBase"
+    }
+  },
+  "workflows": {
+    "hub": {
+      "badge": "Flujos de Trabajo de Desarrollo con IA",
+      "card": {
+        "solves": "Resuelve:",
+        "viewLink": "Ver flujo de trabajo"
+      },
+      "cta": {
+        "downloadLink": "Descargar PlanToCode",
+        "subtitle": "Comienza con descubrimiento de archivos, genera planes integrales y ejecuta con confianza.",
+        "title": "¿Listo para Transformar Tu Flujo de Trabajo de Desarrollo?"
+      },
+      "description": "Descubre flujos de trabajo probados para tareas de desarrollo complejas. Cada flujo de trabajo combina descubrimiento de archivos, planificación multi-modelo y ejecución de terminal integrada para resolver desafíos reales de ingeniería.",
+      "meta": {
+        "description": "Flujos de trabajo de desarrollo con IA para tareas complejas. Integra con Claude Code, Cursor, Codex para refactorizaciones, triaje de errores y migraciones.",
+        "title": "Flujos de Trabajo de Código con IA - Patrones de Integración de PlanToCode"
+      },
+      "title": "Flujos de Trabajo de Desarrollo Potenciados por IA",
+      "toolCategories": {
+        "claudeCode": "Flujos de Trabajo de Claude Code",
+        "codexCli": "Flujos de Trabajo de Codex CLI",
+        "cursor": "Flujos de Trabajo de Cursor",
+        "general": "Flujos de Trabajo Generales"
+      }
+    }
+  }
+}

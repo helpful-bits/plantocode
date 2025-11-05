@@ -13,6 +13,8 @@ const LOCALE_LABELS: Record<Locale, string> = {
   de: 'Deutsch',
   es: 'Español',
   fr: 'Français',
+  ko: '한국어',
+  ja: '日本語',
 };
 
 const LOCALE_FLAGS: Record<Locale, string> = {
@@ -20,6 +22,8 @@ const LOCALE_FLAGS: Record<Locale, string> = {
   de: '🇩🇪',
   es: '🇪🇸',
   fr: '🇫🇷',
+  ko: '🇰🇷',
+  ja: '🇯🇵',
 };
 
 export function LanguageSwitch() {

@@ -1,1 +1,30 @@
-{}
+{
+  "regionSelector": {
+    "eu": {
+      "documents": "Comprend : Conditions, Confidentialité, Mentions légales, Sous-traitants, Politique de rétractation",
+      "features": [
+        "Droits à la protection des données RGPD",
+        "Période de rétractation de 14 jours",
+        "Droit allemand applicable",
+        "Protections du consommateur"
+      ],
+      "title": "Union européenne / Royaume-Uni"
+    },
+    "notice": {
+      "content": "PlanToCode n'est disponible que pour les résidents et les utilisateurs accédant depuis l'Union européenne/EEE, le Royaume-Uni et les États-Unis. L'accès depuis toutes les autres régions est restreint. Nous utilisons la géolocalisation IP, la vérification des paiements et d'autres méthodes pour appliquer ces restrictions. L'utilisation de VPN ou de proxy pour contourner les restrictions régionales est interdite.",
+      "title": "Avis de disponibilité du service"
+    },
+    "subtitle": "Choisissez votre région pour consulter les documents juridiques applicables",
+    "title": "Sélectionnez votre région",
+    "us": {
+      "documents": "Comprend : Conditions d'utilisation, Politique de confidentialité, Sous-traitants",
+      "features": [
+        "Droits à la confidentialité CCPA/État",
+        "Droit américain applicable",
+        "Processus DMCA",
+        "Conditions commerciales standard"
+      ],
+      "title": "États-Unis"
+    }
+  }
+}
