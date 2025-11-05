@@ -3,6 +3,7 @@
 import { track } from '@/lib/track';
 import { trackXEvent } from '@/components/analytics/XPixel';
 import { usePlatformDetection } from './usePlatformDetection';
+import { useLocale } from 'next-intl';
 
 interface UseDownloadOptions {
   location: string;
@@ -14,6 +15,7 @@ interface UseDownloadReturn {
 
 export function useDownload({ location }: UseDownloadOptions): UseDownloadReturn {
   const { platform } = usePlatformDetection();
+  const locale = useLocale();
 
   const handleDownload = (event?: React.MouseEvent) => {
     if (event) {
@@ -27,6 +29,7 @@ export function useDownload({ location }: UseDownloadOptions): UseDownloadReturn
         location,
         platform,
         version: 'latest',
+        locale,
       },
     });
 
@@ -41,12 +44,12 @@ export function useDownload({ location }: UseDownloadOptions): UseDownloadReturn
 
     // Redirect to appropriate endpoint based on platform
     if (platform === 'mac') {
-      window.location.href = `/api/download/mac?source=${encodeURIComponent(location)}`;
+      window.location.href = `/api/download/mac?source=${encodeURIComponent(location)}&locale=${locale}`;
     } else if (platform === 'windows') {
-      window.location.href = `/api/download/windows?source=${encodeURIComponent(location)}`;
+      window.location.href = `/api/download/windows?source=${encodeURIComponent(location)}&locale=${locale}`;
     } else {
       // Default to Mac for unknown platforms
-      window.location.href = `/api/download/mac?source=${encodeURIComponent(location)}`;
+      window.location.href = `/api/download/mac?source=${encodeURIComponent(location)}&locale=${locale}`;
     }
   };
 

@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { Link } from '@/i18n/navigation';
 import { ObfuscatedEmail } from '@/components/ui/ObfuscatedEmail';
 
 export default function EUTermsContent() {
@@ -83,9 +83,9 @@ export default function EUTermsContent() {
         </p>
         <p className="mt-4">
           <strong>Exercise of Withdrawal Right:</strong> To exercise your right of withdrawal, you must inform us at <ObfuscatedEmail user="legal" domain="plantocode.com" className="link-primary" /> of your decision to withdraw by means of a clear statement. You may use the withdrawal form available at{' '}
-          <a href="/legal/eu/withdrawal-policy" className="link-primary">
+          <Link href="/legal/eu/withdrawal-policy" className="link-primary">
             /legal/eu/withdrawal-policy
-          </a>
+          </Link>
           {', '}but it is not obligatory.
         </p>
         <p className="mt-4">

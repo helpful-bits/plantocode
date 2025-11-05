@@ -1,10 +1,11 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
+import { usePathname } from '@/i18n/navigation';
 import { SidebarNavServer } from './SidebarNavServer';
 import { Breadcrumbs } from './Breadcrumbs';
 import { TableOfContents } from './TableOfContents';
 import { DocsLayoutClient } from './DocsLayoutClient';
+import { useTranslations } from 'next-intl';
 
 interface DocsLayoutWrapperProps {
   children: React.ReactNode;
@@ -12,6 +13,7 @@ interface DocsLayoutWrapperProps {
 
 export function DocsLayoutWrapper({ children }: DocsLayoutWrapperProps) {
   const pathname = usePathname();
+  const t = useTranslations('docs');
 
   return (
     <>
@@ -33,7 +35,7 @@ export function DocsLayoutWrapper({ children }: DocsLayoutWrapperProps) {
       >
         <div className="px-4 py-6">
           <h2 className="text-sm font-semibold text-foreground mb-4 uppercase tracking-wider">
-            On this page
+            {t('onThisPage.title')}
           </h2>
           <TableOfContents />
         </div>

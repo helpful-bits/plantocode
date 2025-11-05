@@ -1,0 +1,1115 @@
+{
+  "aiWrongPaths": {
+    "badge": "AI path verification",
+    "comparison": {
+      "features": {
+        "binaryFiltering": "Binary file filtering",
+        "gitIntegration": "Git integration with .gitignore respect",
+        "monorepoResolution": "Monorepo workspace resolution",
+        "pathAliasResolution": "TypeScript path alias resolution",
+        "preExecutionValidation": "Pre-execution path validation",
+        "realtimeProgress": "Real-time verification progress",
+        "symbolicLinks": "Symbolic link resolution",
+        "tokenBatching": "Cost-optimized token batching"
+      },
+      "title": "How PlanToCode compares"
+    },
+    "cta": {
+      "description": "AI should reference files that actually exist. PlanToCode verifies every path before code generation, eliminating phantom imports and broken builds. Perfect for monorepos, legacy codebases, and complex project structures.",
+      "links": {
+        "deepDive": "Deep dive: File discovery system",
+        "docs": "Read technical documentation"
+      },
+      "title": "Stop fighting hallucinated file paths"
+    },
+    "description": "AI tools hallucinate import paths, reference non-existent files, and break your build with phantom dependencies. PlanToCode verifies every file path before execution, eliminating hallucinated references in monorepos and legacy codebases.",
+    "discoveryInAction": {
+      "complete": {
+        "description": "All files verified against filesystem. AI will only reference validated paths in generated code. No hallucinated imports possible.",
+        "title": "Discovery complete"
+      },
+      "stage1": {
+        "description": "Scanning repository, showing root directory structure and selected roots",
+        "title": "Repository scan starts"
+      },
+      "stage2": {
+        "description": "Running git ls-files, generating patterns, filtering binary files",
+        "title": "Regex filtering with git integration"
+      },
+      "stage5": {
+        "description": "Validating discovered paths, correcting non-existent paths, resolving monorepo references",
+        "title": "Path validation and correction"
+      },
+      "title": "File discovery in action"
+    },
+    "faq": {
+      "cost": {
+        "answer": "Typically $0.10-0.15 per complete workflow, depending on repository size and complexity. The 5-stage discovery process uses intelligent token batching and content-aware estimation to minimize API costs while maximizing accuracy. Cost tracking is built into every stage.",
+        "question": "How much does file discovery cost per run?"
+      },
+      "excludeDirectories": {
+        "answer": "Yes. The file discovery workflow respects .gitignore rules automatically. Additionally, binary files and 97 common non-code extensions are filtered by default. You can also configure custom exclusion patterns in your project settings.",
+        "question": "Can I exclude certain directories from discovery?"
+      },
+      "monorepoSupport": {
+        "answer": "Yes. PlanToCode explicitly supports monorepo structures including pnpm workspaces, Yarn workspaces, npm workspaces, and Nx. The file discovery workflow parses workspace configurations and correctly resolves internal package references, hoisted dependencies, and workspace protocol imports.",
+        "question": "Does file discovery work with monorepos?"
+      },
+      "pathAliases": {
+        "answer": "Yes. The path validation stage understands tsconfig.json path mappings and resolves TypeScript aliases like @/* or ~/* against your actual filesystem. This ensures AI-generated imports use correct alias syntax.",
+        "question": "Does this work with TypeScript path aliases?"
+      },
+      "stillWrongPath": {
+        "answer": "While file discovery dramatically reduces path hallucination, AI models can still generate new file names for code you are creating. PlanToCode focuses on verifying existing files. For newly created files, the implementation plan shows clear file paths and you can validate them before copying to your AI tool.",
+        "question": "What happens if AI still suggests a wrong path?"
+      },
+      "title": "Frequently asked questions",
+      "verifiedPaths": {
+        "answer": "Absolutely. PlanToCode provides real-time progress tracking with stage-by-stage updates. You can see exactly which directories were scanned, how many files passed validation, which paths were corrected, and the final list of verified files available to AI.",
+        "question": "Can I see which paths were verified?"
+      }
+    },
+    "gettingStarted": {
+      "step1": {
+        "description": "Install for macOS, Windows, or Linux. Connect to your preferred AI model (Claude, GPT-4, Gemini, or local models). No API keys required to start.",
+        "title": "Download PlanToCode"
+      },
+      "step2": {
+        "description": "Open your project and start the file discovery workflow. PlanToCode automatically scans and validates your entire codebase structure. Watch real-time progress for each stage.",
+        "title": "Run file discovery"
+      },
+      "step3": {
+        "description": "AI generates code using only verified file paths. No hallucinated imports, no phantom dependencies, no broken builds. Copy with confidence.",
+        "title": "Generate verified code"
+      },
+      "title": "Start preventing wrong file paths"
+    },
+    "howPlanToCodePrevents": {
+      "monorepoAware": {
+        "description": "PlanToCode understands monorepo structures and correctly resolves workspace references, internal package paths, and hoisted dependencies.",
+        "features": [
+          "Parses workspace configurations (pnpm, yarn, npm)",
+          "Resolves internal package cross-references",
+          "Handles multiple node_modules hierarchies",
+          "Detects and respects workspace protocol imports"
+        ],
+        "title": "Monorepo-aware resolution"
+      },
+      "pathValidation": {
+        "description": "Stage 5 of the discovery workflow specifically validates and corrects file paths. This happens automatically before any AI model sees your codebase.",
+        "features": [
+          "Checks file accessibility and permissions",
+          "Resolves path inconsistencies automatically",
+          "Handles monorepo workspace protocols",
+          "Validates import alias mappings from tsconfig"
+        ],
+        "link": "Technical documentation",
+        "title": "Path validation pipeline"
+      },
+      "preExecutionDiscovery": {
+        "description": "Before AI generates any code, PlanToCode runs a 5-stage file discovery workflow that maps your actual filesystem. Every file path is verified to exist before being included in context.",
+        "features": [
+          "Scans repository with git ls-files integration",
+          "Validates file existence against actual filesystem",
+          "Resolves symbolic links and path aliases",
+          "Normalizes paths for cross-platform compatibility"
+        ],
+        "link": "Learn about file discovery",
+        "title": "Pre-execution file discovery"
+      },
+      "realTimeFeedback": {
+        "description": "Watch file discovery progress in real-time with stage-by-stage updates. See exactly which paths are being validated and corrected before AI generates code.",
+        "features": [
+          "Live progress tracking for each discovery stage",
+          "Detailed error messages for path issues",
+          "File count and token usage estimates",
+          "Cost tracking: typically $0.10-0.15 per workflow"
+        ],
+        "title": "Real-time verification feedback"
+      },
+      "title": "How PlanToCode prevents wrong file paths"
+    },
+    "impact": {
+      "forDevelopers": {
+        "benefits": [
+          "Stop debugging phantom imports. No more hunting through directory trees to find the correct path AI should have generated in the first place.",
+          "Ship faster. When AI-generated code works on first paste, your velocity increases dramatically. Focus on logic, not path corrections.",
+          "Trust AI output. Path verification builds confidence. You know imports are correct before you copy code to your editor.",
+          "Work with legacy code. Complex, undocumented codebases become navigable when every path is verified against reality."
+        ],
+        "title": "For individual developers"
+      },
+      "forTeams": {
+        "benefits": [
+          "Onboard faster. New team members understand codebase structure through verified file discovery. No guessing at import conventions.",
+          "Reduce PR noise. Eliminate commits that solely fix incorrect import paths. Code reviews focus on logic, not path corrections.",
+          "Scale monorepos confidently. As your workspace grows, path verification prevents the exponential increase in import confusion.",
+          "Standardize AI usage. When everyone uses verified paths, AI-generated code maintains consistency across the team."
+        ],
+        "title": "For engineering teams"
+      },
+      "metrics": {
+        "cost": "$0.12 Average cost per verification workflow",
+        "disclaimer": "Based on internal testing with monorepo codebases ranging from 200 to 5,000 files. Your results may vary depending on repository structure and complexity.",
+        "reduction": "85% Reduction in path-related debugging time",
+        "speed": "23s Average scan time for 589 files",
+        "title": "Measured impact"
+      },
+      "title": "The impact of verified file paths"
+    },
+    "problem": {
+      "description": "You ask AI to refactor a component. It confidently generates code that imports from @/components/ui/NewButton — a file that does not exist. Your build fails. You waste 20 minutes tracking down the phantom import.",
+      "quote": "AI tried to import from a non-existent path",
+      "scenarios": {
+        "contextWindow": {
+          "description": "Large projects exceed AI context windows. The model guesses at file locations based on incomplete information, producing confident but incorrect path references.",
+          "title": "Context window limits"
+        },
+        "legacy": {
+          "description": "Your codebase has src/components and lib/components. AI picks the wrong one, or hallucinates a third directory that never existed.",
+          "title": "Legacy code confusion"
+        },
+        "monorepo": {
+          "description": "AI confuses @workspace/core with @workspace/shared, generating imports that look plausible but reference the wrong package.",
+          "title": "Monorepo nightmares"
+        }
+      },
+      "title": "The wrong file path problem"
+    },
+    "realWorldScenarios": {
+      "title": "Real-world scenarios",
+      "with": {
+        "description": "Scenario showing how file discovery prevents path errors, generates correct imports on first attempt, and saves hours of debugging time.",
+        "title": "With PlanToCode verification"
+      },
+      "without": {
+        "description": "Scenario demonstrating path hallucination issues when refactoring without verification, resulting in broken imports and manual path correction work.",
+        "title": "Without path verification"
+      }
+    },
+    "title": "Stop AI from generating wrong file paths",
+    "whyAIGeneratesWrongPaths": {
+      "contextOverflow": {
+        "description": "Even 200K token context windows cannot hold entire enterprise codebases. The model sees a fraction of your files and infers the rest, leading to path mismatches.",
+        "points": [
+          "Incomplete directory tree visibility",
+          "Missing import alias configurations",
+          "Outdated snapshots of evolving codebases"
+        ],
+        "title": "Context window overflow"
+      },
+      "modelHallucination": {
+        "description": "Large language models are trained on millions of codebases with different structures. When generating code, they pattern-match against training data, not your actual filesystem.",
+        "points": [
+          "Models predict probable paths, not actual paths",
+          "Training data contains inconsistent naming conventions",
+          "No filesystem verification in the generation loop"
+        ],
+        "title": "Model hallucination"
+      },
+      "monorepoComplexity": {
+        "description": "Monorepos amplify path confusion with workspace protocols, internal packages, and multiple node_modules directories.",
+        "points": [
+          "Conflicting package names across workspaces",
+          "Complex tsconfig path mappings",
+          "Hoisted dependencies with unclear resolution"
+        ],
+        "title": "Monorepo complexity"
+      },
+      "noVerification": {
+        "description": "Standard AI code generation has no post-processing step to validate file existence. Generated code goes directly to you without filesystem checks.",
+        "points": [
+          "No file existence validation",
+          "No import path resolution testing",
+          "No cross-reference with actual directory structure"
+        ],
+        "title": "No verification layer"
+      },
+      "title": "Why AI generates wrong file paths"
+    }
+  },
+  "hardBugs": {
+    "badge": "Production debugging",
+    "cta": {
+      "description": "Preserve every investigation, reproduce every step, never lose context. This is how production debugging should work: disciplined, reproducible, complete.",
+      "links": {
+        "terminal": "Explore terminal persistence",
+        "voice": "Learn about voice notes"
+      },
+      "title": "Debug Production Issues with Confidence"
+    },
+    "description": "PlanToCode keeps every plan, terminal session, and spoken note attached to the job you are debugging. Reopen the exact commands, token budgets, and plan revisions used to isolate an issue.",
+    "sections": {
+      "persistTerminal": {
+        "description": "Each debugging terminal runs inside a managed PTY. Session metadata, working directories, and full output logs are stored in SQLite and can be reopened after crashes. CLI detection verifies that claude, cursor, codex, or gemini binaries are installed before you run commands.",
+        "link": "Terminal behaviour",
+        "title": "Persist terminal output"
+      },
+      "reproduceSurface": {
+        "description": "Start with the file discovery workflow to narrow a repository to the modules referenced in the incident. The workflow validates session inputs, queues background jobs, and stores the selected roots so every follow-up plan uses the same scope.",
+        "link": "Workflow details",
+        "title": "Reproduce the failing surface"
+      },
+      "reviewFixes": {
+        "description": "Implementation plans stream into the Monaco viewer with language detection, copy controls, and navigation between historical jobs. Token estimates run before you copy prompts into an external tool, helping you confirm the fix stays within the model's limits.",
+        "link": "Plan viewer overview",
+        "title": "Review every proposed fix"
+      },
+      "voiceNotes": {
+        "description": "Voice transcription integrates directly with the terminal and prompt editors. The recording hook manages microphone permissions, device selection, silence detection, and inserts recognised text beside the commands that triggered it.",
+        "link": "Transcription pipeline",
+        "title": "Capture voice notes in context"
+      }
+    },
+    "title": "Resolve hard bugs with preserved context"
+  },
+  "hub": {
+    "badge": "Development Solutions",
+    "categories": {
+      "debugging": "Debugging",
+      "development": "Development",
+      "maintenance": "Maintenance",
+      "refactoring": "Refactoring",
+      "safety": "Safety"
+    },
+    "cta": {
+      "button": "Download PlanToCode",
+      "description": "Start planning complex changes with confidence. Download PlanToCode today.",
+      "title": "Ready to Solve Your Development Challenges?"
+    },
+    "description": "Tackle complex development challenges with AI-powered planning. From debugging hard bugs to refactoring legacy code, PlanToCode provides the safety layer your team needs.",
+    "solutions": {
+      "aiWrongPaths": {
+        "description": "Review AI-generated paths before execution to prevent file location errors",
+        "title": "Prevent Wrong Paths"
+      },
+      "hardBugs": {
+        "description": "Capture plan history, terminal logs, and transcripts for reproducible bug investigation",
+        "title": "Resolve Hard Bugs"
+      },
+      "largeFeatures": {
+        "description": "Plan and track multi-file features with dependency mapping and step-by-step execution",
+        "title": "Large Features"
+      },
+      "legacyCodeRefactoring": {
+        "description": "AI-powered planning for safe modernization of legacy codebases",
+        "title": "Legacy Code Refactoring"
+      },
+      "libraryUpgrades": {
+        "description": "Safely upgrade dependencies with impact analysis and comprehensive testing",
+        "title": "Library Upgrades"
+      },
+      "maintenanceEnhancements": {
+        "description": "Document ongoing tasks with audit trails and prevent regressions",
+        "title": "Maintenance & Enhancements"
+      },
+      "preventDuplicateFiles": {
+        "description": "Stop AI from creating duplicate files with pre-execution file discovery",
+        "title": "Prevent Duplicate Files"
+      },
+      "safeRefactoring": {
+        "description": "AI-powered planning for risk-free code changes with dependency visibility",
+        "title": "Safe Refactoring"
+      }
+    },
+    "title": "AI-Powered Development Solutions",
+    "viewSolution": "View solution"
+  },
+  "largeFeatures": {
+    "badge": "Feature planning",
+    "cta": {
+      "description": "From first workflow to final deployment, maintain perfect traceability. This is how feature delivery should work: coordinated, predictable, traceable.",
+      "links": {
+        "plans": "See implementation planning",
+        "workflows": "Learn about scoped workflows"
+      },
+      "title": "Ship Complex Features with Confidence"
+    },
+    "description": "Multi-stage delivery depends on consistent scope, reviewable plans, and predictable token usage. PlanToCode keeps these signals connected from the first workflow run to the final terminal session.",
+    "sections": {
+      "coordinatePlans": {
+        "description": "Plans stream into the Monaco viewer and stay linked to their background jobs. Navigate previous drafts, merge multiple plans, and open the terminal modal for a specific job without losing context. Token estimates run before you export prompts.",
+        "link": "Implementation plans",
+        "title": "Coordinate implementation plans"
+      },
+      "keepAligned": {
+        "description": "Terminal sessions store output logs in SQLite and expose connection health, so long-running feature work remains auditable. If your team records walk-throughs, voice transcription adds searchable notes alongside the commands that executed them.",
+        "link": "Terminal and transcription",
+        "title": "Keep execution aligned"
+      },
+      "pickModel": {
+        "description": "Each task type provides a default model and an allowed list. The model selector toggle prevents sending prompts that exceed the model's context window and surfaces the estimated token requirements drawn from the backend command.",
+        "link": "Model configuration",
+        "title": "Pick the right model per task"
+      },
+      "sameScope": {
+        "description": "Use the file discovery workflow to gather relevant directories for every task. Inputs are validated, background jobs run via the Workflow Orchestrator, and the selected roots are stored so later plan revisions reuse the same repository slice.",
+        "link": "File discovery workflow",
+        "title": "Start with the same scope"
+      }
+    },
+    "title": "Ship large features with traceable plans"
+  },
+  "legacyCodeRefactoring": {
+    "challenge": {
+      "description": "You're tasked with modernizing a 5-year-old codebase: outdated frameworks, no tests, undocumented patterns, and critical business logic you don't fully understand. Direct AI refactoring would be chaos. Planning gives you a roadmap.",
+      "title": "The Legacy Code Challenge"
+    },
+    "cta": {
+      "buttons": {
+        "download": "Download PlanToCode",
+        "learnMapping": "Learn About Dependency Mapping"
+      },
+      "description": "PlanToCode helps you map dependencies, generate migration plans, and refactor without breaking production.",
+      "title": "Modernize Legacy Code Safely"
+    },
+    "description": "Legacy code is where AI-assisted refactoring becomes dangerous. One wrong move breaks production. Here's how to modernize 100K+ line codebases safely with AI planning.",
+    "furtherReading": {
+      "bestPractices": "AI Code Planning Best Practices",
+      "safeRefactoring": "Safe Refactoring Tools for Production Code",
+      "title": "Further Reading",
+      "whatIsPlanning": "What is AI Code Planning?"
+    },
+    "gettingStarted": {
+      "steps": [
+        {
+          "title": "Pick the smallest valuable unit to refactor",
+          "description": "Don't start with the 10,000-line God class. Find a self-contained 200-line module that delivers value."
+        },
+        {
+          "title": "Map all its dependencies",
+          "description": "Use file discovery to find imports, exports, function calls. Know the blast radius."
+        },
+        {
+          "title": "Write characterization tests",
+          "description": "Tests that capture current behavior, even if it's wrong. Ensures refactoring preserves functionality."
+        },
+        {
+          "title": "Generate refactoring plan",
+          "description": "Use AI to create file-by-file migration strategy. Review for missing steps or risks."
+        },
+        {
+          "title": "Execute incrementally",
+          "description": "One small change per deploy. Run tests. Monitor production. Repeat."
+        }
+      ],
+      "title": "Getting Started with Legacy Refactoring"
+    },
+    "mistakes": {
+      "bigBang": {
+        "instead": "Instead: Incremental refactoring with continuous deployment",
+        "problem": "Spending 6 months rewriting everything from scratch. 80% done, realize old code had edge cases you didn't know about. Project fails.",
+        "title": "Big Bang Rewrites"
+      },
+      "noRollback": {
+        "instead": "Instead: Feature flags, database migrations with down() functions",
+        "problem": "Refactor 50 files, deploy, breaks production. Can't easily revert because changes are entangled.",
+        "title": "No Rollback Plan"
+      },
+      "noTests": {
+        "instead": "Instead: Write characterization tests first, then refactor",
+        "problem": "Change code, hope it works, deploy, find bugs in production. Repeat until trust is lost.",
+        "title": "Refactoring Without Tests"
+      },
+      "title": "Avoiding Common Legacy Refactoring Mistakes"
+    },
+    "patterns": {
+      "featureFlag": {
+        "bestFor": "High-risk changes to critical paths (auth, payments, core features)",
+        "howItWorks": "Refactor code, put behind feature flag. Roll out to 1%, 10%, 50%, 100% of users over weeks. Instant rollback if issues.",
+        "title": "Feature Flag Rollout"
+      },
+      "parallelRun": {
+        "bestFor": "Data processing pipelines, critical algorithms, reporting systems",
+        "howItWorks": "Run old and new code in parallel. Compare outputs. Switch to new only when 99.9% match rate achieved.",
+        "title": "Parallel Run + Validation"
+      },
+      "stranglerFig": {
+        "bestFor": "Monolith → microservices, old framework → new framework",
+        "howItWorks": "Build new code alongside old. Gradually route traffic from old to new. Delete old code only when 100% migrated.",
+        "title": "Strangler Fig Pattern"
+      },
+      "title": "Migration Strategy Patterns"
+    },
+    "realExample": {
+      "codebase": "150 React class components written in 2018. Need to modernize to hooks for maintainability and performance.",
+      "scenario": "Scenario",
+      "title": "Real Example: React Class to Hooks Migration",
+      "with": {
+        "steps": [
+          "Week 1: Migrate leaf components (no dependencies on them)",
+          "Week 2: Migrate context providers (affects all consumers)",
+          "Week 3: Migrate container components (orchestrate children)",
+          "Week 4: Remove old HOCs, fully hooks-based",
+          "Result: Clean migration, no production breaks, 4-week timeline"
+        ],
+        "title": "With Planning:"
+      },
+      "without": {
+        "steps": [
+          "AI converts 10 components",
+          "Breaks lifecycle dependencies other components rely on",
+          "Context providers stop working (class-based APIs)",
+          "3 days of debugging to find all breakages"
+        ],
+        "title": "Without Planning:"
+      }
+    },
+    "scenarios": {
+      "databaseSchema": {
+        "approach": "Planning Approach:",
+        "challenge": "Denormalized schema from 2018. Need to split user_data table into 5 normalized tables.",
+        "steps": [
+          "Find all queries reading from user_data (grep + static analysis)",
+          "Map which queries need which new tables",
+          "Plan zero-downtime migration with dual-write phase",
+          "Create verification queries to ensure data consistency"
+        ],
+        "title": "Database Schema Migration"
+      },
+      "frameworkMigration": {
+        "approach": "Planning Approach:",
+        "challenge": "200 pages of spaghetti jQuery manipulating DOM directly. No component structure. Mixed concerns everywhere.",
+        "steps": [
+          "Map all jQuery selectors to identify UI components",
+          "Group related DOM manipulations into logical components",
+          "Plan gradual migration: one page at a time, both frameworks coexisting",
+          "Create adapter layer for shared state during transition"
+        ],
+        "title": "Framework Migration (jQuery → React)"
+      },
+      "monolith": {
+        "approach": "Planning Approach:",
+        "challenge": "500K-line monolith, all features tightly coupled. Need to extract user management to separate service.",
+        "steps": [
+          "Identify service boundary: what stays, what moves",
+          "Map all cross-boundary data flows and API calls",
+          "Plan database extraction strategy (dual-write phase)",
+          "Create rollback plan for each migration step"
+        ],
+        "title": "Monolith to Microservices"
+      },
+      "title": "Common Legacy Refactoring Scenarios"
+    },
+    "title": "Legacy Code Refactoring Tools: How AI Planning Prevents Disasters",
+    "tools": {
+      "complexity": {
+        "description": "Identify which files are most complex (cyclomatic complexity). Start refactoring the simple ones.",
+        "title": "Code Complexity Analysis",
+        "tools": "Tools: SonarQube, ESLint complexity rules"
+      },
+      "dependencyMapping": {
+        "description": "Find all import chains, function call graphs, type dependencies. Know what breaks if you change X.",
+        "title": "Dependency Mapping",
+        "tools": "Tools: PlanToCode file discovery, madge, dependency-cruiser"
+      },
+      "staticAnalysis": {
+        "description": "Find unused code, dead imports, type mismatches. Clean these up before major refactoring.",
+        "title": "Static Analysis",
+        "tools": "Tools: TypeScript strict mode, ESLint no-unused-vars"
+      },
+      "testCoverage": {
+        "description": "Know which code has tests before refactoring. Write tests for critical paths first if needed.",
+        "title": "Test Coverage Reports",
+        "tools": "Tools: Jest coverage, Istanbul, Codecov"
+      },
+      "title": "Tools for Legacy Code Planning"
+    },
+    "whyBreaks": {
+      "description": "Legacy codebases have characteristics that make refactoring risky:",
+      "points": {
+        "hiddenDeps": {
+          "description": "Functions called from 20+ places, global state modified unexpectedly, circular imports you didn't know existed.",
+          "title": "Hidden Dependencies"
+        },
+        "insufficientTests": {
+          "description": "30% code coverage, tests that pass but don't actually verify behavior, integration tests that take 45 minutes to run.",
+          "title": "Insufficient Tests"
+        },
+        "outdatedPatterns": {
+          "description": "Code written before modern best practices. Callback hell, tightly-coupled modules, no separation of concerns.",
+          "title": "Outdated Patterns"
+        },
+        "poorDocs": {
+          "description": "No comments, cryptic variable names, business logic buried in implementation details. You learn by breaking things.",
+          "title": "Poor Documentation"
+        }
+      },
+      "title": "Why Legacy Code Breaks Easily"
+    },
+    "workflow": {
+      "steps": [
+        {
+          "title": "Map the existing system",
+          "description": "Run file discovery, identify all files touching the area you're refactoring. Understand dependencies before changing anything."
+        },
+        {
+          "title": "Generate multiple migration strategies",
+          "description": "Ask AI for 3 different approaches: big-bang migration, gradual rollout, strangler fig pattern. Compare trade-offs."
+        },
+        {
+          "title": "Create incremental plan",
+          "description": "Break into weekly milestones. Each step must be independently deployable and testable. No \"half-migrated\" states in production."
+        },
+        {
+          "title": "Review with team (required for legacy)",
+          "description": "Someone on the team knows the hidden gotchas. Plan review surfaces that tribal knowledge before you break things."
+        },
+        {
+          "title": "Execute with rollback plan",
+          "description": "Implement step 1, verify it works, then step 2. Always have a way to revert. Feature flags are your friend."
+        }
+      ],
+      "subtitle": "The Safe Legacy Refactoring Process",
+      "title": "Planning-First Refactoring Workflow"
+    }
+  },
+  "libraryUpgrades": {
+    "badge": "Upgrade planning",
+    "cta": {
+      "description": "Audit every change, track every migration, maintain full control. This is how library upgrades should work: safe, auditable, reversible.",
+      "links": {
+        "planning": "Explore upgrade planning",
+        "scope": "Learn about scope analysis"
+      },
+      "title": "Upgrade Dependencies Without Fear"
+    },
+    "description": "Modernising dependencies often spans multiple repositories and teams. PlanToCode helps you scope the work, document each step, and keep an auditable trail of what changed.",
+    "sections": {
+      "executionHistory": {
+        "description": "Terminal sessions keep full output logs and connection health, even after restarts. Voice transcription can add spoken context to tricky migration steps, creating a searchable trail for release notes and change reviews.",
+        "link": "Terminal & transcription",
+        "title": "Document execution history"
+      },
+      "identifyFiles": {
+        "description": "Trigger the file discovery workflow against your project directory to gather upgrade hotspots. The orchestrated background jobs record selected roots and make them available to every subsequent plan or prompt.",
+        "link": "File discovery workflow",
+        "title": "Identify affected files"
+      },
+      "modelLimits": {
+        "description": "Upgrade prompts often include large diffs. Task-level model settings define which models are allowed, and the selector toggle blocks any choice whose context window cannot handle the estimated prompt plus output tokens.",
+        "link": "Model guardrails",
+        "title": "Stay within model limits"
+      },
+      "trackPlans": {
+        "description": "Review generated plans inside the Monaco viewer, compare revisions, and merge overlapping proposals. Plans stay linked to background jobs, so you can reopen the relevant terminal session or prompt copy modal whenever you revisit the upgrade.",
+        "link": "Implementation plans",
+        "title": "Track upgrade plans"
+      }
+    },
+    "title": "Upgrade libraries with guardrails"
+  },
+  "maintenanceEnhancements": {
+    "badge": "Ongoing maintenance",
+    "cta": {
+      "description": "Build systematic maintenance workflows. Preserved context, reusable plans, and model guardrails turn technical debt into manageable, repeatable processes.",
+      "links": {
+        "history": "Learn about plan history",
+        "workflows": "Explore scoped workflows"
+      },
+      "title": "Transform Maintenance into Strategic Advantage"
+    },
+    "description": "Maintenance work slows down when teams lose track of scope or repeat the same investigations. PlanToCode keeps the context, plans, and execution history needed to apply fixes safely.",
+    "sections": {
+      "controlModels": {
+        "description": "The model selector toggle enforces context windows per maintenance task. Token estimates from the backend let you confirm that large patch descriptions still fit the chosen model before you send them to an agent.",
+        "link": "Model guardrails",
+        "title": "Control model usage"
+      },
+      "planHistory": {
+        "description": "Maintenance plans stream into the Monaco viewer with navigation between revisions, merge actions, and prompt copy controls. Reopen previous jobs to see exactly which steps were taken and whether they need to be repeated.",
+        "link": "Implementation plans",
+        "title": "Keep plan history"
+      },
+      "preserveLogs": {
+        "description": "Terminal sessions persist in SQLite with timestamps, exit codes, and captured output. Voice transcription can append spoken notes to the same job, giving future maintainers full context on what changed and why.",
+        "link": "Terminal and transcription",
+        "title": "Preserve execution logs"
+      },
+      "reuseWorkflows": {
+        "description": "File discovery jobs collect the directories touched by previous maintenance tasks. When similar work returns, you can rerun plans against the stored roots instead of manually rebuilding the scope.",
+        "link": "File discovery workflow",
+        "title": "Reuse scoped workflows"
+      }
+    },
+    "title": "Maintain systems with repeatable workflows"
+  },
+  "preventDuplicateFiles": {
+    "badge": "Duplicate file prevention",
+    "beforeAfter": {
+      "title": "Before & After: AI Without Planning vs. With PlanToCode",
+      "with": {
+        "benefits": {
+          "items": [
+            "Zero duplicate files created",
+            "Clean modification to existing code",
+            "All imports remain valid",
+            "Time saved: 2-4 hours"
+          ],
+          "title": "Benefits achieved:"
+        },
+        "steps": [
+          {
+            "label": "User: \"Add JWT validation to authentication\"",
+            "detail": "File discovery workflow starts automatically"
+          },
+          {
+            "label": "5-stage discovery maps entire codebase",
+            "detail": "Finds authService.ts, auth-helpers.ts, related config files"
+          },
+          {
+            "label": "Generates implementation plan for review",
+            "detail": "Shows it will modify existing authService.ts, no duplicates"
+          },
+          {
+            "label": "You review and approve plan",
+            "detail": "See exact changes before any code touches filesystem"
+          },
+          {
+            "label": "Result: Clean, targeted modifications",
+            "detail": "JWT validation added to existing authService.ts, no duplicates created"
+          }
+        ],
+        "title": "With PlanToCode"
+      },
+      "without": {
+        "cleanup": {
+          "items": [
+            "Merge duplicate code manually",
+            "Update all import references",
+            "Fix broken tests and dependencies",
+            "Time wasted: 2-4 hours"
+          ],
+          "title": "Manual cleanup required:"
+        },
+        "steps": [
+          {
+            "label": "User: \"Add JWT validation to authentication\"",
+            "detail": "AI has limited context, only sees currently open files"
+          },
+          {
+            "label": "AI searches, doesn't find existing auth files",
+            "detail": "Misses src/services/authService.ts due to naming/path mismatch"
+          },
+          {
+            "label": "Immediately creates jwtValidation.ts",
+            "detail": "No review step, changes applied directly to filesystem"
+          },
+          {
+            "label": "Result: Duplicate file created",
+            "detail": "Now have both authService.ts and jwtValidation.ts with overlapping functionality"
+          }
+        ],
+        "title": "Without PlanToCode"
+      }
+    },
+    "cta": {
+      "description": "File discovery before execution. Review before application. Zero duplicates. This is how AI-assisted development should work: intelligent, preventive, clean.",
+      "links": {
+        "howItWorks": "See how it works",
+        "planReview": "Learn about plan review",
+        "technical": "Read the technical guide"
+      },
+      "title": "Stop Creating Duplicate Files Today"
+    },
+    "description": "AI coding tools frequently create duplicate files because they lack context about existing code structure. PlanToCode solves this with intelligent file discovery that maps your entire codebase before generating any code.",
+    "faq": {
+      "discoveryCost": {
+        "answer": "File discovery does use AI for the relevance assessment stage (Stage 3), which incurs small API costs. However, the cost is minimal (typically $0.01-0.05 per discovery run) and the system provides cost estimates before execution. The investment is worthwhile compared to the 2-4 hours of manual cleanup time saved by preventing duplicates.",
+        "question": "Is there a cost for running file discovery?"
+      },
+      "discoveryTime": {
+        "answer": "File discovery typically completes in 30-90 seconds for medium-sized projects (500-2000 files). Very large monorepos with 10,000+ files may take 2-3 minutes. The workflow runs in the background, so you can continue working while it executes. Progress updates appear in real-time.",
+        "question": "How long does the file discovery workflow take?"
+      },
+      "hugeCodebase": {
+        "answer": "PlanToCode includes intelligent timeout management and caching mechanisms. For extremely large codebases, you can configure custom timeout values and use exclusion patterns to skip irrelevant directories (vendor code, generated files, etc.). The system also caches discovery results per session, so subsequent plans in the same session reuse the cached file context.",
+        "link": "Configuration options",
+        "question": "What if I have a huge codebase? Will discovery time out?"
+      },
+      "newFiles": {
+        "answer": "Absolutely. PlanToCode's file discovery doesn't prevent creating new files—it prevents creating duplicate files. When your task genuinely requires a new file (like adding a completely new feature module), PlanToCode will propose creating it in the implementation plan. The difference is you'll see the proposal and can verify it's truly new functionality rather than an accidental duplicate.",
+        "question": "Can I still create genuinely new files when needed?"
+      },
+      "nonJavaScript": {
+        "answer": "Yes. PlanToCode's file discovery is language-agnostic. It works with Python, Go, Rust, Java, TypeScript, JavaScript, Ruby, PHP, C++, and any other text-based codebase. The regex generation and AI relevance assessment adapt to the specific languages and frameworks in your project based on the task description and discovered file extensions.",
+        "question": "Does this work for non-JavaScript projects?"
+      },
+      "refactoringDuplicates": {
+        "answer": "Yes. If you already have duplicate files in your codebase, you can use PlanToCode to plan their consolidation. Describe the task as \"Merge duplicate authentication services into authService.ts\" or similar. The file discovery will find all related files, and the implementation plan will show you exactly how to consolidate them cleanly.",
+        "question": "Can I use PlanToCode for refactoring existing duplicates?"
+      },
+      "stillProposesDuplicate": {
+        "answer": "This is rare because the file discovery provides comprehensive context, but if it happens, you'll catch it during the review step. Simply reject the plan, refine your task description (be more specific about which existing files to modify), or manually adjust the file selection. The key advantage is catching duplicates before execution rather than after the damage is done.",
+        "question": "What happens if the AI still proposes a duplicate in the plan?"
+      },
+      "title": "Frequently Asked Questions",
+      "worksWithCursor": {
+        "answer": "Yes. PlanToCode is designed as a planning layer that works alongside your existing AI coding tools. You use PlanToCode to discover files and generate implementation plans, then execute those plans using Cursor, GitHub Copilot, Claude Code, or any other AI assistant. The file discovery and planning prevent duplicates regardless of which tool executes the code.",
+        "question": "Does PlanToCode work with Cursor and GitHub Copilot?"
+      }
+    },
+    "gettingStarted": {
+      "step1": {
+        "description": "Download the PlanToCode desktop application for your platform. The file discovery workflow and implementation planning features are built directly into the desktop client.",
+        "title": "Step 1: Install PlanToCode Desktop"
+      },
+      "step2": {
+        "description": "Open PlanToCode and select your project's root directory. PlanToCode will validate git repository status and establish the base directory for all file operations. Configure any custom exclusion patterns for directories you want to skip (node_modules, dist, build, etc.).",
+        "tip": "The default exclusion patterns already cover common directories like node_modules, .git, and build artifacts. You only need to customize if your project has unusual directory structures.",
+        "title": "Step 2: Configure Your Project Root"
+      },
+      "step3": {
+        "description": "Enter a natural language description of what you want to accomplish. For example: \"Add JWT validation to the authentication service\" or \"Implement dark mode support in the theme provider.\" Be as specific as possible about the functionality you want.",
+        "goodDescriptions": {
+          "examples": [
+            "Add Redis caching to the user profile API endpoint",
+            "Implement WebSocket connection management in the chat service",
+            "Add input validation to all form components",
+            "Update database migration to add user roles table"
+          ],
+          "title": "Good Task Descriptions:"
+        },
+        "title": "Step 3: Describe Your Task"
+      },
+      "step4": {
+        "description": "PlanToCode will run the 5-stage file discovery workflow in the background. You'll see real-time progress updates as it discovers relevant files. The workflow typically completes in 30-90 seconds depending on codebase size. Once complete, review the list of discovered files. You'll see which files PlanToCode identified as relevant to your task. This is your first checkpoint to ensure the system has proper context about existing files.",
+        "link": "Learn more about the discovery process",
+        "title": "Step 4: Review the File Discovery"
+      },
+      "step5": {
+        "checkpoint": "If you see any file creation that looks like a duplicate (e.g., auth-new.ts or UserService2.tsx), stop here. Refine your task description or manually adjust the file list before proceeding.",
+        "description": "PlanToCode generates a detailed implementation plan based on the discovered files. Open the plan in the Monaco editor and carefully review:",
+        "reviewItems": [
+          "Which files will be modified (look for existing file paths)",
+          "Which files will be created (verify these are genuinely new files needed)",
+          "The specific code changes proposed for each file",
+          "Import statements and dependency updates"
+        ],
+        "title": "Step 5: Review the Implementation Plan"
+      },
+      "step6": {
+        "description": "Once you've reviewed and approved the plan, copy the implementation instructions to your preferred AI coding tool (Cursor, Copilot, Claude, etc.) or execute directly via the integrated terminal. Because PlanToCode has already done the heavy lifting of file discovery and planning, execution becomes a straightforward process of applying well-defined changes.",
+        "link": "Terminal integration guide",
+        "title": "Step 6: Execute with Confidence"
+      },
+      "title": "Getting Started: Stop Creating Duplicates Today"
+    },
+    "howPlanToCodePrevents": {
+      "comprehensiveDiscovery": {
+        "description": "PlanToCode runs a 5-stage file discovery workflow before generating any implementation plan. This workflow uses git integration, regex filtering, AI-powered relevance assessment, relationship analysis, and path validation to build a complete map of your codebase.",
+        "link": "Technical documentation",
+        "process": {
+          "steps": [
+            "Validate git repository and root folder",
+            "Generate task-specific regex patterns",
+            "AI relevance assessment of file contents",
+            "Extended path discovery via relationships",
+            "Final path correction and validation"
+          ],
+          "title": "Discovery Process:"
+        },
+        "result": "This deep discovery means PlanToCode knows about authService.ts, auth-helpers.ts, and authentication/ directories before suggesting any changes. It won't create duplicates because it has complete context.",
+        "title": "Comprehensive File Discovery"
+      },
+      "description": "PlanToCode fundamentally changes the workflow with a planning-first approach. Instead of immediately generating and executing code, PlanToCode uses a comprehensive file discovery system that maps your entire codebase structure before proposing any changes. This architectural difference eliminates the root causes of duplicate file creation.",
+      "gitAwareTracking": {
+        "command": "git ls-files --cached --others --exclude-standard captures all tracked files plus untracked files that aren't ignored, giving PlanToCode a complete view of your codebase state including work-in-progress files.",
+        "description": "The file discovery workflow integrates directly with git to respect .gitignore rules and track both committed and uncommitted changes. This git integration ensures PlanToCode sees your actual working tree, including recently created files that might not be committed yet.",
+        "title": "Git-Aware File Tracking"
+      },
+      "intelligentPatternMatching": {
+        "advanced": "The system uses AI to generate context-aware regex patterns rather than simple string matching. For a task like \"add JWT validation,\" it generates patterns covering auth*, jwt*, token*, middleware/auth* and related patterns.",
+        "description": "PlanToCode's regex generation stage creates intelligent patterns that account for multiple naming conventions, case variations, and common file organization patterns. It understands that a request to \"update the user service\" should match userService.ts, user-service.ts, UserService.ts, or services/user/.",
+        "title": "Intelligent Pattern Matching"
+      },
+      "reviewBeforeExecution": {
+        "contents": {
+          "items": [
+            "Complete list of files to be modified",
+            "New files to be created with full paths",
+            "Specific changes with before/after context",
+            "Token count estimates per operation",
+            "Dependencies and import updates needed"
+          ],
+          "title": "Plan Contents Include:"
+        },
+        "description": "Unlike tools that immediately apply changes, PlanToCode generates a detailed implementation plan that you review in the Monaco editor before any code touches your filesystem. You see exactly which files will be created, modified, or deleted.",
+        "link": "Implementation plans guide",
+        "review": "This review step lets you catch duplicates before execution. If you see the plan wants to create auth-new.ts, you can reject it and refine the discovery scope.",
+        "title": "Review Before Execution"
+      },
+      "title": "How PlanToCode Prevents Duplicate Files"
+    },
+    "problem": {
+      "caseStudy1": {
+        "description": "A developer reported on the Cursor forum that when asking the AI to \"update the authentication service,\" Cursor created a new file src/services/auth-service-new.ts instead of modifying the existing src/services/authService.ts. This happened because the AI didn't properly scan for existing implementations with similar naming patterns.",
+        "impact": "The developer spent 3 hours manually merging the duplicate code, resolving import conflicts across 15 files, and removing the duplicate. The project ended up with broken references in production because some imports still pointed to the old file path.",
+        "link": "View Cursor forum discussion",
+        "title": "Case Study: Cursor Issue #47028"
+      },
+      "caseStudy2": {
+        "description": "Another documented case involved a React project where a developer asked to \"add dark mode support.\" Instead of modifying the existing components/ThemeProvider.tsx, Cursor created components/DarkModeProvider.tsx with overlapping functionality. The codebase ended up with two competing theme systems running simultaneously.",
+        "impact": "The duplicate theme providers caused state management conflicts, increased bundle size by 45KB, and created user experience bugs where theme preferences weren't persisting correctly. The cleanup required a full refactoring sprint.",
+        "link": "View Cursor forum discussion",
+        "title": "Case Study: Cursor Issue #31402"
+      },
+      "commonScenarios": {
+        "examples": [
+          "Creating utils-new.ts when helpers.ts exists with similar functions",
+          "Generating apiClient2.ts instead of updating api/client.ts",
+          "Making ButtonComponent.tsx when Button.tsx already exists",
+          "Creating test-helper-updated.js instead of modifying testHelpers.js",
+          "Duplicating configuration files like config-new.json or settings-v2.yaml"
+        ],
+        "title": "Common Duplicate File Scenarios"
+      },
+      "description": "Duplicate files are one of the most common and frustrating issues developers face when using AI coding assistants. When AI tools like Cursor, GitHub Copilot, or other code generation systems lack proper context about your existing codebase, they create new files instead of modifying existing ones. This leads to code fragmentation, merge conflicts, and hours of manual cleanup work.",
+      "title": "The Duplicate File Problem: Real Examples"
+    },
+    "title": "Stop AI from creating duplicate files",
+    "whyAICreatesDuplicates": {
+      "conflictAvoidance": {
+        "description": "AI models are often trained with a safety-first approach: when uncertain whether a file exists or what its exact path is, they default to creating a new file rather than risking overwriting existing code. This \"better safe than sorry\" bias leads to duplicate file proliferation.",
+        "title": "Conflict Avoidance Bias",
+        "training": "AI models are penalized more heavily for destructive actions (overwriting important code) than for conservative actions (creating unnecessary duplicates). This asymmetric penalty structure in training data encourages duplicate creation as the \"safer\" option."
+      },
+      "description": "Understanding the technical reasons behind duplicate file creation helps explain why this problem is so persistent across AI coding tools. It's not a simple bug—it's a fundamental architectural limitation of how most AI assistants interact with codebases.",
+      "incompleteDiscovery": {
+        "description": "When AI tools do attempt file discovery, they often use shallow methods like searching currently open files, recently accessed files, or basic pattern matching. These approaches miss files that aren't actively open or have non-standard naming conventions.",
+        "example": "If your authentication service is named authService.ts but the AI searches for files matching \"auth*\", it might miss it if the search is case-sensitive or limited to specific directories. The AI then concludes the file doesn't exist and creates a duplicate.",
+        "title": "Incomplete File Discovery"
+      },
+      "limitedContext": {
+        "description": "Most AI coding assistants operate with a limited context window that can only \"see\" a small portion of your codebase at any given time. When you ask to create or modify a feature, the AI might only have access to the currently open files or a narrow slice of your project structure.",
+        "details": "Even with large context windows (128K+ tokens), AI models still struggle with full-project awareness. A typical medium-sized project with 500 files could require 2-5 million tokens to fully index, far exceeding practical limits. This forces AI tools to make educated guesses about file locations rather than having complete knowledge.",
+        "title": "Limited Context Window"
+      },
+      "namingMismatches": {
+        "description": "Different projects use different naming conventions: camelCase, PascalCase, kebab-case, snake_case, or custom patterns. AI tools often struggle to recognize that user-service.ts, UserService.ts, and user_service.ts are all potential matches for a \"user service\" file.",
+        "impact": "In polyglot projects mixing multiple languages (TypeScript, Python, Go), naming conventions vary by language ecosystem. An AI trained primarily on JavaScript patterns might fail to recognize equivalent Python modules, leading to cross-language duplicates.",
+        "title": "Naming Convention Mismatches"
+      },
+      "noValidation": {
+        "description": "Most AI coding tools execute changes immediately without a review step. They generate code and apply it directly to your filesystem. By the time you realize a duplicate was created, the damage is already done. There's no opportunity to catch the mistake before execution.",
+        "title": "No Pre-execution Validation",
+        "workflow": "Traditional AI assistants follow a \"generate → apply\" pattern. Without a \"generate → review → apply\" workflow, developers have no chance to verify file paths, check for duplicates, or validate the AI's understanding of the codebase structure before changes are written to disk."
+      },
+      "title": "Why AI Tools Create Duplicate Files"
+    }
+  },
+  "safeRefactoring": {
+    "comparison": {
+      "aiDirect": {
+        "approach": "AI Direct",
+        "bestFor": "Prototypes",
+        "safety": "Low",
+        "speed": "Fast (minutes)",
+        "visibility": "After-the-fact"
+      },
+      "aiPlanning": {
+        "approach": "AI + Planning",
+        "bestFor": "Production code",
+        "safety": "High",
+        "speed": "Fast (minutes + review)",
+        "visibility": "Pre-execution"
+      },
+      "headers": {
+        "approach": "Approach",
+        "bestFor": "Best For",
+        "safety": "Safety",
+        "speed": "Speed",
+        "visibility": "Visibility"
+      },
+      "manual": {
+        "approach": "Manual",
+        "bestFor": "Small changes",
+        "safety": "High",
+        "speed": "Slow (hours/days)",
+        "visibility": "Complete"
+      },
+      "title": "Manual vs AI vs AI + Planning"
+    },
+    "cta": {
+      "buttons": {
+        "download": "Download PlanToCode",
+        "howItWorks": "How Planning Works"
+      },
+      "description": "Add a safety layer to your AI coding workflow. Review changes before they happen.",
+      "title": "Stop Breaking Production with Refactoring"
+    },
+    "description": "AI coding tools can refactor code 10x faster than humans. They can also break production 10x faster. Here's how to get the speed without the chaos.",
+    "faq": {
+      "compatibility": {
+        "answer": "Yes. PlanToCode generates implementation plans that you can copy into any AI coding tool. The plan provides context so the tool makes better decisions during code generation.",
+        "question": "Can I use this with Cursor/Claude Code/Copilot?"
+      },
+      "dependencyMapping": {
+        "answer": "AI-powered file discovery analyzes import statements, type references, and cross-file dependencies. It builds a graph of which files depend on which, so refactoring plans include all affected files.",
+        "question": "How does dependency mapping work?"
+      },
+      "languages": {
+        "answer": "All languages. File discovery works at the file system level and uses static analysis for imports. TypeScript, JavaScript, Python, Rust, Go, Java, and more.",
+        "question": "What programming languages are supported?"
+      },
+      "slowDown": {
+        "answer": "Initial review: Yes, reviewing a plan takes 5-15 minutes. Debugging broken refactoring: Can take hours or days. Net result: Faster overall, especially for complex changes.",
+        "question": "Does this slow down development?"
+      },
+      "title": "Frequently Asked Questions"
+    },
+    "gettingStarted": {
+      "steps": [
+        "Download PlanToCode (macOS, Windows, Linux)",
+        "Open your project directory in the terminal",
+        "Describe your refactoring and review the generated plan"
+      ],
+      "subtitle": "Try Safe Refactoring in 3 Steps:",
+      "title": "Getting Started"
+    },
+    "howPlanToCodeHelps": {
+      "description": "PlanToCode adds a planning layer before any code is written. Instead of executing immediately, AI generates a detailed implementation plan that you review first.",
+      "title": "How PlanToCode Makes Refactoring Safe",
+      "workflow": {
+        "steps": [
+          {
+            "title": "Describe the refactoring",
+            "description": "\"Rename getUserData to fetchUserProfile across the entire codebase\""
+          },
+          {
+            "title": "AI maps dependencies",
+            "description": "File discovery identifies all files that import or reference the function"
+          },
+          {
+            "title": "Generate implementation plan",
+            "description": "File-by-file breakdown: what changes in each file, in what order"
+          },
+          {
+            "title": "Review and refine",
+            "description": "Catch missing files, wrong assumptions, or edge cases BEFORE execution"
+          },
+          {
+            "title": "Execute with confidence",
+            "description": "Hand off approved plan to Claude Code, Cursor, or implement manually"
+          }
+        ],
+        "title": "The Safe Refactoring Workflow"
+      }
+    },
+    "integration": {
+      "description": "PlanToCode doesn't replace your AI coding tools—it complements them:",
+      "title": "Integration with Existing Tools",
+      "workflow": {
+        "steps": [
+          {
+            "title": "Plan with PlanToCode",
+            "description": "Generate and review implementation plan with dependency mapping"
+          },
+          {
+            "title": "Execute with your preferred tool",
+            "description": "Paste plan into Cursor, Claude Code, or Copilot for code generation"
+          },
+          {
+            "title": "Verify changes",
+            "description": "Run tests, check diffs against the plan"
+          }
+        ],
+        "title": "Combined Workflow"
+      }
+    },
+    "keyFeatures": {
+      "changeOrdering": {
+        "description": "Plans specify the correct sequence: update types first, then implementations, then tests. Avoid intermediate broken states.",
+        "title": "Change Ordering"
+      },
+      "dependencyMapping": {
+        "description": "AI-powered file discovery uncovers all files affected by the refactoring, including hidden imports, type dependencies, and cross-module references.",
+        "title": "Dependency Mapping"
+      },
+      "preExecutionReview": {
+        "description": "See exactly what will change before any code is written. Review file-by-file changes, edit the plan, and approve when ready.",
+        "title": "Pre-Execution Review"
+      },
+      "testCoverageCheck": {
+        "description": "Identify test files that need updates alongside production code. Don't ship refactoring with broken test suites.",
+        "title": "Test Coverage Check"
+      },
+      "title": "Key Safety Features"
+    },
+    "realWorldExample": {
+      "scenario": "Scenario: Migrate from REST to GraphQL",
+      "task": "Replace all REST API calls with GraphQL queries across a 50,000-line Next.js codebase.",
+      "title": "Real-World Example: Refactoring a 50K-Line Codebase",
+      "withPlanning": {
+        "steps": [
+          "File discovery finds 47 files using REST API",
+          "Plan shows migration order: types → client → components → utils",
+          "Identifies error handling patterns to preserve",
+          "Catches test files needing GraphQL mock updates",
+          "Result: Reviewed plan in 20 mins, executed safely"
+        ],
+        "title": "With PlanToCode:"
+      },
+      "withoutPlanning": {
+        "steps": [
+          "AI modifies API client files",
+          "Updates some component imports",
+          "Misses API calls in utility functions",
+          "Forgets to update error handling",
+          "Changes compile but fail at runtime",
+          "Result: 4 hours debugging production errors"
+        ],
+        "title": "Without Planning (Cursor/Copilot direct):"
+      }
+    },
+    "refactoringProblem": {
+      "aiPowered": "AI-powered refactoring: Fast but risky. Cursor, Copilot, and Claude can modify 20 files in seconds—but you don't know what changed until it's done.",
+      "gap": "The gap: No review step. No \"here's what I'm going to change\" preview. Just instant execution and hope for the best.",
+      "manual": "Manual refactoring: Safe but slow. You carefully update each file, check dependencies, run tests.",
+      "title": "The Refactoring Problem"
+    },
+    "title": "Safe Refactoring Tools: Why AI Needs a Planning Layer",
+    "whenToUse": {
+      "skipPlanningWhen": {
+        "scenarios": [
+          "Single-file changes - Isolated refactoring with no external dependencies",
+          "Prototypes - Throwaway code where breaking things is acceptable",
+          "Tiny projects - Less than 1,000 lines, easy to review everything manually"
+        ],
+        "title": "Skip Planning When:"
+      },
+      "title": "When to Use Safe Refactoring",
+      "usePlanningWhen": {
+        "scenarios": [
+          "Large codebases (50K+ lines) - Too much code to review manually after changes",
+          "Multi-file refactoring - Renaming, moving, or restructuring across 5+ files",
+          "Production code - Changes going to users, not throwaway prototypes",
+          "Monorepos - Cross-package refactoring with shared dependencies",
+          "Team environments - Multiple developers need to understand the change scope",
+          "Breaking changes - API signature changes, type modifications, architectural shifts"
+        ],
+        "title": "Use Planning-First Refactoring When:"
+      }
+    },
+    "whyBreaks": {
+      "description": "Refactoring fails when AI tools miss hidden dependencies:",
+      "importChains": {
+        "description": "Rename getUserData() → fetchUserProfile() breaks 8 files that import it. AI sees the function but misses the cascade.",
+        "title": "Import Chains"
+      },
+      "sideEffects": {
+        "description": "Move database initialization code without updating startup scripts. The change compiles but fails at runtime when the DB isn't ready.",
+        "title": "Side Effects"
+      },
+      "testAssumptions": {
+        "description": "Refactor error handling logic and break 15 integration tests that expect specific error messages. AI updates production code but forgets test mocks.",
+        "title": "Test Assumptions"
+      },
+      "title": "Why Refactoring Breaks Things",
+      "typeDefinitions": {
+        "description": "Change an interface property and watch TypeScript errors explode across the codebase. AI modifies the type but forgets files that depend on the old shape.",
+        "title": "Type Definitions"
+      }
+    }
+  }
+}

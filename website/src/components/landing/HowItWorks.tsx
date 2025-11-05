@@ -1,6 +1,6 @@
 /**
  * HowItWorks - Video-based workflow demonstration component.
- * 
+ *
  * Features:
  * - Video-based demonstration with optimized playback
  * - Accessibility compliance with ARIA labels and semantic structure
@@ -12,11 +12,12 @@
 
 import React, { memo, useEffect, useRef, useState } from 'react';
 import { useReducedMotion, motion } from 'framer-motion';
-import Link from 'next/link';
+import { Link } from '@/i18n/navigation';
 import Reveal from '@/components/motion/Reveal';
 import { trackVideo } from '@/lib/track';
 import { ScreenshotGallery } from '@/components/demo/ScreenshotGallery';
 import { Button } from '@/components/ui/button';
+import { useMessages } from '@/components/i18n/useMessages';
 
 interface Step {
   title: string;
@@ -131,6 +132,7 @@ const VideoCard = memo(function VideoCard({
 
 // Memoized main component for performance
 export const HowItWorks = memo(function HowItWorks({ steps = defaultSteps }: HowItWorksProps) {
+  const { t } = useMessages();
   const prefersReducedMotion = useReducedMotion();
   const demoStartTracked = useRef(false);
 
@@ -195,14 +197,14 @@ export const HowItWorks = memo(function HowItWorks({ steps = defaultSteps }: How
     >
       <div className="container mx-auto relative z-10">
         <div className="text-center mb-8 sm:mb-10">
-          <Reveal 
-            as="h2" 
+          <Reveal
+            as="h2"
             className="text-3xl sm:text-4xl lg:text-5xl mb-6 text-primary-emphasis font-bold text-shadow-subtle"
             delay={prefersReducedMotion ? 0 : 0}
           >
-            How It Works
+            {t('hero.cta.howItWorks', 'How It Works')}
           </Reveal>
-          
+
           {/* Interactive Demo Button - Right under the heading */}
           <motion.div
             className="flex justify-center"
@@ -211,7 +213,7 @@ export const HowItWorks = memo(function HowItWorks({ steps = defaultSteps }: How
           >
             <Button asChild size="lg" variant="outline">
               <Link href="/demo" className="no-hover-effect cursor-pointer">
-                Try the interactive demo
+                {t('hero.cta.demo', 'Try Interactive Demo →')}
               </Link>
             </Button>
           </motion.div>
@@ -222,15 +224,15 @@ export const HowItWorks = memo(function HowItWorks({ steps = defaultSteps }: How
 
         {/* Videos Section */}
         <div className="mt-16 mb-8">
-          <Reveal 
-            as="h3" 
+          <Reveal
+            as="h3"
             className="text-2xl sm:text-3xl md:text-4xl mb-4 text-center text-primary font-bold"
             delay={prefersReducedMotion ? 0 : 0}
           >
             Watch It In Action
           </Reveal>
-          <Reveal 
-            as="p" 
+          <Reveal
+            as="p"
             className="text-base sm:text-lg text-center text-foreground/85 dark:text-foreground/90 font-medium mb-8"
             delay={prefersReducedMotion ? 0 : 0.05}
           >

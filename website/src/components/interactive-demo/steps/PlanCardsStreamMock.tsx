@@ -5,7 +5,7 @@
 // Step 8: Implementation plan cards with streaming content exactly matching desktop styling
 'use client';
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { DesktopCard, DesktopCardContent, DesktopCardHeader, DesktopCardTitle, DesktopCardDescription } from '../desktop-ui/DesktopCard';
 import { DesktopButton } from '../desktop-ui/DesktopButton';
 import { DesktopProgress } from '../desktop-ui/DesktopProgress';

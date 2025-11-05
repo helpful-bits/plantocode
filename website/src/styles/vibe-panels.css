@@ -16,7 +16,7 @@
 }
 
 /* Mobile ticker wrapper - prevent expansion */
-.vibe-panels-container .block.lg\\:hidden {
+.vibe-panels-container .block.lg\:hidden {
     width: 100%;
     max-width: 100%;
     overflow: hidden;
@@ -38,7 +38,7 @@ section .max-w-5xl {
 
 /* Desktop layout - static horizontal layout at lg+ (1024px+) */
 @media (min-width: 1024px) {
-    .vibe-panels-container .hidden.lg\\:flex {
+    .vibe-panels-container .hidden.lg\:flex {
         gap: 1.25rem;
         align-items: stretch;
         justify-content: center;
@@ -48,7 +48,7 @@ section .max-w-5xl {
     }
 
     /* Desktop panels - consistent dimensions and professional appearance */
-    .hidden.lg\\:flex .vibe-panel {
+    .hidden.lg\:flex .vibe-panel {
         width: clamp(300px, 28vw, 350px);
         height: clamp(380px, 50vh, 460px);
         flex: 0 0 auto;
@@ -61,7 +61,7 @@ section .max-w-5xl {
     }
     
     /* Subtle hover effect for interactivity */
-    .hidden.lg\\:flex .vibe-panel:hover {
+    .hidden.lg\:flex .vibe-panel:hover {
         transform: translateY(-4px);
         box-shadow: 
             0 10px 15px -3px rgba(0, 0, 0, 0.1),
@@ -71,7 +71,7 @@ section .max-w-5xl {
     }
 
     /* Enhanced glow effect for accent panel on desktop - professional and subtle */
-    .hidden.lg\\:flex .vibe-panel--glow {
+    .hidden.lg\:flex .vibe-panel--glow {
         box-shadow:
                 0 0 30px color-mix(in oklch, var(--color-primary) 25%, transparent),
                 0 0 50px color-mix(in oklch, var(--color-primary) 15%, transparent),
@@ -83,7 +83,7 @@ section .max-w-5xl {
     }
     
     /* Ensure glow panel also lifts on hover */
-    .hidden.lg\\:flex .vibe-panel--glow:hover {
+    .hidden.lg\:flex .vibe-panel--glow:hover {
         transform: translateY(-4px);
         box-shadow:
                 0 0 35px color-mix(in oklch, var(--color-primary) 30%, transparent),
@@ -113,7 +113,7 @@ section .max-w-5xl {
     }
 
     /* Enhanced chevron styling for desktop - more subtle and professional */
-    .hidden.lg\\:flex .vibe-chevron {
+    .hidden.lg\:flex .vibe-chevron {
         background: linear-gradient(135deg,
         color-mix(in oklch, var(--color-primary) 20%, transparent),
         color-mix(in oklch, var(--color-primary) 10%, transparent));
@@ -124,7 +124,7 @@ section .max-w-5xl {
         flex-shrink: 0;
     }
 
-    .hidden.lg\\:flex .vibe-chevron:hover {
+    .hidden.lg\:flex .vibe-chevron:hover {
         background: linear-gradient(135deg,
         color-mix(in oklch, var(--color-primary) 30%, transparent),
         color-mix(in oklch, var(--color-primary) 15%, transparent));

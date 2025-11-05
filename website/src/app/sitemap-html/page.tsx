@@ -1,5 +1,5 @@
 import { Metadata } from 'next';
-import Link from 'next/link';
+import { Link } from '@/i18n/navigation';
 import { Header } from '@/components/landing/Header';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Breadcrumbs } from '@/components/Breadcrumbs';

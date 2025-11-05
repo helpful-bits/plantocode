@@ -1,7 +1,5 @@
 'use client';
 
-import React from 'react';
-
 export function SectionDivider() {
   return (
     <div className="relative w-full h-8 sm:h-12 md:h-16 overflow-visible pointer-events-none">

@@ -1,6 +1,6 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
+import { usePathname } from '@/i18n/navigation';
 import { buildBreadcrumbs } from '@/lib/docs-nav';
 
 export function DocsLayoutJsonLd() {

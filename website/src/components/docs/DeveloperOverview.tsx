@@ -1,5 +1,3 @@
-import React from 'react';
-
 export default function DeveloperOverview() {
   return (
     <section aria-labelledby="developer-overview-title" className="mt-12">

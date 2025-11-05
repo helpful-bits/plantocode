@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import Link from 'next/link';
+import { Link } from '@/i18n/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Menu, X, Sparkles, ChevronDown, Terminal, GitMerge, Code2, Bug, Package, Wrench, Mic, Search, FileSearch, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -10,12 +10,15 @@ import { DownloadButton } from '@/components/ui/DownloadButton';
 import { MacDownloadButton } from '@/components/ui/MacDownloadButton';
 import { WindowsStoreButton } from '@/components/ui/WindowsStoreButton';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
+import { LanguageSwitch } from '@/components/i18n/LanguageSwitch';
+import { useMessages } from '@/components/i18n/useMessages';
 import { usePlatformDetection } from '@/hooks/usePlatformDetection';
 import { cn } from '@/lib/utils';
 import { defaultEase, defaultDuration } from '@/lib/animations';
 import { CALENDLY_URL } from '@/lib/brand';
 
 export function Header() {
+  const { t } = useMessages();
   const { isMac, isWindows } = usePlatformDetection();
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -68,35 +71,35 @@ export function Header() {
 
   const navLinks = [
     {
-      label: 'Features',
+      label: t('nav.features', 'Features'),
       dropdown: true,
       href: undefined,
       items: [
-        { href: '/features/file-discovery', label: 'File Discovery', icon: FileSearch, description: 'AI-powered intelligent file selection' },
-        { href: '/features/deep-research', label: 'Deep Research', icon: Search, description: 'Web search and information synthesis' },
-        { href: '/features/plan-mode', label: 'Plan Editor', icon: Code2, description: 'Full Monaco editor for AI plans' },
-        { href: '/plan-mode', label: 'Plan Mode Guides', icon: Terminal, description: 'Codex, Claude, and Cursor workflows' },
-        { href: '/features/merge-instructions', label: 'Merge Instructions', icon: GitMerge, description: 'Control how plans merge' },
-        { href: '/features/copy-buttons', label: 'Copy Buttons', icon: Copy, description: 'Configurable workflow automation' },
-        { href: '/features/text-improvement', label: 'Text Improvement', icon: Sparkles, description: 'Inline rewriting across Monaco and task inputs' },
-        { href: '/features/voice-transcription', label: 'Voice Transcription', icon: Mic, description: 'Hands-free task and terminal input' },
-        { href: '/features/integrated-terminal', label: 'Integrated Terminal', icon: Terminal, description: 'Persistent sessions with CLI auto-launch' },
+        { href: '/features/file-discovery', label: t('feature.fileDiscovery.label', 'File Discovery'), icon: FileSearch, description: t('feature.fileDiscovery.description', 'AI-powered intelligent file selection') },
+        { href: '/features/deep-research', label: t('feature.deepResearch.label', 'Deep Research'), icon: Search, description: t('feature.deepResearch.description', 'Web search and information synthesis') },
+        { href: '/features/plan-mode', label: t('feature.planEditor.label', 'Plan Editor'), icon: Code2, description: t('feature.planEditor.description', 'Full Monaco editor for AI plans') },
+        { href: '/plan-mode', label: t('feature.planModeGuides.label', 'Plan Mode Guides'), icon: Terminal, description: t('feature.planModeGuides.description', 'Workflows for Codex, Claude, and Cursor') },
+        { href: '/features/merge-instructions', label: t('feature.mergeInstructions.label', 'Merge Instructions'), icon: GitMerge, description: t('feature.mergeInstructions.description', 'Control over plan merging') },
+        { href: '/features/copy-buttons', label: t('feature.copyButtons.label', 'Copy Buttons'), icon: Copy, description: t('feature.copyButtons.description', 'Configurable workflow automation') },
+        { href: '/features/text-improvement', label: t('feature.textImprovement.label', 'Text Improvement'), icon: Sparkles, description: t('feature.textImprovement.description', 'Inline rephrasing in Monaco and task inputs') },
+        { href: '/features/voice-transcription', label: t('feature.voiceTranscription.label', 'Voice Transcription'), icon: Mic, description: t('feature.voiceTranscription.description', 'Hands-free input for tasks and terminal') },
+        { href: '/features/integrated-terminal', label: t('feature.integratedTerminal.label', 'Integrated Terminal'), icon: Terminal, description: t('feature.integratedTerminal.description', 'Persistent sessions with auto-start CLI') },
       ]
     },
     {
-      label: 'Solutions',
+      label: t('nav.solutions', 'Solutions'),
       dropdown: true,
       href: undefined,
       items: [
-        { href: '/solutions/large-features', label: 'Large Features', icon: Code2, description: 'Multi-file feature planning' },
-        { href: '/solutions/hard-bugs', label: 'Hard Bugs', icon: Bug, description: 'Visual debugging with screen recording' },
-        { href: '/solutions/maintenance-enhancements', label: 'Maintenance', icon: Wrench, description: 'Technical debt cleanup' },
-        { href: '/solutions/library-upgrades', label: 'Library Upgrades', icon: Package, description: 'Dependency management' },
+        { href: '/solutions/large-features', label: t('solution.largeFeatures.label', 'Large Features'), icon: Code2, description: t('solution.largeFeatures.description', 'Planning multi-file features') },
+        { href: '/solutions/hard-bugs', label: t('solution.hardBugs.label', 'Complex Bugs'), icon: Bug, description: t('solution.hardBugs.description', 'Visual debugging with screen capture') },
+        { href: '/solutions/maintenance-enhancements', label: t('solution.maintenance.label', 'Maintenance'), icon: Wrench, description: t('solution.maintenance.description', 'Technical debt cleanup') },
+        { href: '/solutions/library-upgrades', label: t('solution.libraryUpgrades.label', 'Library Upgrades'), icon: Package, description: t('solution.libraryUpgrades.description', 'Dependency management') },
       ]
     },
-    { href: '/docs', label: 'Docs', dropdown: false },
-    { href: '/demo', label: 'Demo', dropdown: false },
-    { href: '/downloads', label: 'Downloads', dropdown: false },
+    { href: '/docs', label: t('nav.docs', 'Documentation'), dropdown: false },
+    { href: '/demo', label: t('nav.demo', 'Demo'), dropdown: false },
+    { href: '/downloads', label: t('nav.downloads', 'Downloads'), dropdown: false },
   ];
 
   return (
@@ -130,7 +133,7 @@ export function Header() {
                     : 'text-foreground hover:text-primary drop-shadow-lg',
                 )}
                 href="/"
-                aria-label="PlanToCode home page"
+                aria-label={t('aria.homePageLink', 'PlanToCode home page')}
               >
                 <motion.div
                   className={cn(
@@ -257,10 +260,12 @@ export function Header() {
                 transition={{ delay: 0.7, duration: defaultDuration, ease: defaultEase }}
               >
                 <Button asChild variant="outline" size="sm">
-                  <Link href={CALENDLY_URL} target="_blank" rel="noopener noreferrer">
-                    Talk to an Architect
-                  </Link>
+                  <a href={CALENDLY_URL} target="_blank" rel="noopener noreferrer">
+                    {t('cta.talkToArchitect', 'Talk to an Architect')}
+                  </a>
                 </Button>
+
+                <LanguageSwitch />
 
                 <ThemeToggle />
                 
@@ -288,10 +293,11 @@ export function Header() {
 
             {/* Mobile actions */}
             <div className="flex md:hidden items-center gap-2.5">
+              <LanguageSwitch />
               <ThemeToggle />
               <motion.button
                 animate={{ opacity: 1 }}
-                aria-label="Toggle navigation menu"
+                aria-label={t('aria.toggleMenu', 'Toggle navigation menu')}
                 aria-expanded={mobileMenuOpen}
                 className={cn(
                   'relative p-2 rounded-xl min-h-[44px] min-w-[44px] flex items-center justify-center',
@@ -391,7 +397,7 @@ export function Header() {
               <button
                 onClick={() => setMobileMenuOpen(false)}
                 className="absolute top-3 right-3 p-2 rounded-full bg-background/80 hover:bg-background border border-border/50 hover:border-primary/50 transition-all z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 min-h-[44px] min-w-[44px] flex items-center justify-center"
-                aria-label="Close navigation menu"
+                aria-label={t('aria.closeMenu', 'Close navigation menu')}
               >
                 <X className="w-5 h-5" aria-hidden="true" />
               </button>
@@ -489,19 +495,20 @@ export function Header() {
                 transition={{ delay: 0.6, duration: 0.4 }}
               >
                 <div className="flex items-center gap-3">
+                  <LanguageSwitch />
                   <ThemeToggle />
                   <motion.div className="flex-1" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
                     <Button asChild className="w-full" size="lg" variant="outline" onClick={() => setMobileMenuOpen(false)}>
-                      <Link href="/docs" className="no-hover-effect cursor-pointer">Docs</Link>
+                      <Link href="/docs" className="no-hover-effect cursor-pointer">{t('nav.docs', 'Docs')}</Link>
                     </Button>
                   </motion.div>
                 </div>
 
                 <motion.div className="w-full" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
                   <Button asChild className="w-full" size="lg" variant="cta" onClick={() => setMobileMenuOpen(false)}>
-                    <Link href={CALENDLY_URL} target="_blank" rel="noopener noreferrer">
-                      Talk to an Architect
-                    </Link>
+                    <a href={CALENDLY_URL} target="_blank" rel="noopener noreferrer">
+                      {t('cta.talkToArchitect', 'Talk to an Architect')}
+                    </a>
                   </Button>
                 </motion.div>
 

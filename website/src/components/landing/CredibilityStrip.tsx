@@ -1,9 +1,9 @@
 'use client';
 
-import React from 'react';
 import { motion } from 'framer-motion';
 
 function CredibilityStrip() {
+
   return (
     <section className="relative py-8 sm:py-10 px-4 overflow-hidden">
       <div className="container mx-auto relative z-10">

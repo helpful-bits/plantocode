@@ -1,0 +1,30 @@
+{
+  "regionSelector": {
+    "eu": {
+      "documents": "Enthält: Nutzungsbedingungen, Datenschutz, Impressum, Unterauftragsverarbeiter, Widerrufsbelehrung",
+      "features": [
+        "DSGVO-Datenschutzrechte",
+        "14-tägige Widerrufsfrist",
+        "Deutsches Recht gilt",
+        "Verbraucherschutz"
+      ],
+      "title": "Europäische Union / Vereinigtes Königreich"
+    },
+    "notice": {
+      "content": "PlanToCode ist nur für Einwohner und Nutzer verfügbar, die aus der Europäischen Union/EWR, dem Vereinigten Königreich und den Vereinigten Staaten zugreifen. Der Zugriff aus allen anderen Regionen ist eingeschränkt. Wir verwenden IP-Geolokalisierung, Zahlungsverifizierung und andere Methoden, um diese Beschränkungen durchzusetzen. Die Verwendung von VPN oder Proxy zur Umgehung regionaler Beschränkungen ist untersagt.",
+      "title": "Hinweis zur Dienstverfügbarkeit"
+    },
+    "subtitle": "Wählen Sie Ihre Region, um die geltenden Rechtsdokumente anzuzeigen",
+    "title": "Wählen Sie Ihre Region",
+    "us": {
+      "documents": "Enthält: Nutzungsbedingungen, Datenschutzerklärung, Unterauftragsverarbeiter",
+      "features": [
+        "CCPA/Staatliche Datenschutzrechte",
+        "US-Recht gilt",
+        "DMCA-Verfahren",
+        "Standard-Geschäftsbedingungen"
+      ],
+      "title": "Vereinigte Staaten"
+    }
+  }
+}

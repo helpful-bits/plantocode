@@ -1,27 +1,23 @@
 'use client';
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { motion, AnimatePresence } from 'framer-motion';
 import Reveal from '@/components/motion/Reveal';
 import { trackFAQ } from '@/lib/track';
+import { useMessages } from '@/components/i18n/useMessages';
 
-interface FAQItem {
-  question: string;
-  answer: string;
-}
+const FAQ_KEYS = ['q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'q10', 'q11', 'q12', 'q13'];
 
-interface FAQProps {
-  items: FAQItem[];
-}
-
-export function FAQ({ items }: FAQProps) {
+export function FAQ() {
+  const { t } = useMessages();
   const [openIndices, setOpenIndices] = useState<number[]>([0, 1, 2]);
-  
+
   const toggleOpen = (index: number) => {
     const isExpanding = !openIndices.includes(index);
-    if (isExpanding && items[index]) {
-      trackFAQ(items[index].question, index);
+    if (isExpanding && FAQ_KEYS[index]) {
+      const question = t(`faq.items.${FAQ_KEYS[index]}.q`);
+      trackFAQ(question, index);
     }
     setOpenIndices((cur) => cur.includes(index) ? cur.filter(i => i !== index) : [...cur, index]);
   };
@@ -31,17 +27,17 @@ export function FAQ({ items }: FAQProps) {
       <div className="container mx-auto max-w-3xl relative z-10">
         <div className="text-center mb-12 sm:mb-16">
           <Reveal as="h2" className="text-3xl sm:text-4xl lg:text-5xl mb-4 text-primary-emphasis">
-            Frequently Asked Questions
+            {t('faq.title', 'Frequently Asked Questions')}
           </Reveal>
           <Reveal as="p" className="text-lg sm:text-xl max-w-2xl mx-auto leading-relaxed font-medium text-foreground/80" delay={0.05}>
-            Everything you need to know about PlanToCode
+            {t('faq.subtitle', 'Everything you need to know about PlanToCode')}
           </Reveal>
         </div>
 
         <div className="p-4 space-y-6">
-          {items.map((item, index) => (
+          {FAQ_KEYS.map((key, index) => (
             <Reveal
-              key={index}
+              key={key}
               delay={0.1 + index * 0.05}
             >
               <div className="faq-item relative">
@@ -63,7 +59,7 @@ export function FAQ({ items }: FAQProps) {
                         openIndices.includes(index) ? 'text-primary' : ''
                       }`}
                     >
-                      {item.question}
+                      {t(`faq.items.${key}.q`)}
                     </span>
                     <motion.div
                       animate={{
@@ -143,7 +139,7 @@ export function FAQ({ items }: FAQProps) {
                       >
                         <div className="px-4 pb-4 sm:px-6 sm:pb-6 text-foreground leading-relaxed">
                           <div className="border-l-2 border-primary/20 pl-4">
-                            {item.answer}
+                            {t(`faq.items.${key}.a`)}
                           </div>
                         </div>
                       </motion.div>

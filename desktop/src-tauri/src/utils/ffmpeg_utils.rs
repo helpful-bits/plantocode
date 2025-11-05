@@ -61,12 +61,70 @@ pub async fn probe_duration_ms(path: &Path) -> AppResult<i64> {
         ));
     }
 
-    let duration_str = String::from_utf8_lossy(&output.stdout);
-    let duration_secs: f64 = duration_str.trim()
-        .parse()
-        .map_err(|e| AppError::Processing(format!("Failed to parse duration: {}", e)))?;
+    let duration_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
-    Ok((duration_secs * 1000.0) as i64)
+    // Try parsing as f64, if that fails (e.g., "N/A" for WebM), try stream duration
+    if let Ok(duration_secs) = duration_str.parse::<f64>() {
+        return Ok((duration_secs * 1000.0) as i64);
+    }
+
+    // Fallback: probe stream duration for files without container duration (like WebM)
+    let stream_output = Command::new("ffprobe")
+        .args(&[
+            "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=duration",
+            "-of", "csv=p=0",
+        ])
+        .arg(path)
+        .output()
+        .await
+        .map_err(|e| AppError::Processing(format!("Failed to run ffprobe for stream duration: {}", e)))?;
+
+    if stream_output.status.success() {
+        let stream_duration_str = String::from_utf8_lossy(&stream_output.stdout).trim().to_string();
+        if let Ok(duration_secs) = stream_duration_str.parse::<f64>() {
+            return Ok((duration_secs * 1000.0) as i64);
+        }
+    }
+
+    // Final fallback: calculate from frame count and framerate (for WebM without duration metadata)
+    let frame_output = Command::new("ffprobe")
+        .args(&[
+            "-v", "error",
+            "-count_packets",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=nb_read_packets,r_frame_rate",
+            "-of", "csv=p=0",
+        ])
+        .arg(path)
+        .output()
+        .await
+        .map_err(|e| AppError::Processing(format!("Failed to run ffprobe for frame count: {}", e)))?;
+
+    if frame_output.status.success() {
+        let frame_data = String::from_utf8_lossy(&frame_output.stdout).trim().to_string();
+        // Expected format: "num/den,frame_count" e.g., "17/12,155"
+        let parts: Vec<&str> = frame_data.split(',').collect();
+        if parts.len() == 2 {
+            if let (Ok(frame_count), Some((num, den))) = (
+                parts[1].parse::<f64>(),
+                parts[0].split_once('/').and_then(|(n, d)| {
+                    Some((n.parse::<f64>().ok()?, d.parse::<f64>().ok()?))
+                })
+            ) {
+                let fps = num / den;
+                if fps > 0.0 {
+                    let duration_secs = frame_count / fps;
+                    return Ok((duration_secs * 1000.0) as i64);
+                }
+            }
+        }
+    }
+
+    Err(AppError::Processing(
+        format!("Could not determine video duration. Format duration: '{}', all fallback methods failed", duration_str)
+    ))
 }
 
 /// Split video into chunks and return metadata for each chunk

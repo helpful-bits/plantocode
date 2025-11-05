@@ -12,8 +12,9 @@ const __dirname = path.dirname(__filename);
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react(), tsconfigPaths(), tailwindcss()],
-  
+
   // Use relative paths for production builds
+  // Note: base './' is intentional for Tauri packaging to ensure relative asset URLs work inside the app bundle.
   base: './',
   
   // Set root to the desktop/ directory (parent of src/)

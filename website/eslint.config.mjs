@@ -36,7 +36,7 @@ const eslintConfig = [
       ],
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/consistent-type-imports': 'error',
-      
+
       // React rules
       'react/jsx-sort-props': [
         'error',
@@ -51,13 +51,24 @@ const eslintConfig = [
         'error',
         { props: 'never', children: 'never' },
       ],
-      
+
       // General rules
       'prefer-const': 'error',
       'no-var': 'error',
       'no-console': 'warn',
       'no-debugger': 'error',
-      
+
+      // Import rules
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [{
+            name: 'next/link',
+            message: 'Use { Link } from \'@/i18n/navigation\' for locale-aware routing.',
+          }],
+        },
+      ],
+
       // Code style
       'quotes': ['error', 'single', { avoidEscape: true }],
       'jsx-quotes': ['error', 'prefer-double'],
