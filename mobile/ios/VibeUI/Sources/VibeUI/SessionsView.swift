@@ -10,6 +10,13 @@ public struct SessionsView: View {
     @State private var showingSessionDetail = false
     @State private var selectedSession: Session?
 
+    @State private var showingRenameAlert = false
+    @State private var sessionToRename: Session?
+    @State private var newNameForRename = ""
+
+    @State private var showingDeleteAlert = false
+    @State private var sessionToDelete: Session?
+
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var container: AppContainer
 
@@ -72,6 +79,28 @@ public struct SessionsView: View {
                                     SessionCard(session: session)
                                 }
                                 .buttonStyle(PlainButtonStyle())
+                                .swipeActions(edge: .trailing) {
+                                    Button(role: .destructive) {
+                                        sessionToDelete = session
+                                        showingDeleteAlert = true
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                    Button {
+                                        sessionToRename = session
+                                        newNameForRename = session.name
+                                        showingRenameAlert = true
+                                    } label: {
+                                        Label("Rename", systemImage: "pencil")
+                                    }
+                                    .tint(.blue)
+                                    Button {
+                                        duplicateSession(session)
+                                    } label: {
+                                        Label("Clone", systemImage: "plus.square.on.square")
+                                    }
+                                    .tint(.green)
+                                }
                             }
                         }
                         .padding(.vertical)
@@ -141,6 +170,23 @@ public struct SessionsView: View {
                let dataServices = PlanToCodeCore.shared.dataServices {
                 SessionDetailView(session: session, sessionService: dataServices.sessionService)
             }
+        }
+        .alert("Rename Session", isPresented: $showingRenameAlert) {
+            TextField("New Session Name", text: $newNameForRename)
+            Button("Rename", action: {
+                if let session = sessionToRename {
+                    renameSession(session, newName: newNameForRename)
+                }
+            })
+            Button("Cancel", role: .cancel) {}
+        }
+        .alert("Delete Session", isPresented: $showingDeleteAlert, presenting: sessionToDelete) { session in
+            Button("Delete", role: .destructive, action: {
+                deleteSession(session)
+            })
+            Button("Cancel", role: .cancel) {}
+        } message: { session in
+            Text("Are you sure you want to delete \"\(session.name)\"? This action cannot be undone.")
         }
     }
 
@@ -217,6 +263,42 @@ public struct SessionsView: View {
         } catch {
             await MainActor.run {
                 errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func renameSession(_ session: Session, newName: String) {
+        Task {
+            do {
+                guard let dataServices = PlanToCodeCore.shared.dataServices else { return }
+                try await dataServices.sessionService.renameSession(id: session.id, newName: newName)
+                loadSessions()
+            } catch {
+                errorMessage = "Failed to rename session: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func duplicateSession(_ session: Session) {
+        Task {
+            do {
+                guard let dataServices = PlanToCodeCore.shared.dataServices else { return }
+                _ = try await dataServices.sessionService.duplicateSession(id: session.id, newName: nil)
+                loadSessions()
+            } catch {
+                errorMessage = "Failed to duplicate session: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func deleteSession(_ session: Session) {
+        Task {
+            do {
+                guard let dataServices = PlanToCodeCore.shared.dataServices else { return }
+                try await dataServices.sessionService.deleteSession(id: session.id)
+                sessions.removeAll { $0.id == session.id }
+            } catch {
+                errorMessage = "Failed to delete session: \(error.localizedDescription)"
             }
         }
     }

@@ -292,8 +292,7 @@ public class PushNotificationManager: NSObject, ObservableObject {
             path: "api/devices/push/register",
             method: .POST,
             body: request,
-            token: authToken,
-            includeDeviceId: true
+            token: authToken
         )
     }
 
@@ -342,8 +341,7 @@ public class PushNotificationManager: NSObject, ObservableObject {
                 path: "api/devices/push/register",
                 method: .POST,
                 body: request,
-                token: authToken,
-                includeDeviceId: true
+                token: authToken
             )
 
             isTokenRegistered = true

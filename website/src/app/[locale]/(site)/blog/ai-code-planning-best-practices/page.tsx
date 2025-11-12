@@ -1,14 +1,23 @@
 import { BlogArticle } from '@/components/blog/BlogArticle';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
-import { cdnUrl } from '@/lib/cdn';
 import type { Metadata } from 'next';
 import { locales } from '@/i18n/config';
-import type { Locale } from '@/lib/i18n';
+import { loadMessages, type Locale } from '@/lib/i18n';
+import { generatePageMetadata, COMMON_KEYWORDS, mergeKeywords } from '@/content/metadata';
 
-export const metadata: Metadata = {
-  title: 'AI Code Planning Best Practices 2025 - Workflow Guide',
-  description: 'Master AI code planning with proven best practices: multi-model planning, dependency mapping, review checklists, and team workflows for production codebases.',
-  keywords: [
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return {
+    ...generatePageMetadata({
+      locale,
+      slug: '/blog/ai-code-planning-best-practices',
+      title: t['blog.ai-code-planning-best-practices.meta.title'],
+      description: t['blog.ai-code-planning-best-practices.meta.description'],
+    }),
+    keywords: mergeKeywords(
+      [
     'ai code planning best practices',
     'ai code planning',
     'ai coding best practices',
@@ -16,33 +25,10 @@ export const metadata: Metadata = {
     'implementation planning',
     'ai code review',
   ],
-  robots: {
-    index: true,
-    follow: true,
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/blog/ai-code-planning-best-practices',
-    languages: {
-      'en-US': 'https://www.plantocode.com/blog/ai-code-planning-best-practices',
-      'en': 'https://www.plantocode.com/blog/ai-code-planning-best-practices',
-      'x-default': 'https://www.plantocode.com/blog/ai-code-planning-best-practices',
-    },
-  },
-  openGraph: {
-    title: 'AI Code Planning Best Practices 2025 - Workflow Guide',
-    description: 'Master AI code planning with proven best practices: multi-model planning, dependency mapping, review checklists for production code.',
-    url: 'https://www.plantocode.com/blog/ai-code-planning-best-practices',
-    siteName: 'PlanToCode',
-    type: 'article',
-    locale: 'en_US',
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Code Planning Best Practices',
-    }],
-  },
-};
+      COMMON_KEYWORDS.core
+    ),
+  };
+}
 
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));

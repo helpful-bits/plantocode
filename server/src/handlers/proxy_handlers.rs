@@ -1348,6 +1348,7 @@ async fn handle_openrouter_streaming_request(
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TranscriptionResponse {
     text: String,
 }
@@ -1795,6 +1796,7 @@ pub struct TextEnhancementRequest {
 
 /// Response structure for text enhancement
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TextEnhancementResponse {
     pub enhanced_text: String,
     pub enhancement_type: String,
@@ -1802,6 +1804,7 @@ pub struct TextEnhancementResponse {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TextEnhancementUsage {
     pub prompt_tokens: i32,
     pub completion_tokens: i32,

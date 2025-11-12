@@ -5,14 +5,24 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
+import { RelatedFeatures } from '@/components/RelatedContent';
 import { FAQ } from '@/components/landing/FAQ';
 import { Video, Upload, Eye, Settings, Zap, Target, CheckCircle2, Clock, Sparkles, FileText, Users, Mic } from 'lucide-react';
-import { cdnUrl } from '@/lib/cdn';
 import { locales } from '@/i18n/config';
-export const metadata: Metadata = {
-  title: 'Meeting Analysis - Multimodal AI',
-  description: 'Capture Teams meetings and screen recordings. AI analyzes audio and visuals to extract requirements for corporate teams.',
-  keywords: [
+import { generatePageMetadata, COMMON_KEYWORDS, mergeKeywords } from '@/content/metadata';
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return {
+    ...generatePageMetadata({
+      locale,
+      slug: '/features/video-analysis',
+      title: t['videoAnalysis.meta.title'],
+      description: t['videoAnalysis.meta.description'],
+    }),
+    keywords: mergeKeywords(
+      [
     'meeting analysis',
     'teams meeting capture',
     'multimodal analysis',
@@ -20,28 +30,10 @@ export const metadata: Metadata = {
     'corporate meeting analysis',
     'visual content analysis',
   ],
-  openGraph: {
-    title: 'AI Meeting & Recording Analysis: Requirements Extraction',
-    description: 'Capture Microsoft Teams meetings and screen recordings. Multimodal AI analyzes audio transcripts and visual content to extract actionable requirements for corporate teams.',
-    url: 'https://www.plantocode.com/features/video-analysis',
-    siteName: 'PlanToCode',
-    type: 'website',
-    locale: 'en_US',
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
-    }],
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/features/video-analysis',
-    languages: {
-      'en-US': 'https://www.plantocode.com/features/video-analysis',
-      'en': 'https://www.plantocode.com/features/video-analysis',
-    },
-  },
-};
+      COMMON_KEYWORDS.core
+    ),
+  };
+}
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));
 }
@@ -486,6 +478,9 @@ export default async function VideoAnalysisPage({ params }: { params: Promise<{ 
               </div>
               {/* FAQ */}
               <FAQ />
+              {/* Related Features */}
+              <RelatedFeatures currentSlug="features/video-analysis" maxItems={3} />
+
               {/* CTA */}
               <div className="text-center">
                 <GlassCard className="p-8 sm:p-12 max-w-3xl mx-auto" highlighted>

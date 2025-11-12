@@ -1,4 +1,10 @@
 {
+  "home": {
+    "meta": {
+      "title": "Planificación de implementación de IA para codificación segura",
+      "description": "Planificación de implementación de IA para grandes bases de código. Revise los cambios antes de la ejecución. Prevenga errores y duplicados. Se integra con Cursor, Copilot, Claude Code."
+    }
+  },
   "about": {
     "architecture": {
       "comment": "Construido para flujos de trabajo de desarrollo complejos, no para simples chats con IA",
@@ -452,7 +458,7 @@
       "screenshots": "Ver Capturas de Pantalla Reales",
       "subtitle": "Descubre cómo PlanToCode planifica y ejecuta cambios de código.",
       "title": "Demo interactiva",
-      "video": "Ver Demo Corta"
+      "video": "Ver Demo"
     },
     "meta": {
       "description": "Descubre cómo PlanToCode planifica y ejecuta cambios de código.",
@@ -461,7 +467,7 @@
   },
   "downloads": {
     "cta": {
-      "architect": "Habla con un arquitecto",
+      "architect": "Habla con un experto",
       "docs": "Documentación de terminal",
       "footer": "Hecho en Alemania • Cumple GDPR • Almacenamiento Local de Sesiones",
       "professional": "Opciones profesionales",
@@ -875,11 +881,11 @@
     "footer": "¿No puedes encontrar un horario adecuado? Envíanos un correo a",
     "hero": {
       "subtitle": "Obtén orientación experta sobre el uso de PlanToCode para las necesidades específicas de tu equipo. Discutiremos patrones de arquitectura, estrategias de integración y opciones de despliegue.",
-      "title": "Habla con un Arquitecto"
+      "title": "Habla con un Experto"
     },
     "meta": {
       "description": "Obtén orientación experta sobre el uso de PlanToCode para las necesidades específicas de tu equipo. Discutiremos patrones de arquitectura, estrategias de integración y opciones de despliegue.",
-      "title": "Habla con un Arquitecto"
+      "title": "Habla con un Experto"
     },
     "topics": {
       "items": {
@@ -935,6 +941,14 @@
         "cursor": "Flujos de Trabajo de Cursor",
         "general": "Flujos de Trabajo Generales"
       }
+    }
+  },
+  "screenshots": {
+    "title": "PlanToCode Screenshots",
+    "description": "See PlanToCode in action with real screenshots from actual workflows.",
+    "meta": {
+      "title": "Screenshots - PlanToCode in action",
+      "description": "See PlanToCode in action with real screenshots from actual workflows. File discovery, implementation plans, terminal integration, and more."
     }
   }
 }

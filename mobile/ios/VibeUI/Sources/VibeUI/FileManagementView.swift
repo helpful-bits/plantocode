@@ -4,6 +4,7 @@ import Core
 public struct FileManagementView: View {
     @EnvironmentObject private var container: AppContainer
     @ObservedObject private var filesService: FilesDataService
+    @ObservedObject private var jobsService: JobsDataService
     @StateObject private var multiConnectionManager = MultiConnectionManager.shared
     @State private var searchText = ""
     @State private var files: [FileInfo] = []
@@ -14,12 +15,15 @@ public struct FileManagementView: View {
     @State private var searchDebounceTimer: Timer?
     @State private var refreshTrigger = UUID()
     @State private var findFilesError: String? = nil
-    @State private var runningWorkflowCount: Int = 0
     @State private var hasLoadedFiles: Bool = false
     @State private var lastLoadedProjectDir: String? = nil
+    @State private var canUndoFiles = false
+    @State private var canRedoFiles = false
+    @State private var isSyncingHistory = false
 
-    public init(filesService: FilesDataService) {
+    public init(filesService: FilesDataService, jobsService: JobsDataService) {
         self.filesService = filesService
+        self.jobsService = jobsService
     }
 
     private var sessionService: SessionDataService {
@@ -56,14 +60,15 @@ public struct FileManagementView: View {
         }
         .onReceive(container.sessionService.currentSessionPublisher.compactMap { $0 }) { _ in
             updateIncludedFilesNotInList()
-            updateRunningWorkflowCount()
+            Task {
+                await refreshUndoRedoState()
+            }
         }
         .onReceive(container.filesService.$files) { newFiles in
             files = newFiles
             updateIncludedFilesNotInList()
         }
         .task(id: container.sessionService.currentSession?.projectDirectory) {
-            // Runs immediately when view is created AND whenever project directory changes
             let currentProjectDir = container.sessionService.currentSession?.projectDirectory
                 ?? container.currentProject?.directory
 
@@ -74,7 +79,7 @@ public struct FileManagementView: View {
                 }
             }
             updateIncludedFilesNotInList()
-            updateRunningWorkflowCount()
+            await refreshUndoRedoState()
         }
         .onReceive(filesService.$currentSearchTerm) { newValue in
             if newValue != localSearchTerm {
@@ -88,17 +93,11 @@ public struct FileManagementView: View {
             updateIncludedFilesNotInList()
         }
         .onReceive(container.sessionService.currentSessionPublisher) { session in
-            // Only reload files if project directory changed
             let newProjectDir = session?.projectDirectory
             if lastLoadedProjectDir != newProjectDir && newProjectDir != nil {
                 lastLoadedProjectDir = newProjectDir
                 loadFiles()
             }
-            updateRunningWorkflowCount()
-        }
-        .onReceive(container.jobsService.$jobs) { _ in
-            // Update workflow count whenever jobs change (real-time updates)
-            updateRunningWorkflowCount()
         }
     }
 
@@ -211,6 +210,34 @@ public struct FileManagementView: View {
     private var actionButtons: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: Theme.Spacing.sm) {
+                Button {
+                    Task {
+                        isSyncingHistory = true
+                        defer { isSyncingHistory = false }
+                        guard let session = container.sessionService.currentSession else { return }
+                        try? await container.filesService.undoFileSelection(sessionId: session.id)
+                        await refreshUndoRedoState()
+                    }
+                } label: {
+                    Image(systemName: "arrow.uturn.backward")
+                }
+                .buttonStyle(IconButtonStyle())
+                .disabled(!canUndoFiles || isSyncingHistory)
+
+                Button {
+                    Task {
+                        isSyncingHistory = true
+                        defer { isSyncingHistory = false }
+                        guard let session = container.sessionService.currentSession else { return }
+                        try? await container.filesService.redoFileSelection(sessionId: session.id)
+                        await refreshUndoRedoState()
+                    }
+                } label: {
+                    Image(systemName: "arrow.uturn.forward")
+                }
+                .buttonStyle(IconButtonStyle())
+                .disabled(!canRedoFiles || isSyncingHistory)
+
                 ActionButton(title: "Select All", systemImage: "checkmark.circle") {
                     selectAllFiltered()
                 }
@@ -331,18 +358,12 @@ public struct FileManagementView: View {
                             excludedPaths: refreshedSession.forceExcludedFiles ?? []
                         )
 
-                        // Update count after launching
-                        await MainActor.run {
-                            updateRunningWorkflowCount()
-                        }
-
                         var suggestionPaths: [String] = []
                         for try await event in stream {
                             switch event {
                             case .suggestions(let list):
                                 suggestionPaths.append(contentsOf: list.map { $0.path })
                             case .completed:
-                                // Auto-apply suggestions to session
                                 if !suggestionPaths.isEmpty {
                                     try? await container.sessionService.updateSessionFiles(
                                         sessionId: refreshedSession.id,
@@ -352,14 +373,9 @@ public struct FileManagementView: View {
                                         removeExcluded: suggestionPaths
                                     )
                                 }
-                                // Update count when complete
-                                await MainActor.run {
-                                    updateRunningWorkflowCount()
-                                }
                             case .error(let msg):
                                 await MainActor.run {
                                     findFilesError = msg
-                                    updateRunningWorkflowCount()
                                 }
                             default:
                                 break
@@ -368,18 +384,17 @@ public struct FileManagementView: View {
                     } catch {
                         await MainActor.run {
                             findFilesError = "Failed to run workflow: \(error.localizedDescription)"
-                            updateRunningWorkflowCount()
                         }
                     }
                 }
             }) {
                 HStack {
                     Image(systemName: "sparkles")
-                    if runningWorkflowCount == 0 {
+                    if jobsService.sessionActiveWorkflowJobs == 0 {
                         Text("Find Files")
                             .lineLimit(1)
                     } else {
-                        Text("Find Files (\(runningWorkflowCount))")
+                        Text("Find Files (\(jobsService.sessionActiveWorkflowJobs))")
                             .lineLimit(1)
                     }
                 }
@@ -501,6 +516,20 @@ public struct FileManagementView: View {
         return state.isConnected
     }
 
+    private func refreshUndoRedoState() async {
+        guard let session = container.sessionService.currentSession else { return }
+        do {
+            let state = try await container.filesService.getFileHistoryState(sessionId: session.id)
+            let entries = (state["entries"] as? [Any]) ?? []
+            let current = (state["currentIndex"] as? Int) ?? Int(state["currentIndex"] as? Int64 ?? 0)
+            await MainActor.run {
+                canUndoFiles = current > 0
+                canRedoFiles = current < max(0, entries.count - 1)
+            }
+        } catch {
+        }
+    }
+
     private func updateIncludedFilesNotInList() {
         guard let session = container.sessionService.currentSession else {
             includedFilesNotInList = []
@@ -603,8 +632,25 @@ public struct FileManagementView: View {
             return
         }
 
-        let includedSet = Set(session.includedFiles ?? [])
+        var includedSet = Set(session.includedFiles ?? [])
+        var excludedSet = Set(session.forceExcludedFiles ?? [])
         let isIncluded = includedSet.contains(path)
+
+        if isIncluded {
+            includedSet.remove(path)
+        } else {
+            includedSet.insert(path)
+            excludedSet.remove(path)
+        }
+
+        let nextIncluded = Array(includedSet)
+        let nextExcluded = Array(excludedSet)
+
+        container.sessionService.updateSessionFilesInMemory(
+            sessionId: session.id,
+            includedFiles: nextIncluded,
+            forceExcludedFiles: nextExcluded
+        )
 
         Task {
             try? await container.sessionService.updateSessionFiles(
@@ -612,8 +658,9 @@ public struct FileManagementView: View {
                 addIncluded: isIncluded ? nil : [path],
                 removeIncluded: isIncluded ? [path] : nil,
                 addExcluded: nil,
-                removeExcluded: isIncluded ? nil : [path] // remove exclusion when including
+                removeExcluded: isIncluded ? nil : [path]
             )
+            await refreshUndoRedoState()
         }
     }
 
@@ -623,17 +670,35 @@ public struct FileManagementView: View {
             return
         }
 
-        let excludedSet = Set(session.forceExcludedFiles ?? [])
+        var includedSet = Set(session.includedFiles ?? [])
+        var excludedSet = Set(session.forceExcludedFiles ?? [])
         let isExcluded = excludedSet.contains(path)
+
+        if isExcluded {
+            excludedSet.remove(path)
+        } else {
+            excludedSet.insert(path)
+            includedSet.remove(path)
+        }
+
+        let nextIncluded = Array(includedSet)
+        let nextExcluded = Array(excludedSet)
+
+        container.sessionService.updateSessionFilesInMemory(
+            sessionId: session.id,
+            includedFiles: nextIncluded,
+            forceExcludedFiles: nextExcluded
+        )
 
         Task {
             try? await container.sessionService.updateSessionFiles(
                 sessionId: session.id,
                 addIncluded: nil,
-                removeIncluded: isExcluded ? nil : [path], // remove included when excluding
+                removeIncluded: isExcluded ? nil : [path],
                 addExcluded: isExcluded ? nil : [path],
                 removeExcluded: isExcluded ? [path] : nil
             )
+            await refreshUndoRedoState()
         }
     }
 
@@ -745,36 +810,6 @@ public struct FileManagementView: View {
         }
     }
 
-    private func updateRunningWorkflowCount() {
-        guard let session = container.sessionService.currentSession else {
-            runningWorkflowCount = 0
-            return
-        }
-
-        // Use in-memory jobs from JobsDataService for instant updates
-        let activeStatuses: Set<String> = ["created", "queued", "acknowledgedByWorker", "preparing", "preparingInput", "generatingStream", "processingStream", "running"]
-
-        let count = container.jobsService.jobs.filter { job in
-            // Check session ID matches
-            guard job.sessionId == session.id else {
-                return false
-            }
-
-            // Check status is active
-            guard activeStatuses.contains(job.status) else {
-                return false
-            }
-
-            // Check it's a file finder workflow - match actual task types used by the system
-            let taskType = job.taskType ?? ""
-            return taskType == "extended_path_finder" ||
-                   taskType == "file_relevance_assessment" ||
-                   taskType == "path_correction" ||
-                   taskType == "regex_file_filter"
-        }.count
-
-        runningWorkflowCount = count
-    }
 }
 
 private struct FileManagementRowView: View {
@@ -931,6 +966,10 @@ private struct ActionButton: View {
     let serverURL = URL(string: "https://localhost:3000")!
     let deviceId = UUID().uuidString
     let relayClient = ServerRelayClient(serverURL: serverURL, deviceId: deviceId)
-    FileManagementView(filesService: FilesDataService(serverRelayClient: relayClient))
-        .environmentObject(AppContainer(baseURL: serverURL, deviceId: deviceId))
+    let container = AppContainer(baseURL: serverURL, deviceId: deviceId)
+    FileManagementView(
+        filesService: FilesDataService(serverRelayClient: relayClient),
+        jobsService: container.jobsService
+    )
+    .environmentObject(container)
 }

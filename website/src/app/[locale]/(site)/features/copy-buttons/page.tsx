@@ -5,13 +5,23 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
+import { RelatedFeatures } from '@/components/RelatedContent';
 import { Copy, Settings, Terminal, Edit3, GripVertical, CheckCircle2, Code2, Layers } from 'lucide-react';
-import { cdnUrl } from '@/lib/cdn';
 import { locales } from '@/i18n/config';
-export const metadata: Metadata = {
-  title: 'Copy Buttons - One-Click Workflows',
-  description: 'Transform prompts into reusable buttons. Templates with placeholders, drag-drop ordering, terminal integration.',
-  keywords: [
+import { generatePageMetadata, COMMON_KEYWORDS, mergeKeywords } from '@/content/metadata';
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return {
+    ...generatePageMetadata({
+      locale,
+      slug: '/features/copy-buttons',
+      title: t['copyButtons.meta.title'],
+      description: t['copyButtons.meta.description'],
+    }),
+    keywords: mergeKeywords(
+      [
     'copy buttons',
     'workflow automation',
     'template system',
@@ -23,28 +33,10 @@ export const metadata: Metadata = {
     'prompt management',
     'ai workflow buttons',
   ],
-  openGraph: {
-    title: 'Copy Buttons - Any Prompt Becomes a Workflow',
-    description: 'Server-configured buttons with smart templates and placeholders. Drag-drop reordering, terminal integration, and one-click automation. Your best tricks, always ready.',
-    url: 'https://www.plantocode.com/features/copy-buttons',
-    siteName: 'PlanToCode',
-    type: 'website',
-    locale: 'en_US',
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
-    }],
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/features/copy-buttons',
-    languages: {
-      'en-US': 'https://www.plantocode.com/features/copy-buttons',
-      'en': 'https://www.plantocode.com/features/copy-buttons',
-    },
-  },
-};
+      COMMON_KEYWORDS.core
+    ),
+  };
+}
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));
 }
@@ -345,6 +337,10 @@ export default async function CopyButtonsPage({ params }: { params: Promise<{ lo
                   </GlassCard>
                 </div>
               </div>
+
+              {/* Related Features */}
+              <RelatedFeatures currentSlug="features/copy-buttons" maxItems={3} />
+
               {/* CTA */}
               <div className="text-center">
                 <GlassCard className="p-8 sm:p-12 max-w-3xl mx-auto" highlighted>

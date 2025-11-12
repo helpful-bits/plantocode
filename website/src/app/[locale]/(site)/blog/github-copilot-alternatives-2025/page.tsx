@@ -3,12 +3,22 @@ import { BlogArticle } from '@/components/blog/BlogArticle';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Link } from '@/i18n/navigation';
 import { locales } from '@/i18n/config';
-import type { Locale } from '@/lib/i18n';
+import { loadMessages, type Locale } from '@/lib/i18n';
+import { generatePageMetadata, COMMON_KEYWORDS, mergeKeywords } from '@/content/metadata';
 
-export const metadata: Metadata = {
-  title: 'GitHub Copilot Alternatives 2025 | Best Options',
-  description: 'Comprehensive guide to GitHub Copilot alternatives including Cursor, Codeium, Tabnine, PlanToCode, and Aider. Compare pricing, features, and find the best fit for your team.',
-  keywords: [
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return {
+    ...generatePageMetadata({
+      locale,
+      slug: '/blog/github-copilot-alternatives-2025',
+      title: t['blog.github-copilot-alternatives-2025.meta.title'],
+      description: t['blog.github-copilot-alternatives-2025.meta.description'],
+    }),
+    keywords: mergeKeywords(
+      [
     'github copilot alternative',
     'copilot alternatives',
     'ai coding assistant alternatives',
@@ -17,22 +27,10 @@ export const metadata: Metadata = {
     'enterprise copilot alternative',
     'codeium vs copilot',
   ],
-  openGraph: {
-    title: 'GitHub Copilot Alternatives 2025: Best Options for Large Codebases',
-    description: 'Compare the best GitHub Copilot alternatives including Cursor, Codeium, Tabnine, and PlanToCode. Find the right AI coding tool for your needs.',
-    type: 'article',
-    publishedTime: '2025-01-15T00:00:00.000Z',
-    authors: ['PlanToCode Team'],
-  },
-  twitter: {
-    card: 'summary_large_image',
-    title: 'GitHub Copilot Alternatives 2025: Best Options for Large Codebases',
-    description: 'Compare the best GitHub Copilot alternatives including Cursor, Codeium, Tabnine, and PlanToCode.',
-  },
-  alternates: {
-    canonical: 'https://plantocode.com/blog/github-copilot-alternatives-2025',
-  },
-};
+      COMMON_KEYWORDS.core
+    ),
+  };
+}
 
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));

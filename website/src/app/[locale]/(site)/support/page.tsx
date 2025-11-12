@@ -1,4 +1,4 @@
-import { Metadata } from 'next';
+import type { Metadata } from 'next';
 import { FeatureBaseLink } from '@/components/support/FeatureBaseSSO';
 import GlassCard from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/button';
@@ -8,46 +8,24 @@ import { ObfuscatedEmail } from '@/components/ui/ObfuscatedEmail';
 
 import { loadMessages, type Locale } from '@/lib/i18n';
 import { locales } from '@/i18n/config';
+import { generatePageMetadata } from '@/content/metadata';
 
-export const metadata: Metadata = {
-  title: 'PlanToCode Support - Help & Troubleshooting',
-  description: 'Get help with PlanToCode installation, Claude Code, Cursor, and Codex integration. Troubleshooting and feature requests. 24h response time.',
-  keywords: [
-    'plantocode support',
-    'plantocode help',
-    'claude code help',
-    'cursor integration help',
-    'installation support',
-    'troubleshooting',
-    'feature requests',
-  ],
-  robots: {
-    index: true,
-    follow: true,
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/support',
-    languages: {
-      'en-US': 'https://www.plantocode.com/support',
-      'en': 'https://www.plantocode.com/support',
-    },
-  },
-  openGraph: {
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+
+  return generatePageMetadata({
+    locale,
+    slug: '/support',
     title: 'PlanToCode Support - Help & Troubleshooting',
     description: 'Get help with PlanToCode installation, Claude Code, Cursor, and Codex integration. Troubleshooting and feature requests. 24h response time.',
-    url: 'https://www.plantocode.com/support',
-    siteName: 'PlanToCode',
-    type: 'website',
-    locale: 'en_US',
     images: [{
       url: cdnUrl('/images/og-image.png'),
       width: 1200,
       height: 630,
       alt: 'PlanToCode - AI Planning for Code',
     }],
-  },
-};
-
+  });
+}
 
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));

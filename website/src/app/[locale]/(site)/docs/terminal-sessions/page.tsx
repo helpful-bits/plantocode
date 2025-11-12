@@ -1,33 +1,20 @@
 import type { Metadata } from 'next';
 import { DocsArticle } from '@/components/docs/DocsArticle';
 import { GlassCard } from '@/components/ui/GlassCard';
-import { cdnUrl } from '@/lib/cdn';
 import { loadMessages, type Locale } from '@/lib/i18n';
 import { locales } from '@/i18n/config';
-export const metadata: Metadata = {
-  title: 'Terminal sessions - PlanToCode',
-  description: 'Technical guide to PTY terminal implementation in PlanToCode. Learn how sessions persist, agent inactivity detection works, and recovery mechanisms.',
-  alternates: {
-    canonical: 'https://www.plantocode.com/docs/terminal-sessions',
-    languages: {
-      'en-US': 'https://www.plantocode.com/docs/terminal-sessions',
-      'en': 'https://www.plantocode.com/docs/terminal-sessions',
-    },
-  },
-  openGraph: {
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
-    }],
-    title: 'Terminal sessions - PlanToCode',
-    description: 'Understand session persistence, agent attention detection, and recovery in the plan terminal.',
-    url: 'https://www.plantocode.com/docs/terminal-sessions',
-    siteName: 'PlanToCode',
-    type: 'article',
-  },
-};
+import { generatePageMetadata } from '@/content/metadata';
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return generatePageMetadata({
+    locale,
+    slug: '/docs/terminal-sessions',
+    title: t['terminalSessions.meta.title'],
+    description: t['terminalSessions.meta.description'],
+  });
+}
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));
 }

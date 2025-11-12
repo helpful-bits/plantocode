@@ -4,38 +4,21 @@ import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Copy, FileSearch, AlertTriangle, CheckCircle2, FolderOpen, GitBranch } from 'lucide-react';
-import { cdnUrl } from '@/lib/cdn';
 import { locales } from '@/i18n/config';
-import type { Locale } from '@/lib/i18n';
+import { loadMessages, type Locale } from '@/lib/i18n';
+import { generatePageMetadata } from '@/content/metadata';
 
-export const metadata: Metadata = {
-  title: 'Prevent AI from Creating Duplicate Files',
-  description:
-    'Stop AI tools from creating duplicate files. PlanToCode file discovery prevents duplicates before execution for Cursor, Copilot users.',
-  openGraph: {
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
-    }],
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
 
-    title: 'Prevent AI from Creating Duplicate Files',
-    description:
-      'Stop AI coding tools from creating duplicate files. See how PlanToCode\'s file discovery prevents duplicates before execution. Real solutions for Cursor, Copilot users.',
-    url: 'https://www.plantocode.com/solutions/prevent-duplicate-files',
-    siteName: 'PlanToCode',
-    type: 'website',
-    locale: 'en_US',
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/solutions/prevent-duplicate-files',
-    languages: {
-      'en-US': 'https://www.plantocode.com/solutions/prevent-duplicate-files',
-      'en': 'https://www.plantocode.com/solutions/prevent-duplicate-files',
-    },
-  },
-};
+  return generatePageMetadata({
+    locale,
+    slug: '/solutions/prevent-duplicate-files',
+    title: t['solutions.preventDuplicateFiles.meta.title'],
+    description: t['solutions.preventDuplicateFiles.meta.description'],
+  });
+}
 
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));

@@ -63,6 +63,15 @@ impl ServerProxyClient {
         }
     }
 
+    /// Apply API versioning to endpoints
+    fn versioned(endpoint: &str, enable_v1: bool) -> String {
+        if enable_v1 && endpoint.starts_with("/api/") {
+            endpoint.replacen("/api/", "/api/v1/", 1)
+        } else {
+            endpoint.to_string()
+        }
+    }
+
     /// Get the base server URL
     pub fn base_url(&self) -> &str {
         &self.server_url

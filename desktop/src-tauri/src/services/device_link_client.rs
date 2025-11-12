@@ -24,8 +24,9 @@ static LAST_WARN_MS: AtomicU64 = AtomicU64::new(0);
 const MAX_PENDING_BYTES: usize = 1_048_576; // 1 MiB cap
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct RelayEnvelope {
-    #[serde(alias = "type", alias = "message_type")]
+    #[serde(rename = "type")]
     pub kind: String,
     pub payload: serde_json::Value,
     #[serde(default)]
@@ -589,7 +590,11 @@ impl DeviceLinkClient {
                     let settings_repo = SettingsRepository::new(pool.clone());
                     if let Ok(device_settings) = settings_repo.get_device_settings().await {
                         if !device_settings.allow_remote_access {
-                            info!("Remote access disabled, terminating connection");
+                            info!("Remote access disabled, emitting device-link-status: disabled");
+                            let _ = app_handle_for_heartbeat.emit("device-link-status", serde_json::json!({
+                                "status": "disabled",
+                                "message": "Remote access has been disabled in settings."
+                            }));
                             break;
                         }
                     }
@@ -715,11 +720,15 @@ impl DeviceLinkClient {
                     return Ok(());
                 }
 
+                // Build user context from relay request
+                let user_id = "remote_user".to_string(); // Could be extracted from request if available
+                let device_id = device_id_manager::get_or_create(app_handle).unwrap_or_else(|_| "unknown".to_string());
                 let user_context = UserContext {
-                    user_id: "remote_user".to_string(),
-                    device_id: device_id_manager::get_or_create(app_handle).unwrap_or_else(|_| "unknown".to_string()),
+                    user_id,
+                    device_id,
                     permissions: vec!["rpc".to_string()],
                 };
+
                 let response = desktop_command_handler::dispatch_remote_command(app_handle, request, &user_context).await;
                 let relay_response = DeviceLinkMessage::RelayResponse { client_id, response };
                 if let Err(e) = tx.send(relay_response) {

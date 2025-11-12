@@ -53,10 +53,9 @@ public final class ServerAPIClient {
         path: String,
         method: HTTPMethod = .GET,
         body: (any Encodable)? = nil,
-        token: String? = nil,
-        includeDeviceId: Bool = false
+        token: String? = nil
     ) async throws -> T {
-        let (data, response) = try await requestRaw(path: path, method: method, body: body, token: token, includeDeviceId: includeDeviceId)
+        let (data, response) = try await requestRaw(path: path, method: method, body: body, token: token)
 
         guard (200...299).contains(response.statusCode) else {
             throw APIError.invalidResponse(statusCode: response.statusCode, data: data)
@@ -73,13 +72,18 @@ public final class ServerAPIClient {
         path: String,
         method: HTTPMethod = .GET,
         body: (any Encodable)? = nil,
-        token: String? = nil,
-        includeDeviceId: Bool = false
+        token: String? = nil
     ) async throws -> (Data, HTTPURLResponse) {
         let cleanedBaseURL = baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        let cleanedPath = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        var finalPath = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
 
-        guard let url = URL(string: "\(cleanedBaseURL)/\(cleanedPath)") else {
+        // Apply API versioning if enabled
+        let enableV1 = Config.Flags.apiVersioning
+        if enableV1 && finalPath.hasPrefix("api/") {
+            finalPath.insert(contentsOf: "v1/", at: finalPath.index(finalPath.startIndex, offsetBy: 4))
+        }
+
+        guard let url = URL(string: "\(cleanedBaseURL)/\(finalPath)") else {
             throw APIError.invalidURL
         }
 
@@ -92,12 +96,6 @@ public final class ServerAPIClient {
             let deviceId = DeviceManager.shared.getOrCreateDeviceID()
             request.setValue(deviceId, forHTTPHeaderField: "X-Device-ID")
             request.setValue(deviceId, forHTTPHeaderField: "X-Token-Binding")
-            request.setValue("mobile", forHTTPHeaderField: "X-Client-Type")
-        }
-
-        if includeDeviceId && token == nil {
-            let deviceId = DeviceManager.shared.getOrCreateDeviceID()
-            request.setValue(deviceId, forHTTPHeaderField: "X-Device-ID")
             request.setValue("mobile", forHTTPHeaderField: "X-Client-Type")
         }
 
@@ -124,13 +122,13 @@ public final class ServerAPIClient {
             let duration = Date().timeIntervalSince(startTime)
             let responseSize = data.count
 
-            logger.info("[\(method.rawValue)] \(cleanedPath) | Status: \(httpResponse.statusCode) | Duration: \(String(format: "%.3f", duration))s | Request: \(self.formatBytes(requestBodySize)) | Response: \(self.formatBytes(responseSize))")
+            logger.info("[\(method.rawValue)] \(finalPath) | Status: \(httpResponse.statusCode) | Duration: \(String(format: "%.3f", duration))s | Request: \(self.formatBytes(requestBodySize)) | Response: \(self.formatBytes(responseSize))")
 
             return (data, httpResponse)
         } catch {
             // Log failed requests
             let duration = Date().timeIntervalSince(startTime)
-            logger.error("[\(method.rawValue)] \(cleanedPath) | Failed after \(String(format: "%.3f", duration))s | Request: \(self.formatBytes(requestBodySize)) | Error: \(error.localizedDescription)")
+            logger.error("[\(method.rawValue)] \(finalPath) | Failed after \(String(format: "%.3f", duration))s | Request: \(self.formatBytes(requestBodySize)) | Error: \(error.localizedDescription)")
 
             if let err = error as? APIError { throw err }
             throw APIError.requestFailed(error)

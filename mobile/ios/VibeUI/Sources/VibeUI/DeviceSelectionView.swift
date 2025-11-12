@@ -5,6 +5,7 @@ public struct DeviceSelectionView: View {
     @ObservedObject private var deviceDiscovery = DeviceDiscoveryService.shared
     @ObservedObject private var appState = AppState.shared
     @StateObject private var multiConnectionManager = MultiConnectionManager.shared
+    @EnvironmentObject private var container: AppContainer
     @State private var isConnecting = false
     @State private var errorMessage: String?
     @State private var selectedDeviceId: UUID?
@@ -12,6 +13,7 @@ public struct DeviceSelectionView: View {
     @State private var showingDiagnostics = false
     @State private var diagnosticsDeviceId: UUID?
     @State private var consecutiveFailures = 0
+    @State private var showingPaywall = false
 
     private var filteredDevices: [RegisteredDevice] {
         let allowedPlatforms = Set(["macos", "windows", "linux"])
@@ -106,39 +108,25 @@ public struct DeviceSelectionView: View {
                             StatusAlertView(variant: .destructive, title: "Connection Error", message: errorMessage)
 
                             VStack(alignment: .leading, spacing: 12) {
-                                HStack(spacing: 12) {
-                                    if diagnosticsDeviceId != nil {
-                                        Button(action: {
-                                            showingDiagnostics = true
-                                        }) {
-                                            Label("Why can't I connect?", systemImage: "stethoscope")
-                                                .small()
-                                        }
-                                        .frame(maxWidth: .infinity)
-                                        .buttonStyle(SecondaryButtonStyle())
-                                    }
-                                    
+                                if diagnosticsDeviceId != nil {
                                     Button(action: {
-                                        Task { await performHardReset(autoRetry: false) }
+                                        showingDiagnostics = true
                                     }) {
-                                        Label("Reset Connection", systemImage: "arrow.clockwise")
+                                        Label("Why can't I connect?", systemImage: "stethoscope")
                                             .small()
                                     }
                                     .frame(maxWidth: .infinity)
                                     .buttonStyle(SecondaryButtonStyle())
                                 }
 
-                                if selectedDeviceId != nil {
-                                    Button(action: {
-                                        Task { await performHardReset(autoRetry: true) }
-                                    }) {
-                                        Label("Reset and Retry", systemImage: "arrow.triangle.2.circlepath")
-                                            .small()
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .buttonStyle(PrimaryButtonStyle())
-                                    .padding(.top, 2)
+                                Button(action: {
+                                    Task { await performHardReset(autoRetry: true) }
+                                }) {
+                                    Label("Reset and Retry", systemImage: "arrow.triangle.2.circlepath")
+                                        .small()
                                 }
+                                .frame(maxWidth: .infinity)
+                                .buttonStyle(PrimaryButtonStyle())
                             }
                             .padding(.top, 4)
                         }
@@ -409,6 +397,10 @@ public struct DeviceSelectionView: View {
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("connection-reconnect-exhausted"))) { _ in
             Task { await performHardReset(autoRetry: false) }
         }
+        .sheet(isPresented: $showingPaywall) {
+            PaywallView()
+                .environmentObject(container)
+        }
     }
 
     private func refreshDevices() {
@@ -446,6 +438,12 @@ public struct DeviceSelectionView: View {
     private func connectToDevice(_ device: RegisteredDevice) {
         // Guard against rapid re-entrant calls
         guard !isConnecting else {
+            return
+        }
+
+        // Check subscription status before allowing connection
+        if !container.subscriptionManager.status.isActive {
+            showingPaywall = true
             return
         }
 

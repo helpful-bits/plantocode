@@ -18,7 +18,7 @@
   },
   "cta": {
     "download": "Herunterladen",
-    "talkToArchitect": "Architekt kontaktieren"
+    "talkToArchitect": "Experten kontaktieren"
   },
   "feature": {
     "copyButtons": {
@@ -79,7 +79,7 @@
     "resources": "Ressourcen",
     "support": "Support",
     "tagline": "Planen und versenden Sie Code-Änderungen - finden Sie Dateien, generieren und mergen Sie KI-Pläne und führen Sie sie in einem persistenten Terminal aus.",
-    "talkToArchitect": "Architekt kontaktieren",
+    "talkToArchitect": "Experten kontaktieren",
     "terms": "AGB"
   },
   "label": {

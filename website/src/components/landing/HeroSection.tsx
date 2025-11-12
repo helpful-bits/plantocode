@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Search, BarChart3, CheckCircle2, Target, Zap } from 'lucide-react';
+import { CheckCircle2, Target, Play, Mic, Sparkles, FileSearch, GitBranch } from 'lucide-react';
 import { Link } from '@/i18n/navigation';
 import { Button } from '@/components/ui/button';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
+import { VideoModal } from '@/components/ui/VideoModal';
 import { trackCTA } from '@/lib/track';
 import { useMessages } from '@/components/i18n/useMessages';
 
@@ -15,6 +16,7 @@ export function HeroSection() {
   // Start with null to match server/client
   const [isMobile, setIsMobile] = useState<boolean | null>(null);
   const [isDesktop, setIsDesktop] = useState<boolean | null>(null);
+  const [showVideo, setShowVideo] = useState(false);
 
   // Set initial values and handle resize
   useEffect(() => {
@@ -49,10 +51,10 @@ export function HeroSection() {
             backgroundClip: 'text',
           }}
         >
-          {t('hero.title', 'Plan Complex Changes Without Breaking Production')}
+          {t('hero.title', 'Turn Vague Ideas Into File‑Level Plans')}
         </h2>
         <p className="mt-6 text-lg sm:text-xl text-foreground/80 max-w-4xl mx-auto">
-          {t('hero.subtitle', 'AI generates detailed implementation plans with exact file paths. You review and approve every change before execution. Zero risk, full control.')}
+          {t('hero.subtitle', 'Dictate or type your task. Scope the exact files. Generate multiple AI perspectives. Automatically merge into one superior plan.')}
         </p>
       </div>
 
@@ -67,187 +69,200 @@ export function HeroSection() {
             transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
             className={isMobile === true ? "flex flex-col gap-6 pb-8 w-full" : "flex items-center justify-center gap-1 pb-6"}
           >
-                {/* Panel 1: Find Files */}
+                {/* Panel 1: Crystallize & Scope */}
                 {isMobile ? (
               <div className="vibe-panel w-full" style={{minHeight: 'auto'}}>
-                <h2 className="vibe-panel__title">{t('hero.panel1.title', 'File discovery workflow')}</h2>
+                <h3>{t('hero.panel1.title', 'Crystallize & Scope')}</h3>
                 <p className="text-foreground/80 text-base leading-relaxed">
-                  {t('hero.panel1.description', 'Generate search patterns, run relevance scoring, and review staged results before including files in your plan.')} <LinkWithArrow href="/features/file-discovery">{t('hero.panel1.link', 'See how it works')}</LinkWithArrow>
+                  {t('hero.panel1.description', 'Voice or text with AI refinement. Isolate files for this specific task.')}
                 </p>
+                <div className="vibe-intent-box">
+                  <div className="vibe-intent-box__item flex items-center gap-3">
+                    <Mic className="w-5 h-5 text-foreground/60" />
+                    <span>{t('hero.panel1.features.voice', 'Voice dictation')}</span>
+                  </div>
+                  <div className="vibe-intent-box__item flex items-center gap-3">
+                    <Sparkles className="w-5 h-5 text-foreground/60" />
+                    <span>{t('hero.panel1.features.textImprovement', 'Text improvement')}</span>
+                  </div>
+                  <div className="vibe-intent-box__item flex items-center gap-3">
+                    <CheckCircle2 className="w-5 h-5 text-foreground/60" />
+                    <span>{t('hero.panel1.features.taskRefinement', 'Task refinement')}</span>
+                  </div>
+                  <div className="vibe-intent-box__item flex items-center gap-3">
+                    <FileSearch className="w-5 h-5 text-foreground/60" />
+                    <span>{t('hero.panel1.features.fileDiscovery', 'Targeted file discovery')}</span>
+                  </div>
+                  <div className="vibe-intent-box__item flex items-center gap-3">
+                    <Target className="w-5 h-5 text-foreground/60" />
+                    <span>{t('hero.panel1.features.scopedSelection', 'Task‑specific selection')}</span>
+                  </div>
+                </div>
+                <LinkWithArrow href="/features/file-discovery">{t('hero.panel1.linkDesktop', 'Explore discovery')}</LinkWithArrow>
               </div>
             ) : (
               <div className="vibe-panel flex-shrink-0" style={{width: 'min(380px, 32vw)', height: 'min(420px, 50vh)'}}>
-                <h2 className="vibe-panel__title">{t('hero.panel1.title', 'File discovery workflow')}</h2>
+                <h3>{t('hero.panel1.title', 'Crystallize & Scope')}</h3>
+                <p className="text-foreground/80 text-base leading-relaxed">
+                  {t('hero.panel1.descriptionDesktop', 'Type or dictate. Refine with AI. Scope exact files via targeted discovery.')}
+                </p>
                 <div className="vibe-intent-box">
-                  <div className="vibe-intent-box__item text-base flex items-center gap-3 justify-start">
-                    <Search className="w-5 h-5 text-foreground/60" />
-                    <span>{t('hero.panel1.features.patterns', 'Pattern groups')}</span>
+                  <div className="vibe-intent-box__item flex items-center gap-3">
+                    <Mic className="w-5 h-5 text-foreground/60" />
+                    <span>{t('hero.panel1.features.voice', 'Voice dictation')}</span>
                   </div>
-                  <div className="vibe-intent-box__item text-base flex items-center gap-3 justify-start">
-                    <BarChart3 className="w-5 h-5 text-foreground/60" />
-                    <span>{t('hero.panel1.features.relevance', 'Relevance scores')}</span>
+                  <div className="vibe-intent-box__item flex items-center gap-3">
+                    <Sparkles className="w-5 h-5 text-foreground/60" />
+                    <span>{t('hero.panel1.features.textImprovement', 'Text improvement')}</span>
                   </div>
-                  <div className="vibe-intent-box__item text-base flex items-center gap-3 justify-start">
+                  <div className="vibe-intent-box__item flex items-center gap-3">
                     <CheckCircle2 className="w-5 h-5 text-foreground/60" />
-                    <span>{t('hero.panel1.features.stage', 'Stage reviews')}</span>
+                    <span>{t('hero.panel1.features.taskRefinement', 'Task refinement')}</span>
                   </div>
-                  <div className="vibe-intent-box__item text-base flex items-center gap-3 justify-start">
+                  <div className="vibe-intent-box__item flex items-center gap-3">
+                    <FileSearch className="w-5 h-5 text-foreground/60" />
+                    <span>{t('hero.panel1.features.fileDiscovery', 'Targeted file discovery')}</span>
+                  </div>
+                  <div className="vibe-intent-box__item flex items-center gap-3">
                     <Target className="w-5 h-5 text-foreground/60" />
-                    <span>{t('hero.panel1.features.context', 'Context optimization')}</span>
-                  </div>
-                  <div className="vibe-intent-box__item text-base flex items-center gap-3 justify-start">
-                    <Zap className="w-5 h-5 text-foreground/60" />
-                    <span>{t('hero.panel1.features.progress', 'Real-time progress')}</span>
+                    <span>{t('hero.panel1.features.scopedSelection', 'Task‑specific selection')}</span>
                   </div>
                 </div>
-                <p className="vibe-panel__description text-base">
-                  {t('hero.panel1.descriptionDesktop', 'Surface the right files before you write prompts.')} <LinkWithArrow href="/features/file-discovery">{t('hero.panel1.linkDesktop', 'Learn more')}</LinkWithArrow>
-                </p>
+                <LinkWithArrow href="/features/file-discovery">{t('hero.panel1.linkDesktop', 'Explore discovery')}</LinkWithArrow>
               </div>
             )}
 
             {/* Arrow between Panel 1 and 2 - Desktop only with spacer */}
-            {isDesktop && (
-              <div className="flex items-center justify-center px-1 relative" style={{ minWidth: '32px', minHeight: '40px' }}>
-                <div className="relative">
-                  <svg
-                    className="w-10 h-10 animate-pulse"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    aria-hidden="true"
-                    style={{
-                      filter: 'drop-shadow(0 0 8px color-mix(in oklch, var(--color-primary) 40%, transparent))',
-                    }}
-                  >
-                    <defs>
-                      <linearGradient id="arrow-gradient-1" x1="0%" y1="0%" x2="100%" y2="0%">
-                        <stop offset="0%" stopColor="var(--color-primary)" stopOpacity="0.3" />
-                        <stop offset="50%" stopColor="var(--color-primary)" stopOpacity="0.8" />
-                        <stop offset="100%" stopColor="var(--color-primary)" stopOpacity="0.3" />
-                      </linearGradient>
-                    </defs>
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M13 7l5 5m0 0l-5 5m5-5H6"
-                      stroke="url(#arrow-gradient-1)"
-                      strokeWidth="2.5"
-                    />
-                  </svg>
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="w-12 h-0.5 bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
-                  </div>
+            <div className="hidden lg:flex items-center justify-center px-1 relative" style={{ minWidth: '32px', minHeight: '40px' }}>
+              <div className="relative" style={{ opacity: isDesktop === null ? 0 : 1, transition: 'opacity 0.2s' }}>
+                <svg
+                  className="w-10 h-10 animate-pulse"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  style={{
+                    filter: 'drop-shadow(0 0 8px color-mix(in oklch, var(--color-primary) 40%, transparent))',
+                  }}
+                >
+                  <defs>
+                    <linearGradient id="arrow-gradient-1" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stopColor="var(--color-primary)" stopOpacity="0.3" />
+                      <stop offset="50%" stopColor="var(--color-primary)" stopOpacity="0.8" />
+                      <stop offset="100%" stopColor="var(--color-primary)" stopOpacity="0.3" />
+                    </linearGradient>
+                  </defs>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M13 7l5 5m0 0l-5 5m5-5H6"
+                    stroke="url(#arrow-gradient-1)"
+                    strokeWidth="2.5"
+                  />
+                </svg>
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="w-12 h-0.5 bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
                 </div>
               </div>
-            )}
+            </div>
 
-            {/* Panel 2: Multi-Model Planning */}
-            <div className={isMobile ? "vibe-panel vibe-panel--accent vibe-panel--glow w-full" : "vibe-panel vibe-panel--accent vibe-panel--glow flex-shrink-0"} style={isMobile ? {minHeight: 'auto'} : {width: 'min(360px, 32vw)', height: 'min(420px, 50vh)'}}>
-              <h2 className="vibe-panel__title vibe-panel__title--accent">{t('hero.panel2.title', 'Multi-model planning')}</h2>
+            {/* Panel 2: Multiple AI Perspectives */}
+            <div className="vibe-panel vibe-panel--accent vibe-panel--glow">
+              <h3>{t('hero.panel2.title', 'Multiple AI Perspectives')}</h3>
+
               <div className="vibe-models-container">
                 <div className="vibe-model-card">
-                  <div className="vibe-model-card__header">
-                    <span className="vibe-model-card__name">{t('hero.panel2.models.gpt5', 'GPT-5')}</span>
-                    <span className="vibe-model-card__progress">72%</span>
+                  <div className="vibe-model-card__header flex items-center gap-2">
+                    <GitBranch className="w-4 h-4 text-primary/80" />
+                    <span className="vibe-model-card__name">{t('hero.panel2.runs.run1', 'Run 1 — GPT‑5')}</span>
                   </div>
-                  <div className="vibe-progress-bar">
-                    <div className="vibe-progress-bar__fill" style={{width: '72%'}}></div>
-                  </div>
+                  <div className="vibe-model-card__label text-sm opacity-80">{t('hero.panel2.tags.serviceLayer', 'Service‑layer‑first')}</div>
                 </div>
+
                 <div className="vibe-model-card">
-                  <div className="vibe-model-card__header">
-                    <span className="vibe-model-card__name">{t('hero.panel2.models.gemini', 'Gemini 2.5 Pro')}</span>
-                    <span className="vibe-model-card__progress">91%</span>
+                  <div className="vibe-model-card__header flex items-center gap-2">
+                    <GitBranch className="w-4 h-4 text-primary/80" />
+                    <span className="vibe-model-card__name">{t('hero.panel2.runs.run2', 'Run 2 — Gemini 2.5 Pro')}</span>
                   </div>
-                  <div className="vibe-progress-bar">
-                    <div className="vibe-progress-bar__fill" style={{width: '91%'}}></div>
-                  </div>
+                  <div className="vibe-model-card__label text-sm opacity-80">{t('hero.panel2.tags.apiFirst', 'API‑first')}</div>
                 </div>
+
                 <div className="vibe-model-card">
-                  <div className="vibe-model-card__header">
-                    <span className="vibe-model-card__name">{t('hero.panel2.models.claude', 'Claude Sonnet 4')}</span>
-                    <span className="vibe-model-card__progress">85%</span>
+                  <div className="vibe-model-card__header flex items-center gap-2">
+                    <GitBranch className="w-4 h-4 text-primary/80" />
+                    <span className="vibe-model-card__name">{t('hero.panel2.runs.run3', 'Run 3 — GPT‑5')}</span>
                   </div>
-                  <div className="vibe-progress-bar">
-                    <div className="vibe-progress-bar__fill" style={{width: '85%'}}></div>
-                  </div>
+                  <div className="vibe-model-card__label text-sm opacity-80">{t('hero.panel2.tags.middlewareFirst', 'Middleware‑first')}</div>
                 </div>
               </div>
-              <p className="vibe-panel__description">
-                {t('hero.panel2.description', 'Generate implementation plans from GPT-5, Gemini 2.5 Pro, Claude 4 Sonnet, Grok 4, and DeepSeek R1 and merge the best ideas.')} <LinkWithArrow href="/docs">{t('hero.panel2.link', 'Explore the workflow')}</LinkWithArrow>
-              </p>
+
+              <p>{t('hero.panel2.description', 'Generate plans multiple times with any model mix. Each AI brings different architectural thinking. Compare and choose what fits.')}</p>
+              <LinkWithArrow href="/docs/implementation-plans">{t('hero.panel2.link', 'Explore the workflow')}</LinkWithArrow>
             </div>
 
             {/* Arrow between Panel 2 and 3 - Desktop only with spacer */}
-            {isDesktop && (
-              <div className="flex items-center justify-center px-1 relative" style={{ minWidth: '32px', minHeight: '40px' }}>
-                <div className="relative">
-                  <svg
-                    className="w-10 h-10 animate-pulse"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    aria-hidden="true"
-                    style={{
-                      filter: 'drop-shadow(0 0 8px color-mix(in oklch, var(--color-primary) 40%, transparent))',
-                      animationDelay: '0.5s'
-                    }}
-                  >
-                    <defs>
-                      <linearGradient id="arrow-gradient-2" x1="0%" y1="0%" x2="100%" y2="0%">
-                        <stop offset="0%" stopColor="var(--color-primary)" stopOpacity="0.3" />
-                        <stop offset="50%" stopColor="var(--color-primary)" stopOpacity="0.8" />
-                        <stop offset="100%" stopColor="var(--color-primary)" stopOpacity="0.3" />
-                      </linearGradient>
-                    </defs>
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M13 7l5 5m0 0l-5 5m5-5H6"
-                      stroke="url(#arrow-gradient-2)"
-                      strokeWidth="2.5"
-                    />
-                  </svg>
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="w-12 h-0.5 bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
-                  </div>
+            <div className="hidden lg:flex items-center justify-center px-1 relative" style={{ minWidth: '32px', minHeight: '40px' }}>
+              <div className="relative" style={{ opacity: isDesktop === null ? 0 : 1, transition: 'opacity 0.2s' }}>
+                <svg
+                  className="w-10 h-10 animate-pulse"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  style={{
+                    filter: 'drop-shadow(0 0 8px color-mix(in oklch, var(--color-primary) 40%, transparent))',
+                    animationDelay: '0.5s'
+                  }}
+                >
+                  <defs>
+                    <linearGradient id="arrow-gradient-2" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stopColor="var(--color-primary)" stopOpacity="0.3" />
+                      <stop offset="50%" stopColor="var(--color-primary)" stopOpacity="0.8" />
+                      <stop offset="100%" stopColor="var(--color-primary)" stopOpacity="0.3" />
+                    </linearGradient>
+                  </defs>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M13 7l5 5m0 0l-5 5m5-5H6"
+                    stroke="url(#arrow-gradient-2)"
+                    strokeWidth="2.5"
+                  />
+                </svg>
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="w-12 h-0.5 bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
                 </div>
               </div>
-            )}
+            </div>
 
-            {/* Panel 3: Integrated Terminal - Always render to prevent layout shift */}
+            {/* Panel 3: Intelligent Merge */}
             <div className={isMobile ? "vibe-panel w-full" : "vibe-panel flex-shrink-0"} style={isMobile ? {minHeight: 'auto'} : {width: 'min(380px, 32vw)', height: 'min(420px, 50vh)'}}>
-              <h2 className="vibe-panel__title">{t('hero.panel3.title', 'Integrated terminal')}</h2>
-                <div className="vibe-code-block">
-                  <pre className="vibe-code-block__content">{`${t('hero.panel3.terminal.line1', '$ codex | claude | cursor | gemini')}
-${t('hero.panel3.terminal.line2', '> Voice transcription available')}
-${t('hero.panel3.terminal.line3', '> Prompt preview before run')}
-${t('hero.panel3.terminal.line4', '> Token guardrails in place')}
-${t('hero.panel3.terminal.line5', '> Logs persist locally')}`}</pre>
-                </div>
-                <p className="vibe-panel__description">
-                  {t('hero.panel3.description', 'Launch claude, cursor, codex, or gemini without leaving the workspace. Health monitoring and recovery keep long jobs running.')} <LinkWithArrow href="/docs/terminal-sessions">{t('hero.panel3.link', 'Terminal details')}</LinkWithArrow>
-                </p>
-                </div>
+              <h3>{t('hero.panel3.title', 'Intelligent Merge')}</h3>
+
+              <div className="vibe-code-block">
+                <pre className="text-sm">{t('hero.panel3.merge.line1', 'Input: 4 AI plans')}</pre>
+                <pre className="text-sm">{t('hero.panel3.merge.line2', 'Scope: Referenced files')}</pre>
+                <pre className="text-sm">{t('hero.panel3.merge.line3', 'Strategy: Merge instructions')}</pre>
+                <pre className="text-sm">{t('hero.panel3.merge.line4', 'Output: Unified plan')}</pre>
+                <pre className="text-sm">{t('hero.panel3.merge.line5', 'Provenance: [src:P2 step 3]')}</pre>
+              </div>
+
+              <p>{t('hero.panel3.description', 'System analyzes all plans with referenced files. Apply merge instructions to guide synthesis. Output: one superior plan with provenance.')}</p>
+              <LinkWithArrow href="/features/merge-instructions">{t('hero.panel3.link', 'Merge details')}</LinkWithArrow>
+            </div>
           </motion.div>
           
-          {/* Simple CTAs */}
-          <div className="flex flex-col items-center gap-4 pb-8">
+          {/* CTAs */}
+          <div className="flex flex-col items-center gap-4 pb-12">
             <Button
               variant="cta"
               size="lg"
-              asChild
-              onClick={() => trackCTA('hero', 'Try Interactive Demo', '/demo')}
+              onClick={() => {
+                setShowVideo(true);
+                trackCTA('hero', 'View Demo', 'video_modal');
+              }}
+              className="flex items-center gap-2"
             >
-              <Link href="/demo">{t('hero.cta.demo', 'Try Interactive Demo →')}</Link>
-            </Button>
-
-            <Button
-              variant="outline"
-              size="lg"
-              asChild
-              onClick={() => trackCTA('hero', 'Download for Free', '/downloads')}
-            >
-              <Link href="/downloads">{t('hero.cta.download', 'Download for Free')}</Link>
+              <Play className="w-5 h-5" />
+              {t('hero.cta.viewDemo', 'View Demo')}
             </Button>
 
             <Link
@@ -256,58 +271,15 @@ ${t('hero.panel3.terminal.line5', '> Logs persist locally')}`}</pre>
             >
               {t('hero.cta.howItWorks', 'See how it works')}
             </Link>
-
-            {/* Social Proof - Commented out for now */}
-            {/*
-            <div className="flex flex-col items-center gap-4 py-8 border-t border-foreground/10 mt-8">
-              <p className="text-xs text-foreground/50 uppercase tracking-wider">
-                Trusted by teams managing complex codebases
-              </p>
-              <div className="text-center">
-                <p className="text-2xl font-bold text-foreground">
-                  500+ plans reviewed this week
-                </p>
-              </div>
-            </div>
-            */}
           </div>
         </div>
       </div>
 
-      {/* Hero Demo Video - Coming Soon */}
-      {/*
-      <div className="w-full max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
-        <div className="relative rounded-lg overflow-hidden shadow-2xl">
-          <video
-            ref={videoRef}
-            className="w-full"
-            playsInline
-            autoPlay
-            loop
-            muted
-            controls
-            poster={cdnUrl('/assets/images/hero-mobile-poster.jpg')}
-            onEnded={() => {
-              if (videoRef.current) {
-                videoRef.current.currentTime = 0;
-                if (document.fullscreenElement) {
-                  document.exitFullscreen?.();
-                }
-              }
-            }}
-            onPause={() => {
-              // Reset video when paused (user exited fullscreen)
-              if (videoRef.current && !document.fullscreenElement) {
-                videoRef.current.currentTime = 0;
-              }
-            }}
-          />
-        </div>
-        <p className="text-center text-sm text-foreground/60 mt-3">
-          Watch: 5-minute first win (ready soon)
-        </p>
-      </div>
-      */}
+      <VideoModal
+        isOpen={showVideo}
+        onClose={() => setShowVideo(false)}
+        videoPath="/assets/videos/hero-demo.mp4"
+      />
 
     </section>
   );

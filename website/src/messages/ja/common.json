@@ -18,7 +18,7 @@
   },
   "cta": {
     "download": "ダウンロード",
-    "talkToArchitect": "アーキテクトと話す"
+    "talkToArchitect": "エキスパートと話す"
   },
   "feature": {
     "copyButtons": {
@@ -79,7 +79,7 @@
     "resources": "リソース",
     "support": "サポート",
     "tagline": "コード変更の計画と実装 - ファイルを見つけ、AIプランを生成・マージし、永続的なターミナルで実行します。",
-    "talkToArchitect": "アーキテクトと話す",
+    "talkToArchitect": "エキスパートと話す",
     "terms": "利用規約"
   },
   "label": {

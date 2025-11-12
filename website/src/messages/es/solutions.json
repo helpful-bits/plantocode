@@ -1,1110 +1,1152 @@
 {
-  "aiWrongPaths": {
-    "badge": "Verificación de rutas AI",
-    "comparison": {
-      "features": {
-        "binaryFiltering": "Filtrado de archivos binarios",
-        "gitIntegration": "Integración con Git respetando .gitignore",
-        "monorepoResolution": "Resolución de espacios de trabajo monorepo",
-        "pathAliasResolution": "Resolución de alias de ruta TypeScript",
-        "preExecutionValidation": "Validación de rutas pre-ejecución",
-        "realtimeProgress": "Progreso de verificación en tiempo real",
-        "symbolicLinks": "Resolución de enlaces simbólicos",
-        "tokenBatching": "Agrupación de tokens optimizada para costos"
-      },
-      "title": "Cómo se compara PlanToCode"
-    },
-    "cta": {
-      "description": "La IA debe referenciar archivos que realmente existen. PlanToCode verifica cada ruta antes de generar código, eliminando importaciones fantasma y compilaciones fallidas. Perfecto para monorepos, bases de código legadas y estructuras de proyectos complejas.",
-      "links": {
-        "deepDive": "Análisis profundo: Sistema de descubrimiento de archivos",
-        "docs": "Leer documentación técnica"
-      },
-      "title": "Detén las rutas de archivo alucinadas"
-    },
-    "description": "Las herramientas de IA alucinan rutas de importación, referencian archivos inexistentes y rompen tu compilación con dependencias fantasma. PlanToCode verifica cada ruta de archivo antes de la ejecución, eliminando referencias alucinadas en monorepos y bases de código legadas.",
-    "discoveryInAction": {
-      "complete": {
-        "description": "Todos los archivos verificados contra el sistema de archivos. La IA solo referenciará rutas validadas en el código generado. No son posibles importaciones alucinadas.",
-        "title": "Descubrimiento completo"
-      },
-      "stage1": {
-        "description": "Escaneando repositorio, mostrando estructura de directorio raíz y raíces seleccionadas",
-        "title": "Inicia escaneo del repositorio"
-      },
-      "stage2": {
-        "description": "Ejecutando git ls-files, generando patrones, filtrando archivos binarios",
-        "title": "Filtrado regex con integración git"
-      },
-      "title": "Descubrimiento de archivos en acción"
-    },
-    "faq": {
-      "cost": {
-        "answer": "Típicamente $0.10-0.15 por flujo de trabajo completo, dependiendo del tamaño y complejidad del repositorio. El proceso de descubrimiento de 5 etapas usa agrupación inteligente de tokens y estimación consciente del contenido para minimizar costos de API mientras maximiza la precisión. El seguimiento de costos está integrado en cada etapa.",
-        "question": "¿Cuánto cuesta el descubrimiento de archivos por ejecución?"
-      },
-      "excludeDirectories": {
-        "answer": "Sí. El flujo de trabajo de descubrimiento de archivos respeta las reglas de .gitignore automáticamente. Además, los archivos binarios y 97 extensiones comunes no-código son filtrados por defecto. También puedes configurar patrones de exclusión personalizados en la configuración de tu proyecto.",
-        "question": "¿Puedo excluir ciertos directorios del descubrimiento?"
-      },
-      "monorepoSupport": {
-        "answer": "Sí. PlanToCode soporta explícitamente estructuras monorepo incluyendo espacios de trabajo pnpm, Yarn, npm y Nx. El flujo de trabajo de descubrimiento de archivos analiza configuraciones de espacios de trabajo y resuelve correctamente referencias de paquetes internos, dependencias elevadas e importaciones de protocolo de espacio de trabajo.",
-        "question": "¿Funciona el descubrimiento de archivos con monorepos?"
-      },
-      "pathAliases": {
-        "answer": "Sí. La etapa de validación de rutas entiende los mapeos de ruta de tsconfig.json y resuelve alias de TypeScript como @/* o ~/* contra tu sistema de archivos real. Esto asegura que las importaciones generadas por IA usen la sintaxis de alias correcta.",
-        "question": "¿Funciona esto con alias de ruta TypeScript?"
-      },
-      "stillWrongPath": {
-        "answer": "Aunque el descubrimiento de archivos reduce drásticamente la alucinación de rutas, los modelos de IA aún pueden generar nuevos nombres de archivo para código que estás creando. PlanToCode se enfoca en verificar archivos existentes. Para archivos recién creados, el plan de implementación muestra rutas de archivo claras y puedes validarlas antes de copiarlas a tu herramienta de IA.",
-        "question": "¿Qué pasa si la IA aún sugiere una ruta incorrecta?"
-      },
-      "title": "Preguntas frecuentes",
-      "verifiedPaths": {
-        "answer": "Absolutamente. PlanToCode proporciona seguimiento de progreso en tiempo real con actualizaciones etapa por etapa. Puedes ver exactamente qué directorios fueron escaneados, cuántos archivos pasaron la validación, qué rutas fueron corregidas y la lista final de archivos verificados disponibles para la IA.",
-        "question": "¿Puedo ver qué rutas fueron verificadas?"
-      }
-    },
-    "gettingStarted": {
-      "step1": {
-        "description": "Instala para macOS, Windows o Linux. Conecta a tu modelo de IA preferido (Claude, GPT-4, Gemini o modelos locales). No se requieren claves API para comenzar.",
-        "title": "Descarga PlanToCode"
-      },
-      "step2": {
-        "description": "Abre tu proyecto e inicia el flujo de trabajo de descubrimiento de archivos. PlanToCode escanea y valida automáticamente toda la estructura de tu base de código. Observa el progreso en tiempo real para cada etapa.",
-        "title": "Ejecuta descubrimiento de archivos"
-      },
-      "step3": {
-        "description": "La IA genera código usando solo rutas de archivo verificadas. Sin importaciones alucinadas, sin dependencias fantasma, sin compilaciones fallidas. Copia con confianza.",
-        "title": "Genera código verificado"
-      },
-      "title": "Comienza a prevenir rutas de archivo incorrectas"
-    },
-    "howPlanToCodePrevents": {
-      "monorepoAware": {
-        "description": "PlanToCode entiende estructuras monorepo y resuelve correctamente referencias de espacios de trabajo, rutas de paquetes internos y dependencias elevadas.",
-        "features": [
-          "Analiza configuraciones de espacios de trabajo (pnpm, yarn, npm)",
-          "Resuelve referencias cruzadas de paquetes internos",
-          "Maneja múltiples jerarquías node_modules",
-          "Detecta y respeta importaciones de protocolo de espacio de trabajo"
-        ],
-        "title": "Resolución consciente de monorepo"
-      },
-      "pathValidation": {
-        "description": "La etapa 5 del flujo de trabajo de descubrimiento valida y corrige específicamente rutas de archivo. Esto sucede automáticamente antes de que cualquier modelo de IA vea tu base de código.",
-        "features": [
-          "Verifica accesibilidad y permisos de archivos",
-          "Resuelve inconsistencias de ruta automáticamente",
-          "Maneja protocolos de espacio de trabajo monorepo",
-          "Valida mapeos de alias de importación desde tsconfig"
-        ],
-        "link": "Documentación técnica",
-        "title": "Pipeline de validación de rutas"
-      },
-      "preExecutionDiscovery": {
-        "description": "Antes de que la IA genere cualquier código, PlanToCode ejecuta un flujo de trabajo de descubrimiento de archivos de 5 etapas que mapea tu sistema de archivos real. Cada ruta de archivo es verificada para existir antes de ser incluida en el contexto.",
-        "features": [
-          "Escanea repositorio con integración git ls-files",
-          "Valida existencia de archivos contra sistema de archivos real",
-          "Resuelve enlaces simbólicos y alias de ruta",
-          "Normaliza rutas para compatibilidad multiplataforma"
-        ],
-        "link": "Aprende sobre descubrimiento de archivos",
-        "title": "Descubrimiento de archivos pre-ejecución"
-      },
-      "realTimeFeedback": {
-        "description": "Observa el progreso del descubrimiento de archivos en tiempo real con actualizaciones etapa por etapa. Ve exactamente qué rutas están siendo validadas y corregidas antes de que la IA genere código.",
-        "features": [
-          "Seguimiento de progreso en vivo para cada etapa de descubrimiento",
-          "Mensajes de error detallados para problemas de ruta",
-          "Conteo de archivos y estimaciones de uso de tokens",
-          "Seguimiento de costos: típicamente $0.10-0.15 por flujo de trabajo"
-        ],
-        "title": "Retroalimentación de verificación en tiempo real"
-      },
-      "title": "Cómo PlanToCode previene rutas de archivo incorrectas"
-    },
-    "impact": {
-      "forDevelopers": {
-        "benefits": [
-          "Detén la depuración de importaciones fantasma. No más búsquedas en árboles de directorios para encontrar la ruta correcta que la IA debería haber generado en primer lugar.",
-          "Entrega más rápido. Cuando el código generado por IA funciona en el primer pegado, tu velocidad aumenta dramáticamente. Enfócate en la lógica, no en correcciones de rutas.",
-          "Confía en la salida de la IA. La verificación de rutas genera confianza. Sabes que las importaciones son correctas antes de copiar código a tu editor.",
-          "Trabaja con código legado. Bases de código complejas y sin documentar se vuelven navegables cuando cada ruta es verificada contra la realidad."
-        ],
-        "title": "Para desarrolladores individuales"
-      },
-      "forTeams": {
-        "benefits": [
-          "Incorporación más rápida. Los nuevos miembros del equipo entienden la estructura de la base de código a través del descubrimiento de archivos verificado. Sin adivinar convenciones de importación.",
-          "Reduce ruido en PRs. Elimina commits que solo corrigen rutas de importación incorrectas. Las revisiones de código se enfocan en lógica, no en correcciones de rutas.",
-          "Escala monorepos con confianza. A medida que tu espacio de trabajo crece, la verificación de rutas previene el aumento exponencial en confusión de importaciones.",
-          "Estandariza el uso de IA. Cuando todos usan rutas verificadas, el código generado por IA mantiene consistencia en todo el equipo."
-        ],
-        "title": "Para equipos de ingeniería"
-      },
-      "metrics": {
-        "cost": "$0.12 Costo promedio por flujo de trabajo de verificación",
-        "disclaimer": "Basado en pruebas internas con bases de código monorepo que van de 200 a 5,000 archivos. Tus resultados pueden variar dependiendo de la estructura y complejidad del repositorio.",
-        "reduction": "85% Reducción en tiempo de depuración relacionado con rutas",
-        "speed": "23s Tiempo de escaneo promedio para 589 archivos",
-        "title": "Impacto medido"
-      },
-      "title": "El impacto de rutas de archivo verificadas"
-    },
-    "problem": {
-      "description": "Le pides a la IA que refactorice un componente. Genera con confianza código que importa de @/components/ui/NewButton — un archivo que no existe. Tu compilación falla. Pierdes 20 minutos rastreando la importación fantasma.",
-      "quote": "La IA intentó importar desde una ruta inexistente",
-      "scenarios": {
-        "contextWindow": {
-          "description": "Los proyectos grandes exceden las ventanas de contexto de la IA. El modelo adivina ubicaciones de archivos basándose en información incompleta, produciendo referencias de ruta confiadas pero incorrectas.",
-          "title": "Límites de ventana de contexto"
-        },
-        "legacy": {
-          "description": "Tu base de código tiene src/components y lib/components. La IA elige el incorrecto, o alucina un tercer directorio que nunca existió.",
-          "title": "Confusión con código legado"
-        },
-        "monorepo": {
-          "description": "La IA confunde @workspace/core con @workspace/shared, generando importaciones que parecen plausibles pero referencian el paquete incorrecto.",
-          "title": "Pesadillas de monorepo"
-        }
-      },
-      "title": "El problema de la ruta de archivo incorrecta"
-    },
-    "realWorldScenarios": {
-      "title": "Escenarios del mundo real",
-      "with": {
-        "description": "Escenario que muestra cómo el descubrimiento de archivos previene errores de ruta, genera importaciones correctas en el primer intento y ahorra horas de tiempo de depuración.",
-        "title": "Con verificación de PlanToCode"
-      },
-      "without": {
-        "description": "Escenario que demuestra problemas de alucinación de rutas al refactorizar sin verificación, resultando en importaciones rotas y trabajo de corrección manual de rutas.",
-        "title": "Sin verificación de rutas"
-      }
-    },
-    "title": "Detén a la IA de generar rutas de archivo incorrectas",
-    "whyAIGeneratesWrongPaths": {
-      "contextOverflow": {
-        "description": "Incluso ventanas de contexto de 200K tokens no pueden contener bases de código empresariales completas. El modelo ve una fracción de tus archivos e infiere el resto, llevando a desajustes de rutas.",
-        "points": [
-          "Visibilidad incompleta del árbol de directorios",
-          "Configuraciones de alias de importación faltantes",
-          "Instantáneas desactualizadas de bases de código en evolución"
-        ],
-        "title": "Desbordamiento de ventana de contexto"
-      },
-      "modelHallucination": {
-        "description": "Los modelos de lenguaje grandes son entrenados en millones de bases de código con diferentes estructuras. Al generar código, hacen coincidencia de patrones contra datos de entrenamiento, no tu sistema de archivos real.",
-        "points": [
-          "Los modelos predicen rutas probables, no rutas reales",
-          "Los datos de entrenamiento contienen convenciones de nomenclatura inconsistentes",
-          "Sin verificación del sistema de archivos en el bucle de generación"
-        ],
-        "title": "Alucinación del modelo"
-      },
-      "monorepoComplexity": {
-        "description": "Los monorepos amplifican la confusión de rutas con protocolos de espacios de trabajo, paquetes internos y múltiples directorios node_modules.",
-        "points": [
-          "Nombres de paquetes en conflicto entre espacios de trabajo",
-          "Mapeos de ruta tsconfig complejos",
-          "Dependencias elevadas con resolución poco clara"
-        ],
-        "title": "Complejidad de monorepo"
-      },
-      "noVerification": {
-        "description": "La generación de código estándar de IA no tiene paso de post-procesamiento para validar existencia de archivos. El código generado va directamente a ti sin verificaciones del sistema de archivos.",
-        "points": [
-          "Sin validación de existencia de archivos",
-          "Sin pruebas de resolución de rutas de importación",
-          "Sin referencia cruzada con la estructura de directorios real"
-        ],
-        "title": "Sin capa de verificación"
-      },
-      "title": "Por qué la IA genera rutas de archivo incorrectas"
-    }
-  },
-  "hardBugs": {
-    "badge": "Depuración en producción",
-    "cta": {
-      "description": "Preserva cada investigación, reproduce cada paso, nunca pierdas contexto. Así es como debería funcionar la depuración en producción: disciplinada, reproducible, completa.",
-      "links": {
-        "terminal": "Explora persistencia de terminal",
-        "voice": "Aprende sobre notas de voz"
-      },
-      "title": "Depura problemas de producción con confianza"
-    },
-    "description": "PlanToCode mantiene cada plan, sesión de terminal y nota hablada adjunta al trabajo que estás depurando. Reabre los comandos exactos, presupuestos de tokens y revisiones de plan usadas para aislar un problema.",
-    "sections": {
-      "persistTerminal": {
-        "description": "Cada terminal de depuración se ejecuta dentro de un PTY administrado. Los metadatos de sesión, directorios de trabajo y registros de salida completos se almacenan en SQLite y pueden reabrirse después de fallos. La detección de CLI verifica que los binarios claude, cursor, codex o gemini estén instalados antes de ejecutar comandos.",
-        "link": "Comportamiento del terminal",
-        "title": "Persiste salida de terminal"
-      },
-      "reproduceSurface": {
-        "description": "Comienza con el flujo de trabajo de descubrimiento de archivos para reducir un repositorio a los módulos referenciados en el incidente. El flujo de trabajo valida entradas de sesión, encola trabajos en segundo plano y almacena las raíces seleccionadas para que cada plan de seguimiento use el mismo alcance.",
-        "link": "Detalles del flujo de trabajo",
-        "title": "Reproduce la superficie fallida"
-      },
-      "reviewFixes": {
-        "description": "Los planes de implementación se transmiten al visor Monaco con detección de lenguaje, controles de copia y navegación entre trabajos históricos. Las estimaciones de tokens se ejecutan antes de copiar prompts en una herramienta externa, ayudándote a confirmar que la corrección permanece dentro de los límites del modelo.",
-        "link": "Resumen del visor de planes",
-        "title": "Revisa cada corrección propuesta"
-      },
-      "voiceNotes": {
-        "description": "La transcripción de voz se integra directamente con el terminal y los editores de prompts. El hook de grabación administra permisos de micrófono, selección de dispositivo, detección de silencio e inserta texto reconocido junto a los comandos que lo activaron.",
-        "link": "Pipeline de transcripción",
-        "title": "Captura notas de voz en contexto"
-      }
-    },
-    "title": "Resuelve bugs difíciles con contexto preservado"
-  },
   "hub": {
-    "badge": "Soluciones de desarrollo",
-    "categories": {
-      "debugging": "Depuración",
-      "development": "Desarrollo",
-      "maintenance": "Mantenimiento",
-      "refactoring": "Refactorización",
-      "safety": "Seguridad"
-    },
-    "cta": {
-      "button": "Descargar PlanToCode",
-      "description": "Comienza a planificar cambios complejos con confianza. Descarga PlanToCode hoy.",
-      "title": "¿Listo para resolver tus desafíos de desarrollo?"
-    },
-    "description": "Aborda desafíos de desarrollo complejos con planificación impulsada por IA. Desde depurar bugs difíciles hasta refactorizar código legado, PlanToCode proporciona la capa de seguridad que tu equipo necesita.",
-    "solutions": {
-      "aiWrongPaths": {
-        "description": "Revisa rutas generadas por IA antes de la ejecución para prevenir errores de ubicación de archivos",
-        "title": "Prevenir rutas incorrectas"
-      },
-      "hardBugs": {
-        "description": "Captura historial de planes, registros de terminal y transcripciones para investigación reproducible de bugs",
-        "title": "Resolver bugs difíciles"
-      },
-      "largeFeatures": {
-        "description": "Planifica y rastrea características multi-archivo con mapeo de dependencias y ejecución paso a paso",
-        "title": "Características grandes"
-      },
-      "legacyCodeRefactoring": {
-        "description": "Planificación impulsada por IA para modernización segura de bases de código legadas",
-        "title": "Refactorización de código legado"
-      },
-      "libraryUpgrades": {
-        "description": "Actualiza dependencias de forma segura con análisis de impacto y pruebas comprehensivas",
-        "title": "Actualizaciones de bibliotecas"
-      },
-      "maintenanceEnhancements": {
-        "description": "Documenta tareas continuas con pistas de auditoría y previene regresiones",
-        "title": "Mantenimiento y mejoras"
-      },
-      "preventDuplicateFiles": {
-        "description": "Detén a la IA de crear archivos duplicados con descubrimiento de archivos pre-ejecución",
-        "title": "Prevenir archivos duplicados"
-      },
-      "safeRefactoring": {
-        "description": "Planificación impulsada por IA para cambios de código sin riesgos con visibilidad de dependencias",
-        "title": "Refactorización segura"
-      }
-    },
-    "title": "Soluciones de desarrollo impulsadas por IA",
-    "viewSolution": "Ver solución"
-  },
-  "largeFeatures": {
-    "badge": "Planificación de características",
-    "cta": {
-      "description": "Desde el primer flujo de trabajo hasta el despliegue final, mantén trazabilidad perfecta. Así es como debería funcionar la entrega de características: coordinada, predecible, trazable.",
-      "links": {
-        "plans": "Ver planificación de implementación",
-        "workflows": "Aprende sobre flujos de trabajo con alcance"
-      },
-      "title": "Entrega características complejas con confianza"
-    },
-    "description": "La entrega multi-etapa depende de alcance consistente, planes revisables y uso predecible de tokens. PlanToCode mantiene estas señales conectadas desde la primera ejecución del flujo de trabajo hasta la sesión de terminal final.",
-    "sections": {
-      "coordinatePlans": {
-        "description": "Los planes se transmiten al visor Monaco y permanecen vinculados a sus trabajos en segundo plano. Navega borradores anteriores, fusiona múltiples planes y abre el modal de terminal para un trabajo específico sin perder contexto. Las estimaciones de tokens se ejecutan antes de exportar prompts.",
-        "link": "Planes de implementación",
-        "title": "Coordina planes de implementación"
-      },
-      "keepAligned": {
-        "description": "Las sesiones de terminal almacenan registros de salida en SQLite y exponen salud de conexión, por lo que el trabajo de características a largo plazo permanece auditable. Si tu equipo graba recorridos, la transcripción de voz agrega notas buscables junto a los comandos que las ejecutaron.",
-        "link": "Terminal y transcripción",
-        "title": "Mantén la ejecución alineada"
-      },
-      "pickModel": {
-        "description": "Cada tipo de tarea proporciona un modelo predeterminado y una lista permitida. El toggle del selector de modelo previene el envío de prompts que excedan la ventana de contexto del modelo y muestra los requisitos estimados de tokens extraídos del comando backend.",
-        "link": "Configuración de modelo",
-        "title": "Elige el modelo correcto por tarea"
-      },
-      "sameScope": {
-        "description": "Usa el flujo de trabajo de descubrimiento de archivos para reunir directorios relevantes para cada tarea. Las entradas son validadas, los trabajos en segundo plano se ejecutan a través del Orquestador de Flujo de Trabajo, y las raíces seleccionadas se almacenan para que las revisiones de plan posteriores reutilicen el mismo segmento de repositorio.",
-        "link": "Flujo de trabajo de descubrimiento de archivos",
-        "title": "Comienza con el mismo alcance"
-      }
-    },
-    "title": "Entrega características grandes con planes trazables"
-  },
-  "legacyCodeRefactoring": {
-    "challenge": {
-      "description": "Se te encarga modernizar una base de código de 5 años: frameworks desactualizados, sin pruebas, patrones sin documentar y lógica de negocio crítica que no comprendes completamente. La refactorización directa con IA sería un caos. La planificación te da una hoja de ruta.",
-      "title": "El desafío del código legado"
-    },
-    "cta": {
-      "buttons": {
-        "download": "Descargar PlanToCode",
-        "learnMapping": "Aprender sobre mapeo de dependencias"
-      },
-      "description": "PlanToCode te ayuda a mapear dependencias, generar planes de migración y refactorizar sin romper producción.",
-      "title": "Moderniza código legado de forma segura"
-    },
-    "description": "El código legado es donde la refactorización asistida por IA se vuelve peligrosa. Un movimiento equivocado rompe producción. Aquí está cómo modernizar bases de código de más de 100K líneas de forma segura con planificación de IA.",
-    "furtherReading": {
-      "bestPractices": "Mejores prácticas de planificación de código con IA",
-      "safeRefactoring": "Herramientas de refactorización segura para código en producción",
-      "title": "Lectura adicional",
-      "whatIsPlanning": "¿Qué es la planificación de código con IA?"
-    },
-    "gettingStarted": {
-      "steps": [
-        {
-          "title": "Elige la unidad valiosa más pequeña para refactorizar",
-          "description": "No comiences con la clase Dios de 10,000 líneas. Encuentra un módulo autocontenido de 200 líneas que entregue valor."
-        },
-        {
-          "title": "Mapea todas sus dependencias",
-          "description": "Usa descubrimiento de archivos para encontrar importaciones, exportaciones, llamadas a funciones. Conoce el radio de explosión."
-        },
-        {
-          "title": "Escribe pruebas de caracterización",
-          "description": "Pruebas que capturan el comportamiento actual, incluso si está mal. Asegura que la refactorización preserve la funcionalidad."
-        },
-        {
-          "title": "Genera plan de refactorización",
-          "description": "Usa IA para crear estrategia de migración archivo por archivo. Revisa para pasos faltantes o riesgos."
-        },
-        {
-          "title": "Ejecuta incrementalmente",
-          "description": "Un pequeño cambio por despliegue. Ejecuta pruebas. Monitorea producción. Repite."
-        }
-      ],
-      "title": "Comenzando con refactorización de legado"
-    },
-    "mistakes": {
-      "bigBang": {
-        "instead": "En su lugar: Refactorización incremental con despliegue continuo",
-        "problem": "Pasar 6 meses reescribiendo todo desde cero. 80% hecho, te das cuenta de que el código viejo tenía casos extremos que no conocías. El proyecto falla.",
-        "title": "Reescrituras Big Bang"
-      },
-      "noRollback": {
-        "instead": "En su lugar: Feature flags, migraciones de base de datos con funciones down()",
-        "problem": "Refactorizar 50 archivos, desplegar, rompe producción. No puedes revertir fácilmente porque los cambios están enredados.",
-        "title": "Sin plan de rollback"
-      },
-      "noTests": {
-        "instead": "En su lugar: Escribe pruebas de caracterización primero, luego refactoriza",
-        "problem": "Cambiar código, esperar que funcione, desplegar, encontrar bugs en producción. Repetir hasta que se pierda la confianza.",
-        "title": "Refactorización sin pruebas"
-      },
-      "title": "Evitando errores comunes de refactorización de legado"
-    },
-    "patterns": {
-      "featureFlag": {
-        "bestFor": "Cambios de alto riesgo en rutas críticas (auth, pagos, características core)",
-        "howItWorks": "Refactoriza código, ponlo detrás de feature flag. Despliega al 1%, 10%, 50%, 100% de usuarios durante semanas. Rollback instantáneo si hay problemas.",
-        "title": "Despliegue con Feature Flag"
-      },
-      "parallelRun": {
-        "bestFor": "Pipelines de procesamiento de datos, algoritmos críticos, sistemas de reportes",
-        "howItWorks": "Ejecuta código viejo y nuevo en paralelo. Compara salidas. Cambia al nuevo solo cuando se logre tasa de coincidencia del 99.9%.",
-        "title": "Ejecución paralela + validación"
-      },
-      "stranglerFig": {
-        "bestFor": "Monolito → microservicios, framework viejo → framework nuevo",
-        "howItWorks": "Construye código nuevo junto al viejo. Gradualmente redirige tráfico del viejo al nuevo. Elimina código viejo solo cuando se haya migrado el 100%.",
-        "title": "Patrón Strangler Fig"
-      },
-      "title": "Patrones de estrategia de migración"
-    },
-    "realExample": {
-      "codebase": "150 componentes de clase React escritos en 2018. Necesidad de modernizar a hooks para mantenibilidad y rendimiento.",
-      "scenario": "Escenario",
-      "title": "Ejemplo real: Migración de clases React a hooks",
-      "with": {
-        "steps": [
-          "Semana 1: Migrar componentes hoja (sin dependencias en ellos)",
-          "Semana 2: Migrar proveedores de contexto (afecta a todos los consumidores)",
-          "Semana 3: Migrar componentes contenedores (orquestan hijos)",
-          "Semana 4: Eliminar HOCs viejos, completamente basado en hooks",
-          "Resultado: Migración limpia, sin rupturas de producción, cronograma de 4 semanas"
-        ],
-        "title": "Con planificación:"
-      },
-      "without": {
-        "steps": [
-          "La IA convierte 10 componentes",
-          "Rompe dependencias de ciclo de vida en las que otros componentes confían",
-          "Los proveedores de contexto dejan de funcionar (APIs basadas en clase)",
-          "3 días de depuración para encontrar todas las rupturas"
-        ],
-        "title": "Sin planificación:"
-      }
-    },
-    "scenarios": {
-      "databaseSchema": {
-        "approach": "Enfoque de planificación:",
-        "challenge": "Esquema desnormalizado de 2018. Necesidad de dividir tabla user_data en 5 tablas normalizadas.",
-        "steps": [
-          "Encuentra todas las consultas leyendo de user_data (grep + análisis estático)",
-          "Mapea qué consultas necesitan qué tablas nuevas",
-          "Planifica migración sin tiempo de inactividad con fase de escritura dual",
-          "Crea consultas de verificación para asegurar consistencia de datos"
-        ],
-        "title": "Migración de esquema de base de datos"
-      },
-      "frameworkMigration": {
-        "approach": "Enfoque de planificación:",
-        "challenge": "200 páginas de jQuery espagueti manipulando DOM directamente. Sin estructura de componentes. Preocupaciones mezcladas en todos lados.",
-        "steps": [
-          "Mapea todos los selectores jQuery para identificar componentes UI",
-          "Agrupa manipulaciones DOM relacionadas en componentes lógicos",
-          "Planifica migración gradual: una página a la vez, ambos frameworks coexistiendo",
-          "Crea capa de adaptador para estado compartido durante la transición"
-        ],
-        "title": "Migración de framework (jQuery → React)"
-      },
-      "monolith": {
-        "approach": "Enfoque de planificación:",
-        "challenge": "Monolito de 500K líneas, todas las características fuertemente acopladas. Necesidad de extraer gestión de usuarios a servicio separado.",
-        "steps": [
-          "Identifica límite de servicio: qué se queda, qué se mueve",
-          "Mapea todos los flujos de datos y llamadas API entre límites",
-          "Planifica estrategia de extracción de base de datos (fase de escritura dual)",
-          "Crea plan de rollback para cada paso de migración"
-        ],
-        "title": "Monolito a microservicios"
-      },
-      "title": "Escenarios comunes de refactorización de legado"
-    },
-    "title": "Herramientas de refactorización de código legado: Cómo la planificación con IA previene desastres",
-    "tools": {
-      "complexity": {
-        "description": "Identifica qué archivos son más complejos (complejidad ciclomática). Comienza refactorizando los simples.",
-        "title": "Análisis de complejidad de código",
-        "tools": "Herramientas: SonarQube, reglas de complejidad ESLint"
-      },
-      "dependencyMapping": {
-        "description": "Encuentra todas las cadenas de importación, gráficos de llamadas a funciones, dependencias de tipos. Conoce qué se rompe si cambias X.",
-        "title": "Mapeo de dependencias",
-        "tools": "Herramientas: Descubrimiento de archivos PlanToCode, madge, dependency-cruiser"
-      },
-      "staticAnalysis": {
-        "description": "Encuentra código no usado, importaciones muertas, desajustes de tipos. Limpia estos antes de refactorización mayor.",
-        "title": "Análisis estático",
-        "tools": "Herramientas: Modo estricto TypeScript, ESLint no-unused-vars"
-      },
-      "testCoverage": {
-        "description": "Conoce qué código tiene pruebas antes de refactorizar. Escribe pruebas para rutas críticas primero si es necesario.",
-        "title": "Reportes de cobertura de pruebas",
-        "tools": "Herramientas: Cobertura Jest, Istanbul, Codecov"
-      },
-      "title": "Herramientas para planificación de código legado"
-    },
-    "whyBreaks": {
-      "description": "Las bases de código legadas tienen características que hacen que la refactorización sea arriesgada:",
-      "points": {
-        "hiddenDeps": {
-          "description": "Funciones llamadas desde más de 20 lugares, estado global modificado inesperadamente, importaciones circulares que no sabías que existían.",
-          "title": "Dependencias ocultas"
-        },
-        "insufficientTests": {
-          "description": "30% de cobertura de código, pruebas que pasan pero no verifican realmente el comportamiento, pruebas de integración que toman 45 minutos en ejecutarse.",
-          "title": "Pruebas insuficientes"
-        },
-        "outdatedPatterns": {
-          "description": "Código escrito antes de las mejores prácticas modernas. Infierno de callbacks, módulos fuertemente acoplados, sin separación de preocupaciones.",
-          "title": "Patrones desactualizados"
-        },
-        "poorDocs": {
-          "description": "Sin comentarios, nombres de variables crípticos, lógica de negocio enterrada en detalles de implementación. Aprendes rompiendo cosas.",
-          "title": "Documentación pobre"
-        }
-      },
-      "title": "Por qué el código legado se rompe fácilmente"
-    },
-    "workflow": {
-      "steps": [
-        {
-          "title": "Mapea el sistema existente",
-          "description": "Ejecuta descubrimiento de archivos, identifica todos los archivos tocando el área que estás refactorizando. Entiende dependencias antes de cambiar cualquier cosa."
-        },
-        {
-          "title": "Genera múltiples estrategias de migración",
-          "description": "Pide a la IA 3 enfoques diferentes: migración big-bang, despliegue gradual, patrón strangler fig. Compara ventajas y desventajas."
-        },
-        {
-          "title": "Crea plan incremental",
-          "description": "Divide en hitos semanales. Cada paso debe ser desplegable y testeable independientemente. Sin estados \"semi-migrados\" en producción."
-        },
-        {
-          "title": "Revisa con el equipo (requerido para legado)",
-          "description": "Alguien en el equipo conoce las trampas ocultas. La revisión del plan saca ese conocimiento tribal antes de que rompas cosas."
-        },
-        {
-          "title": "Ejecuta con plan de rollback",
-          "description": "Implementa paso 1, verifica que funciona, luego paso 2. Siempre ten una forma de revertir. Los feature flags son tus amigos."
-        }
-      ],
-      "subtitle": "El proceso de refactorización de legado segura",
-      "title": "Flujo de trabajo de refactorización con planificación primero"
-    }
-  },
-  "libraryUpgrades": {
-    "badge": "Planificación de actualizaciones",
-    "cta": {
-      "description": "Audita cada cambio, rastrea cada migración, mantén control total. Así es como deberían funcionar las actualizaciones de bibliotecas: seguras, auditables, reversibles.",
-      "links": {
-        "planning": "Explora planificación de actualizaciones",
-        "scope": "Aprende sobre análisis de alcance"
-      },
-      "title": "Actualiza dependencias sin miedo"
-    },
-    "description": "La modernización de dependencias a menudo abarca múltiples repositorios y equipos. PlanToCode te ayuda a delimitar el trabajo, documentar cada paso y mantener un rastro auditable de lo que cambió.",
-    "sections": {
-      "executionHistory": {
-        "description": "Las sesiones de terminal mantienen registros de salida completos y salud de conexión, incluso después de reinicios. La transcripción de voz puede agregar contexto hablado a pasos de migración complicados, creando un rastro buscable para notas de lanzamiento y revisiones de cambios.",
-        "link": "Terminal y transcripción",
-        "title": "Documenta historial de ejecución"
-      },
-      "identifyFiles": {
-        "description": "Activa el flujo de trabajo de descubrimiento de archivos contra tu directorio de proyecto para reunir puntos críticos de actualización. Los trabajos en segundo plano orquestados registran raíces seleccionadas y las hacen disponibles para cada plan o prompt subsiguiente.",
-        "link": "Flujo de trabajo de descubrimiento de archivos",
-        "title": "Identifica archivos afectados"
-      },
-      "modelLimits": {
-        "description": "Los prompts de actualización a menudo incluyen diffs grandes. La configuración de modelo a nivel de tarea define qué modelos están permitidos, y el toggle selector bloquea cualquier elección cuya ventana de contexto no pueda manejar los tokens estimados de prompt más salida.",
-        "link": "Barreras de modelo",
-        "title": "Permanece dentro de límites del modelo"
-      },
-      "trackPlans": {
-        "description": "Revisa planes generados dentro del visor Monaco, compara revisiones y fusiona propuestas superpuestas. Los planes permanecen vinculados a trabajos en segundo plano, por lo que puedes reabrir la sesión de terminal relevante o el modal de copia de prompt cuando revisites la actualización.",
-        "link": "Planes de implementación",
-        "title": "Rastrea planes de actualización"
-      }
-    },
-    "title": "Actualiza bibliotecas con barreras"
-  },
-  "maintenanceEnhancements": {
-    "badge": "Mantenimiento continuo",
-    "cta": {
-      "description": "Construye flujos de trabajo de mantenimiento sistemáticos. Contexto preservado, planes reutilizables y barreras de modelo convierten la deuda técnica en procesos manejables y repetibles.",
-      "links": {
-        "history": "Aprende sobre historial de planes",
-        "workflows": "Explora flujos de trabajo con alcance"
-      },
-      "title": "Transforma el mantenimiento en ventaja estratégica"
-    },
-    "description": "El trabajo de mantenimiento se ralentiza cuando los equipos pierden el rastro del alcance o repiten las mismas investigaciones. PlanToCode mantiene el contexto, planes e historial de ejecución necesarios para aplicar correcciones de forma segura.",
-    "sections": {
-      "controlModels": {
-        "description": "El toggle del selector de modelo hace cumplir ventanas de contexto por tarea de mantenimiento. Las estimaciones de tokens del backend te permiten confirmar que las descripciones de parches grandes aún caben en el modelo elegido antes de enviarlas a un agente.",
-        "link": "Barreras de modelo",
-        "title": "Controla el uso de modelos"
-      },
-      "planHistory": {
-        "description": "Los planes de mantenimiento se transmiten al visor Monaco con navegación entre revisiones, acciones de fusión y controles de copia de prompt. Reabre trabajos anteriores para ver exactamente qué pasos se tomaron y si necesitan ser repetidos.",
-        "link": "Planes de implementación",
-        "title": "Mantén historial de planes"
-      },
-      "preserveLogs": {
-        "description": "Las sesiones de terminal persisten en SQLite con marcas de tiempo, códigos de salida y salida capturada. La transcripción de voz puede agregar notas habladas al mismo trabajo, dando a futuros mantenedores contexto completo sobre qué cambió y por qué.",
-        "link": "Terminal y transcripción",
-        "title": "Preserva registros de ejecución"
-      },
-      "reuseWorkflows": {
-        "description": "Los trabajos de descubrimiento de archivos recopilan los directorios tocados por tareas de mantenimiento anteriores. Cuando regresa trabajo similar, puedes reejecutar planes contra las raíces almacenadas en lugar de reconstruir manualmente el alcance.",
-        "link": "Flujo de trabajo de descubrimiento de archivos",
-        "title": "Reutiliza flujos de trabajo con alcance"
-      }
-    },
-    "title": "Mantén sistemas con flujos de trabajo repetibles"
-  },
-  "preventDuplicateFiles": {
-    "badge": "Prevención de archivos duplicados",
-    "beforeAfter": {
-      "title": "Antes y después: IA sin planificación vs. con PlanToCode",
-      "with": {
-        "benefits": {
-          "items": [
-            "Cero archivos duplicados creados",
-            "Modificación limpia al código existente",
-            "Todas las importaciones permanecen válidas",
-            "Tiempo ahorrado: 2-4 horas"
-          ],
-          "title": "Beneficios logrados:"
-        },
-        "steps": [
-          {
-            "label": "Usuario: \"Agregar validación JWT a autenticación\"",
-            "detail": "El flujo de trabajo de descubrimiento de archivos inicia automáticamente"
-          },
-          {
-            "label": "Descubrimiento de 5 etapas mapea toda la base de código",
-            "detail": "Encuentra authService.ts, auth-helpers.ts, archivos de configuración relacionados"
-          },
-          {
-            "label": "Genera plan de implementación para revisión",
-            "detail": "Muestra que modificará authService.ts existente, sin duplicados"
-          },
-          {
-            "label": "Revisas y apruebas el plan",
-            "detail": "Ve cambios exactos antes de que cualquier código toque el sistema de archivos"
-          },
-          {
-            "label": "Resultado: Modificaciones limpias y enfocadas",
-            "detail": "Validación JWT agregada a authService.ts existente, sin duplicados creados"
-          }
-        ],
-        "title": "Con PlanToCode"
-      },
-      "without": {
-        "cleanup": {
-          "items": [
-            "Fusionar código duplicado manualmente",
-            "Actualizar todas las referencias de importación",
-            "Corregir pruebas rotas y dependencias",
-            "Tiempo perdido: 2-4 horas"
-          ],
-          "title": "Limpieza manual requerida:"
-        },
-        "steps": [
-          {
-            "label": "Usuario: \"Agregar validación JWT a autenticación\"",
-            "detail": "La IA tiene contexto limitado, solo ve archivos actualmente abiertos"
-          },
-          {
-            "label": "La IA busca, no encuentra archivos de auth existentes",
-            "detail": "Pierde src/services/authService.ts debido a desajuste de nombre/ruta"
-          },
-          {
-            "label": "Crea inmediatamente jwtValidation.ts",
-            "detail": "Sin paso de revisión, cambios aplicados directamente al sistema de archivos"
-          },
-          {
-            "label": "Resultado: Archivo duplicado creado",
-            "detail": "Ahora tiene authService.ts y jwtValidation.ts con funcionalidad superpuesta"
-          }
-        ],
-        "title": "Sin PlanToCode"
-      }
-    },
-    "cta": {
-      "description": "Descubrimiento de archivos antes de la ejecución. Revisión antes de la aplicación. Cero duplicados. Así es como debería funcionar el desarrollo asistido por IA: inteligente, preventivo, limpio.",
-      "links": {
-        "howItWorks": "Ve cómo funciona",
-        "planReview": "Aprende sobre revisión de planes",
-        "technical": "Lee la guía técnica"
-      },
-      "title": "Detén la creación de archivos duplicados hoy"
-    },
-    "description": "Las herramientas de codificación con IA frecuentemente crean archivos duplicados porque carecen de contexto sobre la estructura de código existente. PlanToCode resuelve esto con descubrimiento inteligente de archivos que mapea toda tu base de código antes de generar cualquier código.",
-    "faq": {
-      "discoveryCost": {
-        "answer": "El descubrimiento de archivos sí usa IA para la etapa de evaluación de relevancia (Etapa 3), lo que incurre en pequeños costos de API. Sin embargo, el costo es mínimo (típicamente $0.01-0.05 por ejecución de descubrimiento) y el sistema proporciona estimaciones de costo antes de la ejecución. La inversión vale la pena comparada con las 2-4 horas de tiempo de limpieza manual ahorradas al prevenir duplicados.",
-        "question": "¿Hay un costo por ejecutar descubrimiento de archivos?"
-      },
-      "discoveryTime": {
-        "answer": "El descubrimiento de archivos típicamente se completa en 30-90 segundos para proyectos de tamaño medio (500-2000 archivos). Monorepos muy grandes con más de 10,000 archivos pueden tomar 2-3 minutos. El flujo de trabajo se ejecuta en segundo plano, por lo que puedes continuar trabajando mientras se ejecuta. Las actualizaciones de progreso aparecen en tiempo real.",
-        "question": "¿Cuánto tiempo tarda el flujo de trabajo de descubrimiento de archivos?"
-      },
-      "hugeCodebase": {
-        "answer": "PlanToCode incluye gestión inteligente de tiempos de espera y mecanismos de caché. Para bases de código extremadamente grandes, puedes configurar valores de tiempo de espera personalizados y usar patrones de exclusión para omitir directorios irrelevantes (código de vendor, archivos generados, etc.). El sistema también almacena en caché resultados de descubrimiento por sesión, por lo que planes subsiguientes en la misma sesión reutilizan el contexto de archivo en caché.",
-        "link": "Opciones de configuración",
-        "question": "¿Qué pasa si tengo una base de código enorme? ¿El descubrimiento expirará?"
-      },
-      "newFiles": {
-        "answer": "Absolutamente. El descubrimiento de archivos de PlanToCode no previene la creación de archivos nuevos—previene la creación de archivos duplicados. Cuando tu tarea genuinamente requiere un archivo nuevo (como agregar un módulo de característica completamente nuevo), PlanToCode propondrá crearlo en el plan de implementación. La diferencia es que verás la propuesta y puedes verificar que es funcionalidad verdaderamente nueva en lugar de un duplicado accidental.",
-        "question": "¿Puedo aún crear archivos genuinamente nuevos cuando sea necesario?"
-      },
-      "nonJavaScript": {
-        "answer": "Sí. El descubrimiento de archivos de PlanToCode es agnóstico del lenguaje. Funciona con Python, Go, Rust, Java, TypeScript, JavaScript, Ruby, PHP, C++ y cualquier otra base de código basada en texto. La generación de regex y evaluación de relevancia por IA se adaptan a los lenguajes y frameworks específicos en tu proyecto basándose en la descripción de la tarea y extensiones de archivo descubiertas.",
-        "question": "¿Funciona esto para proyectos no-JavaScript?"
-      },
-      "refactoringDuplicates": {
-        "answer": "Sí. Si ya tienes archivos duplicados en tu base de código, puedes usar PlanToCode para planificar su consolidación. Describe la tarea como \"Fusionar servicios de autenticación duplicados en authService.ts\" o similar. El descubrimiento de archivos encontrará todos los archivos relacionados, y el plan de implementación te mostrará exactamente cómo consolidarlos limpiamente.",
-        "question": "¿Puedo usar PlanToCode para refactorizar duplicados existentes?"
-      },
-      "stillProposesDuplicate": {
-        "answer": "Esto es raro porque el descubrimiento de archivos proporciona contexto comprehensivo, pero si sucede, lo detectarás durante el paso de revisión. Simplemente rechaza el plan, refina tu descripción de tarea (sé más específico sobre qué archivos existentes modificar), o ajusta manualmente la selección de archivos. La ventaja clave es detectar duplicados antes de la ejecución en lugar de después de que se haya hecho el daño.",
-        "question": "¿Qué pasa si la IA aún propone un duplicado en el plan?"
-      },
-      "title": "Preguntas frecuentes",
-      "worksWithCursor": {
-        "answer": "Sí. PlanToCode está diseñado como una capa de planificación que funciona junto con tus herramientas de codificación con IA existentes. Usas PlanToCode para descubrir archivos y generar planes de implementación, luego ejecutas esos planes usando Cursor, GitHub Copilot, Claude Code o cualquier otro asistente de IA. El descubrimiento de archivos y la planificación previenen duplicados independientemente de qué herramienta ejecute el código.",
-        "question": "¿PlanToCode funciona con Cursor y GitHub Copilot?"
-      }
-    },
-    "gettingStarted": {
-      "step1": {
-        "description": "Descarga la aplicación de escritorio PlanToCode para tu plataforma. El flujo de trabajo de descubrimiento de archivos y las características de planificación de implementación están integradas directamente en el cliente de escritorio.",
-        "title": "Paso 1: Instalar PlanToCode Desktop"
-      },
-      "step2": {
-        "description": "Abre PlanToCode y selecciona el directorio raíz de tu proyecto. PlanToCode validará el estado del repositorio git y establecerá el directorio base para todas las operaciones de archivos. Configura cualquier patrón de exclusión personalizado para directorios que quieras omitir (node_modules, dist, build, etc.).",
-        "tip": "Los patrones de exclusión predeterminados ya cubren directorios comunes como node_modules, .git y artefactos de compilación. Solo necesitas personalizar si tu proyecto tiene estructuras de directorio inusuales.",
-        "title": "Paso 2: Configurar la raíz del proyecto"
-      },
-      "step3": {
-        "description": "Ingresa una descripción en lenguaje natural de lo que quieres lograr. Por ejemplo: \"Agregar validación JWT al servicio de autenticación\" o \"Implementar soporte de modo oscuro en el proveedor de tema.\" Sé tan específico como sea posible sobre la funcionalidad que deseas.",
-        "goodDescriptions": {
-          "examples": [
-            "Agregar caché Redis al endpoint API de perfil de usuario",
-            "Implementar gestión de conexión WebSocket en el servicio de chat",
-            "Agregar validación de entrada a todos los componentes de formulario",
-            "Actualizar migración de base de datos para agregar tabla de roles de usuario"
-          ],
-          "title": "Buenas descripciones de tareas:"
-        },
-        "title": "Paso 3: Describir tu tarea"
-      },
-      "step4": {
-        "description": "PlanToCode ejecutará el flujo de trabajo de descubrimiento de archivos de 5 etapas en segundo plano. Verás actualizaciones de progreso en tiempo real mientras descubre archivos relevantes. El flujo de trabajo típicamente se completa en 30-90 segundos dependiendo del tamaño de la base de código. Una vez completo, revisa la lista de archivos descubiertos. Verás qué archivos PlanToCode identificó como relevantes para tu tarea. Este es tu primer punto de control para asegurar que el sistema tenga el contexto adecuado sobre archivos existentes.",
-        "link": "Aprende más sobre el proceso de descubrimiento",
-        "title": "Paso 4: Revisar el descubrimiento de archivos"
-      },
-      "step5": {
-        "checkpoint": "Si ves cualquier creación de archivo que parezca un duplicado (ej., auth-new.ts o UserService2.tsx), detente aquí. Refina tu descripción de tarea o ajusta manualmente la lista de archivos antes de proceder.",
-        "description": "PlanToCode genera un plan de implementación detallado basado en los archivos descubiertos. Abre el plan en el editor Monaco y revisa cuidadosamente:",
-        "reviewItems": [
-          "Qué archivos serán modificados (busca rutas de archivo existentes)",
-          "Qué archivos serán creados (verifica que estos son archivos genuinamente nuevos necesarios)",
-          "Los cambios de código específicos propuestos para cada archivo",
-          "Declaraciones de importación y actualizaciones de dependencias"
-        ],
-        "title": "Paso 5: Revisar el plan de implementación"
-      },
-      "step6": {
-        "description": "Una vez que hayas revisado y aprobado el plan, copia las instrucciones de implementación a tu herramienta de codificación con IA preferida (Cursor, Copilot, Claude, etc.) o ejecuta directamente a través del terminal integrado. Porque PlanToCode ya ha hecho el trabajo pesado de descubrimiento de archivos y planificación, la ejecución se convierte en un proceso directo de aplicar cambios bien definidos.",
-        "link": "Guía de integración de terminal",
-        "title": "Paso 6: Ejecutar con confianza"
-      },
-      "title": "Comenzando: Detén la creación de duplicados hoy"
-    },
-    "howPlanToCodePrevents": {
-      "comprehensiveDiscovery": {
-        "description": "PlanToCode ejecuta un flujo de trabajo de descubrimiento de archivos de 5 etapas antes de generar cualquier plan de implementación. Este flujo de trabajo usa integración git, filtrado regex, evaluación de relevancia impulsada por IA, análisis de relaciones y validación de rutas para construir un mapa completo de tu base de código.",
-        "link": "Documentación técnica",
-        "process": {
-          "steps": [
-            "Validar repositorio git y carpeta raíz",
-            "Generar patrones regex específicos de la tarea",
-            "Evaluación de relevancia por IA del contenido de archivos",
-            "Descubrimiento de rutas extendido vía relaciones",
-            "Corrección y validación final de rutas"
-          ],
-          "title": "Proceso de descubrimiento:"
-        },
-        "result": "Este descubrimiento profundo significa que PlanToCode conoce authService.ts, auth-helpers.ts y directorios authentication/ antes de sugerir cualquier cambio. No creará duplicados porque tiene contexto completo.",
-        "title": "Descubrimiento comprehensivo de archivos"
-      },
-      "description": "PlanToCode cambia fundamentalmente el flujo de trabajo con un enfoque de planificación primero. En lugar de generar y ejecutar código inmediatamente, PlanToCode usa un sistema comprehensivo de descubrimiento de archivos que mapea toda tu estructura de base de código antes de proponer cualquier cambio. Esta diferencia arquitectónica elimina las causas raíz de la creación de archivos duplicados.",
-      "gitAwareTracking": {
-        "command": "git ls-files --cached --others --exclude-standard captura todos los archivos rastreados más archivos no rastreados que no son ignorados, dando a PlanToCode una vista completa del estado de tu base de código incluyendo archivos en progreso.",
-        "description": "El flujo de trabajo de descubrimiento de archivos se integra directamente con git para respetar reglas de .gitignore y rastrear cambios tanto confirmados como no confirmados. Esta integración git asegura que PlanToCode vea tu árbol de trabajo real, incluyendo archivos recientemente creados que podrían no estar confirmados aún.",
-        "title": "Rastreo de archivos consciente de Git"
-      },
-      "intelligentPatternMatching": {
-        "advanced": "El sistema usa IA para generar patrones regex conscientes del contexto en lugar de simple coincidencia de cadenas. Para una tarea como \"agregar validación JWT,\" genera patrones cubriendo auth*, jwt*, token*, middleware/auth* y patrones relacionados.",
-        "description": "La etapa de generación de regex de PlanToCode crea patrones inteligentes que tienen en cuenta múltiples convenciones de nomenclatura, variaciones de mayúsculas y patrones comunes de organización de archivos. Entiende que una solicitud para \"actualizar el servicio de usuario\" debería coincidir con userService.ts, user-service.ts, UserService.ts o services/user/.",
-        "title": "Coincidencia inteligente de patrones"
-      },
-      "reviewBeforeExecution": {
-        "contents": {
-          "items": [
-            "Lista completa de archivos a ser modificados",
-            "Archivos nuevos a ser creados con rutas completas",
-            "Cambios específicos con contexto antes/después",
-            "Estimaciones de conteo de tokens por operación",
-            "Dependencias y actualizaciones de importación necesarias"
-          ],
-          "title": "Contenidos del plan incluyen:"
-        },
-        "description": "A diferencia de herramientas que aplican cambios inmediatamente, PlanToCode genera un plan de implementación detallado que revisas en el editor Monaco antes de que cualquier código toque tu sistema de archivos. Ves exactamente qué archivos serán creados, modificados o eliminados.",
-        "link": "Guía de planes de implementación",
-        "review": "Este paso de revisión te permite detectar duplicados antes de la ejecución. Si ves que el plan quiere crear auth-new.ts, puedes rechazarlo y refinar el alcance de descubrimiento.",
-        "title": "Revisión antes de ejecución"
-      },
-      "title": "Cómo PlanToCode previene archivos duplicados"
-    },
-    "problem": {
-      "caseStudy1": {
-        "description": "Un desarrollador reportó en el foro de Cursor que al pedir a la IA \"actualizar el servicio de autenticación,\" Cursor creó un nuevo archivo src/services/auth-service-new.ts en lugar de modificar el src/services/authService.ts existente. Esto sucedió porque la IA no escaneó adecuadamente implementaciones existentes con patrones de nomenclatura similares.",
-        "impact": "El desarrollador pasó 3 horas fusionando manualmente el código duplicado, resolviendo conflictos de importación en 15 archivos y eliminando el duplicado. El proyecto terminó con referencias rotas en producción porque algunas importaciones aún apuntaban a la ruta de archivo antigua.",
-        "link": "Ver discusión del foro de Cursor",
-        "title": "Caso de estudio: Problema de Cursor #47028"
-      },
-      "caseStudy2": {
-        "description": "Otro caso documentado involucró un proyecto React donde un desarrollador pidió \"agregar soporte de modo oscuro.\" En lugar de modificar el components/ThemeProvider.tsx existente, Cursor creó components/DarkModeProvider.tsx con funcionalidad superpuesta. La base de código terminó con dos sistemas de tema compitiendo ejecutándose simultáneamente.",
-        "impact": "Los proveedores de tema duplicados causaron conflictos de gestión de estado, aumentaron el tamaño del bundle en 45KB y crearon bugs de experiencia de usuario donde las preferencias de tema no persistían correctamente. La limpieza requirió un sprint completo de refactorización.",
-        "link": "Ver discusión del foro de Cursor",
-        "title": "Caso de estudio: Problema de Cursor #31402"
-      },
-      "commonScenarios": {
-        "examples": [
-          "Crear utils-new.ts cuando helpers.ts existe con funciones similares",
-          "Generar apiClient2.ts en lugar de actualizar api/client.ts",
-          "Hacer ButtonComponent.tsx cuando Button.tsx ya existe",
-          "Crear test-helper-updated.js en lugar de modificar testHelpers.js",
-          "Duplicar archivos de configuración como config-new.json o settings-v2.yaml"
-        ],
-        "title": "Escenarios comunes de archivos duplicados"
-      },
-      "description": "Los archivos duplicados son uno de los problemas más comunes y frustrantes que enfrentan los desarrolladores al usar asistentes de codificación con IA. Cuando herramientas de IA como Cursor, GitHub Copilot u otros sistemas de generación de código carecen de contexto adecuado sobre tu base de código existente, crean nuevos archivos en lugar de modificar los existentes. Esto lleva a fragmentación de código, conflictos de fusión y horas de trabajo de limpieza manual.",
-      "title": "El problema de archivos duplicados: Ejemplos reales"
-    },
-    "title": "Detén a la IA de crear archivos duplicados",
-    "whyAICreatesDuplicates": {
-      "conflictAvoidance": {
-        "description": "Los modelos de IA a menudo son entrenados con un enfoque de seguridad primero: cuando son inciertos sobre si un archivo existe o cuál es su ruta exacta, por defecto crean un nuevo archivo en lugar de arriesgar sobrescribir código existente. Este sesgo de \"mejor prevenir que lamentar\" lleva a proliferación de archivos duplicados.",
-        "title": "Sesgo de evitación de conflictos",
-        "training": "Los modelos de IA son penalizados más severamente por acciones destructivas (sobrescribir código importante) que por acciones conservadoras (crear duplicados innecesarios). Esta estructura de penalización asimétrica en los datos de entrenamiento fomenta la creación de duplicados como la opción \"más segura\"."
-      },
-      "description": "Entender las razones técnicas detrás de la creación de archivos duplicados ayuda a explicar por qué este problema es tan persistente en herramientas de codificación con IA. No es un simple bug—es una limitación arquitectónica fundamental de cómo la mayoría de los asistentes de IA interactúan con bases de código.",
-      "incompleteDiscovery": {
-        "description": "Cuando las herramientas de IA intentan descubrimiento de archivos, a menudo usan métodos superficiales como buscar archivos actualmente abiertos, archivos accedidos recientemente o coincidencia de patrones básica. Estos enfoques pierden archivos que no están activamente abiertos o tienen convenciones de nomenclatura no estándar.",
-        "example": "Si tu servicio de autenticación se llama authService.ts pero la IA busca archivos coincidiendo con \"auth*\", podría perderlo si la búsqueda es sensible a mayúsculas o limitada a directorios específicos. La IA entonces concluye que el archivo no existe y crea un duplicado.",
-        "title": "Descubrimiento incompleto de archivos"
-      },
-      "limitedContext": {
-        "description": "La mayoría de los asistentes de codificación con IA operan con una ventana de contexto limitada que solo puede \"ver\" una pequeña porción de tu base de código en cualquier momento dado. Cuando pides crear o modificar una característica, la IA podría solo tener acceso a los archivos actualmente abiertos o un segmento estrecho de la estructura de tu proyecto.",
-        "details": "Incluso con ventanas de contexto grandes (128K+ tokens), los modelos de IA aún luchan con conciencia completa del proyecto. Un proyecto típico de tamaño medio con 500 archivos podría requerir 2-5 millones de tokens para indexar completamente, excediendo ampliamente los límites prácticos. Esto fuerza a las herramientas de IA a hacer suposiciones educadas sobre ubicaciones de archivos en lugar de tener conocimiento completo.",
-        "title": "Ventana de contexto limitada"
-      },
-      "namingMismatches": {
-        "description": "Diferentes proyectos usan diferentes convenciones de nomenclatura: camelCase, PascalCase, kebab-case, snake_case o patrones personalizados. Las herramientas de IA a menudo luchan para reconocer que user-service.ts, UserService.ts y user_service.ts son todas coincidencias potenciales para un archivo de \"servicio de usuario\".",
-        "impact": "En proyectos polígotas mezclando múltiples lenguajes (TypeScript, Python, Go), las convenciones de nomenclatura varían por ecosistema de lenguaje. Una IA entrenada principalmente en patrones JavaScript podría fallar en reconocer módulos Python equivalentes, llevando a duplicados entre lenguajes.",
-        "title": "Desajustes de convención de nomenclatura"
-      },
-      "noValidation": {
-        "description": "La mayoría de las herramientas de codificación con IA ejecutan cambios inmediatamente sin un paso de revisión. Generan código y lo aplican directamente a tu sistema de archivos. Para cuando te das cuenta de que se creó un duplicado, el daño ya está hecho. No hay oportunidad de detectar el error antes de la ejecución.",
-        "title": "Sin validación pre-ejecución",
-        "workflow": "Los asistentes de IA tradicionales siguen un patrón \"generar → aplicar\". Sin un flujo de trabajo \"generar → revisar → aplicar\", los desarrolladores no tienen oportunidad de verificar rutas de archivo, verificar duplicados o validar la comprensión de la IA sobre la estructura de la base de código antes de que los cambios se escriban en disco."
-      },
-      "title": "Por qué las herramientas de IA crean archivos duplicados"
+    "meta": {
+      "title": "Soluciones de desarrollo - PlanToCode",
+      "description": "Resuelva desafíos de desarrollo complejos: errores difíciles, grandes funciones, actualizaciones de bibliotecas, refactorización segura, mantenimiento de código heredado."
     }
   },
   "safeRefactoring": {
-    "comparison": {
-      "aiDirect": {
-        "approach": "IA directa",
-        "bestFor": "Prototipos",
-        "safety": "Baja",
-        "speed": "Rápida (minutos)",
-        "visibility": "Después del hecho"
+    "meta": {
+      "title": "Refactorización segura - PlanToCode",
+      "description": "Planificación de IA para cambios sin riesgos."
+    }
+  },
+  "solutions": {
+    "aiWrongPaths": {
+      "meta": {
+        "title": "Fix AI Wrong File Paths | PlanToCode File Discovery",
+        "description": "Evite que la IA genere rutas de importación y referencias de archivos incorrectas. PlanToCode verifica todas las rutas de archivos antes de la ejecución. Perfecto para monorepos y código heredado."
       },
-      "aiPlanning": {
-        "approach": "IA + Planificación",
-        "bestFor": "Código de producción",
-        "safety": "Alta",
-        "speed": "Rápida (minutos + revisión)",
-        "visibility": "Pre-ejecución"
+      "badge": "Verificación de rutas AI",
+      "comparison": {
+        "features": {
+          "binaryFiltering": "Filtrado de archivos binarios",
+          "gitIntegration": "Integración con Git respetando .gitignore",
+          "monorepoResolution": "Resolución de espacios de trabajo monorepo",
+          "pathAliasResolution": "Resolución de alias de ruta TypeScript",
+          "preExecutionValidation": "Validación de rutas pre-ejecución",
+          "realtimeProgress": "Progreso de verificación en tiempo real",
+          "symbolicLinks": "Resolución de enlaces simbólicos",
+          "tokenBatching": "Agrupación de tokens optimizada para costos"
+        },
+        "title": "Cómo se compara PlanToCode"
       },
-      "headers": {
-        "approach": "Enfoque",
-        "bestFor": "Mejor para",
-        "safety": "Seguridad",
-        "speed": "Velocidad",
-        "visibility": "Visibilidad"
+      "cta": {
+        "description": "La IA debe referenciar archivos que realmente existen. PlanToCode verifica cada ruta antes de generar código, eliminando importaciones fantasma y compilaciones fallidas. Perfecto para monorepos, bases de código legadas y estructuras de proyectos complejas.",
+        "links": {
+          "deepDive": "Análisis profundo: Sistema de descubrimiento de archivos",
+          "docs": "Leer documentación técnica"
+        },
+        "title": "Detén las rutas de archivo alucinadas"
       },
-      "manual": {
-        "approach": "Manual",
-        "bestFor": "Cambios pequeños",
-        "safety": "Alta",
-        "speed": "Lenta (horas/días)",
-        "visibility": "Completa"
+      "description": "Las herramientas de IA alucinan rutas de importación, referencian archivos inexistentes y rompen tu compilación con dependencias fantasma. PlanToCode verifica cada ruta de archivo antes de la ejecución, eliminando referencias alucinadas en monorepos y bases de código legadas.",
+      "discoveryInAction": {
+        "complete": {
+          "description": "Todos los archivos verificados contra el sistema de archivos. La IA solo referenciará rutas validadas en el código generado. No son posibles importaciones alucinadas.",
+          "title": "Descubrimiento completo"
+        },
+        "stage1": {
+          "description": "Escaneando repositorio, mostrando estructura de directorio raíz y raíces seleccionadas",
+          "title": "Inicia escaneo del repositorio"
+        },
+        "stage2": {
+          "description": "Ejecutando git ls-files, generando patrones, filtrando archivos binarios",
+          "title": "Filtrado regex con integración git"
+        },
+        "title": "Descubrimiento de archivos en acción"
       },
-      "title": "Manual vs IA vs IA + Planificación"
+      "faq": {
+        "cost": {
+          "answer": "Típicamente $0.10-0.15 por flujo de trabajo completo, dependiendo del tamaño y complejidad del repositorio. El proceso de descubrimiento de 5 etapas usa agrupación inteligente de tokens y estimación consciente del contenido para minimizar costos de API mientras maximiza la precisión. El seguimiento de costos está integrado en cada etapa.",
+          "question": "¿Cuánto cuesta el descubrimiento de archivos por ejecución?"
+        },
+        "excludeDirectories": {
+          "answer": "Sí. El flujo de trabajo de descubrimiento de archivos respeta las reglas de .gitignore automáticamente. Además, los archivos binarios y 97 extensiones comunes no-código son filtrados por defecto. También puedes configurar patrones de exclusión personalizados en la configuración de tu proyecto.",
+          "question": "¿Puedo excluir ciertos directorios del descubrimiento?"
+        },
+        "monorepoSupport": {
+          "answer": "Sí. PlanToCode soporta explícitamente estructuras monorepo incluyendo espacios de trabajo pnpm, Yarn, npm y Nx. El flujo de trabajo de descubrimiento de archivos analiza configuraciones de espacios de trabajo y resuelve correctamente referencias de paquetes internos, dependencias elevadas e importaciones de protocolo de espacio de trabajo.",
+          "question": "¿Funciona el descubrimiento de archivos con monorepos?"
+        },
+        "pathAliases": {
+          "answer": "Sí. La etapa de validación de rutas entiende los mapeos de ruta de tsconfig.json y resuelve alias de TypeScript como @/* o ~/* contra tu sistema de archivos real. Esto asegura que las importaciones generadas por IA usen la sintaxis de alias correcta.",
+          "question": "¿Funciona esto con alias de ruta TypeScript?"
+        },
+        "stillWrongPath": {
+          "answer": "Aunque el descubrimiento de archivos reduce drásticamente la alucinación de rutas, los modelos de IA aún pueden generar nuevos nombres de archivo para código que estás creando. PlanToCode se enfoca en verificar archivos existentes. Para archivos recién creados, el plan de implementación muestra rutas de archivo claras y puedes validarlas antes de copiarlas a tu herramienta de IA.",
+          "question": "¿Qué pasa si la IA aún sugiere una ruta incorrecta?"
+        },
+        "title": "Preguntas frecuentes",
+        "verifiedPaths": {
+          "answer": "Absolutamente. PlanToCode proporciona seguimiento de progreso en tiempo real con actualizaciones etapa por etapa. Puedes ver exactamente qué directorios fueron escaneados, cuántos archivos pasaron la validación, qué rutas fueron corregidas y la lista final de archivos verificados disponibles para la IA.",
+          "question": "¿Puedo ver qué rutas fueron verificadas?"
+        }
+      },
+      "gettingStarted": {
+        "step1": {
+          "description": "Instala para macOS, Windows o Linux. Conecta a tu modelo de IA preferido (Claude, GPT-4, Gemini o modelos locales). No se requieren claves API para comenzar.",
+          "title": "Descarga PlanToCode"
+        },
+        "step2": {
+          "description": "Abre tu proyecto e inicia el flujo de trabajo de descubrimiento de archivos. PlanToCode escanea y valida automáticamente toda la estructura de tu base de código. Observa el progreso en tiempo real para cada etapa.",
+          "title": "Ejecuta descubrimiento de archivos"
+        },
+        "step3": {
+          "description": "La IA genera código usando solo rutas de archivo verificadas. Sin importaciones alucinadas, sin dependencias fantasma, sin compilaciones fallidas. Copia con confianza.",
+          "title": "Genera código verificado"
+        },
+        "title": "Comienza a prevenir rutas de archivo incorrectas"
+      },
+      "howPlanToCodePrevents": {
+        "monorepoAware": {
+          "description": "PlanToCode entiende estructuras monorepo y resuelve correctamente referencias de espacios de trabajo, rutas de paquetes internos y dependencias elevadas.",
+          "features": [
+            "Analiza configuraciones de espacios de trabajo (pnpm, yarn, npm)",
+            "Resuelve referencias cruzadas de paquetes internos",
+            "Maneja múltiples jerarquías node_modules",
+            "Detecta y respeta importaciones de protocolo de espacio de trabajo"
+          ],
+          "title": "Resolución consciente de monorepo"
+        },
+        "pathValidation": {
+          "description": "La etapa 5 del flujo de trabajo de descubrimiento valida y corrige específicamente rutas de archivo. Esto sucede automáticamente antes de que cualquier modelo de IA vea tu base de código.",
+          "features": [
+            "Verifica accesibilidad y permisos de archivos",
+            "Resuelve inconsistencias de ruta automáticamente",
+            "Maneja protocolos de espacio de trabajo monorepo",
+            "Valida mapeos de alias de importación desde tsconfig"
+          ],
+          "link": "Documentación técnica",
+          "title": "Pipeline de validación de rutas"
+        },
+        "preExecutionDiscovery": {
+          "description": "Antes de que la IA genere cualquier código, PlanToCode ejecuta un flujo de trabajo de descubrimiento de archivos de 5 etapas que mapea tu sistema de archivos real. Cada ruta de archivo es verificada para existir antes de ser incluida en el contexto.",
+          "features": [
+            "Escanea repositorio con integración git ls-files",
+            "Valida existencia de archivos contra sistema de archivos real",
+            "Resuelve enlaces simbólicos y alias de ruta",
+            "Normaliza rutas para compatibilidad multiplataforma"
+          ],
+          "link": "Aprende sobre descubrimiento de archivos",
+          "title": "Descubrimiento de archivos pre-ejecución"
+        },
+        "realTimeFeedback": {
+          "description": "Observa el progreso del descubrimiento de archivos en tiempo real con actualizaciones etapa por etapa. Ve exactamente qué rutas están siendo validadas y corregidas antes de que la IA genere código.",
+          "features": [
+            "Seguimiento de progreso en vivo para cada etapa de descubrimiento",
+            "Mensajes de error detallados para problemas de ruta",
+            "Conteo de archivos y estimaciones de uso de tokens",
+            "Seguimiento de costos: típicamente $0.10-0.15 por flujo de trabajo"
+          ],
+          "title": "Retroalimentación de verificación en tiempo real"
+        },
+        "title": "Cómo PlanToCode previene rutas de archivo incorrectas"
+      },
+      "impact": {
+        "forDevelopers": {
+          "benefits": [
+            "Detén la depuración de importaciones fantasma. No más búsquedas en árboles de directorios para encontrar la ruta correcta que la IA debería haber generado en primer lugar.",
+            "Entrega más rápido. Cuando el código generado por IA funciona en el primer pegado, tu velocidad aumenta dramáticamente. Enfócate en la lógica, no en correcciones de rutas.",
+            "Confía en la salida de la IA. La verificación de rutas genera confianza. Sabes que las importaciones son correctas antes de copiar código a tu editor.",
+            "Trabaja con código legado. Bases de código complejas y sin documentar se vuelven navegables cuando cada ruta es verificada contra la realidad."
+          ],
+          "title": "Para desarrolladores individuales"
+        },
+        "forTeams": {
+          "benefits": [
+            "Incorporación más rápida. Los nuevos miembros del equipo entienden la estructura de la base de código a través del descubrimiento de archivos verificado. Sin adivinar convenciones de importación.",
+            "Reduce ruido en PRs. Elimina commits que solo corrigen rutas de importación incorrectas. Las revisiones de código se enfocan en lógica, no en correcciones de rutas.",
+            "Escala monorepos con confianza. A medida que tu espacio de trabajo crece, la verificación de rutas previene el aumento exponencial en confusión de importaciones.",
+            "Estandariza el uso de IA. Cuando todos usan rutas verificadas, el código generado por IA mantiene consistencia en todo el equipo."
+          ],
+          "title": "Para equipos de ingeniería"
+        },
+        "metrics": {
+          "cost": "$0.12 Costo promedio por flujo de trabajo de verificación",
+          "disclaimer": "Basado en pruebas internas con bases de código monorepo que van de 200 a 5,000 archivos. Tus resultados pueden variar dependiendo de la estructura y complejidad del repositorio.",
+          "reduction": "85% Reducción en tiempo de depuración relacionado con rutas",
+          "speed": "23s Tiempo de escaneo promedio para 589 archivos",
+          "title": "Impacto medido"
+        },
+        "title": "El impacto de rutas de archivo verificadas"
+      },
+      "problem": {
+        "description": "Le pides a la IA que refactorice un componente. Genera con confianza código que importa de @/components/ui/NewButton — un archivo que no existe. Tu compilación falla. Pierdes 20 minutos rastreando la importación fantasma.",
+        "quote": "La IA intentó importar desde una ruta inexistente",
+        "scenarios": {
+          "contextWindow": {
+            "description": "Los proyectos grandes exceden las ventanas de contexto de la IA. El modelo adivina ubicaciones de archivos basándose en información incompleta, produciendo referencias de ruta confiadas pero incorrectas.",
+            "title": "Límites de ventana de contexto"
+          },
+          "legacy": {
+            "description": "Tu base de código tiene src/components y lib/components. La IA elige el incorrecto, o alucina un tercer directorio que nunca existió.",
+            "title": "Confusión con código legado"
+          },
+          "monorepo": {
+            "description": "La IA confunde @workspace/core con @workspace/shared, generando importaciones que parecen plausibles pero referencian el paquete incorrecto.",
+            "title": "Pesadillas de monorepo"
+          }
+        },
+        "title": "El problema de la ruta de archivo incorrecta"
+      },
+      "realWorldScenarios": {
+        "title": "Escenarios del mundo real",
+        "with": {
+          "description": "Escenario que muestra cómo el descubrimiento de archivos previene errores de ruta, genera importaciones correctas en el primer intento y ahorra horas de tiempo de depuración.",
+          "title": "Con verificación de PlanToCode"
+        },
+        "without": {
+          "description": "Escenario que demuestra problemas de alucinación de rutas al refactorizar sin verificación, resultando en importaciones rotas y trabajo de corrección manual de rutas.",
+          "title": "Sin verificación de rutas"
+        }
+      },
+      "title": "Detén a la IA de generar rutas de archivo incorrectas",
+      "whyAIGeneratesWrongPaths": {
+        "contextOverflow": {
+          "description": "Incluso ventanas de contexto de 200K tokens no pueden contener bases de código empresariales completas. El modelo ve una fracción de tus archivos e infiere el resto, llevando a desajustes de rutas.",
+          "points": [
+            "Visibilidad incompleta del árbol de directorios",
+            "Configuraciones de alias de importación faltantes",
+            "Instantáneas desactualizadas de bases de código en evolución"
+          ],
+          "title": "Desbordamiento de ventana de contexto"
+        },
+        "modelHallucination": {
+          "description": "Los modelos de lenguaje grandes son entrenados en millones de bases de código con diferentes estructuras. Al generar código, hacen coincidencia de patrones contra datos de entrenamiento, no tu sistema de archivos real.",
+          "points": [
+            "Los modelos predicen rutas probables, no rutas reales",
+            "Los datos de entrenamiento contienen convenciones de nomenclatura inconsistentes",
+            "Sin verificación del sistema de archivos en el bucle de generación"
+          ],
+          "title": "Alucinación del modelo"
+        },
+        "monorepoComplexity": {
+          "description": "Los monorepos amplifican la confusión de rutas con protocolos de espacios de trabajo, paquetes internos y múltiples directorios node_modules.",
+          "points": [
+            "Nombres de paquetes en conflicto entre espacios de trabajo",
+            "Mapeos de ruta tsconfig complejos",
+            "Dependencias elevadas con resolución poco clara"
+          ],
+          "title": "Complejidad de monorepo"
+        },
+        "noVerification": {
+          "description": "La generación de código estándar de IA no tiene paso de post-procesamiento para validar existencia de archivos. El código generado va directamente a ti sin verificaciones del sistema de archivos.",
+          "points": [
+            "Sin validación de existencia de archivos",
+            "Sin pruebas de resolución de rutas de importación",
+            "Sin referencia cruzada con la estructura de directorios real"
+          ],
+          "title": "Sin capa de verificación"
+        },
+        "title": "Por qué la IA genera rutas de archivo incorrectas"
+      }
     },
-    "cta": {
-      "buttons": {
-        "download": "Descargar PlanToCode",
-        "howItWorks": "Cómo funciona la planificación"
+    "hardBugs": {
+      "meta": {
+        "title": "Solve Hard Bugs with Reproducible Context - PlanToCode",
+        "description": "How PlanToCode captures plan history, terminal logs, and live transcripts so tricky production problems can be reproduced without guesswork."
       },
-      "description": "Agrega una capa de seguridad a tu flujo de trabajo de codificación con IA. Revisa cambios antes de que sucedan.",
-      "title": "Detén romper producción con refactorización"
+      "badge": "Depuración en producción",
+      "cta": {
+        "description": "Preserva cada investigación, reproduce cada paso, nunca pierdas contexto. Así es como debería funcionar la depuración en producción: disciplinada, reproducible, completa.",
+        "links": {
+          "terminal": "Explora persistencia de terminal",
+          "voice": "Aprende sobre notas de voz"
+        },
+        "title": "Depura problemas de producción con confianza"
+      },
+      "description": "PlanToCode mantiene cada plan, sesión de terminal y nota hablada adjunta al trabajo que estás depurando. Reabre los comandos exactos, presupuestos de tokens y revisiones de plan usadas para aislar un problema.",
+      "sections": {
+        "persistTerminal": {
+          "description": "Cada terminal de depuración se ejecuta dentro de un PTY administrado. Los metadatos de sesión, directorios de trabajo y registros de salida completos se almacenan en SQLite y pueden reabrirse después de fallos. La detección de CLI verifica que los binarios claude, cursor, codex o gemini estén instalados antes de ejecutar comandos.",
+          "link": "Comportamiento del terminal",
+          "title": "Persiste salida de terminal"
+        },
+        "reproduceSurface": {
+          "description": "Comienza con el flujo de trabajo de descubrimiento de archivos para reducir un repositorio a los módulos referenciados en el incidente. El flujo de trabajo valida entradas de sesión, encola trabajos en segundo plano y almacena las raíces seleccionadas para que cada plan de seguimiento use el mismo alcance.",
+          "link": "Detalles del flujo de trabajo",
+          "title": "Reproduce la superficie fallida"
+        },
+        "reviewFixes": {
+          "description": "Los planes de implementación se transmiten al visor Monaco con detección de lenguaje, controles de copia y navegación entre trabajos históricos. Las estimaciones de tokens se ejecutan antes de copiar prompts en una herramienta externa, ayudándote a confirmar que la corrección permanece dentro de los límites del modelo.",
+          "link": "Resumen del visor de planes",
+          "title": "Revisa cada corrección propuesta"
+        },
+        "voiceNotes": {
+          "description": "La transcripción de voz se integra directamente con el terminal y los editores de prompts. El hook de grabación administra permisos de micrófono, selección de dispositivo, detección de silencio e inserta texto reconocido junto a los comandos que lo activaron.",
+          "link": "Pipeline de transcripción",
+          "title": "Captura notas de voz en contexto"
+        }
+      },
+      "title": "Resuelve bugs difíciles con contexto preservado"
     },
-    "description": "Las herramientas de codificación con IA pueden refactorizar código 10x más rápido que los humanos. También pueden romper producción 10x más rápido. Aquí está cómo obtener la velocidad sin el caos.",
-    "faq": {
-      "compatibility": {
-        "answer": "Sí. PlanToCode genera planes de implementación que puedes copiar en cualquier herramienta de codificación con IA. El plan proporciona contexto para que la herramienta tome mejores decisiones durante la generación de código.",
-        "question": "¿Puedo usar esto con Cursor/Claude Code/Copilot?"
+    "hub": {
+      "badge": "Soluciones de desarrollo",
+      "categories": {
+        "debugging": "Depuración",
+        "development": "Desarrollo",
+        "maintenance": "Mantenimiento",
+        "refactoring": "Refactorización",
+        "safety": "Seguridad"
       },
-      "dependencyMapping": {
-        "answer": "El descubrimiento de archivos impulsado por IA analiza declaraciones de importación, referencias de tipo y dependencias entre archivos. Construye un gráfico de qué archivos dependen de cuáles, por lo que los planes de refactorización incluyen todos los archivos afectados.",
-        "question": "¿Cómo funciona el mapeo de dependencias?"
+      "cta": {
+        "button": "Descargar PlanToCode",
+        "description": "Comienza a planificar cambios complejos con confianza. Descarga PlanToCode hoy.",
+        "title": "¿Listo para resolver tus desafíos de desarrollo?"
       },
-      "languages": {
-        "answer": "Todos los lenguajes. El descubrimiento de archivos funciona a nivel del sistema de archivos y usa análisis estático para importaciones. TypeScript, JavaScript, Python, Rust, Go, Java y más.",
-        "question": "¿Qué lenguajes de programación están soportados?"
+      "description": "Aborda desafíos de desarrollo complejos con planificación impulsada por IA. Desde depurar bugs difíciles hasta refactorizar código legado, PlanToCode proporciona la capa de seguridad que tu equipo necesita.",
+      "solutions": {
+        "aiWrongPaths": {
+          "description": "Revisa rutas generadas por IA antes de la ejecución para prevenir errores de ubicación de archivos",
+          "title": "Prevenir rutas incorrectas"
+        },
+        "hardBugs": {
+          "description": "Captura historial de planes, registros de terminal y transcripciones para investigación reproducible de bugs",
+          "title": "Resolver bugs difíciles"
+        },
+        "largeFeatures": {
+          "description": "Planifica y rastrea características multi-archivo con mapeo de dependencias y ejecución paso a paso",
+          "title": "Características grandes"
+        },
+        "legacyCodeRefactoring": {
+          "description": "Planificación impulsada por IA para modernización segura de bases de código legadas",
+          "title": "Refactorización de código legado"
+        },
+        "libraryUpgrades": {
+          "description": "Actualiza dependencias de forma segura con análisis de impacto y pruebas comprehensivas",
+          "title": "Actualizaciones de bibliotecas"
+        },
+        "maintenanceEnhancements": {
+          "description": "Documenta tareas continuas con pistas de auditoría y previene regresiones",
+          "title": "Mantenimiento y mejoras"
+        },
+        "preventDuplicateFiles": {
+          "description": "Detén a la IA de crear archivos duplicados con descubrimiento de archivos pre-ejecución",
+          "title": "Prevenir archivos duplicados"
+        },
+        "safeRefactoring": {
+          "description": "Planificación impulsada por IA para cambios de código sin riesgos con visibilidad de dependencias",
+          "title": "Refactorización segura"
+        }
       },
-      "slowDown": {
-        "answer": "Revisión inicial: Sí, revisar un plan toma 5-15 minutos. Depurar refactorización rota: Puede tomar horas o días. Resultado neto: Más rápido en general, especialmente para cambios complejos.",
-        "question": "¿Esto ralentiza el desarrollo?"
-      },
-      "title": "Preguntas frecuentes"
+      "title": "Soluciones de desarrollo impulsadas por IA",
+      "viewSolution": "Ver solución"
     },
-    "gettingStarted": {
-      "steps": [
-        "Descarga PlanToCode (macOS, Windows, Linux)",
-        "Abre tu directorio de proyecto en el terminal",
-        "Describe tu refactorización y revisa el plan generado"
-      ],
-      "subtitle": "Prueba refactorización segura en 3 pasos:",
-      "title": "Comenzando"
+    "largeFeatures": {
+      "meta": {
+        "title": "Ship Large Features with Traceable Plans - PlanToCode",
+        "description": "Use PlanToCode to coordinate implementation plans, model selection, and background workflows when shipping multi-step features."
+      },
+      "badge": "Planificación de características",
+      "cta": {
+        "description": "Desde el primer flujo de trabajo hasta el despliegue final, mantén trazabilidad perfecta. Así es como debería funcionar la entrega de características: coordinada, predecible, trazable.",
+        "links": {
+          "plans": "Ver planificación de implementación",
+          "workflows": "Aprende sobre flujos de trabajo con alcance"
+        },
+        "title": "Entrega características complejas con confianza"
+      },
+      "description": "La entrega multi-etapa depende de alcance consistente, planes revisables y uso predecible de tokens. PlanToCode mantiene estas señales conectadas desde la primera ejecución del flujo de trabajo hasta la sesión de terminal final.",
+      "sections": {
+        "coordinatePlans": {
+          "description": "Los planes se transmiten al visor Monaco y permanecen vinculados a sus trabajos en segundo plano. Navega borradores anteriores, fusiona múltiples planes y abre el modal de terminal para un trabajo específico sin perder contexto. Las estimaciones de tokens se ejecutan antes de exportar prompts.",
+          "link": "Planes de implementación",
+          "title": "Coordina planes de implementación"
+        },
+        "keepAligned": {
+          "description": "Las sesiones de terminal almacenan registros de salida en SQLite y exponen salud de conexión, por lo que el trabajo de características a largo plazo permanece auditable. Si tu equipo graba recorridos, la transcripción de voz agrega notas buscables junto a los comandos que las ejecutaron.",
+          "link": "Terminal y transcripción",
+          "title": "Mantén la ejecución alineada"
+        },
+        "pickModel": {
+          "description": "Cada tipo de tarea proporciona un modelo predeterminado y una lista permitida. El toggle del selector de modelo previene el envío de prompts que excedan la ventana de contexto del modelo y muestra los requisitos estimados de tokens extraídos del comando backend.",
+          "link": "Configuración de modelo",
+          "title": "Elige el modelo correcto por tarea"
+        },
+        "sameScope": {
+          "description": "Usa el flujo de trabajo de descubrimiento de archivos para reunir directorios relevantes para cada tarea. Las entradas son validadas, los trabajos en segundo plano se ejecutan a través del Orquestador de Flujo de Trabajo, y las raíces seleccionadas se almacenan para que las revisiones de plan posteriores reutilicen el mismo segmento de repositorio.",
+          "link": "Flujo de trabajo de descubrimiento de archivos",
+          "title": "Comienza con el mismo alcance"
+        }
+      },
+      "title": "Entrega características grandes con planes trazables"
     },
-    "howPlanToCodeHelps": {
-      "description": "PlanToCode agrega una capa de planificación antes de que se escriba cualquier código. En lugar de ejecutar inmediatamente, la IA genera un plan de implementación detallado que revisas primero.",
-      "title": "Cómo PlanToCode hace la refactorización segura",
+    "legacyCodeRefactoring": {
+      "meta": {
+        "title": "Legacy Code Refactoring - Safe AI Modernization",
+        "description": "Refactor legacy code safely with AI planning. Map dependencies, generate migration strategies, and modernize 100K+ line codebases without breaking production."
+      },
+      "challenge": {
+        "description": "Se te encarga modernizar una base de código de 5 años: frameworks desactualizados, sin pruebas, patrones sin documentar y lógica de negocio crítica que no comprendes completamente. La refactorización directa con IA sería un caos. La planificación te da una hoja de ruta.",
+        "title": "El desafío del código legado"
+      },
+      "cta": {
+        "buttons": {
+          "download": "Descargar PlanToCode",
+          "learnMapping": "Aprender sobre mapeo de dependencias"
+        },
+        "description": "PlanToCode te ayuda a mapear dependencias, generar planes de migración y refactorizar sin romper producción.",
+        "title": "Moderniza código legado de forma segura"
+      },
+      "description": "El código legado es donde la refactorización asistida por IA se vuelve peligrosa. Un movimiento equivocado rompe producción. Aquí está cómo modernizar bases de código de más de 100K líneas de forma segura con planificación de IA.",
+      "furtherReading": {
+        "bestPractices": "Mejores prácticas de planificación de código con IA",
+        "safeRefactoring": "Herramientas de refactorización segura para código en producción",
+        "title": "Lectura adicional",
+        "whatIsPlanning": "¿Qué es la planificación de código con IA?"
+      },
+      "gettingStarted": {
+        "steps": [
+          {
+            "title": "Elige la unidad valiosa más pequeña para refactorizar",
+            "description": "No comiences con la clase Dios de 10,000 líneas. Encuentra un módulo autocontenido de 200 líneas que entregue valor."
+          },
+          {
+            "title": "Mapea todas sus dependencias",
+            "description": "Usa descubrimiento de archivos para encontrar importaciones, exportaciones, llamadas a funciones. Conoce el radio de explosión."
+          },
+          {
+            "title": "Escribe pruebas de caracterización",
+            "description": "Pruebas que capturan el comportamiento actual, incluso si está mal. Asegura que la refactorización preserve la funcionalidad."
+          },
+          {
+            "title": "Genera plan de refactorización",
+            "description": "Usa IA para crear estrategia de migración archivo por archivo. Revisa para pasos faltantes o riesgos."
+          },
+          {
+            "title": "Ejecuta incrementalmente",
+            "description": "Un pequeño cambio por despliegue. Ejecuta pruebas. Monitorea producción. Repite."
+          }
+        ],
+        "title": "Comenzando con refactorización de legado"
+      },
+      "mistakes": {
+        "bigBang": {
+          "instead": "En su lugar: Refactorización incremental con despliegue continuo",
+          "problem": "Pasar 6 meses reescribiendo todo desde cero. 80% hecho, te das cuenta de que el código viejo tenía casos extremos que no conocías. El proyecto falla.",
+          "title": "Reescrituras Big Bang"
+        },
+        "noRollback": {
+          "instead": "En su lugar: Feature flags, migraciones de base de datos con funciones down()",
+          "problem": "Refactorizar 50 archivos, desplegar, rompe producción. No puedes revertir fácilmente porque los cambios están enredados.",
+          "title": "Sin plan de rollback"
+        },
+        "noTests": {
+          "instead": "En su lugar: Escribe pruebas de caracterización primero, luego refactoriza",
+          "problem": "Cambiar código, esperar que funcione, desplegar, encontrar bugs en producción. Repetir hasta que se pierda la confianza.",
+          "title": "Refactorización sin pruebas"
+        },
+        "title": "Evitando errores comunes de refactorización de legado"
+      },
+      "patterns": {
+        "featureFlag": {
+          "bestFor": "Cambios de alto riesgo en rutas críticas (auth, pagos, características core)",
+          "howItWorks": "Refactoriza código, ponlo detrás de feature flag. Despliega al 1%, 10%, 50%, 100% de usuarios durante semanas. Rollback instantáneo si hay problemas.",
+          "title": "Despliegue con Feature Flag"
+        },
+        "parallelRun": {
+          "bestFor": "Pipelines de procesamiento de datos, algoritmos críticos, sistemas de reportes",
+          "howItWorks": "Ejecuta código viejo y nuevo en paralelo. Compara salidas. Cambia al nuevo solo cuando se logre tasa de coincidencia del 99.9%.",
+          "title": "Ejecución paralela + validación"
+        },
+        "stranglerFig": {
+          "bestFor": "Monolito → microservicios, framework viejo → framework nuevo",
+          "howItWorks": "Construye código nuevo junto al viejo. Gradualmente redirige tráfico del viejo al nuevo. Elimina código viejo solo cuando se haya migrado el 100%.",
+          "title": "Patrón Strangler Fig"
+        },
+        "title": "Patrones de estrategia de migración"
+      },
+      "realExample": {
+        "codebase": "150 componentes de clase React escritos en 2018. Necesidad de modernizar a hooks para mantenibilidad y rendimiento.",
+        "scenario": "Escenario",
+        "title": "Ejemplo real: Migración de clases React a hooks",
+        "with": {
+          "steps": [
+            "Semana 1: Migrar componentes hoja (sin dependencias en ellos)",
+            "Semana 2: Migrar proveedores de contexto (afecta a todos los consumidores)",
+            "Semana 3: Migrar componentes contenedores (orquestan hijos)",
+            "Semana 4: Eliminar HOCs viejos, completamente basado en hooks",
+            "Resultado: Migración limpia, sin rupturas de producción, cronograma de 4 semanas"
+          ],
+          "title": "Con planificación:"
+        },
+        "without": {
+          "steps": [
+            "La IA convierte 10 componentes",
+            "Rompe dependencias de ciclo de vida en las que otros componentes confían",
+            "Los proveedores de contexto dejan de funcionar (APIs basadas en clase)",
+            "3 días de depuración para encontrar todas las rupturas"
+          ],
+          "title": "Sin planificación:"
+        }
+      },
+      "scenarios": {
+        "databaseSchema": {
+          "approach": "Enfoque de planificación:",
+          "challenge": "Esquema desnormalizado de 2018. Necesidad de dividir tabla user_data en 5 tablas normalizadas.",
+          "steps": [
+            "Encuentra todas las consultas leyendo de user_data (grep + análisis estático)",
+            "Mapea qué consultas necesitan qué tablas nuevas",
+            "Planifica migración sin tiempo de inactividad con fase de escritura dual",
+            "Crea consultas de verificación para asegurar consistencia de datos"
+          ],
+          "title": "Migración de esquema de base de datos"
+        },
+        "frameworkMigration": {
+          "approach": "Enfoque de planificación:",
+          "challenge": "200 páginas de jQuery espagueti manipulando DOM directamente. Sin estructura de componentes. Preocupaciones mezcladas en todos lados.",
+          "steps": [
+            "Mapea todos los selectores jQuery para identificar componentes UI",
+            "Agrupa manipulaciones DOM relacionadas en componentes lógicos",
+            "Planifica migración gradual: una página a la vez, ambos frameworks coexistiendo",
+            "Crea capa de adaptador para estado compartido durante la transición"
+          ],
+          "title": "Migración de framework (jQuery → React)"
+        },
+        "monolith": {
+          "approach": "Enfoque de planificación:",
+          "challenge": "Monolito de 500K líneas, todas las características fuertemente acopladas. Necesidad de extraer gestión de usuarios a servicio separado.",
+          "steps": [
+            "Identifica límite de servicio: qué se queda, qué se mueve",
+            "Mapea todos los flujos de datos y llamadas API entre límites",
+            "Planifica estrategia de extracción de base de datos (fase de escritura dual)",
+            "Crea plan de rollback para cada paso de migración"
+          ],
+          "title": "Monolito a microservicios"
+        },
+        "title": "Escenarios comunes de refactorización de legado"
+      },
+      "title": "Herramientas de refactorización de código legado: Cómo la planificación con IA previene desastres",
+      "tools": {
+        "complexity": {
+          "description": "Identifica qué archivos son más complejos (complejidad ciclomática). Comienza refactorizando los simples.",
+          "title": "Análisis de complejidad de código",
+          "tools": "Herramientas: SonarQube, reglas de complejidad ESLint"
+        },
+        "dependencyMapping": {
+          "description": "Encuentra todas las cadenas de importación, gráficos de llamadas a funciones, dependencias de tipos. Conoce qué se rompe si cambias X.",
+          "title": "Mapeo de dependencias",
+          "tools": "Herramientas: Descubrimiento de archivos PlanToCode, madge, dependency-cruiser"
+        },
+        "staticAnalysis": {
+          "description": "Encuentra código no usado, importaciones muertas, desajustes de tipos. Limpia estos antes de refactorización mayor.",
+          "title": "Análisis estático",
+          "tools": "Herramientas: Modo estricto TypeScript, ESLint no-unused-vars"
+        },
+        "testCoverage": {
+          "description": "Conoce qué código tiene pruebas antes de refactorizar. Escribe pruebas para rutas críticas primero si es necesario.",
+          "title": "Reportes de cobertura de pruebas",
+          "tools": "Herramientas: Cobertura Jest, Istanbul, Codecov"
+        },
+        "title": "Herramientas para planificación de código legado"
+      },
+      "whyBreaks": {
+        "description": "Las bases de código legadas tienen características que hacen que la refactorización sea arriesgada:",
+        "points": {
+          "hiddenDeps": {
+            "description": "Funciones llamadas desde más de 20 lugares, estado global modificado inesperadamente, importaciones circulares que no sabías que existían.",
+            "title": "Dependencias ocultas"
+          },
+          "insufficientTests": {
+            "description": "30% de cobertura de código, pruebas que pasan pero no verifican realmente el comportamiento, pruebas de integración que toman 45 minutos en ejecutarse.",
+            "title": "Pruebas insuficientes"
+          },
+          "outdatedPatterns": {
+            "description": "Código escrito antes de las mejores prácticas modernas. Infierno de callbacks, módulos fuertemente acoplados, sin separación de preocupaciones.",
+            "title": "Patrones desactualizados"
+          },
+          "poorDocs": {
+            "description": "Sin comentarios, nombres de variables crípticos, lógica de negocio enterrada en detalles de implementación. Aprendes rompiendo cosas.",
+            "title": "Documentación pobre"
+          }
+        },
+        "title": "Por qué el código legado se rompe fácilmente"
+      },
       "workflow": {
         "steps": [
           {
-            "title": "Describe la refactorización",
-            "description": "\"Renombrar getUserData a fetchUserProfile en toda la base de código\""
+            "title": "Mapea el sistema existente",
+            "description": "Ejecuta descubrimiento de archivos, identifica todos los archivos tocando el área que estás refactorizando. Entiende dependencias antes de cambiar cualquier cosa."
           },
           {
-            "title": "La IA mapea dependencias",
-            "description": "El descubrimiento de archivos identifica todos los archivos que importan o referencian la función"
+            "title": "Genera múltiples estrategias de migración",
+            "description": "Pide a la IA 3 enfoques diferentes: migración big-bang, despliegue gradual, patrón strangler fig. Compara ventajas y desventajas."
           },
           {
-            "title": "Genera plan de implementación",
-            "description": "Desglose archivo por archivo: qué cambia en cada archivo, en qué orden"
+            "title": "Crea plan incremental",
+            "description": "Divide en hitos semanales. Cada paso debe ser desplegable y testeable independientemente. Sin estados \"semi-migrados\" en producción."
           },
           {
-            "title": "Revisa y refina",
-            "description": "Detecta archivos faltantes, suposiciones incorrectas o casos extremos ANTES de la ejecución"
+            "title": "Revisa con el equipo (requerido para legado)",
+            "description": "Alguien en el equipo conoce las trampas ocultas. La revisión del plan saca ese conocimiento tribal antes de que rompas cosas."
           },
           {
-            "title": "Ejecuta con confianza",
-            "description": "Entrega el plan aprobado a Claude Code, Cursor o implementa manualmente"
+            "title": "Ejecuta con plan de rollback",
+            "description": "Implementa paso 1, verifica que funciona, luego paso 2. Siempre ten una forma de revertir. Los feature flags son tus amigos."
           }
         ],
-        "title": "El flujo de trabajo de refactorización segura"
+        "subtitle": "El proceso de refactorización de legado segura",
+        "title": "Flujo de trabajo de refactorización con planificación primero"
       }
     },
-    "integration": {
-      "description": "PlanToCode no reemplaza tus herramientas de codificación con IA—las complementa:",
-      "title": "Integración con herramientas existentes",
-      "workflow": {
-        "steps": [
-          {
-            "title": "Planifica con PlanToCode",
-            "description": "Genera y revisa plan de implementación con mapeo de dependencias"
+    "libraryUpgrades": {
+      "meta": {
+        "title": "Upgrade Libraries with Guardrails - PlanToCode",
+        "description": "Plan migrations, monitor terminal output, and preserve transcripts when updating frameworks or dependencies."
+      },
+      "badge": "Planificación de actualizaciones",
+      "cta": {
+        "description": "Audita cada cambio, rastrea cada migración, mantén control total. Así es como deberían funcionar las actualizaciones de bibliotecas: seguras, auditables, reversibles.",
+        "links": {
+          "planning": "Explora planificación de actualizaciones",
+          "scope": "Aprende sobre análisis de alcance"
+        },
+        "title": "Actualiza dependencias sin miedo"
+      },
+      "description": "La modernización de dependencias a menudo abarca múltiples repositorios y equipos. PlanToCode te ayuda a delimitar el trabajo, documentar cada paso y mantener un rastro auditable de lo que cambió.",
+      "sections": {
+        "executionHistory": {
+          "description": "Las sesiones de terminal mantienen registros de salida completos y salud de conexión, incluso después de reinicios. La transcripción de voz puede agregar contexto hablado a pasos de migración complicados, creando un rastro buscable para notas de lanzamiento y revisiones de cambios.",
+          "link": "Terminal y transcripción",
+          "title": "Documenta historial de ejecución"
+        },
+        "identifyFiles": {
+          "description": "Activa el flujo de trabajo de descubrimiento de archivos contra tu directorio de proyecto para reunir puntos críticos de actualización. Los trabajos en segundo plano orquestados registran raíces seleccionadas y las hacen disponibles para cada plan o prompt subsiguiente.",
+          "link": "Flujo de trabajo de descubrimiento de archivos",
+          "title": "Identifica archivos afectados"
+        },
+        "modelLimits": {
+          "description": "Los prompts de actualización a menudo incluyen diffs grandes. La configuración de modelo a nivel de tarea define qué modelos están permitidos, y el toggle selector bloquea cualquier elección cuya ventana de contexto no pueda manejar los tokens estimados de prompt más salida.",
+          "link": "Barreras de modelo",
+          "title": "Permanece dentro de límites del modelo"
+        },
+        "trackPlans": {
+          "description": "Revisa planes generados dentro del visor Monaco, compara revisiones y fusiona propuestas superpuestas. Los planes permanecen vinculados a trabajos en segundo plano, por lo que puedes reabrir la sesión de terminal relevante o el modal de copia de prompt cuando revisites la actualización.",
+          "link": "Planes de implementación",
+          "title": "Rastrea planes de actualización"
+        }
+      },
+      "title": "Actualiza bibliotecas con barreras"
+    },
+    "maintenanceEnhancements": {
+      "meta": {
+        "title": "Maintenance & Enhancements with Repeatable Workflows - PlanToCode",
+        "description": "Apply systematic maintenance tasks with scoped discovery, plan history, and auditable terminal logs."
+      },
+      "badge": "Mantenimiento continuo",
+      "cta": {
+        "description": "Construye flujos de trabajo de mantenimiento sistemáticos. Contexto preservado, planes reutilizables y barreras de modelo convierten la deuda técnica en procesos manejables y repetibles.",
+        "links": {
+          "history": "Aprende sobre historial de planes",
+          "workflows": "Explora flujos de trabajo con alcance"
+        },
+        "title": "Transforma el mantenimiento en ventaja estratégica"
+      },
+      "description": "El trabajo de mantenimiento se ralentiza cuando los equipos pierden el rastro del alcance o repiten las mismas investigaciones. PlanToCode mantiene el contexto, planes e historial de ejecución necesarios para aplicar correcciones de forma segura.",
+      "sections": {
+        "controlModels": {
+          "description": "El toggle del selector de modelo hace cumplir ventanas de contexto por tarea de mantenimiento. Las estimaciones de tokens del backend te permiten confirmar que las descripciones de parches grandes aún caben en el modelo elegido antes de enviarlas a un agente.",
+          "link": "Barreras de modelo",
+          "title": "Controla el uso de modelos"
+        },
+        "planHistory": {
+          "description": "Los planes de mantenimiento se transmiten al visor Monaco con navegación entre revisiones, acciones de fusión y controles de copia de prompt. Reabre trabajos anteriores para ver exactamente qué pasos se tomaron y si necesitan ser repetidos.",
+          "link": "Planes de implementación",
+          "title": "Mantén historial de planes"
+        },
+        "preserveLogs": {
+          "description": "Las sesiones de terminal persisten en SQLite con marcas de tiempo, códigos de salida y salida capturada. La transcripción de voz puede agregar notas habladas al mismo trabajo, dando a futuros mantenedores contexto completo sobre qué cambió y por qué.",
+          "link": "Terminal y transcripción",
+          "title": "Preserva registros de ejecución"
+        },
+        "reuseWorkflows": {
+          "description": "Los trabajos de descubrimiento de archivos recopilan los directorios tocados por tareas de mantenimiento anteriores. Cuando regresa trabajo similar, puedes reejecutar planes contra las raíces almacenadas en lugar de reconstruir manualmente el alcance.",
+          "link": "Flujo de trabajo de descubrimiento de archivos",
+          "title": "Reutiliza flujos de trabajo con alcance"
+        }
+      },
+      "title": "Mantén sistemas con flujos de trabajo repetibles"
+    },
+    "preventDuplicateFiles": {
+      "meta": {
+        "title": "Prevent AI from Creating Duplicate Files",
+        "description": "Stop AI tools from creating duplicate files. PlanToCode file discovery prevents duplicates before execution for Cursor and Copilot users."
+      },
+      "badge": "Prevención de archivos duplicados",
+      "beforeAfter": {
+        "title": "Antes y después: IA sin planificación vs. con PlanToCode",
+        "with": {
+          "benefits": {
+            "items": [
+              "Cero archivos duplicados creados",
+              "Modificación limpia al código existente",
+              "Todas las importaciones permanecen válidas",
+              "Tiempo ahorrado: 2-4 horas"
+            ],
+            "title": "Beneficios logrados:"
           },
-          {
-            "title": "Ejecuta con tu herramienta preferida",
-            "description": "Pega plan en Cursor, Claude Code o Copilot para generación de código"
+          "steps": [
+            {
+              "label": "Usuario: \"Agregar validación JWT a autenticación\"",
+              "detail": "El flujo de trabajo de descubrimiento de archivos inicia automáticamente"
+            },
+            {
+              "label": "Descubrimiento de 5 etapas mapea toda la base de código",
+              "detail": "Encuentra authService.ts, auth-helpers.ts, archivos de configuración relacionados"
+            },
+            {
+              "label": "Genera plan de implementación para revisión",
+              "detail": "Muestra que modificará authService.ts existente, sin duplicados"
+            },
+            {
+              "label": "Revisas y apruebas el plan",
+              "detail": "Ve cambios exactos antes de que cualquier código toque el sistema de archivos"
+            },
+            {
+              "label": "Resultado: Modificaciones limpias y enfocadas",
+              "detail": "Validación JWT agregada a authService.ts existente, sin duplicados creados"
+            }
+          ],
+          "title": "Con PlanToCode"
+        },
+        "without": {
+          "cleanup": {
+            "items": [
+              "Fusionar código duplicado manualmente",
+              "Actualizar todas las referencias de importación",
+              "Corregir pruebas rotas y dependencias",
+              "Tiempo perdido: 2-4 horas"
+            ],
+            "title": "Limpieza manual requerida:"
           },
-          {
-            "title": "Verifica cambios",
-            "description": "Ejecuta pruebas, verifica diffs contra el plan"
-          }
-        ],
-        "title": "Flujo de trabajo combinado"
+          "steps": [
+            {
+              "label": "Usuario: \"Agregar validación JWT a autenticación\"",
+              "detail": "La IA tiene contexto limitado, solo ve archivos actualmente abiertos"
+            },
+            {
+              "label": "La IA busca, no encuentra archivos de auth existentes",
+              "detail": "Pierde src/services/authService.ts debido a desajuste de nombre/ruta"
+            },
+            {
+              "label": "Crea inmediatamente jwtValidation.ts",
+              "detail": "Sin paso de revisión, cambios aplicados directamente al sistema de archivos"
+            },
+            {
+              "label": "Resultado: Archivo duplicado creado",
+              "detail": "Ahora tiene authService.ts y jwtValidation.ts con funcionalidad superpuesta"
+            }
+          ],
+          "title": "Sin PlanToCode"
+        }
+      },
+      "cta": {
+        "description": "Descubrimiento de archivos antes de la ejecución. Revisión antes de la aplicación. Cero duplicados. Así es como debería funcionar el desarrollo asistido por IA: inteligente, preventivo, limpio.",
+        "links": {
+          "howItWorks": "Ve cómo funciona",
+          "planReview": "Aprende sobre revisión de planes",
+          "technical": "Lee la guía técnica"
+        },
+        "title": "Detén la creación de archivos duplicados hoy"
+      },
+      "description": "Las herramientas de codificación con IA frecuentemente crean archivos duplicados porque carecen de contexto sobre la estructura de código existente. PlanToCode resuelve esto con descubrimiento inteligente de archivos que mapea toda tu base de código antes de generar cualquier código.",
+      "faq": {
+        "discoveryCost": {
+          "answer": "El descubrimiento de archivos sí usa IA para la etapa de evaluación de relevancia (Etapa 3), lo que incurre en pequeños costos de API. Sin embargo, el costo es mínimo (típicamente $0.01-0.05 por ejecución de descubrimiento) y el sistema proporciona estimaciones de costo antes de la ejecución. La inversión vale la pena comparada con las 2-4 horas de tiempo de limpieza manual ahorradas al prevenir duplicados.",
+          "question": "¿Hay un costo por ejecutar descubrimiento de archivos?"
+        },
+        "discoveryTime": {
+          "answer": "El descubrimiento de archivos típicamente se completa en 30-90 segundos para proyectos de tamaño medio (500-2000 archivos). Monorepos muy grandes con más de 10,000 archivos pueden tomar 2-3 minutos. El flujo de trabajo se ejecuta en segundo plano, por lo que puedes continuar trabajando mientras se ejecuta. Las actualizaciones de progreso aparecen en tiempo real.",
+          "question": "¿Cuánto tiempo tarda el flujo de trabajo de descubrimiento de archivos?"
+        },
+        "hugeCodebase": {
+          "answer": "PlanToCode incluye gestión inteligente de tiempos de espera y mecanismos de caché. Para bases de código extremadamente grandes, puedes configurar valores de tiempo de espera personalizados y usar patrones de exclusión para omitir directorios irrelevantes (código de vendor, archivos generados, etc.). El sistema también almacena en caché resultados de descubrimiento por sesión, por lo que planes subsiguientes en la misma sesión reutilizan el contexto de archivo en caché.",
+          "link": "Opciones de configuración",
+          "question": "¿Qué pasa si tengo una base de código enorme? ¿El descubrimiento expirará?"
+        },
+        "newFiles": {
+          "answer": "Absolutamente. El descubrimiento de archivos de PlanToCode no previene la creación de archivos nuevos—previene la creación de archivos duplicados. Cuando tu tarea genuinamente requiere un archivo nuevo (como agregar un módulo de característica completamente nuevo), PlanToCode propondrá crearlo en el plan de implementación. La diferencia es que verás la propuesta y puedes verificar que es funcionalidad verdaderamente nueva en lugar de un duplicado accidental.",
+          "question": "¿Puedo aún crear archivos genuinamente nuevos cuando sea necesario?"
+        },
+        "nonJavaScript": {
+          "answer": "Sí. El descubrimiento de archivos de PlanToCode es agnóstico del lenguaje. Funciona con Python, Go, Rust, Java, TypeScript, JavaScript, Ruby, PHP, C++ y cualquier otra base de código basada en texto. La generación de regex y evaluación de relevancia por IA se adaptan a los lenguajes y frameworks específicos en tu proyecto basándose en la descripción de la tarea y extensiones de archivo descubiertas.",
+          "question": "¿Funciona esto para proyectos no-JavaScript?"
+        },
+        "refactoringDuplicates": {
+          "answer": "Sí. Si ya tienes archivos duplicados en tu base de código, puedes usar PlanToCode para planificar su consolidación. Describe la tarea como \"Fusionar servicios de autenticación duplicados en authService.ts\" o similar. El descubrimiento de archivos encontrará todos los archivos relacionados, y el plan de implementación te mostrará exactamente cómo consolidarlos limpiamente.",
+          "question": "¿Puedo usar PlanToCode para refactorizar duplicados existentes?"
+        },
+        "stillProposesDuplicate": {
+          "answer": "Esto es raro porque el descubrimiento de archivos proporciona contexto comprehensivo, pero si sucede, lo detectarás durante el paso de revisión. Simplemente rechaza el plan, refina tu descripción de tarea (sé más específico sobre qué archivos existentes modificar), o ajusta manualmente la selección de archivos. La ventaja clave es detectar duplicados antes de la ejecución en lugar de después de que se haya hecho el daño.",
+          "question": "¿Qué pasa si la IA aún propone un duplicado en el plan?"
+        },
+        "title": "Preguntas frecuentes",
+        "worksWithCursor": {
+          "answer": "Sí. PlanToCode está diseñado como una capa de planificación que funciona junto con tus herramientas de codificación con IA existentes. Usas PlanToCode para descubrir archivos y generar planes de implementación, luego ejecutas esos planes usando Cursor, GitHub Copilot, Claude Code o cualquier otro asistente de IA. El descubrimiento de archivos y la planificación previenen duplicados independientemente de qué herramienta ejecute el código.",
+          "question": "¿PlanToCode funciona con Cursor y GitHub Copilot?"
+        }
+      },
+      "gettingStarted": {
+        "step1": {
+          "description": "Descarga la aplicación de escritorio PlanToCode para tu plataforma. El flujo de trabajo de descubrimiento de archivos y las características de planificación de implementación están integradas directamente en el cliente de escritorio.",
+          "title": "Paso 1: Instalar PlanToCode Desktop"
+        },
+        "step2": {
+          "description": "Abre PlanToCode y selecciona el directorio raíz de tu proyecto. PlanToCode validará el estado del repositorio git y establecerá el directorio base para todas las operaciones de archivos. Configura cualquier patrón de exclusión personalizado para directorios que quieras omitir (node_modules, dist, build, etc.).",
+          "tip": "Los patrones de exclusión predeterminados ya cubren directorios comunes como node_modules, .git y artefactos de compilación. Solo necesitas personalizar si tu proyecto tiene estructuras de directorio inusuales.",
+          "title": "Paso 2: Configurar la raíz del proyecto"
+        },
+        "step3": {
+          "description": "Ingresa una descripción en lenguaje natural de lo que quieres lograr. Por ejemplo: \"Agregar validación JWT al servicio de autenticación\" o \"Implementar soporte de modo oscuro en el proveedor de tema.\" Sé tan específico como sea posible sobre la funcionalidad que deseas.",
+          "goodDescriptions": {
+            "examples": [
+              "Agregar caché Redis al endpoint API de perfil de usuario",
+              "Implementar gestión de conexión WebSocket en el servicio de chat",
+              "Agregar validación de entrada a todos los componentes de formulario",
+              "Actualizar migración de base de datos para agregar tabla de roles de usuario"
+            ],
+            "title": "Buenas descripciones de tareas:"
+          },
+          "title": "Paso 3: Describir tu tarea"
+        },
+        "step4": {
+          "description": "PlanToCode ejecutará el flujo de trabajo de descubrimiento de archivos de 5 etapas en segundo plano. Verás actualizaciones de progreso en tiempo real mientras descubre archivos relevantes. El flujo de trabajo típicamente se completa en 30-90 segundos dependiendo del tamaño de la base de código. Una vez completo, revisa la lista de archivos descubiertos. Verás qué archivos PlanToCode identificó como relevantes para tu tarea. Este es tu primer punto de control para asegurar que el sistema tenga el contexto adecuado sobre archivos existentes.",
+          "link": "Aprende más sobre el proceso de descubrimiento",
+          "title": "Paso 4: Revisar el descubrimiento de archivos"
+        },
+        "step5": {
+          "checkpoint": "Si ves cualquier creación de archivo que parezca un duplicado (ej., auth-new.ts o UserService2.tsx), detente aquí. Refina tu descripción de tarea o ajusta manualmente la lista de archivos antes de proceder.",
+          "description": "PlanToCode genera un plan de implementación detallado basado en los archivos descubiertos. Abre el plan en el editor Monaco y revisa cuidadosamente:",
+          "reviewItems": [
+            "Qué archivos serán modificados (busca rutas de archivo existentes)",
+            "Qué archivos serán creados (verifica que estos son archivos genuinamente nuevos necesarios)",
+            "Los cambios de código específicos propuestos para cada archivo",
+            "Declaraciones de importación y actualizaciones de dependencias"
+          ],
+          "title": "Paso 5: Revisar el plan de implementación"
+        },
+        "step6": {
+          "description": "Una vez que hayas revisado y aprobado el plan, copia las instrucciones de implementación a tu herramienta de codificación con IA preferida (Cursor, Copilot, Claude, etc.) o ejecuta directamente a través del terminal integrado. Porque PlanToCode ya ha hecho el trabajo pesado de descubrimiento de archivos y planificación, la ejecución se convierte en un proceso directo de aplicar cambios bien definidos.",
+          "link": "Guía de integración de terminal",
+          "title": "Paso 6: Ejecutar con confianza"
+        },
+        "title": "Comenzando: Detén la creación de duplicados hoy"
+      },
+      "howPlanToCodePrevents": {
+        "comprehensiveDiscovery": {
+          "description": "PlanToCode ejecuta un flujo de trabajo de descubrimiento de archivos de 5 etapas antes de generar cualquier plan de implementación. Este flujo de trabajo usa integración git, filtrado regex, evaluación de relevancia impulsada por IA, análisis de relaciones y validación de rutas para construir un mapa completo de tu base de código.",
+          "link": "Documentación técnica",
+          "process": {
+            "steps": [
+              "Validar repositorio git y carpeta raíz",
+              "Generar patrones regex específicos de la tarea",
+              "Evaluación de relevancia por IA del contenido de archivos",
+              "Descubrimiento de rutas extendido vía relaciones",
+              "Corrección y validación final de rutas"
+            ],
+            "title": "Proceso de descubrimiento:"
+          },
+          "result": "Este descubrimiento profundo significa que PlanToCode conoce authService.ts, auth-helpers.ts y directorios authentication/ antes de sugerir cualquier cambio. No creará duplicados porque tiene contexto completo.",
+          "title": "Descubrimiento comprehensivo de archivos"
+        },
+        "description": "PlanToCode cambia fundamentalmente el flujo de trabajo con un enfoque de planificación primero. En lugar de generar y ejecutar código inmediatamente, PlanToCode usa un sistema comprehensivo de descubrimiento de archivos que mapea toda tu estructura de base de código antes de proponer cualquier cambio. Esta diferencia arquitectónica elimina las causas raíz de la creación de archivos duplicados.",
+        "gitAwareTracking": {
+          "command": "git ls-files --cached --others --exclude-standard captura todos los archivos rastreados más archivos no rastreados que no son ignorados, dando a PlanToCode una vista completa del estado de tu base de código incluyendo archivos en progreso.",
+          "description": "El flujo de trabajo de descubrimiento de archivos se integra directamente con git para respetar reglas de .gitignore y rastrear cambios tanto confirmados como no confirmados. Esta integración git asegura que PlanToCode vea tu árbol de trabajo real, incluyendo archivos recientemente creados que podrían no estar confirmados aún.",
+          "title": "Rastreo de archivos consciente de Git"
+        },
+        "intelligentPatternMatching": {
+          "advanced": "El sistema usa IA para generar patrones regex conscientes del contexto en lugar de simple coincidencia de cadenas. Para una tarea como \"agregar validación JWT,\" genera patrones cubriendo auth*, jwt*, token*, middleware/auth* y patrones relacionados.",
+          "description": "La etapa de generación de regex de PlanToCode crea patrones inteligentes que tienen en cuenta múltiples convenciones de nomenclatura, variaciones de mayúsculas y patrones comunes de organización de archivos. Entiende que una solicitud para \"actualizar el servicio de usuario\" debería coincidir con userService.ts, user-service.ts, UserService.ts o services/user/.",
+          "title": "Coincidencia inteligente de patrones"
+        },
+        "reviewBeforeExecution": {
+          "contents": {
+            "items": [
+              "Lista completa de archivos a ser modificados",
+              "Archivos nuevos a ser creados con rutas completas",
+              "Cambios específicos con contexto antes/después",
+              "Estimaciones de conteo de tokens por operación",
+              "Dependencias y actualizaciones de importación necesarias"
+            ],
+            "title": "Contenidos del plan incluyen:"
+          },
+          "description": "A diferencia de herramientas que aplican cambios inmediatamente, PlanToCode genera un plan de implementación detallado que revisas en el editor Monaco antes de que cualquier código toque tu sistema de archivos. Ves exactamente qué archivos serán creados, modificados o eliminados.",
+          "link": "Guía de planes de implementación",
+          "review": "Este paso de revisión te permite detectar duplicados antes de la ejecución. Si ves que el plan quiere crear auth-new.ts, puedes rechazarlo y refinar el alcance de descubrimiento.",
+          "title": "Revisión antes de ejecución"
+        },
+        "title": "Cómo PlanToCode previene archivos duplicados"
+      },
+      "problem": {
+        "caseStudy1": {
+          "description": "Un desarrollador reportó en el foro de Cursor que al pedir a la IA \"actualizar el servicio de autenticación,\" Cursor creó un nuevo archivo src/services/auth-service-new.ts en lugar de modificar el src/services/authService.ts existente. Esto sucedió porque la IA no escaneó adecuadamente implementaciones existentes con patrones de nomenclatura similares.",
+          "impact": "El desarrollador pasó 3 horas fusionando manualmente el código duplicado, resolviendo conflictos de importación en 15 archivos y eliminando el duplicado. El proyecto terminó con referencias rotas en producción porque algunas importaciones aún apuntaban a la ruta de archivo antigua.",
+          "link": "Ver discusión del foro de Cursor",
+          "title": "Caso de estudio: Problema de Cursor #47028"
+        },
+        "caseStudy2": {
+          "description": "Otro caso documentado involucró un proyecto React donde un desarrollador pidió \"agregar soporte de modo oscuro.\" En lugar de modificar el components/ThemeProvider.tsx existente, Cursor creó components/DarkModeProvider.tsx con funcionalidad superpuesta. La base de código terminó con dos sistemas de tema compitiendo ejecutándose simultáneamente.",
+          "impact": "Los proveedores de tema duplicados causaron conflictos de gestión de estado, aumentaron el tamaño del bundle en 45KB y crearon bugs de experiencia de usuario donde las preferencias de tema no persistían correctamente. La limpieza requirió un sprint completo de refactorización.",
+          "link": "Ver discusión del foro de Cursor",
+          "title": "Caso de estudio: Problema de Cursor #31402"
+        },
+        "commonScenarios": {
+          "examples": [
+            "Crear utils-new.ts cuando helpers.ts existe con funciones similares",
+            "Generar apiClient2.ts en lugar de actualizar api/client.ts",
+            "Hacer ButtonComponent.tsx cuando Button.tsx ya existe",
+            "Crear test-helper-updated.js en lugar de modificar testHelpers.js",
+            "Duplicar archivos de configuración como config-new.json o settings-v2.yaml"
+          ],
+          "title": "Escenarios comunes de archivos duplicados"
+        },
+        "description": "Los archivos duplicados son uno de los problemas más comunes y frustrantes que enfrentan los desarrolladores al usar asistentes de codificación con IA. Cuando herramientas de IA como Cursor, GitHub Copilot u otros sistemas de generación de código carecen de contexto adecuado sobre tu base de código existente, crean nuevos archivos en lugar de modificar los existentes. Esto lleva a fragmentación de código, conflictos de fusión y horas de trabajo de limpieza manual.",
+        "title": "El problema de archivos duplicados: Ejemplos reales"
+      },
+      "title": "Detén a la IA de crear archivos duplicados",
+      "whyAICreatesDuplicates": {
+        "conflictAvoidance": {
+          "description": "Los modelos de IA a menudo son entrenados con un enfoque de seguridad primero: cuando son inciertos sobre si un archivo existe o cuál es su ruta exacta, por defecto crean un nuevo archivo en lugar de arriesgar sobrescribir código existente. Este sesgo de \"mejor prevenir que lamentar\" lleva a proliferación de archivos duplicados.",
+          "title": "Sesgo de evitación de conflictos",
+          "training": "Los modelos de IA son penalizados más severamente por acciones destructivas (sobrescribir código importante) que por acciones conservadoras (crear duplicados innecesarios). Esta estructura de penalización asimétrica en los datos de entrenamiento fomenta la creación de duplicados como la opción \"más segura\"."
+        },
+        "description": "Entender las razones técnicas detrás de la creación de archivos duplicados ayuda a explicar por qué este problema es tan persistente en herramientas de codificación con IA. No es un simple bug—es una limitación arquitectónica fundamental de cómo la mayoría de los asistentes de IA interactúan con bases de código.",
+        "incompleteDiscovery": {
+          "description": "Cuando las herramientas de IA intentan descubrimiento de archivos, a menudo usan métodos superficiales como buscar archivos actualmente abiertos, archivos accedidos recientemente o coincidencia de patrones básica. Estos enfoques pierden archivos que no están activamente abiertos o tienen convenciones de nomenclatura no estándar.",
+          "example": "Si tu servicio de autenticación se llama authService.ts pero la IA busca archivos coincidiendo con \"auth*\", podría perderlo si la búsqueda es sensible a mayúsculas o limitada a directorios específicos. La IA entonces concluye que el archivo no existe y crea un duplicado.",
+          "title": "Descubrimiento incompleto de archivos"
+        },
+        "limitedContext": {
+          "description": "La mayoría de los asistentes de codificación con IA operan con una ventana de contexto limitada que solo puede \"ver\" una pequeña porción de tu base de código en cualquier momento dado. Cuando pides crear o modificar una característica, la IA podría solo tener acceso a los archivos actualmente abiertos o un segmento estrecho de la estructura de tu proyecto.",
+          "details": "Incluso con ventanas de contexto grandes (128K+ tokens), los modelos de IA aún luchan con conciencia completa del proyecto. Un proyecto típico de tamaño medio con 500 archivos podría requerir 2-5 millones de tokens para indexar completamente, excediendo ampliamente los límites prácticos. Esto fuerza a las herramientas de IA a hacer suposiciones educadas sobre ubicaciones de archivos en lugar de tener conocimiento completo.",
+          "title": "Ventana de contexto limitada"
+        },
+        "namingMismatches": {
+          "description": "Diferentes proyectos usan diferentes convenciones de nomenclatura: camelCase, PascalCase, kebab-case, snake_case o patrones personalizados. Las herramientas de IA a menudo luchan para reconocer que user-service.ts, UserService.ts y user_service.ts son todas coincidencias potenciales para un archivo de \"servicio de usuario\".",
+          "impact": "En proyectos polígotas mezclando múltiples lenguajes (TypeScript, Python, Go), las convenciones de nomenclatura varían por ecosistema de lenguaje. Una IA entrenada principalmente en patrones JavaScript podría fallar en reconocer módulos Python equivalentes, llevando a duplicados entre lenguajes.",
+          "title": "Desajustes de convención de nomenclatura"
+        },
+        "noValidation": {
+          "description": "La mayoría de las herramientas de codificación con IA ejecutan cambios inmediatamente sin un paso de revisión. Generan código y lo aplican directamente a tu sistema de archivos. Para cuando te das cuenta de que se creó un duplicado, el daño ya está hecho. No hay oportunidad de detectar el error antes de la ejecución.",
+          "title": "Sin validación pre-ejecución",
+          "workflow": "Los asistentes de IA tradicionales siguen un patrón \"generar → aplicar\". Sin un flujo de trabajo \"generar → revisar → aplicar\", los desarrolladores no tienen oportunidad de verificar rutas de archivo, verificar duplicados o validar la comprensión de la IA sobre la estructura de la base de código antes de que los cambios se escriban en disco."
+        },
+        "title": "Por qué las herramientas de IA crean archivos duplicados"
       }
     },
-    "keyFeatures": {
-      "changeOrdering": {
-        "description": "Los planes especifican la secuencia correcta: actualizar tipos primero, luego implementaciones, luego pruebas. Evita estados rotos intermedios.",
-        "title": "Ordenamiento de cambios"
+    "safeRefactoring": {
+      "comparison": {
+        "aiDirect": {
+          "approach": "IA directa",
+          "bestFor": "Prototipos",
+          "safety": "Baja",
+          "speed": "Rápida (minutos)",
+          "visibility": "Después del hecho"
+        },
+        "aiPlanning": {
+          "approach": "IA + Planificación",
+          "bestFor": "Código de producción",
+          "safety": "Alta",
+          "speed": "Rápida (minutos + revisión)",
+          "visibility": "Pre-ejecución"
+        },
+        "headers": {
+          "approach": "Enfoque",
+          "bestFor": "Mejor para",
+          "safety": "Seguridad",
+          "speed": "Velocidad",
+          "visibility": "Visibilidad"
+        },
+        "manual": {
+          "approach": "Manual",
+          "bestFor": "Cambios pequeños",
+          "safety": "Alta",
+          "speed": "Lenta (horas/días)",
+          "visibility": "Completa"
+        },
+        "title": "Manual vs IA vs IA + Planificación"
       },
-      "dependencyMapping": {
-        "description": "El descubrimiento de archivos impulsado por IA descubre todos los archivos afectados por la refactorización, incluyendo importaciones ocultas, dependencias de tipos y referencias entre módulos.",
-        "title": "Mapeo de dependencias"
+      "cta": {
+        "buttons": {
+          "download": "Descargar PlanToCode",
+          "howItWorks": "Cómo funciona la planificación"
+        },
+        "description": "Agrega una capa de seguridad a tu flujo de trabajo de codificación con IA. Revisa cambios antes de que sucedan.",
+        "title": "Detén romper producción con refactorización"
       },
-      "preExecutionReview": {
-        "description": "Ve exactamente qué cambiará antes de que se escriba cualquier código. Revisa cambios archivo por archivo, edita el plan y aprueba cuando esté listo.",
-        "title": "Revisión pre-ejecución"
+      "description": "Las herramientas de codificación con IA pueden refactorizar código 10x más rápido que los humanos. También pueden romper producción 10x más rápido. Aquí está cómo obtener la velocidad sin el caos.",
+      "faq": {
+        "compatibility": {
+          "answer": "Sí. PlanToCode genera planes de implementación que puedes copiar en cualquier herramienta de codificación con IA. El plan proporciona contexto para que la herramienta tome mejores decisiones durante la generación de código.",
+          "question": "¿Puedo usar esto con Cursor/Claude Code/Copilot?"
+        },
+        "dependencyMapping": {
+          "answer": "El descubrimiento de archivos impulsado por IA analiza declaraciones de importación, referencias de tipo y dependencias entre archivos. Construye un gráfico de qué archivos dependen de cuáles, por lo que los planes de refactorización incluyen todos los archivos afectados.",
+          "question": "¿Cómo funciona el mapeo de dependencias?"
+        },
+        "languages": {
+          "answer": "Todos los lenguajes. El descubrimiento de archivos funciona a nivel del sistema de archivos y usa análisis estático para importaciones. TypeScript, JavaScript, Python, Rust, Go, Java y más.",
+          "question": "¿Qué lenguajes de programación están soportados?"
+        },
+        "slowDown": {
+          "answer": "Revisión inicial: Sí, revisar un plan toma 5-15 minutos. Depurar refactorización rota: Puede tomar horas o días. Resultado neto: Más rápido en general, especialmente para cambios complejos.",
+          "question": "¿Esto ralentiza el desarrollo?"
+        },
+        "title": "Preguntas frecuentes"
       },
-      "testCoverageCheck": {
-        "description": "Identifica archivos de prueba que necesitan actualizaciones junto con código de producción. No entregues refactorización con suites de prueba rotas.",
-        "title": "Verificación de cobertura de pruebas"
-      },
-      "title": "Características clave de seguridad"
-    },
-    "realWorldExample": {
-      "scenario": "Escenario: Migrar de REST a GraphQL",
-      "task": "Reemplazar todas las llamadas API REST con consultas GraphQL en una base de código Next.js de 50,000 líneas.",
-      "title": "Ejemplo del mundo real: Refactorizando una base de código de 50K líneas",
-      "withPlanning": {
+      "gettingStarted": {
         "steps": [
-          "El descubrimiento de archivos encuentra 47 archivos usando API REST",
-          "El plan muestra orden de migración: tipos → cliente → componentes → utils",
-          "Identifica patrones de manejo de errores a preservar",
-          "Detecta archivos de prueba necesitando actualizaciones de mocks GraphQL",
-          "Resultado: Plan revisado en 20 mins, ejecutado de forma segura"
+          "Descarga PlanToCode (macOS, Windows, Linux)",
+          "Abre tu directorio de proyecto en el terminal",
+          "Describe tu refactorización y revisa el plan generado"
         ],
-        "title": "Con PlanToCode:"
+        "subtitle": "Prueba refactorización segura en 3 pasos:",
+        "title": "Comenzando"
       },
-      "withoutPlanning": {
-        "steps": [
-          "La IA modifica archivos de cliente API",
-          "Actualiza algunas importaciones de componentes",
-          "Pierde llamadas API en funciones de utilidad",
-          "Olvida actualizar manejo de errores",
-          "Los cambios compilan pero fallan en tiempo de ejecución",
-          "Resultado: 4 horas depurando errores de producción"
-        ],
-        "title": "Sin planificación (Cursor/Copilot directo):"
-      }
-    },
-    "refactoringProblem": {
-      "aiPowered": "Refactorización impulsada por IA: Rápida pero arriesgada. Cursor, Copilot y Claude pueden modificar 20 archivos en segundos—pero no sabes qué cambió hasta que esté hecho.",
-      "gap": "La brecha: Sin paso de revisión. Sin vista previa de \"esto es lo que voy a cambiar\". Solo ejecución instantánea y esperar lo mejor.",
-      "manual": "Refactorización manual: Segura pero lenta. Actualizas cuidadosamente cada archivo, verificas dependencias, ejecutas pruebas.",
-      "title": "El problema de la refactorización"
-    },
-    "title": "Herramientas de refactorización segura: Por qué la IA necesita una capa de planificación",
-    "whenToUse": {
-      "skipPlanningWhen": {
-        "scenarios": [
-          "Cambios de un solo archivo - Refactorización aislada sin dependencias externas",
-          "Prototipos - Código desechable donde romper cosas es aceptable",
-          "Proyectos pequeños - Menos de 1,000 líneas, fácil de revisar todo manualmente"
-        ],
-        "title": "Omite la planificación cuando:"
+      "howPlanToCodeHelps": {
+        "description": "PlanToCode agrega una capa de planificación antes de que se escriba cualquier código. En lugar de ejecutar inmediatamente, la IA genera un plan de implementación detallado que revisas primero.",
+        "title": "Cómo PlanToCode hace la refactorización segura",
+        "workflow": {
+          "steps": [
+            {
+              "title": "Describe la refactorización",
+              "description": "\"Renombrar getUserData a fetchUserProfile en toda la base de código\""
+            },
+            {
+              "title": "La IA mapea dependencias",
+              "description": "El descubrimiento de archivos identifica todos los archivos que importan o referencian la función"
+            },
+            {
+              "title": "Genera plan de implementación",
+              "description": "Desglose archivo por archivo: qué cambia en cada archivo, en qué orden"
+            },
+            {
+              "title": "Revisa y refina",
+              "description": "Detecta archivos faltantes, suposiciones incorrectas o casos extremos ANTES de la ejecución"
+            },
+            {
+              "title": "Ejecuta con confianza",
+              "description": "Entrega el plan aprobado a Claude Code, Cursor o implementa manualmente"
+            }
+          ],
+          "title": "El flujo de trabajo de refactorización segura"
+        }
       },
-      "title": "Cuándo usar refactorización segura",
-      "usePlanningWhen": {
-        "scenarios": [
-          "Bases de código grandes (50K+ líneas) - Demasiado código para revisar manualmente después de cambios",
-          "Refactorización multi-archivo - Renombrar, mover o reestructurar en 5+ archivos",
-          "Código de producción - Cambios que van a usuarios, no prototipos desechables",
-          "Monorepos - Refactorización entre paquetes con dependencias compartidas",
-          "Entornos de equipo - Múltiples desarrolladores necesitan entender el alcance del cambio",
-          "Cambios que rompen - Cambios de firma API, modificaciones de tipo, cambios arquitectónicos"
-        ],
-        "title": "Usa refactorización con planificación primero cuando:"
-      }
-    },
-    "whyBreaks": {
-      "description": "La refactorización falla cuando las herramientas de IA pierden dependencias ocultas:",
-      "importChains": {
-        "description": "Renombrar getUserData() → fetchUserProfile() rompe 8 archivos que la importan. La IA ve la función pero pierde la cascada.",
-        "title": "Cadenas de importación"
+      "integration": {
+        "description": "PlanToCode no reemplaza tus herramientas de codificación con IA—las complementa:",
+        "title": "Integración con herramientas existentes",
+        "workflow": {
+          "steps": [
+            {
+              "title": "Planifica con PlanToCode",
+              "description": "Genera y revisa plan de implementación con mapeo de dependencias"
+            },
+            {
+              "title": "Ejecuta con tu herramienta preferida",
+              "description": "Pega plan en Cursor, Claude Code o Copilot para generación de código"
+            },
+            {
+              "title": "Verifica cambios",
+              "description": "Ejecuta pruebas, verifica diffs contra el plan"
+            }
+          ],
+          "title": "Flujo de trabajo combinado"
+        }
       },
-      "sideEffects": {
-        "description": "Mover código de inicialización de base de datos sin actualizar scripts de inicio. El cambio compila pero falla en tiempo de ejecución cuando la BD no está lista.",
-        "title": "Efectos secundarios"
+      "keyFeatures": {
+        "changeOrdering": {
+          "description": "Los planes especifican la secuencia correcta: actualizar tipos primero, luego implementaciones, luego pruebas. Evita estados rotos intermedios.",
+          "title": "Ordenamiento de cambios"
+        },
+        "dependencyMapping": {
+          "description": "El descubrimiento de archivos impulsado por IA descubre todos los archivos afectados por la refactorización, incluyendo importaciones ocultas, dependencias de tipos y referencias entre módulos.",
+          "title": "Mapeo de dependencias"
+        },
+        "preExecutionReview": {
+          "description": "Ve exactamente qué cambiará antes de que se escriba cualquier código. Revisa cambios archivo por archivo, edita el plan y aprueba cuando esté listo.",
+          "title": "Revisión pre-ejecución"
+        },
+        "testCoverageCheck": {
+          "description": "Identifica archivos de prueba que necesitan actualizaciones junto con código de producción. No entregues refactorización con suites de prueba rotas.",
+          "title": "Verificación de cobertura de pruebas"
+        },
+        "title": "Características clave de seguridad"
       },
-      "testAssumptions": {
-        "description": "Refactorizar lógica de manejo de errores y romper 15 pruebas de integración que esperan mensajes de error específicos. La IA actualiza código de producción pero olvida mocks de prueba.",
-        "title": "Suposiciones de prueba"
+      "realWorldExample": {
+        "scenario": "Escenario: Migrar de REST a GraphQL",
+        "task": "Reemplazar todas las llamadas API REST con consultas GraphQL en una base de código Next.js de 50,000 líneas.",
+        "title": "Ejemplo del mundo real: Refactorizando una base de código de 50K líneas",
+        "withPlanning": {
+          "steps": [
+            "El descubrimiento de archivos encuentra 47 archivos usando API REST",
+            "El plan muestra orden de migración: tipos → cliente → componentes → utils",
+            "Identifica patrones de manejo de errores a preservar",
+            "Detecta archivos de prueba necesitando actualizaciones de mocks GraphQL",
+            "Resultado: Plan revisado en 20 mins, ejecutado de forma segura"
+          ],
+          "title": "Con PlanToCode:"
+        },
+        "withoutPlanning": {
+          "steps": [
+            "La IA modifica archivos de cliente API",
+            "Actualiza algunas importaciones de componentes",
+            "Pierde llamadas API en funciones de utilidad",
+            "Olvida actualizar manejo de errores",
+            "Los cambios compilan pero fallan en tiempo de ejecución",
+            "Resultado: 4 horas depurando errores de producción"
+          ],
+          "title": "Sin planificación (Cursor/Copilot directo):"
+        }
       },
-      "title": "Por qué la refactorización rompe cosas",
-      "typeDefinitions": {
-        "description": "Cambiar una propiedad de interfaz y ver errores TypeScript explotar en toda la base de código. La IA modifica el tipo pero olvida archivos que dependen de la forma antigua.",
-        "title": "Definiciones de tipo"
+      "refactoringProblem": {
+        "aiPowered": "Refactorización impulsada por IA: Rápida pero arriesgada. Cursor, Copilot y Claude pueden modificar 20 archivos en segundos—pero no sabes qué cambió hasta que esté hecho.",
+        "gap": "La brecha: Sin paso de revisión. Sin vista previa de \"esto es lo que voy a cambiar\". Solo ejecución instantánea y esperar lo mejor.",
+        "manual": "Refactorización manual: Segura pero lenta. Actualizas cuidadosamente cada archivo, verificas dependencias, ejecutas pruebas.",
+        "title": "El problema de la refactorización"
+      },
+      "title": "Herramientas de refactorización segura: Por qué la IA necesita una capa de planificación",
+      "whenToUse": {
+        "skipPlanningWhen": {
+          "scenarios": [
+            "Cambios de un solo archivo - Refactorización aislada sin dependencias externas",
+            "Prototipos - Código desechable donde romper cosas es aceptable",
+            "Proyectos pequeños - Menos de 1,000 líneas, fácil de revisar todo manualmente"
+          ],
+          "title": "Omite la planificación cuando:"
+        },
+        "title": "Cuándo usar refactorización segura",
+        "usePlanningWhen": {
+          "scenarios": [
+            "Bases de código grandes (50K+ líneas) - Demasiado código para revisar manualmente después de cambios",
+            "Refactorización multi-archivo - Renombrar, mover o reestructurar en 5+ archivos",
+            "Código de producción - Cambios que van a usuarios, no prototipos desechables",
+            "Monorepos - Refactorización entre paquetes con dependencias compartidas",
+            "Entornos de equipo - Múltiples desarrolladores necesitan entender el alcance del cambio",
+            "Cambios que rompen - Cambios de firma API, modificaciones de tipo, cambios arquitectónicos"
+          ],
+          "title": "Usa refactorización con planificación primero cuando:"
+        }
+      },
+      "whyBreaks": {
+        "description": "La refactorización falla cuando las herramientas de IA pierden dependencias ocultas:",
+        "importChains": {
+          "description": "Renombrar getUserData() → fetchUserProfile() rompe 8 archivos que la importan. La IA ve la función pero pierde la cascada.",
+          "title": "Cadenas de importación"
+        },
+        "sideEffects": {
+          "description": "Mover código de inicialización de base de datos sin actualizar scripts de inicio. El cambio compila pero falla en tiempo de ejecución cuando la BD no está lista.",
+          "title": "Efectos secundarios"
+        },
+        "testAssumptions": {
+          "description": "Refactorizar lógica de manejo de errores y romper 15 pruebas de integración que esperan mensajes de error específicos. La IA actualiza código de producción pero olvida mocks de prueba.",
+          "title": "Suposiciones de prueba"
+        },
+        "title": "Por qué la refactorización rompe cosas",
+        "typeDefinitions": {
+          "description": "Cambiar una propiedad de interfaz y ver errores TypeScript explotar en toda la base de código. La IA modifica el tipo pero olvida archivos que dependen de la forma antigua.",
+          "title": "Definiciones de tipo"
+        }
       }
     }
   }

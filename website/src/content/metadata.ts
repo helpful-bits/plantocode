@@ -20,36 +20,138 @@ export const BASE_METADATA = {
     alt: 'PlanToCode - AI Planning for Code',
   },
   twitterHandle: '@plantocode',
+  defaultTitle: 'PlanToCode - AI Planning for Code',
+  defaultDescription: 'Plan and ship code changes with AI. Find files, generate and merge AI plans from multiple models, run them in a persistent terminal. Free app with pay-as-you-go usage.',
 } as const;
+
+/**
+ * Truncate a string to a maximum length with ellipsis
+ */
+function truncate(s: string, max: number): string {
+  if (!s) return s;
+  return s.length > max ? `${s.slice(0, max - 1)}…` : s;
+}
+
+/**
+ * Ensure title is present and within optimal length (max 60 chars)
+ */
+function safeTitle(title?: string, fallback?: string): string {
+  const t = (title ?? '').trim();
+  const base = t.length > 0 ? t : (fallback ?? '').trim();
+  return truncate(base, 60);
+}
+
+/**
+ * Ensure description is present and within optimal length (120-155 chars)
+ */
+function safeDescription(description?: string, fallback?: string): string {
+  const d = (description ?? '').trim();
+  const base = d.length >= 120 ? d : (fallback ?? '').trim() || d;
+  return truncate(base, 155);
+}
+
+/**
+ * Normalize pathname to prevent trailing slash issues
+ * Converts '/' to empty string, keeps other paths as-is
+ */
+function normalizePath(pathname: string): string {
+  return pathname === '/' ? '' : pathname;
+}
 
 /**
  * Generate locale-aware URL for a given pathname
  */
 export function localizedUrl(pathname: string, locale: Locale): string {
+  const normalizedPath = normalizePath(pathname);
+
   if (locale === 'en') {
-    return pathname;
+    return normalizedPath;
   }
-  return `/${locale}${pathname}`;
+
+  // For non-English locales, always add locale prefix
+  // Home page: '/de', other pages: '/de/slug'
+  return `/${locale}${normalizedPath}`;
 }
 
 /**
  * Build language alternates for a pathname
- * Note: x-default is excluded per architecture (sitemap only)
+ *
+ * SEO Strategy: Generate hreflang tags for all available locales.
+ * Each locale points to its respective localized URL.
+ * English (en) has no locale prefix as it's the default locale.
+ * x-default points to the English version.
+ *
+ * This ensures proper hreflang implementation without duplicate entries.
  */
-export function buildAlternates(pathname: string): { en: string; de: string; fr: string; es: string; ko: string; ja: string } {
+export function buildAlternates(pathname: string): {
+  en: string;
+  de: string;
+  es: string;
+  fr: string;
+  ja: string;
+  ko: string;
+  'x-default': string;
+} {
   const siteUrl = BASE_METADATA.siteUrl.replace(/\/$/, '');
-  return {
-    en: `${siteUrl}${localizedUrl(pathname, 'en')}`,
-    de: `${siteUrl}${localizedUrl(pathname, 'de')}`,
-    fr: `${siteUrl}${localizedUrl(pathname, 'fr')}`,
-    es: `${siteUrl}${localizedUrl(pathname, 'es')}`,
-    ko: `${siteUrl}${localizedUrl(pathname, 'ko')}`,
-    ja: `${siteUrl}${localizedUrl(pathname, 'ja')}`,
+
+  // Build URLs using the localized URL helper for consistency
+  const enUrl = `${siteUrl}${localizedUrl(pathname, 'en')}`;
+  const deUrl = `${siteUrl}${localizedUrl(pathname, 'de')}`;
+  const esUrl = `${siteUrl}${localizedUrl(pathname, 'es')}`;
+  const frUrl = `${siteUrl}${localizedUrl(pathname, 'fr')}`;
+  const jaUrl = `${siteUrl}${localizedUrl(pathname, 'ja')}`;
+  const koUrl = `${siteUrl}${localizedUrl(pathname, 'ko')}`;
+
+  // Build initial alternates object
+  const alternates = {
+    en: enUrl,
+    de: deUrl,
+    es: esUrl,
+    fr: frUrl,
+    ja: jaUrl,
+    ko: koUrl,
+    'x-default': enUrl,
   };
+
+  // Deduplicate URLs - remove duplicate entries to prevent hreflang errors
+  // This is especially important for homepage where en and x-default would be identical
+  const urlMap = new Map<string, string[]>();
+  Object.entries(alternates).forEach(([locale, url]) => {
+    if (!urlMap.has(url)) {
+      urlMap.set(url, []);
+    }
+    urlMap.get(url)!.push(locale);
+  });
+
+  // If there are no duplicates, return as-is
+  if (urlMap.size === Object.keys(alternates).length) {
+    return alternates;
+  }
+
+  // Build deduplicated alternates (keeping first occurrence of each URL)
+  const deduped: Record<string, string> = {};
+  const seenUrls = new Set<string>();
+
+  for (const [locale, url] of Object.entries(alternates)) {
+    if (!seenUrls.has(url) || locale === 'x-default') {
+      deduped[locale] = url;
+      seenUrls.add(url);
+    }
+  }
+
+  return deduped as typeof alternates;
 }
 
 /**
  * Generate complete page metadata with locale support
+ *
+ * SEO Strategy (CORRECTED for proper i18n):
+ * - Canonical URL is self-referencing (each locale points to itself)
+ * - For /de/features, canonical is https://www.plantocode.com/de/features
+ * - For /features (en), canonical is https://www.plantocode.com/features
+ * - Hreflang alternates include all available locales
+ * - OpenGraph locale matches the page locale
+ * - x-default points to English version
  */
 export function generatePageMetadata(opts: {
   locale: Locale;
@@ -71,27 +173,33 @@ export function generatePageMetadata(opts: {
     images = [BASE_METADATA.defaultImage],
   } = opts;
 
+  // Apply safety fallbacks
+  const safePageTitle = safeTitle(title, BASE_METADATA.defaultTitle);
+  const safePageDescription = safeDescription(description, BASE_METADATA.defaultDescription);
+
   // Build pathname (slug should start with /)
   const pathname = slug.startsWith('/') ? slug : `/${slug}`;
 
-  // Generate canonical URL
+  // Generate self-referencing canonical URL for the current locale
   const siteUrl = BASE_METADATA.siteUrl.replace(/\/$/, '');
   const canonical = `${siteUrl}${localizedUrl(pathname, locale)}`;
 
-  // Build alternates (returns absolute URLs)
+  // Build alternates - includes all locales for proper hreflang
   const alternateUrls = buildAlternates(pathname);
 
   // Determine OpenGraph locale values
-  const ogLocale = locale === 'de' ? 'de_DE' : locale === 'fr' ? 'fr_FR' : locale === 'es' ? 'es_ES' : 'en_US';
-  const ogAlternateLocale = locale === 'en' ? ['de_DE', 'fr_FR', 'es_ES'] : ['en_US'];
+  const ogLocale = locale === 'de' ? 'de_DE' : locale === 'fr' ? 'fr_FR' : locale === 'es' ? 'es_ES' : locale === 'ko' ? 'ko_KR' : locale === 'ja' ? 'ja_JP' : 'en_US';
+  // Include all other locales as alternates (excluding current locale)
+  const allOgLocales = ['en_US', 'de_DE', 'fr_FR', 'es_ES', 'ko_KR', 'ja_JP'];
+  const ogAlternateLocale = allOgLocales.filter(l => l !== ogLocale);
 
   return {
-    title,
-    description: description || undefined,
+    title: safePageTitle,
+    description: safePageDescription,
     openGraph: {
-      title,
-      description: description || undefined,
-      url: canonical,
+      title: safePageTitle,
+      description: safePageDescription,
+      url: canonical, // Self-referencing URL
       siteName: BASE_METADATA.siteName,
       images: images.map(img => ({
         url: img.url,
@@ -105,12 +213,16 @@ export function generatePageMetadata(opts: {
     },
     twitter: {
       card: 'summary_large_image',
-      title,
-      description: description || undefined,
+      title: safePageTitle,
+      description: safePageDescription,
       images: images.map(img => ({
         url: img.url,
         alt: img.alt || BASE_METADATA.defaultImage.alt,
+        width: img.width || BASE_METADATA.defaultImage.width,
+        height: img.height || BASE_METADATA.defaultImage.height,
       })),
+      creator: BASE_METADATA.twitterHandle,
+      site: BASE_METADATA.twitterHandle,
     },
     alternates: {
       canonical,
@@ -191,6 +303,10 @@ export function generateMetadata(options: ContentMetadataOptions): Metadata {
     locale = 'en',
   } = options;
 
+  // Apply safety fallbacks
+  const safeMetaTitle = safeTitle(title, BASE_METADATA.defaultTitle);
+  const safeMetaDescription = safeDescription(description, BASE_METADATA.defaultDescription);
+
   // Determine the base path for canonical URL
   const getBasePath = () => {
     switch (type) {
@@ -213,35 +329,37 @@ export function generateMetadata(options: ContentMetadataOptions): Metadata {
 
   const basePath = getBasePath();
 
-  // Generate canonical path without locale prefix
+  // Generate canonical path for the current locale (self-referencing)
   const baseCanonicalPath = basePath
     ? `/${basePath}/${slug}`
     : `/${slug}`;
 
-  // Generate locale-aware canonical path using new helper
+  // Canonical URL is self-referencing (points to current locale)
   const canonicalPath = localizedUrl(baseCanonicalPath, locale);
 
   // Remove trailing slash from siteUrl if present
   const siteUrl = BASE_METADATA.siteUrl.replace(/\/$/, '');
 
-  // Build full canonical URL
+  // Build full canonical URL - self-referencing to current locale
   const canonicalUrl = `${siteUrl}${canonicalPath}`;
 
-  // Create language alternate URLs (buildAlternates returns absolute URLs)
+  // Create language alternate URLs - includes all locales
   const languageAlternates = buildAlternates(baseCanonicalPath);
 
   // Determine OpenGraph locale values
-  const ogLocale = locale === 'de' ? 'de_DE' : locale === 'fr' ? 'fr_FR' : locale === 'es' ? 'es_ES' : 'en_US';
-  const ogAlternateLocale = locale === 'en' ? ['de_DE', 'fr_FR', 'es_ES'] : ['en_US'];
+  const ogLocale = locale === 'de' ? 'de_DE' : locale === 'fr' ? 'fr_FR' : locale === 'es' ? 'es_ES' : locale === 'ko' ? 'ko_KR' : locale === 'ja' ? 'ja_JP' : 'en_US';
+  // Include all other locales as alternates (excluding current locale)
+  const allOgLocales = ['en_US', 'de_DE', 'fr_FR', 'es_ES', 'ko_KR', 'ja_JP'];
+  const ogAlternateLocale = allOgLocales.filter(l => l !== ogLocale);
 
   const metadata: Metadata = {
-    title,
-    description,
+    title: safeMetaTitle,
+    description: safeMetaDescription,
     keywords: keywords.length > 0 ? keywords : undefined,
     openGraph: {
-      title,
-      description,
-      url: canonicalUrl,
+      title: safeMetaTitle,
+      description: safeMetaDescription,
+      url: canonicalUrl, // Self-referencing
       siteName: BASE_METADATA.siteName,
       images: [{
         url: image.url,
@@ -255,12 +373,16 @@ export function generateMetadata(options: ContentMetadataOptions): Metadata {
     },
     twitter: {
       card: 'summary_large_image',
-      title,
-      description,
+      title: safeMetaTitle,
+      description: safeMetaDescription,
       images: [{
         url: image.url,
         alt: image.alt || BASE_METADATA.defaultImage.alt,
+        width: image.width || BASE_METADATA.defaultImage.width,
+        height: image.height || BASE_METADATA.defaultImage.height,
       }],
+      creator: BASE_METADATA.twitterHandle,
+      site: BASE_METADATA.twitterHandle,
     },
     alternates: {
       canonical: canonicalUrl,
@@ -515,6 +637,101 @@ export function generateArticleSchema(options: {
       },
     },
     image: options.image || BASE_METADATA.defaultImage.url,
+  };
+}
+
+/**
+ * Generate complete SoftwareApplication schema
+ */
+export function generateSoftwareApplicationSchema(options?: {
+  name?: string;
+  url?: string;
+  description?: string;
+}) {
+  return {
+    '@type': 'SoftwareApplication',
+    name: options?.name || 'PlanToCode',
+    applicationCategory: 'DeveloperApplication',
+    operatingSystem: ['Windows 10+', 'macOS 11.0+'],
+    url: options?.url || BASE_METADATA.siteUrl,
+    description: options?.description || 'Plan and ship code changes - find files, generate and merge AI plans from multiple models, run them in a persistent terminal.',
+    softwareVersion: '1.0.23',
+    downloadUrl: `${BASE_METADATA.siteUrl}/downloads`,
+    offers: {
+      '@type': 'Offer',
+      price: 0,
+      priceCurrency: 'USD',
+      description: 'Free app with pay-as-you-go API usage. $5 free credits on signup.',
+      availability: 'https://schema.org/InStock',
+    },
+    creator: {
+      '@type': 'Organization',
+      name: BASE_METADATA.siteName,
+      url: BASE_METADATA.siteUrl
+    },
+    featureList: [
+      'File Discovery',
+      'Multi-Model AI Planning',
+      'Plan Merge & Review',
+      'Integrated Terminal',
+      'Voice Transcription',
+      'Video Analysis'
+    ]
+  };
+}
+
+/**
+ * Generate complete Organization schema
+ */
+export function generateOrganizationSchema() {
+  return {
+    '@type': 'Organization',
+    name: BASE_METADATA.siteName,
+    url: BASE_METADATA.siteUrl,
+    logo: {
+      '@type': 'ImageObject',
+      url: `${BASE_METADATA.siteUrl}/images/icon.webp`,
+      width: '512',
+      height: '512'
+    },
+    description: 'Plan and ship code changes - find files, generate and merge AI plans from multiple models, run them in a persistent terminal.',
+    foundingDate: '2024',
+    sameAs: [
+      'https://github.com/plantocode',
+      'https://twitter.com/plantocode',
+      'https://x.com/plantocode'
+    ],
+    contactPoint: {
+      '@type': 'ContactPoint',
+      contactType: 'Customer Support',
+      url: `${BASE_METADATA.siteUrl}/support`,
+      availableLanguage: ['English', 'German', 'French', 'Spanish', 'Japanese', 'Korean']
+    },
+    address: {
+      '@type': 'PostalAddress',
+      addressCountry: 'US'
+    }
+  };
+}
+
+/**
+ * Generate HowTo schema with proper step structure
+ */
+export function generateHowToSchema(options: {
+  name: string;
+  description: string;
+  steps: Array<{ name: string; text: string }>;
+}) {
+  return {
+    '@type': 'HowTo',
+    name: options.name,
+    description: options.description,
+    step: options.steps.map((step, index) => ({
+      '@type': 'HowToStep',
+      position: index + 1,
+      name: step.name,
+      text: step.text,
+    })),
   };
 }
 

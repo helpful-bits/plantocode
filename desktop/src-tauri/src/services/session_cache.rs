@@ -1,3 +1,4 @@
+use crate::db_utils::session_repository::SessionRepository;
 use crate::error::{AppError, AppResult};
 use crate::events::session_events::{
     emit_session_field_validated, emit_session_files_updated, emit_session_updated_from_model,
@@ -181,6 +182,11 @@ impl SessionCache {
         let cached = map
             .get_mut(session_id)
             .ok_or_else(|| AppError::NotFoundError(format!("Session not in cache: {}", session_id)))?;
+
+        // Skip identical updates to avoid redundant emits
+        if cached.session.task_description.as_deref() == Some(content) {
+            return Ok(());
+        }
 
         cached.session.task_description = Some(content.to_string());
         cached.session.updated_at = now;
@@ -512,6 +518,15 @@ impl SessionCache {
         }
 
         Ok(())
+    }
+
+    /// Reload a session from database and update cache
+    pub async fn reload_session_from_db(&self, app: &tauri::AppHandle, session_id: &str) -> AppResult<Session> {
+        let repo = app.state::<Arc<SessionRepository>>().inner().clone();
+        let session = repo.get_session_by_id(session_id).await?
+            .ok_or_else(|| AppError::NotFoundError(format!("Session not found: {}", session_id)))?;
+        self.upsert_session(app, &session).await?;
+        Ok(session)
     }
 }
 

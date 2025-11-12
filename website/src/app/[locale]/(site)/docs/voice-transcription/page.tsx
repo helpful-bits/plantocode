@@ -1,33 +1,20 @@
 import type { Metadata } from 'next';
 import { DocsArticle } from '@/components/docs/DocsArticle';
 import { GlassCard } from '@/components/ui/GlassCard';
-import { cdnUrl } from '@/lib/cdn';
 import { loadMessages, type Locale } from '@/lib/i18n';
 import { locales } from '@/i18n/config';
-export const metadata: Metadata = {
-  title: 'Voice transcription - PlanToCode',
-  description: 'How PlanToCode records audio, streams real-time transcripts using gpt-4o-transcribe, manages permissions, project settings.',
-  alternates: {
-    canonical: 'https://www.plantocode.com/docs/voice-transcription',
-    languages: {
-      'en-US': 'https://www.plantocode.com/docs/voice-transcription',
-      'en': 'https://www.plantocode.com/docs/voice-transcription',
-    },
-  },
-  openGraph: {
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
-    }],
-    title: 'Voice transcription - PlanToCode',
-    description: 'Learn how the recording hook manages devices, permissions, and streaming text.',
-    url: 'https://www.plantocode.com/docs/voice-transcription',
-    siteName: 'PlanToCode',
-    type: 'article',
-  },
-};
+import { generatePageMetadata } from '@/content/metadata';
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return generatePageMetadata({
+    locale,
+    slug: '/docs/voice-transcription',
+    title: t['voiceTranscription.meta.title'],
+    description: t['voiceTranscription.meta.description'],
+  });
+}
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));
 }

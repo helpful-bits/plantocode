@@ -1,5 +1,9 @@
 {
   "copyButtons": {
+    "meta": {
+      "title": "コピーボタン - プロンプトをワークフローに変換",
+      "description": "設定可能なコピーボタンでプロンプトを再利用可能なワークフローに変換します。"
+    },
     "comparison": {
       "plantocode": {
         "items": [
@@ -139,6 +143,10 @@
     }
   },
   "deepResearch": {
+    "meta": {
+      "title": "Deep Research - AI-Powered Research Intelligence",
+      "description": "高度なクエリと並列研究タスクを備えたAI駆動の研究。リアルタイムWeb検索、ソース検証、コンテキスト統合。"
+    },
     "advanced": {
       "features": [
         {
@@ -308,7 +316,7 @@
   },
   "features": {
     "copyButtons": {
-      "description": "どんなプロンプトもスマートプレースホルダーとドラッグ&ドロップで再利用可能なボタンに変換",
+      "description": "スマートプレースホルダーとドラッグ&ドロップで、どんなプロンプトも再利用可能なボタンに変換",
       "slug": "/features/copy-buttons",
       "title": "コピーボタン"
     },
@@ -318,9 +326,13 @@
       "title": "ディープリサーチ"
     },
     "fileDiscovery": {
-      "description": "コードベースから関連ファイルを発見して選択するインテリジェント多段階ワークフロー",
+      "description": "コードベースから関連ファイルを発見・選択するインテリジェント多段階ワークフロー",
       "slug": "/features/file-discovery",
-      "title": "AIファイル発見"
+      "title": "AIファイル発見",
+      "meta": {
+        "title": "AI file discovery - find impacted files",
+        "description": "Multi-stage AI workflow that discovers and selects relevant files. Cost-effective at $0.10-0.15 per workflow with real-time progress tracking."
+      }
     },
     "integratedTerminal": {
       "description": "健全性監視とコマンドレビュー機能付き永続ターミナルセッション",
@@ -328,19 +340,31 @@
       "title": "統合ターミナル"
     },
     "mergeInstructions": {
-      "description": "AIが複数の実装プランを分析し、競合を解決し、創発的なソリューションを作成",
+      "description": "AIが複数の実装プランを分析して競合を解決し、創発的なソリューションを統合します",
       "slug": "/features/merge-instructions",
-      "title": "アーキテクチャプラン統合"
+      "title": "アーキテクチャプラン統合",
+      "meta": {
+        "title": "Plan Synthesis - Multi-Model Merging",
+        "description": "Architectural synthesis beyond simple merging. AI analyzes plans, resolves conflicts with SOLID principles, and creates emergent solutions with traceability."
+      }
     },
     "planMode": {
-      "description": "AIでファイルごとの実装プランを生成。実行前にすべての変更をレビューして承認",
+      "description": "AIでファイルごとの実装プランを生成。実行前にすべての変更をレビュー・承認",
       "slug": "/features/plan-mode",
-      "title": "実装プラン"
+      "title": "実装プラン",
+      "meta": {
+        "title": "AI Implementation Plans - Human-in-Loop",
+        "description": "Generate file-by-file AI plans. Review every change before execution. Prevent regressions in legacy code. Safe AI development."
+      }
     },
     "textImprovement": {
       "description": "AIテキスト強化とタスク改善プロンプトで仕様を洗練",
       "slug": "/features/text-improvement",
-      "title": "仕様キャプチャモード"
+      "title": "仕様キャプチャモード",
+      "meta": {
+        "title": "Spec Capture Mode - AI Text Enhancement",
+        "description": "Refine specifications with two AI prompts: Text Enhancement for clarity, Task Refinement for completeness. Create actionable specs for development teams."
+      }
     },
     "videoAnalysis": {
       "description": "マルチモーダルAIが音声と視覚コンテンツを分析して実行可能な要件を抽出",
@@ -350,7 +374,11 @@
     "voiceTranscription": {
       "description": "複数言語での音声文字起こしでハンズフリーの仕様キャプチャ",
       "slug": "/features/voice-transcription",
-      "title": "音声からテキスト"
+      "title": "音声からテキスト",
+      "meta": {
+        "title": "Voice to text for rapid specification capture",
+        "description": "Hands-free specification capture with voice. Accurate transcription inserts text where you work. Configure per project, supports multiple languages."
+      }
     }
   },
   "fileDiscovery": {
@@ -444,7 +472,7 @@
     },
     "workflow": {
       "stage1": {
-        "description": "AIがディレクトリ構造(最大2レベルの深さ)を分析し、関連するプロジェクト領域を特定します。階層的インテリジェンスを使用して、親フォルダーとサブディレクトリを選択します。",
+        "description": "AIがディレクトリ構造(最大2レベルの深さ)を分析して、関連するプロジェクト領域を特定。階層的インテリジェンスで親フォルダーとサブディレクトリを選択します。",
         "features": [
           "階層的ディレクトリ分析",
           "スマートな親/サブディレクトリ選択",
@@ -453,7 +481,7 @@
         "title": "ルートフォルダー選択"
       },
       "stage2": {
-        "description": "インテリジェント正規表現パターンを生成し、初期ファイルフィルタリングを実行します。gitと統合して.gitignoreルールを尊重し、バイナリファイルをフィルタリングします。",
+        "description": "インテリジェント正規表現パターンを生成して初期ファイルフィルタリングを実行。gitと統合して.gitignoreルールを尊重し、バイナリファイルをフィルタリングします。",
         "features": [
           "動的正規表現パターン作成",
           "git ls-files統合",
@@ -462,7 +490,7 @@
         "title": "正規表現パターン生成とフィルタリング"
       },
       "stage3": {
-        "description": "LLMを使用した深いコンテンツ分析により、タスクに対するファイルの関連性を評価します。コンテンツ対応トークン推定によるインテリジェントバッチ処理を使用して最適な処理を実現します。",
+        "description": "LLMによる深いコンテンツ分析で、タスクに対するファイルの関連性を評価。コンテンツ対応トークン推定によるインテリジェントバッチ処理で最適な処理を実現します。",
         "features": [
           "コンテンツベースの関連性スコアリング",
           "インテリジェントトークン対応バッチ処理",
@@ -491,9 +519,17 @@
     },
     "description": "複雑なコード変更のプランニング、レビュー、実行のための包括的なツール。ファイル発見からターミナル実行まで、安全なAI支援開発に必要なすべて。",
     "learnMore": "詳細を見る",
-    "title": "AI開発プランニング機能"
+    "title": "AI開発プランニング機能",
+    "meta": {
+      "title": "AI開発計画機能 | PlanToCode",
+      "description": "実装計画、ファイル検出、ターミナル統合、テキスト改善などのPlanToCode機能。Claude Code、Cursor、Codexで動作します。"
+    }
   },
   "integratedTerminal": {
+    "meta": {
+      "title": "Integrated Terminal - Persistent PTY Sessions",
+      "description": "Persistent terminal sessions with health monitoring and command review. Execute implementation plans directly with voice transcription support."
+    },
     "cta": {
       "description": "プランニングと実行のために構築されたターミナル - 統合され、永続的で、高速。",
       "links": {
@@ -573,7 +609,7 @@
       }
     },
     "cta": {
-      "description": "マージを超えて - SOLID原則によるインテリジェントなアーキテクチャ分析。これがプラン統合のあるべき姿です - インテリジェント、トレーサブル、創発的。",
+      "description": "単純なマージを超えて - SOLID原則によるインテリジェントなアーキテクチャ分析。これがプラン統合のあるべき姿です - インテリジェント、トレーサブル、創発的。",
       "links": {
         "demo": "実際の動作を見る",
         "planMode": "プラン生成を探索"
@@ -582,7 +618,7 @@
     },
     "features": {
       "architecturalAnalysis": {
-        "description": "単なる連結ではありません。AIは各プランのアーキテクチャを深く分析し、独自のインサイトとアプローチを特定します。",
+        "description": "単なる連結ではありません。AIは各プランのアーキテクチャを深く分析して、独自のインサイトとアプローチを特定します。",
         "title": "真のアーキテクチャ分析"
       },
       "solidResolution": {
@@ -678,7 +714,7 @@
         "title": "マルチモデルプラン生成"
       },
       "synthesis": {
-        "description": "すべての決定に対する完全なソース帰属を含む包括的なソリューションを作成します。",
+        "description": "すべての決定に対する完全なソース帰属を含む包括的なソリューションを統合します。",
         "features": [
           "インラインマーカー:[src:P1 step 2, P3 step 5]",
           "外部例統合サポート",
@@ -842,7 +878,7 @@
     },
     "hero": {
       "badge": "完全な実装プランニングシステム",
-      "description": "安全なAI支援開発のためのファイルごとの粒度を持つヒューマンインザループガバナンス",
+      "description": "安全なAI支援開発のため、ファイルごとの粒度によるヒューマンインザループガバナンス",
       "title": "実装プラン:生成 - 編集 - 実行"
     },
     "humanInLoop": {
@@ -1033,6 +1069,10 @@
     }
   },
   "videoAnalysis": {
+    "meta": {
+      "title": "Meeting & Recording Analysis - Multimodal AI",
+      "description": "Multimodal AI analyzes audio and visual content to extract actionable requirements from Microsoft Teams meetings and screen recordings."
+    },
     "capabilities": {
       "fileUpload": {
         "description": "既存の録画、顧客のバグレポート、デモビデオをアップロード。すべての一般的なビデオ形式をサポート。",

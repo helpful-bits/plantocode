@@ -4,27 +4,20 @@ import { DocsLayoutWrapper } from '@/components/docs/DocsLayoutWrapper';
 import { DocsLayoutJsonLd } from '@/components/docs/DocsLayoutJsonLd';
 import '@/styles/docs-a11y.css';
 import '@/styles/docs-theme.css';
-import { cdnUrl } from '@/lib/cdn';
+import { loadMessages, type Locale } from '@/lib/i18n';
+import { generatePageMetadata } from '@/content/metadata';
 
-export const metadata: Metadata = {
-  title: 'Documentation - PlanToCode',
-  description: 'Learn how to plan and ship code changes with PlanToCode: file discovery, implementation plans, terminal sessions, model guardrails, and voice.',
-  alternates: {
-    canonical: 'https://www.plantocode.com/docs',
-  },
-  openGraph: {
-    type: 'website',
-    url: 'https://www.plantocode.com/docs',
-    title: 'Documentation - PlanToCode',
-    siteName: 'PlanToCode',
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
-    }],
-  },
-};
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return generatePageMetadata({
+    locale,
+    slug: '/docs',
+    title: t['docs.meta.title'],
+    description: t['docs.meta.description'],
+  });
+}
 
 export default function DocsLayout({
   children,

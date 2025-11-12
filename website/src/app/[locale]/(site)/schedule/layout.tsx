@@ -1,25 +1,18 @@
 import type { Metadata } from 'next';
-import { cdnUrl } from '@/lib/cdn';
+import { loadMessages, type Locale } from '@/lib/i18n';
+import { generatePageMetadata } from '@/content/metadata';
 
-export const metadata: Metadata = {
-  title: 'Talk to an Architect - PlanToCode',
-  description: 'Get expert guidance on using PlanToCode for your team. Discuss architecture patterns, integration strategies, and deployment options.',
-  alternates: {
-    canonical: 'https://www.plantocode.com/schedule',
-  },
-  openGraph: {
-    type: 'website',
-    url: 'https://www.plantocode.com/schedule',
-    title: 'Talk to an Architect - PlanToCode',
-    siteName: 'PlanToCode',
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
-    }],
-  },
-};
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return generatePageMetadata({
+    locale,
+    slug: '/schedule',
+    title: t['schedule.meta.title'],
+    description: t['schedule.meta.description'],
+  });
+}
 
 export default function ScheduleLayout({
   children,

@@ -15,7 +15,7 @@ interface SubprocessorsPageProps {
 }
 
 export async function generateMetadata({ params }: SubprocessorsPageProps): Promise<Metadata> {
-  const { region } = await params;
+  const { locale, region } = await params;
 
   if (region !== 'eu' && region !== 'us') {
     return {
@@ -24,7 +24,10 @@ export async function generateMetadata({ params }: SubprocessorsPageProps): Prom
   }
 
   const regionName = region === 'eu' ? 'EU/UK' : 'United States';
-  
+  const canonicalUrl = locale === 'en'
+    ? `https://www.plantocode.com/legal/${region}/subprocessors`
+    : `https://www.plantocode.com/${locale}/legal/${region}/subprocessors`;
+
   return {
     title: 'Sub-processors',
     description: `List of third-party sub-processors used by PlanToCode for providing our AI-powered workflow automation services. Applicable to ${regionName} users.`,
@@ -33,12 +36,21 @@ export async function generateMetadata({ params }: SubprocessorsPageProps): Prom
       follow: true,
     },
     alternates: {
-      canonical: `https://www.plantocode.com/legal/${region}/subprocessors`
+      canonical: canonicalUrl,
+      languages: {
+        en: `https://www.plantocode.com/legal/${region}/subprocessors`,
+        de: `https://www.plantocode.com/de/legal/${region}/subprocessors`,
+        es: `https://www.plantocode.com/es/legal/${region}/subprocessors`,
+        fr: `https://www.plantocode.com/fr/legal/${region}/subprocessors`,
+        ja: `https://www.plantocode.com/ja/legal/${region}/subprocessors`,
+        ko: `https://www.plantocode.com/ko/legal/${region}/subprocessors`,
+        'x-default': `https://www.plantocode.com/legal/${region}/subprocessors`,
+      },
     },
     openGraph: {
       title: 'Sub-processors',
       description: `List of third-party sub-processors used by PlanToCode for providing our AI-powered workflow automation services. Applicable to ${regionName} users.`,
-      url: `https://www.plantocode.com/legal/${region}/subprocessors`,
+      url: canonicalUrl,
       siteName: 'PlanToCode',
       type: 'website',
       locale: 'en_US',

@@ -3,36 +3,20 @@ import { DocsArticle } from '@/components/docs/DocsArticle';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { StructuredData } from '@/components/seo/StructuredData';
-import { cdnUrl } from '@/lib/cdn';
 import { loadMessages, type Locale } from '@/lib/i18n';
 import { locales } from '@/i18n/config';
-export const metadata: Metadata = {
-  title: 'Deep research - PlanToCode',
-  description:
-    'Technical documentation for the web search workflow: API integration, query optimization, result processing, and development workflow integration.',
-  alternates: {
-    canonical: 'https://www.plantocode.com/docs/deep-research',
-    languages: {
-      'en-US': 'https://www.plantocode.com/docs/deep-research',
-      'en': 'https://www.plantocode.com/docs/deep-research',
-    },
-  },
-  openGraph: {
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
-    }],
-    
-    title: 'Deep research - PlanToCode',
-    description:
-      'Understand how web search operates within PlanToCode: from query generation to result processing and integration with development workflows.',
-    url: 'https://www.plantocode.com/docs/deep-research',
-    siteName: 'PlanToCode',
-    type: 'article',
-  },
-};
+import { generatePageMetadata } from '@/content/metadata';
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return generatePageMetadata({
+    locale,
+    slug: '/docs/deep-research',
+    title: t['deepResearch.meta.title'],
+    description: t['deepResearch.meta.description'],
+  });
+}
 const structuredData = {
   '@context': 'https://schema.org',
   '@type': 'Article',

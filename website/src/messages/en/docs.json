@@ -1,5 +1,13 @@
 {
+  "meta": {
+    "title": "Documentation - PlanToCode",
+    "description": "Learn how to plan and ship code changes with PlanToCode: file discovery, implementation plans, terminal sessions, model guardrails, and voice."
+  },
   "architecture": {
+    "meta": {
+      "title": "PlanToCode architecture overview",
+      "description": "Desktop, orchestration, and persistence layers that power implementation plans, workflows, and terminal sessions."
+    },
     "category": "Architecture",
     "date": "2025-09-19",
     "description": "How the desktop shell, background workflows, and shared services are organised.",
@@ -31,6 +39,10 @@
     }
   },
   "deepResearch": {
+    "meta": {
+      "title": "Deep research - PlanToCode",
+      "description": "Technical documentation for the web search workflow: API integration, query optimization, result processing, and development workflow integration."
+    },
     "apiIntegration": {
       "heading": "API Integration Details",
       "pipeline": {
@@ -185,6 +197,10 @@
     }
   },
   "fileDiscovery": {
+    "meta": {
+      "title": "File discovery workflow - PlanToCode",
+      "description": "Comprehensive technical guide to the 5-stage AI workflow that identifies and filters relevant files for task execution."
+    },
     "apiUsage": {
       "heading": "API Usage Examples",
       "monitoring": "Monitoring Progress",
@@ -334,7 +350,62 @@
     "searchShortcut": "⌘K",
     "title": "PlanToCode documentation"
   },
+  "onThisPage": {
+    "title": "On this page"
+  },
+  "sidebar": {
+    "title": "Documentation"
+  },
+  "sections": {
+    "planning": {
+      "title": "Planning & Context"
+    },
+    "execution": {
+      "title": "Execution Surface"
+    },
+    "architecture": {
+      "title": "Architecture"
+    }
+  },
+  "items": {
+    "text-improvement": {
+      "title": "Text Improvement",
+      "description": "Selection popover, job queue, and integrations for prompt cleanup."
+    },
+    "implementation-plans": {
+      "title": "Implementation Plans",
+      "description": "How plans stream into the Monaco viewer and stay linked to plan history."
+    },
+    "file-discovery": {
+      "title": "File Discovery Workflow",
+      "description": "Background workflow that gathers relevant paths for each task."
+    },
+    "deep-research": {
+      "title": "Deep Research & Web Search",
+      "description": "Web search workflow, API integration, query optimization, and development workflow integration."
+    },
+    "model-configuration": {
+      "title": "Model Configuration",
+      "description": "Allowed models per task and token guardrails in the selector toggle."
+    },
+    "terminal-sessions": {
+      "title": "Terminal Sessions",
+      "description": "Persistent PTY sessions, CLI detection, and recovery behaviour."
+    },
+    "voice-transcription": {
+      "title": "Voice Transcription",
+      "description": "Recording lifecycle, project-aware settings, and device management."
+    },
+    "architecture": {
+      "title": "Architecture Overview",
+      "description": "How the React front end, Tauri commands, and persistence fit together."
+    }
+  },
   "implementationPlans": {
+    "meta": {
+      "title": "Implementation Plans - Review AI Changes",
+      "description": "Guide to AI implementation planning. Generate, review, and approve file-by-file plans before execution. Prevent duplicates and wrong paths."
+    },
     "category": "Product Guide",
     "context": {
       "audit": "All metadata persists with the plan for audit purposes. Corporate teams can track which stakeholders reviewed which plans, what modifications were requested, and the complete reasoning chain from initial task description through file discovery to final approved plan.",
@@ -400,6 +471,10 @@
     "title": "Implementation Plans"
   },
   "modelConfiguration": {
+    "meta": {
+      "title": "Model configuration and guardrails - PlanToCode",
+      "description": "How PlanToCode lets you pick allowed models per task and keeps prompts within the active context window."
+    },
     "category": "Product Guide",
     "date": "2025-09-20",
     "description": "Task-level model lists, selector controls, and token guardrails in the desktop client.",
@@ -425,6 +500,10 @@
     "title": "Model Configuration"
   },
   "terminalSessions": {
+    "meta": {
+      "title": "Terminal sessions - PlanToCode",
+      "description": "Technical guide to PTY terminal implementation in PlanToCode. Learn how sessions persist, agent inactivity detection works, and recovery mechanisms."
+    },
     "attentionDetection": {
       "conclusion": "This approach helps you track when agents have finished tasks or need guidance, without trying to guess why they stopped. Attention indicators clear automatically when new output is received.",
       "heading": "Agent attention detection",
@@ -457,6 +536,10 @@
     }
   },
   "textImprovement": {
+    "meta": {
+      "title": "Text improvement - PlanToCode",
+      "description": "How the desktop workspace rewrites highlighted text, preserves formatting, and links the feature to voice and video inputs."
+    },
     "category": "Product Guide",
     "cta": {
       "description": "Download PlanToCode to combine voice capture, video context, and inline rewriting before you generate implementation plans.",
@@ -494,6 +577,10 @@
     }
   },
   "voiceTranscription": {
+    "meta": {
+      "title": "Voice transcription - PlanToCode",
+      "description": "How PlanToCode records audio, streams real-time transcripts using gpt-4o-transcribe, manages permissions, project settings."
+    },
     "category": "Product Guide",
     "date": "2025-09-22",
     "description": "Recording lifecycle, device management, and streaming behaviour for voice-driven prompts.",

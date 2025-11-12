@@ -106,12 +106,10 @@ public class ServerFeatureService: ObservableObject {
                 throw DataServiceError.timeout
 
             } catch is CancellationError {
-                // NOTE: DataServiceError.cancelled does not exist in the current enum definition
-                // Using .serverError as a workaround for cancellation
-                throw DataServiceError.serverError("Request cancelled")
+                throw DataServiceError.cancelled
             } catch {
                 print("Relay enhancement failed: \(error.localizedDescription), falling back to HTTP")
-                // Fall through to HTTP fallback
+                throw DataServiceError.networkError(error)
             }
         }
 
@@ -126,8 +124,7 @@ public class ServerFeatureService: ObservableObject {
                 path: "api/text-enhancement",
                 method: .POST,
                 body: request,
-                token: await getCurrentAuthToken(),
-                includeDeviceId: true
+                token: await getCurrentAuthToken()
             )
 
             return response

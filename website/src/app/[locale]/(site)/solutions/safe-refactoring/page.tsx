@@ -1,15 +1,24 @@
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Header } from '@/components/landing/Header';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
-import { cdnUrl } from '@/lib/cdn';
 import type { Metadata } from 'next';
 import { locales } from '@/i18n/config';
-import type { Locale } from '@/lib/i18n';
+import { loadMessages, type Locale } from '@/lib/i18n';
+import { generatePageMetadata, COMMON_KEYWORDS, mergeKeywords } from '@/content/metadata';
 
-export const metadata: Metadata = {
-  title: 'Safe Refactoring - AI Planning for Risk-Free Changes',
-  description: 'Stop breaking production. AI refactoring safety layer with pre-execution review, dependency mapping, multi-file visibility.',
-  keywords: [
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return {
+    ...generatePageMetadata({
+      locale,
+      slug: '/solutions/safe-refactoring',
+      title: t['solutions.safeRefactoring.meta.title'],
+      description: t['solutions.safeRefactoring.meta.description'],
+    }),
+    keywords: mergeKeywords(
+      [
     'safe refactoring tools',
     'ai refactoring',
     'refactoring safety',
@@ -17,33 +26,10 @@ export const metadata: Metadata = {
     'ai code refactoring',
     'safe code refactoring',
   ],
-  robots: {
-    index: true,
-    follow: true,
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/solutions/safe-refactoring',
-    languages: {
-      'en-US': 'https://www.plantocode.com/solutions/safe-refactoring',
-      'en': 'https://www.plantocode.com/solutions/safe-refactoring',
-      'x-default': 'https://www.plantocode.com/solutions/safe-refactoring',
-    },
-  },
-  openGraph: {
-    title: 'Safe Refactoring - AI Planning for Risk-Free Changes',
-    description: 'Stop breaking production with refactoring. PlanToCode provides a safety layer for AI-assisted refactoring with pre-execution review and dependency mapping.',
-    url: 'https://www.plantocode.com/solutions/safe-refactoring',
-    siteName: 'PlanToCode',
-    type: 'article',
-    locale: 'en_US',
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - Safe Refactoring with AI Planning',
-    }],
-  },
-};
+      COMMON_KEYWORDS.core
+    ),
+  };
+}
 
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));

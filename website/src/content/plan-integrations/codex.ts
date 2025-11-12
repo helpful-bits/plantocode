@@ -149,11 +149,25 @@ export const codexContent: PlanIntegrationContent = {
         url: 'https://www.plantocode.com/plan-mode/codex',
         description:
           'Plan first. Execute with the right approvals. See the exact files that will change, review a concrete per-file plan, then run Codex CLI in the approval mode your team allows.',
+        softwareVersion: '1.0.23',
+        downloadUrl: 'https://www.plantocode.com/downloads',
         offers: {
           '@type': 'Offer',
           price: 0,
           priceCurrency: 'USD',
+          availability: 'https://schema.org/InStock',
         },
+        creator: {
+          '@type': 'Organization',
+          name: 'PlanToCode',
+          url: 'https://www.plantocode.com'
+        },
+        featureList: [
+          'File Discovery',
+          'Multi-Model Planning',
+          'Codex CLI Integration',
+          'Approval Mode Support'
+        ]
       },
       buildJsonLdHowTo('Use PlanToCode with Codex CLI', [
         {

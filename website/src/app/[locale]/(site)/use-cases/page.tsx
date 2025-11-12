@@ -4,31 +4,23 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Breadcrumbs } from '@/components/Breadcrumbs';
 import { buildHubBreadcrumbs } from '@/components/breadcrumbs/utils';
-import { cdnUrl } from '@/lib/cdn';
 import { getPagesByCategory } from '@/data/pseo';
 import { Users } from 'lucide-react';
 import { loadMessagesFor, type Locale } from '@/lib/i18n';
 import { locales } from '@/i18n/config';
-export const metadata: Metadata = {
-  title: 'Use Cases by Role - AI Tools for Engineers',
-  description: 'Explore PlanToCode use cases by engineering role: Backend, Frontend, Mobile, Platform, Security, Data, ML, DevOps, QA, and more.',
-  openGraph: {
-    title: 'Use Cases by Role - AI Tools for Engineers',
-    description: 'AI-powered development tools tailored for your engineering role.',
-    url: 'https://www.plantocode.com/use-cases',
-    type: 'website',
-    siteName: 'PlanToCode',
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
-    }],
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/use-cases',
-  },
-};
+import { generatePageMetadata } from '@/content/metadata';
+
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessagesFor(locale, ['common']);
+
+  return generatePageMetadata({
+    locale,
+    slug: '/use-cases',
+    title: t['useCases.meta.title'],
+    description: t['useCases.meta.description'],
+  });
+}
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));
 }

@@ -1,357 +1,18 @@
 {
-  "copyButtons": {
-    "comparison": {
-      "plantocode": {
-        "items": [
-          "One-click automation",
-          "Dynamic content substitution",
-          "Smart placeholder system",
-          "Context-aware processing",
-          "Persistent, reusable workflows"
-        ],
-        "title": "PlanToCode Copy Buttons"
-      },
-      "title": "What Makes This Different",
-      "traditional": {
-        "items": [
-          "Manual copy-paste workflows",
-          "Static, unchanging templates",
-          "No context awareness",
-          "Error-prone manual edits",
-          "Lost workflows over time"
-        ],
-        "title": "Traditional Copy-Paste"
-      }
+  "hub": {
+    "meta": {
+      "title": "PlanToCode Features - AI Development Planning Tools",
+      "description": "Explore powerful features: file discovery, multi-model planning, voice transcription, video analysis, merge instructions, and integrated terminal execution."
     },
-    "concept": {
-      "dragDrop": {
-        "description": "Visual workflow management with @dnd-kit integration. Reorder buttons to match your process.",
-        "title": "Drag-Drop Reordering"
-      },
-      "serverConfigured": {
-        "description": "Dynamic buttons with placeholder substitution. Project-specific overrides with unified prompt processing.",
-        "title": "Server-Configured Templates"
-      },
-      "terminal": {
-        "description": "One-click execution in persistent terminal sessions. Chunked sending for large content.",
-        "title": "Terminal Integration"
-      }
-    },
-    "configuration": {
-      "projectSettings": {
-        "description": "Copy buttons stored in task settings with project-level overrides and server-side defaults.",
-        "features": [
-          "SQLite database persistence",
-          "Server-managed default configurations",
-          "Project directory scoping",
-          "Real-time configuration updates"
-        ],
-        "title": "Project-Specific Settings"
-      },
-      "title": "Configuration & Management",
-      "visualUI": {
-        "description": "Intuitive editor with drag-drop reordering, debounced input handling, and real-time preview.",
-        "features": [
-          "Drag handles for visual reordering",
-          "300ms debounced input processing",
-          "Read-only mode for system buttons",
-          "Customization workflow support"
-        ],
-        "title": "Visual Configuration UI"
-      }
-    },
+    "badge": "Powerful Features",
     "cta": {
-      "description": "Any prompt becomes a button. Smart templates with placeholders. Complex workflows, instant launch. Your best tricks, always ready.",
-      "links": {
-        "planMode": "See implementation plans",
-        "terminal": "Explore terminal integration"
-      },
-      "title": "Transform Prompts Into Workflows"
+      "button": "Download PlanToCode",
+      "description": "Download PlanToCode and start planning your code changes with confidence.",
+      "title": "Ready to Experience Safe AI Development?"
     },
-    "hero": {
-      "badge": "Configurable Workflow Automation System",
-      "description": "Save your best prompts as buttons. Substitute plan content and run them in the terminal.",
-      "title": "Workflows. One click."
-    },
-    "technical": {
-      "architecture": {
-        "execution": "Button click triggers template processing → Placeholder substitution with plan content → Terminal session validation → Chunked content transmission",
-        "processing": "Regex-based placeholder matching → Dynamic content substitution → Context-aware data extraction → Error handling for undefined values",
-        "storage": "CopyButtonConfig[] in task settings → Project-specific database storage → Server-side default configurations → Real-time synchronization",
-        "ui": "Implementation plan cards → Content viewing modals → Terminal interface headers → Drag-drop configuration editor"
-      },
-      "title": "Technical Implementation"
-    },
-    "templateSystem": {
-      "placeholders": {
-        "description": "Dynamic content replacement using {{PLACEHOLDER}} syntax. Context-aware processing with implementation plans.",
-        "examples": [
-          "{{IMPLEMENTATION_PLAN}} - Full plan content",
-          "{{STEP_CONTENT}} - Selected step content",
-          "{{PROJECT_CONTEXT}} - Project-specific context",
-          "Custom placeholders for extensibility"
-        ],
-        "title": "Placeholder Substitution"
-      },
-      "processor": {
-        "description": "Advanced template engine with conditional sections, XML formatting, and intelligent cleanup.",
-        "features": [
-          "Regex-based placeholder matching",
-          "Escape character handling",
-          "Multi-line content support",
-          "Graceful undefined handling"
-        ],
-        "title": "Unified Prompt Processing"
-      },
-      "title": "Smart Template System"
-    },
-    "terminalIntegration": {
-      "oneClick": {
-        "description": "Copy buttons integrate directly with terminal sessions for instant execution. Smart content handling prevents terminal overflow.",
-        "features": [
-          "Automatic paste to active terminal",
-          "Chunked sending for large content",
-          "Session health monitoring",
-          "Clipboard fallback for safety"
-        ],
-        "title": "One-Click Automation"
-      },
-      "title": "Seamless Terminal Execution"
-    },
-    "useCases": {
-      "customTeam": {
-        "description": "Team-specific processes with project context and coding standards.",
-        "title": "Custom Team Workflows"
-      },
-      "investigation": {
-        "description": "Standardized review processes for implementation plan results.",
-        "title": "Investigation & Review"
-      },
-      "parallel": {
-        "description": "Launch multiple Claude coding agents simultaneously with pre-configured instructions.",
-        "title": "Parallel Agent Workflows"
-      },
-      "stepByStep": {
-        "description": "Extract and execute individual implementation steps with context.",
-        "title": "Step-by-Step Execution"
-      },
-      "title": "Real-World Use Cases"
-    }
-  },
-  "deepResearch": {
-    "advanced": {
-      "features": [
-        {
-          "title": "Intelligent Query Design",
-          "description": "AI crafts sophisticated research queries that explore multiple angles and perspectives for comprehensive coverage."
-        },
-        {
-          "title": "Context-Aware Analysis",
-          "description": "Research is tailored to your specific project context, technology stack, and development requirements."
-        },
-        {
-          "title": "Background Processing",
-          "description": "Long-running research tasks execute in the background with real-time progress updates and notifications."
-        },
-        {
-          "title": "Result Integration",
-          "description": "Research findings are automatically formatted and integrated into your task descriptions for immediate use."
-        },
-        {
-          "title": "Cost Optimization",
-          "description": "Intelligent model selection and query optimization to balance research quality with cost efficiency."
-        },
-        {
-          "title": "Progress Monitoring",
-          "description": "Real-time tracking of research progress with detailed status updates and completion notifications."
-        }
-      ],
-      "title": "Advanced Research Capabilities"
-    },
-    "aiCapabilities": {
-      "multiModel": {
-        "description": "Leverages multiple AI models to execute research tasks with different perspectives and expertise areas.",
-        "models": [
-          "OpenAI GPT Models",
-          "Anthropic Claude",
-          "Google Gemini",
-          "Specialized Research Models"
-        ],
-        "title": "Multi-Model Research"
-      },
-      "parallel": {
-        "description": "Execute multiple research tasks simultaneously with intelligent result aggregation and synthesis.",
-        "features": [
-          "Concurrent Execution",
-          "Progress Tracking",
-          "Error Recovery",
-          "Result Synthesis"
-        ],
-        "title": "Parallel Processing"
-      },
-      "projectContext": {
-        "description": "AI analyzes your project structure, technology stack, and codebase to generate highly relevant research.",
-        "features": [
-          "File Structure Analysis",
-          "Technology Stack Detection",
-          "Dependency Mapping",
-          "Context-Aware Insights"
-        ],
-        "title": "Project Context Analysis"
-      },
-      "title": "AI Research Capabilities"
-    },
-    "cta": {
-      "description": "From intelligent queries to synthesized insights, integrated with your development workflow. This is how research should work - comprehensive, intelligent, actionable.",
-      "links": {
-        "planMode": "See implementation planning",
-        "textImprovement": "Explore text enhancement"
-      },
-      "title": "Transform Your Research Workflow"
-    },
-    "developmentFocus": {
-      "contextFiltering": {
-        "description": "Research scope automatically adjusted based on your project context and development stack.",
-        "features": [
-          "Technology stack awareness",
-          "Version compatibility checking",
-          "Project requirements filtering",
-          "Scalability consideration priority"
-        ],
-        "title": "Context-Aware Filtering"
-      },
-      "implementationReady": {
-        "description": "Research results optimized for development workflows. Code examples, API documentation, and best practices.",
-        "features": [
-          "Code snippet extraction",
-          "API reference compilation",
-          "Architecture pattern analysis",
-          "Performance consideration notes"
-        ],
-        "title": "Implementation-Ready Insights"
-      },
-      "title": "Development-Focused Research"
-    },
-    "features": {
-      "parallelExecution": {
-        "description": "Execute multiple sophisticated research tasks concurrently. AI synthesizes findings into actionable development insights.",
-        "title": "Parallel Research Execution"
-      },
-      "projectIntegration": {
-        "description": "Research is tailored to your specific project structure, technology stack, and development context for maximum relevance.",
-        "title": "Project Context Integration"
-      },
-      "queryGeneration": {
-        "description": "AI expands your research queries with context-aware variations. Multi-angle exploration for comprehensive coverage.",
-        "title": "Intelligent Query Generation"
-      }
-    },
-    "hero": {
-      "badge": "AI-Powered Research Intelligence",
-      "description": "Generate smart queries, run searches, and pull relevant findings into your task - no fluff.",
-      "title": "Deep research - from query to insight"
-    },
-    "intelligence": {
-      "contextIntegration": {
-        "description": "Research results are automatically integrated with your task description, enriching it with relevant findings and recommendations.",
-        "features": [
-          "Automatic task enhancement",
-          "Structured result formatting",
-          "Implementation plan integration",
-          "Development workflow alignment"
-        ],
-        "title": "Context Integration"
-      },
-      "execution": {
-        "description": "Sophisticated AI models execute research tasks in parallel, providing comprehensive analysis and insights.",
-        "features": [
-          "Parallel research task execution",
-          "Streaming results with progress tracking",
-          "Context-aware analysis and synthesis",
-          "Development-focused insights"
-        ],
-        "title": "AI Research Execution"
-      },
-      "queryExpansion": {
-        "description": "AI analyzes your initial query and generates strategic variations for comprehensive research coverage.",
-        "features": [
-          "Context-aware query variations",
-          "Semantic synonym expansion",
-          "Domain-specific terminology",
-          "Multi-perspective research angles"
-        ],
-        "title": "Smart Query Expansion"
-      },
-      "synthesis": {
-        "description": "Advanced AI models analyze your project context and generate targeted research insights tailored to your development needs.",
-        "features": [
-          "Project-aware research generation",
-          "Context-sensitive analysis",
-          "Development-focused insights",
-          "Implementation-ready recommendations"
-        ],
-        "title": "AI Research Synthesis"
-      },
-      "title": "Research Intelligence Engine"
-    },
-    "process": {
-      "stage1": {
-        "description": "AI analyzes your task description and project context to generate sophisticated research queries. Creates multiple strategic research angles for comprehensive coverage.",
-        "title": "Research Query Generation"
-      },
-      "stage2": {
-        "description": "Multiple AI models execute research tasks concurrently, each focusing on different aspects of your requirements. Results are synthesized into actionable development insights.",
-        "title": "Parallel Research Execution"
-      },
-      "title": "Two-Stage AI Research Process"
-    }
-  },
-  "features": {
-    "copyButtons": {
-      "description": "Transform any prompt into a reusable button with smart placeholders and drag-drop",
-      "slug": "/features/copy-buttons",
-      "title": "Copy Buttons"
-    },
-    "deepResearch": {
-      "description": "AI-powered research with sophisticated queries and parallel research tasks",
-      "slug": "/features/deep-research",
-      "title": "Deep Research"
-    },
-    "fileDiscovery": {
-      "description": "Intelligent multi-stage workflow that discovers and selects relevant files from your codebase",
-      "slug": "/features/file-discovery",
-      "title": "AI File Discovery"
-    },
-    "integratedTerminal": {
-      "description": "Persistent terminal sessions with health monitoring and command review",
-      "slug": "/features/integrated-terminal",
-      "title": "Integrated Terminal"
-    },
-    "mergeInstructions": {
-      "description": "AI analyzes multiple implementation plans, resolves conflicts, creates emergent solutions",
-      "slug": "/features/merge-instructions",
-      "title": "Architectural Plan Synthesis"
-    },
-    "planMode": {
-      "description": "Generate file-by-file implementation plans with AI. Review and approve every change before execution",
-      "slug": "/features/plan-mode",
-      "title": "Implementation Plans"
-    },
-    "textImprovement": {
-      "description": "Refine specifications with AI text enhancement and task refinement prompts",
-      "slug": "/features/text-improvement",
-      "title": "Specification Capture Mode"
-    },
-    "videoAnalysis": {
-      "description": "Multimodal AI analyzes audio and visual content to extract actionable requirements",
-      "slug": "/features/video-analysis",
-      "title": "Meeting & Recording Analysis"
-    },
-    "voiceTranscription": {
-      "description": "Capture specifications hands-free with voice transcription in multiple languages",
-      "slug": "/features/voice-transcription",
-      "title": "Voice to Text"
-    }
+    "description": "Comprehensive tools for planning, reviewing, and executing complex code changes. From file discovery to terminal execution, everything you need for safe AI-assisted development.",
+    "learnMore": "Learn more",
+    "title": "AI Development Planning Features"
   },
   "fileDiscovery": {
     "benefits": {
@@ -480,47 +141,6 @@
         "title": "Extended Path Discovery"
       },
       "title": "The 4-Stage Discovery Process"
-    }
-  },
-  "hub": {
-    "badge": "Powerful Features",
-    "cta": {
-      "button": "Download PlanToCode",
-      "description": "Download PlanToCode and start planning your code changes with confidence.",
-      "title": "Ready to Experience Safe AI Development?"
-    },
-    "description": "Comprehensive tools for planning, reviewing, and executing complex code changes. From file discovery to terminal execution, everything you need for safe AI-assisted development.",
-    "learnMore": "Learn more",
-    "title": "AI Development Planning Features"
-  },
-  "integratedTerminal": {
-    "cta": {
-      "description": "A terminal built for planning and execution—integrated, persistent, and fast.",
-      "links": {
-        "docs": "Read technical docs",
-        "voice": "Explore voice commands"
-      },
-      "title": "Experience the Terminal That Never Loses Context"
-    },
-    "features": {
-      "integratedPlanning": {
-        "description": "Execute implementation plans and copy steps directly to the terminal without leaving the application.",
-        "title": "Integrated with Planning"
-      },
-      "persistent": {
-        "description": "Your terminal sessions stay with your work, preserving context between tasks and restarts.",
-        "title": "Persistent Sessions"
-      },
-      "title": "A Terminal Built for Your Workflow",
-      "voiceSupport": {
-        "description": "Use one-click copy-paste for commands or dictate them directly using voice input to move faster.",
-        "title": "Voice and Copy Support"
-      }
-    },
-    "hero": {
-      "badge": "Integrated PTY Terminal",
-      "description": "Run your plan in a persistent terminal. Built for fast, focused execution.",
-      "title": "Job-centric terminal that keeps context"
     }
   },
   "mergeInstructions": {
@@ -1032,6 +652,158 @@
       "title": "Common use cases"
     }
   },
+  "voiceTranscription": {
+    "accuracy": {
+      "bottomLine": "Bottom line: Fewer errors mean fewer ambiguous tickets and less rework. gpt-4o-transcribe helps teams capture precise, implementation-ready specifications on the first try.",
+      "models": {
+        "aws": "AWS Transcribe — managed speech recognition by Amazon Web Services.",
+        "google": "Google Speech-to-Text v2 — cloud speech recognition by Google.",
+        "gpt": "OpenAI gpt-4o-transcribe — advanced multilingual speech model optimized for accuracy and latency.",
+        "whisper": "Whisper large-v2 — open-source large-model baseline for comparison."
+      },
+      "title": "Accuracy Benchmarks"
+    },
+    "capabilities": {
+      "multiLanguage": {
+        "description": "OpenAI transcription supports multiple languages.",
+        "title": "Multiple Language Support"
+      },
+      "perProject": {
+        "description": "Set project defaults. Your team shares sensible defaults.",
+        "title": "Per-Project Configuration"
+      },
+      "terminalDictation": {
+        "description": "Dictate commands directly to your terminal session.",
+        "title": "Terminal Dictation"
+      },
+      "title": "Key Capabilities"
+    },
+    "cta": {
+      "description": "From voice to refined specifications, seamlessly. Capture requirements hands-free, then refine with AI prompts. This is how corporate teams should capture and clarify requirements.",
+      "links": {
+        "terminal": "See terminal integration",
+        "textImprovement": "Explore text enhancement"
+      },
+      "title": "Start Capturing Specifications with Voice"
+    },
+    "example": {
+      "competitor": {
+        "label": "Competitor Model",
+        "text": "Create a Postgres replica in us-east with 2 CPUs, 8GB RAM, and enable replication; set wal level logical and max senders equals ten."
+      },
+      "gpt": "Create a Postgres read-replica in us-east-1 with 2 vCPU, 8 GB RAM, and enable logical replication; set wal_level=logical and max_wal_senders=10.",
+      "reference": "Create a Postgres read-replica in us-east-1 with 2 vCPU, 8GB RAM, and enable logical replication; set wal_level=logical and max_wal_senders=10.",
+      "title": "Illustrative Example: Capturing Specifications"
+    },
+    "faq": {
+      "customize": {
+        "answer": "Yes. You can configure language and model settings for each project. Settings are stored in the project configuration and shared across team members.",
+        "question": "Can I customize transcription settings per project?"
+      },
+      "languages": {
+        "answer": "OpenAI transcription supports multiple languages. You can set a default language per project.",
+        "question": "Which languages are supported for voice transcription?"
+      },
+      "model": {
+        "answer": "We use OpenAI transcription for accurate results.",
+        "question": "Which AI model is used for transcription?"
+      },
+      "offline": {
+        "answer": "No, voice transcription requires an internet connection to send audio to OpenAI Whisper API. The transcription happens in real-time with minimal latency.",
+        "question": "Does voice transcription work offline?"
+      },
+      "whereToUse": {
+        "answer": "Voice transcription works in two places: (1) Task description panel - dictate implementation requirements, and (2) Terminal modal - dictate commands that are appended to your active shell session.",
+        "question": "Where can I use voice transcription in the app?"
+      }
+    },
+    "hero": {
+      "badge": "Voice transcription for developers",
+      "description": "Speak your requirements and ideas naturally. This is the first step in your specification workflow: capture ideas quickly with voice, then refine them manually with AI-powered prompts. The fastest way to capture initial specifications before refinement.",
+      "title": "Rapid specification capture with voice"
+    },
+    "nextSteps": {
+      "description": "Voice transcription is the first step in our Specification Capture workflow. Once you've captured your requirements, use AI-powered prompts to transform rough transcripts into clear, implementation-ready specifications.",
+      "link": "Learn about Specification Capture Mode",
+      "taskRefinement": {
+        "description": "Expand descriptions with implied requirements, edge cases, and technical considerations.",
+        "title": "Task Refinement"
+      },
+      "textEnhancement": {
+        "description": "Polish grammar, improve clarity, and enhance readability while preserving your original intent.",
+        "title": "Text Enhancement"
+      },
+      "title": "Refine Your Captured Specifications"
+    },
+    "painPoints": {
+      "captureIdeas": {
+        "description": "Stakeholders think faster than they type. Requirements and context get lost while fingers catch up. Voice lets you capture the complete specification before critical details fade.",
+        "title": "Capture ideas before they fade"
+      },
+      "contextSwitching": {
+        "description": "Stop what you are doing to open a note app, type, then return. Every switch breaks concentration. Voice stays in the same workspace.",
+        "title": "Context switching kills momentum"
+      },
+      "handsBusy": {
+        "description": "Reviewing code? Debugging? Drawing architecture diagrams? Your hands are occupied but you need to log the task. Voice transcription keeps you in flow.",
+        "title": "Hard to describe while hands are busy"
+      },
+      "title": "Why Voice Accelerates Specification Capture"
+    },
+    "useCases": {
+      "codeReview": {
+        "outcome": "Task created with full context, zero typing, no context switch.",
+        "scenario": "Code review reveals a refactoring opportunity. Your hands are on the diff, eyes on the screen. Voice captures the task description.",
+        "title": "Dictate while reviewing code"
+      },
+      "fasterEntry": {
+        "outcome": "10x faster task entry. QA feedback processed in minutes instead of hours.",
+        "scenario": "You have 10 similar bugs to log after QA testing. Typing each one takes 2 minutes. Voice transcription takes 20 seconds.",
+        "title": "Faster task entry for repetitive work"
+      },
+      "handsFree": {
+        "outcome": "Ideas logged instantly. Return to debugging without breaking flow.",
+        "scenario": "You are deep in a debugging session. You spot three related issues that need fixing. Speak them into the voice recorder without leaving your terminal.",
+        "title": "Capture ideas hands-free"
+      },
+      "terminalCommands": {
+        "outcome": "Commands entered correctly, faster than looking up documentation.",
+        "scenario": "Need a complex git command with flags you always forget. Dictate it naturally, let transcription handle the syntax.",
+        "title": "Terminal commands without memorizing syntax"
+      },
+      "title": "Real Use Cases"
+    }
+  },
+  "integratedTerminal": {
+    "cta": {
+      "description": "A terminal built for planning and execution—integrated, persistent, and fast.",
+      "links": {
+        "docs": "Read technical docs",
+        "voice": "Explore voice commands"
+      },
+      "title": "Experience the Terminal That Never Loses Context"
+    },
+    "features": {
+      "integratedPlanning": {
+        "description": "Execute implementation plans and copy steps directly to the terminal without leaving the application.",
+        "title": "Integrated with Planning"
+      },
+      "persistent": {
+        "description": "Your terminal sessions stay with your work, preserving context between tasks and restarts.",
+        "title": "Persistent Sessions"
+      },
+      "title": "A Terminal Built for Your Workflow",
+      "voiceSupport": {
+        "description": "Use one-click copy-paste for commands or dictate them directly using voice input to move faster.",
+        "title": "Voice and Copy Support"
+      }
+    },
+    "hero": {
+      "badge": "Integrated PTY Terminal",
+      "description": "Run your plan in a persistent terminal. Built for fast, focused execution.",
+      "title": "Job-centric terminal that keeps context"
+    }
+  },
   "videoAnalysis": {
     "capabilities": {
       "fileUpload": {
@@ -1213,126 +985,386 @@
       }
     }
   },
-  "voiceTranscription": {
-    "accuracy": {
-      "bottomLine": "Bottom line: Fewer errors mean fewer ambiguous tickets and less rework. gpt-4o-transcribe helps teams capture precise, implementation-ready specifications on the first try.",
-      "models": {
-        "aws": "AWS Transcribe — managed speech recognition by Amazon Web Services.",
-        "google": "Google Speech-to-Text v2 — cloud speech recognition by Google.",
-        "gpt": "OpenAI gpt-4o-transcribe — advanced multilingual speech model optimized for accuracy and latency.",
-        "whisper": "Whisper large-v2 — open-source large-model baseline for comparison."
-      },
-      "title": "Accuracy Benchmarks"
+  "copyButtons": {
+    "meta": {
+      "title": "Copy Buttons - Transform Prompts Into Workflows",
+      "description": "Transform any prompt into a reusable button with smart placeholders and drag-drop. One-click automation for complex workflows."
     },
-    "capabilities": {
-      "multiLanguage": {
-        "description": "OpenAI transcription supports multiple languages.",
-        "title": "Multiple Language Support"
+    "comparison": {
+      "plantocode": {
+        "items": [
+          "One-click automation",
+          "Dynamic content substitution",
+          "Smart placeholder system",
+          "Context-aware processing",
+          "Persistent, reusable workflows"
+        ],
+        "title": "PlanToCode Copy Buttons"
       },
-      "perProject": {
-        "description": "Set project defaults. Your team shares sensible defaults.",
-        "title": "Per-Project Configuration"
+      "title": "What Makes This Different",
+      "traditional": {
+        "items": [
+          "Manual copy-paste workflows",
+          "Static, unchanging templates",
+          "No context awareness",
+          "Error-prone manual edits",
+          "Lost workflows over time"
+        ],
+        "title": "Traditional Copy-Paste"
+      }
+    },
+    "concept": {
+      "dragDrop": {
+        "description": "Visual workflow management with @dnd-kit integration. Reorder buttons to match your process.",
+        "title": "Drag-Drop Reordering"
       },
-      "terminalDictation": {
-        "description": "Dictate commands directly to your terminal session.",
-        "title": "Terminal Dictation"
+      "serverConfigured": {
+        "description": "Dynamic buttons with placeholder substitution. Project-specific overrides with unified prompt processing.",
+        "title": "Server-Configured Templates"
       },
-      "title": "Key Capabilities"
+      "terminal": {
+        "description": "One-click execution in persistent terminal sessions. Chunked sending for large content.",
+        "title": "Terminal Integration"
+      }
+    },
+    "configuration": {
+      "projectSettings": {
+        "description": "Copy buttons stored in task settings with project-level overrides and server-side defaults.",
+        "features": [
+          "SQLite database persistence",
+          "Server-managed default configurations",
+          "Project directory scoping",
+          "Real-time configuration updates"
+        ],
+        "title": "Project-Specific Settings"
+      },
+      "title": "Configuration & Management",
+      "visualUI": {
+        "description": "Intuitive editor with drag-drop reordering, debounced input handling, and real-time preview.",
+        "features": [
+          "Drag handles for visual reordering",
+          "300ms debounced input processing",
+          "Read-only mode for system buttons",
+          "Customization workflow support"
+        ],
+        "title": "Visual Configuration UI"
+      }
     },
     "cta": {
-      "description": "From voice to refined specifications, seamlessly. Capture requirements hands-free, then refine with AI prompts. This is how corporate teams should capture and clarify requirements.",
+      "description": "Any prompt becomes a button. Smart templates with placeholders. Complex workflows, instant launch. Your best tricks, always ready.",
       "links": {
-        "terminal": "See terminal integration",
+        "planMode": "See implementation plans",
+        "terminal": "Explore terminal integration"
+      },
+      "title": "Transform Prompts Into Workflows"
+    },
+    "hero": {
+      "badge": "Configurable Workflow Automation System",
+      "description": "Save your best prompts as buttons. Substitute plan content and run them in the terminal.",
+      "title": "Workflows. One click."
+    },
+    "technical": {
+      "architecture": {
+        "execution": "Button click triggers template processing → Placeholder substitution with plan content → Terminal session validation → Chunked content transmission",
+        "processing": "Regex-based placeholder matching → Dynamic content substitution → Context-aware data extraction → Error handling for undefined values",
+        "storage": "CopyButtonConfig[] in task settings → Project-specific database storage → Server-side default configurations → Real-time synchronization",
+        "ui": "Implementation plan cards → Content viewing modals → Terminal interface headers → Drag-drop configuration editor"
+      },
+      "title": "Technical Implementation"
+    },
+    "templateSystem": {
+      "placeholders": {
+        "description": "Dynamic content replacement using {{PLACEHOLDER}} syntax. Context-aware processing with implementation plans.",
+        "examples": [
+          "{{IMPLEMENTATION_PLAN}} - Full plan content",
+          "{{STEP_CONTENT}} - Selected step content",
+          "{{PROJECT_CONTEXT}} - Project-specific context",
+          "Custom placeholders for extensibility"
+        ],
+        "title": "Placeholder Substitution"
+      },
+      "processor": {
+        "description": "Advanced template engine with conditional sections, XML formatting, and intelligent cleanup.",
+        "features": [
+          "Regex-based placeholder matching",
+          "Escape character handling",
+          "Multi-line content support",
+          "Graceful undefined handling"
+        ],
+        "title": "Unified Prompt Processing"
+      },
+      "title": "Smart Template System"
+    },
+    "terminalIntegration": {
+      "oneClick": {
+        "description": "Copy buttons integrate directly with terminal sessions for instant execution. Smart content handling prevents terminal overflow.",
+        "features": [
+          "Automatic paste to active terminal",
+          "Chunked sending for large content",
+          "Session health monitoring",
+          "Clipboard fallback for safety"
+        ],
+        "title": "One-Click Automation"
+      },
+      "title": "Seamless Terminal Execution"
+    },
+    "useCases": {
+      "customTeam": {
+        "description": "Team-specific processes with project context and coding standards.",
+        "title": "Custom Team Workflows"
+      },
+      "investigation": {
+        "description": "Standardized review processes for implementation plan results.",
+        "title": "Investigation & Review"
+      },
+      "parallel": {
+        "description": "Launch multiple Claude coding agents simultaneously with pre-configured instructions.",
+        "title": "Parallel Agent Workflows"
+      },
+      "stepByStep": {
+        "description": "Extract and execute individual implementation steps with context.",
+        "title": "Step-by-Step Execution"
+      },
+      "title": "Real-World Use Cases"
+    }
+  },
+  "deepResearch": {
+    "meta": {
+      "title": "Deep Research - AI-Powered Research Intelligence",
+      "description": "AI-powered research with sophisticated queries and parallel research tasks. Generate smart queries, run searches, and pull relevant findings into your task."
+    },
+    "advanced": {
+      "features": [
+        {
+          "title": "Intelligent Query Design",
+          "description": "AI crafts sophisticated research queries that explore multiple angles and perspectives for comprehensive coverage."
+        },
+        {
+          "title": "Context-Aware Analysis",
+          "description": "Research is tailored to your specific project context, technology stack, and development requirements."
+        },
+        {
+          "title": "Background Processing",
+          "description": "Long-running research tasks execute in the background with real-time progress updates and notifications."
+        },
+        {
+          "title": "Result Integration",
+          "description": "Research findings are automatically formatted and integrated into your task descriptions for immediate use."
+        },
+        {
+          "title": "Cost Optimization",
+          "description": "Intelligent model selection and query optimization to balance research quality with cost efficiency."
+        },
+        {
+          "title": "Progress Monitoring",
+          "description": "Real-time tracking of research progress with detailed status updates and completion notifications."
+        }
+      ],
+      "title": "Advanced Research Capabilities"
+    },
+    "aiCapabilities": {
+      "multiModel": {
+        "description": "Leverages multiple AI models to execute research tasks with different perspectives and expertise areas.",
+        "models": [
+          "OpenAI GPT Models",
+          "Anthropic Claude",
+          "Google Gemini",
+          "Specialized Research Models"
+        ],
+        "title": "Multi-Model Research"
+      },
+      "parallel": {
+        "description": "Execute multiple research tasks simultaneously with intelligent result aggregation and synthesis.",
+        "features": [
+          "Concurrent Execution",
+          "Progress Tracking",
+          "Error Recovery",
+          "Result Synthesis"
+        ],
+        "title": "Parallel Processing"
+      },
+      "projectContext": {
+        "description": "AI analyzes your project structure, technology stack, and codebase to generate highly relevant research.",
+        "features": [
+          "File Structure Analysis",
+          "Technology Stack Detection",
+          "Dependency Mapping",
+          "Context-Aware Insights"
+        ],
+        "title": "Project Context Analysis"
+      },
+      "title": "AI Research Capabilities"
+    },
+    "cta": {
+      "description": "From intelligent queries to synthesized insights, integrated with your development workflow. This is how research should work - comprehensive, intelligent, actionable.",
+      "links": {
+        "planMode": "See implementation planning",
         "textImprovement": "Explore text enhancement"
       },
-      "title": "Start Capturing Specifications with Voice"
+      "title": "Transform Your Research Workflow"
     },
-    "example": {
-      "competitor": {
-        "label": "Competitor Model",
-        "text": "Create a Postgres replica in us-east with 2 CPUs, 8GB RAM, and enable replication; set wal level logical and max senders equals ten."
+    "developmentFocus": {
+      "contextFiltering": {
+        "description": "Research scope automatically adjusted based on your project context and development stack.",
+        "features": [
+          "Technology stack awareness",
+          "Version compatibility checking",
+          "Project requirements filtering",
+          "Scalability consideration priority"
+        ],
+        "title": "Context-Aware Filtering"
       },
-      "gpt": "Create a Postgres read-replica in us-east-1 with 2 vCPU, 8 GB RAM, and enable logical replication; set wal_level=logical and max_wal_senders=10.",
-      "reference": "Create a Postgres read-replica in us-east-1 with 2 vCPU, 8GB RAM, and enable logical replication; set wal_level=logical and max_wal_senders=10.",
-      "title": "Illustrative Example: Capturing Specifications"
+      "implementationReady": {
+        "description": "Research results optimized for development workflows. Code examples, API documentation, and best practices.",
+        "features": [
+          "Code snippet extraction",
+          "API reference compilation",
+          "Architecture pattern analysis",
+          "Performance consideration notes"
+        ],
+        "title": "Implementation-Ready Insights"
+      },
+      "title": "Development-Focused Research"
     },
-    "faq": {
-      "customize": {
-        "answer": "Yes. You can configure language and model settings for each project. Settings are stored in the project configuration and shared across team members.",
-        "question": "Can I customize transcription settings per project?"
+    "features": {
+      "parallelExecution": {
+        "description": "Execute multiple sophisticated research tasks concurrently. AI synthesizes findings into actionable development insights.",
+        "title": "Parallel Research Execution"
       },
-      "languages": {
-        "answer": "OpenAI transcription supports multiple languages. You can set a default language per project.",
-        "question": "Which languages are supported for voice transcription?"
+      "projectIntegration": {
+        "description": "Research is tailored to your specific project structure, technology stack, and development context for maximum relevance.",
+        "title": "Project Context Integration"
       },
-      "model": {
-        "answer": "We use OpenAI transcription for accurate results.",
-        "question": "Which AI model is used for transcription?"
-      },
-      "offline": {
-        "answer": "No, voice transcription requires an internet connection to send audio to OpenAI Whisper API. The transcription happens in real-time with minimal latency.",
-        "question": "Does voice transcription work offline?"
-      },
-      "whereToUse": {
-        "answer": "Voice transcription works in two places: (1) Task description panel - dictate implementation requirements, and (2) Terminal modal - dictate commands that are appended to your active shell session.",
-        "question": "Where can I use voice transcription in the app?"
+      "queryGeneration": {
+        "description": "AI expands your research queries with context-aware variations. Multi-angle exploration for comprehensive coverage.",
+        "title": "Intelligent Query Generation"
       }
     },
     "hero": {
-      "badge": "Voice transcription for developers",
-      "description": "Speak your requirements and ideas naturally. This is the first step in your specification workflow: capture ideas quickly with voice, then refine them manually with AI-powered prompts. The fastest way to capture initial specifications before refinement.",
-      "title": "Rapid specification capture with voice"
+      "badge": "AI-Powered Research Intelligence",
+      "description": "Generate smart queries, run searches, and pull relevant findings into your task - no fluff.",
+      "title": "Deep research - from query to insight"
     },
-    "nextSteps": {
-      "description": "Voice transcription is the first step in our Specification Capture workflow. Once you've captured your requirements, use AI-powered prompts to transform rough transcripts into clear, implementation-ready specifications.",
-      "link": "Learn about Specification Capture Mode",
-      "taskRefinement": {
-        "description": "Expand descriptions with implied requirements, edge cases, and technical considerations.",
-        "title": "Task Refinement"
+    "intelligence": {
+      "contextIntegration": {
+        "description": "Research results are automatically integrated with your task description, enriching it with relevant findings and recommendations.",
+        "features": [
+          "Automatic task enhancement",
+          "Structured result formatting",
+          "Implementation plan integration",
+          "Development workflow alignment"
+        ],
+        "title": "Context Integration"
       },
-      "textEnhancement": {
-        "description": "Polish grammar, improve clarity, and enhance readability while preserving your original intent.",
-        "title": "Text Enhancement"
+      "execution": {
+        "description": "Sophisticated AI models execute research tasks in parallel, providing comprehensive analysis and insights.",
+        "features": [
+          "Parallel research task execution",
+          "Streaming results with progress tracking",
+          "Context-aware analysis and synthesis",
+          "Development-focused insights"
+        ],
+        "title": "AI Research Execution"
       },
-      "title": "Refine Your Captured Specifications"
+      "queryExpansion": {
+        "description": "AI analyzes your initial query and generates strategic variations for comprehensive research coverage.",
+        "features": [
+          "Context-aware query variations",
+          "Semantic synonym expansion",
+          "Domain-specific terminology",
+          "Multi-perspective research angles"
+        ],
+        "title": "Smart Query Expansion"
+      },
+      "synthesis": {
+        "description": "Advanced AI models analyze your project context and generate targeted research insights tailored to your development needs.",
+        "features": [
+          "Project-aware research generation",
+          "Context-sensitive analysis",
+          "Development-focused insights",
+          "Implementation-ready recommendations"
+        ],
+        "title": "AI Research Synthesis"
+      },
+      "title": "Research Intelligence Engine"
     },
-    "painPoints": {
-      "captureIdeas": {
-        "description": "Stakeholders think faster than they type. Requirements and context get lost while fingers catch up. Voice lets you capture the complete specification before critical details fade.",
-        "title": "Capture ideas before they fade"
+    "process": {
+      "stage1": {
+        "description": "AI analyzes your task description and project context to generate sophisticated research queries. Creates multiple strategic research angles for comprehensive coverage.",
+        "title": "Research Query Generation"
       },
-      "contextSwitching": {
-        "description": "Stop what you are doing to open a note app, type, then return. Every switch breaks concentration. Voice stays in the same workspace.",
-        "title": "Context switching kills momentum"
+      "stage2": {
+        "description": "Multiple AI models execute research tasks concurrently, each focusing on different aspects of your requirements. Results are synthesized into actionable development insights.",
+        "title": "Parallel Research Execution"
       },
-      "handsBusy": {
-        "description": "Reviewing code? Debugging? Drawing architecture diagrams? Your hands are occupied but you need to log the task. Voice transcription keeps you in flow.",
-        "title": "Hard to describe while hands are busy"
-      },
-      "title": "Why Voice Accelerates Specification Capture"
+      "title": "Two-Stage AI Research Process"
+    }
+  },
+  "features": {
+    "copyButtons": {
+      "description": "Transform any prompt into a reusable button with smart placeholders and drag-drop",
+      "slug": "/features/copy-buttons",
+      "title": "Copy Buttons"
     },
-    "useCases": {
-      "codeReview": {
-        "outcome": "Task created with full context, zero typing, no context switch.",
-        "scenario": "Code review reveals a refactoring opportunity. Your hands are on the diff, eyes on the screen. Voice captures the task description.",
-        "title": "Dictate while reviewing code"
-      },
-      "fasterEntry": {
-        "outcome": "10x faster task entry. QA feedback processed in minutes instead of hours.",
-        "scenario": "You have 10 similar bugs to log after QA testing. Typing each one takes 2 minutes. Voice transcription takes 20 seconds.",
-        "title": "Faster task entry for repetitive work"
-      },
-      "handsFree": {
-        "outcome": "Ideas logged instantly. Return to debugging without breaking flow.",
-        "scenario": "You are deep in a debugging session. You spot three related issues that need fixing. Speak them into the voice recorder without leaving your terminal.",
-        "title": "Capture ideas hands-free"
-      },
-      "terminalCommands": {
-        "outcome": "Commands entered correctly, faster than looking up documentation.",
-        "scenario": "Need a complex git command with flags you always forget. Dictate it naturally, let transcription handle the syntax.",
-        "title": "Terminal commands without memorizing syntax"
-      },
-      "title": "Real Use Cases"
+    "deepResearch": {
+      "description": "AI-powered research with sophisticated queries and parallel research tasks",
+      "slug": "/features/deep-research",
+      "title": "Deep Research"
+    },
+    "fileDiscovery": {
+      "description": "Intelligent multi-stage workflow that discovers and selects relevant files from your codebase",
+      "slug": "/features/file-discovery",
+      "title": "AI File Discovery",
+      "meta": {
+        "title": "AI file discovery - find impacted files",
+        "description": "Multi-stage AI workflow that discovers and selects relevant files. Cost-effective at $0.10-0.15 per workflow with real-time progress tracking."
+      }
+    },
+    "integratedTerminal": {
+      "description": "Persistent terminal sessions with health monitoring and command review",
+      "slug": "/features/integrated-terminal",
+      "title": "Integrated Terminal"
+    },
+    "mergeInstructions": {
+      "description": "AI analyzes multiple implementation plans, resolves conflicts, creates emergent solutions",
+      "slug": "/features/merge-instructions",
+      "title": "Architectural Plan Synthesis",
+      "meta": {
+        "title": "Plan Synthesis - Multi-Model Merging",
+        "description": "Architectural synthesis beyond simple merging. AI analyzes plans, resolves conflicts with SOLID principles, and creates emergent solutions with traceability."
+      }
+    },
+    "planMode": {
+      "description": "Generate file-by-file implementation plans with AI. Review and approve every change before execution",
+      "slug": "/features/plan-mode",
+      "title": "Implementation Plans",
+      "meta": {
+        "title": "AI Implementation Plans - Human-in-Loop",
+        "description": "Generate file-by-file AI plans. Review every change before execution. Prevent regressions in legacy code. Safe AI development."
+      }
+    },
+    "textImprovement": {
+      "description": "Refine specifications with AI text enhancement and task refinement prompts",
+      "slug": "/features/text-improvement",
+      "title": "Specification Capture Mode",
+      "meta": {
+        "title": "Spec Capture Mode - AI Text Enhancement",
+        "description": "Refine specifications with two AI prompts: Text Enhancement for clarity, Task Refinement for completeness. Create actionable specs for development teams."
+      }
+    },
+    "videoAnalysis": {
+      "description": "Multimodal AI analyzes audio and visual content to extract actionable requirements",
+      "slug": "/features/video-analysis",
+      "title": "Meeting & Recording Analysis"
+    },
+    "voiceTranscription": {
+      "description": "Capture specifications hands-free with voice transcription in multiple languages",
+      "slug": "/features/voice-transcription",
+      "title": "Voice to Text",
+      "meta": {
+        "title": "Voice to text for rapid specification capture",
+        "description": "Hands-free specification capture with voice. Accurate transcription inserts text where you work. Configure per project, supports multiple languages."
+      }
     }
   }
 }

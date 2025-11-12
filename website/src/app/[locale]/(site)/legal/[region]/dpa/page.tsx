@@ -14,13 +14,17 @@ interface DPAPageProps {
 }
 
 export async function generateMetadata({ params }: DPAPageProps): Promise<Metadata> {
-  const { region } = await params;
+  const { locale, region } = await params;
 
   if (region !== 'eu' && region !== 'us') {
     return {
       title: 'Data Processing Addendum - Not Found',
     };
   }
+
+  const canonicalUrl = locale === 'en'
+    ? `https://www.plantocode.com/legal/${region}/dpa`
+    : `https://www.plantocode.com/${locale}/legal/${region}/dpa`;
 
   return {
     title: 'Data Processing Addendum (DPA)',
@@ -30,12 +34,21 @@ export async function generateMetadata({ params }: DPAPageProps): Promise<Metada
       follow: true,
     },
     alternates: {
-      canonical: `https://www.plantocode.com/legal/${region}/dpa`
+      canonical: canonicalUrl,
+      languages: {
+        en: `https://www.plantocode.com/legal/${region}/dpa`,
+        de: `https://www.plantocode.com/de/legal/${region}/dpa`,
+        es: `https://www.plantocode.com/es/legal/${region}/dpa`,
+        fr: `https://www.plantocode.com/fr/legal/${region}/dpa`,
+        ja: `https://www.plantocode.com/ja/legal/${region}/dpa`,
+        ko: `https://www.plantocode.com/ko/legal/${region}/dpa`,
+        'x-default': `https://www.plantocode.com/legal/${region}/dpa`,
+      },
     },
     openGraph: {
       title: 'Data Processing Addendum (DPA)',
       description: 'Data Processing Addendum for business customers outlining data processing terms, security measures, and GDPR compliance requirements.',
-      url: `https://www.plantocode.com/legal/${region}/dpa`,
+      url: canonicalUrl,
       siteName: 'PlanToCode',
       type: 'website',
       locale: 'en_US',

@@ -63,6 +63,20 @@ public final class FilesDataService: ObservableObject {
         setupStateChangeBroadcasting()
     }
 
+    public func reset() {
+        files = []
+        searchResults = []
+        isLoading = false
+        error = nil
+        currentSearchTerm = ""
+        currentSortBy = "name"
+        currentSortOrder = "asc"
+        currentFilterMode = "all"
+        lastFileSearch = [:]
+        isApplyingRemoteState = false
+        cancellables.removeAll()
+    }
+
     // MARK: - Public Methods
 
     /// Search files with various filters and patterns
@@ -597,6 +611,32 @@ public final class FilesDataService: ObservableObject {
                 logger.error("Failed to preload project files: \(error.localizedDescription)")
             }
         }
+    }
+
+    public func getFileHistoryState(sessionId: String) async throws -> [String: Any] {
+        try await CommandRouter.sessionGetHistoryStateRaw(sessionId: sessionId, kind: "files")
+    }
+
+    public func undoFileSelection(sessionId: String) async throws {
+        var state = try await getFileHistoryState(sessionId: sessionId)
+        let entries = (state["entries"] as? [Any]) ?? []
+        var current = (state["currentIndex"] as? Int) ?? Int(state["currentIndex"] as? Int64 ?? 0)
+        guard current > 0 else { return }
+        current -= 1
+        state["currentIndex"] = Int64(current)
+        let version = (state["version"] as? Int64) ?? Int64(state["version"] as? Int ?? 0)
+        _ = try await CommandRouter.sessionSyncHistoryStateRaw(sessionId: sessionId, kind: "files", state: state, expectedVersion: version)
+    }
+
+    public func redoFileSelection(sessionId: String) async throws {
+        var state = try await getFileHistoryState(sessionId: sessionId)
+        let entries = (state["entries"] as? [Any]) ?? []
+        var current = (state["currentIndex"] as? Int) ?? Int(state["currentIndex"] as? Int64 ?? 0)
+        guard current < max(0, entries.count - 1) else { return }
+        current += 1
+        state["currentIndex"] = Int64(current)
+        let version = (state["version"] as? Int64) ?? Int64(state["version"] as? Int ?? 0)
+        _ = try await CommandRouter.sessionSyncHistoryStateRaw(sessionId: sessionId, kind: "files", state: state, expectedVersion: version)
     }
 }
 

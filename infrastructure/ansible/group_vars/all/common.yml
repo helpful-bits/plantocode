@@ -18,3 +18,6 @@ server_timezone: UTC
 nginx_proxy_connect_timeout: 180s   # 3 minutes for initial connection
 nginx_proxy_send_timeout: 1800s     # 30 minutes for sending requests
 nginx_proxy_read_timeout: 1800s     # 30 minutes for reading responses
+
+# CDN configuration for media assets
+CDN_BASE_URL: "https://d2tyb0wucqqf48.cloudfront.net"

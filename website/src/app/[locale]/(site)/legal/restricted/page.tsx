@@ -1,31 +1,24 @@
 import type { Metadata } from 'next';
 import { locales } from '@/i18n/config';
-import type { Locale } from '@/lib/i18n';
+import { loadMessages, type Locale } from '@/lib/i18n';
 
-export const metadata: Metadata = {
-  title: '451 - Service Not Available in Your Region',
-  description: 'This service is not available in your geographic region.',
-  robots: {
-    index: false,
-    follow: false,
-    noarchive: true,
-    nosnippet: true,
-  },
-  openGraph: {
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
-    }],
-      },
-};
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return generatePageMetadata({
+    locale,
+    slug: '/legal/restricted',
+    title: t['legal.restricted.meta.title'],
+    description: t['legal.restricted.meta.description'],
+  });
+}
 
 import { MapPin } from 'lucide-react';
 import GlassCard from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/button';
-import { cdnUrl } from '@/lib/cdn';
 import { ObfuscatedEmail } from '@/components/ui/ObfuscatedEmail';
+import { generatePageMetadata } from '@/content/metadata';
 
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));

@@ -272,23 +272,37 @@ public final class MultiConnectionManager: ObservableObject {
             return .failure(MultiConnectionError.authenticationRequired)
         }
 
-        // Set connecting state immediately for UI feedback
-        await MainActor.run {
-            connectionStates[deviceId] = .connecting
-        }
-
         // Check if we have an existing connection that's actually connected
         if let existingClient = storage[deviceId] {
             // Verify the connection is actually healthy
             if existingClient.isConnected {
-                activeDeviceId = deviceId
-                return .success(deviceId)
+                do {
+                    try await verifyDesktopConnection(deviceId: deviceId, timeoutSeconds: 3)
+                    await MainActor.run {
+                        activeDeviceId = deviceId
+                    }
+                    return .success(deviceId)
+                } catch {
+                    // Verification failed - fall through to rebuild connection
+                    existingClient.disconnect()
+                    await MainActor.run {
+                        storage.removeValue(forKey: deviceId)
+                        connectionStates.removeValue(forKey: deviceId)
+                    }
+                }
             } else {
                 // Connection exists but is not healthy - remove it and create a new one
                 existingClient.disconnect()
-                storage.removeValue(forKey: deviceId)
-                connectionStates.removeValue(forKey: deviceId)
+                await MainActor.run {
+                    storage.removeValue(forKey: deviceId)
+                    connectionStates.removeValue(forKey: deviceId)
+                }
             }
+        }
+
+        // Set connecting state immediately for UI feedback
+        await MainActor.run {
+            connectionStates[deviceId] = .connecting
         }
 
         // If already connecting, wait for that task
@@ -363,11 +377,13 @@ public final class MultiConnectionManager: ObservableObject {
                                 case .failed(let e):
                                     self.connectionStates[deviceId] = .failed(e)
                                     self.verifyingDevices.remove(deviceId)
+                                    if self.activeDeviceId == deviceId { self.setActive(nil) }
                                     self.triggerAggressiveReconnect(reason: .connectionLoss(deviceId), deviceIds: [deviceId])
                                 case .disconnected:
                                     self.connectionStates[deviceId] = .disconnected
                                     self.verifyingDevices.remove(deviceId)
                                     self.relayHandshakeByDevice.removeValue(forKey: deviceId)
+                                    if self.activeDeviceId == deviceId { self.setActive(nil) }
                                     self.triggerAggressiveReconnect(reason: .connectionLoss(deviceId), deviceIds: [deviceId])
                                 default:
                                     break
@@ -407,6 +423,7 @@ public final class MultiConnectionManager: ObservableObject {
             } catch {
                 await MainActor.run {
                     self.connectionStates[deviceId] = .failed(error)
+                    if self.activeDeviceId == deviceId { self.setActive(nil) }
                 }
                 // Do NOT persist on failure
                 return .failure(error)
@@ -418,15 +435,15 @@ public final class MultiConnectionManager: ObservableObject {
     }
 
     public func removeConnection(deviceId: UUID) {
+        if activeDeviceId == deviceId {
+            self.activeDeviceId = nil
+            UserDefaults.standard.removeObject(forKey: activeDeviceKey)
+        }
+
         // Remove from persisted connected devices list
         var deviceIds = UserDefaults.standard.array(forKey: connectedDevicesKey) as? [String] ?? []
         deviceIds.removeAll { $0 == deviceId.uuidString }
         UserDefaults.standard.set(deviceIds, forKey: connectedDevicesKey)
-
-        // Clear active device if it was the removed device
-        if activeDeviceId == deviceId {
-            UserDefaults.standard.removeObject(forKey: activeDeviceKey)
-        }
 
         verifyingDevices.remove(deviceId)
         relayHandshakeByDevice.removeValue(forKey: deviceId)
@@ -434,12 +451,6 @@ public final class MultiConnectionManager: ObservableObject {
         if let relayClient = storage[deviceId] {
             relayClient.disconnect()
             storage.removeValue(forKey: deviceId)
-        }
-
-        // Clear active if it was the removed device
-        if activeDeviceId == deviceId {
-            activeDeviceId = nil
-            UserDefaults.standard.removeObject(forKey: activeDeviceKey)
         }
     }
 
@@ -523,12 +534,16 @@ public final class MultiConnectionManager: ObservableObject {
     }
 
     public var activeDeviceIsFullyConnected: Bool {
-        guard let id = activeDeviceId else { return false }
-        if case .connected = effectiveConnectionState(for: id) {
-            return true
-        } else {
-            return false
+        guard let id = self.activeDeviceId else { return false }
+        if let state = self.connectionStates[id] {
+            switch state {
+            case .connected:
+                return true
+            default:
+                return false
+            }
         }
+        return false
     }
 
     // MARK: - Aggressive Reconnection
@@ -756,12 +771,6 @@ public final class MultiConnectionManager: ObservableObject {
         for idStr in deviceIds {
             guard let uuid = UUID(uuidString: idStr) else { continue }
             let result = await addConnection(for: uuid)
-            // Remove from persisted list if connection fails permanently
-            if case .failure = result {
-                var updatedIds = UserDefaults.standard.array(forKey: connectedDevicesKey) as? [String] ?? []
-                updatedIds.removeAll { $0 == idStr }
-                UserDefaults.standard.set(updatedIds, forKey: connectedDevicesKey)
-            }
         }
 
         // Auto-assign if exactly one device connected successfully and no active device

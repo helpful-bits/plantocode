@@ -168,7 +168,8 @@
     "cta": {
       "demo": "Interaktive Demo testen →",
       "download": "Kostenlos herunterladen",
-      "howItWorks": "So funktioniert es"
+      "howItWorks": "So funktioniert es",
+      "viewDemo": "Sehen Sie, wie der Entwickler es täglich nutzt"
     },
     "panel1": {
       "description": "Suchmuster generieren, Relevanz-Scoring durchführen und gestaffelte Ergebnisse prüfen, bevor Dateien in Ihren Plan aufgenommen werden.",
@@ -185,7 +186,7 @@
       "title": "Datei-Discovery-Workflow"
     },
     "panel2": {
-      "description": "Implementierungspläne von GPT-5, Gemini 2.5 Pro, Claude 4 Sonnet, Grok 4 und DeepSeek R1 generieren und die besten Ideen zusammenführen.",
+      "description": "Führen Sie beliebige Modelle parallel aus - einschließlich mehrerer Instanzen desselben Modells - und führen Sie die besten Ideen zusammen.",
       "link": "Workflow erkunden",
       "models": {
         "claude": "Claude Sonnet 4",
@@ -280,10 +281,25 @@
         "link": "Mehr erfahren →",
         "title": "Große Features"
       },
+      "legacyRefactoring": {
+        "description": "Modernisieren Sie Legacy-Codebasen mit KI-unterstütztem Refactoring, das Funktionalität bewahrt und Struktur verbessert",
+        "link": "Mehr erfahren →",
+        "title": "Legacy-Code-Refactoring"
+      },
       "libraryUpgrades": {
         "description": "Abhängigkeiten sicher aktualisieren mit Breaking-Change-Erkennung und Migrations-Planung",
         "link": "Mehr erfahren →",
         "title": "Library-Upgrades"
+      },
+      "preventDuplicates": {
+        "description": "Erkennen und verhindern Sie doppelten Code, Komponenten und Implementierungen in Ihrer Codebasis",
+        "link": "Mehr erfahren →",
+        "title": "Duplikate verhindern"
+      },
+      "safeRefactoring": {
+        "description": "Refactoring mit Vertrauen durch Architektur-Awareness und umfassende Impact-Analyse",
+        "link": "Mehr erfahren →",
+        "title": "Sicheres Refactoring"
       }
     },
     "subtitle": "Echte Lösungen für die schwierigsten Probleme in der Software-Entwicklung",

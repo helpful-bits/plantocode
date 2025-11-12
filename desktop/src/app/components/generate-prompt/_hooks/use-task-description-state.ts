@@ -861,6 +861,16 @@ export function useTaskDescriptionState({
 
         const currentEntry = state.entries[state.currentIndex];
         if (currentEntry) {
+          // STEP 5: Guard against destructive empty overwrites
+          const incoming = currentEntry.value ?? "";
+          const local = valueRef.current ?? "";
+
+          // Skip destructive empty overwrites - do not apply empty remote updates when local is non-empty
+          if (incoming.trim() === "" && local.trim() !== "") {
+            remoteHistoryApplyingRef.current = false;
+            return; // Do not apply
+          }
+
           setValue(currentEntry.value);
           lastCommittedValueRef.current = currentEntry.value;
 
@@ -897,6 +907,16 @@ export function useTaskDescriptionState({
         const currentValue = valueRef.current;
         const remoteValue = pending.entries[pending.currentIndex]?.value || '';
         const baseValue = lastCommittedValueRef.current;
+
+        // STEP 5: Guard against destructive empty overwrites
+        const incoming = remoteValue ?? "";
+        const local = currentValue ?? "";
+
+        // Skip destructive empty overwrites - do not apply empty remote updates when local is non-empty
+        if (incoming.trim() === "" && local.trim() !== "") {
+          remoteHistoryApplyingRef.current = false;
+          return; // Do not apply
+        }
 
         let mergedValue = currentValue;
         if (currentValue === baseValue) {

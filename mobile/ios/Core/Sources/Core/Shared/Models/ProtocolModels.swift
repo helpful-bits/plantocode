@@ -6,12 +6,14 @@ public struct DesktopRpcRequest: Codable {
     public let params: AnyCodable
     public let correlationId: String
     public let auth: String?
+    public var idempotencyKey: String?
 
-    public init(method: String, params: AnyCodable, correlationId: String, auth: String? = nil) {
+    public init(method: String, params: AnyCodable, correlationId: String, auth: String? = nil, idempotencyKey: String? = nil) {
         self.method = method
         self.params = params
         self.correlationId = correlationId
         self.auth = auth
+        self.idempotencyKey = idempotencyKey
     }
 }
 

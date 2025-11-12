@@ -14,13 +14,17 @@ interface ImprintPageProps {
 }
 
 export async function generateMetadata({ params }: ImprintPageProps): Promise<Metadata> {
-  const { region } = await params;
+  const { locale, region } = await params;
 
   if (region !== 'eu') {
     return {
       title: 'Imprint - Not Available',
     };
   }
+
+  const canonicalUrl = locale === 'en'
+    ? `https://www.plantocode.com/legal/${region}/imprint`
+    : `https://www.plantocode.com/${locale}/legal/${region}/imprint`;
 
   return {
     title: 'Imprint (Impressum)',
@@ -30,11 +34,20 @@ export async function generateMetadata({ params }: ImprintPageProps): Promise<Me
       follow: true,
     },
     alternates: {
-      canonical: `https://www.plantocode.com/legal/${region}/imprint`,
+      canonical: canonicalUrl,
+      languages: {
+        en: `https://www.plantocode.com/legal/${region}/imprint`,
+        de: `https://www.plantocode.com/de/legal/${region}/imprint`,
+        es: `https://www.plantocode.com/es/legal/${region}/imprint`,
+        fr: `https://www.plantocode.com/fr/legal/${region}/imprint`,
+        ja: `https://www.plantocode.com/ja/legal/${region}/imprint`,
+        ko: `https://www.plantocode.com/ko/legal/${region}/imprint`,
+        'x-default': `https://www.plantocode.com/legal/${region}/imprint`,
+      },
     },
     openGraph: {
       type: 'website',
-      url: `https://www.plantocode.com/legal/${region}/imprint`,
+      url: canonicalUrl,
       title: 'Imprint (Impressum)',
       siteName: 'PlanToCode',
       images: [{

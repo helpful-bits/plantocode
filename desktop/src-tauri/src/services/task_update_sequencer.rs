@@ -328,6 +328,17 @@ impl TaskUpdateSequencer {
         incoming_content: &str,
         source: UpdateSource,
     ) -> AppResult<()> {
+        if source == UpdateSource::Remote {
+            // Skip idempotent updates
+            if incoming_content == state.last_committed_task {
+                return Ok(());
+            }
+            // Drop spurious empty remote content when we have non-empty local
+            if incoming_content.trim().is_empty() && !state.last_committed_task.trim().is_empty() {
+                return Ok(());
+            }
+        }
+
         let base = &state.last_committed_task;
         let ours = state.last_user_content.as_deref().unwrap_or(base);
         let theirs = incoming_content;
@@ -335,21 +346,36 @@ impl TaskUpdateSequencer {
         let merged = Self::three_way_merge(base, ours, theirs);
 
         let cache = app_handle.state::<std::sync::Arc<crate::services::SessionCache>>().inner().clone();
-
         cache.update_task_description_canonical(app_handle, session_id, &merged).await?;
+
+        // Delegated to HistoryStateSequencer to ensure canonical eventing and history integrity.
 
         state.last_committed_task = merged.clone();
 
-        // Cache emits session-updated automatically; only emit field validation for checksum
-        let checksum = format!("{:x}", Sha256::digest(merged.as_bytes()));
-        if let Err(e) = crate::events::session_events::emit_session_field_validated(
-            app_handle,
-            session_id,
-            "taskDescription",
-            &checksum,
-            merged.len(),
-        ) {
-            log::error!("Failed to emit session-field-validated event: {}", e);
+        // Route through HistoryStateSequencer for consistency
+        let sequencer = app_handle.state::<std::sync::Arc<crate::services::history_state_sequencer::HistoryStateSequencer>>().inner().clone();
+        let repo = app_handle.state::<std::sync::Arc<crate::db_utils::session_repository::SessionRepository>>().inner().clone();
+
+        match repo.get_task_history_state(session_id).await {
+            Ok(mut current_state) => {
+                let new_entry = crate::db_utils::session_repository::TaskHistoryEntry {
+                    description: merged.clone(),
+                    created_at: chrono::Utc::now().timestamp_millis(),
+                    device_id: Some("remote".to_string()),
+                    op_type: Some("remote-edit".to_string()),
+                    sequence_number: current_state.entries.len() as i64,
+                    version: current_state.version,
+                };
+
+                current_state.entries.push(new_entry);
+                current_state.current_index = (current_state.entries.len() as i64) - 1;
+
+                // Enqueue for sync; HistoryStateSequencer will persist and emit canonical events
+                let _ = sequencer.enqueue_sync_task(session_id.to_string(), current_state.clone(), current_state.version).await;
+            }
+            Err(_e) => {
+                // If state retrieval fails, fall back to existing paths if needed
+            }
         }
 
         Ok(())
@@ -370,11 +396,9 @@ impl TaskUpdateSequencer {
 
         let patch_ours = create_patch(base, ours);
 
-        match apply(base, &patch_ours) {
+        match apply(theirs, &patch_ours) {
             Ok(result) => result,
-            Err(_) => {
-                ours.to_string()
-            }
+            Err(_) => ours.to_string(),
         }
     }
 
@@ -414,6 +438,9 @@ impl TaskUpdateSequencer {
 
         // Update task description if present
         if let Some(desc) = task_desc_for_db {
+            if desc == state.last_committed_task {
+                return Ok(());
+            }
             cache.update_task_description_canonical(app_handle, session_id, desc).await?;
 
             // Emit validation checksum

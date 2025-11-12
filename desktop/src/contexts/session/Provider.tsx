@@ -421,25 +421,15 @@ export function SessionProvider({ children }: SessionProviderProps) {
   useEffect(() => {
     const unregister = registerSessionEventHandlers({
       onSessionUpdated: (session) => {
-        // Always invalidate list when any session updates
+        // Invalidate list version to keep session lists fresh
         sessionStateHook.setSessionListVersion((v) => v + 1);
 
-        // Only update current session if it matches
+        // Only update if this is the current session in view
         if (sessionStateHook.currentSession?.id === session.id) {
           if (!isUserPresent) return;
 
-          const taskDescEditorFocused = (window as any).__taskDescriptionEditorFocused;
-          const mergeInstrEditorFocused = (window as any).__mergeInstructionsEditorFocused;
-
-          sessionStateHook.setCurrentSession((prev) => {
-            if (!prev) return session;
-
-            return {
-              ...session,
-              taskDescription: taskDescEditorFocused ? prev.taskDescription : session.taskDescription,
-              mergeInstructions: mergeInstrEditorFocused ? prev.mergeInstructions : session.mergeInstructions,
-            };
-          });
+          // Trust authoritative backend state; component-level guards handle focused input UX
+          sessionStateHook.setCurrentSession(session);
           sessionStateHook.setSessionModified(false);
         }
       },

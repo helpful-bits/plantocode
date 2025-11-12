@@ -30,6 +30,7 @@ public struct TerminalComposeView: View {
     @State private var transcriptionTemperature: Double?
 
     @State private var hasAutoStarted = false
+    @State private var forceSelectionApply: Bool = false
 
     public init(jobId: String, autoStartRecording: Bool = false) {
         self.jobId = jobId
@@ -65,6 +66,7 @@ public struct TerminalComposeView: View {
                 SelectableTextView(
                     text: $composedText,
                     selectedRange: $selectedRange,
+                    forceApplySelection: $forceSelectionApply,
                     placeholder: "Compose text to send to terminal...",
                     onInteraction: {
                         saveToUndoHistory()
@@ -117,6 +119,7 @@ public struct TerminalComposeView: View {
                                 errorMessage = error
                             },
                             onTranscriptionComplete: {
+                                forceSelectionApply = true
                                 undoRedoManager.saveState(composedText)
                             }
                         )

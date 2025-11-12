@@ -1,4 +1,10 @@
 {
+  "home": {
+    "meta": {
+      "title": "KI-Implementierungsplanung für sicheres Coding",
+      "description": "KI-Implementierungsplanung für große Codebasen. Änderungen vor Ausführung prüfen. Bugs und Duplikate vermeiden. Integration mit Cursor, Copilot, Claude Code."
+    }
+  },
   "about": {
     "architecture": {
       "comment": "Entwickelt für komplexe Entwicklungs-Workflows, nicht für einfachen KI-Chat",
@@ -75,6 +81,490 @@
         "title": "Multi-Modell-Intelligenz"
       },
       "title": "Was wir gebaut haben"
+    }
+  },
+  "changelog": {
+    "meta": {
+      "title": "Changelog - Neueste Updates",
+      "description": "Neueste Funktionen und Verbesserungen in PlanToCode. Updates zur Multi‑Modell‑Planung für Claude Code, Cursor und OpenAI Codex Integration."
+    }
+  },
+  "compare": {
+    "meta": {
+      "title": "KI‑Coding‑Tools vergleichen | PlanToCode vs. Alternativen",
+      "description": "Vergleich mit Cursor, Windsurf, Claude Code, Aider u. a. Finden Sie das passende Tool für Ihren Workflow."
+    }
+  },
+  "screenshots": {
+    "title": "PlanToCode Screenshots",
+    "description": "See PlanToCode in action with real screenshots from actual workflows."
+  },
+  "downloads": {
+    "cta": {
+      "architect": "Mit einem Experten sprechen",
+      "docs": "Terminal-Dokumentation",
+      "footer": "Made in Germany • DSGVO-konform • Lokale Session-Speicherung",
+      "professional": "Professional-Optionen",
+      "title": "Bereit für den nächsten Schritt?"
+    },
+    "hero": {
+      "subtitle": "Code-Änderungen mit einem Tool planen - relevante Dateien finden, Pläne generieren und zusammenführen, Befehle in einem persistenten Terminal ausführen.",
+      "title": "PlanToCode herunterladen"
+    },
+    "macos": {
+      "professional": {
+        "description": "Vollständig von Apple notarisiert. Code-signiert. Integriertes Terminal mit CLI-Autoerkennung und Session-Persistenz.",
+        "title": "Professional Ready"
+      },
+      "requirements": {
+        "internet": "Internetverbindung für KI-Features erforderlich",
+        "os": "macOS 11.0 (Big Sur) oder neuer",
+        "processor": "Apple Silicon (M1/M2/M3/M4) Prozessor",
+        "ram": "4GB RAM mindestens (8GB empfohlen)",
+        "title": "Systemanforderungen"
+      },
+      "subtitle": "Für Heavy Coding-Agent-Nutzer",
+      "title": "macOS"
+    },
+    "meta": {
+      "description": "PlanToCode für macOS und Windows herunterladen. Kostenlose 5$ Guthaben. Planen Sie Multi-Datei-Änderungen mit KI, prüfen Sie vor der Ausführung. Keine Kreditkarte erforderlich.",
+      "title": "PlanToCode herunterladen - macOS & Windows | Kostenlose Testversion"
+    },
+    "mobile": {
+      "button": "Demnächst im App Store",
+      "connected": {
+        "description": "Melden Sie sich für die Warteliste an, um benachrichtigt zu werden, wenn die iOS-App startet. Früher Zugang für Heavy Coding-Agent-Nutzer.",
+        "title": "In Verbindung bleiben"
+      },
+      "features": {
+        "design": "Native iOS/iPadOS Design-Sprache",
+        "monitor": "Terminal-Sessions remote überwachen",
+        "review": "Implementierungspläne unterwegs überprüfen und bearbeiten",
+        "sync": "Nahtlose Synchronisation mit Desktop-Workspace",
+        "title": "Geplante Features",
+        "voice": "Sprach-Transkription für schnelle Ideenerfassung"
+      },
+      "subtitle": "Demnächst für iPhone & iPad",
+      "title": "iOS Mobile App"
+    },
+    "trust": {
+      "planning": {
+        "description": "GPT-5, Claude Sonnet 4, Gemini 2.5 Pro, o3/o4-mini, Grok 4, DeepSeek R1, Kimi K2. Council of LLMs Ansatz.",
+        "title": "Multi-Modell-Planung"
+      },
+      "pricing": {
+        "description": "Sofort loslegen. Pay-as-you-go. Keine Abonnements. Token-Transparenz für Power-User, die Kosten verfolgen.",
+        "title": "Nutzungsbasierte Preise"
+      },
+      "professional": {
+        "description": "Single-Tenant-Server. On-Prem-Deployment. Terminal-Governance. Entwickelt für Teams, die nicht Cloud-Only nutzen können.",
+        "title": "Professional-Optionen"
+      },
+      "terminal": {
+        "description": "Führen Sie claude, cursor, codex oder gemini direkt aus. Sprach-Transkription ist verfügbar, und Logs werden lokal gespeichert, sodass Sie die Arbeit ohne Kontextwechsel fortsetzen können.",
+        "title": "Integriertes Terminal"
+      },
+      "title": "Entwickelt für Heavy Coding-Agent-Nutzer"
+    },
+    "windows": {
+      "integration": {
+        "description": "PowerShell und Eingabeaufforderung unterstützt. Führen Sie claude, cursor, codex oder gemini mit Health-Monitoring und Recovery aus.",
+        "title": "Terminal-Integration"
+      },
+      "requirements": {
+        "internet": "Internetverbindung für KI-Features erforderlich",
+        "os1": "Windows 10 Version 1903 (Build 18362) oder neuer",
+        "os2": "Windows 11 unterstützt",
+        "processor": "x64 oder ARM64 Prozessor",
+        "ram": "4GB RAM mindestens (8GB empfohlen)",
+        "title": "Systemanforderungen"
+      },
+      "subtitle": "Microsoft Store - Professional Ready",
+      "title": "Windows"
+    }
+  },
+  "planMode": {
+    "capabilities": {
+      "architect": {
+        "capability": "KI-Architekt führt Pläne mit Ihrer Anleitung zusammen",
+        "details": "Leiten Sie das Zusammenführen mit Ihren architektonischen Anforderungen. KI konsolidiert komplementäre Details aus mehreren Runs in einen umfassenden Plan"
+      },
+      "execution": {
+        "capability": "Ausführung mit voller Kontrolle",
+        "details": "Plan überprüfen, Scope verifizieren, dann ausführen. Oder in den Chat Ihrer IDE einfügen."
+      },
+      "know": {
+        "capability": "Wissen Sie, was geändert wird, bevor es passiert",
+        "details": "Datei-Erkennung zeigt exakten Impact. Sehen Sie, welche Dateien jeder Plan berührt. Keine Überraschungen.",
+        "link": "Sehen Sie, wie es funktioniert"
+      },
+      "prompts": {
+        "capability": "Ein-Klick-Prompts, die funktionieren",
+        "details": "Kopier-Buttons für Ihre kampferprobten Prompts. Kein erneutes Eintippen von \"mach es type-safe\" 20 Mal mehr."
+      },
+      "title": "Was Sie tatsächlich bekommen"
+    },
+    "circumstances": {
+      "footer": "Das sind keine \"Pain Points\". Das sind Momente, wo Sie Sichtbarkeit und Kontrolle brauchen, bevor Sie sich auf einen Ansatz festlegen. Das haben wir gebaut.",
+      "items": {
+        "breaks": {
+          "moment": "Ihre Änderung bricht drei Downstream-Services, in Prod entdeckt",
+          "progress": "Datei-Erkennung mappt alle Dependencies im Voraus, erkennt Impacts früh"
+        },
+        "drift": {
+          "moment": "KI driftet von Ihren Anforderungen ab, baut, was es denkt, dass Sie wollen",
+          "progress": "KI-Architekt hält Pläne an Ihren tatsächlichen Zielen ausgerichtet, kein Drift"
+        },
+        "plans": {
+          "moment": "Ein Plan erkennt Grenzfälle, ein anderer handhabt Error-States, ein dritter fügt Types hinzu",
+          "progress": "KI-Architekt kombiniert komplementäre Einsichten in vollständige Implementierung"
+        },
+        "symptom": {
+          "moment": "KI behebt das Symptom in /components, übersieht die Ursache in /config",
+          "progress": "Leiten Sie es mit Datei-Erkennung zur richtigen Abstraktionsebene"
+        }
+      },
+      "title": "Wenn KI architektonischen Kontext braucht"
+    },
+    "cta": {
+      "book": "Architekten-Session buchen",
+      "demo": "Interaktive Demo zuerst ausprobieren",
+      "pricing": "Pay-as-you-go Credits. $5 kostenlose Promo für neue Nutzer. Keine Abonnements.",
+      "subtitle": "Treten Sie Entwicklern bei, die große Änderungen mit Klarheit, Nachverfolgbarkeit und operationeller Zuverlässigkeit shippen.",
+      "title": "Bereit, Ihren Architekten einzustellen?"
+    },
+    "faq": {
+      "q1": {
+        "answer": "PlanToCode bietet architektonische Vor-Planung **bevor** Sie Codex, Claude Code oder Cursor nutzen. Es fügt Datei-Erkennung, Multi-Modell-Synthese und Merge-Anweisungen hinzu, die die Ausführungs-Phase dieser Tools ergänzen.",
+        "question": "Wie unterscheidet sich das von Codex CLI oder Claude Code?"
+      },
+      "q2": {
+        "answer": "Ja. PlanToCode arbeitet neben Codex CLI, Claude Code, Cursor und Windsurf. Generieren Sie Pläne in PlanToCode, führen Sie dann in Ihrem bevorzugten Tool mit vollem Kontext aus.",
+        "question": "Kann ich das mit meinem bestehenden KI-Coding-Tool nutzen?"
+      },
+      "q3": {
+        "answer": "Führen Sie dieselbe Aufgabe mehrmals mit verschiedenen KI-Modellen aus. Jeder Run liefert verschiedene Implementierungs-Details. PlanToCode führt sie in einen umfassenden Plan mit Quell-Attribution zusammen.",
+        "question": "Was bedeutet Multi-Modell-Synthese?"
+      },
+      "title": "Häufig gestellte Fragen"
+    },
+    "hero": {
+      "badge": "Für Entwickler, die vor dem Ausführen überprüfen",
+      "credits": "$5 kostenlose Credits • Pay-as-you-go • Funktioniert mit jedem KI-Coding-Tool",
+      "guidance": "Sehen Sie den vollen Scope, leiten Sie es zu den richtigen Dateien, wählen Sie den Ansatz, der zu Ihrem System passt.",
+      "insight": "Die neuesten, fortschrittlichsten Modelle sind brillant im Code, blind für Architektur.",
+      "install": "PlanToCode installieren",
+      "subtitle": "Sie können sich unmöglich an jeden Webhook, Cache, Background-Job und API-Consumer erinnern, der von dieser einen Funktion abhängt. So schleichen sich Regressionen ein.",
+      "title": "Architektonische Planung für Codex CLI, Claude Code & Cursor"
+    },
+    "integrations": {
+      "claude": {
+        "description": "Claude Codes nativen Plan-Mode mit Multi-Modell-Synthese, Datei-Erkennung und Merge-Anweisungen erweitern.",
+        "link": "Claude Code Planungs-Workflow-Guide öffnen",
+        "title": "Claude Code Planungs-Workflow"
+      },
+      "codex": {
+        "description": "Jede Dependency mappen, Multi-Modell-Pläne zusammenführen, dann mit Codex-Genehmigungs-Modi für sichere Iteration ausführen.",
+        "link": "Codex CLI Planungs-Workflow-Guide öffnen",
+        "title": "Codex CLI Planungs-Workflow"
+      },
+      "cursor": {
+        "description": "Cursor Composer und Agent-Mode vollständigen architektonischen Kontext mit WSL-freundlichen Ausführungs-Guardrails geben.",
+        "link": "Cursor Planungs-Workflow-Guide öffnen",
+        "title": "Cursor Planungs-Workflow"
+      },
+      "title": "Wählen Sie Ihren CLI-Planungs-Workflow"
+    },
+    "meta": {
+      "description": "Software-Änderungen planen, bevor Sie coden. Datei-für-Datei-Implementierungs-Specs generieren, mit Ihrem Team überprüfen, dann mit voller Sichtbarkeit und Governance ausführen.",
+      "title": "Planen Sie, bevor Sie coden - Prüfbare Specs"
+    },
+    "progress": {
+      "execute": {
+        "description": "Exakten Scope vor Ausführung sehen. Integriertes Terminal oder in Ihre IDE einfügen",
+        "title": "Mit voller Sichtbarkeit ausführen"
+      },
+      "guide": {
+        "description": "Sagen Sie der KI, was Sie mögen, was Sie vermeiden sollten. Sie folgt Ihren architektonischen Entscheidungen überraschend gut",
+        "title": "Zusammenführungen mit Ihrer Expertise leiten"
+      },
+      "quote": "KI generiert den Code. Sie architektonieren die Lösung.",
+      "ship": {
+        "description": "KI-Architekt führt komplementäre Einsichten aus mehreren Plänen in vollständige Implementierung zusammen",
+        "title": "Komplexe Features mit Vertrauen shippen"
+      },
+      "title": "Der Fortschritt, den Sie tatsächlich machen"
+    },
+    "users": {
+      "cli": {
+        "quote": "Mein CLI-Agent würde Grenzfälle übersehen oder bestehende Features brechen. Jetzt erkennt der KI-Architekt Lücken und Regressionen in Plänen, bevor sie meine Codebasis treffen.",
+        "title": "CLI-Agent-Nutzer"
+      },
+      "ide": {
+        "quote": "IDE-Agents fehlt architektonischer Kontext. Jetzt plant mein KI-Architekt den richtigen Ansatz im Voraus, berücksichtigt alle System-Impacts. Dann füge ich den validierten Plan in Cursor ein.",
+        "title": "Cursor & Windsurf Nutzer"
+      },
+      "senior": {
+        "quote": "KI behob ständig Symptome, nicht Ursachen. Jetzt leite ich es zuerst zur richtigen Abstraktionsebene. Datei-Erkennung zeigt die echte Architektur, bevor Code geschrieben wird.",
+        "title": "Senior-Engineers"
+      },
+      "title": "Wer nutzt das"
+    },
+    "whyNow": {
+      "ide": {
+        "detail": "Beliebte KI-Coding-Tools sind brilliant auf Mikro-Ebene. Sie brauchen etwas, das das Makro sieht.",
+        "reason": "Jede IDE hat jetzt KI"
+      },
+      "models": {
+        "detail": "Moderne Modelle sind fähig. Aber sie kennen **Ihre** Architektur, **Ihre** Patterns, **Ihre** Constraints nicht.",
+        "reason": "KI-Modelle schreiben exzellenten Code"
+      },
+      "systems": {
+        "detail": "User-Service ändern, Mobile-App brechen. Dieses Interface aktualisieren, drei Microservices beeinflussen. KI sieht diese Verbindungen nicht.",
+        "reason": "Codebasen sind vernetzte Systeme"
+      },
+      "title": "Warum das jetzt wichtig ist"
+    },
+    "workflow": {
+      "discovery": {
+        "description": "Mehrstufiger Workflow bringt die richtigen Dateien ans Licht, bevor Sie planen",
+        "step": "Datei-Erkennung"
+      },
+      "execute": {
+        "description": "Im Terminal ausführen oder in Ihr KI-Coding-Tool einfügen",
+        "step": "Ausführen"
+      },
+      "generate": {
+        "description": "Mehrere Modelle mit verschiedenen Perspektiven und Token-Guardrails ausführen",
+        "step": "Pläne generieren"
+      },
+      "link": "Detaillierten Workflow sehen",
+      "merge": {
+        "description": "Merge-Anweisungen bereitstellen, KI konsolidiert komplementäre Details aus mehreren Runs",
+        "step": "KI führt zusammen + Sie leiten"
+      },
+      "title": "Wie es funktioniert"
+    }
+  },
+  "howItWorks": {
+    "cta": {
+      "links": {
+        "demo": "Interaktive Demo ausprobieren",
+        "docs": "Dokumentation anzeigen",
+        "planning": "Über Plan-Bearbeitung lernen"
+      },
+      "subtitle": "Von Meeting-Erfassung bis zur sicheren Ausführung - der komplette Workflow für Corporate-Teams, die KI-Coding-Agents selbstbewusst einsetzen. Anforderungen aus jeder Quelle erfassen, mit KI verfeinern, granulare Pläne generieren, mit voller Kontrolle überprüfen und sicher ausführen.",
+      "title": "Bereit, Ihren Corporate-Entwicklungs-Workflow zu transformieren?"
+    },
+    "demo": {
+      "button": "Interaktive Demo ausprobieren",
+      "description": "Sehen Sie die interaktive Demo, um den kompletten Workflow zu erleben",
+      "title": "In Aktion sehen"
+    },
+    "hero": {
+      "badge": "Professioneller KI-Planungs-Workflow",
+      "subtitle": "Von Meeting-Erfassung bis zur sicheren Ausführung - der komplette Corporate-KI-Entwicklungs-Workflow",
+      "title": "Wie es funktioniert"
+    },
+    "keyFeatures": {
+      "deploy": {
+        "description": "Nutzen Sie den mitgelieferten Rust-Proxy-Server mit Ihren eigenen API-Keys, wenn Sie Requests auf Ihrer kontrollierten Infrastruktur halten müssen.",
+        "title": "Nach Ihren Bedingungen deployen"
+      },
+      "governance": {
+        "description": "Jeden Plan vor Ausführung überprüfen. Ansätze bearbeiten, Strategien zusammenführen, genehmigen oder ablehnen. KI assistiert, Menschen kontrollieren. Entwickelt für Teams, bei denen Code-Qualität zählt.",
+        "title": "Human-in-the-Loop-Governance"
+      },
+      "sessions": {
+        "description": "Terminal-Output wird lokal gespeichert und Sessions werden beim Start wiederhergestellt. App schließen, nächste Woche wiederkommen, Debugging fortsetzen.",
+        "title": "Persistente Sessions"
+      },
+      "title": "Warum Corporate-Teams diesen Workflow wählen"
+    },
+    "meta": {
+      "description": "KI-Implementierungsplanung verhindert Chaos. Datei-Erkennung, Multi-Modell-Pläne, menschliche Überprüfung und sichere Ausführung mit jedem Coding-Agent.",
+      "title": "Wie es funktioniert - KI-Planungs-Workflow"
+    },
+    "useCases": {
+      "bugs": {
+        "description": "Screen-Captures von Bugs aufzeichnen, KI-Analyse erhalten, Debugging-Pläne generieren, mit voller Terminal-Kontrolle ausführen.",
+        "items": {
+          "persistent": "Persistentes Terminal-Log",
+          "systematic": "Systematische Debugging-Ansätze",
+          "visual": "Visueller Kontext mit Screen-Recording"
+        },
+        "title": "Komplexe Bug-Untersuchung"
+      },
+      "features": {
+        "description": "Multi-Datei-Features, die sorgfältige Planung erfordern. Generieren Sie mehrere Ansätze, führen Sie die besten Teile zusammen, bearbeiten Sie für Ihre spezifische Codebasis.",
+        "items": {
+          "api": "API-Design und Integration",
+          "cross": "Cross-Component-Feature-Implementierung",
+          "schema": "Datenbank-Schema-Änderungen"
+        },
+        "title": "Große Feature-Entwicklung"
+      },
+      "legacy": {
+        "description": "KI versteht Legacy-Patterns und technische Schulden. Generieren Sie sichere Refactoring-Pläne, Library-Upgrades und architektonische Verbesserungen.",
+        "items": {
+          "breaking": "Breaking-Change-Migrations-Pläne",
+          "cleanup": "Technische-Schulden-Cleanup",
+          "dependency": "Dependency-Upgrade-Strategien"
+        },
+        "title": "Legacy-Codebasis-Wartung"
+      },
+      "professional": {
+        "description": "Befehlsgenehmigungen, Session-Retention, Single-Tenant-Deployment. Entwickelt für Teams, bei denen ein falscher Befehl Millionen kostet.",
+        "items": {
+          "audit": "Vollständige Audit-Trails",
+          "governance": "Terminal-Governance und Genehmigungen",
+          "onprem": "On-Premise-Deployment-Optionen"
+        },
+        "title": "Professionelle Entwicklung"
+      },
+      "title": "Entwickelt für Corporate-Entwicklungsteams"
+    },
+    "workflow": {
+      "step1": {
+        "description": "Beginnen Sie mit der Erfassung von Anforderungen aus mehreren Quellen. Laden Sie Microsoft Teams Meeting-Aufzeichnungen für multimodale Analyse hoch, zeichnen Sie Screen-Präsentationen auf, um visuellen Kontext zu erfassen, oder nutzen Sie Sprach-Diktat für schnelle Ideenerfassung. Alle Eingabemethoden führen in denselben Verfeinerungs-Workflow.",
+        "meetings": {
+          "description": "Teams-Meetings hochladen. Multimodale KI analysiert Audio-Transkripte (mit Sprecher-Identifikation) und visuellen Inhalt (geteilte Bildschirme, Dokumente), um Anforderungen, Entscheidungen und Aktionspunkte zu extrahieren.",
+          "title": "Meeting-Aufzeichnungen"
+        },
+        "screen": {
+          "description": "Workflows, Bugs oder UI-Präsentationen aufzeichnen. Gemini Vision analysiert sowohl Audio-Narration als auch visuellen Inhalt, um vollständigen Kontext für Requirements-Gathering zu erfassen.",
+          "title": "Screen-Aufzeichnungen"
+        },
+        "subtitle": "Meeting-Aufzeichnungen, Screen-Captures und Sprach-Diktat",
+        "title": "Ideen & Kontext erfassen",
+        "voice": {
+          "description": "Anforderungen natürlich sprechen. OpenAI Whisper transkribiert mit intelligenter Text-Insertion und Sprecher-Identifikation für schnelle Spezifikations-Erfassung.",
+          "title": "Sprach-Diktat"
+        }
+      },
+      "step2": {
+        "description": "Verwandeln Sie rohe Meeting-Transkripte, Sprachaufnahmen und grobe Notizen in klare, implementierungsbereite Spezifikationen mithilfe zweier unterschiedlicher KI-Prompt-Typen, die zusammenarbeiten, um sowohl Klarheit als auch Vollständigkeit zu gewährleisten.",
+        "subtitle": "Zwei KI-Prompt-Typen für Klarheit und Vollständigkeit",
+        "taskRefinement": {
+          "description": "Erweitert Aufgabenbeschreibungen durch Identifikation impliziter Anforderungen, Füllung übersehener Lücken, Klärung erwarteten Verhaltens und Grenzfällen sowie Hinzufügung technischer Überlegungen für Implementierungsbereitschaft.",
+          "title": "Aufgaben-Verfeinerung"
+        },
+        "textEnhancement": {
+          "description": "Verbessert Grammatik, Satzstruktur, Klarheit und Prägnanz, während Ihre ursprüngliche Absicht, Ton und technisches Detail-Niveau beibehalten werden. Perfekt zum Polieren von Sprach-Transkripten und Meeting-Notizen.",
+          "title": "Text-Verbesserung"
+        },
+        "title": "In umsetzbare Spezifikationen verfeinern"
+      },
+      "step3": {
+        "description": "KI-Datei-Erkennung identifiziert relevante Dateien in Ihrer Codebasis. Mehrere KI-Modelle generieren Implementierungspläne mit Datei-für-Datei-Granularität - exakte Dateipfade, spezifische Zeilenbereiche und klare Operations-Typen (modify/create/delete). Diese Granularität macht Impact-Assessment kristallklar.",
+        "features": {
+          "dependencies": "Dependency-Analyse und Impact-Assessment",
+          "models": "Multi-Modell-Support (GPT-5, Claude 4, Gemini 2.5 Pro)",
+          "multiple": "Mehrfach-Plan-Generierung für Ansatz-Vergleich",
+          "operations": "Klare Operations-Typen (modify, create, delete)",
+          "paths": "Exakte Dateipfade aus Ihrer Repository-Struktur",
+          "ranges": "Spezifische Zeilenbereiche und Änderungs-Details"
+        },
+        "subtitle": "Datei-für-Datei-Pläne mit exakten Repository-Pfaden",
+        "title": "Granulare Implementierungspläne generieren"
+      },
+      "step4": {
+        "capabilities": {
+          "approve": "Zur Ausführung genehmigen oder mit Audit-Trail ablehnen",
+          "editing": "Direkte Bearbeitung aller Plan-Schritte und Details",
+          "editor": "Professioneller Monaco-Editor mit Syntax-Highlighting",
+          "merge": "Mehrere Pläne mit benutzerdefinierten Anweisungen zusammenführen",
+          "modifications": "Änderungen oder alternative Ansätze anfordern",
+          "visibility": "Vollständige Sichtbarkeit der vorgeschlagenen Änderungen"
+        },
+        "description": "Pläne öffnen sich im Monaco-Editor für umfassende Überprüfung. Team-Leads prüfen jede vorgeschlagene Änderung, bearbeiten Schritte direkt, führen mehrere Ansätze mit benutzerdefinierten Anweisungen zusammen oder lehnen Pläne vollständig ab. Keine Code-Änderungen erfolgen ohne explizite menschliche Genehmigung - dies gewährleistet Übereinstimmung mit Corporate-Anforderungen und Team-Workflows.",
+        "subtitle": "Volle Kontrolle vor Code-Änderungen",
+        "title": "Überprüfen, Bearbeiten & Genehmigen (Human-in-the-Loop)"
+      },
+      "step5": {
+        "description": "Nach Genehmigung übertragen Sie den Plan sicher an Ihren gewählten Coding-Agent (Claude Code, Cursor, Codex) oder zugewiesenen Software-Entwickler. Datei-für-Datei-Granularität verhindert Regressionen und unbeabsichtigte Änderungen - gewährleistet sichere Ausführung. Integriertes Terminal mit persistenten Sessions ermöglicht sofortige Ausführung und Debugging.",
+        "subtitle": "Sichere Übergabe an Entwickler oder Coding-Agents",
+        "title": "Mit Vertrauen ausführen",
+        "tools": {
+          "audit": "Vollständiger Audit-Trail der Ausführung",
+          "claude": "Claude Code CLI mit Plan-Mode-Support",
+          "codex": "OpenAI Codex CLI Ausführung",
+          "cursor": "Cursor CLI Integration",
+          "sessions": "Persistente Terminal-Sessions mit Auto-Recovery",
+          "terminal": "Integriertes Terminal mit Sprach-Transkription"
+        }
+      },
+      "title": "Der komplette Workflow"
+    }
+  },
+  "all-pages": {
+    "meta": {
+      "title": "Alle Seiten - pSEO‑Überblick",
+      "description": "Interne Übersichtsseite für alle programmatischen SEO‑Seiten"
+    }
+  },
+  "workflows": {
+    "hub": {
+      "badge": "KI-Entwicklungs-Workflows",
+      "card": {
+        "solves": "Löst:",
+        "viewLink": "Workflow ansehen"
+      },
+      "cta": {
+        "downloadLink": "PlanToCode herunterladen",
+        "subtitle": "Beginnen Sie mit Datei-Erkennung, generieren Sie umfassende Pläne und führen Sie mit Vertrauen aus.",
+        "title": "Bereit, Ihren Entwicklungs-Workflow zu transformieren?"
+      },
+      "description": "Entdecken Sie bewährte Workflows für komplexe Entwicklungsaufgaben. Jeder Workflow kombiniert Datei-Erkennung, Multi-Modell-Planung und integrierte Terminal-Ausführung, um echte Engineering-Herausforderungen zu lösen.",
+      "meta": {
+        "description": "KI-Entwicklungs-Workflows für komplexe Aufgaben. Integration mit Claude Code, Cursor, Codex für Refactorings, Bug-Triage und Migrationen.",
+        "title": "KI-Coding-Workflows - PlanToCode-Integrationsmuster"
+      },
+      "title": "KI-Powered Entwicklungs-Workflows",
+      "toolCategories": {
+        "claudeCode": "Claude Code Workflows",
+        "codexCli": "Codex CLI Workflows",
+        "cursor": "Cursor Workflows",
+        "general": "Allgemeine Workflows"
+      }
+    }
+  },
+  "blog": {
+    "hub": {
+      "meta": {
+        "title": "Blog - Einblicke in KI‑Code‑Planung | PlanToCode",
+        "description": "Einblicke in KI‑gestützte Code‑Planung und Entwicklungs‑Workflows."
+      }
+    },
+    "ai-code-planning-best-practices": {
+      "meta": {
+        "title": "Best Practices der KI‑Code‑Planung 2025 – Workflow‑Guide",
+        "description": "Bewährte Verfahren: Multi‑Modell‑Planung, Abhängigkeits‑Mapping, Review‑Checklisten, Team‑Workflows für Produktionscodebasen."
+      }
+    },
+    "github-copilot-alternatives-2025": {
+      "meta": {
+        "title": "GitHub Copilot Alternativen 2025 | Beste Optionen",
+        "description": "Umfassender Vergleich: Cursor, Codeium, Tabnine, PlanToCode, Aider. Preise, Funktionen, beste Wahl fürs Team."
+      }
+    },
+    "best-ai-coding-assistants-2025": {
+      "meta": {
+        "title": "Beste KI-Coding-Assistenten 2025 - Vollständiger Leitfaden",
+        "description": "Umfassender Vergleich von 15+ KI-Coding-Tools einschließlich Cursor, GitHub Copilot, Windsurf und PlanToCode. Erfahren Sie, welche Tools bei Code-Generierung vs. Implementierungsplanung glänzen."
+      }
+    },
+    "ai-pair-programming-vs-ai-planning": {
+      "meta": {
+        "title": "KI-Pair-Programming vs. Planung - Team-Leitfaden",
+        "description": "Vergleichen Sie KI-Pair-Programming (Copilot, Cursor) mit KI-Planung (PlanToCode). Wann welcher Ansatz für Produktions-Codebasen, Teams und komplexe Refactorings zu verwenden ist."
+      }
+    },
+    "what-is-ai-code-planning": {
+      "meta": {
+        "title": "Was ist KI-Code-Planung? Entwickler-Leitfaden",
+        "description": "Was KI-Code-Planung ist, warum sie für große Codebasen wichtig ist, wie planungsorientierte Entwicklung KI-Coding-Chaos verhindert."
+      }
     }
   },
   "comparisons": {
@@ -452,409 +942,11 @@
       "screenshots": "Echte Screenshots ansehen",
       "subtitle": "Sehen Sie, wie PlanToCode Code-Änderungen plant und ausführt.",
       "title": "Interaktive Demo",
-      "video": "Kurze Demo ansehen"
+      "video": "Demo ansehen"
     },
     "meta": {
       "description": "Sehen Sie, wie PlanToCode Code-Änderungen plant und ausführt.",
       "title": "Interaktive Demo"
-    }
-  },
-  "downloads": {
-    "cta": {
-      "architect": "Mit einem Architekten sprechen",
-      "docs": "Terminal-Dokumentation",
-      "footer": "Made in Germany • DSGVO-konform • Lokale Session-Speicherung",
-      "professional": "Professional-Optionen",
-      "title": "Bereit für den nächsten Schritt?"
-    },
-    "hero": {
-      "subtitle": "Code-Änderungen mit einem Tool planen - relevante Dateien finden, Pläne generieren und zusammenführen, Befehle in einem persistenten Terminal ausführen.",
-      "title": "PlanToCode herunterladen"
-    },
-    "macos": {
-      "professional": {
-        "description": "Vollständig von Apple notarisiert. Code-signiert. Integriertes Terminal mit CLI-Autoerkennung und Session-Persistenz.",
-        "title": "Professional Ready"
-      },
-      "requirements": {
-        "internet": "Internetverbindung für KI-Features erforderlich",
-        "os": "macOS 11.0 (Big Sur) oder neuer",
-        "processor": "Apple Silicon (M1/M2/M3/M4) Prozessor",
-        "ram": "4GB RAM mindestens (8GB empfohlen)",
-        "title": "Systemanforderungen"
-      },
-      "subtitle": "Für Heavy Coding-Agent-Nutzer",
-      "title": "macOS"
-    },
-    "meta": {
-      "description": "PlanToCode für macOS und Windows herunterladen. Kostenlose 5$ Guthaben. Planen Sie Multi-Datei-Änderungen mit KI, prüfen Sie vor der Ausführung. Keine Kreditkarte erforderlich.",
-      "title": "PlanToCode herunterladen - macOS & Windows | Kostenlose Testversion"
-    },
-    "mobile": {
-      "button": "Demnächst im App Store",
-      "connected": {
-        "description": "Melden Sie sich für die Warteliste an, um benachrichtigt zu werden, wenn die iOS-App startet. Früher Zugang für Heavy Coding-Agent-Nutzer.",
-        "title": "In Verbindung bleiben"
-      },
-      "features": {
-        "design": "Native iOS/iPadOS Design-Sprache",
-        "monitor": "Terminal-Sessions remote überwachen",
-        "review": "Implementierungspläne unterwegs überprüfen und bearbeiten",
-        "sync": "Nahtlose Synchronisation mit Desktop-Workspace",
-        "title": "Geplante Features",
-        "voice": "Sprach-Transkription für schnelle Ideenerfassung"
-      },
-      "subtitle": "Demnächst für iPhone & iPad",
-      "title": "iOS Mobile App"
-    },
-    "trust": {
-      "planning": {
-        "description": "GPT-5, Claude Sonnet 4, Gemini 2.5 Pro, o3/o4-mini, Grok 4, DeepSeek R1, Kimi K2. Council of LLMs Ansatz.",
-        "title": "Multi-Modell-Planung"
-      },
-      "pricing": {
-        "description": "Sofort loslegen. Pay-as-you-go. Keine Abonnements. Token-Transparenz für Power-User, die Kosten verfolgen.",
-        "title": "Nutzungsbasierte Preise"
-      },
-      "professional": {
-        "description": "Single-Tenant-Server. On-Prem-Deployment. Terminal-Governance. Entwickelt für Teams, die nicht Cloud-Only nutzen können.",
-        "title": "Professional-Optionen"
-      },
-      "terminal": {
-        "description": "Führen Sie claude, cursor, codex oder gemini direkt aus. Sprach-Transkription ist verfügbar, und Logs werden lokal gespeichert, sodass Sie die Arbeit ohne Kontextwechsel fortsetzen können.",
-        "title": "Integriertes Terminal"
-      },
-      "title": "Entwickelt für Heavy Coding-Agent-Nutzer"
-    },
-    "windows": {
-      "integration": {
-        "description": "PowerShell und Eingabeaufforderung unterstützt. Führen Sie claude, cursor, codex oder gemini mit Health-Monitoring und Recovery aus.",
-        "title": "Terminal-Integration"
-      },
-      "requirements": {
-        "internet": "Internetverbindung für KI-Features erforderlich",
-        "os1": "Windows 10 Version 1903 (Build 18362) oder neuer",
-        "os2": "Windows 11 unterstützt",
-        "processor": "x64 oder ARM64 Prozessor",
-        "ram": "4GB RAM mindestens (8GB empfohlen)",
-        "title": "Systemanforderungen"
-      },
-      "subtitle": "Microsoft Store - Professional Ready",
-      "title": "Windows"
-    }
-  },
-  "howItWorks": {
-    "cta": {
-      "links": {
-        "demo": "Interaktive Demo ausprobieren",
-        "docs": "Dokumentation anzeigen",
-        "planning": "Über Plan-Bearbeitung lernen"
-      },
-      "subtitle": "Von Meeting-Erfassung bis zur sicheren Ausführung - der komplette Workflow für Corporate-Teams, die KI-Coding-Agents selbstbewusst einsetzen. Anforderungen aus jeder Quelle erfassen, mit KI verfeinern, granulare Pläne generieren, mit voller Kontrolle überprüfen und sicher ausführen.",
-      "title": "Bereit, Ihren Corporate-Entwicklungs-Workflow zu transformieren?"
-    },
-    "demo": {
-      "button": "Interaktive Demo ausprobieren",
-      "description": "Sehen Sie die interaktive Demo, um den kompletten Workflow zu erleben",
-      "title": "In Aktion sehen"
-    },
-    "hero": {
-      "badge": "Professioneller KI-Planungs-Workflow",
-      "subtitle": "Von Meeting-Erfassung bis zur sicheren Ausführung - der komplette Corporate-KI-Entwicklungs-Workflow",
-      "title": "Wie es funktioniert"
-    },
-    "keyFeatures": {
-      "deploy": {
-        "description": "Nutzen Sie den mitgelieferten Rust-Proxy-Server mit Ihren eigenen API-Keys, wenn Sie Requests auf Ihrer kontrollierten Infrastruktur halten müssen.",
-        "title": "Nach Ihren Bedingungen deployen"
-      },
-      "governance": {
-        "description": "Jeden Plan vor Ausführung überprüfen. Ansätze bearbeiten, Strategien zusammenführen, genehmigen oder ablehnen. KI assistiert, Menschen kontrollieren. Entwickelt für Teams, bei denen Code-Qualität zählt.",
-        "title": "Human-in-the-Loop-Governance"
-      },
-      "sessions": {
-        "description": "Terminal-Output wird lokal gespeichert und Sessions werden beim Start wiederhergestellt. App schließen, nächste Woche wiederkommen, Debugging fortsetzen.",
-        "title": "Persistente Sessions"
-      },
-      "title": "Warum Corporate-Teams diesen Workflow wählen"
-    },
-    "meta": {
-      "description": "KI-Implementierungsplanung verhindert Chaos. Datei-Erkennung, Multi-Modell-Pläne, menschliche Überprüfung und sichere Ausführung mit jedem Coding-Agent.",
-      "title": "Wie es funktioniert - KI-Planungs-Workflow"
-    },
-    "useCases": {
-      "bugs": {
-        "description": "Screen-Captures von Bugs aufzeichnen, KI-Analyse erhalten, Debugging-Pläne generieren, mit voller Terminal-Kontrolle ausführen.",
-        "items": {
-          "persistent": "Persistentes Terminal-Log",
-          "systematic": "Systematische Debugging-Ansätze",
-          "visual": "Visueller Kontext mit Screen-Recording"
-        },
-        "title": "Komplexe Bug-Untersuchung"
-      },
-      "features": {
-        "description": "Multi-Datei-Features, die sorgfältige Planung erfordern. Generieren Sie mehrere Ansätze, führen Sie die besten Teile zusammen, bearbeiten Sie für Ihre spezifische Codebasis.",
-        "items": {
-          "api": "API-Design und Integration",
-          "cross": "Cross-Component-Feature-Implementierung",
-          "schema": "Datenbank-Schema-Änderungen"
-        },
-        "title": "Große Feature-Entwicklung"
-      },
-      "legacy": {
-        "description": "KI versteht Legacy-Patterns und technische Schulden. Generieren Sie sichere Refactoring-Pläne, Library-Upgrades und architektonische Verbesserungen.",
-        "items": {
-          "breaking": "Breaking-Change-Migrations-Pläne",
-          "cleanup": "Technische-Schulden-Cleanup",
-          "dependency": "Dependency-Upgrade-Strategien"
-        },
-        "title": "Legacy-Codebasis-Wartung"
-      },
-      "professional": {
-        "description": "Befehlsgenehmigungen, Session-Retention, Single-Tenant-Deployment. Entwickelt für Teams, bei denen ein falscher Befehl Millionen kostet.",
-        "items": {
-          "audit": "Vollständige Audit-Trails",
-          "governance": "Terminal-Governance und Genehmigungen",
-          "onprem": "On-Premise-Deployment-Optionen"
-        },
-        "title": "Professionelle Entwicklung"
-      },
-      "title": "Entwickelt für Corporate-Entwicklungsteams"
-    },
-    "workflow": {
-      "step1": {
-        "description": "Beginnen Sie mit der Erfassung von Anforderungen aus mehreren Quellen. Laden Sie Microsoft Teams Meeting-Aufzeichnungen für multimodale Analyse hoch, zeichnen Sie Screen-Präsentationen auf, um visuellen Kontext zu erfassen, oder nutzen Sie Sprach-Diktat für schnelle Ideenerfassung. Alle Eingabemethoden führen in denselben Verfeinerungs-Workflow.",
-        "meetings": {
-          "description": "Teams-Meetings hochladen. Multimodale KI analysiert Audio-Transkripte (mit Sprecher-Identifikation) und visuellen Inhalt (geteilte Bildschirme, Dokumente), um Anforderungen, Entscheidungen und Aktionspunkte zu extrahieren.",
-          "title": "Meeting-Aufzeichnungen"
-        },
-        "screen": {
-          "description": "Workflows, Bugs oder UI-Präsentationen aufzeichnen. Gemini Vision analysiert sowohl Audio-Narration als auch visuellen Inhalt, um vollständigen Kontext für Requirements-Gathering zu erfassen.",
-          "title": "Screen-Aufzeichnungen"
-        },
-        "subtitle": "Meeting-Aufzeichnungen, Screen-Captures und Sprach-Diktat",
-        "title": "Ideen & Kontext erfassen",
-        "voice": {
-          "description": "Anforderungen natürlich sprechen. OpenAI Whisper transkribiert mit intelligenter Text-Insertion und Sprecher-Identifikation für schnelle Spezifikations-Erfassung.",
-          "title": "Sprach-Diktat"
-        }
-      },
-      "step2": {
-        "description": "Verwandeln Sie rohe Meeting-Transkripte, Sprachaufnahmen und grobe Notizen in klare, implementierungsbereite Spezifikationen mithilfe zweier unterschiedlicher KI-Prompt-Typen, die zusammenarbeiten, um sowohl Klarheit als auch Vollständigkeit zu gewährleisten.",
-        "subtitle": "Zwei KI-Prompt-Typen für Klarheit und Vollständigkeit",
-        "taskRefinement": {
-          "description": "Erweitert Aufgabenbeschreibungen durch Identifikation impliziter Anforderungen, Füllung übersehener Lücken, Klärung erwarteten Verhaltens und Grenzfällen sowie Hinzufügung technischer Überlegungen für Implementierungsbereitschaft.",
-          "title": "Aufgaben-Verfeinerung"
-        },
-        "textEnhancement": {
-          "description": "Verbessert Grammatik, Satzstruktur, Klarheit und Prägnanz, während Ihre ursprüngliche Absicht, Ton und technisches Detail-Niveau beibehalten werden. Perfekt zum Polieren von Sprach-Transkripten und Meeting-Notizen.",
-          "title": "Text-Verbesserung"
-        },
-        "title": "In umsetzbare Spezifikationen verfeinern"
-      },
-      "step3": {
-        "description": "KI-Datei-Erkennung identifiziert relevante Dateien in Ihrer Codebasis. Mehrere KI-Modelle generieren Implementierungspläne mit Datei-für-Datei-Granularität - exakte Dateipfade, spezifische Zeilenbereiche und klare Operations-Typen (modify/create/delete). Diese Granularität macht Impact-Assessment kristallklar.",
-        "features": {
-          "dependencies": "Dependency-Analyse und Impact-Assessment",
-          "models": "Multi-Modell-Support (GPT-5, Claude 4, Gemini 2.5 Pro)",
-          "multiple": "Mehrfach-Plan-Generierung für Ansatz-Vergleich",
-          "operations": "Klare Operations-Typen (modify, create, delete)",
-          "paths": "Exakte Dateipfade aus Ihrer Repository-Struktur",
-          "ranges": "Spezifische Zeilenbereiche und Änderungs-Details"
-        },
-        "subtitle": "Datei-für-Datei-Pläne mit exakten Repository-Pfaden",
-        "title": "Granulare Implementierungspläne generieren"
-      },
-      "step4": {
-        "capabilities": {
-          "approve": "Zur Ausführung genehmigen oder mit Audit-Trail ablehnen",
-          "editing": "Direkte Bearbeitung aller Plan-Schritte und Details",
-          "editor": "Professioneller Monaco-Editor mit Syntax-Highlighting",
-          "merge": "Mehrere Pläne mit benutzerdefinierten Anweisungen zusammenführen",
-          "modifications": "Änderungen oder alternative Ansätze anfordern",
-          "visibility": "Vollständige Sichtbarkeit der vorgeschlagenen Änderungen"
-        },
-        "description": "Pläne öffnen sich im Monaco-Editor für umfassende Überprüfung. Team-Leads prüfen jede vorgeschlagene Änderung, bearbeiten Schritte direkt, führen mehrere Ansätze mit benutzerdefinierten Anweisungen zusammen oder lehnen Pläne vollständig ab. Keine Code-Änderungen erfolgen ohne explizite menschliche Genehmigung - dies gewährleistet Übereinstimmung mit Corporate-Anforderungen und Team-Workflows.",
-        "subtitle": "Volle Kontrolle vor Code-Änderungen",
-        "title": "Überprüfen, Bearbeiten & Genehmigen (Human-in-the-Loop)"
-      },
-      "step5": {
-        "description": "Nach Genehmigung übertragen Sie den Plan sicher an Ihren gewählten Coding-Agent (Claude Code, Cursor, Codex) oder zugewiesenen Software-Entwickler. Datei-für-Datei-Granularität verhindert Regressionen und unbeabsichtigte Änderungen - gewährleistet sichere Ausführung. Integriertes Terminal mit persistenten Sessions ermöglicht sofortige Ausführung und Debugging.",
-        "subtitle": "Sichere Übergabe an Entwickler oder Coding-Agents",
-        "title": "Mit Vertrauen ausführen",
-        "tools": {
-          "audit": "Vollständiger Audit-Trail der Ausführung",
-          "claude": "Claude Code CLI mit Plan-Mode-Support",
-          "codex": "OpenAI Codex CLI Ausführung",
-          "cursor": "Cursor CLI Integration",
-          "sessions": "Persistente Terminal-Sessions mit Auto-Recovery",
-          "terminal": "Integriertes Terminal mit Sprach-Transkription"
-        }
-      },
-      "title": "Der komplette Workflow"
-    }
-  },
-  "planMode": {
-    "capabilities": {
-      "architect": {
-        "capability": "KI-Architekt führt Pläne mit Ihrer Anleitung zusammen",
-        "details": "Leiten Sie das Zusammenführen mit Ihren architektonischen Anforderungen. KI konsolidiert komplementäre Details aus mehreren Runs in einen umfassenden Plan"
-      },
-      "execution": {
-        "capability": "Ausführung mit voller Kontrolle",
-        "details": "Plan überprüfen, Scope verifizieren, dann ausführen. Oder in den Chat Ihrer IDE einfügen."
-      },
-      "know": {
-        "capability": "Wissen Sie, was geändert wird, bevor es passiert",
-        "details": "Datei-Erkennung zeigt exakten Impact. Sehen Sie, welche Dateien jeder Plan berührt. Keine Überraschungen.",
-        "link": "Sehen Sie, wie es funktioniert"
-      },
-      "prompts": {
-        "capability": "Ein-Klick-Prompts, die funktionieren",
-        "details": "Kopier-Buttons für Ihre kampferprobten Prompts. Kein erneutes Eintippen von \"mach es type-safe\" 20 Mal mehr."
-      },
-      "title": "Was Sie tatsächlich bekommen"
-    },
-    "circumstances": {
-      "footer": "Das sind keine \"Pain Points\". Das sind Momente, wo Sie Sichtbarkeit und Kontrolle brauchen, bevor Sie sich auf einen Ansatz festlegen. Das haben wir gebaut.",
-      "items": {
-        "breaks": {
-          "moment": "Ihre Änderung bricht drei Downstream-Services, in Prod entdeckt",
-          "progress": "Datei-Erkennung mappt alle Dependencies im Voraus, erkennt Impacts früh"
-        },
-        "drift": {
-          "moment": "KI driftet von Ihren Anforderungen ab, baut, was es denkt, dass Sie wollen",
-          "progress": "KI-Architekt hält Pläne an Ihren tatsächlichen Zielen ausgerichtet, kein Drift"
-        },
-        "plans": {
-          "moment": "Ein Plan erkennt Grenzfälle, ein anderer handhabt Error-States, ein dritter fügt Types hinzu",
-          "progress": "KI-Architekt kombiniert komplementäre Einsichten in vollständige Implementierung"
-        },
-        "symptom": {
-          "moment": "KI behebt das Symptom in /components, übersieht die Ursache in /config",
-          "progress": "Leiten Sie es mit Datei-Erkennung zur richtigen Abstraktionsebene"
-        }
-      },
-      "title": "Wenn KI architektonischen Kontext braucht"
-    },
-    "cta": {
-      "book": "Architekten-Session buchen",
-      "demo": "Interaktive Demo zuerst ausprobieren",
-      "pricing": "Pay-as-you-go Credits. $5 kostenlose Promo für neue Nutzer. Keine Abonnements.",
-      "subtitle": "Treten Sie Entwicklern bei, die große Änderungen mit Klarheit, Nachverfolgbarkeit und operationeller Zuverlässigkeit shippen.",
-      "title": "Bereit, Ihren Architekten einzustellen?"
-    },
-    "faq": {
-      "q1": {
-        "answer": "PlanToCode bietet architektonische Vor-Planung **bevor** Sie Codex, Claude Code oder Cursor nutzen. Es fügt Datei-Erkennung, Multi-Modell-Synthese und Merge-Anweisungen hinzu, die die Ausführungs-Phase dieser Tools ergänzen.",
-        "question": "Wie unterscheidet sich das von Codex CLI oder Claude Code?"
-      },
-      "q2": {
-        "answer": "Ja. PlanToCode arbeitet neben Codex CLI, Claude Code, Cursor und Windsurf. Generieren Sie Pläne in PlanToCode, führen Sie dann in Ihrem bevorzugten Tool mit vollem Kontext aus.",
-        "question": "Kann ich das mit meinem bestehenden KI-Coding-Tool nutzen?"
-      },
-      "q3": {
-        "answer": "Führen Sie dieselbe Aufgabe mehrmals mit verschiedenen KI-Modellen aus. Jeder Run liefert verschiedene Implementierungs-Details. PlanToCode führt sie in einen umfassenden Plan mit Quell-Attribution zusammen.",
-        "question": "Was bedeutet Multi-Modell-Synthese?"
-      },
-      "title": "Häufig gestellte Fragen"
-    },
-    "hero": {
-      "badge": "Für Entwickler, die vor dem Ausführen überprüfen",
-      "credits": "$5 kostenlose Credits • Pay-as-you-go • Funktioniert mit jedem KI-Coding-Tool",
-      "guidance": "Sehen Sie den vollen Scope, leiten Sie es zu den richtigen Dateien, wählen Sie den Ansatz, der zu Ihrem System passt.",
-      "insight": "Die neuesten, fortschrittlichsten Modelle sind brillant im Code, blind für Architektur.",
-      "install": "PlanToCode installieren",
-      "subtitle": "Sie können sich unmöglich an jeden Webhook, Cache, Background-Job und API-Consumer erinnern, der von dieser einen Funktion abhängt. So schleichen sich Regressionen ein.",
-      "title": "Architektonische Planung für Codex CLI, Claude Code & Cursor"
-    },
-    "integrations": {
-      "claude": {
-        "description": "Claude Codes nativen Plan-Mode mit Multi-Modell-Synthese, Datei-Erkennung und Merge-Anweisungen erweitern.",
-        "link": "Claude Code Planungs-Workflow-Guide öffnen",
-        "title": "Claude Code Planungs-Workflow"
-      },
-      "codex": {
-        "description": "Jede Dependency mappen, Multi-Modell-Pläne zusammenführen, dann mit Codex-Genehmigungs-Modi für sichere Iteration ausführen.",
-        "link": "Codex CLI Planungs-Workflow-Guide öffnen",
-        "title": "Codex CLI Planungs-Workflow"
-      },
-      "cursor": {
-        "description": "Cursor Composer und Agent-Mode vollständigen architektonischen Kontext mit WSL-freundlichen Ausführungs-Guardrails geben.",
-        "link": "Cursor Planungs-Workflow-Guide öffnen",
-        "title": "Cursor Planungs-Workflow"
-      },
-      "title": "Wählen Sie Ihren CLI-Planungs-Workflow"
-    },
-    "meta": {
-      "description": "Software-Änderungen planen, bevor Sie coden. Datei-für-Datei-Implementierungs-Specs generieren, mit Ihrem Team überprüfen, dann mit voller Sichtbarkeit und Governance ausführen.",
-      "title": "Planen Sie, bevor Sie coden - Prüfbare Specs"
-    },
-    "progress": {
-      "execute": {
-        "description": "Exakten Scope vor Ausführung sehen. Integriertes Terminal oder in Ihre IDE einfügen",
-        "title": "Mit voller Sichtbarkeit ausführen"
-      },
-      "guide": {
-        "description": "Sagen Sie der KI, was Sie mögen, was Sie vermeiden sollten. Sie folgt Ihren architektonischen Entscheidungen überraschend gut",
-        "title": "Zusammenführungen mit Ihrer Expertise leiten"
-      },
-      "quote": "KI generiert den Code. Sie architektonieren die Lösung.",
-      "ship": {
-        "description": "KI-Architekt führt komplementäre Einsichten aus mehreren Plänen in vollständige Implementierung zusammen",
-        "title": "Komplexe Features mit Vertrauen shippen"
-      },
-      "title": "Der Fortschritt, den Sie tatsächlich machen"
-    },
-    "users": {
-      "cli": {
-        "quote": "Mein CLI-Agent würde Grenzfälle übersehen oder bestehende Features brechen. Jetzt erkennt der KI-Architekt Lücken und Regressionen in Plänen, bevor sie meine Codebasis treffen.",
-        "title": "CLI-Agent-Nutzer"
-      },
-      "ide": {
-        "quote": "IDE-Agents fehlt architektonischer Kontext. Jetzt plant mein KI-Architekt den richtigen Ansatz im Voraus, berücksichtigt alle System-Impacts. Dann füge ich den validierten Plan in Cursor ein.",
-        "title": "Cursor & Windsurf Nutzer"
-      },
-      "senior": {
-        "quote": "KI behob ständig Symptome, nicht Ursachen. Jetzt leite ich es zuerst zur richtigen Abstraktionsebene. Datei-Erkennung zeigt die echte Architektur, bevor Code geschrieben wird.",
-        "title": "Senior-Engineers"
-      },
-      "title": "Wer nutzt das"
-    },
-    "whyNow": {
-      "ide": {
-        "detail": "Beliebte KI-Coding-Tools sind brilliant auf Mikro-Ebene. Sie brauchen etwas, das das Makro sieht.",
-        "reason": "Jede IDE hat jetzt KI"
-      },
-      "models": {
-        "detail": "Moderne Modelle sind fähig. Aber sie kennen **Ihre** Architektur, **Ihre** Patterns, **Ihre** Constraints nicht.",
-        "reason": "KI-Modelle schreiben exzellenten Code"
-      },
-      "systems": {
-        "detail": "User-Service ändern, Mobile-App brechen. Dieses Interface aktualisieren, drei Microservices beeinflussen. KI sieht diese Verbindungen nicht.",
-        "reason": "Codebasen sind vernetzte Systeme"
-      },
-      "title": "Warum das jetzt wichtig ist"
-    },
-    "workflow": {
-      "discovery": {
-        "description": "Mehrstufiger Workflow bringt die richtigen Dateien ans Licht, bevor Sie planen",
-        "step": "Datei-Erkennung"
-      },
-      "execute": {
-        "description": "Im Terminal ausführen oder in Ihr KI-Coding-Tool einfügen",
-        "step": "Ausführen"
-      },
-      "generate": {
-        "description": "Mehrere Modelle mit verschiedenen Perspektiven und Token-Guardrails ausführen",
-        "step": "Pläne generieren"
-      },
-      "link": "Detaillierten Workflow sehen",
-      "merge": {
-        "description": "Merge-Anweisungen bereitstellen, KI konsolidiert komplementäre Details aus mehreren Runs",
-        "step": "KI führt zusammen + Sie leiten"
-      },
-      "title": "Wie es funktioniert"
     }
   },
   "schedule": {
@@ -909,32 +1001,6 @@
       "help": "Hilfe-Center",
       "roadmap": "Roadmap",
       "title": "FeatureBase-Ressourcen"
-    }
-  },
-  "workflows": {
-    "hub": {
-      "badge": "KI-Entwicklungs-Workflows",
-      "card": {
-        "solves": "Löst:",
-        "viewLink": "Workflow ansehen"
-      },
-      "cta": {
-        "downloadLink": "PlanToCode herunterladen",
-        "subtitle": "Beginnen Sie mit Datei-Erkennung, generieren Sie umfassende Pläne und führen Sie mit Vertrauen aus.",
-        "title": "Bereit, Ihren Entwicklungs-Workflow zu transformieren?"
-      },
-      "description": "Entdecken Sie bewährte Workflows für komplexe Entwicklungsaufgaben. Jeder Workflow kombiniert Datei-Erkennung, Multi-Modell-Planung und integrierte Terminal-Ausführung, um echte Engineering-Herausforderungen zu lösen.",
-      "meta": {
-        "description": "KI-Entwicklungs-Workflows für komplexe Aufgaben. Integration mit Claude Code, Cursor, Codex für Refactorings, Bug-Triage und Migrationen.",
-        "title": "KI-Coding-Workflows - PlanToCode-Integrationsmuster"
-      },
-      "title": "KI-Powered Entwicklungs-Workflows",
-      "toolCategories": {
-        "claudeCode": "Claude Code Workflows",
-        "codexCli": "Codex CLI Workflows",
-        "cursor": "Cursor Workflows",
-        "general": "Allgemeine Workflows"
-      }
     }
   }
 }

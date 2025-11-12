@@ -89,7 +89,11 @@ pub const TOKEN_KEY: &str = "com.plantocode.auth.token.v1";
 // Storage mode configuration
 // Development: Use in-memory session storage. Production: Use OS keyring.
 // Note: When true, onboarding keychain flow will be skipped
-pub const USE_SESSION_STORAGE: bool = cfg!(debug_assertions);
+#[cfg(debug_assertions)]
+pub const USE_SESSION_STORAGE: bool = true;
+
+#[cfg(not(debug_assertions))]
+pub const USE_SESSION_STORAGE: bool = false;
 
 // Directory names
 pub const IMPLEMENTATION_PLANS_DIR_NAME: &str = "implementation_plans";

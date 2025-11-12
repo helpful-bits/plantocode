@@ -412,15 +412,30 @@ public class ServerRelayClient: NSObject, ObservableObject {
             }
 
             // Build canonical envelope
-            let payload: [String: Any] = [
-                "targetDeviceId": targetDeviceId,
-                "messageType": "rpc",
-                "payload": [
-                    "method": req.method,
-                    "params": req.params.mapValues { $0.jsonValue },
-                    "id": req.id
-                ]
+            let rpcPayload: [String: Any] = [
+                "method": req.method,
+                "params": req.params.mapValues { $0.jsonValue },
+                "id": req.id
             ]
+
+            // Build payload based on strictRelayEnvelope flag
+            let payload: [String: Any]
+            if Config.Flags.strictRelayEnvelope {
+                // Strict envelope: {"type":"relay","payload":{"targetDeviceId":"...","userId":"...","request":{...}}}
+                // For now, we'll use the authenticated user's ID (if available)
+                payload = [
+                    "targetDeviceId": targetDeviceId,
+                    "userId": "", // Note: userId may need to be obtained from AuthService
+                    "request": rpcPayload
+                ]
+            } else {
+                // Legacy envelope format
+                payload = [
+                    "targetDeviceId": targetDeviceId,
+                    "messageType": "rpc",
+                    "payload": rpcPayload
+                ]
+            }
 
             // 5. Validate encodability
             Task { [weak self] in
@@ -764,6 +779,10 @@ public class ServerRelayClient: NSObject, ObservableObject {
                 handleRelayEventMessage(json)
             case "error":
                 handleErrorMessage(json)
+            case "device-status":
+                if let json = json as? [String: Any] {
+                    handleDeviceStatusMessage(json)
+                }
             default:
                 logger.debug("Received unknown message type: \(messageType)")
             }
@@ -1105,8 +1124,11 @@ public class ServerRelayClient: NSObject, ObservableObject {
         }
     }
 
-
-
+    private func handleDeviceStatusMessage(_ json: [String: Any]) {
+        let payload = (json["payload"] as? [String: Any]) ?? [:]
+        let event = RelayEvent(eventType: "device-status", data: payload, timestamp: Date(), sourceDeviceId: nil)
+        eventPublisher.send(event)
+    }
 
     private func handleConnectionError(_ error: Error) {
         logger.error("Connection error: \(error)")

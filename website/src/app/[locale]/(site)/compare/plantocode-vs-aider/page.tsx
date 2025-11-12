@@ -7,42 +7,23 @@ import type { Metadata } from 'next';
 import { locales } from '@/i18n/config';
 import type { Locale } from '@/lib/i18n';
 
-export const metadata: Metadata = {
-  title: 'vsAider - AI Development Tool Comparison',
-  description: 'Compare PlanToCode\'splan-first approach with Aider\'s agent-first CLI. Planning workflow, file discovery, session persistence, multi-model support.',
-  keywords: [
-    'aider',
-    'plantocode vs aider',
-    'aider alternative',
-    'ai code planning',
-    'implementation planning',
-  ],
-  robots: {
-    index: true,
-    follow: true,
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/compare/plantocode-vs-aider',
-    languages: {
-      'en-US': 'https://www.plantocode.com/compare/plantocode-vs-aider',
-      'en': 'https://www.plantocode.com/compare/plantocode-vs-aider',
-      'x-default': 'https://www.plantocode.com/compare/plantocode-vs-aider',
-    },
-  },
-  openGraph: {
+import { generatePageMetadata } from '@/content/metadata';
+
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+
+  return generatePageMetadata({
+    locale,
+    slug: '/compare/plantocode-vs-aider',
     title: 'vsAider - AI Development Tool Comparison',
     description: 'Compare PlanToCode\'splan-first approach with Aider\'s agent-first CLI. Planning workflow, file discovery, session persistence, multi-model support.',
-    url: 'https://www.plantocode.com/compare/plantocode-vs-aider',
-    siteName: 'PlanToCode',
-    type: 'article',
-    locale: 'en_US',
     images: [{
       url: cdnUrl('/images/og-image.png'),
       width: 1200,
       height: 630,
       alt: 'PlanToCode - AI Planning for Code',
     }],
-  },
+  });
 };
 
 export function generateStaticParams() {

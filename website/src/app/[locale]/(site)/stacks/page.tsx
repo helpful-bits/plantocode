@@ -4,31 +4,23 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Breadcrumbs } from '@/components/Breadcrumbs';
 import { buildHubBreadcrumbs } from '@/components/breadcrumbs/utils';
-import { cdnUrl } from '@/lib/cdn';
 import { getPagesByCategory } from '@/data/pseo';
 import { Code2, Layers } from 'lucide-react';
 import { loadMessages, type Locale } from '@/lib/i18n';
 import { locales } from '@/i18n/config';
-export const metadata: Metadata = {
-  title: 'AI Dev by Tech Stack - Python, TS, Rust',
-  description: 'Stack-specific AI development workflows. Python Django, TypeScript Next.js, Rust systems programming, and more with architectural awareness.',
-  openGraph: {
-    title: 'Technology Stack Workflows - PlanToCode',
-    description: 'AI development workflows tailored to your tech stack.',
-    url: 'https://www.plantocode.com/stacks',
-    type: 'website',
-    siteName: 'PlanToCode',
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
-    }],
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/stacks',
-  },
-};
+import { generatePageMetadata } from '@/content/metadata';
+
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return generatePageMetadata({
+    locale,
+    slug: '/stacks',
+    title: t['stacks.meta.title'],
+    description: t['stacks.meta.description'],
+  });
+}
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));
 }

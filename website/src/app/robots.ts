@@ -79,8 +79,6 @@ export default function robots(): MetadataRoute.Robots {
     ],
     sitemap: [
       'https://www.plantocode.com/sitemap.xml',
-      'https://www.plantocode.com/sitemap-video.xml',
-      'https://www.plantocode.com/sitemap-image.xml',
     ],
   };
 }

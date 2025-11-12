@@ -1,265 +1,9 @@
 {
-  "aiWrongPaths": {
-    "badge": "KI-Pfad-Verifizierung",
-    "comparison": {
-      "features": {
-        "binaryFiltering": "Binärdatei-Filterung",
-        "gitIntegration": "Git-Integration mit .gitignore-Respekt",
-        "monorepoResolution": "Monorepo-Workspace-Auflösung",
-        "pathAliasResolution": "TypeScript-Pfad-Alias-Auflösung",
-        "preExecutionValidation": "Pre-Execution-Pfad-Validierung",
-        "realtimeProgress": "Echtzeit-Verifizierungs-Fortschritt",
-        "symbolicLinks": "Symbolische-Link-Auflösung",
-        "tokenBatching": "Kostenoptimiertes Token-Batching"
-      },
-      "title": "Wie PlanToCode sich vergleicht"
-    },
-    "cta": {
-      "description": "KI sollte Dateien referenzieren, die tatsächlich existieren. PlanToCode verifiziert jeden Pfad vor Code-Generierung und eliminiert Phantom-Imports und gebrochene Builds. Perfekt für Monorepos, Legacy-Codebasen und komplexe Projektstrukturen.",
-      "links": {
-        "deepDive": "Deep Dive: File-Discovery-System",
-        "docs": "Technische Dokumentation lesen"
-      },
-      "title": "Stoppen Sie den Kampf gegen halluzinierte Dateipfade"
-    },
-    "description": "KI-Tools halluzinieren Import-Pfade, referenzieren nicht existierende Dateien und brechen Ihren Build mit Phantom-Abhängigkeiten. PlanToCode verifiziert jeden Dateipfad vor der Ausführung und eliminiert halluzinierte Referenzen in Monorepos und Legacy-Codebasen.",
-    "discoveryInAction": {
-      "complete": {
-        "description": "Alle Dateien gegen Dateisystem verifiziert. KI wird nur validierte Pfade in generiertem Code referenzieren. Keine halluzinierten Imports möglich.",
-        "title": "Discovery abgeschlossen"
-      },
-      "stage1": {
-        "description": "Scanning-Repository, zeigt Root-Verzeichnisstruktur und ausgewählte Roots",
-        "title": "Repository-Scan startet"
-      },
-      "stage2": {
-        "description": "Führt git ls-files aus, generiert Patterns, filtert Binärdateien",
-        "title": "Regex-Filterung mit Git-Integration"
-      },
-      "title": "File Discovery in Aktion"
-    },
-    "faq": {
-      "cost": {
-        "answer": "Typischerweise $0,10-0,15 pro vollständigem Workflow, abhängig von Repository-Größe und Komplexität. Der 5-stufige Discovery-Prozess verwendet intelligentes Token-Batching und inhaltsbewusste Schätzung, um API-Kosten zu minimieren und gleichzeitig Genauigkeit zu maximieren. Kosten-Tracking ist in jede Stufe eingebaut.",
-        "question": "Wie viel kostet File Discovery pro Lauf?"
-      },
-      "excludeDirectories": {
-        "answer": "Ja. Der File-Discovery-Workflow respektiert .gitignore-Regeln automatisch. Zusätzlich werden Binärdateien und 97 gängige Nicht-Code-Erweiterungen standardmäßig gefiltert. Sie können auch benutzerdefinierte Ausschlussmuster in Ihren Projekteinstellungen konfigurieren.",
-        "question": "Kann ich bestimmte Verzeichnisse von Discovery ausschließen?"
-      },
-      "monorepoSupport": {
-        "answer": "Ja. PlanToCode unterstützt explizit Monorepo-Strukturen einschließlich pnpm-Workspaces, Yarn-Workspaces, npm-Workspaces und Nx. Der File-Discovery-Workflow parst Workspace-Konfigurationen und löst interne Paketreferenzen, hochgezogene Abhängigkeiten und Workspace-Protokoll-Imports korrekt auf.",
-        "question": "Funktioniert File Discovery mit Monorepos?"
-      },
-      "pathAliases": {
-        "answer": "Ja. Die Pfad-Validierungsstufe versteht tsconfig.json-Pfad-Mappings und löst TypeScript-Aliase wie @/* oder ~/* gegen Ihr tatsächliches Dateisystem auf. Dies stellt sicher, dass KI-generierte Imports korrekte Alias-Syntax verwenden.",
-        "question": "Funktioniert das mit TypeScript-Pfad-Aliasen?"
-      },
-      "stillWrongPath": {
-        "answer": "Während File Discovery Pfad-Halluzination dramatisch reduziert, können KI-Modelle noch neue Dateinamen für Code generieren, den Sie erstellen. PlanToCode fokussiert sich auf das Verifizieren bestehender Dateien. Für neu erstellte Dateien zeigt der Implementierungsplan klare Dateipfade und Sie können sie validieren, bevor Sie in Ihr KI-Tool kopieren.",
-        "question": "Was passiert, wenn KI noch einen falschen Pfad vorschlägt?"
-      },
-      "title": "Häufig gestellte Fragen",
-      "verifiedPaths": {
-        "answer": "Absolut. PlanToCode bietet Echtzeit-Fortschritts-Tracking mit stufenweisen Updates. Sie können genau sehen, welche Verzeichnisse gescannt wurden, wie viele Dateien Validierung bestanden haben, welche Pfade korrigiert wurden und die finale Liste verifizierter Dateien, die für KI verfügbar sind.",
-        "question": "Kann ich sehen, welche Pfade verifiziert wurden?"
-      }
-    },
-    "gettingStarted": {
-      "step1": {
-        "description": "Für macOS, Windows oder Linux installieren. Verbinden Sie sich mit Ihrem bevorzugten KI-Modell (Claude, GPT-4, Gemini oder lokale Modelle). Keine API-Keys erforderlich zum Starten.",
-        "title": "PlanToCode herunterladen"
-      },
-      "step2": {
-        "description": "Öffnen Sie Ihr Projekt und starten Sie den File-Discovery-Workflow. PlanToCode scannt und validiert automatisch Ihre gesamte Codebasis-Struktur. Beobachten Sie Echtzeit-Fortschritt für jede Stufe.",
-        "title": "File Discovery ausführen"
-      },
-      "step3": {
-        "description": "KI generiert Code unter Verwendung nur verifizierter Dateipfade. Keine halluzinierten Imports, keine Phantom-Abhängigkeiten, keine gebrochenen Builds. Mit Zuversicht kopieren.",
-        "title": "Verifizierten Code generieren"
-      },
-      "title": "Beginnen Sie, falsche Dateipfade zu verhindern"
-    },
-    "howPlanToCodePrevents": {
-      "monorepoAware": {
-        "description": "PlanToCode versteht Monorepo-Strukturen und löst Workspace-Referenzen, interne Paketpfade und hochgezogene Abhängigkeiten korrekt auf.",
-        "features": [
-          "Parst Workspace-Konfigurationen (pnpm, yarn, npm)",
-          "Löst interne Paket-Kreuzreferenzen auf",
-          "Handhabt mehrere node_modules-Hierarchien",
-          "Erkennt und respektiert Workspace-Protokoll-Imports"
-        ],
-        "title": "Monorepo-bewusste Auflösung"
-      },
-      "pathValidation": {
-        "description": "Stufe 5 des Discovery-Workflows validiert und korrigiert speziell Dateipfade. Dies geschieht automatisch, bevor irgendein KI-Modell Ihre Codebasis sieht.",
-        "features": [
-          "Prüft Dateizugänglichkeit und Berechtigungen",
-          "Löst Pfad-Inkonsistenzen automatisch auf",
-          "Handhabt Monorepo-Workspace-Protokolle",
-          "Validiert Import-Alias-Mappings aus tsconfig"
-        ],
-        "link": "Technische Dokumentation",
-        "title": "Pfad-Validierungs-Pipeline"
-      },
-      "preExecutionDiscovery": {
-        "description": "Bevor KI Code generiert, führt PlanToCode einen 5-stufigen File-Discovery-Workflow aus, der Ihr tatsächliches Dateisystem mappt. Jeder Dateipfad wird verifiziert zu existieren, bevor er in den Kontext aufgenommen wird.",
-        "features": [
-          "Scannt Repository mit git ls-files-Integration",
-          "Validiert Dateiexistenz gegen tatsächliches Dateisystem",
-          "Löst symbolische Links und Pfad-Aliase auf",
-          "Normalisiert Pfade für Cross-Platform-Kompatibilität"
-        ],
-        "link": "Über File Discovery erfahren",
-        "title": "Pre-Execution File Discovery"
-      },
-      "realTimeFeedback": {
-        "description": "Beobachten Sie File-Discovery-Fortschritt in Echtzeit mit stufenweisen Updates. Sehen Sie genau, welche Pfade validiert und korrigiert werden, bevor KI Code generiert.",
-        "features": [
-          "Live-Fortschritts-Tracking für jede Discovery-Stufe",
-          "Detaillierte Fehlermeldungen für Pfad-Probleme",
-          "Dateizahl- und Token-Nutzungs-Schätzungen",
-          "Kosten-Tracking: typischerweise $0,10-0,15 pro Workflow"
-        ],
-        "title": "Echtzeit-Verifizierungs-Feedback"
-      },
-      "title": "Wie PlanToCode falsche Dateipfade verhindert"
-    },
-    "impact": {
-      "forDevelopers": {
-        "benefits": [
-          "Stoppen Sie Debugging von Phantom-Imports. Kein Durchsuchen von Verzeichnisbäumen mehr, um den korrekten Pfad zu finden, den KI von vornherein hätte generieren sollen.",
-          "Schneller ausliefern. Wenn KI-generierter Code beim ersten Einfügen funktioniert, steigt Ihre Velocity dramatisch. Fokus auf Logik, nicht Pfad-Korrekturen.",
-          "KI-Output vertrauen. Pfad-Verifizierung baut Vertrauen auf. Sie wissen, dass Imports korrekt sind, bevor Sie Code in Ihren Editor kopieren.",
-          "Mit Legacy-Code arbeiten. Komplexe, undokumentierte Codebasen werden navigierbar, wenn jeder Pfad gegen die Realität verifiziert wird."
-        ],
-        "title": "Für einzelne Entwickler"
-      },
-      "forTeams": {
-        "benefits": [
-          "Schneller onboarden. Neue Teammitglieder verstehen Codebasis-Struktur durch verifizierte File Discovery. Kein Raten bei Import-Konventionen.",
-          "PR-Noise reduzieren. Commits eliminieren, die ausschließlich falsche Import-Pfade korrigieren. Code-Reviews fokussieren auf Logik, nicht Pfad-Korrekturen.",
-          "Monorepos selbstbewusst skalieren. Während Ihr Workspace wächst, verhindert Pfad-Verifizierung den exponentiellen Anstieg der Import-Verwirrung.",
-          "KI-Nutzung standardisieren. Wenn jeder verifizierte Pfade verwendet, behält KI-generierter Code Konsistenz über das Team hinweg."
-        ],
-        "title": "Für Engineering-Teams"
-      },
-      "metrics": {
-        "cost": "$0,12 Durchschnittliche Kosten pro Verifizierungs-Workflow",
-        "disclaimer": "Basierend auf internem Testing mit Monorepo-Codebasen von 200 bis 5.000 Dateien. Ihre Ergebnisse können je nach Repository-Struktur und Komplexität variieren.",
-        "reduction": "85% Reduzierung der pfadbezogenen Debugging-Zeit",
-        "speed": "23s Durchschnittliche Scan-Zeit für 589 Dateien",
-        "title": "Gemessene Auswirkung"
-      },
-      "title": "Die Auswirkung verifizierter Dateipfade"
-    },
-    "problem": {
-      "description": "Sie bitten KI, eine Komponente zu refactoren. Sie generiert selbstbewusst Code, der von @/components/ui/NewButton importiert – eine Datei, die nicht existiert. Ihr Build schlägt fehl. Sie verschwenden 20 Minuten damit, den Phantom-Import aufzuspüren.",
-      "quote": "KI versuchte von einem nicht existierenden Pfad zu importieren",
-      "scenarios": {
-        "contextWindow": {
-          "description": "Große Projekte überschreiten KI-Kontextfenster. Das Modell rät bei Dateispeicherorten basierend auf unvollständigen Informationen und produziert selbstbewusste, aber falsche Pfad-Referenzen.",
-          "title": "Kontextfenster-Grenzen"
-        },
-        "legacy": {
-          "description": "Ihre Codebasis hat src/components und lib/components. KI wählt das falsche aus oder halluziniert ein drittes Verzeichnis, das nie existierte.",
-          "title": "Legacy-Code-Verwirrung"
-        },
-        "monorepo": {
-          "description": "KI verwechselt @workspace/core mit @workspace/shared und generiert Imports, die plausibel aussehen, aber auf das falsche Paket verweisen.",
-          "title": "Monorepo-Albträume"
-        }
-      },
-      "title": "Das Problem falscher Dateipfade"
-    },
-    "realWorldScenarios": {
-      "title": "Real-World-Szenarien",
-      "with": {
-        "description": "Szenario zeigt, wie File Discovery Pfad-Fehler verhindert, korrekte Imports beim ersten Versuch generiert und Stunden Debugging-Zeit spart.",
-        "title": "Mit PlanToCode-Verifizierung"
-      },
-      "without": {
-        "description": "Szenario demonstriert Pfad-Halluzinations-Probleme beim Refactoring ohne Verifizierung, resultierend in gebrochenen Imports und manueller Pfad-Korrektur-Arbeit.",
-        "title": "Ohne Pfad-Verifizierung"
-      }
-    },
-    "title": "Verhindern Sie, dass KI falsche Dateipfade generiert",
-    "whyAIGeneratesWrongPaths": {
-      "contextOverflow": {
-        "description": "Selbst 200K-Token-Kontextfenster können nicht ganze Enterprise-Codebasen halten. Das Modell sieht einen Bruchteil Ihrer Dateien und leitet den Rest ab, was zu Pfad-Unstimmigkeiten führt.",
-        "points": [
-          "Unvollständige Verzeichnisbaum-Sichtbarkeit",
-          "Fehlende Import-Alias-Konfigurationen",
-          "Veraltete Snapshots sich entwickelnder Codebasen"
-        ],
-        "title": "Kontextfenster-Overflow"
-      },
-      "modelHallucination": {
-        "description": "Large Language Models sind auf Millionen von Codebasen mit unterschiedlichen Strukturen trainiert. Beim Generieren von Code pattern-matchen sie gegen Trainingsdaten, nicht gegen Ihr tatsächliches Dateisystem.",
-        "points": [
-          "Modelle sagen wahrscheinliche Pfade voraus, nicht tatsächliche Pfade",
-          "Trainingsdaten enthalten inkonsistente Namenskonventionen",
-          "Keine Dateisystem-Verifizierung in der Generierungsschleife"
-        ],
-        "title": "Modell-Halluzination"
-      },
-      "monorepoComplexity": {
-        "description": "Monorepos verstärken Pfad-Verwirrung mit Workspace-Protokollen, internen Paketen und mehreren node_modules-Verzeichnissen.",
-        "points": [
-          "Konfliktierende Paketnamen über Workspaces hinweg",
-          "Komplexe tsconfig-Pfad-Mappings",
-          "Hochgezogene Abhängigkeiten mit unklarer Auflösung"
-        ],
-        "title": "Monorepo-Komplexität"
-      },
-      "noVerification": {
-        "description": "Standard-KI-Code-Generierung hat keinen Post-Processing-Schritt zur Validierung der Dateiexistenz. Generierter Code geht direkt an Sie ohne Dateisystem-Checks.",
-        "points": [
-          "Keine Dateiexistenz-Validierung",
-          "Kein Import-Pfad-Auflösungs-Testing",
-          "Keine Kreuzreferenzierung mit tatsächlicher Verzeichnisstruktur"
-        ],
-        "title": "Keine Verifizierungs-Schicht"
-      },
-      "title": "Warum KI falsche Dateipfade generiert"
-    }
-  },
-  "hardBugs": {
-    "badge": "Produktions-Debugging",
-    "cta": {
-      "description": "Bewahren Sie jede Untersuchung, reproduzieren Sie jeden Schritt, verlieren Sie nie den Kontext. So sollte Produktions-Debugging funktionieren: diszipliniert, reproduzierbar, vollständig.",
-      "links": {
-        "terminal": "Terminal-Persistenz erkunden",
-        "voice": "Über Sprachnotizen erfahren"
-      },
-      "title": "Produktionsprobleme mit Zuversicht debuggen"
-    },
-    "description": "PlanToCode speichert jeden Plan, jede Terminal-Sitzung und jede gesprochene Notiz zusammen mit dem Job, den Sie debuggen. Öffnen Sie die exakten Befehle, Token-Budgets und Planrevisionen erneut, die zur Isolierung eines Problems verwendet wurden.",
-    "sections": {
-      "persistTerminal": {
-        "description": "Jedes Debugging-Terminal läuft in einem verwalteten PTY. Session-Metadaten, Arbeitsverzeichnisse und vollständige Output-Logs werden in SQLite gespeichert und können nach Abstürzen erneut geöffnet werden. CLI-Erkennung überprüft, dass claude, cursor, codex oder gemini Binaries installiert sind, bevor Sie Befehle ausführen.",
-        "link": "Terminal-Verhalten",
-        "title": "Terminal-Output persistent speichern"
-      },
-      "reproduceSurface": {
-        "description": "Beginnen Sie mit dem File-Discovery-Workflow, um ein Repository auf die im Vorfall referenzierten Module einzugrenzen. Der Workflow validiert Session-Eingaben, stellt Background-Jobs in die Warteschlange und speichert die ausgewählten Roots, sodass jeder Folgeplan denselben Scope verwendet.",
-        "link": "Workflow-Details",
-        "title": "Die fehlerhafte Oberfläche reproduzieren"
-      },
-      "reviewFixes": {
-        "description": "Implementierungspläne werden in den Monaco-Viewer gestreamt mit Spracherkennung, Kopier-Controls und Navigation zwischen historischen Jobs. Token-Schätzungen laufen, bevor Sie Prompts in ein externes Tool kopieren, und helfen Ihnen zu bestätigen, dass der Fix innerhalb der Grenzen des Modells bleibt.",
-        "link": "Plan-Viewer-Übersicht",
-        "title": "Jeden vorgeschlagenen Fix überprüfen"
-      },
-      "voiceNotes": {
-        "description": "Sprach-Transkription integriert sich direkt mit dem Terminal und den Prompt-Editoren. Der Aufnahme-Hook verwaltet Mikrofon-Berechtigungen, Geräteauswahl, Stille-Erkennung und fügt erkannten Text neben den Befehlen ein, die ihn ausgelöst haben.",
-        "link": "Transkriptions-Pipeline",
-        "title": "Sprachnotizen im Kontext erfassen"
-      }
-    },
-    "title": "Schwierige Bugs mit erhaltenem Kontext lösen"
-  },
   "hub": {
+    "meta": {
+      "title": "PlanToCode Lösungen - KI-Entwicklungsworkflows",
+      "description": "Lösen Sie komplexe Entwicklungsherausforderungen: schwierige Bugs, große Features, Bibliotheks-Upgrades, Legacy-Refactoring u. mehr – mit KI-gestützter Planung."
+    },
     "badge": "Entwicklungslösungen",
     "categories": {
       "debugging": "Debugging",
@@ -311,590 +55,11 @@
     "title": "KI-gestützte Entwicklungslösungen",
     "viewSolution": "Lösung ansehen"
   },
-  "largeFeatures": {
-    "badge": "Feature-Planung",
-    "cta": {
-      "description": "Vom ersten Workflow bis zum finalen Deployment perfekte Nachvollziehbarkeit beibehalten. So sollte Feature-Delivery funktionieren: koordiniert, vorhersehbar, nachvollziehbar.",
-      "links": {
-        "plans": "Implementierungsplanung ansehen",
-        "workflows": "Über Scoped Workflows erfahren"
-      },
-      "title": "Komplexe Features mit Zuversicht ausliefern"
-    },
-    "description": "Multi-Stage-Delivery hängt von konsistentem Scope, überprüfbaren Plänen und vorhersehbarer Token-Nutzung ab. PlanToCode hält diese Signale verbunden vom ersten Workflow-Lauf bis zur finalen Terminal-Sitzung.",
-    "sections": {
-      "coordinatePlans": {
-        "description": "Pläne werden in den Monaco-Viewer gestreamt und bleiben mit ihren Background-Jobs verknüpft. Navigieren Sie durch frühere Entwürfe, führen Sie mehrere Pläne zusammen und öffnen Sie das Terminal-Modal für einen bestimmten Job, ohne den Kontext zu verlieren. Token-Schätzungen laufen, bevor Sie Prompts exportieren.",
-        "link": "Implementierungspläne",
-        "title": "Implementierungspläne koordinieren"
-      },
-      "keepAligned": {
-        "description": "Terminal-Sitzungen speichern Output-Logs in SQLite und zeigen Verbindungsgesundheit, sodass lang laufende Feature-Arbeiten nachvollziehbar bleiben. Wenn Ihr Team Walk-Throughs aufzeichnet, fügt Sprach-Transkription durchsuchbare Notizen neben den Befehlen hinzu, die sie ausgeführt haben.",
-        "link": "Terminal und Transkription",
-        "title": "Ausführung ausgerichtet halten"
-      },
-      "pickModel": {
-        "description": "Jeder Aufgabentyp bietet ein Standard-Modell und eine erlaubte Liste. Der Modell-Selektor-Toggle verhindert das Senden von Prompts, die das Kontextfenster des Modells überschreiten, und zeigt die geschätzten Token-Anforderungen an, die vom Backend-Befehl stammen.",
-        "link": "Modell-Konfiguration",
-        "title": "Das richtige Modell pro Aufgabe wählen"
-      },
-      "sameScope": {
-        "description": "Verwenden Sie den File-Discovery-Workflow, um relevante Verzeichnisse für jede Aufgabe zu sammeln. Eingaben werden validiert, Background-Jobs laufen über den Workflow-Orchestrator, und die ausgewählten Roots werden gespeichert, sodass spätere Planrevisionen denselben Repository-Ausschnitt wiederverwenden.",
-        "link": "File-Discovery-Workflow",
-        "title": "Mit demselben Scope beginnen"
-      }
-    },
-    "title": "Große Features mit nachvollziehbaren Plänen ausliefern"
-  },
-  "legacyCodeRefactoring": {
-    "challenge": {
-      "description": "Sie haben die Aufgabe, eine 5 Jahre alte Codebasis zu modernisieren: veraltete Frameworks, keine Tests, undokumentierte Patterns und kritische Geschäftslogik, die Sie nicht vollständig verstehen. Direktes KI-Refactoring wäre Chaos. Planung gibt Ihnen einen Fahrplan.",
-      "title": "Die Legacy-Code-Herausforderung"
-    },
-    "cta": {
-      "buttons": {
-        "download": "PlanToCode herunterladen",
-        "learnMapping": "Über Dependency-Mapping erfahren"
-      },
-      "description": "PlanToCode hilft Ihnen, Abhängigkeiten zu mappen, Migrationspläne zu generieren und zu refactoren, ohne die Produktion zu brechen.",
-      "title": "Legacy-Code sicher modernisieren"
-    },
-    "description": "Legacy-Code ist dort, wo KI-gestütztes Refactoring gefährlich wird. Ein falscher Schritt bricht die Produktion. Hier erfahren Sie, wie Sie 100K+ Zeilen-Codebasen sicher mit KI-Planung modernisieren.",
-    "furtherReading": {
-      "bestPractices": "Best Practices für KI-Code-Planung",
-      "safeRefactoring": "Sichere Refactoring-Tools für Produktions-Code",
-      "title": "Weiterführende Literatur",
-      "whatIsPlanning": "Was ist KI-Code-Planung?"
-    },
-    "gettingStarted": {
-      "steps": [
-        {
-          "title": "Die kleinste wertvolle Einheit zum Refactoren wählen",
-          "description": "Nicht mit der 10.000-Zeilen-God-Class beginnen. Ein in sich geschlossenes 200-Zeilen-Modul finden, das Wert liefert."
-        },
-        {
-          "title": "Alle seine Abhängigkeiten mappen",
-          "description": "File Discovery verwenden, um Imports, Exports, Funktions-Calls zu finden. Die Blast-Radius kennen."
-        },
-        {
-          "title": "Charakterisierungs-Tests schreiben",
-          "description": "Tests, die aktuelles Verhalten erfassen, auch wenn es falsch ist. Stellt sicher, dass Refactoring Funktionalität bewahrt."
-        },
-        {
-          "title": "Refactoring-Plan generieren",
-          "description": "KI verwenden, um Datei-für-Datei-Migrationsstrategie zu erstellen. Auf fehlende Schritte oder Risiken reviewen."
-        },
-        {
-          "title": "Inkrementell ausführen",
-          "description": "Eine kleine Änderung pro Deploy. Tests laufen lassen. Produktion überwachen. Wiederholen."
-        }
-      ],
-      "title": "Mit Legacy-Refactoring beginnen"
-    },
-    "mistakes": {
-      "bigBang": {
-        "instead": "Stattdessen: Inkrementelles Refactoring mit kontinuierlichem Deployment",
-        "problem": "6 Monate damit verbringen, alles von Grund auf neu zu schreiben. 80% fertig, merken dass alter Code Edge Cases hatte, von denen Sie nichts wussten. Projekt scheitert.",
-        "title": "Big-Bang-Rewrites"
-      },
-      "noRollback": {
-        "instead": "Stattdessen: Feature-Flags, Datenbank-Migrationen mit down()-Funktionen",
-        "problem": "50 Dateien refactoren, deployen, bricht Produktion. Kann nicht einfach zurücksetzen, weil Änderungen verflochten sind.",
-        "title": "Kein Rollback-Plan"
-      },
-      "noTests": {
-        "instead": "Stattdessen: Zuerst Charakterisierungs-Tests schreiben, dann refactoren",
-        "problem": "Code ändern, hoffen dass es funktioniert, deployen, Bugs in Produktion finden. Wiederholen bis Vertrauen verloren.",
-        "title": "Refactoring ohne Tests"
-      },
-      "title": "Häufige Legacy-Refactoring-Fehler vermeiden"
-    },
-    "patterns": {
-      "featureFlag": {
-        "bestFor": "Hochrisiko-Änderungen an kritischen Pfaden (Auth, Payments, Core-Features)",
-        "howItWorks": "Code refactoren, hinter Feature-Flag legen. Zu 1%, 10%, 50%, 100% der Nutzer über Wochen ausrollen. Sofortiger Rollback bei Problemen.",
-        "title": "Feature-Flag-Rollout"
-      },
-      "parallelRun": {
-        "bestFor": "Datenverarbeitungs-Pipelines, kritische Algorithmen, Reporting-Systeme",
-        "howItWorks": "Alten und neuen Code parallel laufen lassen. Outputs vergleichen. Nur zu neuem wechseln, wenn 99,9% Übereinstimmungsrate erreicht.",
-        "title": "Parallel-Run + Validierung"
-      },
-      "stranglerFig": {
-        "bestFor": "Monolith → Microservices, altes Framework → neues Framework",
-        "howItWorks": "Neuen Code neben altem aufbauen. Traffic schrittweise von alt zu neu routen. Alten Code nur löschen, wenn 100% migriert.",
-        "title": "Strangler-Fig-Pattern"
-      },
-      "title": "Migrations-Strategie-Patterns"
-    },
-    "realExample": {
-      "codebase": "150 React-Klassenkomponenten geschrieben 2018. Müssen zu Hooks modernisiert werden für Wartbarkeit und Performance.",
-      "scenario": "Szenario",
-      "title": "Echtes Beispiel: React Class zu Hooks Migration",
-      "with": {
-        "steps": [
-          "Woche 1: Leaf-Komponenten migrieren (keine Abhängigkeiten auf sie)",
-          "Woche 2: Context-Provider migrieren (betrifft alle Consumer)",
-          "Woche 3: Container-Komponenten migrieren (orchestrieren Children)",
-          "Woche 4: Alte HOCs entfernen, vollständig hooks-basiert",
-          "Ergebnis: Saubere Migration, keine Produktions-Breaks, 4-Wochen-Timeline"
-        ],
-        "title": "Mit Planung:"
-      },
-      "without": {
-        "steps": [
-          "KI konvertiert 10 Komponenten",
-          "Bricht Lifecycle-Abhängigkeiten, auf die andere Komponenten angewiesen sind",
-          "Context-Provider funktionieren nicht mehr (class-basierte APIs)",
-          "3 Tage Debugging, um alle Breakages zu finden"
-        ],
-        "title": "Ohne Planung:"
-      }
-    },
-    "scenarios": {
-      "databaseSchema": {
-        "approach": "Planungsansatz:",
-        "challenge": "Denormalisiertes Schema von 2018. user_data-Tabelle muss in 5 normalisierte Tabellen aufgeteilt werden.",
-        "steps": [
-          "Alle Queries finden, die aus user_data lesen (grep + statische Analyse)",
-          "Mappen, welche Queries welche neuen Tabellen benötigen",
-          "Zero-Downtime-Migration mit Dual-Write-Phase planen",
-          "Verifikations-Queries erstellen, um Datenkonsistenz sicherzustellen"
-        ],
-        "title": "Datenbank-Schema-Migration"
-      },
-      "frameworkMigration": {
-        "approach": "Planungsansatz:",
-        "challenge": "200 Seiten Spaghetti-jQuery manipulieren DOM direkt. Keine Komponenten-Struktur. Vermischte Concerns überall.",
-        "steps": [
-          "Alle jQuery-Selektoren mappen, um UI-Komponenten zu identifizieren",
-          "Verwandte DOM-Manipulationen zu logischen Komponenten gruppieren",
-          "Graduelle Migration planen: eine Seite nach der anderen, beide Frameworks koexistieren",
-          "Adapter-Layer für gemeinsamen State während der Transition erstellen"
-        ],
-        "title": "Framework-Migration (jQuery → React)"
-      },
-      "monolith": {
-        "approach": "Planungsansatz:",
-        "challenge": "500K-Zeilen-Monolith, alle Features eng gekoppelt. Benutzerverwaltung muss in separaten Service extrahiert werden.",
-        "steps": [
-          "Service-Grenze identifizieren: was bleibt, was bewegt sich",
-          "Alle grenzüberschreitenden Datenflüsse und API-Calls mappen",
-          "Datenbank-Extraktionsstrategie planen (Dual-Write-Phase)",
-          "Rollback-Plan für jeden Migrationsschritt erstellen"
-        ],
-        "title": "Monolith zu Microservices"
-      },
-      "title": "Häufige Legacy-Refactoring-Szenarien"
-    },
-    "title": "Legacy-Code-Refactoring-Tools: Wie KI-Planung Desaster verhindert",
-    "tools": {
-      "complexity": {
-        "description": "Identifizieren, welche Dateien am komplexesten sind (zyklomatische Komplexität). Mit den einfachen beginnen.",
-        "title": "Code-Komplexitäts-Analyse",
-        "tools": "Tools: SonarQube, ESLint-Komplexitätsregeln"
-      },
-      "dependencyMapping": {
-        "description": "Alle Import-Chains, Funktions-Call-Graphen, Type-Dependencies finden. Wissen, was bricht, wenn Sie X ändern.",
-        "title": "Dependency-Mapping",
-        "tools": "Tools: PlanToCode File Discovery, madge, dependency-cruiser"
-      },
-      "staticAnalysis": {
-        "description": "Ungenutzten Code, tote Imports, Type-Mismatches finden. Diese aufräumen vor großem Refactoring.",
-        "title": "Statische Analyse",
-        "tools": "Tools: TypeScript Strict Mode, ESLint no-unused-vars"
-      },
-      "testCoverage": {
-        "description": "Wissen, welcher Code Tests hat, bevor Sie refactoren. Tests für kritische Pfade zuerst schreiben, falls nötig.",
-        "title": "Test-Coverage-Reports",
-        "tools": "Tools: Jest Coverage, Istanbul, Codecov"
-      },
-      "title": "Tools für Legacy-Code-Planung"
-    },
-    "whyBreaks": {
-      "description": "Legacy-Codebasen haben Eigenschaften, die Refactoring riskant machen:",
-      "points": {
-        "hiddenDeps": {
-          "description": "Funktionen, die von 20+ Stellen aufgerufen werden, Global State unerwartet modifiziert, zirkuläre Imports, von denen Sie nichts wussten.",
-          "title": "Versteckte Abhängigkeiten"
-        },
-        "insufficientTests": {
-          "description": "30% Code-Coverage, Tests, die bestehen, aber Verhalten nicht wirklich verifizieren, Integrationstests, die 45 Minuten laufen.",
-          "title": "Unzureichende Tests"
-        },
-        "outdatedPatterns": {
-          "description": "Code geschrieben vor modernen Best Practices. Callback-Hölle, eng gekoppelte Module, keine Trennung von Concerns.",
-          "title": "Veraltete Patterns"
-        },
-        "poorDocs": {
-          "description": "Keine Kommentare, kryptische Variablennamen, Geschäftslogik in Implementierungsdetails vergraben. Sie lernen, indem Sie Dinge kaputtmachen.",
-          "title": "Schlechte Dokumentation"
-        }
-      },
-      "title": "Warum Legacy-Code leicht bricht"
-    },
-    "workflow": {
-      "steps": [
-        {
-          "title": "Das bestehende System mappen",
-          "description": "File Discovery ausführen, alle Dateien identifizieren, die den Bereich berühren, den Sie refactoren. Abhängigkeiten verstehen, bevor Sie etwas ändern."
-        },
-        {
-          "title": "Mehrere Migrationsstrategien generieren",
-          "description": "KI nach 3 verschiedenen Ansätzen fragen: Big-Bang-Migration, schrittweiser Rollout, Strangler-Fig-Pattern. Trade-offs vergleichen."
-        },
-        {
-          "title": "Inkrementellen Plan erstellen",
-          "description": "In wöchentliche Meilensteine aufteilen. Jeder Schritt muss unabhängig deploybar und testbar sein. Keine \"halb-migrierten\" Zustände in der Produktion."
-        },
-        {
-          "title": "Mit Team reviewen (erforderlich für Legacy)",
-          "description": "Jemand im Team kennt die versteckten Fallstricke. Plan-Review bringt dieses Stammwissen ans Licht, bevor Sie Dinge kaputtmachen."
-        },
-        {
-          "title": "Mit Rollback-Plan ausführen",
-          "description": "Schritt 1 implementieren, verifizieren dass es funktioniert, dann Schritt 2. Immer einen Weg zum Zurücksetzen haben. Feature-Flags sind Ihre Freunde."
-        }
-      ],
-      "subtitle": "Der sichere Legacy-Refactoring-Prozess",
-      "title": "Planung-First-Refactoring-Workflow"
-    }
-  },
-  "libraryUpgrades": {
-    "badge": "Upgrade-Planung",
-    "cta": {
-      "description": "Jede Änderung auditieren, jede Migration verfolgen, volle Kontrolle behalten. So sollten Bibliotheks-Upgrades funktionieren: sicher, nachvollziehbar, reversibel.",
-      "links": {
-        "planning": "Upgrade-Planung erkunden",
-        "scope": "Über Scope-Analyse erfahren"
-      },
-      "title": "Abhängigkeiten ohne Angst upgraden"
-    },
-    "description": "Die Modernisierung von Abhängigkeiten erstreckt sich oft über mehrere Repositories und Teams. PlanToCode hilft Ihnen, die Arbeit zu scopen, jeden Schritt zu dokumentieren und einen nachvollziehbaren Trail dessen zu führen, was sich geändert hat.",
-    "sections": {
-      "executionHistory": {
-        "description": "Terminal-Sitzungen speichern vollständige Output-Logs und Verbindungsgesundheit, auch nach Neustarts. Sprach-Transkription kann gesprochenen Kontext zu kniffligen Migrationsschritten hinzufügen und einen durchsuchbaren Trail für Release-Notes und Change-Reviews erstellen.",
-        "link": "Terminal & Transkription",
-        "title": "Ausführungshistorie dokumentieren"
-      },
-      "identifyFiles": {
-        "description": "Lösen Sie den File-Discovery-Workflow für Ihr Projektverzeichnis aus, um Upgrade-Hotspots zu sammeln. Die orchestrierten Background-Jobs zeichnen ausgewählte Roots auf und machen sie für jeden nachfolgenden Plan oder Prompt verfügbar.",
-        "link": "File-Discovery-Workflow",
-        "title": "Betroffene Dateien identifizieren"
-      },
-      "modelLimits": {
-        "description": "Upgrade-Prompts enthalten oft große Diffs. Task-Level-Modelleinstellungen definieren, welche Modelle erlaubt sind, und der Selektor-Toggle blockiert jede Wahl, deren Kontextfenster die geschätzten Prompt- plus Output-Tokens nicht bewältigen kann.",
-        "link": "Modell-Leitplanken",
-        "title": "Innerhalb der Modellgrenzen bleiben"
-      },
-      "trackPlans": {
-        "description": "Überprüfen Sie generierte Pläne im Monaco-Viewer, vergleichen Sie Revisionen und führen Sie überlappende Vorschläge zusammen. Pläne bleiben mit Background-Jobs verknüpft, sodass Sie die relevante Terminal-Sitzung oder das Prompt-Copy-Modal jederzeit erneut öffnen können, wenn Sie das Upgrade erneut besuchen.",
-        "link": "Implementierungspläne",
-        "title": "Upgrade-Pläne verfolgen"
-      }
-    },
-    "title": "Bibliotheken mit Leitplanken upgraden"
-  },
-  "maintenanceEnhancements": {
-    "badge": "Laufende Wartung",
-    "cta": {
-      "description": "Systematische Wartungs-Workflows aufbauen. Bewahrter Kontext, wiederverwendbare Pläne und Modell-Leitplanken verwandeln technische Schulden in handhabbare, wiederholbare Prozesse.",
-      "links": {
-        "history": "Über Planhistorie erfahren",
-        "workflows": "Scoped Workflows erkunden"
-      },
-      "title": "Wartung in strategischen Vorteil verwandeln"
-    },
-    "description": "Wartungsarbeit verlangsamt sich, wenn Teams den Scope verlieren oder dieselben Untersuchungen wiederholen. PlanToCode bewahrt den Kontext, die Pläne und die Ausführungshistorie, die benötigt werden, um Fixes sicher anzuwenden.",
-    "sections": {
-      "controlModels": {
-        "description": "Der Modell-Selektor-Toggle erzwingt Kontextfenster pro Wartungsaufgabe. Token-Schätzungen vom Backend lassen Sie bestätigen, dass große Patch-Beschreibungen noch in das gewählte Modell passen, bevor Sie sie an einen Agenten senden.",
-        "link": "Modell-Leitplanken",
-        "title": "Modellnutzung kontrollieren"
-      },
-      "planHistory": {
-        "description": "Wartungspläne werden in den Monaco-Viewer gestreamt mit Navigation zwischen Revisionen, Merge-Aktionen und Prompt-Copy-Controls. Öffnen Sie frühere Jobs erneut, um genau zu sehen, welche Schritte unternommen wurden und ob sie wiederholt werden müssen.",
-        "link": "Implementierungspläne",
-        "title": "Planhistorie bewahren"
-      },
-      "preserveLogs": {
-        "description": "Terminal-Sitzungen persistieren in SQLite mit Zeitstempeln, Exit-Codes und erfasstem Output. Sprach-Transkription kann gesprochene Notizen zum selben Job hinzufügen und zukünftigen Maintainern vollständigen Kontext darüber geben, was sich geändert hat und warum.",
-        "link": "Terminal und Transkription",
-        "title": "Ausführungslogs bewahren"
-      },
-      "reuseWorkflows": {
-        "description": "File-Discovery-Jobs sammeln die Verzeichnisse, die von früheren Wartungsaufgaben berührt wurden. Wenn ähnliche Arbeit zurückkehrt, können Sie Pläne gegen die gespeicherten Roots erneut ausführen, anstatt den Scope manuell neu aufzubauen.",
-        "link": "File-Discovery-Workflow",
-        "title": "Scoped Workflows wiederverwenden"
-      }
-    },
-    "title": "Systeme mit wiederholbaren Workflows warten"
-  },
-  "preventDuplicateFiles": {
-    "badge": "Doppelte Dateien verhindern",
-    "beforeAfter": {
-      "title": "Vorher & Nachher: KI ohne Planung vs. mit PlanToCode",
-      "with": {
-        "benefits": {
-          "items": [
-            "Null doppelte Dateien erstellt",
-            "Saubere Modifikation zu bestehendem Code",
-            "Alle Imports bleiben gültig",
-            "Zeit gespart: 2-4 Stunden"
-          ],
-          "title": "Erreichte Vorteile:"
-        },
-        "steps": [
-          {
-            "label": "Nutzer: \"Add JWT validation to authentication\"",
-            "detail": "File-Discovery-Workflow startet automatisch"
-          },
-          {
-            "label": "5-stufige Discovery mappt gesamte Codebasis",
-            "detail": "Findet authService.ts, auth-helpers.ts, verwandte Config-Dateien"
-          },
-          {
-            "label": "Generiert Implementierungsplan zum Review",
-            "detail": "Zeigt, dass bestehende authService.ts modifiziert wird, keine Duplikate"
-          },
-          {
-            "label": "Sie reviewen und genehmigen Plan",
-            "detail": "Sehen exakte Änderungen, bevor Code Dateisystem berührt"
-          },
-          {
-            "label": "Ergebnis: Saubere, zielgerichtete Modifikationen",
-            "detail": "JWT-Validierung zu bestehender authService.ts hinzugefügt, keine Duplikate erstellt"
-          }
-        ],
-        "title": "Mit PlanToCode"
-      },
-      "without": {
-        "cleanup": {
-          "items": [
-            "Doppelten Code manuell zusammenführen",
-            "Alle Import-Referenzen aktualisieren",
-            "Gebrochene Tests und Abhängigkeiten reparieren",
-            "Zeit verschwendet: 2-4 Stunden"
-          ],
-          "title": "Manuelle Bereinigung erforderlich:"
-        },
-        "steps": [
-          {
-            "label": "Nutzer: \"Add JWT validation to authentication\"",
-            "detail": "KI hat begrenzten Kontext, sieht nur aktuell geöffnete Dateien"
-          },
-          {
-            "label": "KI sucht, findet bestehende Auth-Dateien nicht",
-            "detail": "Übersieht src/services/authService.ts aufgrund von Namens-/Pfad-Unstimmigkeit"
-          },
-          {
-            "label": "Erstellt sofort jwtValidation.ts",
-            "detail": "Kein Review-Schritt, Änderungen direkt auf Dateisystem angewendet"
-          },
-          {
-            "label": "Ergebnis: Doppelte Datei erstellt",
-            "detail": "Haben jetzt sowohl authService.ts als auch jwtValidation.ts mit überlappender Funktionalität"
-          }
-        ],
-        "title": "Ohne PlanToCode"
-      }
-    },
-    "cta": {
-      "description": "File Discovery vor Ausführung. Review vor Anwendung. Null Duplikate. So sollte KI-gestützte Entwicklung funktionieren: intelligent, präventiv, sauber.",
-      "links": {
-        "howItWorks": "Sehen Sie, wie es funktioniert",
-        "planReview": "Über Plan-Review erfahren",
-        "technical": "Technischen Guide lesen"
-      },
-      "title": "Stoppen Sie noch heute die Erstellung doppelter Dateien"
-    },
-    "description": "KI-Coding-Tools erstellen häufig doppelte Dateien, weil ihnen der Kontext über die bestehende Code-Struktur fehlt. PlanToCode löst dies mit intelligenter File Discovery, die Ihre gesamte Codebasis mappt, bevor Code generiert wird.",
-    "faq": {
-      "discoveryCost": {
-        "answer": "File Discovery verwendet KI für die Relevanz-Bewertungsstufe (Stufe 3), was kleine API-Kosten verursacht. Die Kosten sind jedoch minimal (typischerweise $0,01-0,05 pro Discovery-Lauf) und das System bietet Kostenschätzungen vor der Ausführung. Die Investition lohnt sich im Vergleich zu den 2-4 Stunden manueller Bereinigungszeit, die durch Verhinderung von Duplikaten gespart werden.",
-        "question": "Gibt es Kosten für das Ausführen der File Discovery?"
-      },
-      "discoveryTime": {
-        "answer": "File Discovery dauert typischerweise 30-90 Sekunden für mittelgroße Projekte (500-2000 Dateien). Sehr große Monorepos mit 10.000+ Dateien können 2-3 Minuten dauern. Der Workflow läuft im Hintergrund, sodass Sie weiterarbeiten können, während er ausgeführt wird. Fortschritts-Updates erscheinen in Echtzeit.",
-        "question": "Wie lange dauert der File-Discovery-Workflow?"
-      },
-      "hugeCodebase": {
-        "answer": "PlanToCode enthält intelligentes Timeout-Management und Caching-Mechanismen. Für extrem große Codebasen können Sie benutzerdefinierte Timeout-Werte konfigurieren und Ausschlussmuster verwenden, um irrelevante Verzeichnisse zu überspringen (Vendor-Code, generierte Dateien, etc.). Das System cached auch Discovery-Ergebnisse pro Session, sodass nachfolgende Pläne in derselben Session den gecachten Datei-Kontext wiederverwenden.",
-        "link": "Konfigurationsoptionen",
-        "question": "Was, wenn ich eine riesige Codebasis habe? Läuft Discovery in einen Timeout?"
-      },
-      "newFiles": {
-        "answer": "Absolut. PlanToCode's File Discovery verhindert nicht das Erstellen neuer Dateien – es verhindert das Erstellen doppelter Dateien. Wenn Ihre Aufgabe wirklich eine neue Datei erfordert (wie das Hinzufügen eines komplett neuen Feature-Moduls), wird PlanToCode vorschlagen, sie im Implementierungsplan zu erstellen. Der Unterschied ist, dass Sie den Vorschlag sehen und verifizieren können, dass es wirklich neue Funktionalität ist, anstatt eines versehentlichen Duplikats.",
-        "question": "Kann ich noch echte neue Dateien erstellen, wenn nötig?"
-      },
-      "nonJavaScript": {
-        "answer": "Ja. PlanToCode's File Discovery ist sprachagnostisch. Es funktioniert mit Python, Go, Rust, Java, TypeScript, JavaScript, Ruby, PHP, C++ und jeder anderen textbasierten Codebasis. Die Regex-Generierung und KI-Relevanz-Bewertung passen sich an die spezifischen Sprachen und Frameworks in Ihrem Projekt an, basierend auf der Aufgabenbeschreibung und entdeckten Dateierweiterungen.",
-        "question": "Funktioniert das für Nicht-JavaScript-Projekte?"
-      },
-      "refactoringDuplicates": {
-        "answer": "Ja. Wenn Sie bereits doppelte Dateien in Ihrer Codebasis haben, können Sie PlanToCode verwenden, um deren Konsolidierung zu planen. Beschreiben Sie die Aufgabe als \"Merge duplicate authentication services into authService.ts\" oder ähnlich. Die File Discovery wird alle verwandten Dateien finden, und der Implementierungsplan zeigt Ihnen genau, wie Sie sie sauber konsolidieren.",
-        "question": "Kann ich PlanToCode zum Refactoring bestehender Duplikate verwenden?"
-      },
-      "stillProposesDuplicate": {
-        "answer": "Das ist selten, weil die File Discovery umfassenden Kontext bietet, aber wenn es passiert, werden Sie es während des Review-Schritts abfangen. Lehnen Sie einfach den Plan ab, verfeinern Sie Ihre Aufgabenbeschreibung (seien Sie spezifischer darüber, welche bestehenden Dateien zu modifizieren sind) oder passen Sie die Dateiauswahl manuell an. Der Hauptvorteil ist, Duplikate vor der Ausführung abzufangen, anstatt nachdem der Schaden angerichtet ist.",
-        "question": "Was passiert, wenn die KI noch ein Duplikat im Plan vorschlägt?"
-      },
-      "title": "Häufig gestellte Fragen",
-      "worksWithCursor": {
-        "answer": "Ja. PlanToCode ist als Planungs-Layer konzipiert, der neben Ihren bestehenden KI-Coding-Tools funktioniert. Sie verwenden PlanToCode, um Dateien zu entdecken und Implementierungspläne zu generieren, dann führen Sie diese Pläne mit Cursor, GitHub Copilot, Claude Code oder jedem anderen KI-Assistenten aus. Die File Discovery und Planung verhindert Duplikate unabhängig davon, welches Tool den Code ausführt.",
-        "question": "Funktioniert PlanToCode mit Cursor und GitHub Copilot?"
-      }
-    },
-    "gettingStarted": {
-      "step1": {
-        "description": "Laden Sie die PlanToCode-Desktop-Anwendung für Ihre Plattform herunter. Der File-Discovery-Workflow und Implementierungsplanungs-Features sind direkt in den Desktop-Client integriert.",
-        "title": "Schritt 1: PlanToCode Desktop installieren"
-      },
-      "step2": {
-        "description": "Öffnen Sie PlanToCode und wählen Sie das Root-Verzeichnis Ihres Projekts. PlanToCode validiert den Git-Repository-Status und etabliert das Basisverzeichnis für alle Datei-Operationen. Konfigurieren Sie benutzerdefinierte Ausschlussmuster für Verzeichnisse, die Sie überspringen möchten (node_modules, dist, build, etc.).",
-        "tip": "Die Standard-Ausschlussmuster decken bereits gängige Verzeichnisse wie node_modules, .git und Build-Artefakte ab. Sie müssen nur anpassen, wenn Ihr Projekt ungewöhnliche Verzeichnisstrukturen hat.",
-        "title": "Schritt 2: Ihr Projekt-Root konfigurieren"
-      },
-      "step3": {
-        "description": "Geben Sie eine natürlichsprachliche Beschreibung dessen ein, was Sie erreichen möchten. Zum Beispiel: \"Add JWT validation to the authentication service\" oder \"Implement dark mode support in the theme provider.\" Seien Sie so spezifisch wie möglich über die Funktionalität, die Sie wollen.",
-        "goodDescriptions": {
-          "examples": [
-            "Add Redis caching to the user profile API endpoint",
-            "Implement WebSocket connection management in the chat service",
-            "Add input validation to all form components",
-            "Update database migration to add user roles table"
-          ],
-          "title": "Gute Aufgabenbeschreibungen:"
-        },
-        "title": "Schritt 3: Ihre Aufgabe beschreiben"
-      },
-      "step4": {
-        "description": "PlanToCode führt den 5-stufigen File-Discovery-Workflow im Hintergrund aus. Sie sehen Echtzeit-Fortschritts-Updates, während es relevante Dateien entdeckt. Der Workflow dauert typischerweise 30-90 Sekunden je nach Codebasis-Größe. Sobald abgeschlossen, reviewen Sie die Liste der entdeckten Dateien. Sie sehen, welche Dateien PlanToCode als relevant für Ihre Aufgabe identifiziert hat. Dies ist Ihr erster Checkpoint, um sicherzustellen, dass das System ordnungsgemäßen Kontext über bestehende Dateien hat.",
-        "link": "Mehr über den Discovery-Prozess erfahren",
-        "title": "Schritt 4: Die File Discovery reviewen"
-      },
-      "step5": {
-        "checkpoint": "Wenn Sie irgendeine Dateierstellung sehen, die wie ein Duplikat aussieht (z.B. auth-new.ts oder UserService2.tsx), hier stoppen. Verfeinern Sie Ihre Aufgabenbeschreibung oder passen Sie die Dateiliste manuell an, bevor Sie fortfahren.",
-        "description": "PlanToCode generiert einen detaillierten Implementierungsplan basierend auf den entdeckten Dateien. Öffnen Sie den Plan im Monaco-Editor und reviewen Sie sorgfältig:",
-        "reviewItems": [
-          "Welche Dateien modifiziert werden (nach bestehenden Dateipfaden suchen)",
-          "Welche Dateien erstellt werden (verifizieren, dass dies wirklich benötigte neue Dateien sind)",
-          "Die spezifischen Code-Änderungen, die für jede Datei vorgeschlagen werden",
-          "Import-Statements und Abhängigkeits-Updates"
-        ],
-        "title": "Schritt 5: Den Implementierungsplan reviewen"
-      },
-      "step6": {
-        "description": "Sobald Sie den Plan reviewt und genehmigt haben, kopieren Sie die Implementierungsanweisungen in Ihr bevorzugtes KI-Coding-Tool (Cursor, Copilot, Claude, etc.) oder führen Sie direkt über das integrierte Terminal aus. Da PlanToCode bereits die schwere Arbeit der File Discovery und Planung erledigt hat, wird die Ausführung zu einem unkomplizierten Prozess der Anwendung gut definierter Änderungen.",
-        "link": "Terminal-Integrations-Guide",
-        "title": "Schritt 6: Mit Zuversicht ausführen"
-      },
-      "title": "Erste Schritte: Stoppen Sie noch heute die Erstellung von Duplikaten"
-    },
-    "howPlanToCodePrevents": {
-      "comprehensiveDiscovery": {
-        "description": "PlanToCode führt einen 5-stufigen File-Discovery-Workflow aus, bevor es einen Implementierungsplan generiert. Dieser Workflow verwendet Git-Integration, Regex-Filterung, KI-gestützte Relevanz-Bewertung, Beziehungs-Analyse und Pfad-Validierung, um eine vollständige Karte Ihrer Codebasis zu erstellen.",
-        "link": "Technische Dokumentation",
-        "process": {
-          "steps": [
-            "Git-Repository und Root-Ordner validieren",
-            "Task-spezifische Regex-Patterns generieren",
-            "KI-Relevanz-Bewertung von Dateiinhalten",
-            "Erweiterte Pfad-Discovery über Beziehungen",
-            "Finale Pfad-Korrektur und Validierung"
-          ],
-          "title": "Discovery-Prozess:"
-        },
-        "result": "Diese tiefe Discovery bedeutet, dass PlanToCode über authService.ts, auth-helpers.ts und authentication/-Verzeichnisse Bescheid weiß, bevor es Änderungen vorschlägt. Es wird keine Duplikate erstellen, weil es vollständigen Kontext hat.",
-        "title": "Umfassende File Discovery"
-      },
-      "description": "PlanToCode ändert den Workflow grundlegend mit einem Planung-First-Ansatz. Anstatt sofort Code zu generieren und auszuführen, verwendet PlanToCode ein umfassendes File-Discovery-System, das Ihre gesamte Codebasis-Struktur mappt, bevor es Änderungen vorschlägt. Dieser architektonische Unterschied eliminiert die Grundursachen der Duplikat-Datei-Erstellung.",
-      "gitAwareTracking": {
-        "command": "git ls-files --cached --others --exclude-standard erfasst alle getrackten Dateien plus ungetrackte Dateien, die nicht ignoriert werden, und gibt PlanToCode eine vollständige Ansicht Ihres Codebasis-Status einschließlich Work-in-Progress-Dateien.",
-        "description": "Der File-Discovery-Workflow integriert sich direkt mit git, um .gitignore-Regeln zu respektieren und sowohl committed als auch uncommitted Changes zu tracken. Diese Git-Integration stellt sicher, dass PlanToCode Ihren tatsächlichen Working-Tree sieht, einschließlich kürzlich erstellter Dateien, die möglicherweise noch nicht committed sind.",
-        "title": "Git-bewusstes File-Tracking"
-      },
-      "intelligentPatternMatching": {
-        "advanced": "Das System verwendet KI, um kontext-bewusste Regex-Patterns zu generieren, anstatt einfachem String-Matching. Für eine Aufgabe wie \"add JWT validation\" generiert es Patterns, die auth*, jwt*, token*, middleware/auth* und verwandte Patterns abdecken.",
-        "description": "PlanToCode's Regex-Generierungsstufe erstellt intelligente Patterns, die mehrere Namenskonventionen, Case-Variationen und gängige Datei-Organisationsmuster berücksichtigen. Es versteht, dass eine Anfrage zum \"update the user service\" mit userService.ts, user-service.ts, UserService.ts oder services/user/ übereinstimmen sollte.",
-        "title": "Intelligentes Pattern-Matching"
-      },
-      "reviewBeforeExecution": {
-        "contents": {
-          "items": [
-            "Vollständige Liste der zu modifizierenden Dateien",
-            "Neue Dateien, die mit vollständigen Pfaden erstellt werden",
-            "Spezifische Änderungen mit Vorher/Nachher-Kontext",
-            "Token-Count-Schätzungen pro Operation",
-            "Abhängigkeiten und benötigte Import-Updates"
-          ],
-          "title": "Plan-Inhalte umfassen:"
-        },
-        "description": "Im Gegensatz zu Tools, die Änderungen sofort anwenden, generiert PlanToCode einen detaillierten Implementierungsplan, den Sie im Monaco-Editor reviewen, bevor Code Ihr Dateisystem berührt. Sie sehen genau, welche Dateien erstellt, modifiziert oder gelöscht werden.",
-        "link": "Implementierungspläne-Guide",
-        "review": "Dieser Review-Schritt lässt Sie Duplikate vor der Ausführung abfangen. Wenn Sie sehen, dass der Plan auth-new.ts erstellen möchte, können Sie ihn ablehnen und den Discovery-Scope verfeinern.",
-        "title": "Review vor Ausführung"
-      },
-      "title": "Wie PlanToCode doppelte Dateien verhindert"
-    },
-    "problem": {
-      "caseStudy1": {
-        "description": "Ein Entwickler berichtete im Cursor-Forum, dass die KI bei der Aufforderung \"update the authentication service\" eine neue Datei src/services/auth-service-new.ts erstellte, anstatt die bestehende src/services/authService.ts zu modifizieren. Dies geschah, weil die KI nicht ordnungsgemäß nach bestehenden Implementierungen mit ähnlichen Namensmustern suchte.",
-        "impact": "Der Entwickler verbrachte 3 Stunden damit, den doppelten Code manuell zusammenzuführen, Import-Konflikte über 15 Dateien hinweg zu lösen und das Duplikat zu entfernen. Das Projekt endete mit gebrochenen Referenzen in der Produktion, weil einige Imports noch auf den alten Dateipfad zeigten.",
-        "link": "Cursor-Forum-Diskussion ansehen",
-        "title": "Fallstudie: Cursor Issue #47028"
-      },
-      "caseStudy2": {
-        "description": "Ein weiterer dokumentierter Fall betraf ein React-Projekt, bei dem ein Entwickler darum bat, \"add dark mode support\" hinzuzufügen. Anstatt die bestehende components/ThemeProvider.tsx zu modifizieren, erstellte Cursor components/DarkModeProvider.tsx mit überlappender Funktionalität. Die Codebasis endete mit zwei konkurrierenden Theme-Systemen, die gleichzeitig liefen.",
-        "impact": "Die doppelten Theme-Provider verursachten State-Management-Konflikte, erhöhten die Bundle-Größe um 45KB und schufen User-Experience-Bugs, bei denen Theme-Präferenzen nicht korrekt persistiert wurden. Die Bereinigung erforderte einen vollständigen Refactoring-Sprint.",
-        "link": "Cursor-Forum-Diskussion ansehen",
-        "title": "Fallstudie: Cursor Issue #31402"
-      },
-      "commonScenarios": {
-        "examples": [
-          "utils-new.ts erstellen, wenn helpers.ts mit ähnlichen Funktionen existiert",
-          "apiClient2.ts generieren, anstatt api/client.ts zu aktualisieren",
-          "ButtonComponent.tsx erstellen, wenn Button.tsx bereits existiert",
-          "test-helper-updated.js erstellen, anstatt testHelpers.js zu modifizieren",
-          "Konfigurationsdateien wie config-new.json oder settings-v2.yaml duplizieren"
-        ],
-        "title": "Häufige Szenarien doppelter Dateien"
-      },
-      "description": "Doppelte Dateien sind eines der häufigsten und frustrierendsten Probleme, mit denen Entwickler bei der Nutzung von KI-Coding-Assistenten konfrontiert sind. Wenn KI-Tools wie Cursor, GitHub Copilot oder andere Code-Generierungssysteme keinen ordnungsgemäßen Kontext über Ihre bestehende Codebasis haben, erstellen sie neue Dateien, anstatt bestehende zu modifizieren. Dies führt zu Code-Fragmentierung, Merge-Konflikten und Stunden manueller Aufräumarbeiten.",
-      "title": "Das Problem doppelter Dateien: Echte Beispiele"
-    },
-    "title": "Verhindern Sie, dass KI doppelte Dateien erstellt",
-    "whyAICreatesDuplicates": {
-      "conflictAvoidance": {
-        "description": "KI-Modelle werden oft mit einem Safety-First-Ansatz trainiert: Wenn unsicher, ob eine Datei existiert oder was ihr exakter Pfad ist, defaulten sie zum Erstellen einer neuen Datei, anstatt das Risiko einzugehen, bestehenden Code zu überschreiben. Dieser \"Sicherheit geht vor\"-Bias führt zu Duplikat-Datei-Proliferation.",
-        "title": "Konflikt-Vermeidungs-Bias",
-        "training": "KI-Modelle werden stärker für destruktive Aktionen (wichtigen Code überschreiben) bestraft als für konservative Aktionen (unnötige Duplikate erstellen). Diese asymmetrische Strafstruktur in Trainingsdaten fördert Duplikat-Erstellung als die \"sicherere\" Option."
-      },
-      "description": "Das Verständnis der technischen Gründe hinter der Erstellung doppelter Dateien hilft zu erklären, warum dieses Problem über KI-Coding-Tools hinweg so persistent ist. Es ist kein einfacher Bug – es ist eine grundlegende architektonische Einschränkung, wie die meisten KI-Assistenten mit Codebasen interagieren.",
-      "incompleteDiscovery": {
-        "description": "Wenn KI-Tools File Discovery versuchen, verwenden sie oft oberflächliche Methoden wie das Durchsuchen aktuell geöffneter Dateien, kürzlich aufgerufener Dateien oder einfaches Pattern-Matching. Diese Ansätze übersehen Dateien, die nicht aktiv geöffnet sind oder nicht standardmäßige Namenskonventionen haben.",
-        "example": "Wenn Ihr Authentifizierungsservice authService.ts heißt, die KI aber nach Dateien sucht, die auf \"auth*\" passen, könnte sie ihn übersehen, wenn die Suche case-sensitive ist oder auf bestimmte Verzeichnisse beschränkt ist. Die KI schließt dann, dass die Datei nicht existiert und erstellt ein Duplikat.",
-        "title": "Unvollständige File Discovery"
-      },
-      "limitedContext": {
-        "description": "Die meisten KI-Coding-Assistenten arbeiten mit einem begrenzten Kontextfenster, das zu jedem Zeitpunkt nur einen kleinen Teil Ihrer Codebasis \"sehen\" kann. Wenn Sie auffordern, ein Feature zu erstellen oder zu modifizieren, hat die KI möglicherweise nur Zugriff auf die aktuell geöffneten Dateien oder einen schmalen Ausschnitt Ihrer Projektstruktur.",
-        "details": "Selbst mit großen Kontextfenstern (128K+ Tokens) haben KI-Modelle noch Schwierigkeiten mit vollständigem Projekt-Bewusstsein. Ein typisches mittelgroßes Projekt mit 500 Dateien könnte 2-5 Millionen Tokens zum vollständigen Indizieren erfordern, was praktische Grenzen bei weitem überschreitet. Dies zwingt KI-Tools, fundierte Vermutungen über Dateispeicherorte anzustellen, anstatt vollständiges Wissen zu haben.",
-        "title": "Begrenztes Kontextfenster"
-      },
-      "namingMismatches": {
-        "description": "Verschiedene Projekte verwenden verschiedene Namenskonventionen: camelCase, PascalCase, kebab-case, snake_case oder benutzerdefinierte Patterns. KI-Tools haben oft Schwierigkeiten zu erkennen, dass user-service.ts, UserService.ts und user_service.ts alle potenzielle Übereinstimmungen für eine \"user service\"-Datei sind.",
-        "impact": "In Polyglot-Projekten, die mehrere Sprachen mischen (TypeScript, Python, Go), variieren Namenskonventionen je nach Sprach-Ökosystem. Eine KI, die hauptsächlich auf JavaScript-Patterns trainiert wurde, könnte Schwierigkeiten haben, äquivalente Python-Module zu erkennen, was zu sprachübergreifenden Duplikaten führt.",
-        "title": "Namenskonventions-Unstimmigkeiten"
-      },
-      "noValidation": {
-        "description": "Die meisten KI-Coding-Tools führen Änderungen sofort ohne Review-Schritt aus. Sie generieren Code und wenden ihn direkt auf Ihr Dateisystem an. Bis Sie realisieren, dass ein Duplikat erstellt wurde, ist der Schaden bereits angerichtet. Es gibt keine Gelegenheit, den Fehler vor der Ausführung abzufangen.",
-        "title": "Keine Pre-Execution-Validierung",
-        "workflow": "Traditionelle KI-Assistenten folgen einem \"generieren → anwenden\"-Pattern. Ohne einen \"generieren → reviewen → anwenden\"-Workflow haben Entwickler keine Chance, Dateipfade zu verifizieren, auf Duplikate zu prüfen oder das Verständnis der KI über die Codebasis-Struktur zu validieren, bevor Änderungen auf die Festplatte geschrieben werden."
-      },
-      "title": "Warum KI-Tools doppelte Dateien erstellen"
-    }
-  },
   "safeRefactoring": {
+    "meta": {
+      "title": "Sichere Refactoring-Tools: Warum KI eine Planungs-Schicht braucht - PlanToCode",
+      "description": "Schützen Sie die Produktion: Sicherheitslage fürs Refactoring mit Vorab‑Review, Abhängigkeits‑Mapping und Sichtbarkeit über mehrere Dateien."
+    },
     "comparison": {
       "aiDirect": {
         "approach": "KI Direkt",
@@ -1105,6 +270,1153 @@
       "typeDefinitions": {
         "description": "Eine Interface-Property ändern und TypeScript-Fehler über die Codebasis hinweg explodieren sehen. KI modifiziert den Type, vergisst aber Dateien, die von der alten Form abhängen.",
         "title": "Type-Definitionen"
+      }
+    }
+  },
+  "solutions": {
+    "hub": {
+      "meta": {
+        "title": "PlanToCode Lösungen - KI-Entwicklungsworkflows",
+        "description": "Lösen Sie komplexe Entwicklungsherausforderungen: schwierige Bugs, große Features, Bibliotheks-Upgrades, Legacy-Refactoring u. mehr – mit KI-gestützter Planung."
+      },
+      "badge": "Entwicklungslösungen",
+      "categories": {
+        "debugging": "Debugging",
+        "development": "Entwicklung",
+        "maintenance": "Wartung",
+        "refactoring": "Refactoring",
+        "safety": "Sicherheit"
+      },
+      "cta": {
+        "button": "PlanToCode herunterladen",
+        "description": "Beginnen Sie mit der Planung komplexer Änderungen mit Zuversicht. Laden Sie PlanToCode noch heute herunter.",
+        "title": "Bereit, Ihre Entwicklungsherausforderungen zu lösen?"
+      },
+      "description": "Bewältigen Sie komplexe Entwicklungsherausforderungen mit KI-gestützter Planung. Von der Fehlersuche bis zur Refaktorierung von Legacy-Code bietet PlanToCode die Sicherheitsebene, die Ihr Team benötigt.",
+      "solutions": {
+        "aiWrongPaths": {
+          "description": "Überprüfen Sie KI-generierte Pfade vor der Ausführung, um Dateispeicherortfehler zu vermeiden",
+          "title": "Falsche Pfade verhindern"
+        },
+        "hardBugs": {
+          "description": "Erfassen Sie Planhistorie, Terminal-Logs und Transkripte für reproduzierbare Fehleruntersuchungen",
+          "title": "Schwierige Bugs lösen"
+        },
+        "largeFeatures": {
+          "description": "Planen und verfolgen Sie Multi-File-Features mit Dependency-Mapping und schrittweiser Ausführung",
+          "title": "Große Features"
+        },
+        "legacyCodeRefactoring": {
+          "description": "KI-gestützte Planung für sichere Modernisierung von Legacy-Codebasen",
+          "title": "Legacy-Code-Refactoring"
+        },
+        "libraryUpgrades": {
+          "description": "Aktualisieren Sie Abhängigkeiten sicher mit Impact-Analyse und umfassenden Tests",
+          "title": "Bibliotheks-Upgrades"
+        },
+        "maintenanceEnhancements": {
+          "description": "Dokumentieren Sie laufende Aufgaben mit Audit-Trails und verhindern Sie Regressionen",
+          "title": "Wartung & Verbesserungen"
+        },
+        "preventDuplicateFiles": {
+          "description": "Verhindern Sie, dass KI doppelte Dateien erstellt, mit Pre-Execution File Discovery",
+          "title": "Doppelte Dateien verhindern"
+        },
+        "safeRefactoring": {
+          "description": "KI-gestützte Planung für risikofreie Code-Änderungen mit Dependency-Transparenz",
+          "title": "Sicheres Refactoring"
+        }
+      },
+      "title": "KI-gestützte Entwicklungslösungen",
+      "viewSolution": "Lösung ansehen"
+    },
+    "aiWrongPaths": {
+      "meta": {
+        "title": "Falsche Dateipfade von KI beheben | PlanToCode File Discovery",
+        "description": "Verhindern Sie, dass KI falsche Import-Pfade und Dateireferenzen generiert. PlanToCode verifiziert alle Dateipfade vor der Ausführung. Perfekt für Monorepos und Legacy-Code."
+      },
+      "badge": "KI-Pfad-Verifizierung",
+      "comparison": {
+        "features": {
+          "binaryFiltering": "Binärdatei-Filterung",
+          "gitIntegration": "Git-Integration mit .gitignore-Respekt",
+          "monorepoResolution": "Monorepo-Workspace-Auflösung",
+          "pathAliasResolution": "TypeScript-Pfad-Alias-Auflösung",
+          "preExecutionValidation": "Pre-Execution-Pfad-Validierung",
+          "realtimeProgress": "Echtzeit-Verifizierungs-Fortschritt",
+          "symbolicLinks": "Symbolische-Link-Auflösung",
+          "tokenBatching": "Kostenoptimiertes Token-Batching"
+        },
+        "title": "Wie PlanToCode sich vergleicht"
+      },
+      "cta": {
+        "description": "KI sollte Dateien referenzieren, die tatsächlich existieren. PlanToCode verifiziert jeden Pfad vor Code-Generierung und eliminiert Phantom-Imports und gebrochene Builds. Perfekt für Monorepos, Legacy-Codebasen und komplexe Projektstrukturen.",
+        "links": {
+          "deepDive": "Deep Dive: File-Discovery-System",
+          "docs": "Technische Dokumentation lesen"
+        },
+        "title": "Stoppen Sie den Kampf gegen halluzinierte Dateipfade"
+      },
+      "description": "KI-Tools halluzinieren Import-Pfade, referenzieren nicht existierende Dateien und brechen Ihren Build mit Phantom-Abhängigkeiten. PlanToCode verifiziert jeden Dateipfad vor der Ausführung und eliminiert halluzinierte Referenzen in Monorepos und Legacy-Codebasen.",
+      "discoveryInAction": {
+        "complete": {
+          "description": "Alle Dateien gegen Dateisystem verifiziert. KI wird nur validierte Pfade in generiertem Code referenzieren. Keine halluzinierten Imports möglich.",
+          "title": "Discovery abgeschlossen"
+        },
+        "stage1": {
+          "description": "Scanning-Repository, zeigt Root-Verzeichnisstruktur und ausgewählte Roots",
+          "title": "Repository-Scan startet"
+        },
+        "stage2": {
+          "description": "Führt git ls-files aus, generiert Patterns, filtert Binärdateien",
+          "title": "Regex-Filterung mit Git-Integration"
+        },
+        "title": "File Discovery in Aktion"
+      },
+      "faq": {
+        "cost": {
+          "answer": "Typischerweise $0,10-0,15 pro vollständigem Workflow, abhängig von Repository-Größe und Komplexität. Der 5-stufige Discovery-Prozess verwendet intelligentes Token-Batching und inhaltsbewusste Schätzung, um API-Kosten zu minimieren und gleichzeitig Genauigkeit zu maximieren. Kosten-Tracking ist in jede Stufe eingebaut.",
+          "question": "Wie viel kostet File Discovery pro Lauf?"
+        },
+        "excludeDirectories": {
+          "answer": "Ja. Der File-Discovery-Workflow respektiert .gitignore-Regeln automatisch. Zusätzlich werden Binärdateien und 97 gängige Nicht-Code-Erweiterungen standardmäßig gefiltert. Sie können auch benutzerdefinierte Ausschlussmuster in Ihren Projekteinstellungen konfigurieren.",
+          "question": "Kann ich bestimmte Verzeichnisse von Discovery ausschließen?"
+        },
+        "monorepoSupport": {
+          "answer": "Ja. PlanToCode unterstützt explizit Monorepo-Strukturen einschließlich pnpm-Workspaces, Yarn-Workspaces, npm-Workspaces und Nx. Der File-Discovery-Workflow parst Workspace-Konfigurationen und löst interne Paketreferenzen, hochgezogene Abhängigkeiten und Workspace-Protokoll-Imports korrekt auf.",
+          "question": "Funktioniert File Discovery mit Monorepos?"
+        },
+        "pathAliases": {
+          "answer": "Ja. Die Pfad-Validierungsstufe versteht tsconfig.json-Pfad-Mappings und löst TypeScript-Aliase wie @/* oder ~/* gegen Ihr tatsächliches Dateisystem auf. Dies stellt sicher, dass KI-generierte Imports korrekte Alias-Syntax verwenden.",
+          "question": "Funktioniert das mit TypeScript-Pfad-Aliasen?"
+        },
+        "stillWrongPath": {
+          "answer": "Während File Discovery Pfad-Halluzination dramatisch reduziert, können KI-Modelle noch neue Dateinamen für Code generieren, den Sie erstellen. PlanToCode fokussiert sich auf das Verifizieren bestehender Dateien. Für neu erstellte Dateien zeigt der Implementierungsplan klare Dateipfade und Sie können sie validieren, bevor Sie in Ihr KI-Tool kopieren.",
+          "question": "Was passiert, wenn KI noch einen falschen Pfad vorschlägt?"
+        },
+        "title": "Häufig gestellte Fragen",
+        "verifiedPaths": {
+          "answer": "Absolut. PlanToCode bietet Echtzeit-Fortschritts-Tracking mit stufenweisen Updates. Sie können genau sehen, welche Verzeichnisse gescannt wurden, wie viele Dateien Validierung bestanden haben, welche Pfade korrigiert wurden und die finale Liste verifizierter Dateien, die für KI verfügbar sind.",
+          "question": "Kann ich sehen, welche Pfade verifiziert wurden?"
+        }
+      },
+      "gettingStarted": {
+        "step1": {
+          "description": "Für macOS, Windows oder Linux installieren. Verbinden Sie sich mit Ihrem bevorzugten KI-Modell (Claude, GPT-4, Gemini oder lokale Modelle). Keine API-Keys erforderlich zum Starten.",
+          "title": "PlanToCode herunterladen"
+        },
+        "step2": {
+          "description": "Öffnen Sie Ihr Projekt und starten Sie den File-Discovery-Workflow. PlanToCode scannt und validiert automatisch Ihre gesamte Codebasis-Struktur. Beobachten Sie Echtzeit-Fortschritt für jede Stufe.",
+          "title": "File Discovery ausführen"
+        },
+        "step3": {
+          "description": "KI generiert Code unter Verwendung nur verifizierter Dateipfade. Keine halluzinierten Imports, keine Phantom-Abhängigkeiten, keine gebrochenen Builds. Mit Zuversicht kopieren.",
+          "title": "Verifizierten Code generieren"
+        },
+        "title": "Beginnen Sie, falsche Dateipfade zu verhindern"
+      },
+      "howPlanToCodePrevents": {
+        "monorepoAware": {
+          "description": "PlanToCode versteht Monorepo-Strukturen und löst Workspace-Referenzen, interne Paketpfade und hochgezogene Abhängigkeiten korrekt auf.",
+          "features": [
+            "Parst Workspace-Konfigurationen (pnpm, yarn, npm)",
+            "Löst interne Paket-Kreuzreferenzen auf",
+            "Handhabt mehrere node_modules-Hierarchien",
+            "Erkennt und respektiert Workspace-Protokoll-Imports"
+          ],
+          "title": "Monorepo-bewusste Auflösung"
+        },
+        "pathValidation": {
+          "description": "Stufe 5 des Discovery-Workflows validiert und korrigiert speziell Dateipfade. Dies geschieht automatisch, bevor irgendein KI-Modell Ihre Codebasis sieht.",
+          "features": [
+            "Prüft Dateizugänglichkeit und Berechtigungen",
+            "Löst Pfad-Inkonsistenzen automatisch auf",
+            "Handhabt Monorepo-Workspace-Protokolle",
+            "Validiert Import-Alias-Mappings aus tsconfig"
+          ],
+          "link": "Technische Dokumentation",
+          "title": "Pfad-Validierungs-Pipeline"
+        },
+        "preExecutionDiscovery": {
+          "description": "Bevor KI Code generiert, führt PlanToCode einen 5-stufigen File-Discovery-Workflow aus, der Ihr tatsächliches Dateisystem mappt. Jeder Dateipfad wird verifiziert zu existieren, bevor er in den Kontext aufgenommen wird.",
+          "features": [
+            "Scannt Repository mit git ls-files-Integration",
+            "Validiert Dateiexistenz gegen tatsächliches Dateisystem",
+            "Löst symbolische Links und Pfad-Aliase auf",
+            "Normalisiert Pfade für Cross-Platform-Kompatibilität"
+          ],
+          "link": "Über File Discovery erfahren",
+          "title": "Pre-Execution File Discovery"
+        },
+        "realTimeFeedback": {
+          "description": "Beobachten Sie File-Discovery-Fortschritt in Echtzeit mit stufenweisen Updates. Sehen Sie genau, welche Pfade validiert und korrigiert werden, bevor KI Code generiert.",
+          "features": [
+            "Live-Fortschritts-Tracking für jede Discovery-Stufe",
+            "Detaillierte Fehlermeldungen für Pfad-Probleme",
+            "Dateizahl- und Token-Nutzungs-Schätzungen",
+            "Kosten-Tracking: typischerweise $0,10-0,15 pro Workflow"
+          ],
+          "title": "Echtzeit-Verifizierungs-Feedback"
+        },
+        "title": "Wie PlanToCode falsche Dateipfade verhindert"
+      },
+      "impact": {
+        "forDevelopers": {
+          "benefits": [
+            "Stoppen Sie Debugging von Phantom-Imports. Kein Durchsuchen von Verzeichnisbäumen mehr, um den korrekten Pfad zu finden, den KI von vornherein hätte generieren sollen.",
+            "Schneller ausliefern. Wenn KI-generierter Code beim ersten Einfügen funktioniert, steigt Ihre Velocity dramatisch. Fokus auf Logik, nicht Pfad-Korrekturen.",
+            "KI-Output vertrauen. Pfad-Verifizierung baut Vertrauen auf. Sie wissen, dass Imports korrekt sind, bevor Sie Code in Ihren Editor kopieren.",
+            "Mit Legacy-Code arbeiten. Komplexe, undokumentierte Codebasen werden navigierbar, wenn jeder Pfad gegen die Realität verifiziert wird."
+          ],
+          "title": "Für einzelne Entwickler"
+        },
+        "forTeams": {
+          "benefits": [
+            "Schneller onboarden. Neue Teammitglieder verstehen Codebasis-Struktur durch verifizierte File Discovery. Kein Raten bei Import-Konventionen.",
+            "PR-Noise reduzieren. Commits eliminieren, die ausschließlich falsche Import-Pfade korrigieren. Code-Reviews fokussieren auf Logik, nicht Pfad-Korrekturen.",
+            "Monorepos selbstbewusst skalieren. Während Ihr Workspace wächst, verhindert Pfad-Verifizierung den exponentiellen Anstieg der Import-Verwirrung.",
+            "KI-Nutzung standardisieren. Wenn jeder verifizierte Pfade verwendet, behält KI-generierter Code Konsistenz über das Team hinweg."
+          ],
+          "title": "Für Engineering-Teams"
+        },
+        "metrics": {
+          "cost": "$0,12 Durchschnittliche Kosten pro Verifizierungs-Workflow",
+          "disclaimer": "Basierend auf internem Testing mit Monorepo-Codebasen von 200 bis 5.000 Dateien. Ihre Ergebnisse können je nach Repository-Struktur und Komplexität variieren.",
+          "reduction": "85% Reduzierung der pfadbezogenen Debugging-Zeit",
+          "speed": "23s Durchschnittliche Scan-Zeit für 589 Dateien",
+          "title": "Gemessene Auswirkung"
+        },
+        "title": "Die Auswirkung verifizierter Dateipfade"
+      },
+      "problem": {
+        "description": "Sie bitten KI, eine Komponente zu refactoren. Sie generiert selbstbewusst Code, der von @/components/ui/NewButton importiert – eine Datei, die nicht existiert. Ihr Build schlägt fehl. Sie verschwenden 20 Minuten damit, den Phantom-Import aufzuspüren.",
+        "quote": "KI versuchte von einem nicht existierenden Pfad zu importieren",
+        "scenarios": {
+          "contextWindow": {
+            "description": "Große Projekte überschreiten KI-Kontextfenster. Das Modell rät bei Dateispeicherorten basierend auf unvollständigen Informationen und produziert selbstbewusste, aber falsche Pfad-Referenzen.",
+            "title": "Kontextfenster-Grenzen"
+          },
+          "legacy": {
+            "description": "Ihre Codebasis hat src/components und lib/components. KI wählt das falsche aus oder halluziniert ein drittes Verzeichnis, das nie existierte.",
+            "title": "Legacy-Code-Verwirrung"
+          },
+          "monorepo": {
+            "description": "KI verwechselt @workspace/core mit @workspace/shared und generiert Imports, die plausibel aussehen, aber auf das falsche Paket verweisen.",
+            "title": "Monorepo-Albträume"
+          }
+        },
+        "title": "Das Problem falscher Dateipfade"
+      },
+      "realWorldScenarios": {
+        "title": "Real-World-Szenarien",
+        "with": {
+          "description": "Szenario zeigt, wie File Discovery Pfad-Fehler verhindert, korrekte Imports beim ersten Versuch generiert und Stunden Debugging-Zeit spart.",
+          "title": "Mit PlanToCode-Verifizierung"
+        },
+        "without": {
+          "description": "Szenario demonstriert Pfad-Halluzinations-Probleme beim Refactoring ohne Verifizierung, resultierend in gebrochenen Imports und manueller Pfad-Korrektur-Arbeit.",
+          "title": "Ohne Pfad-Verifizierung"
+        }
+      },
+      "title": "Verhindern Sie, dass KI falsche Dateipfade generiert",
+      "whyAIGeneratesWrongPaths": {
+        "contextOverflow": {
+          "description": "Selbst 200K-Token-Kontextfenster können nicht ganze Enterprise-Codebasen halten. Das Modell sieht einen Bruchteil Ihrer Dateien und leitet den Rest ab, was zu Pfad-Unstimmigkeiten führt.",
+          "points": [
+            "Unvollständige Verzeichnisbaum-Sichtbarkeit",
+            "Fehlende Import-Alias-Konfigurationen",
+            "Veraltete Snapshots sich entwickelnder Codebasen"
+          ],
+          "title": "Kontextfenster-Overflow"
+        },
+        "modelHallucination": {
+          "description": "Large Language Models sind auf Millionen von Codebasen mit unterschiedlichen Strukturen trainiert. Beim Generieren von Code pattern-matchen sie gegen Trainingsdaten, nicht gegen Ihr tatsächliches Dateisystem.",
+          "points": [
+            "Modelle sagen wahrscheinliche Pfade voraus, nicht tatsächliche Pfade",
+            "Trainingsdaten enthalten inkonsistente Namenskonventionen",
+            "Keine Dateisystem-Verifizierung in der Generierungsschleife"
+          ],
+          "title": "Modell-Halluzination"
+        },
+        "monorepoComplexity": {
+          "description": "Monorepos verstärken Pfad-Verwirrung mit Workspace-Protokollen, internen Paketen und mehreren node_modules-Verzeichnissen.",
+          "points": [
+            "Konfliktierende Paketnamen über Workspaces hinweg",
+            "Komplexe tsconfig-Pfad-Mappings",
+            "Hochgezogene Abhängigkeiten mit unklarer Auflösung"
+          ],
+          "title": "Monorepo-Komplexität"
+        },
+        "noVerification": {
+          "description": "Standard-KI-Code-Generierung hat keinen Post-Processing-Schritt zur Validierung der Dateiexistenz. Generierter Code geht direkt an Sie ohne Dateisystem-Checks.",
+          "points": [
+            "Keine Dateiexistenz-Validierung",
+            "Kein Import-Pfad-Auflösungs-Testing",
+            "Keine Kreuzreferenzierung mit tatsächlicher Verzeichnisstruktur"
+          ],
+          "title": "Keine Verifizierungs-Schicht"
+        },
+        "title": "Warum KI falsche Dateipfade generiert"
+      }
+    },
+    "hardBugs": {
+      "meta": {
+        "title": "Schwierige Bugs mit reproduzierbarem Kontext lösen - PlanToCode",
+        "description": "Wie PlanToCode Planhistorie, Terminal-Logs und Live-Transkripte erfasst, sodass knifflige Produktionsprobleme ohne Rätselraten reproduziert werden können."
+      },
+      "badge": "Produktions-Debugging",
+      "cta": {
+        "description": "Bewahren Sie jede Untersuchung, reproduzieren Sie jeden Schritt, verlieren Sie nie den Kontext. So sollte Produktions-Debugging funktionieren: diszipliniert, reproduzierbar, vollständig.",
+        "links": {
+          "terminal": "Terminal-Persistenz erkunden",
+          "voice": "Über Sprachnotizen erfahren"
+        },
+        "title": "Produktionsprobleme mit Zuversicht debuggen"
+      },
+      "description": "PlanToCode speichert jeden Plan, jede Terminal-Sitzung und jede gesprochene Notiz zusammen mit dem Job, den Sie debuggen. Öffnen Sie die exakten Befehle, Token-Budgets und Planrevisionen erneut, die zur Isolierung eines Problems verwendet wurden.",
+      "sections": {
+        "persistTerminal": {
+          "description": "Jedes Debugging-Terminal läuft in einem verwalteten PTY. Session-Metadaten, Arbeitsverzeichnisse und vollständige Output-Logs werden in SQLite gespeichert und können nach Abstürzen erneut geöffnet werden. CLI-Erkennung überprüft, dass claude, cursor, codex oder gemini Binaries installiert sind, bevor Sie Befehle ausführen.",
+          "link": "Terminal-Verhalten",
+          "title": "Terminal-Output persistent speichern"
+        },
+        "reproduceSurface": {
+          "description": "Beginnen Sie mit dem File-Discovery-Workflow, um ein Repository auf die im Vorfall referenzierten Module einzugrenzen. Der Workflow validiert Session-Eingaben, stellt Background-Jobs in die Warteschlange und speichert die ausgewählten Roots, sodass jeder Folgeplan denselben Scope verwendet.",
+          "link": "Workflow-Details",
+          "title": "Die fehlerhafte Oberfläche reproduzieren"
+        },
+        "reviewFixes": {
+          "description": "Implementierungspläne werden in den Monaco-Viewer gestreamt mit Spracherkennung, Kopier-Controls und Navigation zwischen historischen Jobs. Token-Schätzungen laufen, bevor Sie Prompts in ein externes Tool kopieren, und helfen Ihnen zu bestätigen, dass der Fix innerhalb der Grenzen des Modells bleibt.",
+          "link": "Plan-Viewer-Übersicht",
+          "title": "Jeden vorgeschlagenen Fix überprüfen"
+        },
+        "voiceNotes": {
+          "description": "Sprach-Transkription integriert sich direkt mit dem Terminal und den Prompt-Editoren. Der Aufnahme-Hook verwaltet Mikrofon-Berechtigungen, Geräteauswahl, Stille-Erkennung und fügt erkannten Text neben den Befehlen ein, die ihn ausgelöst haben.",
+          "link": "Transkriptions-Pipeline",
+          "title": "Sprachnotizen im Kontext erfassen"
+        }
+      },
+      "title": "Schwierige Bugs mit erhaltenem Kontext lösen"
+    },
+    "largeFeatures": {
+      "meta": {
+        "title": "Große Features mit nachvollziehbaren Plänen ausliefern - PlanToCode",
+        "description": "Verwenden Sie PlanToCode, um Implementierungspläne, Modellauswahl und Hintergrund-Workflows zu koordinieren, wenn Sie mehrstufige Features ausliefern."
+      },
+      "badge": "Feature-Planung",
+      "cta": {
+        "description": "Vom ersten Workflow bis zum finalen Deployment perfekte Nachvollziehbarkeit beibehalten. So sollte Feature-Delivery funktionieren: koordiniert, vorhersehbar, nachvollziehbar.",
+        "links": {
+          "plans": "Implementierungsplanung ansehen",
+          "workflows": "Über Scoped Workflows erfahren"
+        },
+        "title": "Komplexe Features mit Zuversicht ausliefern"
+      },
+      "description": "Multi-Stage-Delivery hängt von konsistentem Scope, überprüfbaren Plänen und vorhersehbarer Token-Nutzung ab. PlanToCode hält diese Signale verbunden vom ersten Workflow-Lauf bis zur finalen Terminal-Sitzung.",
+      "sections": {
+        "coordinatePlans": {
+          "description": "Pläne werden in den Monaco-Viewer gestreamt und bleiben mit ihren Background-Jobs verknüpft. Navigieren Sie durch frühere Entwürfe, führen Sie mehrere Pläne zusammen und öffnen Sie das Terminal-Modal für einen bestimmten Job, ohne den Kontext zu verlieren. Token-Schätzungen laufen, bevor Sie Prompts exportieren.",
+          "link": "Implementierungspläne",
+          "title": "Implementierungspläne koordinieren"
+        },
+        "keepAligned": {
+          "description": "Terminal-Sitzungen speichern Output-Logs in SQLite und zeigen Verbindungsgesundheit, sodass lang laufende Feature-Arbeiten nachvollziehbar bleiben. Wenn Ihr Team Walk-Throughs aufzeichnet, fügt Sprach-Transkription durchsuchbare Notizen neben den Befehlen hinzu, die sie ausgeführt haben.",
+          "link": "Terminal und Transkription",
+          "title": "Ausführung ausgerichtet halten"
+        },
+        "pickModel": {
+          "description": "Jeder Aufgabentyp bietet ein Standard-Modell und eine erlaubte Liste. Der Modell-Selektor-Toggle verhindert das Senden von Prompts, die das Kontextfenster des Modells überschreiten, und zeigt die geschätzten Token-Anforderungen an, die vom Backend-Befehl stammen.",
+          "link": "Modell-Konfiguration",
+          "title": "Das richtige Modell pro Aufgabe wählen"
+        },
+        "sameScope": {
+          "description": "Verwenden Sie den File-Discovery-Workflow, um relevante Verzeichnisse für jede Aufgabe zu sammeln. Eingaben werden validiert, Background-Jobs laufen über den Workflow-Orchestrator, und die ausgewählten Roots werden gespeichert, sodass spätere Planrevisionen denselben Repository-Ausschnitt wiederverwenden.",
+          "link": "File-Discovery-Workflow",
+          "title": "Mit demselben Scope beginnen"
+        }
+      },
+      "title": "Große Features mit nachvollziehbaren Plänen ausliefern"
+    },
+    "legacyCodeRefactoring": {
+      "meta": {
+        "title": "Legacy-Code-Refactoring - Sichere KI-Modernisierung",
+        "description": "Refactoren Sie Legacy-Code sicher mit KI-Planung. Mappen Sie Abhängigkeiten, generieren Sie Migrationsstrategien und modernisieren Sie 100K+-Zeilen-Codebasen, ohne die Produktion zu brechen."
+      },
+      "challenge": {
+        "description": "Sie haben die Aufgabe, eine 5 Jahre alte Codebasis zu modernisieren: veraltete Frameworks, keine Tests, undokumentierte Patterns und kritische Geschäftslogik, die Sie nicht vollständig verstehen. Direktes KI-Refactoring wäre Chaos. Planung gibt Ihnen einen Fahrplan.",
+        "title": "Die Legacy-Code-Herausforderung"
+      },
+      "cta": {
+        "buttons": {
+          "download": "PlanToCode herunterladen",
+          "learnMapping": "Über Dependency-Mapping erfahren"
+        },
+        "description": "PlanToCode hilft Ihnen, Abhängigkeiten zu mappen, Migrationspläne zu generieren und zu refactoren, ohne die Produktion zu brechen.",
+        "title": "Legacy-Code sicher modernisieren"
+      },
+      "description": "Legacy-Code ist dort, wo KI-gestütztes Refactoring gefährlich wird. Ein falscher Schritt bricht die Produktion. Hier erfahren Sie, wie Sie 100K+ Zeilen-Codebasen sicher mit KI-Planung modernisieren.",
+      "furtherReading": {
+        "bestPractices": "Best Practices für KI-Code-Planung",
+        "safeRefactoring": "Sichere Refactoring-Tools für Produktions-Code",
+        "title": "Weiterführende Literatur",
+        "whatIsPlanning": "Was ist KI-Code-Planung?"
+      },
+      "gettingStarted": {
+        "steps": [
+          {
+            "title": "Die kleinste wertvolle Einheit zum Refactoren wählen",
+            "description": "Nicht mit der 10.000-Zeilen-God-Class beginnen. Ein in sich geschlossenes 200-Zeilen-Modul finden, das Wert liefert."
+          },
+          {
+            "title": "Alle seine Abhängigkeiten mappen",
+            "description": "File Discovery verwenden, um Imports, Exports, Funktions-Calls zu finden. Die Blast-Radius kennen."
+          },
+          {
+            "title": "Charakterisierungs-Tests schreiben",
+            "description": "Tests, die aktuelles Verhalten erfassen, auch wenn es falsch ist. Stellt sicher, dass Refactoring Funktionalität bewahrt."
+          },
+          {
+            "title": "Refactoring-Plan generieren",
+            "description": "KI verwenden, um Datei-für-Datei-Migrationsstrategie zu erstellen. Auf fehlende Schritte oder Risiken reviewen."
+          },
+          {
+            "title": "Inkrementell ausführen",
+            "description": "Eine kleine Änderung pro Deploy. Tests laufen lassen. Produktion überwachen. Wiederholen."
+          }
+        ],
+        "title": "Mit Legacy-Refactoring beginnen"
+      },
+      "mistakes": {
+        "bigBang": {
+          "instead": "Stattdessen: Inkrementelles Refactoring mit kontinuierlichem Deployment",
+          "problem": "6 Monate damit verbringen, alles von Grund auf neu zu schreiben. 80% fertig, merken dass alter Code Edge Cases hatte, von denen Sie nichts wussten. Projekt scheitert.",
+          "title": "Big-Bang-Rewrites"
+        },
+        "noRollback": {
+          "instead": "Stattdessen: Feature-Flags, Datenbank-Migrationen mit down()-Funktionen",
+          "problem": "50 Dateien refactoren, deployen, bricht Produktion. Kann nicht einfach zurücksetzen, weil Änderungen verflochten sind.",
+          "title": "Kein Rollback-Plan"
+        },
+        "noTests": {
+          "instead": "Stattdessen: Zuerst Charakterisierungs-Tests schreiben, dann refactoren",
+          "problem": "Code ändern, hoffen dass es funktioniert, deployen, Bugs in Produktion finden. Wiederholen bis Vertrauen verloren.",
+          "title": "Refactoring ohne Tests"
+        },
+        "title": "Häufige Legacy-Refactoring-Fehler vermeiden"
+      },
+      "patterns": {
+        "featureFlag": {
+          "bestFor": "Hochrisiko-Änderungen an kritischen Pfaden (Auth, Payments, Core-Features)",
+          "howItWorks": "Code refactoren, hinter Feature-Flag legen. Zu 1%, 10%, 50%, 100% der Nutzer über Wochen ausrollen. Sofortiger Rollback bei Problemen.",
+          "title": "Feature-Flag-Rollout"
+        },
+        "parallelRun": {
+          "bestFor": "Datenverarbeitungs-Pipelines, kritische Algorithmen, Reporting-Systeme",
+          "howItWorks": "Alten und neuen Code parallel laufen lassen. Outputs vergleichen. Nur zu neuem wechseln, wenn 99,9% Übereinstimmungsrate erreicht.",
+          "title": "Parallel-Run + Validierung"
+        },
+        "stranglerFig": {
+          "bestFor": "Monolith → Microservices, altes Framework → neues Framework",
+          "howItWorks": "Neuen Code neben altem aufbauen. Traffic schrittweise von alt zu neu routen. Alten Code nur löschen, wenn 100% migriert.",
+          "title": "Strangler-Fig-Pattern"
+        },
+        "title": "Migrations-Strategie-Patterns"
+      },
+      "realExample": {
+        "codebase": "150 React-Klassenkomponenten geschrieben 2018. Müssen zu Hooks modernisiert werden für Wartbarkeit und Performance.",
+        "scenario": "Szenario",
+        "title": "Echtes Beispiel: React Class zu Hooks Migration",
+        "with": {
+          "steps": [
+            "Woche 1: Leaf-Komponenten migrieren (keine Abhängigkeiten auf sie)",
+            "Woche 2: Context-Provider migrieren (betrifft alle Consumer)",
+            "Woche 3: Container-Komponenten migrieren (orchestrieren Children)",
+            "Woche 4: Alte HOCs entfernen, vollständig hooks-basiert",
+            "Ergebnis: Saubere Migration, keine Produktions-Breaks, 4-Wochen-Timeline"
+          ],
+          "title": "Mit Planung:"
+        },
+        "without": {
+          "steps": [
+            "KI konvertiert 10 Komponenten",
+            "Bricht Lifecycle-Abhängigkeiten, auf die andere Komponenten angewiesen sind",
+            "Context-Provider funktionieren nicht mehr (class-basierte APIs)",
+            "3 Tage Debugging, um alle Breakages zu finden"
+          ],
+          "title": "Ohne Planung:"
+        }
+      },
+      "scenarios": {
+        "databaseSchema": {
+          "approach": "Planungsansatz:",
+          "challenge": "Denormalisiertes Schema von 2018. user_data-Tabelle muss in 5 normalisierte Tabellen aufgeteilt werden.",
+          "steps": [
+            "Alle Queries finden, die aus user_data lesen (grep + statische Analyse)",
+            "Mappen, welche Queries welche neuen Tabellen benötigen",
+            "Zero-Downtime-Migration mit Dual-Write-Phase planen",
+            "Verifikations-Queries erstellen, um Datenkonsistenz sicherzustellen"
+          ],
+          "title": "Datenbank-Schema-Migration"
+        },
+        "frameworkMigration": {
+          "approach": "Planungsansatz:",
+          "challenge": "200 Seiten Spaghetti-jQuery manipulieren DOM direkt. Keine Komponenten-Struktur. Vermischte Concerns überall.",
+          "steps": [
+            "Alle jQuery-Selektoren mappen, um UI-Komponenten zu identifizieren",
+            "Verwandte DOM-Manipulationen zu logischen Komponenten gruppieren",
+            "Graduelle Migration planen: eine Seite nach der anderen, beide Frameworks koexistieren",
+            "Adapter-Layer für gemeinsamen State während der Transition erstellen"
+          ],
+          "title": "Framework-Migration (jQuery → React)"
+        },
+        "monolith": {
+          "approach": "Planungsansatz:",
+          "challenge": "500K-Zeilen-Monolith, alle Features eng gekoppelt. Benutzerverwaltung muss in separaten Service extrahiert werden.",
+          "steps": [
+            "Service-Grenze identifizieren: was bleibt, was bewegt sich",
+            "Alle grenzüberschreitenden Datenflüsse und API-Calls mappen",
+            "Datenbank-Extraktionsstrategie planen (Dual-Write-Phase)",
+            "Rollback-Plan für jeden Migrationsschritt erstellen"
+          ],
+          "title": "Monolith zu Microservices"
+        },
+        "title": "Häufige Legacy-Refactoring-Szenarien"
+      },
+      "title": "Legacy-Code-Refactoring-Tools: Wie KI-Planung Desaster verhindert",
+      "tools": {
+        "complexity": {
+          "description": "Identifizieren, welche Dateien am komplexesten sind (zyklomatische Komplexität). Mit den einfachen beginnen.",
+          "title": "Code-Komplexitäts-Analyse",
+          "tools": "Tools: SonarQube, ESLint-Komplexitätsregeln"
+        },
+        "dependencyMapping": {
+          "description": "Alle Import-Chains, Funktions-Call-Graphen, Type-Dependencies finden. Wissen, was bricht, wenn Sie X ändern.",
+          "title": "Dependency-Mapping",
+          "tools": "Tools: PlanToCode File Discovery, madge, dependency-cruiser"
+        },
+        "staticAnalysis": {
+          "description": "Ungenutzten Code, tote Imports, Type-Mismatches finden. Diese aufräumen vor großem Refactoring.",
+          "title": "Statische Analyse",
+          "tools": "Tools: TypeScript Strict Mode, ESLint no-unused-vars"
+        },
+        "testCoverage": {
+          "description": "Wissen, welcher Code Tests hat, bevor Sie refactoren. Tests für kritische Pfade zuerst schreiben, falls nötig.",
+          "title": "Test-Coverage-Reports",
+          "tools": "Tools: Jest Coverage, Istanbul, Codecov"
+        },
+        "title": "Tools für Legacy-Code-Planung"
+      },
+      "whyBreaks": {
+        "description": "Legacy-Codebasen haben Eigenschaften, die Refactoring riskant machen:",
+        "points": {
+          "hiddenDeps": {
+            "description": "Funktionen, die von 20+ Stellen aufgerufen werden, Global State unerwartet modifiziert, zirkuläre Imports, von denen Sie nichts wussten.",
+            "title": "Versteckte Abhängigkeiten"
+          },
+          "insufficientTests": {
+            "description": "30% Code-Coverage, Tests, die bestehen, aber Verhalten nicht wirklich verifizieren, Integrationstests, die 45 Minuten laufen.",
+            "title": "Unzureichende Tests"
+          },
+          "outdatedPatterns": {
+            "description": "Code geschrieben vor modernen Best Practices. Callback-Hölle, eng gekoppelte Module, keine Trennung von Concerns.",
+            "title": "Veraltete Patterns"
+          },
+          "poorDocs": {
+            "description": "Keine Kommentare, kryptische Variablennamen, Geschäftslogik in Implementierungsdetails vergraben. Sie lernen, indem Sie Dinge kaputtmachen.",
+            "title": "Schlechte Dokumentation"
+          }
+        },
+        "title": "Warum Legacy-Code leicht bricht"
+      },
+      "workflow": {
+        "steps": [
+          {
+            "title": "Das bestehende System mappen",
+            "description": "File Discovery ausführen, alle Dateien identifizieren, die den Bereich berühren, den Sie refactoren. Abhängigkeiten verstehen, bevor Sie etwas ändern."
+          },
+          {
+            "title": "Mehrere Migrationsstrategien generieren",
+            "description": "KI nach 3 verschiedenen Ansätzen fragen: Big-Bang-Migration, schrittweiser Rollout, Strangler-Fig-Pattern. Trade-offs vergleichen."
+          },
+          {
+            "title": "Inkrementellen Plan erstellen",
+            "description": "In wöchentliche Meilensteine aufteilen. Jeder Schritt muss unabhängig deploybar und testbar sein. Keine \"halb-migrierten\" Zustände in der Produktion."
+          },
+          {
+            "title": "Mit Team reviewen (erforderlich für Legacy)",
+            "description": "Jemand im Team kennt die versteckten Fallstricke. Plan-Review bringt dieses Stammwissen ans Licht, bevor Sie Dinge kaputtmachen."
+          },
+          {
+            "title": "Mit Rollback-Plan ausführen",
+            "description": "Schritt 1 implementieren, verifizieren dass es funktioniert, dann Schritt 2. Immer einen Weg zum Zurücksetzen haben. Feature-Flags sind Ihre Freunde."
+          }
+        ],
+        "subtitle": "Der sichere Legacy-Refactoring-Prozess",
+        "title": "Planung-First-Refactoring-Workflow"
+      }
+    },
+    "libraryUpgrades": {
+      "meta": {
+        "title": "Bibliotheken mit Leitplanken upgraden - PlanToCode",
+        "description": "Planen Sie Migrationen, überwachen Sie Terminal-Output und bewahren Sie Transkripte beim Aktualisieren von Frameworks oder Abhängigkeiten."
+      },
+      "badge": "Upgrade-Planung",
+      "cta": {
+        "description": "Jede Änderung auditieren, jede Migration verfolgen, volle Kontrolle behalten. So sollten Bibliotheks-Upgrades funktionieren: sicher, nachvollziehbar, reversibel.",
+        "links": {
+          "planning": "Upgrade-Planung erkunden",
+          "scope": "Über Scope-Analyse erfahren"
+        },
+        "title": "Abhängigkeiten ohne Angst upgraden"
+      },
+      "description": "Die Modernisierung von Abhängigkeiten erstreckt sich oft über mehrere Repositories und Teams. PlanToCode hilft Ihnen, die Arbeit zu scopen, jeden Schritt zu dokumentieren und einen nachvollziehbaren Trail dessen zu führen, was sich geändert hat.",
+      "sections": {
+        "executionHistory": {
+          "description": "Terminal-Sitzungen speichern vollständige Output-Logs und Verbindungsgesundheit, auch nach Neustarts. Sprach-Transkription kann gesprochenen Kontext zu kniffligen Migrationsschritten hinzufügen und einen durchsuchbaren Trail für Release-Notes und Change-Reviews erstellen.",
+          "link": "Terminal & Transkription",
+          "title": "Ausführungshistorie dokumentieren"
+        },
+        "identifyFiles": {
+          "description": "Lösen Sie den File-Discovery-Workflow für Ihr Projektverzeichnis aus, um Upgrade-Hotspots zu sammeln. Die orchestrierten Background-Jobs zeichnen ausgewählte Roots auf und machen sie für jeden nachfolgenden Plan oder Prompt verfügbar.",
+          "link": "File-Discovery-Workflow",
+          "title": "Betroffene Dateien identifizieren"
+        },
+        "modelLimits": {
+          "description": "Upgrade-Prompts enthalten oft große Diffs. Task-Level-Modelleinstellungen definieren, welche Modelle erlaubt sind, und der Selektor-Toggle blockiert jede Wahl, deren Kontextfenster die geschätzten Prompt- plus Output-Tokens nicht bewältigen kann.",
+          "link": "Modell-Leitplanken",
+          "title": "Innerhalb der Modellgrenzen bleiben"
+        },
+        "trackPlans": {
+          "description": "Überprüfen Sie generierte Pläne im Monaco-Viewer, vergleichen Sie Revisionen und führen Sie überlappende Vorschläge zusammen. Pläne bleiben mit Background-Jobs verknüpft, sodass Sie die relevante Terminal-Sitzung oder das Prompt-Copy-Modal jederzeit erneut öffnen können, wenn Sie das Upgrade erneut besuchen.",
+          "link": "Implementierungspläne",
+          "title": "Upgrade-Pläne verfolgen"
+        }
+      },
+      "title": "Bibliotheken mit Leitplanken upgraden"
+    },
+    "maintenanceEnhancements": {
+      "meta": {
+        "title": "Wartung & Verbesserungen mit wiederholbaren Workflows - PlanToCode",
+        "description": "Wenden Sie systematische Wartungsaufgaben mit scoped Discovery, Planhistorie und auditfähigen Terminal-Logs an."
+      },
+      "badge": "Laufende Wartung",
+      "cta": {
+        "description": "Systematische Wartungs-Workflows aufbauen. Bewahrter Kontext, wiederverwendbare Pläne und Modell-Leitplanken verwandeln technische Schulden in handhabbare, wiederholbare Prozesse.",
+        "links": {
+          "history": "Über Planhistorie erfahren",
+          "workflows": "Scoped Workflows erkunden"
+        },
+        "title": "Wartung in strategischen Vorteil verwandeln"
+      },
+      "description": "Wartungsarbeit verlangsamt sich, wenn Teams den Scope verlieren oder dieselben Untersuchungen wiederholen. PlanToCode bewahrt den Kontext, die Pläne und die Ausführungshistorie, die benötigt werden, um Fixes sicher anzuwenden.",
+      "sections": {
+        "controlModels": {
+          "description": "Der Modell-Selektor-Toggle erzwingt Kontextfenster pro Wartungsaufgabe. Token-Schätzungen vom Backend lassen Sie bestätigen, dass große Patch-Beschreibungen noch in das gewählte Modell passen, bevor Sie sie an einen Agenten senden.",
+          "link": "Modell-Leitplanken",
+          "title": "Modellnutzung kontrollieren"
+        },
+        "planHistory": {
+          "description": "Wartungspläne werden in den Monaco-Viewer gestreamt mit Navigation zwischen Revisionen, Merge-Aktionen und Prompt-Copy-Controls. Öffnen Sie frühere Jobs erneut, um genau zu sehen, welche Schritte unternommen wurden und ob sie wiederholt werden müssen.",
+          "link": "Implementierungspläne",
+          "title": "Planhistorie bewahren"
+        },
+        "preserveLogs": {
+          "description": "Terminal-Sitzungen persistieren in SQLite mit Zeitstempeln, Exit-Codes und erfasstem Output. Sprach-Transkription kann gesprochene Notizen zum selben Job hinzufügen und zukünftigen Maintainern vollständigen Kontext darüber geben, was sich geändert hat und warum.",
+          "link": "Terminal und Transkription",
+          "title": "Ausführungslogs bewahren"
+        },
+        "reuseWorkflows": {
+          "description": "File-Discovery-Jobs sammeln die Verzeichnisse, die von früheren Wartungsaufgaben berührt wurden. Wenn ähnliche Arbeit zurückkehrt, können Sie Pläne gegen die gespeicherten Roots erneut ausführen, anstatt den Scope manuell neu aufzubauen.",
+          "link": "File-Discovery-Workflow",
+          "title": "Scoped Workflows wiederverwenden"
+        }
+      },
+      "title": "Systeme mit wiederholbaren Workflows warten"
+    },
+    "preventDuplicateFiles": {
+      "meta": {
+        "title": "Verhindern Sie, dass KI doppelte Dateien erstellt",
+        "description": "Stoppen Sie KI-Tools vom Erstellen doppelter Dateien. PlanToCode File Discovery verhindert Duplikate vor der Ausführung für Cursor- und Copilot-Nutzer."
+      },
+      "badge": "Doppelte Dateien verhindern",
+      "beforeAfter": {
+        "title": "Vorher & Nachher: KI ohne Planung vs. mit PlanToCode",
+        "with": {
+          "benefits": {
+            "items": [
+              "Null doppelte Dateien erstellt",
+              "Saubere Modifikation zu bestehendem Code",
+              "Alle Imports bleiben gültig",
+              "Zeit gespart: 2-4 Stunden"
+            ],
+            "title": "Erreichte Vorteile:"
+          },
+          "steps": [
+            {
+              "label": "Nutzer: \"Add JWT validation to authentication\"",
+              "detail": "File-Discovery-Workflow startet automatisch"
+            },
+            {
+              "label": "5-stufige Discovery mappt gesamte Codebasis",
+              "detail": "Findet authService.ts, auth-helpers.ts, verwandte Config-Dateien"
+            },
+            {
+              "label": "Generiert Implementierungsplan zum Review",
+              "detail": "Zeigt, dass bestehende authService.ts modifiziert wird, keine Duplikate"
+            },
+            {
+              "label": "Sie reviewen und genehmigen Plan",
+              "detail": "Sehen exakte Änderungen, bevor Code Dateisystem berührt"
+            },
+            {
+              "label": "Ergebnis: Saubere, zielgerichtete Modifikationen",
+              "detail": "JWT-Validierung zu bestehender authService.ts hinzugefügt, keine Duplikate erstellt"
+            }
+          ],
+          "title": "Mit PlanToCode"
+        },
+        "without": {
+          "cleanup": {
+            "items": [
+              "Doppelten Code manuell zusammenführen",
+              "Alle Import-Referenzen aktualisieren",
+              "Gebrochene Tests und Abhängigkeiten reparieren",
+              "Zeit verschwendet: 2-4 Stunden"
+            ],
+            "title": "Manuelle Bereinigung erforderlich:"
+          },
+          "steps": [
+            {
+              "label": "Nutzer: \"Add JWT validation to authentication\"",
+              "detail": "KI hat begrenzten Kontext, sieht nur aktuell geöffnete Dateien"
+            },
+            {
+              "label": "KI sucht, findet bestehende Auth-Dateien nicht",
+              "detail": "Übersieht src/services/authService.ts aufgrund von Namens-/Pfad-Unstimmigkeit"
+            },
+            {
+              "label": "Erstellt sofort jwtValidation.ts",
+              "detail": "Kein Review-Schritt, Änderungen direkt auf Dateisystem angewendet"
+            },
+            {
+              "label": "Ergebnis: Doppelte Datei erstellt",
+              "detail": "Haben jetzt sowohl authService.ts als auch jwtValidation.ts mit überlappender Funktionalität"
+            }
+          ],
+          "title": "Ohne PlanToCode"
+        }
+      },
+      "cta": {
+        "description": "File Discovery vor Ausführung. Review vor Anwendung. Null Duplikate. So sollte KI-gestützte Entwicklung funktionieren: intelligent, präventiv, sauber.",
+        "links": {
+          "howItWorks": "Sehen Sie, wie es funktioniert",
+          "planReview": "Über Plan-Review erfahren",
+          "technical": "Technischen Guide lesen"
+        },
+        "title": "Stoppen Sie noch heute die Erstellung doppelter Dateien"
+      },
+      "description": "KI-Coding-Tools erstellen häufig doppelte Dateien, weil ihnen der Kontext über die bestehende Code-Struktur fehlt. PlanToCode löst dies mit intelligenter File Discovery, die Ihre gesamte Codebasis mappt, bevor Code generiert wird.",
+      "faq": {
+        "discoveryCost": {
+          "answer": "File Discovery verwendet KI für die Relevanz-Bewertungsstufe (Stufe 3), was kleine API-Kosten verursacht. Die Kosten sind jedoch minimal (typischerweise $0,01-0,05 pro Discovery-Lauf) und das System bietet Kostenschätzungen vor der Ausführung. Die Investition lohnt sich im Vergleich zu den 2-4 Stunden manueller Bereinigungszeit, die durch Verhinderung von Duplikaten gespart werden.",
+          "question": "Gibt es Kosten für das Ausführen der File Discovery?"
+        },
+        "discoveryTime": {
+          "answer": "File Discovery dauert typischerweise 30-90 Sekunden für mittelgroße Projekte (500-2000 Dateien). Sehr große Monorepos mit 10.000+ Dateien können 2-3 Minuten dauern. Der Workflow läuft im Hintergrund, sodass Sie weiterarbeiten können, während er ausgeführt wird. Fortschritts-Updates erscheinen in Echtzeit.",
+          "question": "Wie lange dauert der File-Discovery-Workflow?"
+        },
+        "hugeCodebase": {
+          "answer": "PlanToCode enthält intelligentes Timeout-Management und Caching-Mechanismen. Für extrem große Codebasen können Sie benutzerdefinierte Timeout-Werte konfigurieren und Ausschlussmuster verwenden, um irrelevante Verzeichnisse zu überspringen (Vendor-Code, generierte Dateien, etc.). Das System cached auch Discovery-Ergebnisse pro Session, sodass nachfolgende Pläne in derselben Session den gecachten Datei-Kontext wiederverwenden.",
+          "link": "Konfigurationsoptionen",
+          "question": "Was, wenn ich eine riesige Codebasis habe? Läuft Discovery in einen Timeout?"
+        },
+        "newFiles": {
+          "answer": "Absolut. PlanToCode's File Discovery verhindert nicht das Erstellen neuer Dateien – es verhindert das Erstellen doppelter Dateien. Wenn Ihre Aufgabe wirklich eine neue Datei erfordert (wie das Hinzufügen eines komplett neuen Feature-Moduls), wird PlanToCode vorschlagen, sie im Implementierungsplan zu erstellen. Der Unterschied ist, dass Sie den Vorschlag sehen und verifizieren können, dass es wirklich neue Funktionalität ist, anstatt eines versehentlichen Duplikats.",
+          "question": "Kann ich noch echte neue Dateien erstellen, wenn nötig?"
+        },
+        "nonJavaScript": {
+          "answer": "Ja. PlanToCode's File Discovery ist sprachagnostisch. Es funktioniert mit Python, Go, Rust, Java, TypeScript, JavaScript, Ruby, PHP, C++ und jeder anderen textbasierten Codebasis. Die Regex-Generierung und KI-Relevanz-Bewertung passen sich an die spezifischen Sprachen und Frameworks in Ihrem Projekt an, basierend auf der Aufgabenbeschreibung und entdeckten Dateierweiterungen.",
+          "question": "Funktioniert das für Nicht-JavaScript-Projekte?"
+        },
+        "refactoringDuplicates": {
+          "answer": "Ja. Wenn Sie bereits doppelte Dateien in Ihrer Codebasis haben, können Sie PlanToCode verwenden, um deren Konsolidierung zu planen. Beschreiben Sie die Aufgabe als \"Merge duplicate authentication services into authService.ts\" oder ähnlich. Die File Discovery wird alle verwandten Dateien finden, und der Implementierungsplan zeigt Ihnen genau, wie Sie sie sauber konsolidieren.",
+          "question": "Kann ich PlanToCode zum Refactoring bestehender Duplikate verwenden?"
+        },
+        "stillProposesDuplicate": {
+          "answer": "Das ist selten, weil die File Discovery umfassenden Kontext bietet, aber wenn es passiert, werden Sie es während des Review-Schritts abfangen. Lehnen Sie einfach den Plan ab, verfeinern Sie Ihre Aufgabenbeschreibung (seien Sie spezifischer darüber, welche bestehenden Dateien zu modifizieren sind) oder passen Sie die Dateiauswahl manuell an. Der Hauptvorteil ist, Duplikate vor der Ausführung abzufangen, anstatt nachdem der Schaden angerichtet ist.",
+          "question": "Was passiert, wenn die KI noch ein Duplikat im Plan vorschlägt?"
+        },
+        "title": "Häufig gestellte Fragen",
+        "worksWithCursor": {
+          "answer": "Ja. PlanToCode ist als Planungs-Layer konzipiert, der neben Ihren bestehenden KI-Coding-Tools funktioniert. Sie verwenden PlanToCode, um Dateien zu entdecken und Implementierungspläne zu generieren, dann führen Sie diese Pläne mit Cursor, GitHub Copilot, Claude Code oder jedem anderen KI-Assistenten aus. Die File Discovery und Planung verhindert Duplikate unabhängig davon, welches Tool den Code ausführt.",
+          "question": "Funktioniert PlanToCode mit Cursor und GitHub Copilot?"
+        }
+      },
+      "gettingStarted": {
+        "step1": {
+          "description": "Laden Sie die PlanToCode-Desktop-Anwendung für Ihre Plattform herunter. Der File-Discovery-Workflow und Implementierungsplanungs-Features sind direkt in den Desktop-Client integriert.",
+          "title": "Schritt 1: PlanToCode Desktop installieren"
+        },
+        "step2": {
+          "description": "Öffnen Sie PlanToCode und wählen Sie das Root-Verzeichnis Ihres Projekts. PlanToCode validiert den Git-Repository-Status und etabliert das Basisverzeichnis für alle Datei-Operationen. Konfigurieren Sie benutzerdefinierte Ausschlussmuster für Verzeichnisse, die Sie überspringen möchten (node_modules, dist, build, etc.).",
+          "tip": "Die Standard-Ausschlussmuster decken bereits gängige Verzeichnisse wie node_modules, .git und Build-Artefakte ab. Sie müssen nur anpassen, wenn Ihr Projekt ungewöhnliche Verzeichnisstrukturen hat.",
+          "title": "Schritt 2: Ihr Projekt-Root konfigurieren"
+        },
+        "step3": {
+          "description": "Geben Sie eine natürlichsprachliche Beschreibung dessen ein, was Sie erreichen möchten. Zum Beispiel: \"Add JWT validation to the authentication service\" oder \"Implement dark mode support in the theme provider.\" Seien Sie so spezifisch wie möglich über die Funktionalität, die Sie wollen.",
+          "goodDescriptions": {
+            "examples": [
+              "Add Redis caching to the user profile API endpoint",
+              "Implement WebSocket connection management in the chat service",
+              "Add input validation to all form components",
+              "Update database migration to add user roles table"
+            ],
+            "title": "Gute Aufgabenbeschreibungen:"
+          },
+          "title": "Schritt 3: Ihre Aufgabe beschreiben"
+        },
+        "step4": {
+          "description": "PlanToCode führt den 5-stufigen File-Discovery-Workflow im Hintergrund aus. Sie sehen Echtzeit-Fortschritts-Updates, während es relevante Dateien entdeckt. Der Workflow dauert typischerweise 30-90 Sekunden je nach Codebasis-Größe. Sobald abgeschlossen, reviewen Sie die Liste der entdeckten Dateien. Sie sehen, welche Dateien PlanToCode als relevant für Ihre Aufgabe identifiziert hat. Dies ist Ihr erster Checkpoint, um sicherzustellen, dass das System ordnungsgemäßen Kontext über bestehende Dateien hat.",
+          "link": "Mehr über den Discovery-Prozess erfahren",
+          "title": "Schritt 4: Die File Discovery reviewen"
+        },
+        "step5": {
+          "checkpoint": "Wenn Sie irgendeine Dateierstellung sehen, die wie ein Duplikat aussieht (z.B. auth-new.ts oder UserService2.tsx), hier stoppen. Verfeinern Sie Ihre Aufgabenbeschreibung oder passen Sie die Dateiliste manuell an, bevor Sie fortfahren.",
+          "description": "PlanToCode generiert einen detaillierten Implementierungsplan basierend auf den entdeckten Dateien. Öffnen Sie den Plan im Monaco-Editor und reviewen Sie sorgfältig:",
+          "reviewItems": [
+            "Welche Dateien modifiziert werden (nach bestehenden Dateipfaden suchen)",
+            "Welche Dateien erstellt werden (verifizieren, dass dies wirklich benötigte neue Dateien sind)",
+            "Die spezifischen Code-Änderungen, die für jede Datei vorgeschlagen werden",
+            "Import-Statements und Abhängigkeits-Updates"
+          ],
+          "title": "Schritt 5: Den Implementierungsplan reviewen"
+        },
+        "step6": {
+          "description": "Sobald Sie den Plan reviewt und genehmigt haben, kopieren Sie die Implementierungsanweisungen in Ihr bevorzugtes KI-Coding-Tool (Cursor, Copilot, Claude, etc.) oder führen Sie direkt über das integrierte Terminal aus. Da PlanToCode bereits die schwere Arbeit der File Discovery und Planung erledigt hat, wird die Ausführung zu einem unkomplizierten Prozess der Anwendung gut definierter Änderungen.",
+          "link": "Terminal-Integrations-Guide",
+          "title": "Schritt 6: Mit Zuversicht ausführen"
+        },
+        "title": "Erste Schritte: Stoppen Sie noch heute die Erstellung von Duplikaten"
+      },
+      "howPlanToCodePrevents": {
+        "comprehensiveDiscovery": {
+          "description": "PlanToCode führt einen 5-stufigen File-Discovery-Workflow aus, bevor es einen Implementierungsplan generiert. Dieser Workflow verwendet Git-Integration, Regex-Filterung, KI-gestützte Relevanz-Bewertung, Beziehungs-Analyse und Pfad-Validierung, um eine vollständige Karte Ihrer Codebasis zu erstellen.",
+          "link": "Technische Dokumentation",
+          "process": {
+            "steps": [
+              "Git-Repository und Root-Ordner validieren",
+              "Task-spezifische Regex-Patterns generieren",
+              "KI-Relevanz-Bewertung von Dateiinhalten",
+              "Erweiterte Pfad-Discovery über Beziehungen",
+              "Finale Pfad-Korrektur und Validierung"
+            ],
+            "title": "Discovery-Prozess:"
+          },
+          "result": "Diese tiefe Discovery bedeutet, dass PlanToCode über authService.ts, auth-helpers.ts und authentication/-Verzeichnisse Bescheid weiß, bevor es Änderungen vorschlägt. Es wird keine Duplikate erstellen, weil es vollständigen Kontext hat.",
+          "title": "Umfassende File Discovery"
+        },
+        "description": "PlanToCode ändert den Workflow grundlegend mit einem Planung-First-Ansatz. Anstatt sofort Code zu generieren und auszuführen, verwendet PlanToCode ein umfassendes File-Discovery-System, das Ihre gesamte Codebasis-Struktur mappt, bevor es Änderungen vorschlägt. Dieser architektonische Unterschied eliminiert die Grundursachen der Duplikat-Datei-Erstellung.",
+        "gitAwareTracking": {
+          "command": "git ls-files --cached --others --exclude-standard erfasst alle getrackten Dateien plus ungetrackte Dateien, die nicht ignoriert werden, und gibt PlanToCode eine vollständige Ansicht Ihres Codebasis-Status einschließlich Work-in-Progress-Dateien.",
+          "description": "Der File-Discovery-Workflow integriert sich direkt mit git, um .gitignore-Regeln zu respektieren und sowohl committed als auch uncommitted Changes zu tracken. Diese Git-Integration stellt sicher, dass PlanToCode Ihren tatsächlichen Working-Tree sieht, einschließlich kürzlich erstellter Dateien, die möglicherweise noch nicht committed sind.",
+          "title": "Git-bewusstes File-Tracking"
+        },
+        "intelligentPatternMatching": {
+          "advanced": "Das System verwendet KI, um kontext-bewusste Regex-Patterns zu generieren, anstatt einfachem String-Matching. Für eine Aufgabe wie \"add JWT validation\" generiert es Patterns, die auth*, jwt*, token*, middleware/auth* und verwandte Patterns abdecken.",
+          "description": "PlanToCode's Regex-Generierungsstufe erstellt intelligente Patterns, die mehrere Namenskonventionen, Case-Variationen und gängige Datei-Organisationsmuster berücksichtigen. Es versteht, dass eine Anfrage zum \"update the user service\" mit userService.ts, user-service.ts, UserService.ts oder services/user/ übereinstimmen sollte.",
+          "title": "Intelligentes Pattern-Matching"
+        },
+        "reviewBeforeExecution": {
+          "contents": {
+            "items": [
+              "Vollständige Liste der zu modifizierenden Dateien",
+              "Neue Dateien, die mit vollständigen Pfaden erstellt werden",
+              "Spezifische Änderungen mit Vorher/Nachher-Kontext",
+              "Token-Count-Schätzungen pro Operation",
+              "Abhängigkeiten und benötigte Import-Updates"
+            ],
+            "title": "Plan-Inhalte umfassen:"
+          },
+          "description": "Im Gegensatz zu Tools, die Änderungen sofort anwenden, generiert PlanToCode einen detaillierten Implementierungsplan, den Sie im Monaco-Editor reviewen, bevor Code Ihr Dateisystem berührt. Sie sehen genau, welche Dateien erstellt, modifiziert oder gelöscht werden.",
+          "link": "Implementierungspläne-Guide",
+          "review": "Dieser Review-Schritt lässt Sie Duplikate vor der Ausführung abfangen. Wenn Sie sehen, dass der Plan auth-new.ts erstellen möchte, können Sie ihn ablehnen und den Discovery-Scope verfeinern.",
+          "title": "Review vor Ausführung"
+        },
+        "title": "Wie PlanToCode doppelte Dateien verhindert"
+      },
+      "problem": {
+        "caseStudy1": {
+          "description": "Ein Entwickler berichtete im Cursor-Forum, dass die KI bei der Aufforderung \"update the authentication service\" eine neue Datei src/services/auth-service-new.ts erstellte, anstatt die bestehende src/services/authService.ts zu modifizieren. Dies geschah, weil die KI nicht ordnungsgemäß nach bestehenden Implementierungen mit ähnlichen Namensmustern suchte.",
+          "impact": "Der Entwickler verbrachte 3 Stunden damit, den doppelten Code manuell zusammenzuführen, Import-Konflikte über 15 Dateien hinweg zu lösen und das Duplikat zu entfernen. Das Projekt endete mit gebrochenen Referenzen in der Produktion, weil einige Imports noch auf den alten Dateipfad zeigten.",
+          "link": "Cursor-Forum-Diskussion ansehen",
+          "title": "Fallstudie: Cursor Issue #47028"
+        },
+        "caseStudy2": {
+          "description": "Ein weiterer dokumentierter Fall betraf ein React-Projekt, bei dem ein Entwickler darum bat, \"add dark mode support\" hinzuzufügen. Anstatt die bestehende components/ThemeProvider.tsx zu modifizieren, erstellte Cursor components/DarkModeProvider.tsx mit überlappender Funktionalität. Die Codebasis endete mit zwei konkurrierenden Theme-Systemen, die gleichzeitig liefen.",
+          "impact": "Die doppelten Theme-Provider verursachten State-Management-Konflikte, erhöhten die Bundle-Größe um 45KB und schufen User-Experience-Bugs, bei denen Theme-Präferenzen nicht korrekt persistiert wurden. Die Bereinigung erforderte einen vollständigen Refactoring-Sprint.",
+          "link": "Cursor-Forum-Diskussion ansehen",
+          "title": "Fallstudie: Cursor Issue #31402"
+        },
+        "commonScenarios": {
+          "examples": [
+            "utils-new.ts erstellen, wenn helpers.ts mit ähnlichen Funktionen existiert",
+            "apiClient2.ts generieren, anstatt api/client.ts zu aktualisieren",
+            "ButtonComponent.tsx erstellen, wenn Button.tsx bereits existiert",
+            "test-helper-updated.js erstellen, anstatt testHelpers.js zu modifizieren",
+            "Konfigurationsdateien wie config-new.json oder settings-v2.yaml duplizieren"
+          ],
+          "title": "Häufige Szenarien doppelter Dateien"
+        },
+        "description": "Doppelte Dateien sind eines der häufigsten und frustrierendsten Probleme, mit denen Entwickler bei der Nutzung von KI-Coding-Assistenten konfrontiert sind. Wenn KI-Tools wie Cursor, GitHub Copilot oder andere Code-Generierungssysteme keinen ordnungsgemäßen Kontext über Ihre bestehende Codebasis haben, erstellen sie neue Dateien, anstatt bestehende zu modifizieren. Dies führt zu Code-Fragmentierung, Merge-Konflikten und Stunden manueller Aufräumarbeiten.",
+        "title": "Das Problem doppelter Dateien: Echte Beispiele"
+      },
+      "title": "Verhindern Sie, dass KI doppelte Dateien erstellt",
+      "whyAICreatesDuplicates": {
+        "conflictAvoidance": {
+          "description": "KI-Modelle werden oft mit einem Safety-First-Ansatz trainiert: Wenn unsicher, ob eine Datei existiert oder was ihr exakter Pfad ist, defaulten sie zum Erstellen einer neuen Datei, anstatt das Risiko einzugehen, bestehenden Code zu überschreiben. Dieser \"Sicherheit geht vor\"-Bias führt zu Duplikat-Datei-Proliferation.",
+          "title": "Konflikt-Vermeidungs-Bias",
+          "training": "KI-Modelle werden stärker für destruktive Aktionen (wichtigen Code überschreiben) bestraft als für konservative Aktionen (unnötige Duplikate erstellen). Diese asymmetrische Strafstruktur in Trainingsdaten fördert Duplikat-Erstellung als die \"sicherere\" Option."
+        },
+        "description": "Das Verständnis der technischen Gründe hinter der Erstellung doppelter Dateien hilft zu erklären, warum dieses Problem über KI-Coding-Tools hinweg so persistent ist. Es ist kein einfacher Bug – es ist eine grundlegende architektonische Einschränkung, wie die meisten KI-Assistenten mit Codebasen interagieren.",
+        "incompleteDiscovery": {
+          "description": "Wenn KI-Tools File Discovery versuchen, verwenden sie oft oberflächliche Methoden wie das Durchsuchen aktuell geöffneter Dateien, kürzlich aufgerufener Dateien oder einfaches Pattern-Matching. Diese Ansätze übersehen Dateien, die nicht aktiv geöffnet sind oder nicht standardmäßige Namenskonventionen haben.",
+          "example": "Wenn Ihr Authentifizierungsservice authService.ts heißt, die KI aber nach Dateien sucht, die auf \"auth*\" passen, könnte sie ihn übersehen, wenn die Suche case-sensitive ist oder auf bestimmte Verzeichnisse beschränkt ist. Die KI schließt dann, dass die Datei nicht existiert und erstellt ein Duplikat.",
+          "title": "Unvollständige File Discovery"
+        },
+        "limitedContext": {
+          "description": "Die meisten KI-Coding-Assistenten arbeiten mit einem begrenzten Kontextfenster, das zu jedem Zeitpunkt nur einen kleinen Teil Ihrer Codebasis \"sehen\" kann. Wenn Sie auffordern, ein Feature zu erstellen oder zu modifizieren, hat die KI möglicherweise nur Zugriff auf die aktuell geöffneten Dateien oder einen schmalen Ausschnitt Ihrer Projektstruktur.",
+          "details": "Selbst mit großen Kontextfenstern (128K+ Tokens) haben KI-Modelle noch Schwierigkeiten mit vollständigem Projekt-Bewusstsein. Ein typisches mittelgroßes Projekt mit 500 Dateien könnte 2-5 Millionen Tokens zum vollständigen Indizieren erfordern, was praktische Grenzen bei weitem überschreitet. Dies zwingt KI-Tools, fundierte Vermutungen über Dateispeicherorte anzustellen, anstatt vollständiges Wissen zu haben.",
+          "title": "Begrenztes Kontextfenster"
+        },
+        "namingMismatches": {
+          "description": "Verschiedene Projekte verwenden verschiedene Namenskonventionen: camelCase, PascalCase, kebab-case, snake_case oder benutzerdefinierte Patterns. KI-Tools haben oft Schwierigkeiten zu erkennen, dass user-service.ts, UserService.ts und user_service.ts alle potenzielle Übereinstimmungen für eine \"user service\"-Datei sind.",
+          "impact": "In Polyglot-Projekten, die mehrere Sprachen mischen (TypeScript, Python, Go), variieren Namenskonventionen je nach Sprach-Ökosystem. Eine KI, die hauptsächlich auf JavaScript-Patterns trainiert wurde, könnte Schwierigkeiten haben, äquivalente Python-Module zu erkennen, was zu sprachübergreifenden Duplikaten führt.",
+          "title": "Namenskonventions-Unstimmigkeiten"
+        },
+        "noValidation": {
+          "description": "Die meisten KI-Coding-Tools führen Änderungen sofort ohne Review-Schritt aus. Sie generieren Code und wenden ihn direkt auf Ihr Dateisystem an. Bis Sie realisieren, dass ein Duplikat erstellt wurde, ist der Schaden bereits angerichtet. Es gibt keine Gelegenheit, den Fehler vor der Ausführung abzufangen.",
+          "title": "Keine Pre-Execution-Validierung",
+          "workflow": "Traditionelle KI-Assistenten folgen einem \"generieren → anwenden\"-Pattern. Ohne einen \"generieren → reviewen → anwenden\"-Workflow haben Entwickler keine Chance, Dateipfade zu verifizieren, auf Duplikate zu prüfen oder das Verständnis der KI über die Codebasis-Struktur zu validieren, bevor Änderungen auf die Festplatte geschrieben werden."
+        },
+        "title": "Warum KI-Tools doppelte Dateien erstellen"
+      }
+    },
+    "safeRefactoring": {
+      "meta": {
+        "title": "Sicheres Refactoring – KI‑Planung für risikofreie Änderungen",
+        "description": "Schützen Sie die Produktion: Sicherheitslage fürs Refactoring mit Vorab‑Review, Abhängigkeits‑Mapping und Sichtbarkeit über mehrere Dateien."
+      },
+      "comparison": {
+        "aiDirect": {
+          "approach": "KI Direkt",
+          "bestFor": "Prototypen",
+          "safety": "Niedrig",
+          "speed": "Schnell (Minuten)",
+          "visibility": "Nach der Tat"
+        },
+        "aiPlanning": {
+          "approach": "KI + Planung",
+          "bestFor": "Produktions-Code",
+          "safety": "Hoch",
+          "speed": "Schnell (Minuten + Review)",
+          "visibility": "Pre-Execution"
+        },
+        "headers": {
+          "approach": "Ansatz",
+          "bestFor": "Am besten für",
+          "safety": "Sicherheit",
+          "speed": "Geschwindigkeit",
+          "visibility": "Sichtbarkeit"
+        },
+        "manual": {
+          "approach": "Manuell",
+          "bestFor": "Kleine Änderungen",
+          "safety": "Hoch",
+          "speed": "Langsam (Stunden/Tage)",
+          "visibility": "Vollständig"
+        },
+        "title": "Manuell vs KI vs KI + Planung"
+      },
+      "cta": {
+        "buttons": {
+          "download": "PlanToCode herunterladen",
+          "howItWorks": "Wie Planung funktioniert"
+        },
+        "description": "Fügen Sie Ihrem KI-Coding-Workflow eine Sicherheits-Schicht hinzu. Reviewen Sie Änderungen, bevor sie passieren.",
+        "title": "Stoppen Sie das Brechen der Produktion mit Refactoring"
+      },
+      "description": "KI-Coding-Tools können Code 10x schneller refactoren als Menschen. Sie können auch Produktion 10x schneller brechen. Hier ist, wie Sie die Geschwindigkeit ohne das Chaos bekommen.",
+      "faq": {
+        "compatibility": {
+          "answer": "Ja. PlanToCode generiert Implementierungspläne, die Sie in jedes KI-Coding-Tool kopieren können. Der Plan liefert Kontext, sodass das Tool bessere Entscheidungen während der Code-Generierung trifft.",
+          "question": "Kann ich das mit Cursor/Claude Code/Copilot verwenden?"
+        },
+        "dependencyMapping": {
+          "answer": "KI-gestützte File Discovery analysiert Import-Statements, Type-Referenzen und Cross-File-Dependencies. Sie baut einen Graphen davon, welche Dateien von welchen abhängen, sodass Refactoring-Pläne alle betroffenen Dateien enthalten.",
+          "question": "Wie funktioniert Dependency-Mapping?"
+        },
+        "languages": {
+          "answer": "Alle Sprachen. File Discovery funktioniert auf Dateisystem-Ebene und verwendet statische Analyse für Imports. TypeScript, JavaScript, Python, Rust, Go, Java und mehr.",
+          "question": "Welche Programmiersprachen werden unterstützt?"
+        },
+        "slowDown": {
+          "answer": "Initiales Review: Ja, einen Plan zu reviewen dauert 5-15 Minuten. Debugging von gebrochenem Refactoring: Kann Stunden oder Tage dauern. Netto-Ergebnis: Insgesamt schneller, besonders für komplexe Änderungen.",
+          "question": "Verlangsamt das die Entwicklung?"
+        },
+        "title": "Häufig gestellte Fragen"
+      },
+      "gettingStarted": {
+        "steps": [
+          "PlanToCode herunterladen (macOS, Windows, Linux)",
+          "Ihr Projektverzeichnis im Terminal öffnen",
+          "Ihr Refactoring beschreiben und den generierten Plan reviewen"
+        ],
+        "subtitle": "Sicheres Refactoring in 3 Schritten ausprobieren:",
+        "title": "Erste Schritte"
+      },
+      "howPlanToCodeHelps": {
+        "description": "PlanToCode fügt eine Planungs-Schicht hinzu, bevor Code geschrieben wird. Anstatt sofort auszuführen, generiert KI einen detaillierten Implementierungsplan, den Sie zuerst reviewen.",
+        "title": "Wie PlanToCode Refactoring sicher macht",
+        "workflow": {
+          "steps": [
+            {
+              "title": "Das Refactoring beschreiben",
+              "description": "\"Rename getUserData to fetchUserProfile across the entire codebase\""
+            },
+            {
+              "title": "KI mappt Abhängigkeiten",
+              "description": "File Discovery identifiziert alle Dateien, die die Funktion importieren oder referenzieren"
+            },
+            {
+              "title": "Implementierungsplan generieren",
+              "description": "Datei-für-Datei-Breakdown: was ändert sich in jeder Datei, in welcher Reihenfolge"
+            },
+            {
+              "title": "Reviewen und verfeinern",
+              "description": "Fehlende Dateien, falsche Annahmen oder Edge Cases VOR der Ausführung abfangen"
+            },
+            {
+              "title": "Mit Zuversicht ausführen",
+              "description": "Genehmigten Plan an Claude Code, Cursor übergeben oder manuell implementieren"
+            }
+          ],
+          "title": "Der sichere Refactoring-Workflow"
+        }
+      },
+      "integration": {
+        "description": "PlanToCode ersetzt Ihre KI-Coding-Tools nicht – es ergänzt sie:",
+        "title": "Integration mit bestehenden Tools",
+        "workflow": {
+          "steps": [
+            {
+              "title": "Mit PlanToCode planen",
+              "description": "Implementierungsplan mit Dependency-Mapping generieren und reviewen"
+            },
+            {
+              "title": "Mit Ihrem bevorzugten Tool ausführen",
+              "description": "Plan in Cursor, Claude Code oder Copilot für Code-Generierung einfügen"
+            },
+            {
+              "title": "Änderungen verifizieren",
+              "description": "Tests laufen lassen, Diffs gegen den Plan prüfen"
+            }
+          ],
+          "title": "Kombinierter Workflow"
+        }
+      },
+      "keyFeatures": {
+        "changeOrdering": {
+          "description": "Pläne spezifizieren die korrekte Sequenz: Types zuerst aktualisieren, dann Implementierungen, dann Tests. Vermeiden Sie zwischenzeitliche gebrochene Zustände.",
+          "title": "Änderungs-Reihenfolge"
+        },
+        "dependencyMapping": {
+          "description": "KI-gestützte File Discovery deckt alle vom Refactoring betroffenen Dateien auf, einschließlich versteckter Imports, Type-Dependencies und Cross-Module-Referenzen.",
+          "title": "Dependency-Mapping"
+        },
+        "preExecutionReview": {
+          "description": "Sehen Sie genau, was sich ändern wird, bevor Code geschrieben wird. Reviewen Sie Datei-für-Datei-Änderungen, editieren Sie den Plan und genehmigen Sie, wenn bereit.",
+          "title": "Pre-Execution-Review"
+        },
+        "testCoverageCheck": {
+          "description": "Identifizieren Sie Test-Dateien, die Updates neben Produktions-Code benötigen. Liefern Sie kein Refactoring mit gebrochenen Test-Suites aus.",
+          "title": "Test-Coverage-Check"
+        },
+        "title": "Wichtige Sicherheits-Features"
+      },
+      "realWorldExample": {
+        "scenario": "Szenario: Migration von REST zu GraphQL",
+        "task": "Alle REST-API-Calls durch GraphQL-Queries über eine 50.000-Zeilen-Next.js-Codebasis ersetzen.",
+        "title": "Real-World-Beispiel: Refactoring einer 50K-Zeilen-Codebasis",
+        "withPlanning": {
+          "steps": [
+            "File Discovery findet 47 Dateien, die REST-API verwenden",
+            "Plan zeigt Migrations-Reihenfolge: Types → Client → Components → Utils",
+            "Identifiziert Error-Handling-Patterns, die bewahrt werden müssen",
+            "Fängt Test-Dateien ab, die GraphQL-Mock-Updates benötigen",
+            "Ergebnis: Plan in 20 Minuten reviewt, sicher ausgeführt"
+          ],
+          "title": "Mit PlanToCode:"
+        },
+        "withoutPlanning": {
+          "steps": [
+            "KI modifiziert API-Client-Dateien",
+            "Aktualisiert einige Komponenten-Imports",
+            "Übersieht API-Calls in Utility-Funktionen",
+            "Vergisst Error-Handling zu aktualisieren",
+            "Änderungen kompilieren, scheitern aber zur Laufzeit",
+            "Ergebnis: 4 Stunden Debugging von Produktions-Fehlern"
+          ],
+          "title": "Ohne Planung (Cursor/Copilot direkt):"
+        }
+      },
+      "refactoringProblem": {
+        "aiPowered": "KI-gestütztes Refactoring: Schnell aber riskant. Cursor, Copilot und Claude können 20 Dateien in Sekunden modifizieren – aber Sie wissen nicht, was sich geändert hat, bis es fertig ist.",
+        "gap": "Die Lücke: Kein Review-Schritt. Keine \"Hier ist, was ich ändern werde\"-Vorschau. Nur sofortige Ausführung und hoffen auf das Beste.",
+        "manual": "Manuelles Refactoring: Sicher aber langsam. Sie aktualisieren jede Datei sorgfältig, prüfen Abhängigkeiten, führen Tests aus.",
+        "title": "Das Refactoring-Problem"
+      },
+      "title": "Sichere Refactoring-Tools: Warum KI eine Planungs-Schicht braucht",
+      "whenToUse": {
+        "skipPlanningWhen": {
+          "scenarios": [
+            "Einzeldatei-Änderungen - Isoliertes Refactoring ohne externe Abhängigkeiten",
+            "Prototypen - Wegwerf-Code, wo Dinge kaputtmachen akzeptabel ist",
+            "Winzige Projekte - Weniger als 1.000 Zeilen, einfach alles manuell zu reviewen"
+          ],
+          "title": "Planung überspringen, wenn:"
+        },
+        "title": "Wann sicheres Refactoring verwenden",
+        "usePlanningWhen": {
+          "scenarios": [
+            "Große Codebasen (50K+ Zeilen) - Zu viel Code, um nach Änderungen manuell zu reviewen",
+            "Multi-File-Refactoring - Umbenennen, Verschieben oder Umstrukturieren über 5+ Dateien hinweg",
+            "Produktions-Code - Änderungen gehen an Nutzer, nicht wegwerfbare Prototypen",
+            "Monorepos - Cross-Package-Refactoring mit gemeinsamen Abhängigkeiten",
+            "Team-Umgebungen - Mehrere Entwickler müssen den Änderungs-Scope verstehen",
+            "Breaking Changes - API-Signatur-Änderungen, Type-Modifikationen, architektonische Shifts"
+          ],
+          "title": "Planung-First-Refactoring verwenden, wenn:"
+        }
+      },
+      "whyBreaks": {
+        "description": "Refactoring scheitert, wenn KI-Tools versteckte Abhängigkeiten übersehen:",
+        "importChains": {
+          "description": "getUserData() → fetchUserProfile() umbenennen bricht 8 Dateien, die es importieren. KI sieht die Funktion, übersieht aber die Kaskade.",
+          "title": "Import-Chains"
+        },
+        "sideEffects": {
+          "description": "Datenbank-Initialisierungs-Code verschieben ohne Startup-Skripte zu aktualisieren. Die Änderung kompiliert, scheitert aber zur Laufzeit, wenn die DB nicht bereit ist.",
+          "title": "Side-Effects"
+        },
+        "testAssumptions": {
+          "description": "Error-Handling-Logik refactoren und 15 Integrationstests brechen, die spezifische Fehlermeldungen erwarten. KI aktualisiert Produktions-Code, vergisst aber Test-Mocks.",
+          "title": "Test-Annahmen"
+        },
+        "title": "Warum Refactoring Dinge kaputtmacht",
+        "typeDefinitions": {
+          "description": "Eine Interface-Property ändern und TypeScript-Fehler über die Codebasis hinweg explodieren sehen. KI modifiziert den Type, vergisst aber Dateien, die von der alten Form abhängen.",
+          "title": "Type-Definitionen"
+        }
       }
     }
   }

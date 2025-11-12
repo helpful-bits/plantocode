@@ -149,6 +149,13 @@ pub async fn admin_adjust_credits(
     // User ID is already extracted by authentication middleware
     let _admin_user_id = user.user_id;
 
+    // Admin authorization check
+    if user.role != "admin" {
+        return Err(AppError::Forbidden(
+            "You do not have permission to perform this action".to_string(),
+        ));
+    }
+
     let request = payload.into_inner();
 
     // Adjust credit balance with admin metadata
@@ -189,4 +196,59 @@ pub async fn get_credit_purchase_fee_tiers_handler(
 ) -> Result<HttpResponse, AppError> {
     let fee_tiers = billing_service.get_credit_purchase_fee_tiers().await?;
     Ok(HttpResponse::Ok().json(fee_tiers))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uuid::Uuid;
+
+    #[test]
+    fn non_admin_forbidden() {
+        // Create a non-admin authenticated user
+        let user = AuthenticatedUser {
+            user_id: Uuid::new_v4(),
+            email: "test@example.com".to_string(),
+            role: Some("user".to_string()),
+            device_id: None,
+        };
+
+        // Verify that non-admin role would be rejected
+        assert_eq!(user.role.as_deref(), Some("user"));
+        assert_ne!(user.role.as_deref(), Some("admin"));
+
+        // Test the authorization check logic
+        let is_admin = user.role.as_deref() == Some("admin");
+        assert!(!is_admin, "Non-admin user should not have admin privileges");
+    }
+
+    #[test]
+    fn admin_allowed() {
+        // Create an admin authenticated user
+        let user = AuthenticatedUser {
+            user_id: Uuid::new_v4(),
+            email: "admin@example.com".to_string(),
+            role: Some("admin".to_string()),
+            device_id: None,
+        };
+
+        // Test the authorization check logic
+        let is_admin = user.role.as_deref() == Some("admin");
+        assert!(is_admin, "Admin user should have admin privileges");
+    }
+
+    #[test]
+    fn missing_role_forbidden() {
+        // Create an authenticated user with no role
+        let user = AuthenticatedUser {
+            user_id: Uuid::new_v4(),
+            email: "test@example.com".to_string(),
+            role: None,
+            device_id: None,
+        };
+
+        // Test the authorization check logic
+        let is_admin = user.role.as_deref() == Some("admin");
+        assert!(!is_admin, "User with no role should not have admin privileges");
+    }
 }

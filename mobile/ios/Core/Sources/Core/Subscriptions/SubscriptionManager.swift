@@ -9,6 +9,7 @@ public final class SubscriptionManager: ObservableObject {
 
     public enum SubscriptionTier {
         case none
+        case weekly
         case monthly
         case annual
     }
@@ -46,6 +47,10 @@ public final class SubscriptionManager: ObservableObject {
 
     // MARK: - Computed Properties
 
+    public var weeklyProduct: Product? {
+        products.first(where: { $0.id == Config.IAP.weeklyProductId })
+    }
+
     public var monthlyProduct: Product? {
         products.first(where: { $0.id == Config.IAP.monthlyProductId })
     }
@@ -79,33 +84,48 @@ public final class SubscriptionManager: ObservableObject {
 
         // Fetch products from App Store
         let fetchedProducts = try await Product.products(
-            for: [Config.IAP.monthlyProductId, Config.IAP.annualProductId]
+            for: [Config.IAP.weeklyProductId, Config.IAP.monthlyProductId, Config.IAP.annualProductId]
         )
 
-        // Validate both products exist
-        guard fetchedProducts.count == 2 else {
-            configurationError = "Missing subscription products in App Store Connect. Expected 2, found \(fetchedProducts.count)."
+        // Validate all products exist
+        guard fetchedProducts.count == 3 else {
+            configurationError = "Missing subscription products in App Store Connect. Expected 3, found \(fetchedProducts.count)."
             products = fetchedProducts
             return
         }
 
+        let weekly = fetchedProducts.first(where: { $0.id == Config.IAP.weeklyProductId })
         let monthly = fetchedProducts.first(where: { $0.id == Config.IAP.monthlyProductId })
         let annual = fetchedProducts.first(where: { $0.id == Config.IAP.annualProductId })
 
-        guard let monthly = monthly, let annual = annual else {
+        guard let weekly = weekly, let monthly = monthly, let annual = annual else {
             configurationError = "Could not find required subscription products."
             products = fetchedProducts
             return
         }
 
         // Validate same subscription group
-        if let monthlyGroupID = monthly.subscription?.subscriptionGroupID,
+        if let weeklyGroupID = weekly.subscription?.subscriptionGroupID,
+           let monthlyGroupID = monthly.subscription?.subscriptionGroupID,
            let annualGroupID = annual.subscription?.subscriptionGroupID {
-            guard monthlyGroupID == annualGroupID else {
+            guard weeklyGroupID == monthlyGroupID && monthlyGroupID == annualGroupID else {
                 configurationError = "Products are not in the same subscription group."
                 products = fetchedProducts
                 return
             }
+        }
+
+        // Validate 7-day introductory offer for weekly
+        if let weeklyIntro = weekly.subscription?.introductoryOffer {
+            if weeklyIntro.period.unit != .day || weeklyIntro.period.value != 7 {
+                configurationError = "Weekly product does not have a 7-day free trial."
+                products = fetchedProducts
+                return
+            }
+        } else {
+            configurationError = "Weekly product is missing introductory offer."
+            products = fetchedProducts
+            return
         }
 
         // Validate 7-day introductory offer for monthly
@@ -150,7 +170,12 @@ public final class SubscriptionManager: ObservableObject {
             }
 
             // Check if this is one of our subscription products
-            if transaction.productID == Config.IAP.monthlyProductId {
+            if transaction.productID == Config.IAP.weeklyProductId {
+                activeTransaction = transaction
+                activeTier = .weekly
+                activeProductId = transaction.productID
+                break
+            } else if transaction.productID == Config.IAP.monthlyProductId {
                 activeTransaction = transaction
                 activeTier = .monthly
                 activeProductId = transaction.productID
@@ -200,6 +225,8 @@ public final class SubscriptionManager: ObservableObject {
 
         let product: Product?
         switch tier {
+        case .weekly:
+            product = weeklyProduct
         case .monthly:
             product = monthlyProduct
         case .annual:
@@ -272,7 +299,8 @@ public final class SubscriptionManager: ObservableObject {
             }
 
             // Check if this transaction is for one of our products
-            if transaction.productID == Config.IAP.monthlyProductId ||
+            if transaction.productID == Config.IAP.weeklyProductId ||
+               transaction.productID == Config.IAP.monthlyProductId ||
                transaction.productID == Config.IAP.annualProductId {
                 await refreshStatus()
             }

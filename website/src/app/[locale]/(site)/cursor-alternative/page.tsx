@@ -21,60 +21,24 @@ import {
 import type { Article, FAQPage, BreadcrumbList } from 'schema-dts';
 
 import { loadMessages, type Locale } from '@/lib/i18n';
+import { generatePageMetadata } from '@/content/metadata';
 
-export const metadata: Metadata = {
-  title: 'Cursor Safety Companion - Not Alternative',
-  description: 'Not looking for a Cursor replacement? PlanToCode works WITH Cursor to prevent duplicate files, wrong paths, and production bugs. Use both together.',
-  keywords: [
-    'cursor alternative',
-    'cursor companion',
-    'cursor safety layer',
-    'cursor planning tool',
-    'prevent cursor duplicate files',
-    'cursor file path errors',
-    'cursor planning workflow',
-    'cursor pre-planning',
-    'cursor agent planning',
-    'cursor composer planning',
-    'cursor bug prevention',
-    'cursor code review',
-    'cursor implementation planning',
-    'cursor architecture planning',
-  ],
-  robots: {
-    index: true,
-    follow: true,
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/cursor-alternative',
-    languages: {
-      'en-US': 'https://www.plantocode.com/cursor-alternative',
-      'en': 'https://www.plantocode.com/cursor-alternative',
-    },
-  },
-  openGraph: {
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+
+  return generatePageMetadata({
+    locale,
+    slug: '/cursor-alternative',
     title: 'Cursor Safety Companion - Not Alternative',
     description: 'Not looking for a Cursor replacement? PlanToCode works WITH Cursor to prevent duplicate files, wrong paths, and production bugs. Use both together.',
-    url: 'https://www.plantocode.com/cursor-alternative',
-    siteName: 'PlanToCode',
-    type: 'article',
     images: [{
       url: cdnUrl('/images/og-image.png'),
       width: 1200,
       height: 630,
       alt: 'PlanToCode - Cursor Safety Companion',
     }],
-  },
-  twitter: {
-    card: 'summary_large_image',
-    title: 'Cursor Alternative? No—Your Cursor Safety Companion',
-    description: 'PlanToCode works WITH Cursor to prevent duplicate files, wrong paths, and production bugs. Use both together.',
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      alt: 'PlanToCode - Cursor Safety Companion',
-    }],
-  },
-};
+  });
+}
 
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));

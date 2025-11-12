@@ -4,13 +4,24 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
+import { RelatedFeatures } from '@/components/RelatedContent';
 import { Terminal, Mic } from 'lucide-react';
-import { cdnUrl } from '@/lib/cdn';
 import { locales } from '@/i18n/config';
-export const metadata: Metadata = {
-  title: 'Terminal for plans - persistent PTY sessions',
-  description: 'A persistent, integrated terminal for running plans and commands inside PlanToCode. Real shells, project-aware context, and seamless copy-to-terminal.',
-  keywords: [
+import { generatePageMetadata, COMMON_KEYWORDS, mergeKeywords, generateSoftwareApplicationSchema } from '@/content/metadata';
+import { StructuredData } from '@/components/seo/StructuredData';
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return {
+    ...generatePageMetadata({
+      locale,
+      slug: '/features/integrated-terminal',
+      title: t['integratedTerminal.meta.title'],
+      description: t['integratedTerminal.meta.description'],
+    }),
+    keywords: mergeKeywords(
+      [
     'pty terminal',
     'persistent terminal sessions',
     'voice transcription terminal',
@@ -19,36 +30,25 @@ export const metadata: Metadata = {
     'cli auto-launch',
     'terminal integration',
   ],
-  openGraph: {
-    title: 'Integrated PTY Terminal for Plans',
-    description: 'A persistent, integrated terminal for running plans and commands inside PlanToCode. Real shells, project-aware context, and seamless copy-to-terminal.',
-    url: 'https://www.plantocode.com/features/integrated-terminal',
-    siteName: 'PlanToCode',
-    type: 'website',
-    locale: 'en_US',
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
-    }],
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/features/integrated-terminal',
-    languages: {
-      'en-US': 'https://www.plantocode.com/features/integrated-terminal',
-      'en': 'https://www.plantocode.com/features/integrated-terminal',
-    },
-  },
-};
+      COMMON_KEYWORDS.core
+    ),
+  };
+}
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));
 }
 export default async function IntegratedTerminalPage({ params }: { params: Promise<{ locale: Locale }> }) {
   const { locale } = await params;
   const t = await loadMessages(locale);
+
+  const softwareAppJsonLd = generateSoftwareApplicationSchema({
+    url: 'https://www.plantocode.com/features/integrated-terminal',
+    description: 'Integrated terminal with persistent sessions for AI code execution. Run Claude Code, Cursor CLI, and Codex with voice transcription support.'
+  });
+
   return (
     <>
+      <StructuredData data={softwareAppJsonLd} />
       <div className="fixed inset-0 -z-20" style={{ background: 'var(--background-gradient)' }} />
       <div className="relative z-0 bg-transparent min-h-screen flex flex-col">
         <Header />
@@ -113,6 +113,10 @@ export default async function IntegratedTerminalPage({ params }: { params: Promi
                   </GlassCard>
                 </div>
               </div>
+
+              {/* Related Features */}
+              <RelatedFeatures currentSlug="features/integrated-terminal" maxItems={3} />
+
               {/* CTA */}
               <div className="text-center">
                 <GlassCard className="p-8 sm:p-12 max-w-3xl mx-auto" highlighted>

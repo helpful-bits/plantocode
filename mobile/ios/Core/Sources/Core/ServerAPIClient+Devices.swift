@@ -14,8 +14,7 @@ extension ServerAPIClient {
         let serverDevices: [ServerDeviceInfo] = try await deviceRequest(
             path: path,
             method: .GET,
-            token: try await getAuthToken(),
-            includeDeviceId: true
+            token: try await getAuthToken()
         )
         return serverDevices.map(RegisteredDevice.from)
     }
@@ -26,8 +25,7 @@ extension ServerAPIClient {
         return try await request(
             path: "api/devices/\(deviceId)/status",
             method: .GET,
-            token: try await getAuthToken(),
-            includeDeviceId: true
+            token: try await getAuthToken()
         )
     }
 
@@ -36,8 +34,7 @@ extension ServerAPIClient {
         let _: DeviceAPIEmptyResponse = try await request(
             path: "api/devices/\(deviceId)",
             method: .DELETE,
-            token: try await getAuthToken(),
-            includeDeviceId: true
+            token: try await getAuthToken()
         )
     }
 
@@ -46,8 +43,7 @@ extension ServerAPIClient {
         return try await request(
             path: "api/devices/\(deviceId)/connection-descriptor",
             method: .GET,
-            token: try await getAuthToken(),
-            includeDeviceId: true
+            token: try await getAuthToken()
         )
     }
 
@@ -58,8 +54,7 @@ extension ServerAPIClient {
             path: "api/devices/pairing/request",
             method: .POST,
             body: request,
-            token: try await getAuthToken(),
-            includeDeviceId: true
+            token: try await getAuthToken()
         )
     }
 
@@ -70,8 +65,7 @@ extension ServerAPIClient {
             path: "api/devices/pairing/complete",
             method: .POST,
             body: request,
-            token: try await getAuthToken(),
-            includeDeviceId: true
+            token: try await getAuthToken()
         )
     }
 
@@ -231,15 +225,13 @@ extension ServerAPIClient {
         path: String,
         method: HTTPMethod = .GET,
         body: (any Encodable)? = nil,
-        token: String? = nil,
-        includeDeviceId: Bool = false
+        token: String? = nil
     ) async throws -> T {
         let (data, response) = try await requestRaw(
             path: path,
             method: method,
             body: body,
-            token: token,
-            includeDeviceId: includeDeviceId
+            token: token
         )
 
         guard (200...299).contains(response.statusCode) else {

@@ -34,6 +34,7 @@ private class KeyCommandTextView: UITextView {
 struct SelectableTextView: UIViewRepresentable {
     @Binding var text: String
     @Binding var selectedRange: NSRange
+    @Binding var forceApplySelection: Bool
 
     let placeholder: String
     let onInteraction: () -> Void
@@ -48,6 +49,7 @@ struct SelectableTextView: UIViewRepresentable {
     init(
         text: Binding<String>,
         selectedRange: Binding<NSRange>,
+        forceApplySelection: Binding<Bool>,
         placeholder: String,
         onInteraction: @escaping () -> Void,
         singleLine: Bool = false,
@@ -60,6 +62,7 @@ struct SelectableTextView: UIViewRepresentable {
     ) {
         self._text = text
         self._selectedRange = selectedRange
+        self._forceApplySelection = forceApplySelection
         self.placeholder = placeholder
         self.onInteraction = onInteraction
         self.singleLine = singleLine
@@ -136,24 +139,49 @@ struct SelectableTextView: UIViewRepresentable {
             }
         }
 
-        // Update selection if it changed programmatically (not during user editing or typing)
-        // This prevents cursor jumps when remote updates arrive during active typing
-        let coordinator = context.coordinator
-        let shouldPreserveSelection = coordinator.isUserEditing || coordinator.isUserTyping || coordinator.isFocused
-        if !shouldPreserveSelection && (uiView.selectedRange.location != selectedRange.location || uiView.selectedRange.length != selectedRange.length) {
-            // Validate range before setting
-            let textLength = (uiView.text as NSString).length
-            if selectedRange.location != NSNotFound && selectedRange.location <= textLength {
-                let validLength = min(selectedRange.length, textLength - selectedRange.location)
-                uiView.selectedRange = NSRange(location: selectedRange.location, length: validLength)
+        // Handle force-apply selection (for voice transcription)
+        if forceApplySelection {
+            // Clamp the range to valid bounds
+            let textLength = uiView.text.count
+            let clampedLocation = min(max(0, selectedRange.location), textLength)
+            let maxLength = textLength - clampedLocation
+            let clampedLength = min(max(0, selectedRange.length), maxLength)
+            let clampedRange = NSRange(location: clampedLocation, length: clampedLength)
 
-                // Only scroll for programmatic changes (like undo/redo) when keyboard is NOT visible
-                // Scrolling during keyboard animations causes jumpiness
-                if coordinator.keyboardHeight == 0 {
-                    DispatchQueue.main.async {
-                        if let selectedTextRange = uiView.selectedTextRange {
-                            let rect = uiView.caretRect(for: selectedTextRange.start)
-                            uiView.scrollRectToVisible(rect, animated: false)
+            uiView.selectedRange = clampedRange
+
+            // Scroll to show the cursor
+            DispatchQueue.main.async {
+                if let selectedTextRange = uiView.selectedTextRange {
+                    let rect = uiView.caretRect(for: selectedTextRange.start)
+                    uiView.scrollRectToVisible(rect, animated: false)
+                }
+            }
+
+            // Reset the flag
+            DispatchQueue.main.async {
+                self.forceApplySelection = false
+            }
+        } else {
+            // Update selection if it changed programmatically (not during user editing or typing)
+            // This prevents cursor jumps when remote updates arrive during active typing
+            let coordinator = context.coordinator
+            let shouldPreserveSelection = coordinator.isUserEditing || coordinator.isUserTyping || coordinator.isFocused
+            if !shouldPreserveSelection && (uiView.selectedRange.location != selectedRange.location || uiView.selectedRange.length != selectedRange.length) {
+                // Validate range before setting
+                let textLength = (uiView.text as NSString).length
+                if selectedRange.location != NSNotFound && selectedRange.location <= textLength {
+                    let validLength = min(selectedRange.length, textLength - selectedRange.location)
+                    uiView.selectedRange = NSRange(location: selectedRange.location, length: validLength)
+
+                    // Only scroll for programmatic changes (like undo/redo) when keyboard is NOT visible
+                    // Scrolling during keyboard animations causes jumpiness
+                    if coordinator.keyboardHeight == 0 {
+                        DispatchQueue.main.async {
+                            if let selectedTextRange = uiView.selectedTextRange {
+                                let rect = uiView.caretRect(for: selectedTextRange.start)
+                                uiView.scrollRectToVisible(rect, animated: false)
+                            }
                         }
                     }
                 }
@@ -375,6 +403,8 @@ public struct TaskInputView: View {
     @State private var initializedForSessionId: String?
     @State private var debounceTask: Task<Void, Never>?
     @State private var isEditing: Bool = false
+    @State private var pendingHistoryState: HistoryState?
+    @State private var forceSelectionApply: Bool = false
 
     let placeholder: String
     let onInteraction: () -> Void
@@ -401,6 +431,7 @@ public struct TaskInputView: View {
             SelectableTextView(
                 text: $taskDescription,
                 selectedRange: $selectedRange,
+                forceApplySelection: $forceSelectionApply,
                 placeholder: placeholder,
                 onInteraction: {
                     isEditing = true
@@ -434,6 +465,8 @@ public struct TaskInputView: View {
                     onError: { error in
                     },
                     onTranscriptionComplete: {
+                        // Force-apply the selection set by voice transcription
+                        forceSelectionApply = true
                         undoRedoManager.saveState(taskDescription)
                         debouncedSync()
                         onInteraction()
@@ -595,7 +628,10 @@ public struct TaskInputView: View {
                 return
             }
 
-            guard !isEditing else { return }
+            if isEditing {
+                pendingHistoryState = remoteState
+                return
+            }
             applyHistoryState(remoteState)
         }
     }
@@ -736,24 +772,28 @@ public struct TaskInputView: View {
     }
 
     private func debouncedSync() {
+        undoRedoManager.saveState(taskDescription)
         debounceTask?.cancel()
         debounceTask = Task {
             try? await Task.sleep(nanoseconds: 800_000_000)
             guard !Task.isCancelled else { return }
 
-            let state = undoRedoManager.exportState()
             do {
-                _ = try await container.sessionService.syncHistoryState(
+                try await container.sessionService.updateTaskDescription(
                     sessionId: sessionId,
-                    kind: "task",
-                    state: state,
-                    expectedVersion: state.version
+                    content: taskDescription
                 )
+                await MainActor.run {
+                    isEditing = false
+                    if let pending = pendingHistoryState {
+                        applyHistoryState(pending)
+                        pendingHistoryState = nil
+                    }
+                }
             } catch {
-            }
-
-            await MainActor.run {
-                isEditing = false
+                await MainActor.run {
+                    isEditing = false
+                }
             }
         }
     }

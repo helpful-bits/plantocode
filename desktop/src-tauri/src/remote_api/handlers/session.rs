@@ -5,6 +5,7 @@ use crate::commands::session_commands;
 use crate::models::CreateSessionRequest;
 use crate::db_utils::session_repository::{SessionRepository, TaskHistoryState, FileHistoryState};
 use crate::services::history_state_sequencer::HistoryStateSequencer;
+use crate::services::session_cache::SessionCache;
 use once_cell::sync::Lazy;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -27,6 +28,7 @@ pub async fn dispatch(app_handle: AppHandle, req: RpcRequest) -> RpcResponse {
         "session.update" => handle_session_update(app_handle, req).await,
         "session.delete" => handle_session_delete(app_handle, req).await,
         "session.duplicate" => handle_session_duplicate(app_handle, req).await,
+        "session.rename" => handle_session_rename(app_handle, req).await,
         "session.getTaskDescriptionHistory" => handle_session_get_task_description_history(app_handle, req).await,
         "session.syncTaskDescriptionHistory" => handle_session_sync_task_description_history(app_handle, req).await,
         "session.updateTaskDescription" => handle_session_update_task_description(app_handle, req).await,
@@ -291,6 +293,49 @@ pub async fn handle_session_duplicate(app_handle: AppHandle, request: RpcRequest
     }
 }
 
+pub async fn handle_session_rename(app_handle: AppHandle, request: RpcRequest) -> RpcResponse {
+    let session_id = match request.params.get("sessionId") {
+        Some(Value::String(id)) => id.clone(),
+        _ => {
+            return RpcResponse {
+                correlation_id: request.correlation_id,
+                result: None,
+                error: Some("Missing or invalid sessionId parameter".to_string()),
+                is_final: true,
+            };
+        }
+    };
+
+    // Normalize both "newName" and legacy "name" for compatibility
+    let new_name = match (request.params.get("newName"), request.params.get("name")) {
+        (Some(Value::String(n)), _) => n.clone(),
+        (_, Some(Value::String(n))) => n.clone(),
+        _ => {
+            return RpcResponse {
+                correlation_id: request.correlation_id,
+                result: None,
+                error: Some("Missing or invalid newName parameter".to_string()),
+                is_final: true,
+            };
+        }
+    };
+
+    match session_commands::rename_session_command(app_handle, session_id, new_name).await {
+        Ok(_) => RpcResponse {
+            correlation_id: request.correlation_id,
+            result: Some(json!({ "success": true })),
+            error: None,
+            is_final: true,
+        },
+        Err(error) => RpcResponse {
+            correlation_id: request.correlation_id,
+            result: None,
+            error: Some(error.to_string()),
+            is_final: true,
+        },
+    }
+}
+
 pub async fn handle_session_get_task_description_history(
     app_handle: AppHandle,
     request: RpcRequest,
@@ -421,6 +466,32 @@ pub async fn handle_session_update_task_description(app_handle: AppHandle, reque
             };
         }
     };
+
+    // Idempotency and empty-overwrite guards
+    let cache = app_handle.state::<Arc<SessionCache>>();
+    if let Ok(session) = cache.get_session(&app_handle, &session_id).await {
+        let current = session.task_description.unwrap_or_default();
+
+        // Skip identical updates
+        if content == current {
+            return RpcResponse {
+                correlation_id: request.correlation_id,
+                result: Some(json!({ "success": true })),
+                error: None,
+                is_final: true,
+            };
+        }
+
+        // Conservative: ignore empty-overwrite from remote
+        if content.trim().is_empty() && !current.trim().is_empty() {
+            return RpcResponse {
+                correlation_id: request.correlation_id,
+                result: Some(json!({ "success": true })),
+                error: None,
+                is_final: true,
+            };
+        }
+    }
 
     match crate::services::task_update_sequencer::TaskUpdateSequencer::enqueue_external_task_description_update(
         &app_handle,

@@ -121,11 +121,25 @@ export const cursorContent: PlanIntegrationContent = {
         url: 'https://www.plantocode.com/plan-mode/cursor',
         description:
           'Pre-planning for Cursor Composer and Agent mode with file discovery and multi-model synthesis.',
+        softwareVersion: '1.0.23',
+        downloadUrl: 'https://www.plantocode.com/downloads',
         offers: {
           '@type': 'Offer',
           price: 0,
           priceCurrency: 'USD',
+          availability: 'https://schema.org/InStock',
         },
+        creator: {
+          '@type': 'Organization',
+          name: 'PlanToCode',
+          url: 'https://www.plantocode.com'
+        },
+        featureList: [
+          'File Discovery',
+          'Multi-Model Planning',
+          'Cursor Integration',
+          'Composer Pre-Planning'
+        ]
       },
       buildJsonLdHowTo('Use PlanToCode with Cursor Agent and Composer', [
         {

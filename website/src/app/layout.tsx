@@ -5,10 +5,10 @@ import { headers } from 'next/headers';
 export const metadata: Metadata = {
   alternates: {
     languages: {
-      en: '/',
-      de: '/de',
-      fr: '/fr',
-      es: '/es',
+      en: 'https://www.plantocode.com',
+      de: 'https://www.plantocode.com/de',
+      fr: 'https://www.plantocode.com/fr',
+      es: 'https://www.plantocode.com/es',
     },
   },
 };

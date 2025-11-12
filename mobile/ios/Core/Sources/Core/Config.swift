@@ -2,6 +2,20 @@ import Foundation
 
 /// Configuration manager for Auth0 and API settings
 public struct Config {
+    // MARK: - Feature Flags
+
+    /// Feature flags for experimental features
+    public struct Flags {
+        /// Enable API versioning (v1 prefix in paths)
+        public static let apiVersioning: Bool = false
+
+        /// Enable strict relay envelope format
+        public static let strictRelayEnvelope: Bool = false
+    }
+
+    /// Shared flags instance
+    public static let flags = Flags()
+
     // MARK: - Auth0 Configuration
 
     /// Auth0 domain from Info.plist
@@ -112,11 +126,14 @@ public struct Config {
     /// In-App Purchase product identifiers for subscription tiers.
     ///
     /// Configuration Requirements (App Store Connect):
-    /// - Both product IDs must be in the same subscription group
-    /// - Both must have a 7-day free trial configured as the introductory offer
-    /// - Reference pricing (US): Monthly $15/month, Annual $108/year (≈$9/month billed annually)
+    /// - All product IDs must be in the same subscription group
+    /// - All must have a 7-day free trial configured as the introductory offer
+    /// - Reference pricing (US): Weekly $4.99/week, Monthly $15/month, Annual $108/year (≈$9/month billed annually)
     /// - UI displays localized prices fetched from StoreKit with static clarifying copy
     public enum IAP {
+        /// Weekly subscription product identifier
+        public static let weeklyProductId = "com.plantocode.pro.weekly"
+
         /// Monthly subscription product identifier
         public static let monthlyProductId = "com.plantocode.pro.monthly"
 

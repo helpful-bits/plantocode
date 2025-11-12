@@ -18,7 +18,7 @@
   },
   "cta": {
     "download": "Télécharger",
-    "talkToArchitect": "Parler à un architecte"
+    "talkToArchitect": "Parler à un expert"
   },
   "feature": {
     "copyButtons": {
@@ -79,7 +79,7 @@
     "resources": "Ressources",
     "support": "Support",
     "tagline": "Planifiez et livrez des modifications de code - trouvez des fichiers, générez et fusionnez des plans IA, exécutez-les dans un terminal persistant.",
-    "talkToArchitect": "Parler à un architecte",
+    "talkToArchitect": "Parler à un expert",
     "terms": "Conditions"
   },
   "label": {

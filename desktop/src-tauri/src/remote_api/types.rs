@@ -7,6 +7,7 @@ pub struct RpcRequest {
     pub method: String,
     pub params: Value,
     pub correlation_id: String,
+    pub idempotency_key: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
