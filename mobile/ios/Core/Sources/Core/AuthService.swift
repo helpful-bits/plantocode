@@ -3,12 +3,8 @@ import KeychainAccess
 import Combine
 import AuthenticationServices
 import CryptoKit
-#if os(iOS)
-#if canImport(UIKit)
 #if canImport(UIKit)
 import UIKit
-#endif
-#endif
 #endif
 
 private struct LoginAttempt {
@@ -300,8 +296,7 @@ public final class AuthService: NSObject, ObservableObject {
         path: "auth0/finalize-login",
         method: .POST,
         body: finalizeRequest as (any Encodable),
-        token: nil,
-        includeDeviceId: true
+        token: nil
       )
 
       // Store token in keychain
@@ -399,8 +394,7 @@ public final class AuthService: NSObject, ObservableObject {
         path: "api/auth0/refresh-app-token",
         method: .POST,
         body: Optional<String>.none,
-        token: token,
-        includeDeviceId: true  // Include device-binding headers
+        token: token
       )
 
       // Update stored token
@@ -454,8 +448,7 @@ public final class AuthService: NSObject, ObservableObject {
           path: "api/auth/logout",
           method: .POST,
           body: Optional<String>.none,
-          token: token,
-          includeDeviceId: true  // Include device-binding headers
+          token: token
         )
       } catch {
         // Ignore response - proceed with local logout

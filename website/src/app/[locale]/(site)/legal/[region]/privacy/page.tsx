@@ -30,6 +30,10 @@ export async function generateMetadata({ params }: PrivacyPageProps): Promise<Me
     ? `Datenschutzerklärung für unsere Anwendung, die beschreibt, wie wir Ihre persönlichen Daten erfassen, verwenden und schützen. Gilt für ${regionName} Nutzer.`
     : `Privacy policy for our application outlining how we collect, use, and protect your personal information. Applicable to ${regionName} users.`;
 
+  const canonicalUrl = locale === 'en'
+    ? `https://www.plantocode.com/legal/${region}/privacy`
+    : `https://www.plantocode.com/${locale}/legal/${region}/privacy`;
+
   return {
     title,
     description,
@@ -38,12 +42,21 @@ export async function generateMetadata({ params }: PrivacyPageProps): Promise<Me
       follow: true,
     },
     alternates: {
-      canonical: `https://www.plantocode.com/legal/${region}/privacy`,
+      canonical: canonicalUrl,
+      languages: {
+        en: `https://www.plantocode.com/legal/${region}/privacy`,
+        de: `https://www.plantocode.com/de/legal/${region}/privacy`,
+        es: `https://www.plantocode.com/es/legal/${region}/privacy`,
+        fr: `https://www.plantocode.com/fr/legal/${region}/privacy`,
+        ja: `https://www.plantocode.com/ja/legal/${region}/privacy`,
+        ko: `https://www.plantocode.com/ko/legal/${region}/privacy`,
+        'x-default': `https://www.plantocode.com/legal/${region}/privacy`,
+      },
     },
     openGraph: {
       title,
       description,
-      url: `https://www.plantocode.com/legal/${region}/privacy`,
+      url: canonicalUrl,
       siteName: 'PlanToCode',
       type: 'website',
       locale: locale === 'de' ? 'de_DE' : 'en_US',

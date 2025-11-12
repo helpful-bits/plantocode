@@ -4,12 +4,22 @@ import { BlogArticle } from '@/components/blog/BlogArticle';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Link } from '@/i18n/navigation';
 import { locales } from '@/i18n/config';
-import type { Locale } from '@/lib/i18n';
+import { loadMessages, type Locale } from '@/lib/i18n';
+import { generatePageMetadata, COMMON_KEYWORDS, mergeKeywords } from '@/content/metadata';
 
-export const metadata: Metadata = {
-  title: 'Best AI Coding Assistants 2025 - Complete Guide',
-  description: 'Comprehensive comparison of 15+ AI coding tools including Cursor, GitHub Copilot, Windsurf, and PlanToCode. Learn which tools excel at code generation vs. implementation planning.',
-  keywords: [
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return {
+    ...generatePageMetadata({
+      locale,
+      slug: '/blog/best-ai-coding-assistants-2025',
+      title: t['blog.best-ai-coding-assistants-2025.meta.title'],
+      description: t['blog.best-ai-coding-assistants-2025.meta.description'],
+    }),
+    keywords: mergeKeywords(
+      [
     'best coding ai',
     'best ai coding assistant',
     'best ai coding tools',
@@ -19,22 +29,10 @@ export const metadata: Metadata = {
     'coding assistant comparison',
     'ai developer tools'
   ],
-  openGraph: {
-    title: 'Best AI Coding Assistants 2025: Planning + Execution Guide',
-    description: 'Comprehensive comparison of 15+ AI coding tools. Learn which excel at code generation vs. implementation planning.',
-    type: 'article',
-    publishedTime: '2025-01-15T00:00:00.000Z',
-    authors: ['PlanToCode Team'],
-  },
-  twitter: {
-    card: 'summary_large_image',
-    title: 'Best AI Coding Assistants 2025: Planning + Execution Guide',
-    description: 'Comprehensive comparison of 15+ AI coding tools including Cursor, GitHub Copilot, Windsurf, and PlanToCode.',
-  },
-  alternates: {
-    canonical: 'https://plantocode.com/blog/best-ai-coding-assistants-2025',
-  },
-};
+      COMMON_KEYWORDS.core
+    ),
+  };
+}
 
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));

@@ -1,4 +1,134 @@
 {
+  "home": {
+    "meta": {
+      "title": "AI Implementation Planning for Safe Coding",
+      "description": "AI implementation planning for large codebases. Review changes before execution. Prevent bugs and duplicates. Integrates with Cursor, Copilot, Claude Code."
+    }
+  },
+  "about": {
+    "meta": {
+      "title": "About PlanToCode - AI Development Planning Tool",
+      "description": "AI development planning with multi-model integration, persistent terminals, voice transcription, and architectural synthesis."
+    }
+  },
+  "changelog": {
+    "meta": {
+      "title": "Changelog - Latest Updates",
+      "description": "Latest features and improvements in PlanToCode. Multi-model AI planning updates for Claude Code, Cursor, and OpenAI Codex integration."
+    }
+  },
+  "compare": {
+    "meta": {
+      "title": "Compare AI Coding Tools | PlanToCode vs Alternatives",
+      "description": "Compare PlanToCode with Cursor, Windsurf, Claude Code, Aider, and other AI coding assistants. Find the right tool for your workflow."
+    }
+  },
+  "screenshots": {
+    "meta": {
+      "title": "Screenshots - PlanToCode in action",
+      "description": "See PlanToCode in action with real screenshots from actual workflows. File discovery, implementation plans, terminal integration, and more."
+    }
+  },
+  "downloads": {
+    "meta": {
+      "title": "Download PlanToCode - macOS & Windows | Free Trial",
+      "description": "Download PlanToCode for macOS and Windows. Free $5 credits. Plan multi-file changes with AI, review before execution. No credit card required."
+    }
+  },
+  "planMode": {
+    "meta": {
+      "title": "Plan Before You Code - Reviewable Specs",
+      "description": "Plan software changes before you code. Generate file-by-file implementation specs, review with your team, then execute with full visibility and governance."
+    }
+  },
+  "howItWorks": {
+    "meta": {
+      "title": "How It Works - AI Planning Workflow",
+      "description": "AI implementation planning prevents chaos. File discovery, multi-model plans, human review, and safe execution with any coding agent."
+    }
+  },
+  "all-pages": {
+    "meta": {
+      "title": "All Pages - pSEO Review",
+      "description": "Internal review page for all programmatic SEO pages"
+    }
+  },
+  "workflows": {
+    "hub": {
+      "meta": {
+        "title": "AI Coding Workflows - PlanToCode Integration Patterns",
+        "description": "AI development workflows for complex tasks. Integrate with Claude Code, Cursor, Codex for refactors, bug triage, and migrations."
+      }
+    }
+  },
+  "legal": {
+    "meta": {
+      "title": "Select Your Region - Legal Documents | PlanToCode",
+      "description": "Choose your region (EU/UK or United States) to view applicable legal documents including terms of service, privacy policy, and regional compliance requirements."
+    },
+    "restricted": {
+      "meta": {
+        "title": "451 - Service Not Available in Your Region",
+        "description": "This service is not available in your geographic region."
+      }
+    }
+  },
+  "useCases": {
+    "meta": {
+      "title": "Use Cases by Role - AI Tools for Engineers",
+      "description": "Explore PlanToCode use cases by engineering role: Backend, Frontend, Mobile, Platform, Security, Data, ML, DevOps, QA, and more."
+    }
+  },
+  "integrations": {
+    "meta": {
+      "title": "AI Tool Integrations - Claude, Cursor, Codex",
+      "description": "Integrate PlanToCode with your favorite AI coding tools. Claude Code terminal execution, Cursor Composer context, Codex CLI planning workflows."
+    }
+  },
+  "stacks": {
+    "meta": {
+      "title": "AI Dev by Tech Stack - Python, TS, Rust",
+      "description": "Stack-specific AI development workflows. Python Django, TypeScript Next.js, Rust systems programming, and more with architectural awareness."
+    }
+  },
+  "blog": {
+    "hub": {
+      "meta": {
+        "title": "Blog - AI Code Planning Insights | PlanToCode",
+        "description": "Insights on AI-powered code planning and development workflows."
+      }
+    },
+    "ai-code-planning-best-practices": {
+      "meta": {
+        "title": "AI Code Planning Best Practices 2025 - Workflow Guide",
+        "description": "Master AI code planning with proven best practices: multi-model planning, dependency mapping, review checklists, and team workflows for production codebases."
+      }
+    },
+    "ai-pair-programming-vs-ai-planning": {
+      "meta": {
+        "title": "AI Pair Programming vs Planning - Team Guide",
+        "description": "Compare AI pair programming (Copilot, Cursor) with AI planning (PlanToCode). When to use each approach for production codebases, teams, and complex refactoring."
+      }
+    },
+    "what-is-ai-code-planning": {
+      "meta": {
+        "title": "What is AI Code Planning? Developer Guide",
+        "description": "What AI code planning is, why it matters for large codebases, how planning-first development prevents AI coding chaos."
+      }
+    },
+    "github-copilot-alternatives-2025": {
+      "meta": {
+        "title": "GitHub Copilot Alternatives 2025 | Best Options",
+        "description": "Compare Copilot alternatives: Cursor, Codeium, Tabnine, PlanToCode, Aider. See pricing, features, and find the best fit for your team."
+      }
+    },
+    "best-ai-coding-assistants-2025": {
+      "meta": {
+        "title": "Best AI Coding Assistants 2025 - Complete Guide",
+        "description": "Compare 15+ AI coding tools: Cursor, GitHub Copilot, Windsurf, PlanToCode. See which excel at code generation vs. implementation planning."
+      }
+    }
+  },
   "about": {
     "architecture": {
       "comment": "Built for complex development workflows, not simple AI chat",
@@ -452,16 +582,16 @@
       "screenshots": "View Real Screenshots",
       "subtitle": "See how PlanToCode plans and runs code changes.",
       "title": "Interactive demo",
-      "video": "View Short Demo"
+      "video": "View Demo"
     },
     "meta": {
-      "description": "See how PlanToCode plans and runs code changes.",
+      "description": "Experience PlanToCode's AI planning workflow in action. See file discovery, multi-model plan generation, and terminal execution in real-time.",
       "title": "Interactive demo"
     }
   },
   "downloads": {
     "cta": {
-      "architect": "Talk to an architect",
+      "architect": "Talk to an expert",
       "docs": "Terminal docs",
       "footer": "Made in Germany • GDPR Compliant • Local Session Storage",
       "professional": "Professional options",
@@ -875,11 +1005,11 @@
     "footer": "Can't find a suitable time? Email us at",
     "hero": {
       "subtitle": "Get expert guidance on using PlanToCode for your team's specific needs. We'll discuss architecture patterns, integration strategies, and deployment options.",
-      "title": "Talk to an Architect"
+      "title": "Talk to an Expert"
     },
     "meta": {
       "description": "Get expert guidance on using PlanToCode for your team's specific needs. We'll discuss architecture patterns, integration strategies, and deployment options.",
-      "title": "Talk to an Architect"
+      "title": "Talk to an Expert"
     },
     "topics": {
       "items": {
@@ -892,6 +1022,10 @@
       },
       "title": "Common Topics We Cover"
     }
+  },
+  "screenshots": {
+    "title": "PlanToCode Screenshots",
+    "description": "See PlanToCode in action with real screenshots from actual workflows."
   },
   "support": {
     "button": "Contact Support",

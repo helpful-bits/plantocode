@@ -16,7 +16,7 @@ export function IntegrationsSection() {
         <p className="text-lg text-center text-foreground/80 mb-12 max-w-3xl mx-auto">
           {t('integrations.subtitle', 'Enhance Claude Code, Cursor, and Codex CLI with architectural planning')}
         </p>
-        <div className="grid md:grid-cols-3 gap-6">
+        <div className="grid md:grid-cols-3 gap-6 mb-8">
           <GlassCard className="p-6">
             <h3 className="text-xl font-semibold mb-3">
               {t('integrations.cards.claudeCode.title', 'Claude Code Integration')}
@@ -52,6 +52,11 @@ export function IntegrationsSection() {
               {t('integrations.cards.allIntegrations.link', 'View integrations →')}
             </Link>
           </GlassCard>
+        </div>
+        <div className="text-center">
+          <Link href="/comparisons" className="inline-flex items-center gap-2 text-primary hover:underline text-sm font-medium">
+            {t('integrations.compareTools', 'Compare PlanToCode with other AI coding tools')} →
+          </Link>
         </div>
       </div>
     </section>

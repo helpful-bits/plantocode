@@ -5,32 +5,23 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Breadcrumbs } from '@/components/Breadcrumbs';
 import { buildHubBreadcrumbs } from '@/components/breadcrumbs/utils';
-import { cdnUrl } from '@/lib/cdn';
 import { getPagesByCategory } from '@/data/pseo';
 import { loadMessagesFor, type Locale } from '@/lib/i18n';
 import { Terminal, Plug } from 'lucide-react';
 import { locales } from '@/i18n/config';
+import { generatePageMetadata } from '@/content/metadata';
 
-export const metadata: Metadata = {
-  title: 'AI Tool Integrations - Claude, Cursor, Codex',
-  description: 'Integrate PlanToCode with your favorite AI coding tools. Claude Code terminal execution, Cursor Composer context, Codex CLI planning workflows.',
-  openGraph: {
-    title: 'AI Tool Integrations - PlanToCode',
-    description: 'Seamlessly integrate with Claude Code, Cursor, Codex CLI and more.',
-    url: 'https://www.plantocode.com/integrations',
-    type: 'website',
-    siteName: 'PlanToCode',
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
-    }],
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/integrations',
-  },
-};
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessagesFor(locale, ['common']);
+
+  return generatePageMetadata({
+    locale,
+    slug: '/integrations',
+    title: t['integrations.meta.title'],
+    description: t['integrations.meta.description'],
+  });
+}
 
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));

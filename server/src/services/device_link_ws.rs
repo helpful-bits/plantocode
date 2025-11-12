@@ -5,7 +5,7 @@
 // connected devices.
 
 use actix::prelude::*;
-use actix_web_actors::{ws, ws::Message};
+use actix_web_actors::{ws, ws::Message, ws::CloseCode, ws::CloseReason};
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -13,6 +13,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
+use serde::Deserialize;
 
 use crate::db::repositories::device_repository::{DeviceRepository, HeartbeatRequest};
 use crate::error::AppError;
@@ -32,6 +33,40 @@ const CLIENT_TIMEOUT: Duration = Duration::from_secs(60);
 /// Rate limiter for binary routing warnings: tracks last warning time per producer
 lazy_static::lazy_static! {
     static ref BINARY_ROUTE_WARNINGS: Mutex<HashMap<String, Instant>> = Mutex::new(HashMap::new());
+}
+
+/// Token bucket rate limiter for per-connection rate limiting
+struct TokenBucket {
+    tokens: u32,
+    capacity: u32,
+    refill_per_sec: u32,
+    last_refill: Instant,
+}
+
+impl TokenBucket {
+    fn new(capacity: u32, refill_per_sec: u32) -> Self {
+        Self {
+            tokens: capacity,
+            capacity,
+            refill_per_sec,
+            last_refill: Instant::now(),
+        }
+    }
+
+    fn allow(&mut self) -> bool {
+        let elapsed = self.last_refill.elapsed().as_secs();
+        if elapsed > 0 {
+            let add = (elapsed as u32) * self.refill_per_sec;
+            self.tokens = self.tokens.saturating_add(add).min(self.capacity);
+            self.last_refill = Instant::now();
+        }
+        if self.tokens > 0 {
+            self.tokens -= 1;
+            true
+        } else {
+            false
+        }
+    }
 }
 
 /// WebSocket actor for device communication
@@ -62,6 +97,8 @@ pub struct DeviceLinkWs {
     pub relay_store: Option<actix_web::web::Data<RelaySessionStore>>,
     /// APNS service for push notifications
     pub apns_service: Option<actix_web::web::Data<ApnsService>>,
+    /// Per-connection rate limiter
+    pub rate: TokenBucket,
 }
 
 impl DeviceLinkWs {
@@ -80,6 +117,7 @@ impl DeviceLinkWs {
             device_repository: None,
             relay_store: None,
             apns_service: None,
+            rate: TokenBucket::new(50, 25),
         }
     }
 
@@ -422,6 +460,22 @@ impl StreamHandler<Result<Message, ws::ProtocolError>> for DeviceLinkWs {
             }
             Ok(Message::Text(text)) => {
                 self.last_heartbeat = Instant::now();
+
+                // Check rate limit before processing
+                if !self.rate.allow() {
+                    warn!(
+                        connection_id = %self.connection_id,
+                        user_id = ?self.user_id,
+                        device_id = ?self.device_id,
+                        "Rate limit exceeded; closing WebSocket"
+                    );
+                    ctx.close(Some(CloseReason {
+                        code: CloseCode::Policy,
+                        description: Some("rate limit exceeded".into()),
+                    }));
+                    ctx.stop();
+                    return;
+                }
 
                 // Handle the message asynchronously
                 let addr = ctx.address();
@@ -1217,6 +1271,48 @@ impl Handler<HandleRelayMessageInternal> for DeviceLinkWs {
             relay_store.touch(session_id);
         }
 
+        // STEP 16: Strict relay envelope parsing (optional/staged)
+        let strict_envelope = std::env::var("STRICT_RELAY_ENVELOPE").ok().as_deref() == Some("1");
+        if strict_envelope {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct RelayRpcRequest {
+                method: String,
+                params: serde_json::Value,
+                correlation_id: String,
+                idempotency_key: Option<String>,
+            }
+
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct RelayRequestPayload {
+                target_device_id: String,
+                user_id: String,
+                request: RelayRpcRequest,
+            }
+
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct RelayMessageEnvelope {
+                payload: RelayRequestPayload,
+            }
+
+            // Attempt strict deserialization
+            if let Err(e) = serde_json::from_value::<RelayMessageEnvelope>(msg.payload.clone()) {
+                warn!(
+                    connection_id = %self.connection_id,
+                    error = %e,
+                    "Strict relay envelope validation failed"
+                );
+                self.send_error(
+                    "invalid_relay_envelope",
+                    &format!("Relay envelope does not match expected schema: {}", e),
+                    ctx,
+                );
+                return;
+            }
+        }
+
         // 1. Resolve outer payload object
         let root_obj = msg.payload.as_object();
         if root_obj.is_none() {
@@ -1328,12 +1424,43 @@ impl Handler<HandleRelayMessageInternal> for DeviceLinkWs {
         }
         let method = method.unwrap();
 
-        let params = inner.get("params").cloned().unwrap_or(serde_json::json!({}));
+        let mut params = inner.get("params").cloned().unwrap_or(serde_json::json!({}));
 
         // Validate params is valid JSON
         if !params.is_object() && !params.is_array() && !params.is_null() && !params.is_string() && !params.is_number() && !params.is_boolean() {
             self.send_error("invalid_params", "Params must be valid JSON", ctx);
             return;
+        }
+
+        // Defensive coercion for session.syncHistoryState expectedVersion
+        if method == "session.syncHistoryState" {
+            if let Some(params_obj) = params.as_object_mut() {
+                if let Some(ev) = params_obj.remove("expectedVersion") {
+                    let coerced = match ev {
+                        serde_json::Value::Bool(b) => serde_json::Value::from(if b { 1i64 } else { 0i64 }),
+                        serde_json::Value::String(s) => {
+                            s.parse::<i64>()
+                                .map(serde_json::Value::from)
+                                .unwrap_or_else(|_| serde_json::Value::from(0i64))
+                        }
+                        serde_json::Value::Number(n) => {
+                            n.as_i64()
+                                .map(serde_json::Value::from)
+                                .unwrap_or_else(|| serde_json::Value::from(0i64))
+                        }
+                        v => {
+                            // Try best-effort double -> i64
+                            v.as_f64()
+                                .map(|f| serde_json::Value::from(f as i64))
+                                .unwrap_or_else(|| serde_json::Value::from(0i64))
+                        }
+                    };
+                    params_obj.insert("expectedVersion".to_string(), coerced);
+                } else {
+                    // If missing, default to 0
+                    params_obj.insert("expectedVersion".to_string(), serde_json::Value::from(0i64));
+                }
+            }
         }
 
         let correlation_id = inner.get("correlationId")
@@ -1342,16 +1469,37 @@ impl Handler<HandleRelayMessageInternal> for DeviceLinkWs {
             .map(|s| s.to_string())
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
+        // Extract idempotencyKey for forwarding
+        let idempotency_key = inner.get("idempotencyKey")
+            .or_else(|| inner.get("idempotency_key"))
+            .cloned();
+
         // 5. Build and forward desktop envelope
-        let forward = serde_json::json!({
+        let authenticated_user_id = self.user_id.map(|id| id.to_string()).unwrap_or_default();
+
+        let mut request_obj = serde_json::json!({
+            "method": method,
+            "params": params,
+            "correlationId": correlation_id
+        });
+
+        // Preserve idempotencyKey in request if present
+        if let Some(key) = idempotency_key {
+            if let Some(req_obj) = request_obj.as_object_mut() {
+                req_obj.insert("idempotencyKey".to_string(), key);
+            }
+        }
+
+        let mut forward = serde_json::json!({
             "type": "relay",
             "clientId": self.device_id.clone().unwrap_or_default(),
-            "request": {
-                "method": method,
-                "params": params,
-                "correlationId": correlation_id
-            }
+            "request": request_obj
         });
+
+        // Inject authenticated userId into the message payload
+        if let Some(obj) = forward.as_object_mut() {
+            obj.insert("userId".to_string(), serde_json::Value::String(authenticated_user_id));
+        }
 
         let envelope_str = forward.to_string();
 
@@ -1886,5 +2034,6 @@ pub fn create_device_link_ws(
         device_repository: Some(device_repository),
         relay_store: Some(relay_store),
         apns_service,
+        rate: TokenBucket::new(50, 25),
     }
 }

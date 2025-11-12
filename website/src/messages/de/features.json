@@ -1,5 +1,9 @@
 {
   "copyButtons": {
+    "meta": {
+      "title": "Kopier-Buttons - Verwandeln Sie Prompts in Workflows",
+      "description": "Verwandeln Sie Prompts in wiederverwendbare Workflows mit konfigurierbaren Kopier-Buttons."
+    },
     "comparison": {
       "plantocode": {
         "items": [
@@ -139,6 +143,10 @@
     }
   },
   "deepResearch": {
+    "meta": {
+      "title": "Tiefenrecherche - KI-gestützte Recherche-Intelligenz",
+      "description": "Generieren Sie intelligente Abfragen, führen Sie Suchen durch und integrieren Sie relevante Erkenntnisse. KI-gestützte Recherche mit ausgefeilten Abfragen und parallelen Rechercheaufgaben."
+    },
     "advanced": {
       "features": [
         {
@@ -306,53 +314,6 @@
       "title": "Zweistufiger KI-Rechercheprozess"
     }
   },
-  "features": {
-    "copyButtons": {
-      "description": "Verwandeln Sie jeden Prompt in eine wiederverwendbare Schaltfläche mit intelligenten Platzhaltern und Drag-and-Drop",
-      "slug": "/features/copy-buttons",
-      "title": "Kopierschaltflächen"
-    },
-    "deepResearch": {
-      "description": "KI-gestützte Recherche mit ausgefeilten Abfragen und parallelen Rechercheaufgaben",
-      "slug": "/features/deep-research",
-      "title": "Tiefenrecherche"
-    },
-    "fileDiscovery": {
-      "description": "Intelligenter mehrstufiger Workflow, der relevante Dateien aus Ihrer Codebasis findet und auswählt",
-      "slug": "/features/file-discovery",
-      "title": "KI-Dateisuche"
-    },
-    "integratedTerminal": {
-      "description": "Persistente Terminal-Sitzungen mit Zustandsüberwachung und Befehlsüberprüfung",
-      "slug": "/features/integrated-terminal",
-      "title": "Integriertes Terminal"
-    },
-    "mergeInstructions": {
-      "description": "KI analysiert mehrere Implementierungspläne, löst Konflikte und erstellt emergente Lösungen",
-      "slug": "/features/merge-instructions",
-      "title": "Architektonische Plansynthese"
-    },
-    "planMode": {
-      "description": "Generieren Sie dateiweise Implementierungspläne mit KI. Prüfen und genehmigen Sie jede Änderung vor der Ausführung",
-      "slug": "/features/plan-mode",
-      "title": "Implementierungspläne"
-    },
-    "textImprovement": {
-      "description": "Verfeinern Sie Spezifikationen mit KI-Textverbesserung und Aufgabenverfeinerungsprompts",
-      "slug": "/features/text-improvement",
-      "title": "Spezifikationserfassungsmodus"
-    },
-    "videoAnalysis": {
-      "description": "Multimodale KI analysiert Audio- und visuelle Inhalte, um umsetzbare Anforderungen zu extrahieren",
-      "slug": "/features/video-analysis",
-      "title": "Meeting- & Aufzeichnungsanalyse"
-    },
-    "voiceTranscription": {
-      "description": "Erfassen Sie Spezifikationen freihändig mit Sprachtranskription in mehreren Sprachen",
-      "slug": "/features/voice-transcription",
-      "title": "Sprache zu Text"
-    }
-  },
   "fileDiscovery": {
     "benefits": {
       "costEffective": {
@@ -483,17 +444,16 @@
     }
   },
   "hub": {
-    "badge": "Leistungsstarke Funktionen",
-    "cta": {
-      "button": "PlanToCode herunterladen",
-      "description": "Laden Sie PlanToCode herunter und beginnen Sie, Ihre Code-Änderungen mit Vertrauen zu planen.",
-      "title": "Bereit für sichere KI-Entwicklung?"
-    },
-    "description": "Umfassende Werkzeuge zur Planung, Überprüfung und Ausführung komplexer Code-Änderungen. Von der Dateisuche bis zur Terminal-Ausführung – alles, was Sie für sichere KI-gestützte Entwicklung benötigen.",
-    "learnMore": "Mehr erfahren",
-    "title": "KI-Funktionen für Entwicklungsplanung"
+    "meta": {
+      "title": "PlanToCode Funktionen - KI-Entwicklungsplanungswerkzeuge",
+      "description": "Entdecken Sie leistungsstarke Funktionen: Dateisuche, Multi-Modell-Planung, Sprachtranskription, Videoanalyse, Merge-Anweisungen und integrierte Terminal-Ausführung."
+    }
   },
   "integratedTerminal": {
+    "meta": {
+      "title": "Integriertes Terminal - Persistente PTY-Sitzungen",
+      "description": "Persistente Terminal-Sitzungen mit Zustandsüberwachung und Befehlsüberprüfung. Führen Sie Implementierungspläne direkt mit Sprachtranskriptionsunterstützung aus."
+    },
     "cta": {
       "description": "Ein Terminal für Planung und Ausführung gebaut – integriert, persistent und schnell.",
       "links": {
@@ -1033,6 +993,10 @@
     }
   },
   "videoAnalysis": {
+    "meta": {
+      "title": "Meeting- & Aufzeichnungsanalyse - Multimodale KI",
+      "description": "Multimodale KI analysiert Audio- und visuelle Inhalte, um umsetzbare Anforderungen aus Microsoft Teams-Meetings und Bildschirmaufzeichnungen zu extrahieren."
+    },
     "capabilities": {
       "fileUpload": {
         "description": "Laden Sie vorhandene Aufzeichnungen, Kunden-Bug-Reports oder Demo-Videos hoch. Unterstützt alle gängigen Videoformate.",
@@ -1333,6 +1297,38 @@
         "title": "Terminal-Befehle ohne Syntax-Auswendiglernen"
       },
       "title": "Reale Anwendungsfälle"
+    }
+  },
+  "features": {
+    "fileDiscovery": {
+      "meta": {
+        "title": "KI-Dateisuche – betroffene Dateien finden",
+        "description": "Mehrstufiger KI-Workflow zur Identifizierung und Auswahl relevanter Dateien. Kosteneffektiv mit $0,10–0,15 pro Workflow und Fortschrittsanzeige in Echtzeit."
+      }
+    },
+    "mergeInstructions": {
+      "meta": {
+        "title": "Plansynthese – Multi‑Modell‑Zusammenführung",
+        "description": "Architektonische Synthese über einfaches Mergen hinaus. KI analysiert Pläne, löst Konflikte nach SOLID und erzeugt nachvollziehbare, emergente Lösungen."
+      }
+    },
+    "planMode": {
+      "meta": {
+        "title": "KI‑Implementierungspläne – Mensch im Loop",
+        "description": "Dateiweise KI‑Pläne generieren. Jede Änderung vor der Ausführung prüfen. Regressionen in Legacy‑Code vermeiden. Sichere KI‑Entwicklung."
+      }
+    },
+    "textImprovement": {
+      "meta": {
+        "title": "Spezifikationserfassung – KI‑Textverbesserung",
+        "description": "Spezifikationen mit zwei KI‑Prompts verfeinern: Textverbesserung für Klarheit, Aufgabenverfeinerung für Vollständigkeit. Umsetzbare Specs für Teams."
+      }
+    },
+    "voiceTranscription": {
+      "meta": {
+        "title": "Sprache‑zu‑Text für schnelle Spezifikationserfassung",
+        "description": "Freihändige Erfassung per Sprache. Exakte Transkription fügt Text dort ein, wo Sie arbeiten. Pro Projekt konfigurierbar, mehrere Sprachen unterstützt."
+      }
     }
   }
 }

@@ -143,12 +143,12 @@ export function Footer() {
                     </Link>
                   </li>
                   <li>
-                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/privacy">
+                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/legal/eu/privacy">
                       {t('footer.privacy')}
                     </Link>
                   </li>
                   <li>
-                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/terms">
+                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/legal/eu/terms">
                       {t('footer.terms')}
                     </Link>
                   </li>

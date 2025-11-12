@@ -722,6 +722,28 @@ public struct CommandRouter {
         return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
     }
 
+    public static func sessionRename(
+        sessionId: String,
+        newName: String
+    ) -> AsyncThrowingStream<RpcResponse, Error> {
+        guard let usable = getUsableRelay() else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: ServerRelayError.notConnected)
+            }
+        }
+        let (deviceId, relayClient) = usable
+
+        let request = RpcRequest(
+            method: "session.rename",
+            params: [
+                "sessionId": sessionId,
+                "newName": newName
+            ]
+        )
+
+        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+    }
+
     public static func sessionGetTaskDescriptionHistory(
         sessionId: String
     ) -> AsyncThrowingStream<RpcResponse, Error> {
@@ -1165,13 +1187,17 @@ public struct CommandRouter {
         let stateData = try encoder.encode(state)
         let stateJson = try JSONSerialization.jsonObject(with: stateData)
 
+        let sanitizedState = HistoryStateSanitizer.sanitizeForRPC(stateJson)
+
+        let coercedExpected = HistoryStateSanitizer.sanitizeForRPC(["expectedVersion": expectedVersion]) as? [String: Any]
+
         let request = RpcRequest(
             method: "session.syncHistoryState",
             params: [
                 "sessionId": sessionId,
                 "kind": kind,
-                "state": stateJson,
-                "expectedVersion": expectedVersion
+                "state": sanitizedState,
+                "expectedVersion": coercedExpected?["expectedVersion"] ?? expectedVersion
             ]
         )
 
@@ -1200,12 +1226,14 @@ public struct CommandRouter {
         let stateData = try encoder.encode(remoteState)
         let stateJson = try JSONSerialization.jsonObject(with: stateData)
 
+        let sanitizedRemote = HistoryStateSanitizer.sanitizeForRPC(stateJson)
+
         let request = RpcRequest(
             method: "session.mergeHistoryState",
             params: [
                 "sessionId": sessionId,
                 "kind": kind,
-                "remoteState": stateJson
+                "remoteState": sanitizedRemote
             ]
         )
 
@@ -1221,5 +1249,65 @@ public struct CommandRouter {
         }
 
         throw ServerRelayError.invalidState("No merge result received")
+    }
+
+    public static func sessionGetHistoryStateRaw(sessionId: String, kind: String) async throws -> [String: Any] {
+        guard let usable = getUsableRelay() else {
+            throw ServerRelayError.notConnected
+        }
+        let (deviceId, relayClient) = usable
+
+        let request = RpcRequest(
+            method: "session.getHistoryState",
+            params: [
+                "sessionId": sessionId,
+                "kind": kind
+            ]
+        )
+
+        for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
+            if let error = response.error {
+                throw ServerRelayError.serverError("rpc_error", error.message)
+            }
+
+            if let result = response.result?.value as? [String: Any] {
+                return result
+            }
+        }
+
+        throw ServerRelayError.invalidState("No history state received")
+    }
+
+    public static func sessionSyncHistoryStateRaw(sessionId: String, kind: String, state: [String: Any], expectedVersion: Int64) async throws -> [String: Any] {
+        guard let usable = getUsableRelay() else {
+            throw ServerRelayError.notConnected
+        }
+        let (deviceId, relayClient) = usable
+
+        let sanitizedState = HistoryStateSanitizer.sanitizeForRPC(state)
+
+        let coercedExpected = HistoryStateSanitizer.sanitizeForRPC(["expectedVersion": expectedVersion]) as? [String: Any]
+
+        let request = RpcRequest(
+            method: "session.syncHistoryState",
+            params: [
+                "sessionId": sessionId,
+                "kind": kind,
+                "state": sanitizedState,
+                "expectedVersion": coercedExpected?["expectedVersion"] ?? expectedVersion
+            ]
+        )
+
+        for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
+            if let error = response.error {
+                throw ServerRelayError.serverError("rpc_error", error.message)
+            }
+
+            if let result = response.result?.value as? [String: Any] {
+                return result
+            }
+        }
+
+        throw ServerRelayError.invalidState("No sync result received")
     }
 }

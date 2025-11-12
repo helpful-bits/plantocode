@@ -1,5 +1,9 @@
 {
   "copyButtons": {
+    "meta": {
+      "title": "복사 버튼 - 프롬프트를 워크플로우로 전환",
+      "description": "구성 가능한 복사 버튼으로 프롬프트를 재사용 가능한 워크플로우로 전환합니다."
+    },
     "comparison": {
       "plantocode": {
         "items": [
@@ -139,6 +143,10 @@
     }
   },
   "deepResearch": {
+    "meta": {
+      "title": "Deep Research - AI-Powered Research Intelligence",
+      "description": "정교한 쿼리 및 병렬 연구 작업을 갖춘 AI 기반 연구. 실시간 웹 검색, 소스 검증 및 컨텍스트 통합."
+    },
     "advanced": {
       "features": [
         {
@@ -320,7 +328,11 @@
     "fileDiscovery": {
       "description": "코드베이스에서 관련 파일을 발견하고 선택하는 지능형 다단계 워크플로",
       "slug": "/features/file-discovery",
-      "title": "AI 파일 탐색"
+      "title": "AI 파일 탐색",
+      "meta": {
+        "title": "AI file discovery - find impacted files",
+        "description": "Multi-stage AI workflow that discovers and selects relevant files. Cost-effective at $0.10-0.15 per workflow with real-time progress tracking."
+      }
     },
     "integratedTerminal": {
       "description": "상태 모니터링 및 명령 검토가 가능한 영구 터미널 세션",
@@ -330,17 +342,29 @@
     "mergeInstructions": {
       "description": "AI가 여러 구현 계획을 분석하고 충돌을 해결하며 창발적 솔루션을 생성",
       "slug": "/features/merge-instructions",
-      "title": "아키텍처 계획 합성"
+      "title": "아키텍처 계획 합성",
+      "meta": {
+        "title": "Plan Synthesis - Multi-Model Merging",
+        "description": "Architectural synthesis beyond simple merging. AI analyzes plans, resolves conflicts with SOLID principles, and creates emergent solutions with traceability."
+      }
     },
     "planMode": {
       "description": "AI로 파일별 구현 계획을 생성. 실행 전에 모든 변경사항을 검토하고 승인",
       "slug": "/features/plan-mode",
-      "title": "구현 계획"
+      "title": "구현 계획",
+      "meta": {
+        "title": "AI Implementation Plans - Human-in-Loop",
+        "description": "Generate file-by-file AI plans. Review every change before execution. Prevent regressions in legacy code. Safe AI development."
+      }
     },
     "textImprovement": {
       "description": "AI 텍스트 개선 및 작업 개선 프롬프트로 명세를 개선",
       "slug": "/features/text-improvement",
-      "title": "명세 캡처 모드"
+      "title": "명세 캡처 모드",
+      "meta": {
+        "title": "Spec Capture Mode - AI Text Enhancement",
+        "description": "Refine specifications with two AI prompts: Text Enhancement for clarity, Task Refinement for completeness. Create actionable specs for development teams."
+      }
     },
     "videoAnalysis": {
       "description": "멀티모달 AI가 오디오 및 시각적 콘텐츠를 분석하여 실행 가능한 요구사항 추출",
@@ -350,7 +374,11 @@
     "voiceTranscription": {
       "description": "여러 언어의 음성 전사로 명세를 핸즈프리로 캡처",
       "slug": "/features/voice-transcription",
-      "title": "음성을 텍스트로"
+      "title": "음성을 텍스트로",
+      "meta": {
+        "title": "Voice to text for rapid specification capture",
+        "description": "Hands-free specification capture with voice. Accurate transcription inserts text where you work. Configure per project, supports multiple languages."
+      }
     }
   },
   "fileDiscovery": {
@@ -491,9 +519,17 @@
     },
     "description": "복잡한 코드 변경을 계획, 검토 및 실행하기 위한 포괄적인 도구. 파일 탐색에서 터미널 실행까지, 안전한 AI 지원 개발에 필요한 모든 것.",
     "learnMore": "자세히 알아보기",
-    "title": "AI 개발 계획 기능"
+    "title": "AI 개발 계획 기능",
+    "meta": {
+      "title": "AI 개발 계획 기능 | PlanToCode",
+      "description": "구현 계획, 파일 검색, 터미널 통합, 텍스트 개선 등 PlanToCode 기능. Claude Code, Cursor, Codex와 함께 작동합니다."
+    }
   },
   "integratedTerminal": {
+    "meta": {
+      "title": "Integrated Terminal - Persistent PTY Sessions",
+      "description": "Persistent terminal sessions with health monitoring and command review. Execute implementation plans directly with voice transcription support."
+    },
     "cta": {
       "description": "계획 및 실행을 위해 구축된 터미널 - 통합되고, 영구적이며, 빠릅니다.",
       "links": {
@@ -1033,6 +1069,10 @@
     }
   },
   "videoAnalysis": {
+    "meta": {
+      "title": "Meeting & Recording Analysis - Multimodal AI",
+      "description": "Multimodal AI analyzes audio and visual content to extract actionable requirements from Microsoft Teams meetings and screen recordings."
+    },
     "capabilities": {
       "fileUpload": {
         "description": "기존 녹화, 고객 버그 보고서 또는 데모 비디오를 업로드합니다. 모든 일반 비디오 형식을 지원합니다.",

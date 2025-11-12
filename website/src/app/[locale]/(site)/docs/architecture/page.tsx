@@ -1,33 +1,20 @@
 import type { Metadata } from 'next';
 import { DocsArticle } from '@/components/docs/DocsArticle';
 import { GlassCard } from '@/components/ui/GlassCard';
-import { cdnUrl } from '@/lib/cdn';
 import { loadMessages, type Locale } from '@/lib/i18n';
 import { locales } from '@/i18n/config';
-export const metadata: Metadata = {
-  title: 'PlanToCode architecture overview',
-  description: 'Desktop, orchestration, and persistence layers that power implementation plans, workflows, and terminal sessions.',
-  alternates: {
-    canonical: 'https://www.plantocode.com/docs/architecture',
-    languages: {
-      'en-US': 'https://www.plantocode.com/docs/architecture',
-      'en': 'https://www.plantocode.com/docs/architecture',
-    },
-  },
-  openGraph: {
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
-    }],
-    title: 'PlanToCode architecture overview',
-    description: 'Learn how the React front end, Tauri commands, and background services cooperate inside the desktop app.',
-    url: 'https://www.plantocode.com/docs/architecture',
-    siteName: 'PlanToCode',
-    type: 'article',
-  },
-};
+import { generatePageMetadata } from '@/content/metadata';
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return generatePageMetadata({
+    locale,
+    slug: '/docs/architecture',
+    title: t['architecture.meta.title'],
+    description: t['architecture.meta.description'],
+  });
+}
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));
 }

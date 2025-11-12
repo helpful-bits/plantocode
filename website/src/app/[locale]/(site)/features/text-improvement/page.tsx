@@ -21,12 +21,20 @@ import {
   Code2,
 } from 'lucide-react';
 import type { SoftwareApplication, HowTo, FAQPage } from 'schema-dts';
-import { cdnUrl } from '@/lib/cdn';
-export const metadata: Metadata = {
-  title: 'Spec Capture Mode - AI Text Enhancement',
-  description:
-    'Refine specifications with two AI prompts: Text Enhancement for clarity, Task Refinement for completeness. Create actionable specs for development teams.',
-  keywords: [
+import { generatePageMetadata, COMMON_KEYWORDS, mergeKeywords } from '@/content/metadata';
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return {
+    ...generatePageMetadata({
+      locale,
+      slug: '/features/text-improvement',
+      title: t['features.textImprovement.meta.title'],
+      description: t['features.textImprovement.meta.description'],
+    }),
+    keywords: mergeKeywords(
+      [
     'specification capture mode',
     'text enhancement',
     'task refinement',
@@ -41,29 +49,10 @@ export const metadata: Metadata = {
     'task clarity ai',
     'plantocode text improvement',
   ],
-  openGraph: {
-    title: 'AI Text Improvement: Instant Task Description Refinement',
-    description:
-      'Select text, click improve. AI refines with project context. Capture mental models accurately.',
-    url: 'https://www.plantocode.com/features/text-improvement',
-    siteName: 'PlanToCode',
-    type: 'website',
-    locale: 'en_US',
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
-    }],
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/features/text-improvement',
-    languages: {
-      'en-US': 'https://www.plantocode.com/features/text-improvement',
-      'en': 'https://www.plantocode.com/features/text-improvement',
-    },
-  },
-};
+      COMMON_KEYWORDS.core
+    ),
+  };
+}
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));
 }

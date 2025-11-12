@@ -9,26 +9,20 @@ import {
 } from 'lucide-react';
 import pseoData from '@/data/pseo';
 import { Metadata } from 'next';
-import { cdnUrl } from '@/lib/cdn';
-
 import { loadMessages, type Locale } from '@/lib/i18n';
+import { generatePageMetadata } from '@/content/metadata';
 
-export const metadata: Metadata = {
-  title: 'All Pages - pSEO Review',
-  description: 'Internal review page for all programmatic SEO pages',
-  robots: {
-    index: false,
-    follow: false,
-  },
-  openGraph: {
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
-    }],
-  },
-};
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return generatePageMetadata({
+    locale,
+    slug: '/all-pages',
+    title: t['all-pages.meta.title'],
+    description: t['all-pages.meta.description'],
+  });
+}
 
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));
@@ -212,8 +206,8 @@ export default async function PseoReviewPage({ params }: { params: Promise<{ loc
                   <strong>{t['allPages.quickLinks.popularpagesTitle'] || 'Popular Pages:'}</strong>
                   <ul className="mt-1 space-y-1">
                     <li>
-                      <Link href="/plantocode-vs-aider" className="text-primary hover:underline">
-                        /plantocode-vs-aider
+                      <Link href="/compare/plantocode-vs-aider" className="text-primary hover:underline">
+                        /compare/plantocode-vs-aider
                       </Link>
                     </li>
                     <li>

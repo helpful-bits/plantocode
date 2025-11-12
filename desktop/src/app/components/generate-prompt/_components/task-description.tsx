@@ -234,6 +234,20 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
     // Use shared resize hook
     useTextareaResize(internalTextareaRef, valueRef.current, { minHeight: 200, maxHeight: 600, extraHeight: 50 });
 
+    useEffect(() => {
+      // Reflect remote updates when not focused to avoid disrupting active typing
+      if (!isFocusedRef.current && initialValue !== localValue) {
+        // Suppress echoing this change back if the component debounces outbound updates
+        if (suppressNextDebounceRef) {
+          suppressNextDebounceRef.current = true;
+        }
+        setLocalValue(initialValue);
+        if (valueRef) {
+          valueRef.current = initialValue;
+        }
+      }
+    }, [initialValue]);
+
     // Cleanup history debounce on unmount
     useEffect(() => {
       return () => {

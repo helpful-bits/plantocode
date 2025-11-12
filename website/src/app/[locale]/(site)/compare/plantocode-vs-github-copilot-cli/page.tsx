@@ -7,42 +7,23 @@ import type { Metadata } from 'next';
 import { locales } from '@/i18n/config';
 import type { Locale } from '@/lib/i18n';
 
-export const metadata: Metadata = {
-  title: 'vsGitHub Copilot CLI - AI Terminal Comparison',
-  description: 'Compare PlanToCode\'sarchitectural planning with GitHub Copilot CLI\'s command suggestions. Planning depth, file context, execution safety.',
-  keywords: [
-    'github-copilot-cli',
-    'plantocode vs github-copilot-cli',
-    'github-copilot-cli alternative',
-    'ai code planning',
-    'implementation planning',
-  ],
-  robots: {
-    index: true,
-    follow: true,
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/compare/plantocode-vs-github-copilot-cli',
-    languages: {
-      'en-US': 'https://www.plantocode.com/compare/plantocode-vs-github-copilot-cli',
-      'en': 'https://www.plantocode.com/compare/plantocode-vs-github-copilot-cli',
-      'x-default': 'https://www.plantocode.com/compare/plantocode-vs-github-copilot-cli',
-    },
-  },
-  openGraph: {
+import { generatePageMetadata } from '@/content/metadata';
+
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+
+  return generatePageMetadata({
+    locale,
+    slug: '/compare/plantocode-vs-github-copilot-cli',
     title: 'vsGitHub Copilot CLI - AI Terminal Comparison',
     description: 'Compare PlanToCode\'sarchitectural planning with GitHub Copilot CLI\'s command suggestions. Planning depth, file context, execution safety.',
-    url: 'https://www.plantocode.com/compare/plantocode-vs-github-copilot-cli',
-    siteName: 'PlanToCode',
-    type: 'article',
-    locale: 'en_US',
     images: [{
       url: cdnUrl('/images/og-image.png'),
       width: 1200,
       height: 630,
       alt: 'PlanToCode - AI Planning for Code',
     }],
-  },
+  });
 };
 
 export function generateStaticParams() {

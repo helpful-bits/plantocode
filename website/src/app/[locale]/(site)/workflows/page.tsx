@@ -5,32 +5,23 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Breadcrumbs } from '@/components/Breadcrumbs';
 import { buildHubBreadcrumbs } from '@/components/breadcrumbs/utils';
-import { cdnUrl } from '@/lib/cdn';
 import { getPagesByCategory } from '@/data/pseo';
 import { loadMessagesFor, type Locale } from '@/lib/i18n';
 import { GitMerge, Code2, Terminal } from 'lucide-react';
 import { locales } from '@/i18n/config';
+import { generatePageMetadata } from '@/content/metadata';
 
-export const metadata: Metadata = {
-  title: 'AI Coding Workflows - PlanToCode Integration Patterns',
-  description: 'AI development workflows for complex tasks. Integrate with Claude Code, Cursor, Codex for refactors, bug triage, and migrations.',
-  openGraph: {
-    title: 'AI Coding Workflows - PlanToCode Integration Patterns',
-    description: 'Explore AI-powered development workflows for complex tasks.',
-    url: 'https://www.plantocode.com/workflows',
-    type: 'website',
-    siteName: 'PlanToCode',
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
-    }],
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/workflows',
-  },
-};
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessagesFor(locale, ['common', 'pages']);
+
+  return generatePageMetadata({
+    locale,
+    slug: '/workflows',
+    title: t['workflows.hub.meta.title'],
+    description: t['workflows.hub.meta.description'],
+  });
+}
 
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));
@@ -74,7 +65,7 @@ export default async function WorkflowsHubPage({ params }: { params: Promise<{ l
                   <span>{t['workflows.hub.badge']}</span>
                 </div>
                 <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-6 leading-tight">
-                  {t['workflows.hub.title']}
+                  {t['workflows.hub.title'] || 'AI-Powered Development Workflows'}
                 </h1>
                 <p className="text-lg text-foreground/80 max-w-3xl mx-auto leading-relaxed">
                   {t['workflows.hub.description']}

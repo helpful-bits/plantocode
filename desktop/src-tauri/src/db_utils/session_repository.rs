@@ -1073,11 +1073,18 @@ impl SessionRepository {
         let new_version = current_version + 1;
         let new_checksum = compute_task_history_checksum(&trimmed_entries, state.current_index, new_version);
 
-        // Update version and current_index in sessions table
+        // Extract task_description from current entry
+        let new_task_description: Option<String> = state
+            .entries
+            .get(state.current_index as usize)
+            .map(|e| e.description.clone());
+
+        // Update version, current_index, and task_description in sessions table
         sqlx::query(
-            "UPDATE sessions SET task_history_version = $1, task_history_current_index = $2, updated_at = $3 WHERE id = $4"
+            "UPDATE sessions SET task_history_version = $1, task_description = $2, task_history_current_index = $3, updated_at = $4 WHERE id = $5"
         )
         .bind(new_version)
+        .bind(&new_task_description)
         .bind(state.current_index)
         .bind(crate::utils::date_utils::get_timestamp())
         .bind(session_id)

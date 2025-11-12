@@ -27,12 +27,16 @@ export default async function middleware(request: NextRequest) {
   if (
     path.startsWith('/_next') ||
     path.startsWith('/api/') ||
+    path.startsWith('/auth/') ||
+    path.startsWith('/billing/') ||
     ASSET_RE.test(path) ||
     path === '/site.webmanifest' ||
     path === '/manifest.json' ||
     path === '/favicon.ico' ||
     path === '/robots.txt' ||
-    path === '/sitemap.xml'
+    path === '/sitemap.xml' ||
+    path === '/sitemap-video.xml' ||
+    path === '/sitemap-image.xml'
   ) {
     return NextResponse.next();
   }

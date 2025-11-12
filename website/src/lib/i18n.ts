@@ -203,5 +203,6 @@ export async function loadMessagesFor(locale: Locale, namespaces: Namespace[]): 
     const mod = await loader();
     objects.push(mod?.default ?? mod ?? {});
   }
-  return deepMerge(...objects);
+  const merged = deepMerge(...objects);
+  return createDotNotationProxy(merged);
 }

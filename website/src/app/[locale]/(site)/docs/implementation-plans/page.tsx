@@ -4,34 +4,20 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { StructuredData } from '@/components/seo/StructuredData';
-import { cdnUrl } from '@/lib/cdn';
 import { loadMessages, type Locale } from '@/lib/i18n';
-import { buildAlternates } from '@/content/metadata';
 import { locales } from '@/i18n/config';
-export const metadata: Metadata = {
-  title: 'Implementation Plans - Review AI Changes',
-  description:
-    'Guide to AI implementation planning. Generate, review, and approve file-by-file plans before execution. Prevent duplicates and wrong paths.',
-  alternates: {
-    canonical: 'https://www.plantocode.com/docs/implementation-plans',
-    languages: buildAlternates('/docs/implementation-plans'),
-  },
-  openGraph: {
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
-    }],
-    
-    title: 'Human-in-the-Loop Implementation Plans in PlanToCode',
-    description:
-      'Understand how human-in-the-loop governance and file-by-file review workflows ensure safe AI development with complete control over code modifications.',
-    url: 'https://www.plantocode.com/docs/implementation-plans',
-    siteName: 'PlanToCode',
-    type: 'article',
-  },
-};
+import { generatePageMetadata } from '@/content/metadata';
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return generatePageMetadata({
+    locale,
+    slug: '/docs/implementation-plans',
+    title: t['implementationPlans.meta.title'],
+    description: t['implementationPlans.meta.description'],
+  });
+}
 const structuredData = {
   '@context': 'https://schema.org',
   '@type': 'Article',

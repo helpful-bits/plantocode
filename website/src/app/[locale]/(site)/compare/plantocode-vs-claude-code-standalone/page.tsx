@@ -7,42 +7,23 @@ import type { Metadata } from 'next';
 import { locales } from '@/i18n/config';
 import type { Locale } from '@/lib/i18n';
 
-export const metadata: Metadata = {
-  title: 'vs Claude Code - AI Dev Comparison',
-  description: 'Compare PlanToCode\'smulti-model approach with standalone Claude Code. Plan merging, file discovery, session recording advantages.',
-  keywords: [
-    'claude-code-standalone',
-    'plantocode vs claude-code-standalone',
-    'claude-code-standalone alternative',
-    'ai code planning',
-    'implementation planning',
-  ],
-  robots: {
-    index: true,
-    follow: true,
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/compare/plantocode-vs-claude-code-standalone',
-    languages: {
-      'en-US': 'https://www.plantocode.com/compare/plantocode-vs-claude-code-standalone',
-      'en': 'https://www.plantocode.com/compare/plantocode-vs-claude-code-standalone',
-      'x-default': 'https://www.plantocode.com/compare/plantocode-vs-claude-code-standalone',
-    },
-  },
-  openGraph: {
+import { generatePageMetadata } from '@/content/metadata';
+
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+
+  return generatePageMetadata({
+    locale,
+    slug: '/compare/plantocode-vs-claude-code-standalone',
     title: 'vs Claude Code - AI Dev Comparison',
     description: 'Compare PlanToCode\'smulti-model approach with standalone Claude Code. Plan merging, file discovery, session recording advantages.',
-    url: 'https://www.plantocode.com/compare/plantocode-vs-claude-code-standalone',
-    siteName: 'PlanToCode',
-    type: 'article',
-    locale: 'en_US',
     images: [{
       url: cdnUrl('/images/og-image.png'),
       width: 1200,
       height: 630,
       alt: 'PlanToCode - AI Planning for Code',
     }],
-  },
+  });
 };
 
 export function generateStaticParams() {

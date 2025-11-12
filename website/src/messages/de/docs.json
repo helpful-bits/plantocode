@@ -1,5 +1,299 @@
 {
+  "fileDiscovery": {
+    "apiUsage": {
+      "heading": "API-Nutzungsbeispiele",
+      "monitoring": "Fortschritt überwachen",
+      "retrieving": "Ergebnisse abrufen",
+      "starting": "Einen Workflow starten"
+    },
+    "architecture": {
+      "caching": "Caching von Zwischenergebnissen für Performance-Optimierung",
+      "costTracking": "Kostenverfolgung und Timeout-Management für KI-Operationen",
+      "distributed": "Das System verwendet eine verteilte Job-Architektur, bei der jede Phase als unabhängiger Hintergrundjob läuft und Abbruch, Wiederholungslogik und detaillierte Fortschrittsverfolgung ermöglicht. Echtzeitevents werden während der Ausführung veröffentlicht, um sofortiges Feedback an die Benutzeroberfläche zu geben.",
+      "errorHandling": "Umfassende Fehlerbehandlung mit automatischen Wiederholungsmechanismen",
+      "eventDriven": "Ereignisgesteuerte Fortschrittsberichterstattung mit WebSocket-ähnlichen Updates",
+      "featuresHeading": "Wichtige Architekturmerkmale:",
+      "gitIntegration": "Git-Integration mit Fallback auf Verzeichnis-Traversierung",
+      "heading": "Workflow-Architektur",
+      "overview": "Der Workflow arbeitet als orchestriertes Hintergrundjob-System mit fünf unterschiedlichen Phasen, die sequenziell ausgeführt werden. Jede Phase baut auf der Ausgabe der vorherigen Phase auf und verfeinert progressiv die Dateiauswahl basierend auf Aufgabenanforderungen."
+    },
+    "category": "Technischer Leitfaden",
+    "configuration": {
+      "exclusion": {
+        "description": "Definieren Sie Verzeichnisse und Dateimuster, die vom Discovery-Prozess ausgeschlossen werden sollen.",
+        "heading": "Ausschlussmuster"
+      },
+      "heading": "Konfigurationsoptionen",
+      "retry": {
+        "description": "Legen Sie maximale Wiederholungsversuche für fehlgeschlagene Phasen mit exponentiellem Backoff fest.",
+        "heading": "Wiederholungskonfiguration"
+      },
+      "timeout": {
+        "description": "Konfigurieren Sie die maximale Ausführungszeit für den gesamten Workflow oder einzelne Phasen, um unbegrenztes Hängen zu verhindern.",
+        "heading": "Timeout-Management"
+      },
+      "workflowConfig": "Workflow-Konfiguration"
+    },
+    "cta": {
+      "description": "Der File-Discovery-Workflow läuft innerhalb des Desktop-Clients zusammen mit Implementierungsplanung und Terminal-Sessions.",
+      "heading": "Benötigen Sie die Desktop-App?"
+    },
+    "date": "2025-09-21",
+    "description": "Umfassender technischer Leitfaden zum 5-stufigen KI-Workflow, der relevante Dateien für die Aufgabenausführung identifiziert und filtert.",
+    "errorHandling": {
+      "commonIssues": {
+        "binaryDetection": "Binärdateierkennung: Verwendet sowohl erweiterungsbasierte als auch inhaltsbasierte Binärerkennung",
+        "gitNotFound": "Git-Repository nicht gefunden: Fällt zurück auf Verzeichnis-Traversierung mit Standardausschlüssen",
+        "heading": "Häufige Probleme",
+        "networkTimeout": "Netzwerk-Timeouts: Automatische Wiederholung mit exponentiellem Backoff für transiente Fehler",
+        "tokenLimit": "Token-Limit überschritten: Implementiert intelligentes Batching und liefert klare Fehlermeldungen"
+      },
+      "debugging": {
+        "description": "Der Workflow bietet umfassende Protokollierung, Performance-Metrik-Export und detaillierten Fehlerkontext einschließlich Phaseninformationen, Wiederholungsversuchen und Zwischendaten zur Fehlerbehebung.",
+        "heading": "Debugging-Tools"
+      },
+      "errorCategories": {
+        "billing": "Abrechnungsfehler: Unzureichende Credits oder Zahlungsfehler mit umsetzbarer Anleitung",
+        "heading": "Fehlerkategorien",
+        "system": "Systemfehler: Dateisystemzugriff, Git-Befehlsfehler oder Speichereinschränkungen",
+        "validation": "Validierungsfehler: Ungültige Session-ID, fehlende Aufgabenbeschreibung oder ungültiges Projektverzeichnis",
+        "workflow": "Workflow-Fehler: Phasenspezifische Fehler mit detailliertem Kontext und Wiederholungsvorschlägen"
+      },
+      "heading": "Fehlerbehandlung & Fehlerbehebung"
+    },
+    "integration": {
+      "desktop": {
+        "description": "Der Workflow integriert sich nahtlos mit der Desktop-Anwendung über Tauri-Befehle und bietet nativen Dateisystemzugriff und ereignisgesteuerte Updates über die WorkflowTracker-Klasse.",
+        "heading": "Desktop-Anwendung"
+      },
+      "heading": "Integrationsmuster",
+      "implementationPlans": {
+        "description": "Ausgewählte Dateien werden automatisch in das Implementierungspläne-Panel eingespeist und stellen sicher, dass die Plangenerierung denselben optimierten Dateikontext verwendet, ohne eine erneute Ausführung des Discovery-Workflows zu erfordern.",
+        "heading": "Implementierungspläne-Integration"
+      },
+      "sessionManagement": {
+        "description": "Workflow-Ergebnisse werden pro Session gecacht, sodass mehrere Operationen innerhalb derselben Session den entdeckten Dateikontext wiederverwenden können, was die Performance für iterative Entwicklungs-Workflows erheblich verbessert.",
+        "heading": "Session-Management"
+      }
+    },
+    "intro": "PlanToCode identifiziert die richtigen Dateien, bevor Sie planen oder Befehle ausführen. Der 5-stufige Workflow grenzt den Umfang ein und hält den Kontext eng.",
+    "metaDescription": "Umfassender technischer Leitfaden zum 5-stufigen KI-Workflow, der relevante Dateien für die Aufgabenausführung identifiziert und filtert.",
+    "metaTitle": "File-Discovery-Workflow - PlanToCode",
+    "ogDescription": "Technische Dokumentation zur mehrstufigen File-Discovery-Workflow-Architektur.",
+    "ogTitle": "File-Discovery-Workflow - PlanToCode",
+    "performance": {
+      "costOptimization": {
+        "description": "KI-Stufen verfolgen tatsächliche Kosten aus API-Antworten, implementieren intelligentes Batching zur Minimierung der Token-Nutzung und liefern Kostenschätzungen vor der Ausführung, um bei der Ausgabenverwaltung zu helfen.",
+        "heading": "Kostenoptimierung"
+      },
+      "heading": "Performance-Überlegungen",
+      "memory": {
+        "description": "Der Workflow implementiert intelligente Speicherverwaltung mit Datei-Caching (30-Sekunden-TTL), Batch-Verarbeitung (100 Dateien pro Batch) und automatischer Bereinigung von Zwischendaten, um Speicherüberlastung zu verhindern.",
+        "heading": "Speicherverwaltung"
+      },
+      "monitoring": {
+        "description": "Eingebaute Performance-Verfolgung überwacht Ausführungszeiten, Speichernutzung, Durchsatz-Metriken und liefert Empfehlungen zur Optimierung basierend auf historischer Datenanalyse.",
+        "heading": "Performance-Überwachung"
+      }
+    },
+    "readTime": "12 Min.",
+    "stages": {
+      "heading": "5-Stufen-Workflow-Prozess",
+      "stage1": {
+        "description": "Bestimmt das Projekt-Root-Verzeichnis und validiert den Git-Repository-Status. Diese Stufe etabliert das Basisverzeichnis für alle nachfolgenden Dateioperationen und konfiguriert Ausschlussmuster.",
+        "heading": "Stufe 1: Root-Ordner-Auswahl",
+        "technical": "Technische Details: Verwendet Git-Erkennung mit Fallback auf Verzeichnisvalidierung, wendet benutzerdefinierte Ausschlussmuster an und etabliert den Arbeitsverzeichniskontext für den gesamten Workflow."
+      },
+      "stage2": {
+        "binaryDetection": "Binärerkennung: Filtert Dateien mit Binärerweiterungen (.jpg, .png, .pdf, .exe usw.) heraus und verwendet Inhaltsanalyse zur Erkennung von Binärdateien anhand von Null-Bytes und Nicht-druckbaren-Zeichen-Verhältnissen.",
+        "description": "Generiert intelligente Regex-Muster basierend auf der Aufgabenbeschreibung zur Durchführung der initialen Dateifilterung. Diese Stufe kombiniert git ls-files-Ausgabe mit Binärdateierkennung, um eine vorläufige Dateiliste zu erstellen.",
+        "gitIntegration": "Git-Integration: Führt `git ls-files --cached --others --exclude-standard` aus, um .gitignore-Regeln zu respektieren und gleichzeitig sowohl getrackte als auch ungetrackte Dateien einzubeziehen.",
+        "heading": "Stufe 2: Regex-Dateifilter"
+      },
+      "stage3": {
+        "aiProcessing": "KI-Verarbeitung: Verwendet große Sprachmodelle zur Bewertung von Dateiinhalten gegen Aufgabenanforderungen, mit intelligentem Batching zur Verwaltung von Token-Limits und Kostenoptimierung.",
+        "description": "Setzt KI-Modelle ein, um Dateiinhalte zu analysieren und die Relevanz für die spezifische Aufgabenbeschreibung zu bewerten. Diese Stufe führt tiefe Inhaltsanalyse durch, um Dateien zu identifizieren, die am wahrscheinlichsten für die gegebene Aufgabe nützlich sind.",
+        "heading": "Stufe 3: KI-Dateirelevanz-Bewertung"
+      },
+      "stage4": {
+        "description": "Entdeckt zusätzliche relevante Dateien durch Beziehungsanalyse und Abhängigkeitsverfolgung. Diese Stufe identifiziert Dateien, die möglicherweise nicht mit initialen Mustern übereinstimmen, aber kontextuell wichtig sind.",
+        "heading": "Stufe 4: Erweiterte Pfad-Finder",
+        "relationship": "Beziehungsanalyse: Analysiert Import-Anweisungen, Konfigurationsdateien und Projektstruktur, um verwandte Dateien zu finden, die den Kontext für die spezifische Aufgabe verbessern."
+      }
+    },
+    "stateManagement": {
+      "eventDriven": {
+        "description": "Das System veröffentlicht Echtzeitevents für Workflow-Statusänderungen, Phasenabschlüsse und Fehlerbedingungen. Diese Ereignisse ermöglichen responsive Benutzeroberflächen und Integration mit externen Überwachungssystemen.",
+        "heading": "Ereignisgesteuerte Updates"
+      },
+      "heading": "Workflow-Statusverwaltung",
+      "intermediateData": {
+        "description": "Jede Phase speichert ihre Ausgabe in einem strukturierten Zwischendatenformat, einschließlich Verzeichnisbaum-Inhalt, Regex-Muster, gefilterte Dateilisten und Pfad-Korrekturergebnisse. Diese Daten sind für das Debugging zugänglich und können verwendet werden, um Workflows von bestimmten Phasen aus fortzusetzen.",
+        "heading": "Zwischendatenspeicherung"
+      },
+      "transitions": {
+        "description": "Der Workflow durchläuft klar definierte Zustände: Erstellt → Läuft → Pausiert (optional) → Abgeschlossen/Fehlgeschlagen/Abgebrochen. Jeder Statusübergang veröffentlicht Ereignisse, die für Echtzeit-Updates überwacht werden können.",
+        "heading": "Statusübergänge"
+      }
+    },
+    "title": "File-Discovery-Workflow"
+  },
+  "implementationPlans": {
+    "category": "Produktleitfaden",
+    "context": {
+      "audit": "Alle Metadaten bleiben mit dem Plan für Auditzwecke erhalten. Unternehmensteams können verfolgen, welche Stakeholder welche Pläne überprüft haben, welche Änderungen angefordert wurden und die vollständige Argumentationskette von der ursprünglichen Aufgabenbeschreibung über File Discovery bis zum endgültig genehmigten Plan.",
+      "heading": "Kontext und Metadaten für Unternehmens-Governance",
+      "storage": "Das Panel speichert, welche Repository-Roots während des File-Discovery-Workflows ausgewählt wurden, damit Folgeaktionen denselben Umfang wiederverwenden. Es zeichnet auch planspezifische Metadaten wie das Projektverzeichnis und vorbereiteten Prompt-Inhalt auf, sodass nachgelagerte Prompts generiert oder kopiert werden können, ohne den Workflow neu zu berechnen.",
+      "tokenEstimation": "Token-Schätzung läuft, bevor Prompts kopiert werden. Das Panel ruft den Token-Schätzungsbefehl mit Projektverzeichnis, ausgewählten Dateien und dem aktuell gewählten Modell auf und zeigt sowohl System- als auch Benutzer-Prompt-Summen an, damit Teams unter den Modellgrenzen bleiben."
+    },
+    "cta": {
+      "claudeCodeLink": "Claude Plan-Modus-Workflow ansehen",
+      "codexLink": "Codex Plan-Modus-Workflow ansehen",
+      "cursorLink": "Cursor Plan-Modus-Workflow ansehen",
+      "description": "Human-in-the-Loop-Implementierungspläne sind in der PlanToCode Desktop-Anwendung verfügbar. Laden Sie den Build für Ihre Plattform herunter, um eine sichere, gesteuerte KI-gestützte Entwicklung zu erleben.",
+      "heading": "Bereit für die sichere Einführung von KI-Coding-Agenten?"
+    },
+    "date": "2025-09-19",
+    "description": "Wie PlanToCode die sichere Einführung von KI-Coding-Agenten durch Human-in-the-Loop-Governance, granulare dateibasierte Pläne und umfassende Review-Workflows ermöglicht.",
+    "fileGranularity": {
+      "created": "Erstellt werden (mit vollständigen Dateipfaden und initialer Inhaltsstruktur)",
+      "declaredFiles": "Jeder Schritt in einem Plan deklariert explizit, welche Dateien:",
+      "deleted": "Gelöscht werden (mit Begründung und Abhängigkeitsanalyse)",
+      "heading": "Dateibasierte Granularität",
+      "impact": "Dieser Detailgrad macht die Auswirkungen vorgeschlagener Änderungen kristallklar, bevor Code berührt wird. Teamleiter können sofort erkennen, ob kritischer Legacy-Code geändert wird, ob Breaking Changes vorgeschlagen werden oder ob der Plan Dateien berührt, die zusätzliche Prüfung erfordern.",
+      "intro": "Implementierungspläne verwenden eine hochgradig granulare Struktur, die Entwicklungsaufgaben dateibasiert aufschlüsselt, mit exakten Dateipfaden, die der Repository-Struktur des Projekts entsprechen. Diese Granularität ist grundlegend für die Vermeidung von Regressionen und die sichere Einführung von KI-Coding-Agenten in Unternehmensumgebungen.",
+      "modified": "Geändert werden (mit spezifischen Zeilenbereichen und beschriebenen Änderungen)",
+      "referenced": "Referenziert werden (für Kontext, aber nicht geändert)",
+      "transmission": "Der dateibasierte Ansatz ermöglicht auch eine präzise Übermittlung genehmigter Pläne an Coding-Agenten. Anstelle vager Anweisungen wie \"Authentifizierungssystem aktualisieren\" erhalten Agenten exakte Spezifikationen: \"src/auth/session_manager.rs Zeilen 45-67 modifizieren, um Token-Rotation hinzuzufügen, src/auth/token_store.rs mit folgender Struktur erstellen...\""
+    },
+    "hitl": {
+      "approve": "Genehmigung:",
+      "approveDesc": "Erst nach ausdrücklicher Genehmigung können Pläne sicher an den gewählten Coding-Agenten oder zugewiesenen Softwareentwickler zur Ausführung übermittelt werden.",
+      "conclusion": "Dieser Workflow stellt sicher, dass alle Entwicklungsaktivitäten mit Unternehmensprodukterfordernissen, Team-Workflows und Geschäftszielen übereinstimmen. Keine Code-Änderungen erfolgen ohne ausdrückliche menschliche Genehmigung.",
+      "edit": "Bearbeitung:",
+      "editDesc": "Stakeholder können Schritte direkt modifizieren, Ansätze anpassen, Einschränkungen hinzufügen oder riskante Operationen mit VS Code-Bearbeitungsfunktionen entfernen.",
+      "heading": "Human-in-the-Loop-Governance",
+      "intro": "PlanToCode implementiert einen umfassenden Human-in-the-Loop (HITL) Workflow, der sicherstellt, dass Teamleiter und Stakeholder die volle Kontrolle über jeden Aspekt der KI-generierten Implementierungspläne behalten. Dieses Governance-Modell verhindert Regressionen, Bugs und unbeabsichtigte Änderungen, die auftreten können, wenn KI-Coding-Agenten autonom arbeiten.",
+      "reject": "Ablehnung:",
+      "rejectDesc": "Pläne, die die Anforderungen nicht erfüllen, können vollständig abgelehnt werden, wobei vollständige Audit-Trails für Compliance und Lernen gepflegt werden.",
+      "requestChanges": "Änderungen anfordern:",
+      "requestChangesDesc": "Teams können Änderungen vom KI-System anfordern und alternative Ansätze generieren oder mehrere Pläne mit benutzerdefinierten Anweisungen zusammenführen.",
+      "review": "Überprüfung:",
+      "reviewDesc": "Pläne öffnen sich im Monaco-Editor, wo Reviewer jede vorgeschlagene Änderung mit vollständigem Syntax-Highlighting und professionellen Bearbeitungswerkzeugen untersuchen können.",
+      "workflow": "Jeder Plan muss einen strukturierten Review-Workflow durchlaufen, bevor Code-Änderungen beginnen:"
+    },
+    "intro": "Überprüfen und genehmigen Sie jeden Plan vor der Ausführung. Human-in-the-Loop-Governance mit dateibasierter Granularität stellt sicher, dass KI-generierte Änderungen mit Unternehmensanforderungen und Team-Workflows übereinstimmen.",
+    "metaDescription": "Leitfaden zur KI-Implementierungsplanung. Generieren, überprüfen und genehmigen Sie dateibasierte Pläne vor der Ausführung. Vermeiden Sie Duplikate und falsche Pfade.",
+    "metaTitle": "Implementierungspläne - KI-Änderungen überprüfen",
+    "multiplePlans": {
+      "description": "Pläne können zusammengeführt, gelöscht oder später wieder geöffnet werden. Das Panel verwaltet eine Liste ausgewählter Plan-IDs, verwaltet ein dediziertes Modal für Terminal-Ausgaben, die an einen Plan gebunden sind, und bietet Navigationshilfen, damit Reviewer frühere Pläne durchblättern können, ohne den Viewer zu schließen. Terminal-Zugriff, Prompt-Kopiersteuerungen und Merge-Anweisungen teilen alle dieselbe Job-ID, sodass die Audit-Historie konsistent bleibt.",
+      "heading": "Arbeiten mit mehreren Plänen"
+    },
+    "ogDescription": "Erfahren Sie, wie Human-in-the-Loop-Governance und dateibasierte Review-Workflows eine sichere KI-Entwicklung mit vollständiger Kontrolle über Code-Änderungen gewährleisten.",
+    "ogTitle": "Human-in-the-Loop Implementierungspläne in PlanToCode",
+    "plansOrigin": {
+      "description": "Jeder Plan entspricht einem Hintergrundjob in der aktuellen Session. Das Panel abonniert Plandaten, verfolgt, welcher Plan aktuell geöffnet ist, und ermöglicht die Navigation zwischen früheren und neueren Jobs. Dieses Verhalten ist in {code} und der umgebenden Panel-Komponente implementiert.",
+      "heading": "Woher die Pläne kommen"
+    },
+    "readTime": "6 Min.",
+    "reviewingPlans": {
+      "description": "Planinhalte werden durch den gemeinsamen {code} gerendert, der den Monaco-Editor umschließt. Der Viewer erkennt automatisch gängige Sprachen, unterstützt Copy-to-Clipboard-Aktionen, virtualisiert sehr große Pläne und bietet optionale Metriken wie Zeichenanzahl und syntaxbewusstes Highlighting.",
+      "heading": "Pläne mit Monaco überprüfen",
+      "opening": "Wenn ein Plan geöffnet wird, löst das Panel den aktiven Plan anhand der Job-ID auf, übergibt den Inhalt an Monaco und ermöglicht Reviewern, zwischen benachbarten Jobs zu navigieren, ohne das aktuell geöffnete Modal zu verlieren."
+    },
+    "title": "Implementierungspläne"
+  },
+  "modelConfiguration": {
+    "category": "Produktleitfaden",
+    "date": "2025-09-20",
+    "description": "Aufgabenbasierte Modelllisten, Auswahl-Steuerelemente und Token-Guardrails im Desktop-Client.",
+    "intro": "PlanToCode behandelt die Modellauswahl als aufgabenbasierte Entscheidung. Jeder Workflow liefert ein Standardmodell und eine zugelassene Liste, und der Desktop-Client stellt diese Optionen über einen Toggle bereit, der verhindert, dass Prompts gesendet werden, die das aktive Kontextfenster überschreiten.",
+    "metaDescription": "Wie PlanToCode es Ihnen ermöglicht, zugelassene Modelle pro Aufgabe auszuwählen und Prompts innerhalb des aktiven Kontextfensters zu halten.",
+    "metaTitle": "Modellkonfiguration und Guardrails - PlanToCode",
+    "ogDescription": "Erfahren Sie, wie aufgabenbasierte Modelleinstellungen, Auswahl-Toggles und Token-Schätzungen zusammenarbeiten.",
+    "ogTitle": "Modellkonfiguration und Guardrails - PlanToCode",
+    "promptEstimation": {
+      "description": "Token-Anzahlen werden über den Token-Schätzungsbefehl berechnet. Das Panel übermittelt die Session-ID, Aufgabenbeschreibung, relevante Dateien und das ausgewählte Modell, damit das Backend System-, Benutzer- und Gesamttoken-Werte zurückgeben kann. Diese Zahlen fließen direkt in die Auswahl-Guardrails ein und ermöglichen es Teams, über-Limit-Prompts zu erkennen, bevor sie in ein anderes Tool kopiert werden.",
+      "heading": "Prompt-Schätzung"
+    },
+    "readTime": "5 Min.",
+    "selectorToggle": {
+      "description": "Das Implementierungspläne-Panel rendert zugelassene Modelle mit dem {code}. Der Toggle zeigt jedes zugelassene Modell an, verfolgt die aktive Auswahl und prüft, ob die geschätzten Prompt- plus geplanten Output-Token in das beworbene Kontextfenster des Modells passen, bevor ein Wechsel erlaubt wird.",
+      "guardrails": "Wenn ein Modell die Gesamttoken-Anforderung nicht unterstützen kann, deaktiviert der Toggle die Schaltfläche und zeigt einen Tooltip mit der berechneten Überschreitung an, um Reviewer innerhalb sicherer Grenzen zu halten, bevor sie Arbeit an einen Agenten senden.",
+      "heading": "Auswahl-Toggle im Client"
+    },
+    "taskDefaults": {
+      "description": "Standardmodelle und zugelassene Alternativen werden serverseitig in der Anwendungskonfiguration gespeichert. Jeder Aufgabentyp - wie Implementierungspläne, Merges, Prompt-Generierung oder Sprachtranskription - definiert ein bevorzugtes Modell, eine Liste zugelassener Optionen und Token-Limits, die die Desktop-App zur Laufzeit liest.",
+      "heading": "Aufgabengesteuerte Standards"
+    },
+    "title": "Modellkonfiguration"
+  },
+  "textImprovement": {
+    "category": "Produktleitfaden",
+    "cta": {
+      "description": "Laden Sie PlanToCode herunter, um Sprachaufnahme, Videokontext und Inline-Umschreibung zu kombinieren, bevor Sie Implementierungspläne generieren.",
+      "heading": "Probieren Sie die Textverbesserung in der Desktop-App aus"
+    },
+    "date": "2025-09-21",
+    "description": "Wie PlanToCode markierten Text umschreibt, ohne die Formatierung zu ändern, und das Ergebnis mit Ihrem Workspace verknüpft.",
+    "intro": "Verfeinern Sie Text mit KI-Kontext. Wählen Sie Text in einem beliebigen Editor aus, starten Sie einen Hintergrundjob und erhalten Sie verbesserten Inhalt, der Ihre Formatierung intakt hält.",
+    "metaDescription": "Wie der Desktop-Workspace markierten Text umschreibt, die Formatierung beibehält und die Funktion mit Sprach- und Videoeingaben verknüpft.",
+    "metaTitle": "Textverbesserung - PlanToCode",
+    "ogDescription": "Verstehen Sie das Auswahl-Popover, die Job-Warteschlange, die Modellkonfiguration und die Integrationen, die die Textverbesserung antreiben.",
+    "ogTitle": "Textverbesserung - PlanToCode",
+    "readTime": "7 Min.",
+    "selectionPopover": {
+      "component": "Das Popover selbst ist eine minimale Komponente, die von {code} gerendert wird und einfach den Provider-Hook auslöst und einen Ladeindikator zeigt, während eine Umschreibung läuft. Da der Provider globale Listener registriert, erscheint das Popover in Monaco-Plan-Viewern, dem Plan-Terminal-Diktierfeld und allen Aufgabenbeschreibungseingaben ohne zusätzliche Verkabelung.",
+      "heading": "Verhalten des Auswahl-Popovers",
+      "provider": "Der {code} lauscht auf Auswahlaktionen in Standardeingaben und Monaco-Editoren. Wenn Sie nicht-leeren Text markieren, positioniert er ein Popover in der Nähe des Cursors, speichert den ausgewählten Bereich und verfolgt, ob das Popover sichtbar sein soll. Ein Klick auf die Schaltfläche startet den Job und deaktiviert die Steuerung, bis das Ergebnis zurückkehrt. Wenn der Job abgeschlossen ist, wendet der Provider den verbesserten Text auf dieselbe Auswahl an und leert ausstehende Speicherungen, um den Session-Status synchron zu halten."
+    },
+    "title": "Textverbesserung",
+    "triggerImprovement": {
+      "action": "Das Drücken der Popover-Schaltfläche ruft {code} auf. Die Aktion validiert die Auswahl, stellt sicher, dass eine Session-ID existiert, und ruft den Rust-Befehl {code} über Tauri auf. Der Befehl erstellt ein {code}, das den Originaltext enthält, und reiht einen Hintergrundjob gegen die aktive Session ein.",
+      "backend": "Auf der Backend-Seite löst der {code} das konfigurierte Modell für die {code}-Aufgabe auf, umschließt die Auswahl mit XML-Tags und führt die Anfrage durch den {code} ohne Streaming aus. Wenn die Modellantwort zurückkehrt, zeichnet er Token-Verwendung, Kosten und die System-Prompt-Vorlage auf, bevor er den verbesserten Text an die UI zurücksendet. Die Standardkonfiguration liefert Claude Sonnet 4 und Gemini 2.5 Flash als zugelassene Modelle, begrenzt auf 4.096 Token mit einer Temperatur von 0,7.",
+      "heading": "Was passiert, wenn Sie eine Verbesserung auslösen",
+      "metadata": "Die Hintergrundjobs-Sidebar zeichnet den Originaltext in Job-Metadaten auf, sodass Sie überprüfen können, was gesendet wurde, zusammen mit der umgeschriebenen Kopie. Wenn sich die Auswahl ändert, während ein Job läuft, überspringt der Provider das Ersetzen des Textes, um manuelle Bearbeitungen nicht zu überschreiben."
+    },
+    "videoCapture": {
+      "dialog": "Bildschirmaufnahmen durchlaufen den Videoanalysedialog, der Ihre aktuelle Aufgabenbeschreibung mit einem optionalen Prompt-Block kombiniert, der in semantische XML-Tags eingeschlossen ist, bevor die Anfrage an den Gemini-Videoanalyse-Job gesendet wird. Alle Notizen, die Sie während der Aufnahme diktieren, sind als Text verfügbar, sobald die Analyse abgeschlossen ist, sodass Sie die resultierende Zusammenfassung durch das Verbesserungs-Popover zurückführen können, um die Anweisungen vor der Planung zu verschärfen.",
+      "features": "Video-Jobs beinhalten Framerate-Steuerungen, Audioaufnahme-Schalter und Kostenberichterstattung. Ergebnisse erscheinen in derselben Hintergrundjobs-Sidebar wie Textverbesserungen und halten alle Prompt-Vorbereitungsartefakte an einem Ort.",
+      "heading": "Videoaufnahme und Prompt-Gerüstbau"
+    },
+    "voiceIntegration": {
+      "heading": "Sprachtranskriptions-Integration",
+      "hook": "Sprachaufnahmen verwenden den {code}-Hook. Er lädt projektbasierte Transkriptionsstandards, fordert Mikrofonzugriff an und fügt Transkripte an der Cursorposition innerhalb der Aufgabenbeschreibung oder des Terminal-Diktierpuffers ein. Der eingefügte Text kann sofort markiert und durch dasselbe Verbesserungs-Popover geleitet werden, und die ursprüngliche Transkriptions-Job-ID wird mit dem Verbesserungs-Payload für Audits gespeichert.",
+      "preferences": "Sprache, Modell und Temperatureinstellungen bleiben auf Projektebene erhalten, sodass Teams eine konsistente Transkriptionsqualität erhalten, bevor sie die Kopie verfeinern. Stilleerkennnung warnt vor schlechten Audiopegeln, und eine Zehn-Minuten-Begrenzung verhindert, dass übergroße Aufnahmen Verbesserungsjobs mit großen Payloads blockieren."
+    }
+  },
+  "voiceTranscription": {
+    "category": "Produktleitfaden",
+    "date": "2025-09-22",
+    "description": "Aufnahme-Lebenszyklus, Geräteverwaltung und Streaming-Verhalten für sprachgesteuerte Prompts.",
+    "deviceManagement": {
+      "description": "Die Funktion fordert Mikrofonberechtigung an, zählt verfügbare Audioeingänge auf und ermöglicht Benutzern, Geräte während einer Session zu wechseln. Audiopegel werden live überwacht, damit die UI Stillewarnungen anzeigen kann, wenn das Mikrofon stummgeschaltet oder getrennt ist.",
+      "heading": "Geräteverwaltung"
+    },
+    "intro": "Sprachtranskription ist überall verfügbar, wo die Desktop-App Diktiersteuerungen bereitstellt, einschließlich des Plan-Terminals und Prompt-Editoren. Die Funktion zeichnet Audio lokal auf, sendet Chunks an den Transkriptionsdienst und fügt erkannten Text in das aktive Eingabefeld ein, ohne manuelle Eingabe zu blockieren.",
+    "metaDescription": "Wie PlanToCode Audio aufzeichnet, Echtzeit-Transkripte mit gpt-4o-transcribe streamt, Berechtigungen verwaltet und Projekteinstellungen.",
+    "metaTitle": "Sprachtranskription - PlanToCode",
+    "ogDescription": "Erfahren Sie, wie der Aufnahme-Hook Geräte, Berechtigungen und Streaming-Text verwaltet.",
+    "ogTitle": "Sprachtranskription - PlanToCode",
+    "projectSettings": {
+      "description": "Wenn eine Aufnahme-Session startet, sucht der Hook die Transkriptionskonfiguration des aktiven Projekts. Sprachcodes, bevorzugte Modelle und andere Einstellungen werden vor der Audioaufnahme abgerufen, damit Aufnahmen den Projektpräferenzen folgen.",
+      "heading": "Projektbewusste Einstellungen"
+    },
+    "readTime": "5 Min.",
+    "recordingWorkflow": {
+      "description": "Der Aufnahme-Hook verwaltet eine Zustandsmaschine mit Zuständen für inaktiv, Aufnahme, Verarbeitung und Fehler. Er verfolgt die Dauer, verwaltet Stilleerkennung und stellt sicher, dass Aufnahmen automatisch nach zehn Minuten stoppen. Chunks werden gepuffert und an die Transkriptionsaktion weitergeleitet, die erkannten Text zur Einfügung zurückgibt.",
+      "heading": "Aufnahme-Workflow"
+    },
+    "title": "Sprachtranskription"
+  },
   "architecture": {
+    "meta": {
+      "title": "PlanToCode Architekturübersicht",
+      "description": "Desktop-, Orchestrierungs- und Persistenzschichten, die Implementierungspläne, Workflows und Terminal-Sessions antreiben."
+    },
     "category": "Architektur",
     "date": "2025-09-19",
     "description": "Wie die Desktop-Shell, Hintergrund-Workflows und gemeinsame Dienste organisiert sind.",
@@ -31,6 +325,10 @@
     }
   },
   "deepResearch": {
+    "meta": {
+      "title": "Tiefenrecherche - PlanToCode",
+      "description": "Technische Dokumentation zum Websuch-Workflow: API-Integration, Abfrageoptimierung, Ergebnisverarbeitung und Entwicklungs-Workflow-Integration."
+    },
     "apiIntegration": {
       "heading": "API-Integrationsdetails",
       "pipeline": {
@@ -184,145 +482,6 @@
       }
     }
   },
-  "fileDiscovery": {
-    "apiUsage": {
-      "heading": "API-Nutzungsbeispiele",
-      "monitoring": "Fortschritt überwachen",
-      "retrieving": "Ergebnisse abrufen",
-      "starting": "Einen Workflow starten"
-    },
-    "architecture": {
-      "caching": "Caching von Zwischenergebnissen für Performance-Optimierung",
-      "costTracking": "Kostenverfolgung und Timeout-Management für KI-Operationen",
-      "distributed": "Das System verwendet eine verteilte Job-Architektur, bei der jede Phase als unabhängiger Hintergrundjob läuft und Abbruch, Wiederholungslogik und detaillierte Fortschrittsverfolgung ermöglicht. Echtzeitevents werden während der Ausführung veröffentlicht, um sofortiges Feedback an die Benutzeroberfläche zu geben.",
-      "errorHandling": "Umfassende Fehlerbehandlung mit automatischen Wiederholungsmechanismen",
-      "eventDriven": "Ereignisgesteuerte Fortschrittsberichterstattung mit WebSocket-ähnlichen Updates",
-      "featuresHeading": "Wichtige Architekturmerkmale:",
-      "gitIntegration": "Git-Integration mit Fallback auf Verzeichnis-Traversierung",
-      "heading": "Workflow-Architektur",
-      "overview": "Der Workflow arbeitet als orchestriertes Hintergrundjob-System mit fünf unterschiedlichen Phasen, die sequenziell ausgeführt werden. Jede Phase baut auf der Ausgabe der vorherigen Phase auf und verfeinert progressiv die Dateiauswahl basierend auf Aufgabenanforderungen."
-    },
-    "category": "Technischer Leitfaden",
-    "configuration": {
-      "exclusion": {
-        "description": "Definieren Sie Verzeichnisse und Dateimuster, die vom Discovery-Prozess ausgeschlossen werden sollen.",
-        "heading": "Ausschlussmuster"
-      },
-      "heading": "Konfigurationsoptionen",
-      "retry": {
-        "description": "Legen Sie maximale Wiederholungsversuche für fehlgeschlagene Phasen mit exponentiellem Backoff fest.",
-        "heading": "Wiederholungskonfiguration"
-      },
-      "timeout": {
-        "description": "Konfigurieren Sie die maximale Ausführungszeit für den gesamten Workflow oder einzelne Phasen, um unbegrenztes Hängen zu verhindern.",
-        "heading": "Timeout-Management"
-      },
-      "workflowConfig": "Workflow-Konfiguration"
-    },
-    "cta": {
-      "description": "Der File-Discovery-Workflow läuft innerhalb des Desktop-Clients zusammen mit Implementierungsplanung und Terminal-Sessions.",
-      "heading": "Benötigen Sie die Desktop-App?"
-    },
-    "date": "2025-09-21",
-    "description": "Umfassender technischer Leitfaden zum 5-stufigen KI-Workflow, der relevante Dateien für die Aufgabenausführung identifiziert und filtert.",
-    "errorHandling": {
-      "commonIssues": {
-        "binaryDetection": "Binärdateierkennung: Verwendet sowohl erweiterungsbasierte als auch inhaltsbasierte Binärerkennung",
-        "gitNotFound": "Git-Repository nicht gefunden: Fällt zurück auf Verzeichnis-Traversierung mit Standardausschlüssen",
-        "heading": "Häufige Probleme",
-        "networkTimeout": "Netzwerk-Timeouts: Automatische Wiederholung mit exponentiellem Backoff für transiente Fehler",
-        "tokenLimit": "Token-Limit überschritten: Implementiert intelligentes Batching und liefert klare Fehlermeldungen"
-      },
-      "debugging": {
-        "description": "Der Workflow bietet umfassende Protokollierung, Performance-Metrik-Export und detaillierten Fehlerkontext einschließlich Phaseninformationen, Wiederholungsversuchen und Zwischendaten zur Fehlerbehebung.",
-        "heading": "Debugging-Tools"
-      },
-      "errorCategories": {
-        "billing": "Abrechnungsfehler: Unzureichende Credits oder Zahlungsfehler mit umsetzbarer Anleitung",
-        "heading": "Fehlerkategorien",
-        "system": "Systemfehler: Dateisystemzugriff, Git-Befehlsfehler oder Speichereinschränkungen",
-        "validation": "Validierungsfehler: Ungültige Session-ID, fehlende Aufgabenbeschreibung oder ungültiges Projektverzeichnis",
-        "workflow": "Workflow-Fehler: Phasenspezifische Fehler mit detailliertem Kontext und Wiederholungsvorschlägen"
-      },
-      "heading": "Fehlerbehandlung & Fehlerbehebung"
-    },
-    "integration": {
-      "desktop": {
-        "description": "Der Workflow integriert sich nahtlos mit der Desktop-Anwendung über Tauri-Befehle und bietet nativen Dateisystemzugriff und ereignisgesteuerte Updates über die WorkflowTracker-Klasse.",
-        "heading": "Desktop-Anwendung"
-      },
-      "heading": "Integrationsmuster",
-      "implementationPlans": {
-        "description": "Ausgewählte Dateien werden automatisch in das Implementierungspläne-Panel eingespeist und stellen sicher, dass die Plangenerierung denselben optimierten Dateikontext verwendet, ohne eine erneute Ausführung des Discovery-Workflows zu erfordern.",
-        "heading": "Implementierungspläne-Integration"
-      },
-      "sessionManagement": {
-        "description": "Workflow-Ergebnisse werden pro Session gecacht, sodass mehrere Operationen innerhalb derselben Session den entdeckten Dateikontext wiederverwenden können, was die Performance für iterative Entwicklungs-Workflows erheblich verbessert.",
-        "heading": "Session-Management"
-      }
-    },
-    "intro": "PlanToCode identifiziert die richtigen Dateien, bevor Sie planen oder Befehle ausführen. Der 5-stufige Workflow grenzt den Umfang ein und hält den Kontext eng.",
-    "metaDescription": "Umfassender technischer Leitfaden zum 5-stufigen KI-Workflow, der relevante Dateien für die Aufgabenausführung identifiziert und filtert.",
-    "metaTitle": "File-Discovery-Workflow - PlanToCode",
-    "ogDescription": "Technische Dokumentation zur mehrstufigen File-Discovery-Workflow-Architektur.",
-    "ogTitle": "File-Discovery-Workflow - PlanToCode",
-    "performance": {
-      "costOptimization": {
-        "description": "KI-Stufen verfolgen tatsächliche Kosten aus API-Antworten, implementieren intelligentes Batching zur Minimierung der Token-Nutzung und liefern Kostenschätzungen vor der Ausführung, um bei der Ausgabenverwaltung zu helfen.",
-        "heading": "Kostenoptimierung"
-      },
-      "heading": "Performance-Überlegungen",
-      "memory": {
-        "description": "Der Workflow implementiert intelligente Speicherverwaltung mit Datei-Caching (30-Sekunden-TTL), Batch-Verarbeitung (100 Dateien pro Batch) und automatischer Bereinigung von Zwischendaten, um Speicherüberlastung zu verhindern.",
-        "heading": "Speicherverwaltung"
-      },
-      "monitoring": {
-        "description": "Eingebaute Performance-Verfolgung überwacht Ausführungszeiten, Speichernutzung, Durchsatz-Metriken und liefert Empfehlungen zur Optimierung basierend auf historischer Datenanalyse.",
-        "heading": "Performance-Überwachung"
-      }
-    },
-    "readTime": "12 Min.",
-    "stages": {
-      "heading": "5-Stufen-Workflow-Prozess",
-      "stage1": {
-        "description": "Bestimmt das Projekt-Root-Verzeichnis und validiert den Git-Repository-Status. Diese Stufe etabliert das Basisverzeichnis für alle nachfolgenden Dateioperationen und konfiguriert Ausschlussmuster.",
-        "heading": "Stufe 1: Root-Ordner-Auswahl",
-        "technical": "Technische Details: Verwendet Git-Erkennung mit Fallback auf Verzeichnisvalidierung, wendet benutzerdefinierte Ausschlussmuster an und etabliert den Arbeitsverzeichniskontext für den gesamten Workflow."
-      },
-      "stage2": {
-        "binaryDetection": "Binärerkennung: Filtert Dateien mit Binärerweiterungen (.jpg, .png, .pdf, .exe usw.) heraus und verwendet Inhaltsanalyse zur Erkennung von Binärdateien anhand von Null-Bytes und Nicht-druckbaren-Zeichen-Verhältnissen.",
-        "description": "Generiert intelligente Regex-Muster basierend auf der Aufgabenbeschreibung zur Durchführung der initialen Dateifilterung. Diese Stufe kombiniert git ls-files-Ausgabe mit Binärdateierkennung, um eine vorläufige Dateiliste zu erstellen.",
-        "gitIntegration": "Git-Integration: Führt `git ls-files --cached --others --exclude-standard` aus, um .gitignore-Regeln zu respektieren und gleichzeitig sowohl getrackte als auch ungetrackte Dateien einzubeziehen.",
-        "heading": "Stufe 2: Regex-Dateifilter"
-      },
-      "stage3": {
-        "aiProcessing": "KI-Verarbeitung: Verwendet große Sprachmodelle zur Bewertung von Dateiinhalten gegen Aufgabenanforderungen, mit intelligentem Batching zur Verwaltung von Token-Limits und Kostenoptimierung.",
-        "description": "Setzt KI-Modelle ein, um Dateiinhalte zu analysieren und die Relevanz für die spezifische Aufgabenbeschreibung zu bewerten. Diese Stufe führt tiefe Inhaltsanalyse durch, um Dateien zu identifizieren, die am wahrscheinlichsten für die gegebene Aufgabe nützlich sind.",
-        "heading": "Stufe 3: KI-Dateirelevanz-Bewertung"
-      },
-      "stage4": {
-        "description": "Entdeckt zusätzliche relevante Dateien durch Beziehungsanalyse und Abhängigkeitsverfolgung. Diese Stufe identifiziert Dateien, die möglicherweise nicht mit initialen Mustern übereinstimmen, aber kontextuell wichtig sind.",
-        "heading": "Stufe 4: Erweiterte Pfad-Finder",
-        "relationship": "Beziehungsanalyse: Analysiert Import-Anweisungen, Konfigurationsdateien und Projektstruktur, um verwandte Dateien zu finden, die den Kontext für die spezifische Aufgabe verbessern."
-      }
-      },
-    "stateManagement": {
-      "eventDriven": {
-        "description": "Das System veröffentlicht Echtzeitevents für Workflow-Statusänderungen, Phasenabschlüsse und Fehlerbedingungen. Diese Ereignisse ermöglichen responsive Benutzeroberflächen und Integration mit externen Überwachungssystemen.",
-        "heading": "Ereignisgesteuerte Updates"
-      },
-      "heading": "Workflow-Statusverwaltung",
-      "intermediateData": {
-        "description": "Jede Phase speichert ihre Ausgabe in einem strukturierten Zwischendatenformat, einschließlich Verzeichnisbaum-Inhalt, Regex-Muster, gefilterte Dateilisten und Pfad-Korrekturergebnisse. Diese Daten sind für das Debugging zugänglich und können verwendet werden, um Workflows von bestimmten Phasen aus fortzusetzen.",
-        "heading": "Zwischendatenspeicherung"
-      },
-      "transitions": {
-        "description": "Der Workflow durchläuft klar definierte Zustände: Erstellt → Läuft → Pausiert (optional) → Abgeschlossen/Fehlgeschlagen/Abgebrochen. Jeder Statusübergang veröffentlicht Ereignisse, die für Echtzeit-Updates überwacht werden können.",
-        "heading": "Statusübergänge"
-      }
-    },
-    "title": "File-Discovery-Workflow"
-  },
   "hub": {
     "ctaDescription": "Laden Sie PlanToCode herunter, um auf den Implementierungsplaner, Model-Guardrails, Terminal-Sessions und die in dieser Dokumentation beschriebenen Transkriptionsfunktionen zuzugreifen.",
     "ctaHeading": "Bereit, diese Workflows auszuprobieren?",
@@ -385,97 +544,11 @@
   "onThisPage": {
     "title": "AUF DIESER SEITE"
   },
-  "implementationPlans": {
-    "category": "Produktleitfaden",
-    "context": {
-      "audit": "Alle Metadaten bleiben mit dem Plan für Auditzwecke erhalten. Unternehmensteams können verfolgen, welche Stakeholder welche Pläne überprüft haben, welche Änderungen angefordert wurden und die vollständige Argumentationskette von der ursprünglichen Aufgabenbeschreibung über File Discovery bis zum endgültig genehmigten Plan.",
-      "heading": "Kontext und Metadaten für Unternehmens-Governance",
-      "storage": "Das Panel speichert, welche Repository-Roots während des File-Discovery-Workflows ausgewählt wurden, damit Folgeaktionen denselben Umfang wiederverwenden. Es zeichnet auch planspezifische Metadaten wie das Projektverzeichnis und vorbereiteten Prompt-Inhalt auf, sodass nachgelagerte Prompts generiert oder kopiert werden können, ohne den Workflow neu zu berechnen.",
-      "tokenEstimation": "Token-Schätzung läuft, bevor Prompts kopiert werden. Das Panel ruft den Token-Schätzungsbefehl mit Projektverzeichnis, ausgewählten Dateien und dem aktuell gewählten Modell auf und zeigt sowohl System- als auch Benutzer-Prompt-Summen an, damit Teams unter den Modellgrenzen bleiben."
-    },
-    "cta": {
-      "claudeCodeLink": "Claude Plan-Modus-Workflow ansehen",
-      "codexLink": "Codex Plan-Modus-Workflow ansehen",
-      "cursorLink": "Cursor Plan-Modus-Workflow ansehen",
-      "description": "Human-in-the-Loop-Implementierungspläne sind in der PlanToCode Desktop-Anwendung verfügbar. Laden Sie den Build für Ihre Plattform herunter, um eine sichere, gesteuerte KI-gestützte Entwicklung zu erleben.",
-      "heading": "Bereit für die sichere Einführung von KI-Coding-Agenten?"
-    },
-    "date": "2025-09-19",
-    "description": "Wie PlanToCode die sichere Einführung von KI-Coding-Agenten durch Human-in-the-Loop-Governance, granulare dateibasierte Pläne und umfassende Review-Workflows ermöglicht.",
-    "fileGranularity": {
-      "created": "Erstellt werden (mit vollständigen Dateipfaden und initialer Inhaltsstruktur)",
-      "declaredFiles": "Jeder Schritt in einem Plan deklariert explizit, welche Dateien:",
-      "deleted": "Gelöscht werden (mit Begründung und Abhängigkeitsanalyse)",
-      "heading": "Dateibasierte Granularität",
-      "impact": "Dieser Detailgrad macht die Auswirkungen vorgeschlagener Änderungen kristallklar, bevor Code berührt wird. Teamleiter können sofort erkennen, ob kritischer Legacy-Code geändert wird, ob Breaking Changes vorgeschlagen werden oder ob der Plan Dateien berührt, die zusätzliche Prüfung erfordern.",
-      "intro": "Implementierungspläne verwenden eine hochgradig granulare Struktur, die Entwicklungsaufgaben dateibasiert aufschlüsselt, mit exakten Dateipfaden, die der Repository-Struktur des Projekts entsprechen. Diese Granularität ist grundlegend für die Vermeidung von Regressionen und die sichere Einführung von KI-Coding-Agenten in Unternehmensumgebungen.",
-      "modified": "Geändert werden (mit spezifischen Zeilenbereichen und beschriebenen Änderungen)",
-      "referenced": "Referenziert werden (für Kontext, aber nicht geändert)",
-      "transmission": "Der dateibasierte Ansatz ermöglicht auch eine präzise Übermittlung genehmigter Pläne an Coding-Agenten. Anstelle vager Anweisungen wie \"Authentifizierungssystem aktualisieren\" erhalten Agenten exakte Spezifikationen: \"src/auth/session_manager.rs Zeilen 45-67 modifizieren, um Token-Rotation hinzuzufügen, src/auth/token_store.rs mit folgender Struktur erstellen...\""
-    },
-    "hitl": {
-      "approve": "Genehmigung:",
-      "approveDesc": "Erst nach ausdrücklicher Genehmigung können Pläne sicher an den gewählten Coding-Agenten oder zugewiesenen Softwareentwickler zur Ausführung übermittelt werden.",
-      "conclusion": "Dieser Workflow stellt sicher, dass alle Entwicklungsaktivitäten mit Unternehmensprodukterfordernissen, Team-Workflows und Geschäftszielen übereinstimmen. Keine Code-Änderungen erfolgen ohne ausdrückliche menschliche Genehmigung.",
-      "edit": "Bearbeitung:",
-      "editDesc": "Stakeholder können Schritte direkt modifizieren, Ansätze anpassen, Einschränkungen hinzufügen oder riskante Operationen mit VS Code-Bearbeitungsfunktionen entfernen.",
-      "heading": "Human-in-the-Loop-Governance",
-      "intro": "PlanToCode implementiert einen umfassenden Human-in-the-Loop (HITL) Workflow, der sicherstellt, dass Teamleiter und Stakeholder die volle Kontrolle über jeden Aspekt der KI-generierten Implementierungspläne behalten. Dieses Governance-Modell verhindert Regressionen, Bugs und unbeabsichtigte Änderungen, die auftreten können, wenn KI-Coding-Agenten autonom arbeiten.",
-      "reject": "Ablehnung:",
-      "rejectDesc": "Pläne, die die Anforderungen nicht erfüllen, können vollständig abgelehnt werden, wobei vollständige Audit-Trails für Compliance und Lernen gepflegt werden.",
-      "requestChanges": "Änderungen anfordern:",
-      "requestChangesDesc": "Teams können Änderungen vom KI-System anfordern und alternative Ansätze generieren oder mehrere Pläne mit benutzerdefinierten Anweisungen zusammenführen.",
-      "review": "Überprüfung:",
-      "reviewDesc": "Pläne öffnen sich im Monaco-Editor, wo Reviewer jede vorgeschlagene Änderung mit vollständigem Syntax-Highlighting und professionellen Bearbeitungswerkzeugen untersuchen können.",
-      "workflow": "Jeder Plan muss einen strukturierten Review-Workflow durchlaufen, bevor Code-Änderungen beginnen:"
-    },
-    "intro": "Überprüfen und genehmigen Sie jeden Plan vor der Ausführung. Human-in-the-Loop-Governance mit dateibasierter Granularität stellt sicher, dass KI-generierte Änderungen mit Unternehmensanforderungen und Team-Workflows übereinstimmen.",
-    "metaDescription": "Leitfaden zur KI-Implementierungsplanung. Generieren, überprüfen und genehmigen Sie dateibasierte Pläne vor der Ausführung. Vermeiden Sie Duplikate und falsche Pfade.",
-    "metaTitle": "Implementierungspläne - KI-Änderungen überprüfen",
-    "multiplePlans": {
-      "description": "Pläne können zusammengeführt, gelöscht oder später wieder geöffnet werden. Das Panel verwaltet eine Liste ausgewählter Plan-IDs, verwaltet ein dediziertes Modal für Terminal-Ausgaben, die an einen Plan gebunden sind, und bietet Navigationshilfen, damit Reviewer frühere Pläne durchblättern können, ohne den Viewer zu schließen. Terminal-Zugriff, Prompt-Kopiersteuerungen und Merge-Anweisungen teilen alle dieselbe Job-ID, sodass die Audit-Historie konsistent bleibt.",
-      "heading": "Arbeiten mit mehreren Plänen"
-    },
-    "ogDescription": "Erfahren Sie, wie Human-in-the-Loop-Governance und dateibasierte Review-Workflows eine sichere KI-Entwicklung mit vollständiger Kontrolle über Code-Änderungen gewährleisten.",
-    "ogTitle": "Human-in-the-Loop Implementierungspläne in PlanToCode",
-    "plansOrigin": {
-      "description": "Jeder Plan entspricht einem Hintergrundjob in der aktuellen Session. Das Panel abonniert Plandaten, verfolgt, welcher Plan aktuell geöffnet ist, und ermöglicht die Navigation zwischen früheren und neueren Jobs. Dieses Verhalten ist in {code} und der umgebenden Panel-Komponente implementiert.",
-      "heading": "Woher die Pläne kommen"
-    },
-    "readTime": "6 Min.",
-    "reviewingPlans": {
-      "description": "Planinhalte werden durch den gemeinsamen {code} gerendert, der den Monaco-Editor umschließt. Der Viewer erkennt automatisch gängige Sprachen, unterstützt Copy-to-Clipboard-Aktionen, virtualisiert sehr große Pläne und bietet optionale Metriken wie Zeichenanzahl und syntaxbewusstes Highlighting.",
-      "heading": "Pläne mit Monaco überprüfen",
-      "opening": "Wenn ein Plan geöffnet wird, löst das Panel den aktiven Plan anhand der Job-ID auf, übergibt den Inhalt an Monaco und ermöglicht Reviewern, zwischen benachbarten Jobs zu navigieren, ohne das aktuell geöffnete Modal zu verlieren."
-    },
-    "title": "Implementierungspläne"
-  },
-  "modelConfiguration": {
-    "category": "Produktleitfaden",
-    "date": "2025-09-20",
-    "description": "Aufgabenbasierte Modelllisten, Auswahl-Steuerelemente und Token-Guardrails im Desktop-Client.",
-    "intro": "PlanToCode behandelt die Modellauswahl als aufgabenbasierte Entscheidung. Jeder Workflow liefert ein Standardmodell und eine zugelassene Liste, und der Desktop-Client stellt diese Optionen über einen Toggle bereit, der verhindert, dass Prompts gesendet werden, die das aktive Kontextfenster überschreiten.",
-    "metaDescription": "Wie PlanToCode es Ihnen ermöglicht, zugelassene Modelle pro Aufgabe auszuwählen und Prompts innerhalb des aktiven Kontextfensters zu halten.",
-    "metaTitle": "Modellkonfiguration und Guardrails - PlanToCode",
-    "ogDescription": "Erfahren Sie, wie aufgabenbasierte Modelleinstellungen, Auswahl-Toggles und Token-Schätzungen zusammenarbeiten.",
-    "ogTitle": "Modellkonfiguration und Guardrails - PlanToCode",
-    "promptEstimation": {
-      "description": "Token-Anzahlen werden über den Token-Schätzungsbefehl berechnet. Das Panel übermittelt die Session-ID, Aufgabenbeschreibung, relevante Dateien und das ausgewählte Modell, damit das Backend System-, Benutzer- und Gesamttoken-Werte zurückgeben kann. Diese Zahlen fließen direkt in die Auswahl-Guardrails ein und ermöglichen es Teams, über-Limit-Prompts zu erkennen, bevor sie in ein anderes Tool kopiert werden.",
-      "heading": "Prompt-Schätzung"
-    },
-    "readTime": "5 Min.",
-    "selectorToggle": {
-      "description": "Das Implementierungspläne-Panel rendert zugelassene Modelle mit dem {code}. Der Toggle zeigt jedes zugelassene Modell an, verfolgt die aktive Auswahl und prüft, ob die geschätzten Prompt- plus geplanten Output-Token in das beworbene Kontextfenster des Modells passen, bevor ein Wechsel erlaubt wird.",
-      "guardrails": "Wenn ein Modell die Gesamttoken-Anforderung nicht unterstützen kann, deaktiviert der Toggle die Schaltfläche und zeigt einen Tooltip mit der berechneten Überschreitung an, um Reviewer innerhalb sicherer Grenzen zu halten, bevor sie Arbeit an einen Agenten senden.",
-      "heading": "Auswahl-Toggle im Client"
-    },
-    "taskDefaults": {
-      "description": "Standardmodelle und zugelassene Alternativen werden serverseitig in der Anwendungskonfiguration gespeichert. Jeder Aufgabentyp - wie Implementierungspläne, Merges, Prompt-Generierung oder Sprachtranskription - definiert ein bevorzugtes Modell, eine Liste zugelassener Optionen und Token-Limits, die die Desktop-App zur Laufzeit liest.",
-      "heading": "Aufgabengesteuerte Standards"
-    },
-    "title": "Modellkonfiguration"
-  },
   "terminalSessions": {
+    "meta": {
+      "title": "Terminal-Sessions - PlanToCode",
+      "description": "Technischer Leitfaden zur PTY-Terminal-Implementierung in PlanToCode. Erfahren Sie, wie Sessions persistieren, Agenten-Inaktivitätserkennung funktioniert und Wiederherstellungsmechanismen."
+    },
     "attentionDetection": {
       "conclusion": "Dieser Ansatz hilft Ihnen zu verfolgen, wann Agenten Aufgaben beendet haben oder Anleitung benötigen, ohne zu versuchen zu raten, warum sie gestoppt haben. Aufmerksamkeitsindikatoren löschen sich automatisch, wenn neue Ausgabe empfangen wird.",
       "heading": "Agenten-Aufmerksamkeitserkennung",
@@ -506,66 +579,5 @@
       "recovery": "Wenn eine PTY-Session getrennt wird, zeigt die Terminal-Oberfläche Wiederherstellungssteuerungen an und wiederholt die Verbindung mit exponentiellem Backoff. Gesundheitschecks überwachen weiterhin den Session-Status und bieten automatische Wiederherstellungsaktionen, wenn Verbindungsprobleme erkannt werden.",
       "voice": "Innerhalb des Terminal-Modals kann die Sprachtranskription Sprache erfassen und in den Terminal-Eingabebereich einfügen. Der Aufnahme-Hook sucht projektbasierte Transkriptionseinstellungen, verfolgt den Aufnahmestatus und streamt erkannten Text in die aktive Plan-Session."
     }
-  },
-  "textImprovement": {
-    "category": "Produktleitfaden",
-    "cta": {
-      "description": "Laden Sie PlanToCode herunter, um Sprachaufnahme, Videokontext und Inline-Umschreibung zu kombinieren, bevor Sie Implementierungspläne generieren.",
-      "heading": "Probieren Sie die Textverbesserung in der Desktop-App aus"
-    },
-    "date": "2025-09-21",
-    "description": "Wie PlanToCode markierten Text umschreibt, ohne die Formatierung zu ändern, und das Ergebnis mit Ihrem Workspace verknüpft.",
-    "intro": "Verfeinern Sie Text mit KI-Kontext. Wählen Sie Text in einem beliebigen Editor aus, starten Sie einen Hintergrundjob und erhalten Sie verbesserten Inhalt, der Ihre Formatierung intakt hält.",
-    "metaDescription": "Wie der Desktop-Workspace markierten Text umschreibt, die Formatierung beibehält und die Funktion mit Sprach- und Videoeingaben verknüpft.",
-    "metaTitle": "Textverbesserung - PlanToCode",
-    "ogDescription": "Verstehen Sie das Auswahl-Popover, die Job-Warteschlange, die Modellkonfiguration und die Integrationen, die die Textverbesserung antreiben.",
-    "ogTitle": "Textverbesserung - PlanToCode",
-    "readTime": "7 Min.",
-    "selectionPopover": {
-      "component": "Das Popover selbst ist eine minimale Komponente, die von {code} gerendert wird und einfach den Provider-Hook auslöst und einen Ladeindikator zeigt, während eine Umschreibung läuft. Da der Provider globale Listener registriert, erscheint das Popover in Monaco-Plan-Viewern, dem Plan-Terminal-Diktierfeld und allen Aufgabenbeschreibungseingaben ohne zusätzliche Verkabelung.",
-      "heading": "Verhalten des Auswahl-Popovers",
-      "provider": "Der {code} lauscht auf Auswahlaktionen in Standardeingaben und Monaco-Editoren. Wenn Sie nicht-leeren Text markieren, positioniert er ein Popover in der Nähe des Cursors, speichert den ausgewählten Bereich und verfolgt, ob das Popover sichtbar sein soll. Ein Klick auf die Schaltfläche startet den Job und deaktiviert die Steuerung, bis das Ergebnis zurückkehrt. Wenn der Job abgeschlossen ist, wendet der Provider den verbesserten Text auf dieselbe Auswahl an und leert ausstehende Speicherungen, um den Session-Status synchron zu halten."
-    },
-    "title": "Textverbesserung",
-    "triggerImprovement": {
-      "action": "Das Drücken der Popover-Schaltfläche ruft {code} auf. Die Aktion validiert die Auswahl, stellt sicher, dass eine Session-ID existiert, und ruft den Rust-Befehl {code} über Tauri auf. Der Befehl erstellt ein {code}, das den Originaltext enthält, und reiht einen Hintergrundjob gegen die aktive Session ein.",
-      "backend": "Auf der Backend-Seite löst der {code} das konfigurierte Modell für die {code}-Aufgabe auf, umschließt die Auswahl mit XML-Tags und führt die Anfrage durch den {code} ohne Streaming aus. Wenn die Modellantwort zurückkehrt, zeichnet er Token-Verwendung, Kosten und die System-Prompt-Vorlage auf, bevor er den verbesserten Text an die UI zurücksendet. Die Standardkonfiguration liefert Claude Sonnet 4 und Gemini 2.5 Flash als zugelassene Modelle, begrenzt auf 4.096 Token mit einer Temperatur von 0,7.",
-      "heading": "Was passiert, wenn Sie eine Verbesserung auslösen",
-      "metadata": "Die Hintergrundjobs-Sidebar zeichnet den Originaltext in Job-Metadaten auf, sodass Sie überprüfen können, was gesendet wurde, zusammen mit der umgeschriebenen Kopie. Wenn sich die Auswahl ändert, während ein Job läuft, überspringt der Provider das Ersetzen des Textes, um manuelle Bearbeitungen nicht zu überschreiben."
-    },
-    "videoCapture": {
-      "dialog": "Bildschirmaufnahmen durchlaufen den Videoanalysedialog, der Ihre aktuelle Aufgabenbeschreibung mit einem optionalen Prompt-Block kombiniert, der in semantische XML-Tags eingeschlossen ist, bevor die Anfrage an den Gemini-Videoanalyse-Job gesendet wird. Alle Notizen, die Sie während der Aufnahme diktieren, sind als Text verfügbar, sobald die Analyse abgeschlossen ist, sodass Sie die resultierende Zusammenfassung durch das Verbesserungs-Popover zurückführen können, um die Anweisungen vor der Planung zu verschärfen.",
-      "features": "Video-Jobs beinhalten Framerate-Steuerungen, Audioaufnahme-Schalter und Kostenberichterstattung. Ergebnisse erscheinen in derselben Hintergrundjobs-Sidebar wie Textverbesserungen und halten alle Prompt-Vorbereitungsartefakte an einem Ort.",
-      "heading": "Videoaufnahme und Prompt-Gerüstbau"
-    },
-    "voiceIntegration": {
-      "heading": "Sprachtranskriptions-Integration",
-      "hook": "Sprachaufnahmen verwenden den {code}-Hook. Er lädt projektbasierte Transkriptionsstandards, fordert Mikrofonzugriff an und fügt Transkripte an der Cursorposition innerhalb der Aufgabenbeschreibung oder des Terminal-Diktierpuffers ein. Der eingefügte Text kann sofort markiert und durch dasselbe Verbesserungs-Popover geleitet werden, und die ursprüngliche Transkriptions-Job-ID wird mit dem Verbesserungs-Payload für Audits gespeichert.",
-      "preferences": "Sprache, Modell und Temperatureinstellungen bleiben auf Projektebene erhalten, sodass Teams eine konsistente Transkriptionsqualität erhalten, bevor sie die Kopie verfeinern. Stilleerkennnung warnt vor schlechten Audiopegeln, und eine Zehn-Minuten-Begrenzung verhindert, dass übergroße Aufnahmen Verbesserungsjobs mit großen Payloads blockieren."
-    }
-  },
-  "voiceTranscription": {
-    "category": "Produktleitfaden",
-    "date": "2025-09-22",
-    "description": "Aufnahme-Lebenszyklus, Geräteverwaltung und Streaming-Verhalten für sprachgesteuerte Prompts.",
-    "deviceManagement": {
-      "description": "Die Funktion fordert Mikrofonberechtigung an, zählt verfügbare Audioeingänge auf und ermöglicht Benutzern, Geräte während einer Session zu wechseln. Audiopegel werden live überwacht, damit die UI Stillewarnungen anzeigen kann, wenn das Mikrofon stummgeschaltet oder getrennt ist.",
-      "heading": "Geräteverwaltung"
-    },
-    "intro": "Sprachtranskription ist überall verfügbar, wo die Desktop-App Diktiersteuerungen bereitstellt, einschließlich des Plan-Terminals und Prompt-Editoren. Die Funktion zeichnet Audio lokal auf, sendet Chunks an den Transkriptionsdienst und fügt erkannten Text in das aktive Eingabefeld ein, ohne manuelle Eingabe zu blockieren.",
-    "metaDescription": "Wie PlanToCode Audio aufzeichnet, Echtzeit-Transkripte mit gpt-4o-transcribe streamt, Berechtigungen verwaltet und Projekteinstellungen.",
-    "metaTitle": "Sprachtranskription - PlanToCode",
-    "ogDescription": "Erfahren Sie, wie der Aufnahme-Hook Geräte, Berechtigungen und Streaming-Text verwaltet.",
-    "ogTitle": "Sprachtranskription - PlanToCode",
-    "projectSettings": {
-      "description": "Wenn eine Aufnahme-Session startet, sucht der Hook die Transkriptionskonfiguration des aktiven Projekts. Sprachcodes, bevorzugte Modelle und andere Einstellungen werden vor der Audioaufnahme abgerufen, damit Aufnahmen den Projektpräferenzen folgen.",
-      "heading": "Projektbewusste Einstellungen"
-    },
-    "readTime": "5 Min.",
-    "recordingWorkflow": {
-      "description": "Der Aufnahme-Hook verwaltet eine Zustandsmaschine mit Zuständen für inaktiv, Aufnahme, Verarbeitung und Fehler. Er verfolgt die Dauer, verwaltet Stilleerkennung und stellt sicher, dass Aufnahmen automatisch nach zehn Minuten stoppen. Chunks werden gepuffert und an die Transkriptionsaktion weitergeleitet, die erkannten Text zur Einfügung zurückgibt.",
-      "heading": "Aufnahme-Workflow"
-    },
-    "title": "Sprachtranskription"
   }
 }

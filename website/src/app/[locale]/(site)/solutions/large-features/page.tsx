@@ -4,35 +4,21 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
+import { RelatedSolutions } from '@/components/RelatedContent';
 import { Layers, Workflow, Merge, ClipboardList, Settings } from 'lucide-react';
-import { cdnUrl } from '@/lib/cdn';
 import { locales } from '@/i18n/config';
-export const metadata: Metadata = {
-  title: 'Ship Large Features with Traceable Plans - PlanToCode',
-  description:
-    'Use PlanToCode to coordinate implementation plans, model selections, and background workflows when delivering multi-step features.',
-  openGraph: {
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
-    }],
-    title: 'Ship Large Features with Traceable Plans - PlanToCode',
-    description:
-      'Organise multi-step implementation work with plan history, model guardrails, and reusable workflows.',
-    url: 'https://www.plantocode.com/solutions/large-features',
-    siteName: 'PlanToCode',
-    type: 'website',
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/solutions/large-features',
-    languages: {
-      'en-US': 'https://www.plantocode.com/solutions/large-features',
-      'en': 'https://www.plantocode.com/solutions/large-features',
-    },
-  },
-};
+import { generatePageMetadata } from '@/content/metadata';
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return generatePageMetadata({
+    locale,
+    slug: '/solutions/large-features',
+    title: t['solutions.largeFeatures.meta.title'],
+    description: t['solutions.largeFeatures.meta.description'],
+  });
+}
 const sections = [
   { icon: Workflow, key: 'sameScope', link: '/docs/file-discovery' },
   { icon: ClipboardList, key: 'coordinatePlans', link: '/docs/implementation-plans' },
@@ -56,13 +42,13 @@ export default async function LargeFeaturesPage({ params }: { params: Promise<{ 
               <header className="text-center space-y-6">
                 <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary text-sm font-medium">
                   <Layers className="w-4 h-4" />
-                  <span>{t['largeFeatures.badge'] || 'Feature planning'}</span>
+                  <span>{t['solutions.largeFeatures.badge'] || 'Feature planning'}</span>
                 </div>
                 <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold leading-tight text-foreground">
-                  {t['largeFeatures.title'] || 'Ship large features with traceable plans'}
+                  {t['solutions.largeFeatures.title'] || 'Ship large features with traceable plans'}
                 </h1>
                 <p className="text-lg text-foreground/80 max-w-3xl mx-auto leading-relaxed">
-                  {t['largeFeatures.description'] || 'Multi-stage delivery depends on consistent scope, reviewable plans, and predictable token usage.'}
+                  {t['solutions.largeFeatures.description'] || 'Multi-stage delivery depends on consistent scope, reviewable plans, and predictable token usage.'}
                 </p>
               </header>
               <div className="grid md:grid-cols-2 gap-6">
@@ -70,32 +56,77 @@ export default async function LargeFeaturesPage({ params }: { params: Promise<{ 
                   <GlassCard key={key} className="p-6">
                     <div className="flex items-center gap-3 mb-4">
                       <Icon className="w-5 h-5 text-primary" />
-                      <h2 className="text-xl font-semibold">{t[`largeFeatures.sections.${key}.title`] || ''}</h2>
+                      <h2 className="text-xl font-semibold">{t[`solutions.largeFeatures.sections.${key}.title`] || ''}</h2>
                     </div>
                     <p className="text-foreground/70 leading-relaxed">
-                      {t[`largeFeatures.sections.${key}.description`] || ''}
+                      {t[`solutions.largeFeatures.sections.${key}.description`] || ''}
                     </p>
                     <LinkWithArrow href={link} className="text-sm mt-4">
-                      {t[`largeFeatures.sections.${key}.link`] || 'Learn more'}
+                      {t[`solutions.largeFeatures.sections.${key}.link`] || 'Learn more'}
                     </LinkWithArrow>
                   </GlassCard>
                 ))}
               </div>
+
+              {/* Key Features Section */}
+              <div className="space-y-6">
+                <h2 className="text-2xl sm:text-3xl font-bold text-center">
+                  {t['solutions.largeFeatures.keyFeatures.title'] || 'Key Features for Large Projects'}
+                </h2>
+                <div className="grid md:grid-cols-3 gap-6">
+                  <GlassCard className="p-6">
+                    <h3 className="font-semibold mb-2">
+                      {t['solutions.largeFeatures.keyFeatures.fileDiscovery.title'] || 'Smart File Discovery'}
+                    </h3>
+                    <p className="text-sm text-foreground/70 mb-3">
+                      {t['solutions.largeFeatures.keyFeatures.fileDiscovery.description'] || 'Find all impacted files across your large codebase'}
+                    </p>
+                    <LinkWithArrow href="/features/file-discovery" className="text-xs">
+                      {t['solutions.largeFeatures.keyFeatures.fileDiscovery.link'] || 'Explore File Discovery'}
+                    </LinkWithArrow>
+                  </GlassCard>
+                  <GlassCard className="p-6">
+                    <h3 className="font-semibold mb-2">
+                      {t['solutions.largeFeatures.keyFeatures.planMode.title'] || 'Implementation Plans'}
+                    </h3>
+                    <p className="text-sm text-foreground/70 mb-3">
+                      {t['solutions.largeFeatures.keyFeatures.planMode.description'] || 'Generate and merge plans from multiple AI models'}
+                    </p>
+                    <LinkWithArrow href="/features/plan-mode" className="text-xs">
+                      {t['solutions.largeFeatures.keyFeatures.planMode.link'] || 'Learn About Plans'}
+                    </LinkWithArrow>
+                  </GlassCard>
+                  <GlassCard className="p-6">
+                    <h3 className="font-semibold mb-2">
+                      {t['solutions.largeFeatures.keyFeatures.terminal.title'] || 'Integrated Terminal'}
+                    </h3>
+                    <p className="text-sm text-foreground/70 mb-3">
+                      {t['solutions.largeFeatures.keyFeatures.terminal.description'] || 'Execute plans in persistent terminal sessions'}
+                    </p>
+                    <LinkWithArrow href="/features/integrated-terminal" className="text-xs">
+                      {t['solutions.largeFeatures.keyFeatures.terminal.link'] || 'See Terminal Features'}
+                    </LinkWithArrow>
+                  </GlassCard>
+                </div>
+              </div>
+
+              <RelatedSolutions currentSlug="solutions/large-features" maxItems={3} />
+
               <GlassCard className="p-8 sm:p-12 max-w-3xl mx-auto text-center" highlighted>
                 <h2 className="text-2xl sm:text-3xl font-bold mb-4">
-                  {t['largeFeatures.cta.title'] || 'Ship Complex Features with Confidence'}
+                  {t['solutions.largeFeatures.cta.title'] || 'Ship Complex Features with Confidence'}
                 </h2>
                 <p className="text-lg text-foreground/80 mb-8 max-w-2xl mx-auto">
-                  {t['largeFeatures.cta.description'] || 'From first workflow to final deployment, maintain perfect traceability.'}
+                  {t['solutions.largeFeatures.cta.description'] || 'From first workflow to final deployment, maintain perfect traceability.'}
                 </p>
                 <PlatformDownloadSection location="solutions_large_features" />
                 <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4 text-sm text-foreground/60">
                   <LinkWithArrow href="/docs/implementation-plans">
-                    {t['largeFeatures.cta.links.plans'] || 'See implementation planning'}
+                    {t['solutions.largeFeatures.cta.links.plans'] || 'See implementation planning'}
                   </LinkWithArrow>
                   <span className="hidden sm:inline">•</span>
                   <LinkWithArrow href="/docs/file-discovery">
-                    {t['largeFeatures.cta.links.workflows'] || 'Learn about scoped workflows'}
+                    {t['solutions.largeFeatures.cta.links.workflows'] || 'Learn about scoped workflows'}
                   </LinkWithArrow>
                 </div>
               </GlassCard>

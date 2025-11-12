@@ -4,46 +4,38 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
+import { RelatedFeatures } from '@/components/RelatedContent';
 import { StructuredData } from '@/components/seo/StructuredData';
 import { FAQ } from '@/components/landing/FAQ';
 import { Mic, Settings, Terminal, AlertCircle, Code2, Sparkles, Target } from 'lucide-react';
 import type { SoftwareApplication, FAQPage } from 'schema-dts';
 import { AccuracySection } from '@/components/voice/AccuracySection';
 import { TranscriptionComparison } from '@/components/voice/TranscriptionComparison';
-import { cdnUrl } from '@/lib/cdn';
 import { locales } from '@/i18n/config';
-export const metadata: Metadata = {
-  title: 'Voice to text for rapid specification capture',
-  description: 'Hands-free specification capture with voice. Accurate transcription inserts text where you work. Configure per project, supports multiple languages.',
-  keywords: [
+import { generatePageMetadata, COMMON_KEYWORDS, mergeKeywords } from '@/content/metadata';
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return {
+    ...generatePageMetadata({
+      locale,
+      slug: '/features/voice-transcription',
+      title: t['features.voiceTranscription.meta.title'],
+      description: t['features.voiceTranscription.meta.description'],
+    }),
+    keywords: mergeKeywords(
+      [
     'voice transcription',
     'specification capture',
     'developer voice input',
     'terminal dictation',
     'project configuration',
   ],
-  openGraph: {
-    title: 'Voice-to-Text for Developers: Faster Task Input',
-    description: 'Rapid specification capture with voice dictation. Speak your requirements naturally, AI transcribes accurately. The first step in creating detailed implementation plans for corporate teams.',
-    url: 'https://www.plantocode.com/features/voice-transcription',
-    siteName: 'PlanToCode',
-    type: 'website',
-    locale: 'en_US',
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
-    }],
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/features/voice-transcription',
-    languages: {
-      'en-US': 'https://www.plantocode.com/features/voice-transcription',
-      'en': 'https://www.plantocode.com/features/voice-transcription',
-    },
-  },
-};
+      COMMON_KEYWORDS.core
+    ),
+  };
+}
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));
 }
@@ -317,6 +309,9 @@ export default async function VoiceTranscriptionFeaturePage({ params }: { params
                   </div>
                 </GlassCard>
               </div>
+              {/* Related Features */}
+              <RelatedFeatures currentSlug="features/voice-transcription" maxItems={3} />
+
               {/* CTA */}
               <div className="mt-16">
                 <GlassCard className="p-8 sm:p-12 max-w-3xl mx-auto text-center" highlighted>

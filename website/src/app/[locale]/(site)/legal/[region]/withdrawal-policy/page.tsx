@@ -14,13 +14,17 @@ interface WithdrawalPolicyPageProps {
 }
 
 export async function generateMetadata({ params }: WithdrawalPolicyPageProps): Promise<Metadata> {
-  const { region } = await params;
+  const { locale, region } = await params;
 
   if (region !== 'eu') {
     return {
       title: 'Consumer Right of Withdrawal - Not Available',
     };
   }
+
+  const canonicalUrl = locale === 'en'
+    ? `https://www.plantocode.com/legal/${region}/withdrawal-policy`
+    : `https://www.plantocode.com/${locale}/legal/${region}/withdrawal-policy`;
 
   return {
     title: 'Consumer Right of Withdrawal',
@@ -30,11 +34,20 @@ export async function generateMetadata({ params }: WithdrawalPolicyPageProps): P
       follow: true,
     },
     alternates: {
-      canonical: `https://www.plantocode.com/legal/${region}/withdrawal-policy`,
+      canonical: canonicalUrl,
+      languages: {
+        en: `https://www.plantocode.com/legal/${region}/withdrawal-policy`,
+        de: `https://www.plantocode.com/de/legal/${region}/withdrawal-policy`,
+        es: `https://www.plantocode.com/es/legal/${region}/withdrawal-policy`,
+        fr: `https://www.plantocode.com/fr/legal/${region}/withdrawal-policy`,
+        ja: `https://www.plantocode.com/ja/legal/${region}/withdrawal-policy`,
+        ko: `https://www.plantocode.com/ko/legal/${region}/withdrawal-policy`,
+        'x-default': `https://www.plantocode.com/legal/${region}/withdrawal-policy`,
+      },
     },
     openGraph: {
       type: 'website',
-      url: `https://www.plantocode.com/legal/${region}/withdrawal-policy`,
+      url: canonicalUrl,
       title: 'Consumer Right of Withdrawal',
       siteName: 'PlanToCode',
       images: [{

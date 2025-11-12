@@ -74,7 +74,7 @@ export function CookieConsent() {
               <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed max-w-2xl">
                 We use cookies for advertising and analytics. By clicking "Accept", you consent to the use of cookies for X (Twitter) ad conversion tracking.{' '}
                 <a
-                  href="/privacy"
+                  href="/legal/eu/privacy"
                   className="text-primary hover:text-primary/80 underline underline-offset-2 transition-colors"
                   target="_blank"
                   rel="noopener noreferrer"

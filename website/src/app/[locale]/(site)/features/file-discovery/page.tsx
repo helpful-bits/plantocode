@@ -5,47 +5,41 @@ import { Header } from '@/components/landing/Header';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
+import { RelatedFeatures } from '@/components/RelatedContent';
 import { Search, Workflow, Target, DollarSign, GitBranch, CheckCircle2, Brain, Layers, Zap } from 'lucide-react';
-import { cdnUrl } from '@/lib/cdn';
-import { buildAlternates } from '@/content/metadata';
+import { generatePageMetadata, COMMON_KEYWORDS, mergeKeywords, generateHowToSchema } from '@/content/metadata';
 import { locales } from '@/i18n/config';
+import { StructuredData } from '@/components/seo/StructuredData';
 
-export const metadata: Metadata = {
-  title: 'AI file discovery - find impacted files',
-  description:
-    'Multi-stage AI workflow that discovers and selects relevant files. Cost-effective at $0.10-0.15 per workflow with real-time progress tracking.',
-  keywords: [
-    'ai file discovery',
-    'intelligent file selection',
-    'repository navigation',
-    'multi-stage workflow',
-    'code analysis',
-    'file filtering',
-    'git optimization',
-    'project context',
-    'implementation plans',
-    'cost effective ai',
-  ],
-  openGraph: {
-    title: 'AI File Discovery - From Repository to Relevant Context',
-    description:
-      'Multi-stage AI workflow that discovers relevant files, filters intelligently, and optimizes for implementation planning. Real-time progress tracking with cost-effective operation.',
-    url: 'https://www.plantocode.com/features/file-discovery',
-    siteName: 'PlanToCode',
-    type: 'website',
-    locale: 'en_US',
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
-    }],
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/features/file-discovery',
-    languages: buildAlternates('/features/file-discovery'),
-  },
-};
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return {
+    ...generatePageMetadata({
+      locale,
+      slug: '/features/file-discovery',
+      title: t['features.fileDiscovery.meta.title'],
+      description: t['features.fileDiscovery.meta.description'],
+    }),
+    keywords: mergeKeywords(
+      [
+        'ai file discovery',
+        'intelligent file selection',
+        'repository navigation',
+        'multi-stage workflow',
+        'code analysis',
+        'file filtering',
+        'git optimization',
+        'project context',
+        'implementation plans',
+        'cost effective ai',
+      ],
+      COMMON_KEYWORDS.core,
+      COMMON_KEYWORDS.features
+    ),
+  };
+}
 
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));
@@ -55,8 +49,32 @@ export default async function FileDiscoveryFeaturePage({ params }: { params: Pro
   const { locale } = await params;
   const t = await loadMessages(locale);
 
+  const howToJsonLd = generateHowToSchema({
+    name: 'AI File Discovery Workflow',
+    description: 'Multi-stage workflow to identify relevant files and dependencies for implementation planning',
+    steps: [
+      {
+        name: 'Project Scan',
+        text: 'AI analyzes your repository structure and generates targeted search patterns based on your task description'
+      },
+      {
+        name: 'Smart Filtering',
+        text: 'Filters out non-essential files using .gitignore rules and project-specific patterns'
+      },
+      {
+        name: 'Relevance Scoring',
+        text: 'Ranks files by relevance to your task using semantic analysis and dependency mapping'
+      },
+      {
+        name: 'Selection & Review',
+        text: 'Review scored files, adjust selections, and add them to your planning session'
+      }
+    ]
+  });
+
   return (
     <>
+      <StructuredData data={howToJsonLd} />
       <div className="fixed inset-0 -z-20" style={{ background: 'var(--background-gradient)' }} />
 
       <div className="relative z-0 bg-transparent min-h-screen flex flex-col">
@@ -345,6 +363,9 @@ export default async function FileDiscoveryFeaturePage({ params }: { params: Pro
                   </GlassCard>
                 </div>
               </div>
+
+              {/* Related Features */}
+              <RelatedFeatures currentSlug="features/file-discovery" maxItems={3} />
 
               {/* Call to Action */}
               <div className="text-center">

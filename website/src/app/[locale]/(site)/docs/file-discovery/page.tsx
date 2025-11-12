@@ -3,32 +3,19 @@ import { loadMessages, type Locale } from '@/lib/i18n';
 import { DocsArticle } from '@/components/docs/DocsArticle';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
-import { cdnUrl } from '@/lib/cdn';
 import { locales } from '@/i18n/config';
-export const metadata: Metadata = {
-  title: 'File discovery workflow - PlanToCode',
-  description: 'Comprehensive technical guide to the 5-stage AI workflow that identifies and filters relevant files for task execution.',
-  alternates: {
-    canonical: 'https://www.plantocode.com/docs/file-discovery',
-    languages: {
-      'en-US': 'https://www.plantocode.com/docs/file-discovery',
-      'en': 'https://www.plantocode.com/docs/file-discovery',
-    },
-  },
-  openGraph: {
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
-    }],
-    title: 'File discovery workflow - PlanToCode',
-    description: 'Technical documentation for the multi-stage file discovery workflow architecture.',
-    url: 'https://www.plantocode.com/docs/file-discovery',
-    siteName: 'PlanToCode',
-    type: 'article',
-  },
-};
+import { generatePageMetadata } from '@/content/metadata';
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return generatePageMetadata({
+    locale,
+    slug: '/docs/file-discovery',
+    title: t['fileDiscovery.meta.title'],
+    description: t['fileDiscovery.meta.description'],
+  });
+}
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));
 }

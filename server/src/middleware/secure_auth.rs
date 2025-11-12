@@ -97,14 +97,18 @@ fn validate_issuer(claims: &crate::models::auth_jwt_claims::Claims) -> Result<()
 fn validate_audience(claims: &crate::models::auth_jwt_claims::Claims) -> Result<(), AppError> {
     match &claims.aud {
         Some(audience) => {
-            let expected_audiences = vec!["plantocode-api", "https://api-us.plantocode.com"];
+            let expected_audiences = vec![
+                "plantocode-api",
+                "https://api-us.plantocode.com",
+                "https://plantocode.com", // Auth0 audience
+            ];
 
             if !expected_audiences.contains(&audience.as_str()) {
                 return Err(AppError::Auth(format!("Invalid audience: {}", audience)));
             }
         }
         None => {
-            warn!("Missing audience claim - allowing for backward compatibility");
+            return Err(AppError::Auth("Missing audience claim".to_string()));
         }
     }
 

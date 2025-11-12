@@ -5,14 +5,23 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
+import { RelatedFeatures } from '@/components/RelatedContent';
 import { Code2, Edit3, Save, FileText, CheckCircle2, Terminal, Layers, Brain, Zap, Copy, AlertCircle, Target } from 'lucide-react';
-import { cdnUrl } from '@/lib/cdn';
-import { buildAlternates } from '@/content/metadata';
 import { locales } from '@/i18n/config';
-export const metadata: Metadata = {
-  title: 'AI Implementation Plans - Human-in-Loop',
-  description: 'Generate file-by-file AI plans. Review every change before execution. Prevent regressions in legacy code. Safe AI development.',
-  keywords: [
+import { generatePageMetadata, COMMON_KEYWORDS, mergeKeywords } from '@/content/metadata';
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return {
+    ...generatePageMetadata({
+      locale,
+      slug: '/features/plan-mode',
+      title: t['features.planMode.meta.title'],
+      description: t['features.planMode.meta.description'],
+    }),
+    keywords: mergeKeywords(
+      [
     'implementation plan',
     'ai code planning',
     'human-in-the-loop ai',
@@ -36,25 +45,10 @@ export const metadata: Metadata = {
     'safe ai coding',
     'plan approval workflow',
   ],
-  openGraph: {
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
-    }],
-    
-    title: 'Human-in-the-Loop Implementation Plans: Safe AI Development',
-    description: 'Generate implementation plans with AI, but review and approve every change before execution. Human-in-the-loop governance with file-by-file granularity prevents regressions in legacy codebases.',
-    url: 'https://www.plantocode.com/features/plan-mode',
-    siteName: 'PlanToCode',
-    type: 'website',
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/features/plan-mode',
-    languages: buildAlternates('/features/plan-mode'),
-  },
-};
+      COMMON_KEYWORDS.core
+    ),
+  };
+}
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));
 }
@@ -446,6 +440,10 @@ export default async function ImplementationPlansPage({ params }: { params: Prom
                   </GlassCard>
                 </div>
               </div>
+
+              {/* Related Features */}
+              <RelatedFeatures currentSlug="features/plan-mode" maxItems={3} />
+
               {/* CTA */}
               <div className="text-center">
                 <GlassCard className="p-8 sm:p-12 max-w-3xl mx-auto" highlighted>

@@ -8,7 +8,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex, oneshot};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 #[derive(Debug)]
 enum HistoryOp {
@@ -166,7 +166,6 @@ impl HistoryStateSequencer {
             while let Some(op) = rx.recv().await {
                 match op {
                     HistoryOp::SyncTask { session_id, state, expected_version, respond_to } => {
-                        // Checksum validation before sync
                         let recomputed_checksum = compute_task_history_checksum(&state.entries, state.current_index, state.version);
                         if recomputed_checksum != state.checksum && !state.checksum.is_empty() {
                             eprintln!(
@@ -179,6 +178,11 @@ impl HistoryStateSequencer {
 
                         let response = match repository.sync_task_history_state(&session_id, &state, expected_version).await {
                             Ok(new_state) => {
+                                if let Some(cache) = app_handle.try_state::<std::sync::Arc<crate::services::session_cache::SessionCache>>() {
+                                    if let Some(current_entry) = new_state.entries.get(new_state.current_index as usize) {
+                                        let _ = cache.update_task_description_canonical(&app_handle, &session_id, &current_entry.description).await;
+                                    }
+                                }
                                 session_events::emit_history_state_changed(&app_handle, &session_id, "task", &new_state);
                                 Ok(new_state)
                             }
@@ -188,6 +192,11 @@ impl HistoryStateSequencer {
                                         let merged = repository.merge_task_history_states(&local_state, &state);
                                         match repository.sync_task_history_state(&session_id, &merged, local_state.version).await {
                                             Ok(persisted) => {
+                                                if let Some(cache) = app_handle.try_state::<std::sync::Arc<crate::services::session_cache::SessionCache>>() {
+                                                    if let Some(current_entry) = persisted.entries.get(persisted.current_index as usize) {
+                                                        let _ = cache.update_task_description_canonical(&app_handle, &session_id, &current_entry.description).await;
+                                                    }
+                                                }
                                                 session_events::emit_history_state_changed(&app_handle, &session_id, "task", &persisted);
                                                 Ok(persisted)
                                             }
@@ -212,7 +221,6 @@ impl HistoryStateSequencer {
                         let _ = respond_to.send(response);
                     }
                     HistoryOp::SyncFiles { session_id, state, expected_version, respond_to } => {
-                        // Checksum validation before sync
                         let recomputed_checksum = compute_file_history_checksum(&state.entries, state.current_index, state.version);
                         if recomputed_checksum != state.checksum {
                             eprintln!(
@@ -225,6 +233,27 @@ impl HistoryStateSequencer {
 
                         let response = match repository.sync_file_history_state(&session_id, &state, expected_version).await {
                             Ok(new_state) => {
+                                if let Some(cache) = app_handle.try_state::<std::sync::Arc<crate::services::session_cache::SessionCache>>() {
+                                    if let Some(current_entry) = new_state.entries.get(new_state.current_index as usize) {
+                                        let new_included: Vec<String> = serde_json::from_str(&current_entry.included_files).unwrap_or_default();
+                                        let new_excluded: Vec<String> = serde_json::from_str(&current_entry.force_excluded_files).unwrap_or_default();
+
+                                        if let Ok(cached_session) = cache.get_session(&app_handle, &session_id).await {
+                                            let cached_included: std::collections::HashSet<String> = cached_session.included_files.iter().cloned().collect();
+                                            let cached_excluded: std::collections::HashSet<String> = cached_session.force_excluded_files.iter().cloned().collect();
+
+                                            let new_included_set: std::collections::HashSet<String> = new_included.iter().cloned().collect();
+                                            let new_excluded_set: std::collections::HashSet<String> = new_excluded.iter().cloned().collect();
+
+                                            let add_included: Vec<String> = new_included_set.difference(&cached_included).cloned().collect();
+                                            let remove_included: Vec<String> = cached_included.difference(&new_included_set).cloned().collect();
+                                            let add_excluded: Vec<String> = new_excluded_set.difference(&cached_excluded).cloned().collect();
+                                            let remove_excluded: Vec<String> = cached_excluded.difference(&new_excluded_set).cloned().collect();
+
+                                            let _ = cache.update_files_delta(&app_handle, &session_id, &add_included, &remove_included, &add_excluded, &remove_excluded).await;
+                                        }
+                                    }
+                                }
                                 session_events::emit_history_state_changed(&app_handle, &session_id, "files", &new_state);
                                 Ok(new_state)
                             }
@@ -234,6 +263,27 @@ impl HistoryStateSequencer {
                                         let merged = repository.merge_file_history_states(&local_state, &state);
                                         match repository.sync_file_history_state(&session_id, &merged, local_state.version).await {
                                             Ok(persisted) => {
+                                                if let Some(cache) = app_handle.try_state::<std::sync::Arc<crate::services::session_cache::SessionCache>>() {
+                                                    if let Some(current_entry) = persisted.entries.get(persisted.current_index as usize) {
+                                                        let new_included: Vec<String> = serde_json::from_str(&current_entry.included_files).unwrap_or_default();
+                                                        let new_excluded: Vec<String> = serde_json::from_str(&current_entry.force_excluded_files).unwrap_or_default();
+
+                                                        if let Ok(cached_session) = cache.get_session(&app_handle, &session_id).await {
+                                                            let cached_included: std::collections::HashSet<String> = cached_session.included_files.iter().cloned().collect();
+                                                            let cached_excluded: std::collections::HashSet<String> = cached_session.force_excluded_files.iter().cloned().collect();
+
+                                                            let new_included_set: std::collections::HashSet<String> = new_included.iter().cloned().collect();
+                                                            let new_excluded_set: std::collections::HashSet<String> = new_excluded.iter().cloned().collect();
+
+                                                            let add_included: Vec<String> = new_included_set.difference(&cached_included).cloned().collect();
+                                                            let remove_included: Vec<String> = cached_included.difference(&new_included_set).cloned().collect();
+                                                            let add_excluded: Vec<String> = new_excluded_set.difference(&cached_excluded).cloned().collect();
+                                                            let remove_excluded: Vec<String> = cached_excluded.difference(&new_excluded_set).cloned().collect();
+
+                                                            let _ = cache.update_files_delta(&app_handle, &session_id, &add_included, &remove_included, &add_excluded, &remove_excluded).await;
+                                                        }
+                                                    }
+                                                }
                                                 session_events::emit_history_state_changed(&app_handle, &session_id, "files", &persisted);
                                                 Ok(persisted)
                                             }
@@ -269,6 +319,11 @@ impl HistoryStateSequencer {
                         };
 
                         if let Ok(ref new_state) = response {
+                            if let Some(cache) = app_handle.try_state::<std::sync::Arc<crate::services::session_cache::SessionCache>>() {
+                                if let Some(current_entry) = new_state.entries.get(new_state.current_index as usize) {
+                                    let _ = cache.update_task_description_canonical(&app_handle, &session_id, &current_entry.description).await;
+                                }
+                            }
                             session_events::emit_history_state_changed(
                                 &app_handle,
                                 &session_id,
@@ -291,6 +346,27 @@ impl HistoryStateSequencer {
                         };
 
                         if let Ok(ref new_state) = response {
+                            if let Some(cache) = app_handle.try_state::<std::sync::Arc<crate::services::session_cache::SessionCache>>() {
+                                if let Some(current_entry) = new_state.entries.get(new_state.current_index as usize) {
+                                    let new_included: Vec<String> = serde_json::from_str(&current_entry.included_files).unwrap_or_default();
+                                    let new_excluded: Vec<String> = serde_json::from_str(&current_entry.force_excluded_files).unwrap_or_default();
+
+                                    if let Ok(cached_session) = cache.get_session(&app_handle, &session_id).await {
+                                        let cached_included: std::collections::HashSet<String> = cached_session.included_files.iter().cloned().collect();
+                                        let cached_excluded: std::collections::HashSet<String> = cached_session.force_excluded_files.iter().cloned().collect();
+
+                                        let new_included_set: std::collections::HashSet<String> = new_included.iter().cloned().collect();
+                                        let new_excluded_set: std::collections::HashSet<String> = new_excluded.iter().cloned().collect();
+
+                                        let add_included: Vec<String> = new_included_set.difference(&cached_included).cloned().collect();
+                                        let remove_included: Vec<String> = cached_included.difference(&new_included_set).cloned().collect();
+                                        let add_excluded: Vec<String> = new_excluded_set.difference(&cached_excluded).cloned().collect();
+                                        let remove_excluded: Vec<String> = cached_excluded.difference(&new_excluded_set).cloned().collect();
+
+                                        let _ = cache.update_files_delta(&app_handle, &session_id, &add_included, &remove_included, &add_excluded, &remove_excluded).await;
+                                    }
+                                }
+                            }
                             session_events::emit_history_state_changed(
                                 &app_handle,
                                 &session_id,

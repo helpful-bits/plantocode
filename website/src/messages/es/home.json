@@ -24,7 +24,7 @@
     "badge": "Planificación de IA con Humano en el Ciclo",
     "buttons": {
       "download": "Descargar Gratis",
-      "talk": "Hablar con un Arquitecto"
+      "talk": "Hablar con un Experto"
     },
     "description": "Planifica, revisa y ejecuta cambios asistidos por IA desde un solo espacio de trabajo. Mantén modelos, prompts, archivos y salida del terminal alineados.",
     "features": {
@@ -168,7 +168,8 @@
     "cta": {
       "demo": "Probar Demo Interactiva →",
       "download": "Descargar Gratis",
-      "howItWorks": "Ver cómo funciona"
+      "howItWorks": "Ver cómo funciona",
+      "viewDemo": "Ver Cómo el Creador lo Usa Diariamente"
     },
     "panel1": {
       "description": "Genera patrones de búsqueda, ejecuta puntuación de relevancia y revisa resultados escalonados antes de incluir archivos en tu plan.",
@@ -185,7 +186,7 @@
       "title": "Flujo de trabajo de descubrimiento de archivos"
     },
     "panel2": {
-      "description": "Genera planes de implementación desde GPT-5, Gemini 2.5 Pro, Claude 4 Sonnet, Grok 4 y DeepSeek R1 y fusiona las mejores ideas.",
+      "description": "Ejecuta cualquier modelo en paralelo - incluyendo múltiples instancias del mismo - y fusiona las mejores ideas.",
       "link": "Explorar el flujo de trabajo",
       "models": {
         "claude": "Claude Sonnet 4",
@@ -280,10 +281,25 @@
         "link": "Más información →",
         "title": "Características Grandes"
       },
+      "legacyRefactoring": {
+        "description": "Moderniza bases de código legacy con refactorización asistida por IA que preserva la funcionalidad mientras mejora la estructura",
+        "link": "Más información →",
+        "title": "Refactorización de Código Legacy"
+      },
       "libraryUpgrades": {
         "description": "Actualiza dependencias de manera segura con detección de cambios que rompen compatibilidad y planificación de migración",
         "link": "Más información →",
         "title": "Actualizaciones de Bibliotecas"
+      },
+      "preventDuplicates": {
+        "description": "Detecta y previene código duplicado, componentes e implementaciones en tu base de código",
+        "link": "Más información →",
+        "title": "Prevenir Archivos Duplicados"
+      },
+      "safeRefactoring": {
+        "description": "Refactoriza con confianza usando conciencia arquitectónica y análisis de impacto exhaustivo",
+        "link": "Más información →",
+        "title": "Refactorización Segura"
       }
     },
     "subtitle": "Soluciones reales para los problemas más difíciles en desarrollo de software",

@@ -3,16 +3,25 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
+import { RelatedSolutions } from '@/components/RelatedContent';
 import { AlertCircle, FileSearch, CheckCircle2, GitBranch, Layers, Shield, Zap, Brain } from 'lucide-react';
-import { cdnUrl } from '@/lib/cdn';
 import { locales } from '@/i18n/config';
-import type { Locale } from '@/lib/i18n';
+import { loadMessages, type Locale } from '@/lib/i18n';
+import { generatePageMetadata, COMMON_KEYWORDS, mergeKeywords } from '@/content/metadata';
 
-export const metadata: Metadata = {
-  title: 'Fix AI Wrong File Paths | PlanToCode File Discovery',
-  description:
-    'Prevent AI from generating wrong import paths and file references. PlanToCode verifies all file paths before execution. Perfect for monorepos and legacy code.',
-  keywords: [
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return {
+    ...generatePageMetadata({
+      locale,
+      slug: '/solutions/ai-wrong-paths',
+      title: t['solutions.aiWrongPaths.meta.title'],
+      description: t['solutions.aiWrongPaths.meta.description'],
+    }),
+    keywords: mergeKeywords(
+      [
     'wrong file path ai',
     'ai hallucination file paths',
     'ai import errors',
@@ -24,28 +33,10 @@ export const metadata: Metadata = {
     'ai context window issues',
     'legacy codebase ai',
   ],
-  openGraph: {
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - Fix AI Wrong File Paths',
-    }],
-    title: 'Fix AI Wrong File Paths | PlanToCode File Discovery',
-    description:
-      'Stop AI from generating non-existent import paths. PlanToCode verifies every file reference before execution, preventing hallucinated paths in monorepos and complex codebases.',
-    url: 'https://www.plantocode.com/solutions/ai-wrong-paths',
-    siteName: 'PlanToCode',
-    type: 'website',
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/solutions/ai-wrong-paths',
-    languages: {
-      'en-US': 'https://www.plantocode.com/solutions/ai-wrong-paths',
-      'en': 'https://www.plantocode.com/solutions/ai-wrong-paths',
-    },
-  },
-};
+      COMMON_KEYWORDS.core
+    ),
+  };
+}
 
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));
@@ -117,6 +108,7 @@ import { useAuth } from '@/hooks/useAuthentication';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/dialogs/confirm-dialog';
 import { useAuth } from '@/lib/hooks/auth';
+import { generatePageMetadata, COMMON_KEYWORDS, mergeKeywords } from '@/content/metadata';
 
 // ✓ All paths verified against actual filesystem
 // ✓ Proper monorepo path resolution
@@ -795,6 +787,8 @@ Respecting .gitignore: 589 final candidates`}
               </div>
 
               {/* CTA Section */}
+              <RelatedSolutions currentSlug="solutions/ai-wrong-paths" maxItems={3} />
+
               <GlassCard className="p-8 sm:p-12 max-w-3xl mx-auto text-center" highlighted>
                 <h2 className="text-2xl sm:text-3xl font-bold mb-4">
                   Stop fighting hallucinated file paths

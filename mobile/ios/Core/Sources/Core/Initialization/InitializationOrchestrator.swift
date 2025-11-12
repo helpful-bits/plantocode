@@ -92,6 +92,7 @@ public final class InitializationOrchestrator: ObservableObject {
         // Device is configured, wait briefly for connection
         let connected = await awaitActiveDeviceConnected(timeoutSeconds: 12)
         guard connected else {
+            MultiConnectionManager.shared.setActive(nil)
             appState.setBootstrapNeedsConfig(.init(projectMissing: true, sessionsEmpty: true, activeSessionMissing: true))
             log.warning("No active device connection established within timeout, routing to configuration")
             return
@@ -215,7 +216,7 @@ public final class InitializationOrchestrator: ObservableObject {
             if let active = multi.activeDeviceId {
                 let state = multi.effectiveConnectionState(for: active)
                 switch state {
-                case .connected, .handshaking:
+                case .connected:
                     log.info("Active device connection established: \(active.uuidString)")
                     return true
                 default:

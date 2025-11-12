@@ -3,14 +3,24 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
+import { RelatedFeatures } from '@/components/RelatedContent';
 import { GitMerge, MessageSquare, CheckCircle2, Layers, Target, Brain } from 'lucide-react';
-import { cdnUrl } from '@/lib/cdn';
 import { loadMessages, type Locale } from '@/lib/i18n';
 import { locales } from '@/i18n/config';
-export const metadata: Metadata = {
-  title: 'Plan Synthesis - Multi-Model Merging',
-  description: 'Architectural synthesis beyond simple merging. AI analyzes plans, resolves conflicts with SOLID principles, and creates emergent solutions with traceability.',
-  keywords: [
+import { generatePageMetadata, COMMON_KEYWORDS, mergeKeywords } from '@/content/metadata';
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return {
+    ...generatePageMetadata({
+      locale,
+      slug: '/features/merge-instructions',
+      title: t['features.mergeInstructions.meta.title'],
+      description: t['features.mergeInstructions.meta.description'],
+    }),
+    keywords: mergeKeywords(
+      [
     'architectural synthesis',
     'implementation plan merge',
     'source traceability',
@@ -21,28 +31,10 @@ export const metadata: Metadata = {
     'plan consolidation',
     'intelligent merging',
   ],
-  openGraph: {
-    title: 'Architectural Synthesis - Beyond Simple Plan Merging',
-    description: 'AI performs deep architectural analysis, resolves conflicts using SOLID principles, and synthesizes emergent solutions with complete source traceability.',
-    url: 'https://www.plantocode.com/features/merge-instructions',
-    siteName: 'PlanToCode',
-    type: 'website',
-    locale: 'en_US',
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
-    }],
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/features/merge-instructions',
-    languages: {
-      'en-US': 'https://www.plantocode.com/features/merge-instructions',
-      'en': 'https://www.plantocode.com/features/merge-instructions',
-    },
-  },
-};
+      COMMON_KEYWORDS.core
+    ),
+  };
+}
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));
 }
@@ -378,6 +370,9 @@ export default async function MergeInstructionsPage({ params }: { params: Promis
                   </GlassCard>
                 </div>
               </div>
+              {/* Related Features */}
+              <RelatedFeatures currentSlug="features/merge-instructions" maxItems={3} />
+
               {/* CTA */}
               <div className="text-center">
                 <GlassCard className="p-8 sm:p-12 max-w-3xl mx-auto" highlighted>

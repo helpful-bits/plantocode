@@ -13,12 +13,9 @@ public final class SessionDataService: ObservableObject {
     public var currentSession: Session? {
         get { _currentSession }
         set {
-            // Only update if the session ID actually changed
-            if _currentSession?.id != newValue?.id {
-                _currentSession = newValue
-                currentSessionPublisher.send(newValue)
-                objectWillChange.send()
-            }
+            _currentSession = newValue
+            currentSessionPublisher.send(newValue)
+            objectWillChange.send()
         }
     }
 
@@ -61,7 +58,24 @@ public final class SessionDataService: ObservableObject {
                     let stateData = try JSONSerialization.data(withJSONObject: stateDict)
                     let historyState = try JSONDecoder().decode(HistoryState.self, from: stateData)
 
-                    // Notify observers that history state has changed
+                    if kind == "files" {
+                        guard let currentIndex = Int(exactly: historyState.currentIndex),
+                              currentIndex >= 0,
+                              currentIndex < historyState.entries.count else {
+                            return
+                        }
+
+                        let currentEntry = historyState.entries[currentIndex]
+                        if let entryData = currentEntry.value.data(using: .utf8),
+                           let filesState = try? JSONDecoder().decode(FilesHistoryState.self, from: entryData) {
+                            self.updateSessionFilesInMemory(
+                                sessionId: sessionId,
+                                includedFiles: filesState.includedFiles,
+                                forceExcludedFiles: filesState.forceExcludedFiles
+                            )
+                        }
+                    }
+
                     NotificationCenter.default.post(
                         name: NSNotification.Name("apply-history-state"),
                         object: nil,
@@ -111,6 +125,17 @@ public final class SessionDataService: ObservableObject {
 
         // Create a new ephemeral session ID
         _ = newSession()
+    }
+
+    public func resetState() {
+        Task { @MainActor in
+            self.sessions = []
+            self.currentSession = nil
+            self.currentSessionId = nil
+            self.hasLoadedOnce = false
+            self.error = nil
+            self.isLoading = false
+        }
     }
 
     @discardableResult
@@ -622,6 +647,36 @@ public final class SessionDataService: ObservableObject {
         }
     }
 
+    public func renameSession(id: String, newName: String) async throws {
+        await MainActor.run { self.isLoading = true; self.error = nil }
+        defer { Task { @MainActor in self.isLoading = false } }
+
+        let stream = CommandRouter.sessionRename(sessionId: id, newName: newName)
+
+        do {
+            for try await response in stream {
+                if let err = response.error {
+                    await MainActor.run { self.error = DataServiceError.serverError(err.message) }
+                    throw DataServiceError.serverError(err.message)
+                }
+                if response.isFinal {
+                    await MainActor.run {
+                        if let idx = self.sessions.firstIndex(where: { $0.id == id }) {
+                            self.sessions[idx].name = newName
+                        }
+                        if self.currentSession?.id == id {
+                            self.currentSession?.name = newName
+                        }
+                    }
+                    return
+                }
+            }
+        } catch {
+            await MainActor.run { self.error = DataServiceError.networkError(error) }
+            throw error
+        }
+    }
+
     public func getTaskDescriptionHistory(sessionId: String) async throws -> [String] {
         isLoading = true
         error = nil
@@ -896,12 +951,37 @@ public final class SessionDataService: ObservableObject {
             throw DataServiceError.offline
         }
 
-        try await updateSession(id: sessionId, updates: ["taskDescription": content])
+        isLoading = true
+        error = nil
 
-        if let currentHistory = try? await getTaskDescriptionHistory(sessionId: sessionId) {
-            var updatedHistory = currentHistory
-            updatedHistory.append(content)
-            try await syncTaskDescriptionHistory(sessionId: sessionId, history: updatedHistory)
+        do {
+            let stream = CommandRouter.sessionUpdateTaskDescription(sessionId: sessionId, taskDescription: content)
+
+            for try await response in stream {
+                if let error = response.error {
+                    await MainActor.run {
+                        self.isLoading = false
+                    }
+                    throw DataServiceError.serverError(error.message)
+                }
+
+                if response.result != nil || response.isFinal {
+                    await MainActor.run {
+                        self.isLoading = false
+                    }
+                    return
+                }
+            }
+
+            await MainActor.run {
+                self.isLoading = false
+            }
+        } catch {
+            await MainActor.run {
+                self.error = DataServiceError.networkError(error)
+                self.isLoading = false
+            }
+            throw error
         }
     }
 
@@ -997,64 +1077,12 @@ public final class SessionDataService: ObservableObject {
 
     /// Get history state from desktop
     public func getHistoryState(sessionId: String, kind: String) async throws -> HistoryState {
-        let params: [String: Any] = [
-            "sessionId": sessionId,
-            "kind": kind
-        ]
-
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
-            throw DataServiceError.invalidState("No active relay connection")
-        }
-
-        let request = RpcRequest(method: "session.getHistoryState", params: params)
-
-        for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
-            if let error = response.error {
-                throw DataServiceError.serverError(error.message)
-            }
-
-            if let result = response.result?.value {
-                let data = try JSONSerialization.data(withJSONObject: result)
-                return try JSONDecoder().decode(HistoryState.self, from: data)
-            }
-        }
-
-        throw DataServiceError.invalidResponse("No history state received")
+        return try await CommandRouter.sessionGetHistoryState(sessionId: sessionId, kind: kind)
     }
 
     /// Sync history state to desktop
     public func syncHistoryState(sessionId: String, kind: String, state: HistoryState, expectedVersion: Int64) async throws -> HistoryState {
-        let encoder = JSONEncoder()
-        let stateData = try encoder.encode(state)
-        let stateJson = try JSONSerialization.jsonObject(with: stateData)
-
-        let params: [String: Any] = [
-            "sessionId": sessionId,
-            "kind": kind,
-            "state": stateJson,
-            "expectedVersion": expectedVersion
-        ]
-
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
-            throw DataServiceError.invalidState("No active relay connection")
-        }
-
-        let request = RpcRequest(method: "session.syncHistoryState", params: params)
-
-        for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
-            if let error = response.error {
-                throw DataServiceError.serverError(error.message)
-            }
-
-            if let result = response.result?.value {
-                let data = try JSONSerialization.data(withJSONObject: result)
-                return try JSONDecoder().decode(HistoryState.self, from: data)
-            }
-        }
-
-        throw DataServiceError.invalidResponse("No sync result received")
+        return try await CommandRouter.sessionSyncHistoryState(sessionId: sessionId, kind: kind, state: state, expectedVersion: expectedVersion)
     }
 
     public func lastNonEmptyHistoryValue(_ state: HistoryState) -> String? {
@@ -1065,35 +1093,7 @@ public final class SessionDataService: ObservableObject {
 
     /// Merge history state with desktop
     public func mergeHistoryState(sessionId: String, kind: String, remoteState: HistoryState) async throws -> HistoryState {
-        let encoder = JSONEncoder()
-        let stateData = try encoder.encode(remoteState)
-        let stateJson = try JSONSerialization.jsonObject(with: stateData)
-
-        let params: [String: Any] = [
-            "sessionId": sessionId,
-            "kind": kind,
-            "remoteState": stateJson
-        ]
-
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
-            throw DataServiceError.invalidState("No active relay connection")
-        }
-
-        let request = RpcRequest(method: "session.mergeHistoryState", params: params)
-
-        for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
-            if let error = response.error {
-                throw DataServiceError.serverError(error.message)
-            }
-
-            if let result = response.result?.value {
-                let data = try JSONSerialization.data(withJSONObject: result)
-                return try JSONDecoder().decode(HistoryState.self, from: data)
-            }
-        }
-
-        throw DataServiceError.invalidResponse("No merge result received")
+        return try await CommandRouter.sessionMergeHistoryState(sessionId: sessionId, kind: kind, remoteState: remoteState)
     }
 
     public func loadSessionById(sessionId: String, projectDirectory: String) async throws {
@@ -1339,4 +1339,9 @@ public final class SessionDataService: ObservableObject {
         )
     }
 
+}
+
+private struct FilesHistoryState: Codable {
+    let includedFiles: [String]
+    let forceExcludedFiles: [String]
 }

@@ -73,9 +73,39 @@
           "codeOffers" : [
 
           ],
-          "displayPrice" : "14.99",
+          "displayPrice" : "4.99",
           "familyShareable" : false,
           "groupNumber" : 1,
+          "internalID" : "6738426318",
+          "introductoryOffer" : {
+            "internalID" : "W7D8E9F0",
+            "numberOfPeriods" : 1,
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P7D"
+          },
+          "localizations" : [
+            {
+              "description" : "Weekly subscription to PlanToCode Pro",
+              "displayName" : "PlanToCode Pro Weekly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.plantocode.pro.weekly",
+          "recurringSubscriptionPeriod" : "P1W",
+          "referenceName" : "Weekly Subscription",
+          "subscriptionGroupID" : "21512903",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "14.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
           "internalID" : "6738426319",
           "introductoryOffer" : {
             "internalID" : "D3E5F2A1",
@@ -105,7 +135,7 @@
           ],
           "displayPrice" : "107.99",
           "familyShareable" : false,
-          "groupNumber" : 2,
+          "groupNumber" : 3,
           "internalID" : "6738426320",
           "introductoryOffer" : {
             "internalID" : "A7B9C1D2",

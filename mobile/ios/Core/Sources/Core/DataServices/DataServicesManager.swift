@@ -19,6 +19,7 @@ public class DataServicesManager: ObservableObject {
     public let speechTextServices: SpeechTextServices
     public let settingsService: SettingsDataService
     public let subscriptionManager: SubscriptionManager
+    public let onboardingService: OnboardingContentService
 
     // MARK: - Connection Management
     @Published public var connectionStatus: ConnectionStatus = .disconnected
@@ -77,6 +78,7 @@ public class DataServicesManager: ObservableObject {
         self.speechTextServices = SpeechTextServices()
         self.settingsService = SettingsDataService()
         self.subscriptionManager = SubscriptionManager()
+        self.onboardingService = OnboardingContentService()
 
         Task { [weak settingsService] in
             try? await settingsService?.loadNotificationSettings()
@@ -151,16 +153,11 @@ public class DataServicesManager: ObservableObject {
         invalidateAllCaches()
 
         // Reset per-service state
-        sessionService.currentSession = nil
-        sessionService.sessions = []
+        sessionService.resetState()
+        jobsService.reset()
+        plansService.reset()
+        filesService.reset()
 
-        jobsService.clearJobs()
-
-        plansService.invalidateCache()
-        plansService.plans.removeAll()
-
-        filesService.invalidateCache()
-        filesService.files = []
         terminalService.cleanForDeviceSwitch()
 
         // Cancel relay events subscription

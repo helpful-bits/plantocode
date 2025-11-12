@@ -37,46 +37,61 @@ public struct AnyCodable: Codable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
+        let sanitized = JSONSanitizer.sanitize(self.value)
 
-        // Handle non-JSON-safe types first by converting to string representations
-        if let date = value as? Date {
-            let dateString = ISO8601DateFormatter().string(from: date)
-            try container.encode(dateString)
-            return
-        }
-
-        if let data = value as? Data {
-            let base64String = data.base64EncodedString()
-            try container.encode(base64String)
-            return
-        }
-
-        if let url = value as? URL {
-            try container.encode(url.absoluteString)
-            return
-        }
-
-        // Handle JSON-safe primitives and collections
-        switch value {
+        switch sanitized {
         case is NSNull:
             try container.encodeNil()
         case let b as Bool:
             try container.encode(b)
         case let i as Int:
             try container.encode(i)
+        case let i8 as Int8:
+            try container.encode(i8)
+        case let i16 as Int16:
+            try container.encode(i16)
+        case let i32 as Int32:
+            try container.encode(i32)
+        case let i64 as Int64:
+            try container.encode(i64)
+        case let u as UInt:
+            try container.encode(u)
+        case let u8 as UInt8:
+            try container.encode(u8)
+        case let u16 as UInt16:
+            try container.encode(u16)
+        case let u32 as UInt32:
+            try container.encode(u32)
+        case let u64 as UInt64:
+            try container.encode(u64)
+        case let f as Float:
+            try container.encode(f)
         case let d as Double:
             try container.encode(d)
         case let s as String:
             try container.encode(s)
         case let arr as [Any]:
-            let wrapped = arr.map { AnyCodable(any: $0) }
-            try container.encode(wrapped)
+            try container.encode(arr.map { AnyCodable(any: $0) })
         case let dict as [String: Any]:
-            let wrapped = dict.mapValues { AnyCodable(any: $0) }
-            try container.encode(wrapped)
+            try container.encode(dict.mapValues { AnyCodable(any: $0) })
+        case let n as NSNumber:
+            // Fallback for Objective-C numeric values
+            if CFGetTypeID(n) == CFBooleanGetTypeID() {
+                try container.encode(n.boolValue)
+            } else {
+                let objCType = String(cString: n.objCType)
+                if objCType == "q" { try container.encode(n.int64Value) }
+                else if objCType == "Q" { try container.encode(n.uint64Value) }
+                else if objCType == "d" { try container.encode(n.doubleValue) }
+                else if objCType == "f" { try container.encode(Float(truncating: n)) }
+                else { try container.encode(n.int64Value) }
+            }
         default:
-            // Best-effort string fallback
-            try container.encode(String(describing: value))
+            throw EncodingError.invalidValue(
+                value,
+                EncodingError.Context(codingPath: container.codingPath,
+                                      debugDescription: "Unsupported AnyCodable value after sanitization: \(type(of: value))")
+            )
         }
     }
 }

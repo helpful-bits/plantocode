@@ -7,19 +7,19 @@ import { buildHubBreadcrumbs } from '@/components/breadcrumbs/utils';
 import { loadMessagesFor, type Locale } from '@/lib/i18n';
 import { BookOpen } from 'lucide-react';
 import { locales } from '@/i18n/config';
+import { generatePageMetadata } from '@/content/metadata';
 
-export const metadata: Metadata = {
-  title: 'Blog - AI Code Planning Insights',
-  description: 'Learn about AI code planning, development best practices, and how to effectively use AI tools for complex software changes.',
-  openGraph: {
-    title: 'PlanToCode Blog - AI Development Insights',
-    description: 'Insights on AI-powered code planning and development workflows.',
-    url: 'https://www.plantocode.com/blog',
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/blog',
-  },
-};
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessagesFor(locale, ['common', 'pages']);
+
+  return generatePageMetadata({
+    locale,
+    slug: '/blog',
+    title: t['blog.hub.meta.title'],
+    description: t['blog.hub.meta.description'],
+  });
+}
 
 const blogPosts = [
   {
@@ -65,7 +65,7 @@ export function generateStaticParams() {
 
 export default async function BlogHubPage({ params }: { params: Promise<{ locale: Locale }> }) {
   const { locale } = await params;
-  const t = await loadMessagesFor(locale, ['common']);
+  const t = await loadMessagesFor(locale, ['common', 'pages']);
   // Group by category
   const byCategory = blogPosts.reduce((acc, post) => {
     const category = post.category;
