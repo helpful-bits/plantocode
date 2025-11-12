@@ -1,15 +1,24 @@
 import { GlassCard } from '@/components/ui/GlassCard';
 import { BlogArticle } from '@/components/blog/BlogArticle';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
-import { cdnUrl } from '@/lib/cdn';
 import type { Metadata } from 'next';
 import { locales } from '@/i18n/config';
-import type { Locale } from '@/lib/i18n';
+import { loadMessages, type Locale } from '@/lib/i18n';
+import { generatePageMetadata, COMMON_KEYWORDS, mergeKeywords } from '@/content/metadata';
 
-export const metadata: Metadata = {
-  title: 'AI Pair Programming vs Planning - Team Guide',
-  description: 'Compare AI pair programming (Copilot, Cursor) with AI planning (PlanToCode). When to use each approach for production codebases, teams, and complex refactoring.',
-  keywords: [
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return {
+    ...generatePageMetadata({
+      locale,
+      slug: '/blog/ai-pair-programming-vs-ai-planning',
+      title: t['blog.ai-pair-programming-vs-ai-planning.meta.title'],
+      description: t['blog.ai-pair-programming-vs-ai-planning.meta.description'],
+    }),
+    keywords: mergeKeywords(
+      [
     'ai pair programming',
     'ai code planning',
     'copilot vs planning',
@@ -17,33 +26,10 @@ export const metadata: Metadata = {
     'ai coding assistant',
     'implementation planning',
   ],
-  robots: {
-    index: true,
-    follow: true,
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/blog/ai-pair-programming-vs-ai-planning',
-    languages: {
-      'en-US': 'https://www.plantocode.com/blog/ai-pair-programming-vs-ai-planning',
-      'en': 'https://www.plantocode.com/blog/ai-pair-programming-vs-ai-planning',
-      'x-default': 'https://www.plantocode.com/blog/ai-pair-programming-vs-ai-planning',
-    },
-  },
-  openGraph: {
-    title: 'AI Pair Programming vs Planning - Team Guide',
-    description: 'Compare AI pair programming with AI planning. When to use each approach for production codebases, teams, and complex refactoring.',
-    url: 'https://www.plantocode.com/blog/ai-pair-programming-vs-ai-planning',
-    siteName: 'PlanToCode',
-    type: 'article',
-    locale: 'en_US',
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'AI Pair Programming vs AI Planning',
-    }],
-  },
-};
+      COMMON_KEYWORDS.core
+    ),
+  };
+}
 
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));

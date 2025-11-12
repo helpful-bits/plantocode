@@ -69,7 +69,7 @@
   "aider/terminal/collaborative-coding": {
     "headline": "Aider-Sitzungen mit Plan-Anleitung ausführen",
     "subhead": "Transformieren Sie Aider's kollaboratives Coding mit strukturierten Implementierungsplänen",
-    "meta_title": "Aider Terminal-Integration - Geführtes kollaboratives Coding",
+    "meta_title": "Aider Terminal-Integration - Geführt",
     "meta_description": "Führen Sie Aider mit Implementierungsplänen aus. Spracheingabe, Sitzungsaufzeichnung und strukturierte Anleitung für kollaboratives Coding.",
     "primary_cta": "Geführte Aider-Sitzungen starten",
     "pain_points": [
@@ -234,7 +234,7 @@
   "sentry/error-to-plan": {
     "headline": "Sentry-Fehler in Fix-Pläne konvertieren",
     "subhead": "Transformieren Sie Fehlerberichte in strukturierte Implementierungspläne für schnelle Lösung",
-    "meta_title": "Sentry Fehler zu Implementierungsplan - Automatisierte Fixes",
+    "meta_title": "Sentry Fehler zu Fix-Plan - Automatisch",
     "meta_description": "Konvertieren Sie Sentry-Fehler in Implementierungspläne. Stack-Trace-Analyse, Datei-Discovery und strukturierte Fix-Pläne mit Terminal-Ausführung.",
     "primary_cta": "Fix-Pläne aus Fehlern generieren",
     "pain_points": [
@@ -267,7 +267,7 @@
   "datadog/performance-plans": {
     "headline": "Performance-Fixes aus APM-Daten",
     "subhead": "Transformieren Sie Datadog APM-Erkenntnisse in ausführbare Performance-Optimierungspläne",
-    "meta_title": "Datadog APM Performance-Pläne - Optimierungs-Automatisierung",
+    "meta_title": "Datadog APM Performance-Pläne - Auto",
     "meta_description": "Konvertieren Sie Datadog APM-Daten in Performance-Optimierungspläne. Trace-Analyse, Engpass-Identifikation und strukturierte Verbesserungsausführung.",
     "primary_cta": "Performance-Pläne generieren",
     "pain_points": [
@@ -333,7 +333,7 @@
   "terraform/blast-radius-analysis": {
     "headline": "Terraform-Änderungsauswirkungen analysieren",
     "subhead": "Verstehen Sie den vollen Blast Radius von Infrastruktur-Änderungen vor dem Anwenden",
-    "meta_title": "Terraform Blast Radius - Sichere Infrastruktur-Änderungen",
+    "meta_title": "Terraform Blast Radius - Sicher",
     "meta_description": "Analysieren Sie Terraform-Auswirkungen vor dem Anwenden. Ressourcen-Abhängigkeitsmapping, Blast-Radius-Visualisierung, sichere Ausführung.",
     "primary_cta": "Infrastruktur-Änderungen analysieren",
     "pain_points": [

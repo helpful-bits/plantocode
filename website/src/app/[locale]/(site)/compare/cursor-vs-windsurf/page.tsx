@@ -7,42 +7,23 @@ import type { Metadata } from 'next';
 import { locales } from '@/i18n/config';
 import type { Locale } from '@/lib/i18n';
 
-export const metadata: Metadata = {
-  title: 'Cursor vs Windsurf vs PlanToCode 2025 | Comparison',
-  description: 'Compare Cursor, Windsurf, PlanToCode for preventing duplicate files and wrong paths in AI dev. Data-driven analysis with bug reports.',
-  keywords: [
-    'cursor vs windsurf',
-    'windsurf vs cursor',
-    'cursor alternative',
-    'windsurf alternative',
-    'ai code editor comparison',
-    'prevent duplicate files ai',
-    'implementation planning ai',
-  ],
-  robots: {
-    index: true,
-    follow: true,
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/compare/cursor-vs-windsurf',
-    languages: {
-      'en-US': 'https://www.plantocode.com/compare/cursor-vs-windsurf',
-      'en': 'https://www.plantocode.com/compare/cursor-vs-windsurf',
-    },
-  },
-  openGraph: {
+import { generatePageMetadata } from '@/content/metadata';
+
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+
+  return generatePageMetadata({
+    locale,
+    slug: '/compare/cursor-vs-windsurf',
+    title: 'Cursor vs Windsurf vs PlanToCode 2025 | Comparison',
+    description: 'Compare Cursor, Windsurf, PlanToCode for preventing duplicate files and wrong paths in AI dev. Data-driven analysis with bug reports.',
     images: [{
       url: cdnUrl('/images/og-image.png'),
       width: 1200,
       height: 630,
       alt: 'PlanToCode - AI Planning for Code',
     }],
-    title: 'Cursor vs Windsurf vs PlanToCode: Preventing AI Coding Chaos',
-    description: 'Data-driven comparison of AI coding tools. Learn which prevents duplicate files and wrong path issues.',
-    url: 'https://www.plantocode.com/compare/cursor-vs-windsurf',
-    siteName: 'PlanToCode',
-    type: 'article',
-  },
+  });
 };
 
 export function generateStaticParams() {

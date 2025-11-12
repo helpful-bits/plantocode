@@ -5,33 +5,23 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Breadcrumbs } from '@/components/Breadcrumbs';
 import { buildHubBreadcrumbs } from '@/components/breadcrumbs/utils';
-import { cdnUrl } from '@/lib/cdn';
 import { locales } from '@/i18n/config';
 import {
   FileSearch, Brain, Mic, Video, Copy, GitMerge, MessageSquare, Terminal, Zap
 } from 'lucide-react';
-import { buildAlternates } from '@/content/metadata';
-export const metadata: Metadata = {
-  title: 'PlanToCode Features - AI Development Planning Tools',
-  description: 'Explore powerful features: file discovery, multi-model planning, voice transcription, video analysis, merge instructions, and integrated terminal execution.',
-  openGraph: {
-    title: 'PlanToCode Features - AI Development Planning Tools',
-    description: 'Comprehensive AI development features for large codebases.',
-    url: 'https://www.plantocode.com/features',
-    type: 'website',
-    siteName: 'PlanToCode',
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
-    }],
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/features',
-    languages: buildAlternates('/features'),
-  },
-};
+import { generatePageMetadata } from '@/content/metadata';
+
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessagesFor(locale, ['common', 'features']);
+
+  return generatePageMetadata({
+    locale,
+    slug: '/features',
+    title: t['hub.meta.title'],
+    description: t['hub.meta.description'],
+  });
+}
 const iconMap: Record<string, any> = {
   fileDiscovery: FileSearch,
   planMode: Brain,
@@ -86,7 +76,7 @@ export default async function FeaturesHubPage({ params }: { params: Promise<{ lo
                   <span>{t['hub.badge'] ?? ''}</span>
                 </div>
                 <h1 className="text-4xl sm:text-5xl font-bold mb-6">
-                  {t['hub.title'] ?? ''}
+                  {t['hub.title'] || 'AI Development Planning Features'}
                 </h1>
                 <p className="text-lg text-foreground/80 max-w-3xl mx-auto">
                   {t['hub.description'] ?? ''}

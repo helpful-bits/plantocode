@@ -1,4 +1,10 @@
 {
+  "home": {
+    "meta": {
+      "title": "Planification de l'implémentation IA pour un codage sûr",
+      "description": "Planification d'implémentation IA pour les grandes bases de code. Examinez les modifications avant l'exécution. Prévenez les bugs et les doublons. Intègre avec Cursor, Copilot, Claude Code."
+    }
+  },
   "about": {
     "architecture": {
       "comment": "Conçu pour les workflows de développement complexes, pas pour le simple chat IA",
@@ -452,7 +458,7 @@
       "screenshots": "Voir les Vraies Captures d'Écran",
       "subtitle": "Découvrez comment PlanToCode planifie et exécute les modifications de code.",
       "title": "Démo interactive",
-      "video": "Voir la Démo Courte"
+      "video": "Voir la Démo"
     },
     "meta": {
       "description": "Découvrez comment PlanToCode planifie et exécute les modifications de code.",
@@ -461,7 +467,7 @@
   },
   "downloads": {
     "cta": {
-      "architect": "Parler à un architecte",
+      "architect": "Parler à un expert",
       "docs": "Documentation du terminal",
       "footer": "Fabriqué en Allemagne • Conforme RGPD • Stockage de Session Local",
       "professional": "Options professionnelles",
@@ -875,11 +881,11 @@
     "footer": "Vous ne trouvez pas d'horaire approprié ? Envoyez-nous un e-mail à",
     "hero": {
       "subtitle": "Obtenez des conseils d'experts sur l'utilisation de PlanToCode pour les besoins spécifiques de votre équipe. Nous discuterons des patterns d'architecture, des stratégies d'intégration et des options de déploiement.",
-      "title": "Parler à un Architecte"
+      "title": "Parler à un Expert"
     },
     "meta": {
       "description": "Obtenez des conseils d'experts sur l'utilisation de PlanToCode pour les besoins spécifiques de votre équipe. Nous discuterons des patterns d'architecture, des stratégies d'intégration et des options de déploiement.",
-      "title": "Parler à un Architecte"
+      "title": "Parler à un Expert"
     },
     "topics": {
       "items": {
@@ -935,6 +941,14 @@
         "cursor": "Workflows Cursor",
         "general": "Workflows Généraux"
       }
+    }
+  },
+  "screenshots": {
+    "title": "PlanToCode Screenshots",
+    "description": "See PlanToCode in action with real screenshots from actual workflows.",
+    "meta": {
+      "title": "Screenshots - PlanToCode in action",
+      "description": "See PlanToCode in action with real screenshots from actual workflows. File discovery, implementation plans, terminal integration, and more."
     }
   }
 }

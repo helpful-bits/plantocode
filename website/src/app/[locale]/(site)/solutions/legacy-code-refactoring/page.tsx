@@ -1,14 +1,23 @@
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Header } from '@/components/landing/Header';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
-import { cdnUrl } from '@/lib/cdn';
 import type { Metadata } from 'next';
 import { loadMessages, type Locale } from '@/lib/i18n';
 import { locales } from '@/i18n/config';
-export const metadata: Metadata = {
-  title: 'Legacy Code Refactoring - AI Safe Modernization',
-  description: 'Refactor legacy code safely with AI planning. Map dependencies, generate migration strategies, and modernize 100K+ line codebases without breaking production.',
-  keywords: [
+import { generatePageMetadata, COMMON_KEYWORDS, mergeKeywords } from '@/content/metadata';
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return {
+    ...generatePageMetadata({
+      locale,
+      slug: '/solutions/legacy-code-refactoring',
+      title: t['solutions.legacyCodeRefactoring.meta.title'],
+      description: t['solutions.legacyCodeRefactoring.meta.description'],
+    }),
+    keywords: mergeKeywords(
+      [
     'legacy code refactoring tools',
     'legacy code refactoring',
     'refactor legacy code',
@@ -16,33 +25,10 @@ export const metadata: Metadata = {
     'ai refactoring',
     'code modernization',
   ],
-  robots: {
-    index: true,
-    follow: true,
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/solutions/legacy-code-refactoring',
-    languages: {
-      'en-US': 'https://www.plantocode.com/solutions/legacy-code-refactoring',
-      'en': 'https://www.plantocode.com/solutions/legacy-code-refactoring',
-      'x-default': 'https://www.plantocode.com/solutions/legacy-code-refactoring',
-    },
-  },
-  openGraph: {
-    title: 'Legacy Code Refactoring - AI Safe Modernization',
-    description: 'Refactor legacy code safely with AI planning. Map dependencies, generate migration strategies without breaking production.',
-    url: 'https://www.plantocode.com/solutions/legacy-code-refactoring',
-    siteName: 'PlanToCode',
-    type: 'article',
-    locale: 'en_US',
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - Legacy Code Refactoring',
-    }],
-  },
-};
+      COMMON_KEYWORDS.core
+    ),
+  };
+}
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));
 }

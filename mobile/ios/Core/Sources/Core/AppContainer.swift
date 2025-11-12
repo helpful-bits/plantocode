@@ -49,6 +49,10 @@ public final class AppContainer: ObservableObject {
         manager.subscriptionManager
     }
 
+    public var onboardingService: OnboardingContentService {
+        manager.onboardingService
+    }
+
     @Published public var connectionStatus: ConnectionStatus = .disconnected
     @Published public var currentProject: ProjectInfo?
     @Published public var isInitializing: Bool = false

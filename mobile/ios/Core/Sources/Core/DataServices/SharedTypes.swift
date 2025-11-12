@@ -179,14 +179,14 @@ public struct BackgroundJob: Codable, Identifiable {
 
 public struct Session: Codable, Identifiable {
     public let id: String
-    public let name: String
+    public var name: String
     public let projectDirectory: String
-    public let taskDescription: String?
-    public let mergeInstructions: String?
+    public var taskDescription: String?
+    public var mergeInstructions: String?
     public let createdAt: Int64
-    public let updatedAt: Int64
-    public let includedFiles: [String]
-    public let forceExcludedFiles: [String]
+    public var updatedAt: Int64
+    public var includedFiles: [String]
+    public var forceExcludedFiles: [String]
 
     public init(
         id: String,
@@ -313,6 +313,7 @@ public enum HTTPMethod: String {
 // MARK: - Data Service Errors
 
 public enum DataServiceError: Error, LocalizedError {
+    case cancelled
     case networkError(Error)
     case invalidResponse(String)
     case invalidRequest(String)
@@ -332,6 +333,8 @@ public enum DataServiceError: Error, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
+        case .cancelled:
+            return "Request was cancelled"
         case .networkError(let error):
             return "Network error: \(error.localizedDescription)"
         case .invalidResponse(let message):
@@ -369,6 +372,8 @@ public enum DataServiceError: Error, LocalizedError {
 
     public var recoverySuggestion: String? {
         switch self {
+        case .cancelled:
+            return "The request was cancelled by the system or user."
         case .networkError:
             return "Check your internet connection and try again."
         case .invalidResponse, .invalidRequest:

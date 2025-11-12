@@ -21,8 +21,20 @@ export function ProblemsSection() {
       href: '/solutions/library-upgrades',
     },
     {
+      key: 'legacyRefactoring',
+      href: '/solutions/legacy-code-refactoring',
+    },
+    {
+      key: 'safeRefactoring',
+      href: '/solutions/safe-refactoring',
+    },
+    {
+      key: 'preventDuplicates',
+      href: '/solutions/prevent-duplicate-files',
+    },
+    {
       key: 'browseAll',
-      href: '/workflows',
+      href: '/solutions',
     },
   ] as const;
 

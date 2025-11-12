@@ -97,6 +97,7 @@ export function Header() {
         { href: '/solutions/library-upgrades', label: t('solution.libraryUpgrades.label', 'Library Upgrades'), icon: Package, description: t('solution.libraryUpgrades.description', 'Dependency management') },
       ]
     },
+    { href: '/comparisons', label: t('nav.comparisons', 'Comparisons'), dropdown: false },
     { href: '/docs', label: t('nav.docs', 'Documentation'), dropdown: false },
     { href: '/demo', label: t('nav.demo', 'Demo'), dropdown: false },
     { href: '/downloads', label: t('nav.downloads', 'Downloads'), dropdown: false },

@@ -635,7 +635,10 @@ async fn main() -> std::io::Result<()> {
             app = app.app_data(web::Data::new(apns));
         }
 
-        app
+        // STEP 14: API Versioning with environment flag
+        let enable_versioning = std::env::var("API_VERSIONING").ok().as_deref() == Some("1");
+
+        app = app
             // Register health check endpoint with IP-based rate limiting
             .service(
                 web::resource("/health")
@@ -676,16 +679,43 @@ async fn main() -> std::io::Result<()> {
                         web::get().to(handlers::region_handlers::get_regions_handler),
                     ),
             )
-            // Protected API routes with strict rate limiting (IP + User) and authentication (under /api)
+            // Public onboarding endpoints (no authentication required)
             .service(
+                web::scope("/public")
+                    .wrap(public_ip_rate_limiter.clone())
+                    .route(
+                        "/onboarding",
+                        web::get().to(handlers::public::onboarding_handlers::get_onboarding_manifest),
+                    ),
+            );
+
+        // Protected API routes with optional versioning
+        if enable_versioning {
+            app = app.service(
+                web::scope("/api")
+                    .service(
+                        web::scope("/v1")
+                            .wrap(strict_rate_limiter.clone())
+                            .wrap(auth_middleware(
+                                db_pools.user_pool.clone(),
+                                db_pools.system_pool.clone(),
+                            ))
+                            .configure(|cfg| configure_routes(cfg, strict_rate_limiter.clone()))
+                    )
+            );
+        } else {
+            app = app.service(
                 web::scope("/api")
                     .wrap(strict_rate_limiter.clone())
                     .wrap(auth_middleware(
                         db_pools.user_pool.clone(),
                         db_pools.system_pool.clone(),
                     ))
-                    .configure(|cfg| configure_routes(cfg, strict_rate_limiter.clone())),
-            )
+                    .configure(|cfg| configure_routes(cfg, strict_rate_limiter.clone()))
+            );
+        }
+
+        app
             // Public webhook routes with IP-based rate limiting (no authentication)
             .service(
                 web::scope("/webhooks")

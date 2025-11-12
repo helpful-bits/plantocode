@@ -28,6 +28,7 @@ public struct SessionWorkspaceView: View {
     @State private var reconnectionSuccess: Bool?
     @State private var reconnectionMessage: String?
     @State private var isLoadingSession = false
+    @State private var showingPaywall = false
 
     // External update gate for cursor stability (matching desktop behavior)
     @State private var pendingRemoteTaskDescription: String?
@@ -72,7 +73,8 @@ public struct SessionWorkspaceView: View {
             // Tab 2: Files - No lazy loading to ensure onReceive handlers fire
             FilesTab(
                 session: session,
-                isOfflineMode: isOfflineMode
+                isOfflineMode: isOfflineMode,
+                jobsService: container.jobsService
             )
             .tabItem {
                 Label("Files", systemImage: "doc.text")
@@ -248,6 +250,24 @@ public struct SessionWorkspaceView: View {
                 currentSession: $currentSession,
                 loadMostRecentSession: loadMostRecentSession
             ))
+            .onChange(of: selectedTab) { newTab in
+                // Gate interactive tabs (Files, Plans, Jobs) - tabs 1, 2, 3
+                if [1, 2, 3].contains(newTab) {
+                    if !container.subscriptionManager.status.isActive {
+                        showingPaywall = true
+                    }
+                }
+            }
+            .sheet(isPresented: $showingPaywall) {
+                PaywallView()
+                    .environmentObject(container)
+            }
+            .onAppear {
+                // Check subscription status on initial load
+                Task {
+                    await container.subscriptionManager.refreshStatus()
+                }
+            }
     }
 
     // MARK: - Helper Methods
@@ -316,16 +336,10 @@ public struct SessionWorkspaceView: View {
     private func loadSession(_ session: Session) {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
 
-        // Set the session immediately for UI responsiveness
         currentSession = session
-        if let desc = session.taskDescription?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !desc.isEmpty,
-           taskText.trimmingCharacters(in: .whitespacesAndNewlines) != desc {
-            taskText = desc
-        }
+        taskText = session.taskDescription ?? ""
         errorMessage = nil
 
-        // Set current project in AppContainer for proper scoping
         let dir = session.projectDirectory
         if container.currentProject?.directory != dir {
             let name = URL(fileURLWithPath: dir).lastPathComponent
@@ -333,25 +347,27 @@ public struct SessionWorkspaceView: View {
             container.setCurrentProject(ProjectInfo(name: name, directory: dir, hash: hash))
         }
 
-        // Fetch full session details including includedFiles
+        container.jobsService.setActiveSession(
+            sessionId: session.id,
+            projectDirectory: session.projectDirectory
+        )
+
         Task {
             do {
                 if let fullSession = try await container.sessionService.getSession(id: session.id) {
                     await MainActor.run {
-                        // Update with full details
                         currentSession = fullSession
-                        if let desc = fullSession.taskDescription?.trimmingCharacters(in: .whitespacesAndNewlines),
-                           !desc.isEmpty,
-                           taskText.trimmingCharacters(in: .whitespacesAndNewlines) != desc {
-                            taskText = desc
-                        }
+                        taskText = fullSession.taskDescription ?? ""
 
-                        // Set current session in SessionDataService for global access
                         container.sessionService.currentSession = fullSession
+
+                        container.jobsService.setActiveSession(
+                            sessionId: fullSession.id,
+                            projectDirectory: fullSession.projectDirectory
+                        )
                     }
                 }
             } catch {
-                // If fetch fails, still use the summary session we have
                 await MainActor.run {
                     container.sessionService.currentSession = session
                 }
@@ -568,6 +584,7 @@ struct FilesTab: View {
     @EnvironmentObject private var container: AppContainer
     let session: Session
     let isOfflineMode: Bool
+    let jobsService: JobsDataService
 
     var body: some View {
         NavigationStack {
@@ -596,9 +613,35 @@ struct FilesTab: View {
                 .navigationTitle("Files")
                 .navigationBarTitleDisplayMode(.inline)
             } else {
-                FileManagementView(filesService: container.filesService)
-                    .navigationTitle("Files")
-                    .navigationBarTitleDisplayMode(.inline)
+                VStack(spacing: 0) {
+                    // Finding files indicator
+                    if !isOfflineMode && jobsService.sessionActiveWorkflowJobs > 0 {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle())
+                                .scaleEffect(0.7)
+                            Text("Finding files… (\(jobsService.sessionActiveWorkflowJobs))")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.vertical, 6)
+                    }
+
+                    FileManagementView(
+                        filesService: container.filesService,
+                        jobsService: container.jobsService
+                    )
+                }
+                .navigationTitle("Files")
+                .navigationBarTitleDisplayMode(.inline)
+                .onAppear {
+                    if let session = container.sessionService.currentSession {
+                        container.jobsService.setActiveSession(
+                            sessionId: session.id,
+                            projectDirectory: session.projectDirectory
+                        )
+                    }
+                }
             }
         }
     }
@@ -1220,10 +1263,9 @@ struct SessionUpdateModifier: ViewModifier {
             .onReceive(container.sessionService.currentSessionPublisher.compactMap { $0 }) { newSession in
                 // Adopt externally switched session
                 currentSession = newSession
-                let incoming = newSession.taskDescription?.trimmingCharacters(in: .whitespacesAndNewlines)
-                let current = taskText.trimmingCharacters(in: .whitespacesAndNewlines)
-                if let desc = incoming, !desc.isEmpty, (current.isEmpty || current != desc) {
-                    taskText = desc
+                let incoming = newSession.taskDescription ?? ""
+                if taskText != incoming {
+                    taskText = incoming
                 }
             }
             .onReceive(appState.$deepLinkRoute.compactMap { $0 }) { route in

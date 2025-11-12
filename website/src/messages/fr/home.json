@@ -24,7 +24,7 @@
     "badge": "Planification IA avec humain dans la boucle",
     "buttons": {
       "download": "Télécharger gratuitement",
-      "talk": "Parler à un architecte"
+      "talk": "Parler à un expert"
     },
     "description": "Planifiez, examinez et exécutez des modifications assistées par l'IA depuis un seul espace de travail. Gardez les modèles, les invites, les fichiers et la sortie du terminal alignés.",
     "features": {
@@ -168,7 +168,8 @@
     "cta": {
       "demo": "Essayer la démo interactive →",
       "download": "Télécharger gratuitement",
-      "howItWorks": "Voir comment ça marche"
+      "howItWorks": "Voir comment ça marche",
+      "viewDemo": "Voir Comment le Créateur l'Utilise Quotidiennement"
     },
     "panel1": {
       "description": "Générez des modèles de recherche, exécutez le scoring de pertinence et examinez les résultats échelonnés avant d'inclure les fichiers dans votre plan.",
@@ -185,7 +186,7 @@
       "title": "Workflow de découverte de fichiers"
     },
     "panel2": {
-      "description": "Générez des plans de mise en œuvre depuis GPT-5, Gemini 2.5 Pro, Claude 4 Sonnet, Grok 4 et DeepSeek R1 et fusionnez les meilleures idées.",
+      "description": "Exécutez n'importe quel modèle en parallèle - y compris plusieurs instances du même - et fusionnez les meilleures idées.",
       "link": "Explorer le workflow",
       "models": {
         "claude": "Claude Sonnet 4",
@@ -280,10 +281,25 @@
         "link": "En savoir plus →",
         "title": "Grandes fonctionnalités"
       },
+      "legacyRefactoring": {
+        "description": "Modernisez les bases de code héritées avec une refactorisation assistée par IA qui préserve les fonctionnalités tout en améliorant la structure",
+        "link": "En savoir plus →",
+        "title": "Refactorisation de Code Hérité"
+      },
       "libraryUpgrades": {
         "description": "Mettez à jour les dépendances en toute sécurité avec détection de changements de rupture et planification de migration",
         "link": "En savoir plus →",
         "title": "Mises à jour de bibliothèques"
+      },
+      "preventDuplicates": {
+        "description": "Détectez et prévenez le code en double, les composants et les implémentations dans votre base de code",
+        "link": "En savoir plus →",
+        "title": "Prévenir les Fichiers Dupliqués"
+      },
+      "safeRefactoring": {
+        "description": "Refactorisez en toute confiance grâce à la conscience architecturale et à une analyse d'impact complète",
+        "link": "En savoir plus →",
+        "title": "Refactorisation Sécurisée"
       }
     },
     "subtitle": "Des solutions réelles pour les problèmes les plus difficiles du développement logiciel",

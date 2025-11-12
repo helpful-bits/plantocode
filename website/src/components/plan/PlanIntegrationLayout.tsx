@@ -1,13 +1,20 @@
+import dynamic from 'next/dynamic';
 import { Link } from '@/i18n/navigation';
 import { Button } from '@/components/ui/button';
 import { GlassCard } from '@/components/ui/GlassCard';
-import { VideoButton } from '@/components/ui/VideoButton';
 import { StructuredData } from '@/components/seo/StructuredData';
 import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
-import { FAQ } from '@/components/landing/FAQ';
 import { Terminal, CheckCircle2 } from 'lucide-react';
+
+// Lazy load heavy components
+const VideoButtonOptimized = dynamic(() => import('@/components/ui/VideoButtonOptimized').then(mod => ({ default: mod.VideoButtonOptimized })), {
+  loading: () => <Button variant="outline" size="lg" disabled>Loading...</Button>,
+});
+const FAQOptimized = dynamic(() => import('@/components/landing/FAQOptimized').then(mod => ({ default: mod.FAQOptimized })), {
+  loading: () => <div className="py-4 text-center text-foreground/60">Loading FAQ...</div>,
+});
 
 export interface PlanIntegrationMeta {
   title: string;
@@ -109,7 +116,7 @@ export function PlanIntegrationLayout({ content, location }: PlanIntegrationLayo
                         <Link href={hero.ctas.primaryHref}>{hero.ctas.primaryLabel}</Link>
                       </Button>
                       {hero.ctas.secondary === 'video' ? (
-                        <VideoButton />
+                        <VideoButtonOptimized />
                       ) : hero.ctas.secondary ? (
                         <Button variant="outline" size="lg" asChild>
                           <Link href={hero.ctas.secondary.href}>{hero.ctas.secondary.label}</Link>
@@ -121,7 +128,7 @@ export function PlanIntegrationLayout({ content, location }: PlanIntegrationLayo
                       <Button variant="cta" size="lg" asChild>
                         <Link href="/downloads">Install PlanToCode</Link>
                       </Button>
-                      <VideoButton />
+                      <VideoButtonOptimized />
                     </>
                   )}
                 </div>
@@ -220,7 +227,7 @@ export function PlanIntegrationLayout({ content, location }: PlanIntegrationLayo
 
               {/* FAQ section */}
               {faq && faq.length > 0 && (
-                <FAQ />
+                <FAQOptimized />
               )}
 
               {/* CTA footer */}

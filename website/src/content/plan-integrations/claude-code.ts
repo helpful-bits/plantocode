@@ -117,11 +117,25 @@ export const claudeCodeContent: PlanIntegrationContent = {
         url: 'https://www.plantocode.com/plan-mode/claude-code',
         description:
           'Enhance Claude Code Plan Mode with file discovery and multi-model synthesis.',
+        softwareVersion: '1.0.23',
+        downloadUrl: 'https://www.plantocode.com/downloads',
         offers: {
           '@type': 'Offer',
           price: 0,
           priceCurrency: 'USD',
+          availability: 'https://schema.org/InStock',
         },
+        creator: {
+          '@type': 'Organization',
+          name: 'PlanToCode',
+          url: 'https://www.plantocode.com'
+        },
+        featureList: [
+          'File Discovery',
+          'Multi-Model Planning',
+          'Claude Code Integration',
+          'Plan Review Workflow'
+        ]
       },
       buildJsonLdHowTo('Use PlanToCode with Claude Code Plan Mode', [
         {

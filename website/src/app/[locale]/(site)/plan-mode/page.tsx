@@ -1,57 +1,45 @@
 import type { Metadata } from 'next';
+import dynamic from 'next/dynamic';
 import { Link } from '@/i18n/navigation';
 import { Button } from '@/components/ui/button';
 import { GlassCard } from '@/components/ui/GlassCard';
-import { VideoButton } from '@/components/ui/VideoButton';
 import { StructuredData } from '@/components/seo/StructuredData';
 import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
-import { FAQ } from '@/components/landing/FAQ';
 import { Code2, Terminal, GitMerge, Search, Zap } from 'lucide-react';
 import type { SoftwareApplication, HowTo, FAQPage } from 'schema-dts';
 import { cdnUrl } from '@/lib/cdn';
 
-import { loadMessages, type Locale } from '@/lib/i18n';
-import { locales } from '@/i18n/config';
+// Lazy load heavy components that aren't immediately visible
+const VideoButtonOptimized = dynamic(() => import('@/components/ui/VideoButtonOptimized').then(mod => ({ default: mod.VideoButtonOptimized })), {
+  loading: () => <Button variant="outline" size="lg" disabled>Loading...</Button>,
+});
+const FAQOptimized = dynamic(() => import('@/components/landing/FAQOptimized').then(mod => ({ default: mod.FAQOptimized })), {
+  loading: () => <div className="py-12 text-center text-foreground/60">Loading FAQ...</div>,
+});
 
-export const metadata: Metadata = {
-  title: 'Plan Before You Code - Reviewable Specs',
-  description: 'Plan software changes before you code. Generate file-by-file implementation specs, review with your team, then execute with full visibility and governance.',
-  keywords: [
-    'codex cli planning workflow',
-    'codex cli architectural planning',
-    'claude code planning workflow',
-    'cursor planning workflow',
-    'claude code plan mode complement',
-    'openai codex cli approval modes',
-    'codex cli read-only mode',
-    'cursor composer planning',
-    'cursor agent mode workflow',
-    'claude code cli planning',
-    'ai architectural planning',
-    'multi-model plan synthesis',
-    'file discovery for cli tools'
-  ],
-  alternates: {
-    canonical: 'https://www.plantocode.com/plan-mode',
-    languages: {
-      'en-US': 'https://www.plantocode.com/plan-mode',
-      'en': 'https://www.plantocode.com/plan-mode',
-    },
-  },
-  openGraph: {
-    type: 'website',
-    siteName: 'PlanToCode',
-    title: 'Plan Before You Code - Reviewable Specs',
+import { loadMessagesFor, type Locale } from '@/lib/i18n';
+import { locales } from '@/i18n/config';
+import { generatePageMetadata } from '@/content/metadata';
+
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessagesFor(locale, ['common', 'pages']);
+
+  return generatePageMetadata({
+    locale,
+    slug: '/plan-mode',
+    title: t['planMode.meta.title'],
+    description: t['planMode.meta.description'],
     images: [{
       url: cdnUrl('/images/og-image.png'),
       width: 1200,
       height: 630,
       alt: 'PlanToCode - AI Planning for Code',
     }],
-  },
-};
+  });
+}
 
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));
@@ -59,7 +47,7 @@ export function generateStaticParams() {
 
 export default async function HirePage({ params }: { params: Promise<{ locale: Locale }> }) {
   const { locale } = await params;
-  const t = await loadMessages(locale);
+  const t = await loadMessagesFor(locale, ['common', 'pages']);
   const softwareApplicationJsonLd: SoftwareApplication = {
     '@type': 'SoftwareApplication',
     name: 'PlanToCode',
@@ -67,12 +55,26 @@ export default async function HirePage({ params }: { params: Promise<{ locale: L
     operatingSystem: ['Windows 10+', 'macOS 11.0+'],
     url: 'https://www.plantocode.com/plan-mode',
     description: 'Desktop planning workspace that helps you generate, merge, and execute implementation plans - then run them in an integrated terminal.',
+    softwareVersion: '1.0.23',
+    downloadUrl: 'https://www.plantocode.com/downloads',
     offers: {
       '@type': 'Offer',
       price: 0,
       priceCurrency: 'USD',
       description: 'Free app with pay-as-you-go API usage. $5 free credits on signup.',
+      availability: 'https://schema.org/InStock',
     },
+    creator: {
+      '@type': 'Organization',
+      name: 'PlanToCode',
+      url: 'https://www.plantocode.com'
+    },
+    featureList: [
+      'File Discovery',
+      'Multi-Model AI Planning',
+      'Plan Merge & Review',
+      'Integrated Terminal'
+    ]
   };
 
   const howToJsonLd: HowTo = {
@@ -169,7 +171,7 @@ export default async function HirePage({ params }: { params: Promise<{ locale: L
     {
       capability: t['planMode.capabilities.architect.capability'] ?? '',
       details: t['planMode.capabilities.architect.details'] ?? '',
-      link: '/features/plan-editor'
+      link: '/plan-mode'
     },
     {
       capability: t['planMode.capabilities.prompts.capability'] ?? '',
@@ -277,7 +279,7 @@ export default async function HirePage({ params }: { params: Promise<{ locale: L
                       {t['planMode.hero.install']}
                     </Link>
                   </Button>
-                  <VideoButton />
+                  <VideoButtonOptimized />
                 </div>
                 <p className="text-sm text-foreground/60 mt-4">
                   {t['planMode.hero.credits']}
@@ -367,7 +369,7 @@ export default async function HirePage({ params }: { params: Promise<{ locale: L
               {/* FAQ */}
               <div className="mb-16">
                 <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">{t['planMode.faq.title']}</h2>
-                <FAQ />
+                <FAQOptimized />
               </div>
 
               {/* How it works */}

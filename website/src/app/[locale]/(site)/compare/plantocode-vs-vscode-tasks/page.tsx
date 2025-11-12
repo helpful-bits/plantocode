@@ -7,42 +7,23 @@ import type { Metadata } from 'next';
 import { locales } from '@/i18n/config';
 import type { Locale } from '@/lib/i18n';
 
-export const metadata: Metadata = {
-  title: 'vsVS Code Tasks - Development Workflow Comparison',
-  description: 'Compare PlanToCode\'sdynamic AI planning with VS Code\'s static task system. AI generation, adaptability, context awareness.',
-  keywords: [
-    'vscode-tasks',
-    'plantocode vs vscode-tasks',
-    'vscode-tasks alternative',
-    'ai code planning',
-    'implementation planning',
-  ],
-  robots: {
-    index: true,
-    follow: true,
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/compare/plantocode-vs-vscode-tasks',
-    languages: {
-      'en-US': 'https://www.plantocode.com/compare/plantocode-vs-vscode-tasks',
-      'en': 'https://www.plantocode.com/compare/plantocode-vs-vscode-tasks',
-      'x-default': 'https://www.plantocode.com/compare/plantocode-vs-vscode-tasks',
-    },
-  },
-  openGraph: {
+import { generatePageMetadata } from '@/content/metadata';
+
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+
+  return generatePageMetadata({
+    locale,
+    slug: '/compare/plantocode-vs-vscode-tasks',
     title: 'vsVS Code Tasks - Development Workflow Comparison',
     description: 'Compare PlanToCode\'sdynamic AI planning with VS Code\'s static task system. AI generation, adaptability, context awareness.',
-    url: 'https://www.plantocode.com/compare/plantocode-vs-vscode-tasks',
-    siteName: 'PlanToCode',
-    type: 'article',
-    locale: 'en_US',
     images: [{
       url: cdnUrl('/images/og-image.png'),
       width: 1200,
       height: 630,
       alt: 'PlanToCode - AI Planning for Code',
     }],
-  },
+  });
 };
 
 export function generateStaticParams() {

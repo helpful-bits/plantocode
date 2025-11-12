@@ -5,6 +5,7 @@ import StoreKit
 public struct SubscriptionSettingsView: View {
     @EnvironmentObject var container: AppContainer
     @State private var subscriptionManager: SubscriptionManager?
+    @State private var isPurchasingWeekly = false
     @State private var isPurchasingMonthly = false
     @State private var isPurchasingAnnual = false
 
@@ -160,6 +161,48 @@ public struct SubscriptionSettingsView: View {
     @ViewBuilder
     private func customPlansSection(manager: SubscriptionManager) -> some View {
         Section {
+            // Weekly Plan
+            if let weekly = manager.weeklyProduct {
+                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                    HStack {
+                        VStack(alignment: .leading) {
+                            if let periodDesc = weekly.subscriptionPeriodDescription {
+                                Text(periodDesc)
+                                    .font(.headline)
+                            }
+                            if let introOffer = weekly.introductoryOfferDescription {
+                                Text(introOffer)
+                                    .small()
+                                    .foregroundColor(Color.mutedForeground)
+                            }
+                        }
+                        Spacer()
+                        Text(weekly.displayPrice)
+                            .font(.title3)
+                            .bold()
+                    }
+
+                    Button {
+                        Task {
+                            isPurchasingWeekly = true
+                            try? await manager.purchase(tier: .weekly)
+                            isPurchasingWeekly = false
+                        }
+                    } label: {
+                        if isPurchasingWeekly {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                        } else {
+                            Text("Subscribe")
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(manager.products.isEmpty || manager.configurationError != nil || isPurchasingWeekly)
+                }
+                .padding(.vertical, Theme.Spacing.xs)
+            }
+
             // Monthly Plan
             if let monthly = manager.monthlyProduct {
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
@@ -259,6 +302,8 @@ public struct SubscriptionSettingsView: View {
         switch tier {
         case .none:
             return "None"
+        case .weekly:
+            return "Weekly"
         case .monthly:
             return "Monthly"
         case .annual:

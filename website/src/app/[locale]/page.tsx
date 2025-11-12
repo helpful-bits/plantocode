@@ -12,6 +12,7 @@ import type { SoftwareApplication, FAQPage, VideoObject, ImageObject, Organizati
 import { SectionDividerMesh } from '@/components/ui/SectionDivider';
 import { HomePageClient } from '@/components/landing/HomePageClient';
 import enFaqMessages from '@/messages/en/home.json';
+import { loadMessagesFor } from '@/lib/i18n';
 
 
 const Features = dynamic(() => import('@/components/landing/Features').then(mod => ({ default: mod.Features })), {
@@ -55,99 +56,132 @@ export function generateStaticParams() {
   return LOCALES.map((locale) => ({ locale }));
 }
 
-export const metadata: Metadata = {
-  title: 'AI Implementation Planning for Safe Coding',
-  description: 'AI implementation planning for large codebases. Review changes before execution. Prevent bugs and duplicates. Integrates with Cursor, Copilot, Claude Code.',
-  keywords: [
-    'ai code planning',
-    'implementation planning tool',
-    'prevent duplicate files ai',
-    'ai code review',
-    'cursor alternative',
-    'safe refactoring tool',
-    'legacy code planning',
-    'human-in-the-loop ai',
-    'corporate ai governance',
-    'file-by-file implementation plans',
-    'legacy codebase planning',
-    'microsoft teams meeting ingestion',
-    'ai plan approval workflow',
-    'ai plan editor',
-    'monaco editor plans',
-    'merge ai plans',
-    'implementation plan editor',
-    'merge instructions ai',
-    'edit ai generated code',
-    'integrated terminal claude code',
-    'run claude code in app',
-    'codex cli terminal',
-    'cursor cli',
-    'gemini cli',
-    'multi model planning',
-    'gpt-5 planning',
-    'claude sonnet 4',
-    'gemini 2.5 pro',
-    'grok 4',
-    'deepseek r1',
-    'kimi k2',
-    'file discovery workflow',
-    'voice transcription coding',
-    'token estimates',
-    'desktop ai planning',
-  ],
-  openGraph: {
-    title: 'PlanToCode - plan and ship code changes',
-    description: 'Find impacted files, generate and merge AI plans, run in a persistent terminal.',
-    url: 'https://www.plantocode.com',
-    siteName: 'PlanToCode',
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Architect Studio with Integrated Terminal',
-      type: 'image/png',
-    }],
-    locale: 'en_US',
-    alternateLocale: ['en_GB', 'en_CA'],
-    type: 'website',
-  },
-  twitter: {
-    card: 'summary_large_image',
-    title: 'PlanToCode - plan and ship code changes',
-    description: 'Find impacted files, generate and merge AI plans, run in a persistent terminal.',
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      alt: 'PlanToCode - AI Architect Studio with Integrated Terminal',
-      width: 1200,
-      height: 630,
-    }],
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com',
-    languages: {
-      'en-US': 'https://www.plantocode.com',
-      'en': 'https://www.plantocode.com',
+export async function generateMetadata({ params }: { params: Promise<{ locale: string }>}): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessagesFor(locale as any, ['common', 'pages']);
+
+  // Determine OpenGraph locale values based on current locale
+  const ogLocale = locale === 'de' ? 'de_DE' : locale === 'fr' ? 'fr_FR' : locale === 'es' ? 'es_ES' : locale === 'ko' ? 'ko_KR' : locale === 'ja' ? 'ja_JP' : 'en_US';
+  // Include all other locales as alternates (excluding current locale)
+  const allOgLocales = ['en_US', 'de_DE', 'fr_FR', 'es_ES', 'ko_KR', 'ja_JP'];
+  const ogAlternateLocale = allOgLocales.filter(l => l !== ogLocale);
+
+  // Build canonical URL based on locale
+  const siteUrl = 'https://www.plantocode.com';
+  const canonicalPath = locale === 'en' ? '' : `/${locale}`;
+  const canonicalUrl = `${siteUrl}${canonicalPath}`;
+
+  return {
+    title: t['home.meta.title'],
+    description: t['home.meta.description'],
+    keywords: [
+      'ai code planning',
+      'implementation planning tool',
+      'prevent duplicate files ai',
+      'ai code review',
+      'cursor alternative',
+      'safe refactoring tool',
+      'legacy code planning',
+      'human-in-the-loop ai',
+      'corporate ai governance',
+      'file-by-file implementation plans',
+      'legacy codebase planning',
+      'microsoft teams meeting ingestion',
+      'ai plan approval workflow',
+      'ai plan editor',
+      'monaco editor plans',
+      'merge ai plans',
+      'implementation plan editor',
+      'merge instructions ai',
+      'edit ai generated code',
+      'integrated terminal claude code',
+      'run claude code in app',
+      'codex cli terminal',
+      'cursor cli',
+      'gemini cli',
+      'multi model planning',
+      'gpt-5 planning',
+      'claude sonnet 4',
+      'gemini 2.5 pro',
+      'grok 4',
+      'deepseek r1',
+      'kimi k2',
+      'file discovery workflow',
+      'voice transcription coding',
+      'token estimates',
+      'desktop ai planning',
+    ],
+    openGraph: {
+      title: 'PlanToCode - plan and ship code changes',
+      description: 'Find impacted files, generate and merge AI plans, run in a persistent terminal.',
+      url: canonicalUrl,
+      siteName: 'PlanToCode',
+      images: [{
+        url: cdnUrl('/images/og-image.png'),
+        width: 1200,
+        height: 630,
+        alt: 'PlanToCode - AI Architect Studio with Integrated Terminal',
+        type: 'image/png',
+      }],
+      locale: ogLocale,
+      alternateLocale: ogAlternateLocale,
+      type: 'website',
     },
-  },
-};
+    twitter: {
+      card: 'summary_large_image',
+      title: 'PlanToCode - plan and ship code changes',
+      description: 'Find impacted files, generate and merge AI plans, run in a persistent terminal.',
+      images: [{
+        url: cdnUrl('/images/og-image.png'),
+        alt: 'PlanToCode - AI Architect Studio with Integrated Terminal',
+        width: 1200,
+        height: 630,
+      }],
+    },
+    alternates: {
+      canonical: canonicalUrl,
+      languages: {
+        en: `${siteUrl}`,
+        de: `${siteUrl}/de`,
+        es: `${siteUrl}/es`,
+        fr: `${siteUrl}/fr`,
+        ja: `${siteUrl}/ja`,
+        ko: `${siteUrl}/ko`,
+        'x-default': `${siteUrl}`,
+      },
+    },
+  };
+}
 
 export default function Home() {
   const organizationJsonLd: Organization = {
     '@type': 'Organization',
     name: 'PlanToCode',
     url: 'https://www.plantocode.com',
-    logo: 'https://www.plantocode.com/images/icon.png',
+    logo: {
+      '@type': 'ImageObject',
+      url: 'https://www.plantocode.com/images/icon.webp',
+      width: '512',
+      height: '512'
+    },
     description: 'Plan and ship code changes - find files, generate and merge AI plans, run them in a persistent terminal.',
     foundingDate: '2024',
     sameAs: [
       'https://github.com/plantocode',
       'https://twitter.com/plantocode',
+      'https://x.com/plantocode'
     ],
     contactPoint: {
       '@type': 'ContactPoint',
       contactType: 'Customer Support',
       url: 'https://www.plantocode.com/support',
+      availableLanguage: ['English', 'German', 'French', 'Spanish', 'Japanese', 'Korean']
     },
+    // @ts-ignore - address is valid but optional in schema.org
+    address: {
+      '@type': 'PostalAddress',
+      addressCountry: 'US'
+    }
   };
 
   const websiteJsonLd: WebSite = {
@@ -236,6 +270,7 @@ export default function Home() {
       contentUrl: cdnUrl('/assets/videos/step-2-find.mp4'),
       uploadDate: '2025-09-20T00:00:00Z',
       duration: 'PT50S',
+      embedUrl: 'https://www.plantocode.com/demo#file-discovery',
     },
     {
       '@type': 'VideoObject',
@@ -245,6 +280,7 @@ export default function Home() {
       contentUrl: cdnUrl('/assets/videos/step-4-merge.mp4'),
       uploadDate: '2025-09-20T00:00:00Z',
       duration: 'PT60S',
+      embedUrl: 'https://www.plantocode.com/demo#plan-merge',
     },
     {
       '@type': 'VideoObject',
@@ -254,6 +290,7 @@ export default function Home() {
       contentUrl: cdnUrl('/assets/videos/step-3-generate.mp4'),
       uploadDate: '2025-09-20T00:00:00Z',
       duration: 'PT55S',
+      embedUrl: 'https://www.plantocode.com/demo#deep-research',
     },
     {
       '@type': 'VideoObject',
@@ -263,6 +300,7 @@ export default function Home() {
       contentUrl: cdnUrl('/assets/videos/step-1-text.mp4'),
       uploadDate: '2025-09-20T00:00:00Z',
       duration: 'PT45S',
+      embedUrl: 'https://www.plantocode.com/demo#text-improvement',
     },
     {
       '@type': 'VideoObject',
@@ -272,6 +310,7 @@ export default function Home() {
       contentUrl: cdnUrl('/assets/videos/step-1-voice.mp4'),
       uploadDate: '2025-09-20T00:00:00Z',
       duration: 'PT30S',
+      embedUrl: 'https://www.plantocode.com/demo#voice-transcription',
     },
     {
       '@type': 'VideoObject',
@@ -281,6 +320,7 @@ export default function Home() {
       contentUrl: cdnUrl('/assets/videos/step-1-video.mp4'),
       uploadDate: '2025-09-20T00:00:00Z',
       duration: 'PT40S',
+      embedUrl: 'https://www.plantocode.com/demo#video-analysis',
     },
     {
       '@type': 'VideoObject',
@@ -290,6 +330,7 @@ export default function Home() {
       contentUrl: cdnUrl('/assets/videos/step-5-customize.mp4'),
       uploadDate: '2025-09-20T00:00:00Z',
       duration: 'PT45S',
+      embedUrl: 'https://www.plantocode.com/demo#settings',
     },
   ];
 
@@ -377,11 +418,11 @@ export default function Home() {
             <MeetingsSection />
             <SectionDividerMesh />
 
-            <Features />
-            <SectionDividerMesh />
-
             {/* Common Problems Section - Internal Linking */}
             <ProblemsSection />
+            <SectionDividerMesh />
+
+            <Features />
             <SectionDividerMesh />
 
             {/* Tool Integrations Section */}

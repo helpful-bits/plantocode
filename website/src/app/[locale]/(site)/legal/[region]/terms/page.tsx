@@ -30,6 +30,10 @@ export async function generateMetadata({ params }: TermsPageProps): Promise<Meta
     ? `Nutzungsbedingungen für die Nutzung unserer KI-Workflow-Plattform. Gilt für ${regionName} Nutzer.`
     : `Terms of service outlining rules for using our AI workflow platform. Applicable to ${regionName} users.`;
 
+  const canonicalUrl = locale === 'en'
+    ? `https://www.plantocode.com/legal/${region}/terms`
+    : `https://www.plantocode.com/${locale}/legal/${region}/terms`;
+
   return {
     title,
     description,
@@ -38,12 +42,21 @@ export async function generateMetadata({ params }: TermsPageProps): Promise<Meta
       follow: true,
     },
     alternates: {
-      canonical: `https://www.plantocode.com/legal/${region}/terms`
+      canonical: canonicalUrl,
+      languages: {
+        en: `https://www.plantocode.com/legal/${region}/terms`,
+        de: `https://www.plantocode.com/de/legal/${region}/terms`,
+        es: `https://www.plantocode.com/es/legal/${region}/terms`,
+        fr: `https://www.plantocode.com/fr/legal/${region}/terms`,
+        ja: `https://www.plantocode.com/ja/legal/${region}/terms`,
+        ko: `https://www.plantocode.com/ko/legal/${region}/terms`,
+        'x-default': `https://www.plantocode.com/legal/${region}/terms`,
+      },
     },
     openGraph: {
       title,
       description,
-      url: `https://www.plantocode.com/legal/${region}/terms`,
+      url: canonicalUrl,
       siteName: 'PlanToCode',
       type: 'website',
       locale: locale === 'de' ? 'de_DE' : 'en_US',

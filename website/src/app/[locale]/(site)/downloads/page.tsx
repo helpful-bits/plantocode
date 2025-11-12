@@ -7,47 +7,27 @@ import { CheckCircle2, Shield, Smartphone, Tablet } from 'lucide-react';
 import { Header } from '@/components/landing/Header';
 import { cdnUrl } from '@/lib/cdn';
 
-import { loadMessages, type Locale } from '@/lib/i18n';
+import { loadMessagesFor, type Locale } from '@/lib/i18n';
 import { locales } from '@/i18n/config';
+import { generatePageMetadata } from '@/content/metadata';
 
-export const metadata: Metadata = {
-  title: 'Download PlanToCode - macOS & Windows | Free Trial',
-  description: 'Download PlanToCode for macOS and Windows. Free $5 credits. Plan multi-file changes with AI, review before execution. No credit card required.',
-  keywords: [
-    'plantocode download',
-    'ai architect studio',
-    'integrated terminal download',
-    'claude terminal',
-    'codex integration',
-    'microsoft store',
-    'macos developer tools',
-    'heavy coding agent users',
-    'implementation planning tool',
-    'ai code planning',
-    'cursor alternative',
-  ],
-  openGraph: {
-    title: 'Download PlanToCode',
-    description: 'Download PlanToCode for Windows and macOS. Multi-model planning with an integrated terminal for claude, cursor, codex, and gemini. Available on Microsoft Store.',
-    url: 'https://www.plantocode.com/downloads',
-    siteName: 'PlanToCode',
-    type: 'website',
-    locale: 'en_US',
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessagesFor(locale, ['common', 'pages']);
+
+  return generatePageMetadata({
+    locale,
+    slug: '/downloads',
+    title: t['downloads.meta.title'],
+    description: t['downloads.meta.description'],
     images: [{
       url: cdnUrl('/images/og-image.png'),
       width: 1200,
       height: 630,
       alt: 'PlanToCode - AI Planning for Code',
     }],
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/downloads',
-    languages: {
-      'en-US': 'https://www.plantocode.com/downloads',
-      'en': 'https://www.plantocode.com/downloads',
-    },
-  },
-};
+  });
+}
 
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));
@@ -55,7 +35,7 @@ export function generateStaticParams() {
 
 export default async function DownloadPage({ params }: { params: Promise<{ locale: Locale }> }) {
   const { locale } = await params;
-  const t = await loadMessages(locale);
+  const t = await loadMessagesFor(locale, ['common', 'pages']);
 
   return (
     <>

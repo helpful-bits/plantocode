@@ -16,6 +16,7 @@ pub struct AppSettings {
     pub auth_stores: AuthStoreConfig,
     pub redis: RedisConfig,
     pub website_base_url: String,
+    pub cdn_base_url: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -330,6 +331,9 @@ impl AppSettings {
         let website_base_url = env::var("WEBSITE_BASE_URL")
             .map_err(|_| AppError::Configuration("WEBSITE_BASE_URL must be set".to_string()))?;
 
+        let cdn_base_url = env::var("CDN_BASE_URL")
+            .map_err(|_| AppError::Configuration("CDN_BASE_URL must be set".to_string()))?;
+
         Ok(Self {
             app: AppConfig {
                 name: app_name,
@@ -392,6 +396,7 @@ impl AppSettings {
             },
             redis: RedisConfig { url: redis_url },
             website_base_url,
+            cdn_base_url,
         })
     }
 }

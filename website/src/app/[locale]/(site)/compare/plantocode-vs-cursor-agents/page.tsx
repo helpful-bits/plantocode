@@ -7,42 +7,23 @@ import type { Metadata } from 'next';
 import { locales } from '@/i18n/config';
 import type { Locale } from '@/lib/i18n';
 
-export const metadata: Metadata = {
-  title: 'vsCursor Agents - AI Planning Tool Comparison',
-  description: 'Compare PlanToCode\'sarchitectural planning with Cursor Agents\' editor-first approach. Context awareness, execution control, plan review.',
-  keywords: [
-    'cursor-agents',
-    'plantocode vs cursor-agents',
-    'cursor-agents alternative',
-    'ai code planning',
-    'implementation planning',
-  ],
-  robots: {
-    index: true,
-    follow: true,
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/compare/plantocode-vs-cursor-agents',
-    languages: {
-      'en-US': 'https://www.plantocode.com/compare/plantocode-vs-cursor-agents',
-      'en': 'https://www.plantocode.com/compare/plantocode-vs-cursor-agents',
-      'x-default': 'https://www.plantocode.com/compare/plantocode-vs-cursor-agents',
-    },
-  },
-  openGraph: {
+import { generatePageMetadata } from '@/content/metadata';
+
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+
+  return generatePageMetadata({
+    locale,
+    slug: '/compare/plantocode-vs-cursor-agents',
     title: 'vsCursor Agents - AI Planning Tool Comparison',
     description: 'Compare PlanToCode\'sarchitectural planning with Cursor Agents\' editor-first approach. Context awareness, execution control, plan review.',
-    url: 'https://www.plantocode.com/compare/plantocode-vs-cursor-agents',
-    siteName: 'PlanToCode',
-    type: 'article',
-    locale: 'en_US',
     images: [{
       url: cdnUrl('/images/og-image.png'),
       width: 1200,
       height: 630,
       alt: 'PlanToCode - AI Planning for Code',
     }],
-  },
+  });
 };
 
 export function generateStaticParams() {

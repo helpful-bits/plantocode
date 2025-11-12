@@ -72,11 +72,9 @@ export function ExternalFoldersManager({
       // Filter out redundant child paths
       const filteredRoots = roots ? removeRedundantPaths(roots) : null;
       setAvailableRoots(filteredRoots);
-      
-      // Auto-expand if roots are available
+
+      // Pre-select all roots by default (but don't auto-expand)
       if (filteredRoots && filteredRoots.length > 0) {
-        setIsExpanded(true);
-        // Pre-select all roots by default
         setSelectedRoots(filteredRoots);
       }
     } catch (error) {

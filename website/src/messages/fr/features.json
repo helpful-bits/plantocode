@@ -1,5 +1,9 @@
 {
   "copyButtons": {
+    "meta": {
+      "title": "Boutons de copie - Transformez les invites en flux de travail",
+      "description": "Transformez les invites en flux de travail réutilisables avec des boutons de copie configurables."
+    },
     "comparison": {
       "plantocode": {
         "items": [
@@ -139,6 +143,10 @@
     }
   },
   "deepResearch": {
+    "meta": {
+      "title": "Deep Research - AI-Powered Research Intelligence",
+      "description": "Recherche alimentée par l'IA avec des requêtes sophistiquées et des tâches de recherche parallèles. Recherche Web en temps réel, vérification des sources et intégration contextuelle."
+    },
     "advanced": {
       "features": [
         {
@@ -320,7 +328,11 @@
     "fileDiscovery": {
       "description": "Workflow intelligent multi-étapes qui découvre et sélectionne les fichiers pertinents de votre base de code",
       "slug": "/features/file-discovery",
-      "title": "Découverte de fichiers IA"
+      "title": "Découverte de fichiers IA",
+      "meta": {
+        "title": "AI file discovery - find impacted files",
+        "description": "Multi-stage AI workflow that discovers and selects relevant files. Cost-effective at $0.10-0.15 per workflow with real-time progress tracking."
+      }
     },
     "integratedTerminal": {
       "description": "Sessions de terminal persistantes avec surveillance de santé et révision de commandes",
@@ -330,17 +342,29 @@
     "mergeInstructions": {
       "description": "L'IA analyse plusieurs plans d'implémentation, résout les conflits, crée des solutions émergentes",
       "slug": "/features/merge-instructions",
-      "title": "Synthèse de plans architecturaux"
+      "title": "Synthèse de plans architecturaux",
+      "meta": {
+        "title": "Plan Synthesis - Multi-Model Merging",
+        "description": "Architectural synthesis beyond simple merging. AI analyzes plans, resolves conflicts with SOLID principles, and creates emergent solutions with traceability."
+      }
     },
     "planMode": {
       "description": "Générez des plans d'implémentation fichier par fichier avec l'IA. Révisez et approuvez chaque modification avant l'exécution",
       "slug": "/features/plan-mode",
-      "title": "Plans d'implémentation"
+      "title": "Plans d'implémentation",
+      "meta": {
+        "title": "AI Implementation Plans - Human-in-Loop",
+        "description": "Generate file-by-file AI plans. Review every change before execution. Prevent regressions in legacy code. Safe AI development."
+      }
     },
     "textImprovement": {
       "description": "Affinez les spécifications avec amélioration de texte IA et prompts de raffinement de tâche",
       "slug": "/features/text-improvement",
-      "title": "Mode de capture de spécifications"
+      "title": "Mode de capture de spécifications",
+      "meta": {
+        "title": "Spec Capture Mode - AI Text Enhancement",
+        "description": "Refine specifications with two AI prompts: Text Enhancement for clarity, Task Refinement for completeness. Create actionable specs for development teams."
+      }
     },
     "videoAnalysis": {
       "description": "L'IA multimodale analyse le contenu audio et visuel pour extraire les exigences exploitables",
@@ -350,7 +374,11 @@
     "voiceTranscription": {
       "description": "Capturez des spécifications mains libres avec transcription vocale en plusieurs langues",
       "slug": "/features/voice-transcription",
-      "title": "Voix vers texte"
+      "title": "Voix vers texte",
+      "meta": {
+        "title": "Voice to text for rapid specification capture",
+        "description": "Hands-free specification capture with voice. Accurate transcription inserts text where you work. Configure per project, supports multiple languages."
+      }
     }
   },
   "fileDiscovery": {
@@ -491,9 +519,17 @@
     },
     "description": "Outils complets pour planifier, réviser et exécuter des modifications de code complexes. De la découverte de fichiers à l'exécution dans le terminal, tout ce dont vous avez besoin pour un développement assisté par IA sécurisé.",
     "learnMore": "En savoir plus",
-    "title": "Fonctionnalités de planification de développement IA"
+    "title": "Fonctionnalités de planification de développement IA",
+    "meta": {
+      "title": "Fonctionnalités de planification du développement IA | PlanToCode",
+      "description": "Fonctionnalités de PlanToCode : plans d'implémentation, découverte de fichiers, intégration terminale, amélioration de texte. Fonctionne avec Claude Code, Cursor, Codex."
+    }
   },
   "integratedTerminal": {
+    "meta": {
+      "title": "Integrated Terminal - Persistent PTY Sessions",
+      "description": "Persistent terminal sessions with health monitoring and command review. Execute implementation plans directly with voice transcription support."
+    },
     "cta": {
       "description": "Un terminal conçu pour la planification et l'exécution — intégré, persistant et rapide.",
       "links": {
@@ -1033,6 +1069,10 @@
     }
   },
   "videoAnalysis": {
+    "meta": {
+      "title": "Meeting & Recording Analysis - Multimodal AI",
+      "description": "Multimodal AI analyzes audio and visual content to extract actionable requirements from Microsoft Teams meetings and screen recordings."
+    },
     "capabilities": {
       "fileUpload": {
         "description": "Téléchargez des enregistrements existants, des rapports de bugs clients ou des vidéos de démo. Prend en charge tous les formats vidéo courants.",

@@ -3,13 +3,35 @@ import Combine
 import OSLog
 import UIKit
 
+public enum DiscoveryError: Error {
+    case network(String)
+    case unauthorized
+    case serverError(String)
+    case parsing(String)
+
+    public static func == (lhs: DiscoveryError, rhs: DiscoveryError) -> Bool {
+        switch (lhs, rhs) {
+        case (.network(let lMsg), .network(let rMsg)):
+            return lMsg == rMsg
+        case (.unauthorized, .unauthorized):
+            return true
+        case (.serverError(let lMsg), .serverError(let rMsg)):
+            return lMsg == rMsg
+        case (.parsing(let lMsg), .parsing(let rMsg)):
+            return lMsg == rMsg
+        default:
+            return false
+        }
+    }
+}
+
 @MainActor
 public class DeviceDiscoveryService: ObservableObject {
     public static let shared = DeviceDiscoveryService()
 
     @Published public private(set) var devices: [RegisteredDevice] = []
     @Published public private(set) var isLoading: Bool = false
-    @Published public private(set) var errorMessage: String? = nil
+    @Published public private(set) var error: DiscoveryError? = nil
 
     private let logger = Logger(subsystem: "com.plantocode.app", category: "DeviceDiscovery")
     private var lastRefreshAt: Date? = nil
@@ -63,7 +85,7 @@ public class DeviceDiscoveryService: ObservableObject {
     @MainActor
     public func clearList() {
         self.devices = []
-        self.errorMessage = nil
+        self.error = nil
         self.isLoading = false
     }
 
@@ -80,7 +102,7 @@ public class DeviceDiscoveryService: ObservableObject {
 
         self.logger.info("Starting device discovery")
         self.isLoading = true
-        self.errorMessage = nil
+        self.error = nil
 
         defer {
             self.isLoading = false
@@ -99,16 +121,29 @@ public class DeviceDiscoveryService: ObservableObject {
             self.devices = connected
 
             if !allDesktops.isEmpty && connected.isEmpty {
-                self.errorMessage = "Desktop is registered but not reachable. Enable 'Allow Remote Access' in Desktop settings."
+                self.error = .serverError("Desktop is registered but not reachable. Enable 'Allow Remote Access' in Desktop settings.")
             }
 
             self.logger.info("DeviceDiscoveryService: filtered devices before=\(beforeCount) after=\(self.devices.count)")
             self.logger.info("Fetched \(self.devices.count) desktop devices from server at \(Config.serverURL)")
             self.logger.info("Device discovery completed: \(self.devices.count) devices found")
+        } catch let apiError as APIError {
+            self.logger.error("getDevices failed: \(apiError.localizedDescription)")
+            self.devices = []
+            switch apiError {
+            case .invalidURL, .requestFailed, .decodingFailed:
+                self.error = .network(apiError.localizedDescription)
+            case .invalidResponse(let statusCode, _):
+                if statusCode == 401 || statusCode == 403 {
+                    self.error = .unauthorized
+                } else {
+                    self.error = .serverError("HTTP \(statusCode)")
+                }
+            }
         } catch {
             self.logger.error("getDevices failed: \(error.localizedDescription)")
             self.devices = []
-            self.errorMessage = "Unable to load devices. Ensure your desktop is registered, signed in, and discoverable."
+            self.error = .parsing(error.localizedDescription)
         }
     }
 }

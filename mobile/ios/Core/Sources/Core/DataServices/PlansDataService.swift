@@ -67,6 +67,21 @@ public class PlansDataService: ObservableObject {
             .store(in: &cancellables)
     }
 
+    public func reset() {
+        plans = []
+        isLoading = false
+        error = nil
+        currentListPlansRequestToken = nil
+        hasLoadedOnce = false
+        lastPlansFetch = [:]
+        lastUpdateEvent = nil
+        lastBoundDeviceId = nil
+        contentCache.removeAllObjects()
+        relayEventsCancellable?.cancel()
+        relayEventsCancellable = nil
+        cancellables.removeAll()
+    }
+
     private func rebindRelayEvents() {
         if MultiConnectionManager.shared.activeDeviceId != lastBoundDeviceId {
             self.invalidateCache()

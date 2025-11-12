@@ -1,26 +1,18 @@
 import type { Metadata } from 'next';
-import { cdnUrl } from '@/lib/cdn';
+import { loadMessages, type Locale } from '@/lib/i18n';
+import { generatePageMetadata } from '@/content/metadata';
 
-export const metadata: Metadata = {
-  title: 'Interactive Demo - PlanToCode AI Planning Workflow',
-  description: 'Try the complete AI planning workflow. See how file discovery, multi-model plans, human review, and safe execution work together.',
-  alternates: {
-    canonical: 'https://www.plantocode.com/demo',
-  },
-  openGraph: {
-    title: 'Interactive Demo - PlanToCode AI Planning Workflow',
-    description: 'Experience the complete workflow: file discovery, multi-model planning, human-in-the-loop review, and safe execution.',
-    url: 'https://www.plantocode.com/demo',
-    siteName: 'PlanToCode',
-    type: 'website',
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
-    }],
-  },
-};
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return generatePageMetadata({
+    locale,
+    slug: '/demo',
+    title: t['demo.meta.title'],
+    description: t['demo.meta.description'],
+  });
+}
 
 export default function DemoLayout({
   children,

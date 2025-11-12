@@ -2,39 +2,27 @@ import { Metadata } from 'next';
 
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Calendar, Sparkles, Zap, Bug, Trash2 } from 'lucide-react';
-import { cdnUrl } from '@/lib/cdn';
 import { loadMessages, type Locale } from '@/lib/i18n';
 import { locales } from '@/i18n/config';
+import { generatePageMetadata } from '@/content/metadata';
 
-export const metadata: Metadata = {
-  title: 'Changelog - Latest Updates',
-  description: 'Latest features and improvements in PlanToCode. Multi-model AI planning updates for Claude Code, Cursor, and OpenAI Codex integration.',
-  robots: {
-    index: true,
-    follow: true,
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/changelog',
-    languages: {
-      'en-US': 'https://www.plantocode.com/changelog',
-      'en': 'https://www.plantocode.com/changelog',
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return {
+    ...generatePageMetadata({
+      locale,
+      slug: '/changelog',
+      title: t['changelog.meta.title'],
+      description: t['changelog.meta.description'],
+    }),
+    robots: {
+      index: true,
+      follow: true,
     },
-  },
-  openGraph: {
-    title: 'Changelog - Latest Updates',
-    description: 'Latest features and improvements in PlanToCode. Multi-model AI planning updates for Claude Code, Cursor, and OpenAI Codex integration.',
-    url: 'https://www.plantocode.com/changelog',
-    siteName: 'PlanToCode',
-    type: 'website',
-    locale: 'en_US',
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
-    }],
-  },
-};
+  };
+}
 
 interface ChangelogEntry {
   version: string;

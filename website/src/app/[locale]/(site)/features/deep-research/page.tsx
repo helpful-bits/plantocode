@@ -4,14 +4,24 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
+import { RelatedFeatures } from '@/components/RelatedContent';
 import { Search, Globe, Database, Brain, Zap, Shield, CheckCircle2, Network, TrendingUp, FileText, Filter, Clock } from 'lucide-react';
-import { cdnUrl } from '@/lib/cdn';
 import { loadMessages, type Locale } from '@/lib/i18n';
 import { locales } from '@/i18n/config';
-export const metadata: Metadata = {
-  title: 'Deep research - web search for developers',
-  description: 'AI research assistant generates sophisticated queries and parallel tasks. Context-aware analysis with project integration.',
-  keywords: [
+import { generatePageMetadata, COMMON_KEYWORDS, mergeKeywords } from '@/content/metadata';
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return {
+    ...generatePageMetadata({
+      locale,
+      slug: '/features/deep-research',
+      title: t['deepResearch.meta.title'],
+      description: t['deepResearch.meta.description'],
+    }),
+    keywords: mergeKeywords(
+      [
     'ai web search',
     'intelligent research',
     'information synthesis',
@@ -25,28 +35,10 @@ export const metadata: Metadata = {
     'web intelligence',
     'ai research assistant',
   ],
-  openGraph: {
-    title: 'Deep Research - Intelligent Web Search for Development',
-    description: 'AI-powered research assistant with intelligent query generation and parallel research execution. Transform your development workflow with context-aware research insights.',
-    url: 'https://www.plantocode.com/features/deep-research',
-    siteName: 'PlanToCode',
-    type: 'website',
-    locale: 'en_US',
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
-    }],
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/features/deep-research',
-    languages: {
-      'en-US': 'https://www.plantocode.com/features/deep-research',
-      'en': 'https://www.plantocode.com/features/deep-research',
-    },
-  },
-};
+      COMMON_KEYWORDS.core
+    ),
+  };
+}
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));
 }
@@ -420,6 +412,9 @@ export default async function DeepResearchPage({ params }: { params: Promise<{ l
                   </GlassCard>
                 </div>
               </div>
+              {/* Related Features */}
+              <RelatedFeatures currentSlug="features/deep-research" maxItems={3} />
+
               {/* CTA */}
               <div className="text-center">
                 <GlassCard className="p-8 sm:p-12 max-w-3xl mx-auto" highlighted>

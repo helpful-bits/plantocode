@@ -12,5 +12,6 @@ pub mod notification_handlers;
 pub mod provider_handlers;
 pub mod provider_transformers;
 pub mod proxy_handlers;
+pub mod public;
 pub mod region_handlers;
 pub mod system_prompts_handlers;

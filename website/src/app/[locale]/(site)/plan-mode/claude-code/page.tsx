@@ -4,44 +4,24 @@ import { claudeCodeContent } from '@/content/plan-integrations/claude-code';
 import { cdnUrl } from '@/lib/cdn';
 import { locales } from '@/i18n/config';
 import type { Locale } from '@/lib/i18n';
+import { generatePageMetadata } from '@/content/metadata';
 
-export const metadata: Metadata = {
-  title: claudeCodeContent.meta.title,
-  description: claudeCodeContent.meta.description,
-  keywords: [
-    'claude code plan mode enhancement',
-    'claude code planning',
-    'claude code multi-model planning',
-    'enhance claude code plan mode',
-    'claude code file discovery',
-    'claude code planning workflow',
-    'plantocode claude code',
-    'claude code integration',
-    'ai coding with claude code',
-    'claude code reviewable specs',
-  ],
-  openGraph: {
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+
+  return generatePageMetadata({
+    locale,
+    slug: '/plan-mode/claude-code',
+    title: claudeCodeContent.meta.title,
+    description: claudeCodeContent.meta.description,
     images: [{
       url: cdnUrl('/images/og-image.png'),
       width: 1200,
       height: 630,
       alt: 'PlanToCode - AI Planning for Code',
     }],
-    
-    title: claudeCodeContent.meta.title,
-    description: claudeCodeContent.meta.description,
-    url: claudeCodeContent.meta.canonical,
-    siteName: 'PlanToCode',
-    type: 'website',
-  },
-  alternates: {
-    canonical: claudeCodeContent.meta.canonical,
-    languages: {
-      'en-US': claudeCodeContent.meta.canonical,
-      'en': claudeCodeContent.meta.canonical,
-    },
-  },
-};
+  });
+}
 
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));

@@ -1,33 +1,20 @@
 import type { Metadata } from 'next';
 import { DocsArticle } from '@/components/docs/DocsArticle';
 import { GlassCard } from '@/components/ui/GlassCard';
-import { cdnUrl } from '@/lib/cdn';
 import { loadMessages, type Locale } from '@/lib/i18n';
 import { locales } from '@/i18n/config';
-export const metadata: Metadata = {
-  title: 'Model configuration and guardrails - PlanToCode',
-  description: 'How PlanToCode lets you pick allowed models per task and keeps prompts within the active context window.',
-  alternates: {
-    canonical: 'https://www.plantocode.com/docs/model-configuration',
-    languages: {
-      'en-US': 'https://www.plantocode.com/docs/model-configuration',
-      'en': 'https://www.plantocode.com/docs/model-configuration',
-    },
-  },
-  openGraph: {
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
-    }],
-    title: 'Model configuration and guardrails - PlanToCode',
-    description: 'Learn how task-level model settings, selector toggles, and token estimates work together.',
-    url: 'https://www.plantocode.com/docs/model-configuration',
-    siteName: 'PlanToCode',
-    type: 'article',
-  },
-};
+import { generatePageMetadata } from '@/content/metadata';
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return generatePageMetadata({
+    locale,
+    slug: '/docs/model-configuration',
+    title: t['modelConfiguration.meta.title'],
+    description: t['modelConfiguration.meta.description'],
+  });
+}
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));
 }

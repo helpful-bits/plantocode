@@ -24,7 +24,7 @@
     "badge": "인간 참여형 AI 계획",
     "buttons": {
       "download": "무료 다운로드",
-      "talk": "아키텍트와 상담"
+      "talk": "전문가와 상담"
     },
     "description": "하나의 작업 공간에서 AI 지원 변경 사항을 계획, 검토 및 실행합니다. 모델, 프롬프트, 파일 및 터미널 출력을 정렬 상태로 유지합니다.",
     "features": {
@@ -168,7 +168,8 @@
     "cta": {
       "demo": "인터랙티브 데모 사용해보기 →",
       "download": "무료 다운로드",
-      "howItWorks": "작동 방식 보기"
+      "howItWorks": "작동 방식 보기",
+      "viewDemo": "개발자가 매일 사용하는 방법 보기"
     },
     "panel1": {
       "description": "검색 패턴을 생성하고, 관련성 점수를 실행하고, 계획에 파일을 포함하기 전에 단계별 결과를 검토하십시오.",
@@ -185,7 +186,7 @@
       "title": "파일 발견 워크플로우"
     },
     "panel2": {
-      "description": "GPT-5, Gemini 2.5 Pro, Claude 4 Sonnet, Grok 4 및 DeepSeek R1에서 구현 계획을 생성하고 최고의 아이디어를 병합하십시오.",
+      "description": "동일한 모델의 여러 인스턴스를 포함하여 - 모든 모델을 병렬로 실행하고 최고의 아이디어를 병합하십시오.",
       "link": "워크플로우 탐색",
       "models": {
         "claude": "Claude Sonnet 4",
@@ -280,10 +281,25 @@
         "link": "자세히 알아보기 →",
         "title": "대규모 기능"
       },
+      "legacyRefactoring": {
+        "description": "기능을 보존하면서 구조를 개선하는 AI 지원 리팩토링으로 레거시 코드베이스 현대화",
+        "link": "자세히 보기 →",
+        "title": "레거시 코드 리팩토링"
+      },
       "libraryUpgrades": {
         "description": "파손 변경 감지 및 마이그레이션 계획으로 종속성을 안전하게 업데이트",
         "link": "자세히 알아보기 →",
         "title": "라이브러리 업그레이드"
+      },
+      "preventDuplicates": {
+        "description": "코드베이스 전체에서 중복 코드, 컴포넌트 및 구현 감지 및 방지",
+        "link": "자세히 보기 →",
+        "title": "중복 파일 방지"
+      },
+      "safeRefactoring": {
+        "description": "아키텍처 인식과 포괄적인 영향 분석을 통해 자신 있게 리팩토링",
+        "link": "자세히 보기 →",
+        "title": "안전한 리팩토링"
       }
     },
     "subtitle": "소프트웨어 개발에서 가장 어려운 문제에 대한 실제 솔루션",

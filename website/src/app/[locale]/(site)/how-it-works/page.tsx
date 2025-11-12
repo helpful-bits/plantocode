@@ -1,4 +1,4 @@
-import { Metadata } from 'next';
+import type { Metadata } from 'next';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
@@ -21,59 +21,27 @@ import {
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Button } from '@/components/ui/button';
 import { cdnUrl } from '@/lib/cdn';
-import { loadMessages, type Locale } from '@/lib/i18n';
-export const metadata: Metadata = {
-  title: 'How It Works - AI Planning Workflow',
-  description: 'AI implementation planning prevents chaos. File discovery, multi-model plans, human review, and safe execution with any coding agent.',
-  keywords: [
-    'implementation plan',
-    'ai code planning',
-    'safe refactoring',
-    'prevent duplicate files',
-    'cursor alternative',
-    'corporate ai workflow',
-    'requirements to implementation',
-    'meeting to code',
-    'human in the loop workflow',
-    'safe ai development',
-    'specification capture workflow',
-    'enterprise ai development',
-    'ai workflow',
-    'implementation plan workflow',
-    'monaco editor ai',
-    'merge ai plans',
-    'ai terminal execution',
-    'claude code workflow',
-    'codex cli workflow',
-    'ai plan editing',
-    'multi model ai planning',
-    'professional ai tools',
-    'staff engineer tools',
-    'ai architect studio',
-    'plan merge instructions',
-    'integrated terminal ai',
-  ],
-  openGraph: {
-    title: 'How It Works - Corporate AI Development Workflow',
-    description: 'End-to-end workflow: capture requirements from meetings and voice, refine into actionable specifications, generate granular implementation plans, review with human-in-the-loop governance, and execute safely. Built for corporate teams managing legacy codebases.',
-    url: 'https://www.plantocode.com/how-it-works',
-    siteName: 'PlanToCode',
-    type: 'website',
+import { loadMessagesFor, type Locale } from '@/lib/i18n';
+import { generatePageMetadata } from '@/content/metadata';
+
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessagesFor(locale, ['common', 'pages']);
+
+  return generatePageMetadata({
+    locale,
+    slug: '/how-it-works',
+    title: t['howItWorks.meta.title'],
+    description: t['howItWorks.meta.description'],
     images: [{
       url: cdnUrl('/images/og-image.png'),
       width: 1200,
       height: 630,
       alt: 'PlanToCode - AI Planning for Code',
     }],
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/how-it-works',
-    languages: {
-      'en-US': 'https://www.plantocode.com/how-it-works',
-      'en': 'https://www.plantocode.com/how-it-works',
-    },
-  },
-};
+  });
+}
+
 interface WorkflowStep {
   step: number;
   title: string;
@@ -94,7 +62,7 @@ export function generateStaticParams() {
 }
 export default async function HowItWorksPage({ params }: { params: Promise<{ locale: Locale }> }) {
   const { locale } = await params;
-  const t = await loadMessages(locale);
+  const t = await loadMessagesFor(locale, ['common', 'pages']);
   const workflowSteps: WorkflowStep[] = [
     {
       step: 1,
@@ -106,17 +74,17 @@ export default async function HowItWorksPage({ params }: { params: Promise<{ loc
         {
           icon: <Video className="w-5 h-5" />,
           title: t['howItWorks.workflow.step1.meetings.title'] ?? '',
-          description: t['howItWorks.workflow.step1.meetings.description'] ?? ''
+          description: t['howItWorks.workflow.step1.meetings.description'] ?? '',
         },
         {
           icon: <Camera className="w-5 h-5" />,
           title: t['howItWorks.workflow.step1.screen.title'] ?? '',
-          description: t['howItWorks.workflow.step1.screen.description'] ?? ''
+          description: t['howItWorks.workflow.step1.screen.description'] ?? '',
         },
         {
           icon: <Mic className="w-5 h-5" />,
           title: t['howItWorks.workflow.step1.voice.title'] ?? '',
-          description: t['howItWorks.workflow.step1.voice.description'] ?? ''
+          description: t['howItWorks.workflow.step1.voice.description'] ?? '',
         }
       ],
       learnMoreLinks: [
@@ -134,12 +102,12 @@ export default async function HowItWorksPage({ params }: { params: Promise<{ loc
         {
           icon: <Edit3 className="w-5 h-5" />,
           title: t['howItWorks.workflow.step2.textEnhancement.title'] ?? '',
-          description: t['howItWorks.workflow.step2.textEnhancement.description'] ?? ''
+          description: t['howItWorks.workflow.step2.textEnhancement.description'] ?? '',
         },
         {
           icon: <Target className="w-5 h-5" />,
           title: t['howItWorks.workflow.step2.taskRefinement.title'] ?? '',
-          description: t['howItWorks.workflow.step2.taskRefinement.description'] ?? ''
+          description: t['howItWorks.workflow.step2.taskRefinement.description'] ?? '',
         }
       ],
       learnMoreLinks: [
@@ -208,17 +176,17 @@ export default async function HowItWorksPage({ params }: { params: Promise<{ loc
     {
       icon: <Target className="w-8 h-8" />,
       title: t['howItWorks.keyFeatures.governance.title'] ?? '',
-      description: t['howItWorks.keyFeatures.governance.description'] ?? ''
+      description: t['howItWorks.keyFeatures.governance.description'] ?? '',
     },
     {
       icon: <Zap className="w-8 h-8" />,
       title: t['howItWorks.keyFeatures.sessions.title'] ?? '',
-      description: t['howItWorks.keyFeatures.sessions.description'] ?? ''
+      description: t['howItWorks.keyFeatures.sessions.description'] ?? '',
     },
     {
       icon: <Sparkles className="w-8 h-8" />,
       title: t['howItWorks.keyFeatures.deploy.title'] ?? '',
-      description: t['howItWorks.keyFeatures.deploy.description'] ?? ''
+      description: t['howItWorks.keyFeatures.deploy.description'] ?? '',
     }
   ];
   return (

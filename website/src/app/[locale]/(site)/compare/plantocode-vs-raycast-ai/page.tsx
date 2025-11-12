@@ -7,42 +7,23 @@ import type { Metadata } from 'next';
 import { locales } from '@/i18n/config';
 import type { Locale } from '@/lib/i18n';
 
-export const metadata: Metadata = {
-  title: 'vsRaycast AI - Developer Tool Comparison',
-  description: 'Compare PlanToCode\'sdeep architectural planning with Raycast AI\'s quick commands. File discovery, multi-model planning, terminal integration.',
-  keywords: [
-    'raycast',
-    'plantocode vs raycast',
-    'raycast alternative',
-    'ai code planning',
-    'implementation planning',
-  ],
-  robots: {
-    index: true,
-    follow: true,
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/compare/plantocode-vs-raycast-ai',
-    languages: {
-      'en-US': 'https://www.plantocode.com/compare/plantocode-vs-raycast-ai',
-      'en': 'https://www.plantocode.com/compare/plantocode-vs-raycast-ai',
-      'x-default': 'https://www.plantocode.com/compare/plantocode-vs-raycast-ai',
-    },
-  },
-  openGraph: {
+import { generatePageMetadata } from '@/content/metadata';
+
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+
+  return generatePageMetadata({
+    locale,
+    slug: '/compare/plantocode-vs-raycast-ai',
     title: 'vsRaycast AI - Developer Tool Comparison',
     description: 'Compare PlanToCode\'sdeep architectural planning with Raycast AI\'s quick commands. File discovery, multi-model planning, terminal integration.',
-    url: 'https://www.plantocode.com/compare/plantocode-vs-raycast-ai',
-    siteName: 'PlanToCode',
-    type: 'article',
-    locale: 'en_US',
     images: [{
       url: cdnUrl('/images/og-image.png'),
       width: 1200,
       height: 630,
       alt: 'PlanToCode - AI Planning for Code',
     }],
-  },
+  });
 };
 
 export function generateStaticParams() {

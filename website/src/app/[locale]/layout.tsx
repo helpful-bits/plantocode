@@ -37,18 +37,21 @@ export const metadata: Metadata = {
     telephone: false,
   },
   alternates: {
-    canonical: 'https://www.plantocode.com/',
+    canonical: 'https://www.plantocode.com',
     languages: {
-      en: '/',
-      de: '/de',
-      fr: '/fr',
-      es: '/es',
+      en: 'https://www.plantocode.com',
+      de: 'https://www.plantocode.com/de',
+      es: 'https://www.plantocode.com/es',
+      fr: 'https://www.plantocode.com/fr',
+      ja: 'https://www.plantocode.com/ja',
+      ko: 'https://www.plantocode.com/ko',
+      'x-default': 'https://www.plantocode.com',
     }
   },
   openGraph: {
     title: 'PlanToCode - plan and ship code changes',
     description: 'Find impacted files, generate and merge AI plans, run in a persistent terminal.',
-    url: 'https://www.plantocode.com/',
+    url: 'https://www.plantocode.com',
     siteName: 'PlanToCode',
     images: [{
       url: cdnUrl('/images/og-image.png'),
@@ -58,6 +61,7 @@ export const metadata: Metadata = {
       type: 'image/png',
     }],
     locale: 'en_US',
+    alternateLocale: ['de_DE', 'fr_FR', 'es_ES', 'ko_KR', 'ja_JP'],
     type: 'website',
   },
   twitter: {
@@ -66,7 +70,7 @@ export const metadata: Metadata = {
     description: 'Find impacted files, generate and merge AI plans, run in a persistent terminal.',
     images: [{
       url: cdnUrl('/images/og-image.png'),
-      alt: 'PlanToCode - AI planning tool with integrated terminal',
+      alt: 'PlanToCode - AI Planning for Code',
       width: 1200,
       height: 630,
     }],
@@ -144,12 +148,8 @@ const websiteJsonLd: WebSite = {
   alternateName: 'PlanToCode',
   url: 'https://www.plantocode.com',
   description: 'PlanToCode helps you plan and ship code changes - find the right files, generate and merge AI plans, then run them in a persistent terminal.',
-  potentialAction: {
-    '@type': 'SearchAction',
-    target: 'https://www.plantocode.com/search?q={search_term_string}',
-    // @ts-ignore - query-input is a valid schema.org property but not in the TypeScript types
-    'query-input': 'required name=search_term_string'
-  }
+  // SearchAction removed - we use client-side search only (SearchDialog component)
+  // This prevents Google from crawling non-existent /search?q= URLs
 };
 
 const organizationJsonLd: Organization = {
@@ -166,7 +166,19 @@ const organizationJsonLd: Organization = {
     'https://x.com/plantocode',
     'https://github.com/plantocode'
   ],
-  description: 'PlanToCode helps you plan and ship code changes - find the right files, generate and merge AI plans, then run them in a persistent terminal.'
+  description: 'PlanToCode helps you plan and ship code changes - find the right files, generate and merge AI plans, then run them in a persistent terminal.',
+  contactPoint: {
+    '@type': 'ContactPoint',
+    contactType: 'Customer Support',
+    url: 'https://www.plantocode.com/support',
+    availableLanguage: ['English', 'German', 'French', 'Spanish', 'Japanese', 'Korean']
+  },
+  foundingDate: '2024',
+  // @ts-ignore - address is valid but optional in schema.org
+  address: {
+    '@type': 'PostalAddress',
+    addressCountry: 'US'
+  }
 };
 
 export function generateStaticParams() {

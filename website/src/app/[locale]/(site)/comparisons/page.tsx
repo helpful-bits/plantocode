@@ -10,19 +10,19 @@ import { getPagesByCategory } from '@/data/pseo';
 import { loadMessagesFor, type Locale } from '@/lib/i18n';
 import { Layers, GitCompare } from 'lucide-react';
 import { locales } from '@/i18n/config';
+import { generatePageMetadata } from '@/content/metadata';
 
-export const metadata: Metadata = {
-  title: 'PlanToCode vs Alternatives - Feature Comparisons',
-  description: 'Compare PlanToCode with tmux, script, asciinema, Cursor, Claude Code, and other development tools. See how architectural planning improves your workflow.',
-  openGraph: {
-    title: 'PlanToCode Comparisons - vs tmux, Cursor, Claude Code',
-    description: 'Detailed feature comparisons with alternative development tools.',
-    url: 'https://www.plantocode.com/comparisons',
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/comparisons',
-  },
-};
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessagesFor(locale, ['common', 'pages']);
+
+  return generatePageMetadata({
+    locale,
+    slug: '/comparisons',
+    title: t['comparisons.meta.title'],
+    description: t['comparisons.meta.description'],
+  });
+}
 
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));

@@ -18,7 +18,7 @@
   },
   "cta": {
     "download": "Descargar",
-    "talkToArchitect": "Hablar con un Arquitecto"
+    "talkToArchitect": "Hablar con un Experto"
   },
   "feature": {
     "copyButtons": {
@@ -79,7 +79,7 @@
     "resources": "Recursos",
     "support": "Soporte",
     "tagline": "Planifica e implementa cambios de código - encuentra archivos, genera y fusiona planes de IA, ejecútalos en un terminal persistente.",
-    "talkToArchitect": "Hablar con un Arquitecto",
+    "talkToArchitect": "Hablar con un Experto",
     "terms": "Términos"
   },
   "label": {

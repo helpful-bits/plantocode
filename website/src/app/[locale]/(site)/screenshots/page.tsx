@@ -2,14 +2,23 @@ import type { Metadata } from 'next';
 
 import { Header } from '@/components/landing/Header';
 import { ScreenshotGallery } from '@/components/demo/ScreenshotGallery';
-import { cdnUrl } from '@/lib/cdn';
 import { loadMessages, type Locale } from '@/lib/i18n';
 import { locales } from '@/i18n/config';
+import { generatePageMetadata, COMMON_KEYWORDS, mergeKeywords } from '@/content/metadata';
 
-export const metadata: Metadata = {
-  title: 'Screenshots - PlanToCode in action',
-  description: 'See PlanToCode in action with real screenshots from actual workflows. File discovery, implementation plans, terminal integration, and more.',
-  keywords: [
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return {
+    ...generatePageMetadata({
+      locale,
+      slug: '/screenshots',
+      title: t['screenshots.meta.title'],
+      description: t['screenshots.meta.description'],
+    }),
+    keywords: mergeKeywords(
+      [
     'plantocode screenshots',
     'ai planning interface',
     'implementation plan examples',
@@ -19,28 +28,10 @@ export const metadata: Metadata = {
     'multi-model planning UI',
     'voice transcription interface',
   ],
-  openGraph: {
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
-    }],
-    
-    title: 'Screenshots - See PlanToCode in Action',
-    description: 'Real screenshots from actual workflows showing file discovery, implementation planning, and terminal execution.',
-    url: 'https://www.plantocode.com/screenshots',
-    siteName: 'PlanToCode',
-    type: 'website',
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/screenshots',
-    languages: {
-      'en-US': 'https://www.plantocode.com/screenshots',
-      'en': 'https://www.plantocode.com/screenshots',
-    },
-  },
-};
+      COMMON_KEYWORDS.core
+    ),
+  };
+}
 
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));

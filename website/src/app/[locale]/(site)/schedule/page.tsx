@@ -54,7 +54,7 @@ export default function SchedulePage() {
           <div className="container mx-auto max-w-5xl">
             <div className="text-center mb-12">
               <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-6 bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent">
-                {t['schedule.hero.title'] ?? ''}
+                {t['schedule.hero.title'] || 'Talk to an Architect'}
               </h1>
               <p className="text-lg sm:text-xl text-foreground/80 max-w-3xl mx-auto leading-relaxed">
                 {t['schedule.hero.subtitle'] ?? ''}

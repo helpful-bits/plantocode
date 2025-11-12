@@ -1,5 +1,9 @@
 {
   "architecture": {
+    "meta": {
+      "title": "Vue d'ensemble de l'architecture PlanToCode",
+      "description": "Couches de bureau, d'orchestration et de persistance qui alimentent les plans d'implémentation, les flux de travail et les sessions de terminal."
+    },
     "category": "Architecture",
     "date": "2025-09-19",
     "description": "Comment le shell de bureau, les flux de travail en arrière-plan et les services partagés sont organisés.",
@@ -31,6 +35,10 @@
     }
   },
   "deepResearch": {
+    "meta": {
+      "title": "Recherche approfondie - PlanToCode",
+      "description": "Documentation technique du flux de recherche web : intégration API, optimisation des requêtes, traitement des résultats et intégration du flux de travail de développement."
+    },
     "apiIntegration": {
       "heading": "Détails de l'intégration API",
       "pipeline": {
@@ -305,7 +313,7 @@
         "heading": "Étape 4 : Recherche de chemin étendu",
         "relationship": "Analyse de relations : Analyse les instructions d'importation, les fichiers de configuration et la structure du projet pour trouver des fichiers connexes qui améliorent le contexte pour la tâche spécifique."
       }
-      },
+    },
     "stateManagement": {
       "eventDriven": {
         "description": "Le système publie des événements en temps réel pour les changements d'état du flux de travail, les achèvements d'étape et les conditions d'erreur. Ces événements permettent des interfaces utilisateur réactives et l'intégration avec des systèmes de surveillance externes.",
@@ -321,7 +329,11 @@
         "heading": "Transitions d'état"
       }
     },
-    "title": "Flux de travail de découverte de fichiers"
+    "title": "Flux de travail de découverte de fichiers",
+    "meta": {
+      "title": "Découverte de fichiers - PlanToCode",
+      "description": "Guide technique complet du flux de travail IA en 5 étapes qui identifie les fichiers pertinents dans l'ensemble de la base de code."
+    }
   },
   "hub": {
     "ctaDescription": "Téléchargez PlanToCode pour accéder au planificateur d'implémentation, aux garde-fous de modèle, aux sessions de terminal et aux fonctionnalités de transcription décrites dans cette documentation.",
@@ -333,6 +345,57 @@
     "searchPlaceholder": "Rechercher dans la documentation...",
     "searchShortcut": "⌘K",
     "title": "Documentation PlanToCode"
+  },
+  "onThisPage": {
+    "title": "Sur cette page"
+  },
+  "sidebar": {
+    "title": "Documentation"
+  },
+  "sections": {
+    "planning": {
+      "title": "Planification et contexte"
+    },
+    "execution": {
+      "title": "Surface d'exécution"
+    },
+    "architecture": {
+      "title": "Architecture"
+    }
+  },
+  "items": {
+    "text-improvement": {
+      "title": "Amélioration de texte",
+      "description": "Popover de sélection, file d'attente de tâches et intégrations pour le nettoyage des prompts."
+    },
+    "implementation-plans": {
+      "title": "Plans d'implémentation",
+      "description": "Comment les plans sont diffusés dans le visualiseur Monaco et restent liés à l'historique des plans."
+    },
+    "file-discovery": {
+      "title": "Flux de travail de découverte de fichiers",
+      "description": "Flux de travail en arrière-plan qui rassemble les chemins pertinents pour chaque tâche."
+    },
+    "deep-research": {
+      "title": "Deep Research et recherche web",
+      "description": "Flux de travail de recherche web, intégration API, optimisation des requêtes et intégration du flux de travail de développement."
+    },
+    "model-configuration": {
+      "title": "Configuration du modèle",
+      "description": "Modèles autorisés par tâche et garde-fous de jetons dans le sélecteur."
+    },
+    "terminal-sessions": {
+      "title": "Sessions de terminal",
+      "description": "Sessions PTY persistantes, détection CLI et comportement de récupération."
+    },
+    "voice-transcription": {
+      "title": "Transcription vocale",
+      "description": "Cycle de vie d'enregistrement, paramètres sensibles au projet et gestion des périphériques."
+    },
+    "architecture": {
+      "title": "Vue d'ensemble de l'architecture",
+      "description": "Comment le front-end React, les commandes Tauri et la persistance s'articulent."
+    }
   },
   "implementationPlans": {
     "category": "Guide produit",
@@ -397,7 +460,11 @@
       "heading": "Révision des plans avec Monaco",
       "opening": "Lorsqu'un plan est ouvert, le panneau résout le plan actif par identifiant de tâche, transmet le contenu à Monaco et permet aux réviseurs de se déplacer entre les tâches voisines sans perdre la modale actuellement ouverte."
     },
-    "title": "Plans d'implémentation"
+    "title": "Plans d'implémentation",
+    "meta": {
+      "title": "Implementation Plans - Review AI Changes",
+      "description": "Guide to AI implementation planning. Generate, review, and approve file-by-file plans before execution. Prevent duplicates and wrong paths."
+    }
   },
   "modelConfiguration": {
     "category": "Guide produit",
@@ -422,9 +489,17 @@
       "description": "Les modèles par défaut et les alternatives autorisées sont stockés côté serveur dans la configuration de l'application. Chaque type de tâche - tels que les plans d'implémentation, les fusions, la génération de prompt ou la transcription vocale - définit un modèle préféré, une liste d'options autorisées et des limites de jetons que l'application de bureau lit au moment de l'exécution.",
       "heading": "Valeurs par défaut basées sur la tâche"
     },
-    "title": "Configuration de modèle"
+    "title": "Configuration de modèle",
+    "meta": {
+      "title": "Configuration du modèle - PlanToCode",
+      "description": "How PlanToCode lets you pick allowed models per task and keeps prompts within the active context window."
+    }
   },
   "terminalSessions": {
+    "meta": {
+      "title": "Sessions de terminal - PlanToCode",
+      "description": "Technical guide to PTY terminal implementation in PlanToCode. Learn how sessions persist, agent inactivity detection works, and recovery mechanisms."
+    },
     "attentionDetection": {
       "conclusion": "Cette approche vous aide à suivre quand les agents ont terminé des tâches ou ont besoin de conseils, sans essayer de deviner pourquoi ils se sont arrêtés. Les indicateurs d'attention se vident automatiquement lorsqu'une nouvelle sortie est reçue.",
       "heading": "Détection d'attention de l'agent",
@@ -491,6 +566,10 @@
       "heading": "Intégration de la transcription vocale",
       "hook": "Les enregistrements vocaux utilisent le hook {code}. Il charge les paramètres par défaut de transcription par projet, demande l'accès au microphone et insère les transcriptions au curseur dans la description de tâche ou le tampon de dictée du terminal. Le texte inséré peut immédiatement être mis en surbrillance et passé à travers le même popover d'amélioration, et l'identifiant de tâche de transcription d'origine est stocké avec la charge utile d'amélioration pour l'audit.",
       "preferences": "Les préférences de langue, de modèle et de température persistent au niveau du projet, afin que les équipes obtiennent une qualité de transcription cohérente avant d'affiner la copie. La détection de silence avertit des mauvais niveaux audio, et un plafond de dix minutes empêche les enregistrements surdimensionnés de bloquer les tâches d'amélioration avec de grandes charges utiles."
+    },
+    "meta": {
+      "title": "Amélioration du texte - PlanToCode",
+      "description": "How the desktop workspace rewrites highlighted text, preserves formatting, and links the feature to voice and video inputs."
     }
   },
   "voiceTranscription": {
@@ -515,6 +594,10 @@
       "description": "Le hook d'enregistrement maintient une machine à états avec des états inactif, enregistrement, traitement et erreur. Il suit la durée, gère la détection de silence et garantit que les enregistrements s'arrêtent automatiquement après dix minutes. Les fragments sont mis en tampon et transmis à l'action de transcription, qui renvoie le texte reconnu pour insertion.",
       "heading": "Flux de travail d'enregistrement"
     },
-    "title": "Transcription vocale"
+    "title": "Transcription vocale",
+    "meta": {
+      "title": "Transcription vocale - PlanToCode",
+      "description": "How PlanToCode records audio, streams real-time transcripts using gpt-4o-transcribe, manages permissions, project settings."
+    }
   }
 }

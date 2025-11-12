@@ -8,6 +8,9 @@ const nextConfig: NextConfig = {
   // Enable standalone output for Docker deployment
   output: 'standalone',
 
+  // Disable trailing slashes to prevent redirect chains
+  trailingSlash: false,
+
   // Enable source maps in production
   productionBrowserSourceMaps: true,
   // Enable compression for better performance
@@ -135,6 +138,27 @@ const nextConfig: NextConfig = {
       {
         source: '/features/plan-editor',
         destination: '/plan-mode',
+        permanent: true,
+      },
+      {
+        source: '/de/features/plan-editor',
+        destination: '/de/plan-mode',
+        permanent: true,
+      },
+      {
+        source: '/fr/features/plan-editor',
+        destination: '/fr/plan-mode',
+        permanent: true,
+      },
+      {
+        source: '/es/features/plan-editor',
+        destination: '/es/plan-mode',
+        permanent: true,
+      },
+      // Redirect old security page to localized route
+      {
+        source: '/security/notarization',
+        destination: '/en/security/notarization',
         permanent: true,
       },
       // Fix HTTP to HTTPS redirect chains

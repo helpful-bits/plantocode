@@ -1,4 +1,10 @@
 {
+  "home": {
+    "meta": {
+      "title": "안전한 코딩을 위한 AI 구현 계획",
+      "description": "대규모 코드베이스를 위한 AI 구현 계획. 실행 전 변경 사항 검토. 버그 및 중복 방지. Cursor, Copilot, Claude Code와 통합."
+    }
+  },
   "about": {
     "architecture": {
       "comment": "단순한 AI 채팅이 아닌 복잡한 개발 워크플로우를 위해 설계되었습니다",
@@ -452,7 +458,7 @@
       "screenshots": "실제 스크린샷 보기",
       "subtitle": "PlanToCode가 코드 변경 사항을 계획하고 실행하는 방법을 확인하세요.",
       "title": "인터랙티브 데모",
-      "video": "짧은 데모 보기"
+      "video": "데모 보기"
     },
     "meta": {
       "description": "PlanToCode가 코드 변경 사항을 계획하고 실행하는 방법을 확인하세요.",
@@ -461,7 +467,7 @@
   },
   "downloads": {
     "cta": {
-      "architect": "아키텍트와 상담",
+      "architect": "전문가와 상담",
       "docs": "터미널 문서",
       "footer": "Made in Germany • GDPR 준수 • 로컬 세션 저장소",
       "professional": "전문 옵션",
@@ -935,6 +941,14 @@
         "cursor": "Cursor 워크플로우",
         "general": "일반 워크플로우"
       }
+    }
+  },
+  "screenshots": {
+    "title": "PlanToCode Screenshots",
+    "description": "See PlanToCode in action with real screenshots from actual workflows.",
+    "meta": {
+      "title": "Screenshots - PlanToCode in action",
+      "description": "See PlanToCode in action with real screenshots from actual workflows. File discovery, implementation plans, terminal integration, and more."
     }
   }
 }

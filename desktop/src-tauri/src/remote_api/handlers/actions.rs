@@ -1,10 +1,39 @@
 use tauri::AppHandle;
 use serde_json::{json, Value};
+use serde::Deserialize;
 use crate::remote_api::types::{RpcRequest, RpcResponse};
 use crate::commands::{
     workflow_commands, implementation_plan_commands,
     web_search_commands, generic_task_commands
 };
+use crate::utils::token_estimator;
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FindRelevantFilesParams {
+    session_id: String,
+    task_description: String,
+    project_directory: String,
+    #[serde(default)]
+    excluded_paths: Vec<String>,
+    timeout_ms: Option<u64>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreatePlanParams {
+    session_id: String,
+    task_description: String,
+    project_directory: String,
+    relevant_files: Vec<String>,
+    selected_root_directories: Option<Vec<String>>,
+    project_structure: Option<serde_json::Value>,
+    model: Option<String>,
+    temperature: Option<f32>,
+    max_tokens: Option<u32>,
+    enable_web_search: Option<bool>,
+    include_project_structure: Option<bool>,
+}
 
 pub async fn dispatch(app_handle: AppHandle, req: RpcRequest) -> RpcResponse {
     match req.method.as_str() {
@@ -18,6 +47,7 @@ pub async fn dispatch(app_handle: AppHandle, req: RpcRequest) -> RpcResponse {
         "actions.cancelWorkflowStage" => handle_actions_cancel_workflow_stage(&app_handle, req).await,
         "actions.readImplementationPlan" => handle_actions_read_implementation_plan(&app_handle, req).await,
         "actions.getImplementationPlanPrompt" => handle_actions_get_implementation_plan_prompt(&app_handle, req).await,
+        "actions.estimatePromptTokens" => handle_actions_estimate_prompt_tokens(&app_handle, req).await,
         _ => RpcResponse {
             correlation_id: req.correlation_id,
             result: None,
@@ -34,61 +64,24 @@ async fn handle_actions_find_relevant_files(
     app_handle: &AppHandle,
     request: RpcRequest,
 ) -> RpcResponse {
-    let session_id = match request.params.get("sessionId") {
-        Some(Value::String(id)) => id.clone(),
-        _ => {
+    let params: FindRelevantFilesParams = match serde_json::from_value(request.params.clone()) {
+        Ok(p) => p,
+        Err(e) => {
             return RpcResponse {
                 correlation_id: request.correlation_id,
                 result: None,
-                error: Some("Missing or invalid sessionId parameter".to_string()),
+                error: Some(format!("Invalid parameters: {}", e)),
                 is_final: true,
             };
         }
     };
-
-    let task_description = match request.params.get("taskDescription") {
-        Some(Value::String(desc)) => desc.clone(),
-        _ => {
-            return RpcResponse {
-                correlation_id: request.correlation_id,
-                result: None,
-                error: Some("Missing or invalid taskDescription parameter".to_string()),
-                is_final: true,
-            };
-        }
-    };
-
-    let project_directory = match request.params.get("projectDirectory") {
-        Some(Value::String(dir)) => dir.clone(),
-        _ => {
-            return RpcResponse {
-                correlation_id: request.correlation_id,
-                result: None,
-                error: Some("Missing or invalid projectDirectory parameter".to_string()),
-                is_final: true,
-            };
-        }
-    };
-
-    let excluded_paths = request
-        .params
-        .get("excludedPaths")
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        })
-        .unwrap_or_else(Vec::new);
-
-    let timeout_ms = request.params.get("timeoutMs").and_then(|v| v.as_u64());
 
     match workflow_commands::start_file_finder_workflow(
-        session_id,
-        task_description,
-        project_directory,
-        excluded_paths,
-        timeout_ms,
+        params.session_id,
+        params.task_description,
+        params.project_directory,
+        params.excluded_paths,
+        params.timeout_ms,
         app_handle.clone(),
     )
     .await
@@ -109,113 +102,36 @@ async fn handle_actions_find_relevant_files(
 }
 
 /// Handle actions.createImplementationPlan request
-/// Params: sessionId, taskDescription, projectDirectory, relevantFiles (Vec<String>), selectedRootDirectories (Option<Vec<String>>), model (Option<String>), temperature (Option<f32>), maxTokens (Option<u32>)
+/// Params: sessionId, taskDescription, projectDirectory, relevantFiles (Vec<String>), selectedRootDirectories (Option<Vec<String>>), projectStructure (Option<Value>), model (Option<String>), temperature (Option<f32>), maxTokens (Option<u32>)
 /// Response: {"jobId": job_id}
 async fn handle_actions_create_implementation_plan(
     app_handle: &AppHandle,
     request: RpcRequest,
 ) -> RpcResponse {
-    let session_id = match request.params.get("sessionId") {
-        Some(Value::String(id)) => id.clone(),
-        _ => {
+    let params: CreatePlanParams = match serde_json::from_value(request.params.clone()) {
+        Ok(p) => p,
+        Err(e) => {
             return RpcResponse {
                 correlation_id: request.correlation_id,
                 result: None,
-                error: Some("Missing or invalid sessionId parameter".to_string()),
+                error: Some(format!("Invalid parameters: {}", e)),
                 is_final: true,
             };
         }
     };
-
-    let task_description = match request.params.get("taskDescription") {
-        Some(Value::String(desc)) => desc.clone(),
-        _ => {
-            return RpcResponse {
-                correlation_id: request.correlation_id,
-                result: None,
-                error: Some("Missing or invalid taskDescription parameter".to_string()),
-                is_final: true,
-            };
-        }
-    };
-
-    let project_directory = match request.params.get("projectDirectory") {
-        Some(Value::String(dir)) => dir.clone(),
-        _ => {
-            return RpcResponse {
-                correlation_id: request.correlation_id,
-                result: None,
-                error: Some("Missing or invalid projectDirectory parameter".to_string()),
-                is_final: true,
-            };
-        }
-    };
-
-    let relevant_files = match request.params.get("relevantFiles") {
-        Some(Value::Array(arr)) => arr
-            .iter()
-            .filter_map(|v| v.as_str().map(String::from))
-            .collect(),
-        _ => {
-            return RpcResponse {
-                correlation_id: request.correlation_id,
-                result: None,
-                error: Some("Missing or invalid relevantFiles parameter".to_string()),
-                is_final: true,
-            };
-        }
-    };
-
-    let selected_root_directories = request
-        .params
-        .get("selectedRootDirectories")
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        });
-
-    let model = request
-        .params
-        .get("model")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-
-    let temperature = request
-        .params
-        .get("temperature")
-        .and_then(|v| v.as_f64())
-        .map(|f| f as f32);
-
-    let max_tokens = request
-        .params
-        .get("maxTokens")
-        .and_then(|v| v.as_u64())
-        .map(|u| u as u32);
-
-    let enable_web_search = request
-        .params
-        .get("enableWebSearch")
-        .and_then(|v| v.as_bool());
-
-    let include_project_structure = request
-        .params
-        .get("includeProjectStructure")
-        .and_then(|v| v.as_bool());
 
     match implementation_plan_commands::create_implementation_plan_command(
-        session_id,
-        task_description,
-        project_directory,
-        relevant_files,
-        selected_root_directories,
-        None, // project_structure - not provided in RPC interface
-        model,
-        temperature,
-        max_tokens,
-        enable_web_search,
-        include_project_structure,
+        params.session_id,
+        params.task_description,
+        params.project_directory,
+        params.relevant_files,
+        params.selected_root_directories,
+        params.project_structure.and_then(|v| serde_json::to_string(&v).ok()),
+        params.model,
+        params.temperature,
+        params.max_tokens,
+        params.enable_web_search,
+        params.include_project_structure,
         app_handle.clone(),
     )
     .await
@@ -699,6 +615,96 @@ async fn handle_actions_get_implementation_plan_prompt(
             error: None,
             is_final: true,
         },
+        Err(e) => RpcResponse {
+            correlation_id: request.correlation_id,
+            result: None,
+            error: Some(format!("{}", e)),
+            is_final: true,
+        },
+    }
+}
+
+async fn handle_actions_estimate_prompt_tokens(
+    app_handle: &AppHandle,
+    request: RpcRequest,
+) -> RpcResponse {
+    let session_id = match request.params.get("sessionId") {
+        Some(Value::String(id)) => id.clone(),
+        _ => {
+            return RpcResponse {
+                correlation_id: request.correlation_id,
+                result: None,
+                error: Some("Missing or invalid sessionId parameter".to_string()),
+                is_final: true,
+            };
+        }
+    };
+
+    let task_description = match request.params.get("taskDescription") {
+        Some(Value::String(desc)) => desc.clone(),
+        _ => {
+            return RpcResponse {
+                correlation_id: request.correlation_id,
+                result: None,
+                error: Some("Missing or invalid taskDescription parameter".to_string()),
+                is_final: true,
+            };
+        }
+    };
+
+    let project_directory = match request.params.get("projectDirectory") {
+        Some(Value::String(dir)) => dir.clone(),
+        _ => {
+            return RpcResponse {
+                correlation_id: request.correlation_id,
+                result: None,
+                error: Some("Missing or invalid projectDirectory parameter".to_string()),
+                is_final: true,
+            };
+        }
+    };
+
+    let relevant_files = match request.params.get("relevantFiles") {
+        Some(Value::Array(arr)) => arr
+            .iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect(),
+        _ => vec![],
+    };
+
+    let task_type = match request.params.get("taskType") {
+        Some(Value::String(t)) => t.clone(),
+        _ => "implementation_plan".to_string(),
+    };
+
+    let model = match request.params.get("model") {
+        Some(Value::String(m)) => m.clone(),
+        _ => "claude-3-5-sonnet-20241022".to_string(),
+    };
+
+    match implementation_plan_commands::get_prompt_command(
+        task_type,
+        session_id,
+        task_description,
+        project_directory,
+        relevant_files,
+        None,
+        app_handle.clone(),
+    )
+    .await
+    {
+        Ok(prompt_response) => {
+            let system_tokens = token_estimator::estimate_tokens(&prompt_response.system_prompt, &model);
+            let user_tokens = token_estimator::estimate_tokens(&prompt_response.user_prompt, &model);
+            let total_tokens = system_tokens + user_tokens;
+
+            RpcResponse {
+                correlation_id: request.correlation_id,
+                result: Some(json!({ "totalTokens": total_tokens })),
+                error: None,
+                is_final: true,
+            }
+        }
         Err(e) => RpcResponse {
             correlation_id: request.correlation_id,
             result: None,

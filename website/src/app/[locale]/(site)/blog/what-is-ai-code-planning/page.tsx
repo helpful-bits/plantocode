@@ -1,15 +1,24 @@
 import { BlogArticle } from '@/components/blog/BlogArticle';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
-import { cdnUrl } from '@/lib/cdn';
 import { Link } from '@/i18n/navigation';
 import type { Metadata } from 'next';
 import { locales } from '@/i18n/config';
-import type { Locale } from '@/lib/i18n';
+import { loadMessages, type Locale } from '@/lib/i18n';
+import { generatePageMetadata, COMMON_KEYWORDS, mergeKeywords } from '@/content/metadata';
 
-export const metadata: Metadata = {
-  title: 'What is AI Code Planning? Developer Guide',
-  description: 'What AI code planning is, why it matters for large codebases, how planning-first development prevents AI coding chaos.',
-  keywords: [
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return {
+    ...generatePageMetadata({
+      locale,
+      slug: '/blog/what-is-ai-code-planning',
+      title: t['blog.what-is-ai-code-planning.meta.title'],
+      description: t['blog.what-is-ai-code-planning.meta.description'],
+    }),
+    keywords: mergeKeywords(
+      [
     'ai code planning',
     'ai coding assistant',
     'ai code generation',
@@ -17,33 +26,10 @@ export const metadata: Metadata = {
     'ai development tools',
     'code planning tools',
   ],
-  robots: {
-    index: true,
-    follow: true,
-  },
-  alternates: {
-    canonical: 'https://www.plantocode.com/blog/what-is-ai-code-planning',
-    languages: {
-      'en-US': 'https://www.plantocode.com/blog/what-is-ai-code-planning',
-      'en': 'https://www.plantocode.com/blog/what-is-ai-code-planning',
-      'x-default': 'https://www.plantocode.com/blog/what-is-ai-code-planning',
-    },
-  },
-  openGraph: {
-    title: 'What is AI Code Planning? Developer Guide',
-    description: 'Learn what AI code planning is, why it matters for large codebases, and how planning-first development prevents AI coding chaos.',
-    url: 'https://www.plantocode.com/blog/what-is-ai-code-planning',
-    siteName: 'PlanToCode',
-    type: 'article',
-    locale: 'en_US',
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - What is AI Code Planning?',
-    }],
-  },
-};
+      COMMON_KEYWORDS.core
+    ),
+  };
+}
 
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));

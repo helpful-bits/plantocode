@@ -15,11 +15,13 @@ import Core
 public struct AuthFlowCoordinator: View {
   @ObservedObject private var appState = AppState.shared
   @StateObject private var multiConnectionManager = MultiConnectionManager.shared
+  @EnvironmentObject private var container: AppContainer
 
   private enum FlowRoute {
-    case loading, regionSelection, login, deviceSelection, projectFolderSelection, workspace, missingConfiguration
+    case loading, regionSelection, login, onboarding, paywall, deviceSelection, projectFolderSelection, workspace, missingConfiguration
   }
   @State private var route: FlowRoute = .loading
+  @State private var subscriptionStatusObserver: Task<Void, Never>?
 
   public init() {}
 
@@ -38,6 +40,19 @@ public struct AuthFlowCoordinator: View {
         ServerSelectionView(isModal: false)
       case .login:
         LoginView()
+      case .onboarding:
+        OnboardingFlowView(
+          onSkip: {
+            UserDefaults.standard.set(true, forKey: "onboarding_completed_v2")
+            withAnimation { updateRoute() }
+          },
+          onComplete: {
+            UserDefaults.standard.set(true, forKey: "onboarding_completed_v2")
+            withAnimation { updateRoute() }
+          }
+        )
+      case .paywall:
+        PaywallView()
       case .deviceSelection:
         DeviceSelectionView()
       case .projectFolderSelection:
@@ -51,7 +66,14 @@ public struct AuthFlowCoordinator: View {
     .transition(.opacity)
     .animation(.easeInOut(duration: 0.2), value: route)
     .onAppear {
-      Task { await bootstrapAndRoute() }
+      Task {
+        await bootstrapAndRoute()
+        // Start observing subscription status after initial bootstrap
+        startSubscriptionObserver()
+      }
+    }
+    .onDisappear {
+      subscriptionStatusObserver?.cancel()
     }
     .onChange(of: appState.hasSelectedRegionOnce) { _ in withAnimation { updateRoute() } }
     .onChange(of: appState.isAuthenticated) { _ in withAnimation { updateRoute() } }
@@ -64,6 +86,22 @@ public struct AuthFlowCoordinator: View {
     }
     .onChange(of: appState.bootstrapState) { _ in withAnimation { updateRoute() } }
     .onChange(of: appState.selectedProjectDirectory) { _ in withAnimation { updateRoute() } }
+  }
+
+  private func startSubscriptionObserver() {
+    subscriptionStatusObserver = Task {
+      var lastStatus = container.subscriptionManager.status.isActive
+      while !Task.isCancelled {
+        try? await Task.sleep(nanoseconds: 500_000_000) // Check every 0.5s
+        let currentStatus = container.subscriptionManager.status.isActive
+        if currentStatus != lastStatus {
+          lastStatus = currentStatus
+          await MainActor.run {
+            withAnimation { updateRoute() }
+          }
+        }
+      }
+    }
   }
 
   private var loadingMessage: String {
@@ -129,7 +167,22 @@ public struct AuthFlowCoordinator: View {
       return
     }
 
-    // 3. Bootstrap state checks
+    // 3. Onboarding check (only after login)
+    if !UserDefaults.standard.bool(forKey: "onboarding_completed_v2") {
+      route = .onboarding
+      return
+    }
+
+    // 4. Subscription check (only after onboarding and bootstrap is not in early stages)
+    // Skip subscription check during initial loading to avoid accessing container too early
+    if appState.authBootstrapCompleted && appState.bootstrapState != .idle && appState.bootstrapState != .running {
+      if !container.subscriptionManager.status.isActive {
+        route = .paywall
+        return
+      }
+    }
+
+    // 5. Bootstrap state checks
     switch appState.bootstrapState {
     case .idle, .running:
       route = .loading
@@ -138,54 +191,28 @@ public struct AuthFlowCoordinator: View {
       route = .deviceSelection
       return
     case .needsConfiguration(let missing):
-      // Map needsConfiguration with projectMissing to onboarding flow
       if missing.projectMissing {
-        // Check device connection first
-        if multiConnectionManager.activeDeviceId == nil {
-          route = .deviceSelection
-          return
-        }
-        // Check if device is actually connected
-        if let deviceId = multiConnectionManager.activeDeviceId,
-           let state = multiConnectionManager.connectionStates[deviceId],
-           case .connected = state {
-          // Device connected, show project selection
+        if multiConnectionManager.activeDeviceIsFullyConnected {
           route = .projectFolderSelection
-          return
         } else {
-          // Device not connected, back to device selection
           route = .deviceSelection
-          return
         }
+        return
       } else {
-        // Other configuration missing
         route = .missingConfiguration
         return
       }
     case .ready:
-      // 4. Device connection check (always before project check)
-      if multiConnectionManager.activeDeviceId == nil {
-        route = .deviceSelection
-        return
-      }
-
-      // Check if device is actually connected
-      if let deviceId = multiConnectionManager.activeDeviceId,
-         let state = multiConnectionManager.connectionStates[deviceId],
-         case .connected = state {
-        // Device connected, check project
+      if multiConnectionManager.activeDeviceIsFullyConnected {
         if appState.selectedProjectDirectory == nil {
           route = .projectFolderSelection
-          return
         } else {
           route = .workspace
-          return
         }
       } else {
-        // Device not connected
         route = .deviceSelection
-        return
       }
+      return
     }
   }
 }

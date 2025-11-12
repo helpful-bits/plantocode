@@ -309,7 +309,7 @@ public struct HistoryEntry: Codable, Equatable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(value, forKey: .value)
-        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(createdAt, forKey: .timestampMs)
         try container.encodeIfPresent(deviceId, forKey: .deviceId)
         try container.encodeIfPresent(opType, forKey: .opType)
         try container.encodeIfPresent(sequenceNumber, forKey: .sequenceNumber)

@@ -1,31 +1,20 @@
 import { Metadata } from 'next';
 import { Link } from '@/i18n/navigation';
-import { cdnUrl } from '@/lib/cdn';
 import { locales } from '@/i18n/config';
-import type { Locale } from '@/lib/i18n';
+import { loadMessages, type Locale } from '@/lib/i18n';
+import { generatePageMetadata } from '@/content/metadata';
 
-export const metadata: Metadata = {
-  title: 'Select Your Region - Legal Documents',
-  description: 'Choose your region (EU/UK or United States) to view applicable legal documents including terms of service, privacy policy, and regional compliance requirements.',
-  alternates: {
-    canonical: 'https://www.plantocode.com/legal',
-    languages: {
-      'en-US': 'https://www.plantocode.com/legal',
-      'en': 'https://www.plantocode.com/legal',
-    },
-  },
-  openGraph: {
-    type: 'website',
-    siteName: 'PlanToCode',
-    title: 'Select Your Region - Legal Documents',
-    images: [{
-      url: cdnUrl('/images/og-image.png'),
-      width: 1200,
-      height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
-    }],
-  },
-};
+export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await loadMessages(locale);
+
+  return generatePageMetadata({
+    locale,
+    slug: '/legal',
+    title: t['legal.meta.title'],
+    description: t['legal.meta.description'],
+  });
+}
 
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));

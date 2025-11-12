@@ -12,6 +12,7 @@ public class JobsDataService: ObservableObject {
     @Published public var isLoading = false
     @Published public var error: DataServiceError?
     @Published public var syncStatus: JobSyncStatus?
+    @Published public private(set) var sessionActiveWorkflowJobs: Int = 0
 
     // MARK: - Private Properties
     private let apiClient: APIClientProtocol
@@ -28,6 +29,8 @@ public class JobsDataService: ObservableObject {
     private var hydrationWaiters: [String: [() -> Void]] = [:]
     private var coalescedResyncWorkItem: DispatchWorkItem?
     private var lastCoalescedResyncAt: Date?
+    private var activeWorkflowJobsBySession: [String: Int] = [:]
+    private var workflowJobsCache: [String: BackgroundJob] = [:]
 
     private var deviceKey: String {
         MultiConnectionManager.shared.activeDeviceId?.uuidString ?? "no_device"
@@ -49,6 +52,30 @@ public class JobsDataService: ObservableObject {
         )
     }
 
+    public func reset() {
+        jobs = []
+        isLoading = false
+        error = nil
+        syncStatus = nil
+        jobsIndex = [:]
+        activeSessionId = nil
+        activeProjectDirectory = nil
+        currentListJobsRequestToken = nil
+        hasLoadedOnce = false
+        lastJobsFetch = [:]
+        lastAccumulatedLengths = [:]
+        hydrationWaiters = [:]
+        coalescedResyncWorkItem?.cancel()
+        coalescedResyncWorkItem = nil
+        lastCoalescedResyncAt = nil
+        progressSubscription?.cancel()
+        progressSubscription = nil
+        cancellables.removeAll()
+        activeWorkflowJobsBySession.removeAll()
+        sessionActiveWorkflowJobs = 0
+        workflowJobsCache.removeAll()
+    }
+
     // MARK: - Public Methods
 
     /// List jobs with filtering and pagination
@@ -63,9 +90,8 @@ public class JobsDataService: ObservableObject {
         if let cached: JobListResponse = cacheManager.get(key: cacheKey) {
             isLoading = false
             // Replace jobs array with cached data
-            self.jobs = cached.jobs
-            self.jobsIndex = Dictionary(uniqueKeysWithValues: cached.jobs.enumerated().map { ($1.id, $0) })
-            self.lastAccumulatedLengths = Dictionary(uniqueKeysWithValues: cached.jobs.map { ($0.id, $0.response?.count ?? 0) })
+            replaceJobsArray(with: cached.jobs)
+            updateWorkflowCountsFromJobs(cached.jobs)
 
             let now = Date()
             let shouldRefresh = lastJobsFetch[cacheKey].map { now.timeIntervalSince($0) > 5.0 } ?? true
@@ -189,6 +215,9 @@ public class JobsDataService: ObservableObject {
         self.activeSessionId = sessionId
         self.activeProjectDirectory = projectDirectory
 
+        // Update workflow job count for new session
+        recomputeSessionWorkflowCount(for: sessionId)
+
         // Do initial background fetch if session changed
         if sessionChanged {
             let request = JobListRequest(
@@ -209,6 +238,9 @@ public class JobsDataService: ObservableObject {
     public func startSessionScopedSync(sessionId: String, projectDirectory: String?) {
         self.activeSessionId = sessionId
         self.activeProjectDirectory = projectDirectory
+
+        // Update workflow job count for new session
+        recomputeSessionWorkflowCount(for: sessionId)
 
         // No polling; rely on relay events while connected and reconnection snapshot orchestrated by DataServicesManager.
 
@@ -260,6 +292,11 @@ public class JobsDataService: ObservableObject {
         error = nil
         isLoading = false
         currentListJobsRequestToken = nil
+
+        // Reset workflow job tracking
+        activeWorkflowJobsBySession.removeAll()
+        sessionActiveWorkflowJobs = 0
+        workflowJobsCache.removeAll()
 
         logger.info("Jobs state reset for device change")
     }
@@ -376,8 +413,8 @@ public class JobsDataService: ObservableObject {
                 receiveValue: { [weak self] response in
                     guard let self = self else { return }
 
-                    // Merge fetched active jobs with existing jobs
                     self.mergeJobs(fetchedJobs: response.jobs)
+                    self.updateWorkflowCountsFromJobs(self.jobs)
 
                     self.syncStatus = JobSyncStatus(
                         activeJobs: response.jobs.count,
@@ -507,11 +544,8 @@ public class JobsDataService: ObservableObject {
                     if let self = self {
                         await MainActor.run {
                             if shouldReplace && token == self.currentListJobsRequestToken {
-                                self.jobs = response.jobs
-                                self.jobsIndex = Dictionary(uniqueKeysWithValues: response.jobs.enumerated().map { ($1.id, $0) })
-                                self.lastAccumulatedLengths = Dictionary(uniqueKeysWithValues: response.jobs.map { ($0.id, $0.response?.count ?? 0) })
-                                // REMOVED: prefetchTopJobsInternal() - this was causing 8+ second delays
-                                // Job details are fetched on-demand when user taps a job
+                                self.replaceJobsArray(with: response.jobs)
+                                self.updateWorkflowCountsFromJobs(response.jobs)
                                 self.hasLoadedOnce = true
                             }
                             self.cacheManager.set(response, forKey: cacheKey, ttl: 300)
@@ -722,8 +756,66 @@ public class JobsDataService: ObservableObject {
         .eraseToAnyPublisher()
     }
 
+    private let workflowUmbrellaTypes: Set<String> = ["file_finder_workflow", "web_search_workflow"]
+    private let fileFinderStepTypes: Set<String> = ["extended_path_finder", "file_relevance_assessment", "path_correction", "regex_file_filter"]
+
+    private func isWorkflowUmbrella(_ job: BackgroundJob) -> Bool {
+        workflowUmbrellaTypes.contains(job.taskType)
+    }
+
+    private func isFileFinderStep(_ job: BackgroundJob) -> Bool {
+        fileFinderStepTypes.contains(job.taskType)
+    }
+
     private func shouldIgnore(job: BackgroundJob) -> Bool {
-        job.taskType == "file_finder_workflow" || job.taskType == "web_search_workflow"
+        isFileFinderStep(job)
+    }
+
+    private func isWorkflowJob(_ job: BackgroundJob) -> Bool {
+        isWorkflowUmbrella(job)
+    }
+
+    private func isActiveStatus(_ status: JobStatus) -> Bool {
+        status.isActive
+    }
+
+    private func bumpWorkflowCount(sessionId: String, delta: Int) {
+        let current = activeWorkflowJobsBySession[sessionId] ?? 0
+        let next = max(0, current + delta)
+        activeWorkflowJobsBySession[sessionId] = next
+        if self.activeSessionId == sessionId {
+            self.sessionActiveWorkflowJobs = next
+        }
+    }
+
+    private func recomputeSessionWorkflowCount(for sessionId: String) {
+        self.sessionActiveWorkflowJobs = activeWorkflowJobsBySession[sessionId] ?? 0
+    }
+
+    private func updateWorkflowCountsFromJobs(_ jobs: [BackgroundJob]) {
+        var newCache: [String: BackgroundJob] = [:]
+        var countsBySession: [String: Int] = [:]
+
+        for job in jobs {
+            if isWorkflowUmbrella(job) {
+                newCache[job.id] = job
+                if isActiveStatus(job.jobStatus) {
+                    countsBySession[job.sessionId, default: 0] += 1
+                }
+            }
+        }
+
+        workflowJobsCache = newCache
+        activeWorkflowJobsBySession = countsBySession
+
+        if let activeSessionId = activeSessionId {
+            sessionActiveWorkflowJobs = countsBySession[activeSessionId] ?? 0
+        }
+    }
+
+    private func job(byId jobId: String) -> BackgroundJob? {
+        guard let index = jobsIndex[jobId] else { return nil }
+        return jobs[index]
     }
 
     private func insertOrReplace(job: BackgroundJob) {
@@ -850,22 +942,17 @@ public class JobsDataService: ObservableObject {
 
     @MainActor
     private func scheduleCoalescedListJobsForActiveSession() {
-        // Cancel any existing work item
         coalescedResyncWorkItem?.cancel()
 
-        // Only schedule if we have an active session
         guard let sessionId = activeSessionId else {
             return
         }
 
-        // Randomized delay between 0.4-0.7s to avoid server flooding
         let delay = 0.4 + Double.random(in: 0...0.3)
 
         let workItem = DispatchWorkItem { [weak self] in
             guard let self = self else { return }
             Task { @MainActor in
-                // If in mobile-session mode, fetch all jobs (no session filter)
-                // Otherwise, fetch jobs for the specific session
                 let isMobileSession = sessionId.hasPrefix("mobile-session-")
 
                 let request = JobListRequest(
@@ -874,9 +961,18 @@ public class JobsDataService: ObservableObject {
                     pageSize: 100
                 )
 
-                self.listJobs(request: request)
-                .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
-                .store(in: &self.cancellables)
+                let cacheKey = "dev_\(self.deviceKey)_jobs_\(request.cacheKey)"
+
+                self.listJobsViaRPC(request: request, cacheKey: cacheKey, shouldReplace: false)
+                    .sink(
+                        receiveCompletion: { _ in },
+                        receiveValue: { [weak self] response in
+                            guard let self = self else { return }
+                            self.mergeJobs(fetchedJobs: response.jobs)
+                            self.updateWorkflowCountsFromJobs(self.jobs)
+                        }
+                    )
+                    .store(in: &self.cancellables)
 
                 self.lastCoalescedResyncAt = Date()
             }
@@ -892,6 +988,15 @@ public class JobsDataService: ObservableObject {
         block()
     }
 
+    /// Atomically replace jobs array with minimal UI disruption
+    private func replaceJobsArray(with newJobs: [BackgroundJob]) {
+        mutateJobs {
+            self.jobs = newJobs
+            self.jobsIndex = Dictionary(uniqueKeysWithValues: newJobs.enumerated().map { ($1.id, $0) })
+            self.lastAccumulatedLengths = Dictionary(uniqueKeysWithValues: newJobs.map { ($0.id, $0.response?.count ?? 0) })
+        }
+    }
+
     // Extract jobId from relay event for early guard
     private func extractJobId(from event: RelayEvent) -> String? {
         let payload = event.data.mapValues { $0.value }
@@ -900,9 +1005,58 @@ public class JobsDataService: ObservableObject {
             ?? (payload["job"] as? [String: Any])?["id"] as? String
     }
 
+    private func updateWorkflowJobCounts(from event: RelayEvent) {
+        let payload = event.data.mapValues { $0.value }
+
+        switch event.eventType {
+        case "job:created":
+            if let jobData = payload["job"] as? [String: Any],
+               let job = decodeJob(from: jobData) {
+                if isWorkflowUmbrella(job) {
+                    workflowJobsCache[job.id] = job
+                    if isActiveStatus(job.jobStatus) {
+                        bumpWorkflowCount(sessionId: job.sessionId, delta: +1)
+                    }
+                }
+            }
+        case "job:status-changed":
+            let jobId = payload["jobId"] as? String ?? payload["id"] as? String
+            guard let jobId = jobId else { return }
+
+            guard let job = workflowJobsCache[jobId] else { return }
+
+            if let statusString = payload["status"] as? String,
+               let newStatus = JobStatus(rawValue: statusString) {
+                let newActive = isActiveStatus(newStatus)
+                let oldActive = isActiveStatus(job.jobStatus)
+                if newActive != oldActive {
+                    bumpWorkflowCount(sessionId: job.sessionId, delta: newActive ? +1 : -1)
+                }
+                var updatedJob = job
+                updatedJob.status = statusString
+                workflowJobsCache[jobId] = updatedJob
+            }
+        case "job:deleted":
+            let jobId = payload["jobId"] as? String ?? payload["id"] as? String
+            guard let jobId = jobId else { return }
+
+            guard let job = workflowJobsCache[jobId] else { return }
+
+            if isActiveStatus(job.jobStatus) {
+                bumpWorkflowCount(sessionId: job.sessionId, delta: -1)
+            }
+            workflowJobsCache.removeValue(forKey: jobId)
+        default:
+            break
+        }
+    }
+
     @MainActor
     public func applyRelayEvent(_ event: RelayEvent) {
         guard event.eventType.hasPrefix("job:") else { return }
+
+        // Update workflow job counters
+        updateWorkflowJobCounts(from: event)
 
         // Early guard: coalesced fallback for job:* events missing jobId
         if event.eventType.hasPrefix("job:"),
@@ -1067,12 +1221,7 @@ public class JobsDataService: ObservableObject {
                 }
                 jobs[index] = job
             }
-            
-            if event.eventType == "job:finalized" {
-                // Schedule coalesced refresh after finalized to ensure convergence
-                scheduleCoalescedListJobsForActiveSession()
-            }
-            
+
             // Invalidate cache when jobs are modified via events
             if event.eventType == "job:finalized" || event.eventType == "job:status-changed" {
                 let cacheKeyPrefix = "dev_\(deviceKey)_jobs_"

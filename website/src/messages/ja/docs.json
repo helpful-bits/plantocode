@@ -1,5 +1,9 @@
 {
   "architecture": {
+    "meta": {
+      "title": "PlanToCodeアーキテクチャ概要",
+      "description": "実装プラン、ワークフロー、ターミナルセッションを支えるデスクトップ、オーケストレーション、永続化レイヤー。"
+    },
     "category": "アーキテクチャ",
     "date": "2025-09-19",
     "description": "デスクトップシェル、バックグラウンドワークフロー、共有サービスの構成について説明します。",
@@ -31,6 +35,10 @@
     }
   },
   "deepResearch": {
+    "meta": {
+      "title": "詳細調査 - PlanToCode",
+      "description": "Web検索ワークフローの技術ドキュメント:API統合、クエリ最適化、結果処理、開発ワークフロー統合。"
+    },
     "apiIntegration": {
       "heading": "API統合の詳細",
       "pipeline": {
@@ -305,7 +313,7 @@
         "heading": "段階4:拡張パスファインダー",
         "relationship": "関係分析:インポートステートメント、設定ファイル、プロジェクト構造を分析して、特定のタスクのコンテキストを強化する関連ファイルを見つけます。"
       }
-      },
+    },
     "stateManagement": {
       "eventDriven": {
         "description": "システムは、ワークフローステータスの変更、段階の完了、エラー条件に対してリアルタイムイベントを公開します。これらのイベントにより、応答性の高いユーザーインターフェースと外部監視システムとの統合が可能になります。",
@@ -321,7 +329,11 @@
         "heading": "状態遷移"
       }
     },
-    "title": "ファイル検出ワークフロー"
+    "title": "ファイル検出ワークフロー",
+    "meta": {
+      "title": "ファイル検出ワークフロー - PlanToCode",
+      "description": "コードベース全体の関連ファイルを識別する5段階のAIワークフローに関する包括的な技術ガイド。"
+    }
   },
   "hub": {
     "ctaDescription": "PlanToCodeをダウンロードして、このドキュメントで説明されている実装プランナー、モデルガードレール、ターミナルセッション、文字起こし機能にアクセスしてください。",
@@ -333,6 +345,57 @@
     "searchPlaceholder": "ドキュメントを検索...",
     "searchShortcut": "⌘K",
     "title": "PlanToCodeドキュメント"
+  },
+  "onThisPage": {
+    "title": "このページの内容"
+  },
+  "sidebar": {
+    "title": "ドキュメント"
+  },
+  "sections": {
+    "planning": {
+      "title": "計画とコンテキスト"
+    },
+    "execution": {
+      "title": "実行サーフェス"
+    },
+    "architecture": {
+      "title": "アーキテクチャ"
+    }
+  },
+  "items": {
+    "text-improvement": {
+      "title": "テキスト改善",
+      "description": "プロンプトのクリーンアップのための選択ポップオーバー、ジョブキュー、統合。"
+    },
+    "implementation-plans": {
+      "title": "実装プラン",
+      "description": "プランがMonacoビューアにストリーミングされ、プラン履歴にリンクされる方法。"
+    },
+    "file-discovery": {
+      "title": "ファイル検出ワークフロー",
+      "description": "各タスクの関連パスを収集するバックグラウンドワークフロー。"
+    },
+    "deep-research": {
+      "title": "Deep Researchとウェブ検索",
+      "description": "ウェブ検索ワークフロー、API統合、クエリ最適化、開発ワークフロー統合。"
+    },
+    "model-configuration": {
+      "title": "モデル構成",
+      "description": "タスクごとに許可されたモデルとセレクタートグルのトークンガードレール。"
+    },
+    "terminal-sessions": {
+      "title": "ターミナルセッション",
+      "description": "永続的なPTYセッション、CLI検出、復旧動作。"
+    },
+    "voice-transcription": {
+      "title": "音声文字起こし",
+      "description": "録音ライフサイクル、プロジェクト対応設定、デバイス管理。"
+    },
+    "architecture": {
+      "title": "アーキテクチャ概要",
+      "description": "Reactフロントエンド、Tauriコマンド、永続性がどのように連携するか。"
+    }
   },
   "implementationPlans": {
     "category": "製品ガイド",
@@ -397,7 +460,11 @@
       "heading": "Monacoでのプランのレビュー",
       "opening": "プランが開かれると、パネルはジョブ識別子によってアクティブなプランを解決し、コンテンツをMonacoに渡し、レビュー担当者が現在開いているモーダルを失うことなく隣接するジョブ間を移動できるようにします。"
     },
-    "title": "実装プラン"
+    "title": "実装プラン",
+    "meta": {
+      "title": "Implementation Plans - Review AI Changes",
+      "description": "Guide to AI implementation planning. Generate, review, and approve file-by-file plans before execution. Prevent duplicates and wrong paths."
+    }
   },
   "modelConfiguration": {
     "category": "製品ガイド",
@@ -422,9 +489,17 @@
       "description": "デフォルトモデルと許可された代替モデルは、アプリケーション設定にサーバー側で保存されます。実装プラン、統合、プロンプト生成、音声文字起こしなどの各タスクタイプは、優先モデル、許可されたオプションのリスト、デスクトップアプリが実行時に読み取るトークン制限を定義します。",
       "heading": "タスク駆動のデフォルト"
     },
-    "title": "モデル設定"
+    "title": "モデル設定",
+    "meta": {
+      "title": "モデル設定 - PlanToCode",
+      "description": "How PlanToCode lets you pick allowed models per task and keeps prompts within the active context window."
+    }
   },
   "terminalSessions": {
+    "meta": {
+      "title": "ターミナルセッション - PlanToCode",
+      "description": "Technical guide to PTY terminal implementation in PlanToCode. Learn how sessions persist, agent inactivity detection works, and recovery mechanisms."
+    },
     "attentionDetection": {
       "conclusion": "このアプローチにより、エージェントが停止した理由を推測することなく、タスクを完了したかガイダンスが必要かどうかを追跡できます。注意インジケーターは、新しい出力を受信すると自動的にクリアされます。",
       "heading": "エージェント注意検出",
@@ -491,6 +566,10 @@
       "heading": "音声文字起こし統合",
       "hook": "音声録音は{code}フックを使用します。プロジェクトごとの文字起こしデフォルトを読み込み、マイクアクセスを要求し、タスクの説明またはターミナル口述バッファー内のカーソルにトランスクリプトを挿入します。挿入されたテキストは即座にハイライトされ、同じ改善ポップオーバーを通過でき、元の文字起こしジョブ識別子は監査のために改善ペイロードとともに保存されます。",
       "preferences": "言語、モデル、温度設定はプロジェクトレベルで保持されるため、チームはコピーを洗練する前に一貫した文字起こし品質を得られます。沈黙検出は悪いオーディオレベルについて警告し、10分の上限は大きなペイロードで改善ジョブをブロックすることを防ぎます。"
+    },
+    "meta": {
+      "title": "テキスト改善 - PlanToCode",
+      "description": "How the desktop workspace rewrites highlighted text, preserves formatting, and links the feature to voice and video inputs."
     }
   },
   "voiceTranscription": {
@@ -515,6 +594,10 @@
       "description": "録音フックは、アイドル、録音、処理、エラー状態を持つ状態マシンを保持します。期間を追跡し、沈黙検出を管理し、10分後に自動的に録音を停止します。チャンクはバッファリングされ、文字起こしアクションに転送され、挿入のために認識されたテキストを返します。",
       "heading": "録音ワークフロー"
     },
-    "title": "音声文字起こし"
+    "title": "音声文字起こし",
+    "meta": {
+      "title": "音声文字起こし - PlanToCode",
+      "description": "How PlanToCode records audio, streams real-time transcripts using gpt-4o-transcribe, manages permissions, project settings."
+    }
   }
 }

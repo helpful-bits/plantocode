@@ -1,41 +1,12 @@
 import type { MetadataRoute } from 'next';
 import { getPublishedPages } from '@/data/pseo';
-import { locales as SUPPORTED_LOCALES, defaultLocale } from '@/i18n/config';
+import { LOCALES } from '@/i18n/config';
 
 /**
- * Dynamically loads overlay files for a specific locale and returns a Set of slugs that have translations
+ * Helper to create sitemap entries for ALL locales
+ * Creates separate entries for each language variant to ensure all pages are indexed
  */
-async function loadLocaleOverlayMap(locale: string): Promise<Set<string>> {
-  try {
-    const [workflows, integrations, stacks, useCases, features, comparisons] = await Promise.all([
-      import(`@/data/pseo/i18n/${locale}/workflows.json`).catch(() => ({ default: {} })),
-      import(`@/data/pseo/i18n/${locale}/integrations.json`).catch(() => ({ default: {} })),
-      import(`@/data/pseo/i18n/${locale}/stacks.json`).catch(() => ({ default: {} })),
-      import(`@/data/pseo/i18n/${locale}/use-cases.json`).catch(() => ({ default: {} })),
-      import(`@/data/pseo/i18n/${locale}/features.json`).catch(() => ({ default: {} })),
-      import(`@/data/pseo/i18n/${locale}/comparisons.json`).catch(() => ({ default: {} })),
-    ]);
-
-    const allOverlays = {
-      ...workflows.default,
-      ...integrations.default,
-      ...stacks.default,
-      ...useCases.default,
-      ...features.default,
-      ...comparisons.default,
-    };
-
-    return new Set(Object.keys(allOverlays));
-  } catch (error) {
-    // If locale directory doesn't exist, return empty set
-    return new Set();
-  }
-}
-
-/**
- * Helper to create multi-lingual sitemap entries with alternates for all supported locales
- */
-function createMultiLingualEntry(
+function createLocalizedEntries(
   baseUrl: string,
   path: string,
   lastModified: Date,
@@ -44,25 +15,29 @@ function createMultiLingualEntry(
 ): MetadataRoute.Sitemap {
   const entries: MetadataRoute.Sitemap = [];
 
-  for (const locale of SUPPORTED_LOCALES) {
-    const url = locale === defaultLocale
-      ? `${baseUrl}${path}`
-      : `${baseUrl}/${locale}${path}`;
+  // Normalization helper: convert '/' to empty string, keep others as-is
+  const norm = (p: string) => (p === '/' ? '' : p);
 
+  // Normalize the path parameter
+  const normalizedPath = norm(path);
+
+  // Create entry for each locale
+  for (const locale of LOCALES) {
+    const localePath = locale === 'en' ? normalizedPath : `/${locale}${normalizedPath}`;
     entries.push({
-      url,
+      url: `${baseUrl}${localePath}`,
       lastModified,
       changeFrequency,
       priority,
       alternates: {
         languages: {
-          en: `${baseUrl}${path}`,
-          de: `${baseUrl}/de${path}`,
-          fr: `${baseUrl}/fr${path}`,
-          es: `${baseUrl}/es${path}`,
-          ko: `${baseUrl}/ko${path}`,
-          ja: `${baseUrl}/ja${path}`,
-          'x-default': `${baseUrl}${path}`
+          en: `${baseUrl}${norm(path)}`,
+          de: `${baseUrl}/de${norm(path)}`,
+          fr: `${baseUrl}/fr${norm(path)}`,
+          es: `${baseUrl}/es${norm(path)}`,
+          ko: `${baseUrl}/ko${norm(path)}`,
+          ja: `${baseUrl}/ja${norm(path)}`,
+          'x-default': `${baseUrl}${norm(path)}`
         }
       }
     });
@@ -75,167 +50,40 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = 'https://www.plantocode.com';
   const now = new Date();
 
-  // Load overlay maps for all non-default locales to determine which pages have translations
-  const [deOverlays, frOverlays, esOverlays, koOverlays, jaOverlays] = await Promise.all([
-    loadLocaleOverlayMap('de'),
-    loadLocaleOverlayMap('fr'),
-    loadLocaleOverlayMap('es'),
-    loadLocaleOverlayMap('ko'),
-    loadLocaleOverlayMap('ja'),
-  ]);
-
-  // Static routes that should have all locale versions
-  const staticRoutes = ['/', '/docs', '/features', '/downloads', '/solutions', '/compare', '/blog'];
+  // Static routes - all locales
+  const staticRoutes = [
+    '/',
+    '/docs',
+    '/features',
+    '/downloads',
+    '/solutions',
+    '/compare',
+    '/blog',
+    '/integrations',
+    '/use-cases',
+    '/workflows',
+    '/stacks',
+    '/comparisons'
+  ];
   const staticPages: MetadataRoute.Sitemap = [];
 
   for (const route of staticRoutes) {
     const priority = route === '/' ? 1 : 0.9;
-    staticPages.push(...createMultiLingualEntry(baseUrl, route, now, 'weekly', priority));
+    staticPages.push(...createLocalizedEntries(baseUrl, route, now, 'weekly', priority));
   }
 
-  // Generate pSEO pages entries
+  // Generate pSEO pages entries - all locales
   const pseoPages: MetadataRoute.Sitemap = [];
   const publishedPages = getPublishedPages();
 
   for (const page of publishedPages) {
     const priority = page.priority === 1 ? 0.85 : page.priority === 2 ? 0.75 : 0.7;
 
-    // Generate URLs for all locales
-    const localeUrls: Record<string, string> = {
-      en: `${baseUrl}/${page.slug}`, // English unprefixed
-      de: `${baseUrl}/de/${page.slug}`,
-      fr: `${baseUrl}/fr/${page.slug}`,
-      es: `${baseUrl}/es/${page.slug}`,
-      ko: `${baseUrl}/ko/${page.slug}`,
-      ja: `${baseUrl}/ja/${page.slug}`,
-    };
-
-    // Always add English version with all alternates
-    pseoPages.push({
-      url: localeUrls.en!,
-      lastModified: now,
-      changeFrequency: 'weekly' as const,
-      priority,
-      alternates: {
-        languages: {
-          en: localeUrls.en,
-          de: localeUrls.de,
-          fr: localeUrls.fr,
-          es: localeUrls.es,
-          ko: localeUrls.ko,
-          ja: localeUrls.ja,
-          'x-default': localeUrls.en
-        }
-      }
-    });
-
-    // Add German version if slug has a DE overlay
-    if (deOverlays.has(page.slug)) {
-      pseoPages.push({
-        url: localeUrls.de!,
-        lastModified: now,
-        changeFrequency: 'weekly' as const,
-        priority,
-        alternates: {
-          languages: {
-            en: localeUrls.en,
-            de: localeUrls.de,
-            fr: localeUrls.fr,
-            es: localeUrls.es,
-            ko: localeUrls.ko,
-            ja: localeUrls.ja,
-            'x-default': localeUrls.en
-          }
-        }
-      });
-    }
-
-    // Add French version if slug has a FR overlay
-    if (frOverlays.has(page.slug)) {
-      pseoPages.push({
-        url: localeUrls.fr!,
-        lastModified: now,
-        changeFrequency: 'weekly' as const,
-        priority,
-        alternates: {
-          languages: {
-            en: localeUrls.en,
-            de: localeUrls.de,
-            fr: localeUrls.fr,
-            es: localeUrls.es,
-            ko: localeUrls.ko,
-            ja: localeUrls.ja,
-            'x-default': localeUrls.en
-          }
-        }
-      });
-    }
-
-    // Add Spanish version if slug has an ES overlay
-    if (esOverlays.has(page.slug)) {
-      pseoPages.push({
-        url: localeUrls.es!,
-        lastModified: now,
-        changeFrequency: 'weekly' as const,
-        priority,
-        alternates: {
-          languages: {
-            en: localeUrls.en,
-            de: localeUrls.de,
-            fr: localeUrls.fr,
-            es: localeUrls.es,
-            ko: localeUrls.ko,
-            ja: localeUrls.ja,
-            'x-default': localeUrls.en
-          }
-        }
-      });
-    }
-
-    // Add Korean version if slug has a KO overlay
-    if (koOverlays.has(page.slug)) {
-      pseoPages.push({
-        url: localeUrls.ko!,
-        lastModified: now,
-        changeFrequency: 'weekly' as const,
-        priority,
-        alternates: {
-          languages: {
-            en: localeUrls.en,
-            de: localeUrls.de,
-            fr: localeUrls.fr,
-            es: localeUrls.es,
-            ko: localeUrls.ko,
-            ja: localeUrls.ja,
-            'x-default': localeUrls.en
-          }
-        }
-      });
-    }
-
-    // Add Japanese version if slug has a JA overlay
-    if (jaOverlays.has(page.slug)) {
-      pseoPages.push({
-        url: localeUrls.ja!,
-        lastModified: now,
-        changeFrequency: 'weekly' as const,
-        priority,
-        alternates: {
-          languages: {
-            en: localeUrls.en,
-            de: localeUrls.de,
-            fr: localeUrls.fr,
-            es: localeUrls.es,
-            ko: localeUrls.ko,
-            ja: localeUrls.ja,
-            'x-default': localeUrls.en
-          }
-        }
-      });
-    }
+    // Add all locale versions
+    pseoPages.push(...createLocalizedEntries(baseUrl, `/${page.slug}`, now, 'weekly', priority));
   }
 
-  // Documentation pages
+  // Documentation pages - all locales
   const docPages: MetadataRoute.Sitemap = [];
   const docRoutes = [
     { path: '/docs/implementation-plans', priority: 0.94 },
@@ -249,10 +97,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   for (const route of docRoutes) {
-    docPages.push(...createMultiLingualEntry(baseUrl, route.path, now, 'weekly', route.priority));
+    docPages.push(...createLocalizedEntries(baseUrl, route.path, now, 'weekly', route.priority));
   }
 
-  // Feature pages
+  // Feature pages - all locales
   const featurePages: MetadataRoute.Sitemap = [];
   const featureRoutes = [
     { path: '/demo', priority: 0.85 },
@@ -268,10 +116,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   for (const route of featureRoutes) {
-    featurePages.push(...createMultiLingualEntry(baseUrl, route.path, now, 'weekly', route.priority));
+    featurePages.push(...createLocalizedEntries(baseUrl, route.path, now, 'weekly', route.priority));
   }
 
-  // Plan mode pages
+  // Plan mode pages - all locales
   const planModePages: MetadataRoute.Sitemap = [];
   const planModeRoutes = [
     { path: '/plan-mode', priority: 0.85 },
@@ -281,20 +129,20 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   for (const route of planModeRoutes) {
-    planModePages.push(...createMultiLingualEntry(baseUrl, route.path, now, 'weekly', route.priority));
+    planModePages.push(...createLocalizedEntries(baseUrl, route.path, now, 'weekly', route.priority));
   }
 
-  // SEO landing pages
+  // SEO landing pages - all locales
   const seoLandingPages: MetadataRoute.Sitemap = [];
   const seoLandingRoutes = [
     { path: '/cursor-alternative', priority: 0.85 },
   ];
 
   for (const route of seoLandingRoutes) {
-    seoLandingPages.push(...createMultiLingualEntry(baseUrl, route.path, now, 'weekly', route.priority));
+    seoLandingPages.push(...createLocalizedEntries(baseUrl, route.path, now, 'weekly', route.priority));
   }
 
-  // Legal pages - EU
+  // Legal pages - EU - all locales
   const legalEUPages: MetadataRoute.Sitemap = [];
   const legalEURoutes = [
     { path: '/legal', priority: 0.6, changeFrequency: 'monthly' as const },
@@ -307,10 +155,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   for (const route of legalEURoutes) {
-    legalEUPages.push(...createMultiLingualEntry(baseUrl, route.path, now, route.changeFrequency, route.priority));
+    legalEUPages.push(...createLocalizedEntries(baseUrl, route.path, now, route.changeFrequency, route.priority));
   }
 
-  // Legal pages - US (EN only, no DE versions for US legal docs)
+  // Legal pages - US (EN only, no locale versions for US legal docs)
   const legalUSPages: MetadataRoute.Sitemap = [
     {
       url: `${baseUrl}/legal/us/terms`,
@@ -330,9 +178,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: 'monthly' as const,
       priority: 0.5,
     },
+    {
+      url: `${baseUrl}/legal/us/subprocessors`,
+      lastModified: now,
+      changeFrequency: 'monthly' as const,
+      priority: 0.5,
+    },
   ];
 
-  // Solutions pages
+  // Solutions pages - all locales
   const solutionPages: MetadataRoute.Sitemap = [];
   const solutionRoutes = [
     { path: '/solutions/hard-bugs', priority: 0.75 },
@@ -346,22 +200,24 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   for (const route of solutionRoutes) {
-    solutionPages.push(...createMultiLingualEntry(baseUrl, route.path, now, 'weekly', route.priority));
+    solutionPages.push(...createLocalizedEntries(baseUrl, route.path, now, 'weekly', route.priority));
   }
 
-  // Blog posts
+  // Blog posts - all locales
   const blogPages: MetadataRoute.Sitemap = [];
   const blogRoutes = [
     { path: '/blog/what-is-ai-code-planning', priority: 0.85 },
     { path: '/blog/ai-code-planning-best-practices', priority: 0.8 },
     { path: '/blog/ai-pair-programming-vs-ai-planning', priority: 0.8 },
+    { path: '/blog/best-ai-coding-assistants-2025', priority: 0.85 },
+    { path: '/blog/github-copilot-alternatives-2025', priority: 0.85 },
   ];
 
   for (const route of blogRoutes) {
-    blogPages.push(...createMultiLingualEntry(baseUrl, route.path, now, 'weekly', route.priority));
+    blogPages.push(...createLocalizedEntries(baseUrl, route.path, now, 'weekly', route.priority));
   }
 
-  // Other pages
+  // Other pages - all locales
   const otherPages: MetadataRoute.Sitemap = [];
   const otherRoutes = [
     { path: '/about', priority: 0.7, changeFrequency: 'monthly' as const },
@@ -370,21 +226,23 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { path: '/schedule', priority: 0.7, changeFrequency: 'weekly' as const },
     { path: '/changelog', priority: 0.6, changeFrequency: 'weekly' as const },
     { path: '/support', priority: 0.8, changeFrequency: 'monthly' as const },
-    { path: '/security/notarization', priority: 0.7, changeFrequency: 'monthly' as const },
+    { path: '/all-pages', priority: 0.6, changeFrequency: 'weekly' as const },
   ];
 
   for (const route of otherRoutes) {
-    otherPages.push(...createMultiLingualEntry(baseUrl, route.path, now, route.changeFrequency, route.priority));
+    otherPages.push(...createLocalizedEntries(baseUrl, route.path, now, route.changeFrequency, route.priority));
   }
 
-  // Comparison pages
+  // Comparison pages - all locales
+  // NOTE: Most comparison pages are in pSEO data, only add non-pSEO pages here
   const comparisonPages: MetadataRoute.Sitemap = [];
   const comparisonRoutes = [
     { path: '/compare/cursor-vs-windsurf', priority: 0.85 },
+    // Other comparison pages are in pSEO data to avoid duplicates
   ];
 
   for (const route of comparisonRoutes) {
-    comparisonPages.push(...createMultiLingualEntry(baseUrl, route.path, now, 'weekly', route.priority));
+    comparisonPages.push(...createLocalizedEntries(baseUrl, route.path, now, 'weekly', route.priority));
   }
 
   return [

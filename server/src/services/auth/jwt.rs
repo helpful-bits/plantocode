@@ -97,7 +97,7 @@ pub fn generate_token(
         auth0_sub: None,          // No auth0_sub by default
         tbh: None,                // No token binding by default
         jti: Uuid::new_v4().to_string(),
-        aud: None,
+        aud: Some("plantocode-api".to_string()),
         // device_id is used for device binding (compared to request header x-device-id in middleware). tbh is kept for potential future token-binding enforcement.
         device_id: None,
         scope: Some("read write rpc".to_string()),
@@ -131,6 +131,7 @@ pub fn verify_token(token: &str) -> Result<Claims, AppError> {
     // Use HS256 algorithm for symmetric key
     let mut validation = Validation::new(Algorithm::HS256);
     validation.set_issuer(&[JWT_ISSUER]); // Trust only our issuer
+    validation.validate_aud = false; // Disable automatic audience validation - we do custom validation in middleware
 
     // Decode and validate the token
     let token_data = decode::<Claims>(token, &decoding_key, &validation).map_err(|err| {
@@ -204,7 +205,7 @@ pub fn create_token(
         // Add token binding hash if device_id is provided
         tbh: device_id.map(hash_token_binding_value),
         jti: Uuid::new_v4().to_string(),
-        aud: None,
+        aud: Some("plantocode-api".to_string()),
         // device_id is used for device binding (compared to request header x-device-id in middleware). tbh is kept for potential future token-binding enforcement.
         device_id: device_id.map(|v| v.to_string()),
         scope: Some("read write rpc".to_string()),
