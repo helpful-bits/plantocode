@@ -1,6 +1,5 @@
 import { GlassCard } from '@/components/ui/GlassCard';
 import { BlogArticle } from '@/components/blog/BlogArticle';
-import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import type { Metadata } from 'next';
 import { locales } from '@/i18n/config';
 import { loadMessages, type Locale } from '@/lib/i18n';
@@ -380,27 +379,6 @@ export default function AIPairProgrammingVsAIPlanningPage() {
             Don't think of them as competitors. Think of planning as the "think" phase and pair programming
             as the "execute" phase. Use both, and you get AI-assisted development that's both fast and safe.
           </p>
-
-          <div className="bg-gradient-to-r from-primary/20 to-primary/10 border border-primary/30 rounded-lg p-8 my-12 text-center">
-            <h3 className="text-2xl font-bold mb-4">Try the Planning-First Workflow</h3>
-            <p className="text-foreground/80 mb-6">
-              Use PlanToCode for planning, Copilot/Cursor for execution. Get the best of both worlds.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <LinkWithArrow
-                href="/downloads"
-                className="inline-flex items-center"
-              >
-                Download PlanToCode
-              </LinkWithArrow>
-              <LinkWithArrow
-                href="/blog/what-is-ai-code-planning"
-                className="inline-flex items-center"
-              >
-                Learn About AI Planning
-              </LinkWithArrow>
-            </div>
-          </div>
 
     </BlogArticle>
   );

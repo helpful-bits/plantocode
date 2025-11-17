@@ -709,7 +709,7 @@
         "question": "Which AI model is used for transcription?"
       },
       "offline": {
-        "answer": "No, voice transcription requires an internet connection to send audio to OpenAI Whisper API. The transcription happens in real-time with minimal latency.",
+        "answer": "No, voice transcription requires an internet connection to send audio to OpenAI gpt-4o-transcribe API. The transcription happens in real-time with minimal latency.",
         "question": "Does voice transcription work offline?"
       },
       "whereToUse": {

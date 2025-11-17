@@ -63,38 +63,50 @@ export const codexContent: PlanIntegrationContent = {
     {
       title: 'Choose the right approval mode',
       description:
-        'Auto (default): Codex can read/edit/run inside the working directory without prompting; asks before leaving the workspace or using network. Read-Only: Plan and chat only—no edits or command execution. Full Access: Edits + commands (incl. network) without approval. Use only when policy allows.',
-    },
-    {
-      title: 'Windows support',
-      description:
-        "On Windows, run Codex inside WSL2 for correct sandboxing and performance. PlanToCode's terminal persists across WSL sessions.",
+        'Auto (default): Codex can read/edit/run inside the working directory without prompting; asks before leaving the workspace or using network. Read-Only: Plan and chat only—no edits or command execution. Full Access: Edits + commands (incl. network) without approval. Use only when policy allows. Configure via /approvals in the Codex UI or CLI flags.',
     },
     {
       title: 'Model note',
       description:
-        'Codex defaults to GPT-5. Switch to GPT-5-Codex via /model in the Codex UI or --model gpt-5-codex if you prefer the coding-tuned model.',
+        'Defaults to GPT-5; switch to GPT-5-Codex via /model or --model gpt-5-codex',
+    },
+    {
+      title: 'Windows hint',
+      description:
+        'Windows users: WSL recommended for best CLI compatibility',
     },
   ],
 
   quickstart: [
     {
-      step: 'Install PlanToCode',
-      detail: 'Download and connect to your repo/workspace.',
+      step: 'Install CLI',
+      detail: '',
     },
     {
-      step: 'Discover files',
-      detail: 'Run file discovery and confirm the set of impacted files.',
+      step: 'Login and select model (GPT-5 or GPT-5-Codex)',
+      detail: '',
     },
     {
-      step: 'Generate the plan',
-      detail:
-        'Create one or more model drafts, merge them, and edit the per-file spec until it matches your intent.',
+      step: 'Paste approved plan',
+      detail: '',
     },
     {
-      step: 'Run Codex with approvals',
-      detail:
-        'Open Codex in the integrated terminal. Pick Auto, Read-Only, or Full Access. Execute with confidence.',
+      step: 'Pick approval mode',
+      detail: '',
+    },
+  ],
+
+  quickstartHeading: 'Quick start',
+  quickstartGlassCard: true,
+
+  learnMore: [
+    {
+      label: 'Codex CLI',
+      href: 'https://developers.openai.com/codex/cli',
+    },
+    {
+      label: 'Approval modes',
+      href: 'https://developers.openai.com/codex/cli/features',
     },
   ],
 
@@ -120,6 +132,24 @@ export const codexContent: PlanIntegrationContent = {
       claim:
         'Codex CLI defaults to GPT-5. Users can switch to GPT-5-Codex via the /model command or --model flag.',
       href: 'https://help.openai.com/en/articles/10274290-codex-cli-models',
+      source: 'official',
+    },
+    {
+      claim:
+        'Approval modes can be configured using the /approvals command or CLI flags.',
+      href: 'https://developers.openai.com/codex/cli/features',
+      source: 'official',
+    },
+    {
+      claim:
+        'Codex CLI supports multiple models and usage patterns.',
+      href: 'https://developers.openai.com/codex/cli',
+      source: 'official',
+    },
+    {
+      claim:
+        'WSL getting started guide is available for Windows users.',
+      href: 'https://help.openai.com',
       source: 'official',
     },
   ],

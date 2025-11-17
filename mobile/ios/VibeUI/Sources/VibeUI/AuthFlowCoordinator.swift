@@ -15,6 +15,7 @@ import Core
 public struct AuthFlowCoordinator: View {
   @ObservedObject private var appState = AppState.shared
   @StateObject private var multiConnectionManager = MultiConnectionManager.shared
+  @ObservedObject private var deviceDiscovery = DeviceDiscoveryService.shared
   @EnvironmentObject private var container: AppContainer
 
   private enum FlowRoute {
@@ -86,6 +87,9 @@ public struct AuthFlowCoordinator: View {
     }
     .onChange(of: appState.bootstrapState) { _ in withAnimation { updateRoute() } }
     .onChange(of: appState.selectedProjectDirectory) { _ in withAnimation { updateRoute() } }
+    .onChange(of: deviceDiscovery.devices) { _ in
+      withAnimation { updateRoute() }
+    }
   }
 
   private func startSubscriptionObserver() {
@@ -141,6 +145,11 @@ public struct AuthFlowCoordinator: View {
     }
   }
 
+  private var isActiveDeviceAvailable: Bool {
+    guard let id = multiConnectionManager.activeDeviceId else { return false }
+    return deviceDiscovery.devices.contains(where: { $0.deviceId == id && $0.status.isAvailable })
+  }
+
   @MainActor
   private func bootstrapAndRoute() async {
     withAnimation { route = .loading }
@@ -192,7 +201,7 @@ public struct AuthFlowCoordinator: View {
       return
     case .needsConfiguration(let missing):
       if missing.projectMissing {
-        if multiConnectionManager.activeDeviceIsFullyConnected {
+        if multiConnectionManager.activeDeviceIsFullyConnected && isActiveDeviceAvailable {
           route = .projectFolderSelection
         } else {
           route = .deviceSelection
@@ -203,7 +212,7 @@ public struct AuthFlowCoordinator: View {
         return
       }
     case .ready:
-      if multiConnectionManager.activeDeviceIsFullyConnected {
+      if multiConnectionManager.activeDeviceIsFullyConnected && isActiveDeviceAvailable {
         if appState.selectedProjectDirectory == nil {
           route = .projectFolderSelection
         } else {

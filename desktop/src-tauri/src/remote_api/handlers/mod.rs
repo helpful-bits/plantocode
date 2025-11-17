@@ -7,7 +7,6 @@ pub mod files;
 pub mod jobs;
 pub mod workflows;
 pub mod actions;
-pub mod plans;
 pub mod app;
 pub mod text;
 pub mod speech;

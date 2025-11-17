@@ -97,7 +97,6 @@ export function Header() {
         { href: '/solutions/library-upgrades', label: t('solution.libraryUpgrades.label', 'Library Upgrades'), icon: Package, description: t('solution.libraryUpgrades.description', 'Dependency management') },
       ]
     },
-    { href: '/comparisons', label: t('nav.comparisons', 'Comparisons'), dropdown: false },
     { href: '/docs', label: t('nav.docs', 'Documentation'), dropdown: false },
     { href: '/demo', label: t('nav.demo', 'Demo'), dropdown: false },
     { href: '/downloads', label: t('nav.downloads', 'Downloads'), dropdown: false },
@@ -147,7 +146,18 @@ export function Header() {
                 >
                   <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 lg:w-5 lg:h-5 text-primary-foreground" />
                 </motion.div>
-                <span className="bg-gradient-to-r from-current to-primary bg-clip-text whitespace-nowrap">
+                <span
+                  className="font-extrabold whitespace-nowrap"
+                  style={{
+                    background: 'linear-gradient(90deg, var(--color-primary) 0%, var(--color-adaptive-accent) 50%, var(--color-primary) 100%)',
+                    backgroundSize: '200% auto',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    backgroundClip: 'text',
+                    animation: 'gradient-shift 3s ease infinite',
+                    filter: 'drop-shadow(0 0 12px color-mix(in oklch, var(--color-primary) 40%, transparent)) drop-shadow(0 0 24px color-mix(in oklch, var(--color-primary) 20%, transparent))'
+                  }}
+                >
                   PlanToCode
                 </span>
               </Link>

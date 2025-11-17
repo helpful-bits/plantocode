@@ -4,11 +4,11 @@ import Core
 public struct FileManagementView: View {
     @EnvironmentObject private var container: AppContainer
     @ObservedObject private var filesService: FilesDataService
+    @ObservedObject private var sessionService: SessionDataService
     @ObservedObject private var jobsService: JobsDataService
     @StateObject private var multiConnectionManager = MultiConnectionManager.shared
     @State private var searchText = ""
     @State private var files: [FileInfo] = []
-    @State private var includedFilesNotInList: [String] = [] // Files that are included but not in current file list
     @State private var errorMessage: String?
     @State private var isLoading = false
     @State private var localSearchTerm: String = ""
@@ -20,20 +20,27 @@ public struct FileManagementView: View {
     @State private var canUndoFiles = false
     @State private var canRedoFiles = false
     @State private var isSyncingHistory = false
+    @State private var fileHistoryState: HistoryState?
 
-    public init(filesService: FilesDataService, jobsService: JobsDataService) {
+    public init(filesService: FilesDataService, sessionService: SessionDataService, jobsService: JobsDataService) {
         self.filesService = filesService
+        self.sessionService = sessionService
         self.jobsService = jobsService
     }
 
-    private var sessionService: SessionDataService {
-        container.sessionService
+    private var includedFilesNotInList: [String] {
+        guard let session = sessionService.currentSession else {
+            return []
+        }
+        let includedSet = Set(session.includedFiles ?? [])
+        let filesInListSet = Set(files.map(\.path))
+        return Array(includedSet.subtracting(filesInListSet)).sorted()
     }
 
     public var body: some View {
-        let _ = refreshTrigger // Force view dependency
-        let includedSet = Set(container.sessionService.currentSession?.includedFiles ?? [])
-        let excludedSet = Set(container.sessionService.currentSession?.forceExcludedFiles ?? [])
+        let _ = refreshTrigger
+        let includedSet = Set(sessionService.currentSession?.includedFiles ?? [])
+        let excludedSet = Set(sessionService.currentSession?.forceExcludedFiles ?? [])
 
         let displayedFiles = files
             .filter { file in
@@ -58,18 +65,16 @@ public struct FileManagementView: View {
         return VStack(spacing: 0) {
             connectedView
         }
-        .onReceive(container.sessionService.currentSessionPublisher.compactMap { $0 }) { _ in
-            updateIncludedFilesNotInList()
+        .onChange(of: sessionService.currentSession?.id) { _ in
             Task {
                 await refreshUndoRedoState()
             }
         }
         .onReceive(container.filesService.$files) { newFiles in
             files = newFiles
-            updateIncludedFilesNotInList()
         }
-        .task(id: container.sessionService.currentSession?.projectDirectory) {
-            let currentProjectDir = container.sessionService.currentSession?.projectDirectory
+        .task(id: sessionService.currentSession?.projectDirectory) {
+            let currentProjectDir = sessionService.currentSession?.projectDirectory
                 ?? container.currentProject?.directory
 
             if currentProjectDir != nil && (!hasLoadedFiles || lastLoadedProjectDir != currentProjectDir) {
@@ -78,7 +83,6 @@ public struct FileManagementView: View {
                     loadFiles()
                 }
             }
-            updateIncludedFilesNotInList()
             await refreshUndoRedoState()
         }
         .onReceive(filesService.$currentSearchTerm) { newValue in
@@ -86,13 +90,7 @@ public struct FileManagementView: View {
                 localSearchTerm = newValue
             }
         }
-        .onChange(of: files) { _ in
-            updateIncludedFilesNotInList()
-        }
-        .onChange(of: container.sessionService.currentSession?.includedFiles) { _ in
-            updateIncludedFilesNotInList()
-        }
-        .onReceive(container.sessionService.currentSessionPublisher) { session in
+        .onReceive(sessionService.currentSessionPublisher) { session in
             let newProjectDir = session?.projectDirectory
             if lastLoadedProjectDir != newProjectDir && newProjectDir != nil {
                 lastLoadedProjectDir = newProjectDir
@@ -214,7 +212,7 @@ public struct FileManagementView: View {
                     Task {
                         isSyncingHistory = true
                         defer { isSyncingHistory = false }
-                        guard let session = container.sessionService.currentSession else { return }
+                        guard let session = sessionService.currentSession else { return }
                         try? await container.filesService.undoFileSelection(sessionId: session.id)
                         await refreshUndoRedoState()
                     }
@@ -228,7 +226,7 @@ public struct FileManagementView: View {
                     Task {
                         isSyncingHistory = true
                         defer { isSyncingHistory = false }
-                        guard let session = container.sessionService.currentSession else { return }
+                        guard let session = sessionService.currentSession else { return }
                         try? await container.filesService.redoFileSelection(sessionId: session.id)
                         await refreshUndoRedoState()
                     }
@@ -298,8 +296,8 @@ public struct FileManagementView: View {
     }
 
     private var fileCountHeader: some View {
-        let includedSet = Set(container.sessionService.currentSession?.includedFiles ?? [])
-        let excludedSet = Set(container.sessionService.currentSession?.forceExcludedFiles ?? [])
+        let includedSet = Set(sessionService.currentSession?.includedFiles ?? [])
+        let excludedSet = Set(sessionService.currentSession?.forceExcludedFiles ?? [])
 
         let allFilesCount = files.count + includedFilesNotInList.count
         let selectedFilesCount = includedSet.count
@@ -318,7 +316,7 @@ public struct FileManagementView: View {
                     findFilesError = "No active device connection"
                     return
                 }
-                guard let session = container.sessionService.currentSession else {
+                guard let session = sessionService.currentSession else {
                     findFilesError = "No active session"
                     return
                 }
@@ -331,7 +329,7 @@ public struct FileManagementView: View {
                 Task {
                     do {
                         // Fetch latest session data from server
-                        guard let refreshedSession = try await container.sessionService.getSession(id: session.id) else {
+                        guard let refreshedSession = try await sessionService.getSession(id: session.id) else {
                             await MainActor.run {
                                 findFilesError = "Session not found"
                             }
@@ -365,7 +363,7 @@ public struct FileManagementView: View {
                                 suggestionPaths.append(contentsOf: list.map { $0.path })
                             case .completed:
                                 if !suggestionPaths.isEmpty {
-                                    try? await container.sessionService.updateSessionFiles(
+                                    try? await sessionService.updateSessionFiles(
                                         sessionId: refreshedSession.id,
                                         addIncluded: suggestionPaths,
                                         removeIncluded: nil,
@@ -400,7 +398,7 @@ public struct FileManagementView: View {
                 }
             }
             .buttonStyle(PrimaryButtonStyle())
-            .disabled(!isConnected || container.sessionService.currentSession == nil)
+            .disabled(!isConnected || sessionService.currentSession == nil)
         }
         .padding(.horizontal)
         .padding(.vertical, Theme.Spacing.sm)
@@ -409,7 +407,7 @@ public struct FileManagementView: View {
     @ViewBuilder
     private var selectedFilesSection: some View {
         if !includedFilesNotInList.isEmpty {
-            let excludedSet = Set(container.sessionService.currentSession?.forceExcludedFiles ?? [])
+            let excludedSet = Set(sessionService.currentSession?.forceExcludedFiles ?? [])
 
             Section {
                 ForEach(includedFilesNotInList, id: \.self) { filePath in
@@ -447,8 +445,8 @@ public struct FileManagementView: View {
     }
 
     private var searchResultsSection: some View {
-        let includedSet = Set(container.sessionService.currentSession?.includedFiles ?? [])
-        let excludedSet = Set(container.sessionService.currentSession?.forceExcludedFiles ?? [])
+        let includedSet = Set(sessionService.currentSession?.includedFiles ?? [])
+        let excludedSet = Set(sessionService.currentSession?.forceExcludedFiles ?? [])
 
         let displayedFiles = files
             .filter { file in
@@ -517,7 +515,7 @@ public struct FileManagementView: View {
     }
 
     private func refreshUndoRedoState() async {
-        guard let session = container.sessionService.currentSession else { return }
+        guard let session = sessionService.currentSession else { return }
         do {
             let state = try await container.filesService.getFileHistoryState(sessionId: session.id)
             let entries = (state["entries"] as? [Any]) ?? []
@@ -530,25 +528,12 @@ public struct FileManagementView: View {
         }
     }
 
-    private func updateIncludedFilesNotInList() {
-        guard let session = container.sessionService.currentSession else {
-            includedFilesNotInList = []
-            return
-        }
-
-        let includedSet = Set(session.includedFiles ?? [])
-        let filesInListSet = Set(files.map(\.path))
-
-        // Find included files that aren't in the current file list
-        includedFilesNotInList = Array(includedSet.subtracting(filesInListSet)).sorted()
-    }
-
     private func loadFiles() {
         // Prevent concurrent loads
         guard !isLoading else { return }
 
         // Use session's projectDirectory, then currentProject, then selectedProjectDirectory from AppState
-        let projectDirectory = container.sessionService.currentSession?.projectDirectory
+        let projectDirectory = sessionService.currentSession?.projectDirectory
             ?? container.currentProject?.directory
             ?? Core.AppState.shared.selectedProjectDirectory
 
@@ -577,7 +562,6 @@ public struct FileManagementView: View {
                     files = results
                     isLoading = false
                     hasLoadedFiles = true
-                    updateIncludedFilesNotInList()
                 }
             } catch {
                 await MainActor.run {
@@ -591,7 +575,7 @@ public struct FileManagementView: View {
 
     private func performSearch() {
         // Use session's projectDirectory, then currentProject, then selectedProjectDirectory from AppState
-        let projectDirectory = container.sessionService.currentSession?.projectDirectory
+        let projectDirectory = sessionService.currentSession?.projectDirectory
             ?? container.currentProject?.directory
             ?? Core.AppState.shared.selectedProjectDirectory
 
@@ -627,7 +611,7 @@ public struct FileManagementView: View {
     }
 
     private func toggleInclude(_ path: String) {
-        guard let session = container.sessionService.currentSession else {
+        guard let session = sessionService.currentSession else {
             errorMessage = "No active session"
             return
         }
@@ -646,14 +630,15 @@ public struct FileManagementView: View {
         let nextIncluded = Array(includedSet)
         let nextExcluded = Array(excludedSet)
 
-        container.sessionService.updateSessionFilesInMemory(
+        sessionService.updateSessionFilesInMemory(
             sessionId: session.id,
             includedFiles: nextIncluded,
             forceExcludedFiles: nextExcluded
         )
 
         Task {
-            try? await container.sessionService.updateSessionFiles(
+            // Use legacy method for now - will migrate to HistoryState later
+            try? await sessionService.updateSessionFiles(
                 sessionId: session.id,
                 addIncluded: isIncluded ? nil : [path],
                 removeIncluded: isIncluded ? [path] : nil,
@@ -665,7 +650,7 @@ public struct FileManagementView: View {
     }
 
     private func toggleExclude(_ path: String) {
-        guard let session = container.sessionService.currentSession else {
+        guard let session = sessionService.currentSession else {
             errorMessage = "No active session"
             return
         }
@@ -684,14 +669,14 @@ public struct FileManagementView: View {
         let nextIncluded = Array(includedSet)
         let nextExcluded = Array(excludedSet)
 
-        container.sessionService.updateSessionFilesInMemory(
+        sessionService.updateSessionFilesInMemory(
             sessionId: session.id,
             includedFiles: nextIncluded,
             forceExcludedFiles: nextExcluded
         )
 
         Task {
-            try? await container.sessionService.updateSessionFiles(
+            try? await sessionService.updateSessionFiles(
                 sessionId: session.id,
                 addIncluded: nil,
                 removeIncluded: isExcluded ? nil : [path],
@@ -703,7 +688,7 @@ public struct FileManagementView: View {
     }
 
     private func selectAllFiltered() {
-        guard let session = container.sessionService.currentSession else { return }
+        guard let session = sessionService.currentSession else { return }
         let includedSet = Set(session.includedFiles ?? [])
         let excludedSet = Set(session.forceExcludedFiles ?? [])
 
@@ -718,7 +703,7 @@ public struct FileManagementView: View {
         let paths = displayedFiles.map(\.path).filter { !includedSet.contains($0) }
         if !paths.isEmpty {
             Task {
-                try? await container.sessionService.updateSessionFiles(
+                try? await sessionService.updateSessionFiles(
                     sessionId: session.id,
                     addIncluded: paths,
                     removeIncluded: nil,
@@ -730,7 +715,7 @@ public struct FileManagementView: View {
     }
 
     private func deselectAllFiltered() {
-        guard let session = container.sessionService.currentSession else { return }
+        guard let session = sessionService.currentSession else { return }
         let includedSet = Set(session.includedFiles ?? [])
         let excludedSet = Set(session.forceExcludedFiles ?? [])
 
@@ -745,7 +730,7 @@ public struct FileManagementView: View {
         let paths = displayedFiles.map(\.path).filter { includedSet.contains($0) }
         if !paths.isEmpty {
             Task {
-                try? await container.sessionService.updateSessionFiles(
+                try? await sessionService.updateSessionFiles(
                     sessionId: session.id,
                     addIncluded: nil,
                     removeIncluded: paths,
@@ -757,7 +742,7 @@ public struct FileManagementView: View {
     }
 
     private func excludeAllFiltered() {
-        guard let session = container.sessionService.currentSession else { return }
+        guard let session = sessionService.currentSession else { return }
         let includedSet = Set(session.includedFiles ?? [])
         let excludedSet = Set(session.forceExcludedFiles ?? [])
 
@@ -772,7 +757,7 @@ public struct FileManagementView: View {
         let paths = displayedFiles.map(\.path).filter { !excludedSet.contains($0) }
         if !paths.isEmpty {
             Task {
-                try? await container.sessionService.updateSessionFiles(
+                try? await sessionService.updateSessionFiles(
                     sessionId: session.id,
                     addIncluded: nil,
                     removeIncluded: paths,
@@ -784,7 +769,7 @@ public struct FileManagementView: View {
     }
 
     private func unexcludeAllFiltered() {
-        guard let session = container.sessionService.currentSession else { return }
+        guard let session = sessionService.currentSession else { return }
         let includedSet = Set(session.includedFiles ?? [])
         let excludedSet = Set(session.forceExcludedFiles ?? [])
 
@@ -799,7 +784,7 @@ public struct FileManagementView: View {
         let paths = displayedFiles.map(\.path).filter { excludedSet.contains($0) }
         if !paths.isEmpty {
             Task {
-                try? await container.sessionService.updateSessionFiles(
+                try? await sessionService.updateSessionFiles(
                     sessionId: session.id,
                     addIncluded: nil,
                     removeIncluded: nil,
@@ -969,6 +954,7 @@ private struct ActionButton: View {
     let container = AppContainer(baseURL: serverURL, deviceId: deviceId)
     FileManagementView(
         filesService: FilesDataService(serverRelayClient: relayClient),
+        sessionService: container.sessionService,
         jobsService: container.jobsService
     )
     .environmentObject(container)

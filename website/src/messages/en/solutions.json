@@ -109,7 +109,7 @@
           "title": "Monorepo-aware resolution"
         },
         "pathValidation": {
-          "description": "Stage 5 of the discovery workflow specifically validates and corrects file paths. This happens automatically before any AI model sees your codebase.",
+          "description": "Path validation throughout the discovery workflow validates and corrects file paths. This happens automatically before any AI model sees your codebase.",
           "features": [
             "Checks file accessibility and permissions",
             "Resolves path inconsistencies automatically",
@@ -117,14 +117,14 @@
             "Validates import alias mappings from tsconfig"
           ],
           "link": "Technical documentation",
-          "title": "Path validation pipeline"
+          "title": "Path validation"
         },
         "preExecutionDiscovery": {
           "description": "Before AI generates any code, PlanToCode runs a 4-stage file discovery workflow that maps your actual filesystem. Every file path is verified to exist before being included in context.",
           "features": [
             "Scans repository with git ls-files integration",
             "Validates file existence against actual filesystem",
-            "Resolves symbolic links and path aliases",
+            "Resolves symbolic links and path aliases automatically",
             "Normalizes paths for cross-platform compatibility"
           ],
           "link": "Learn about file discovery",
@@ -834,15 +834,14 @@
       },
       "howPlanToCodePrevents": {
         "comprehensiveDiscovery": {
-          "description": "PlanToCode runs a 4-stage file discovery workflow before generating any implementation plan. This workflow uses git integration, regex filtering, AI-powered relevance assessment, relationship analysis, and path validation to build a complete map of your codebase.",
+          "description": "PlanToCode runs a 4-stage file discovery workflow before generating any implementation plan. This workflow uses git integration, regex filtering, AI-powered relevance assessment, and relationship analysis to build a complete map of your codebase.",
           "link": "Technical documentation",
           "process": {
             "steps": [
-              "Validate git repository and root folder",
-              "Generate task-specific regex patterns",
-              "AI relevance assessment of file contents",
-              "Extended path discovery via relationships",
-              "Final validation"
+              "Stage 1: Validate git repository and root folder",
+              "Stage 2: Generate task-specific regex patterns",
+              "Stage 3: AI relevance assessment of file contents",
+              "Stage 4: Extended path discovery via relationships"
             ],
             "title": "Discovery Process:"
           },

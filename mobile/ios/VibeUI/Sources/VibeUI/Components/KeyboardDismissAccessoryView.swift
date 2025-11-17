@@ -21,6 +21,9 @@ public final class KeyboardDismissAccessoryView: UIInputView {
     /// This is a weak reference to avoid retain cycles.
     public weak var targetResponder: UIResponder?
 
+    /// Optional callback invoked when the dismiss button is tapped
+    public var onDismiss: (() -> Void)?
+
     // MARK: - Private Properties
 
     private let blurEffectView: UIVisualEffectView
@@ -34,9 +37,10 @@ public final class KeyboardDismissAccessoryView: UIInputView {
     /// - Parameters:
     ///   - targetResponder: The responder that should resign first responder when dismissed.
     ///   - height: The height of the accessory view. Defaults to `defaultHeight`.
-    public init(attachedTo targetResponder: UIResponder, height: CGFloat = defaultHeight) {
+    public init(attachedTo targetResponder: UIResponder, height: CGFloat = defaultHeight, onDismiss: (() -> Void)? = nil) {
         self.targetResponder = targetResponder
         self.baseHeight = height
+        self.onDismiss = onDismiss
 
         // Use .systemMaterial for automatic Dark/Light mode adaptation
         let blurEffect = UIBlurEffect(style: .systemMaterial)
@@ -45,7 +49,7 @@ public final class KeyboardDismissAccessoryView: UIInputView {
         // Create dismiss button with SF Symbol
         self.dismissButton = UIButton(type: .system)
 
-        // Initialize with .keyboard style for proper keyboard lifecycle coupling
+        // Initialize as UIInputView with keyboard style
         super.init(frame: .zero, inputViewStyle: .keyboard)
 
         setupViews()
@@ -54,7 +58,19 @@ public final class KeyboardDismissAccessoryView: UIInputView {
     }
 
     required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
+        self.targetResponder = nil
+        self.baseHeight = Self.defaultHeight
+        self.onDismiss = nil
+
+        let blurEffect = UIBlurEffect(style: .systemMaterial)
+        self.blurEffectView = UIVisualEffectView(effect: blurEffect)
+        self.dismissButton = UIButton(type: .system)
+
+        super.init(coder: coder)
+
+        setupViews()
+        setupConstraints()
+        setupAccessibility()
     }
 
     // MARK: - Setup
@@ -107,6 +123,7 @@ public final class KeyboardDismissAccessoryView: UIInputView {
 
     @objc private func dismissButtonTapped() {
         targetResponder?.resignFirstResponder()
+        onDismiss?()
     }
 
     // MARK: - Overrides

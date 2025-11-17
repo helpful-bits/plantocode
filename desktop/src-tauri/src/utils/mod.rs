@@ -2,6 +2,7 @@ pub mod config_helpers;
 pub mod config_resolver;
 pub mod context_resolver;
 pub mod date_utils;
+pub mod device_name;
 pub mod directory_tree;
 pub mod env_utils;
 pub mod error_utils;
@@ -33,6 +34,7 @@ pub use context_resolver::{
     resolve_job_context,
 };
 pub use date_utils::get_timestamp;
+pub use device_name::get_device_display_name;
 pub use directory_tree::{DirectoryTreeOptions, generate_directory_tree};
 pub use env_utils::{read_env, read_env_bool, read_env_f64, read_env_i64};
 pub use error_utils::*;

@@ -11,6 +11,7 @@ public struct ProjectFolderSelectionView: View {
     @EnvironmentObject var container: AppContainer
     @ObservedObject var appState = AppState.shared
     @StateObject var multi = MultiConnectionManager.shared
+    @ObservedObject private var deviceDiscovery = DeviceDiscoveryService.shared
 
     @State private var currentPath: String = ""
     @State private var parentPath: String? = nil
@@ -41,7 +42,7 @@ public struct ProjectFolderSelectionView: View {
                 VStack(spacing: 24) {
                     headerSection
 
-                    if multi.activeDeviceId == nil {
+                    if !multi.activeDeviceIsFullyConnected {
                         connectionGateSection
                     } else {
                         folderBrowserSection
@@ -62,8 +63,18 @@ public struct ProjectFolderSelectionView: View {
             }
         }
         .onAppear {
-            if multi.activeDeviceId != nil {
+            if multi.activeDeviceIsFullyConnected {
                 loadHomeDirectory()
+            } else {
+                appState.navigateToDeviceSelection()
+            }
+        }
+        .onChange(of: deviceDiscovery.devices) { _ in
+            guard let id = multi.activeDeviceId,
+                  deviceDiscovery.devices.contains(where: { $0.deviceId == id && $0.status.isAvailable }) else {
+                connectionLost = true
+                appState.navigateToDeviceSelection()
+                return
             }
         }
         .onChange(of: multi.activeDeviceId) { newDeviceId in
@@ -86,6 +97,9 @@ public struct ProjectFolderSelectionView: View {
                         let info = extractErrorInfo(from: relayError)
                         errorCode = info.code
                         errorMessage = info.message
+                        if info.code == "auth_required" {
+                            appState.navigateToDeviceSelection()
+                        }
                     } else {
                         errorCode = "connection_failed"
                         errorMessage = error.localizedDescription
@@ -320,6 +334,20 @@ public struct ProjectFolderSelectionView: View {
         errorMessage = nil
         errorCode = nil
         connectionLost = false
+        var cancelled = false
+
+        let timeoutTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 12_000_000_000) // 12s
+            if !cancelled && self.isLoading {
+                self.errorMessage = "Operation timed out"
+                self.isLoading = false
+            }
+        }
+
+        defer {
+            cancelled = true
+            timeoutTask.cancel()
+        }
 
         Task {
             do {
@@ -337,6 +365,9 @@ public struct ProjectFolderSelectionView: View {
                             errorMessage = error.message
                             errorCode = extractErrorCode(from: error.message)
                             checkConnectionLost(errorCode: errorCode)
+                            if errorCode == "auth_required" {
+                                appState.navigateToDeviceSelection()
+                            }
                             isLoading = false
                         }
                         return
@@ -364,6 +395,20 @@ public struct ProjectFolderSelectionView: View {
         errorMessage = nil
         errorCode = nil
         connectionLost = false
+        var cancelled = false
+
+        let timeoutTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 12_000_000_000) // 12s
+            if !cancelled && self.isLoading {
+                self.errorMessage = "Operation timed out"
+                self.isLoading = false
+            }
+        }
+
+        defer {
+            cancelled = true
+            timeoutTask.cancel()
+        }
 
         Task {
             do {
@@ -395,6 +440,9 @@ public struct ProjectFolderSelectionView: View {
                             errorMessage = error.message
                             errorCode = extractErrorCode(from: error.message)
                             checkConnectionLost(errorCode: errorCode)
+                            if errorCode == "auth_required" {
+                                appState.navigateToDeviceSelection()
+                            }
                             isLoading = false
                         }
                         return
@@ -496,7 +544,7 @@ public struct ProjectFolderSelectionView: View {
 
     /// Check if error code indicates connection loss
     private func checkConnectionLost(errorCode: String?) {
-        let connectionLostCodes = ["relay_failed", "disconnected", "not_connected", "connection_lost", "network_error"]
+        let connectionLostCodes = ["auth_required", "relay_failed", "disconnected", "not_connected", "connection_lost", "network_error"]
         if let code = errorCode, connectionLostCodes.contains(code) {
             connectionLost = true
         }

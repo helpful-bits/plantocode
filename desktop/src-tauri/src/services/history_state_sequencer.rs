@@ -181,8 +181,11 @@ impl HistoryStateSequencer {
                                 if let Some(cache) = app_handle.try_state::<std::sync::Arc<crate::services::session_cache::SessionCache>>() {
                                     if let Some(current_entry) = new_state.entries.get(new_state.current_index as usize) {
                                         let _ = cache.update_task_description_canonical(&app_handle, &session_id, &current_entry.description).await;
+                                        // Emit session-task-updated event
+                                        let _ = session_events::emit_session_task_updated(&app_handle, &session_id, &current_entry.description);
                                     }
                                 }
+                                // Emit history-state-changed event
                                 session_events::emit_history_state_changed(&app_handle, &session_id, "task", &new_state);
                                 Ok(new_state)
                             }
@@ -195,8 +198,11 @@ impl HistoryStateSequencer {
                                                 if let Some(cache) = app_handle.try_state::<std::sync::Arc<crate::services::session_cache::SessionCache>>() {
                                                     if let Some(current_entry) = persisted.entries.get(persisted.current_index as usize) {
                                                         let _ = cache.update_task_description_canonical(&app_handle, &session_id, &current_entry.description).await;
+                                                        // Emit session-task-updated event
+                                                        let _ = session_events::emit_session_task_updated(&app_handle, &session_id, &current_entry.description);
                                                     }
                                                 }
+                                                // Emit history-state-changed event
                                                 session_events::emit_history_state_changed(&app_handle, &session_id, "task", &persisted);
                                                 Ok(persisted)
                                             }
@@ -252,8 +258,11 @@ impl HistoryStateSequencer {
 
                                             let _ = cache.update_files_delta(&app_handle, &session_id, &add_included, &remove_included, &add_excluded, &remove_excluded).await;
                                         }
+                                        // Emit session-files-updated event with the new lists
+                                        let _ = session_events::emit_session_files_updated(&app_handle, &session_id, &new_included, &new_excluded);
                                     }
                                 }
+                                // Emit history-state-changed event
                                 session_events::emit_history_state_changed(&app_handle, &session_id, "files", &new_state);
                                 Ok(new_state)
                             }
@@ -282,8 +291,11 @@ impl HistoryStateSequencer {
 
                                                             let _ = cache.update_files_delta(&app_handle, &session_id, &add_included, &remove_included, &add_excluded, &remove_excluded).await;
                                                         }
+                                                        // Emit session-files-updated event with the new lists
+                                                        let _ = session_events::emit_session_files_updated(&app_handle, &session_id, &new_included, &new_excluded);
                                                     }
                                                 }
+                                                // Emit history-state-changed event
                                                 session_events::emit_history_state_changed(&app_handle, &session_id, "files", &persisted);
                                                 Ok(persisted)
                                             }
@@ -322,8 +334,11 @@ impl HistoryStateSequencer {
                             if let Some(cache) = app_handle.try_state::<std::sync::Arc<crate::services::session_cache::SessionCache>>() {
                                 if let Some(current_entry) = new_state.entries.get(new_state.current_index as usize) {
                                     let _ = cache.update_task_description_canonical(&app_handle, &session_id, &current_entry.description).await;
+                                    // Emit session-task-updated event
+                                    let _ = session_events::emit_session_task_updated(&app_handle, &session_id, &current_entry.description);
                                 }
                             }
+                            // Emit history-state-changed event
                             session_events::emit_history_state_changed(
                                 &app_handle,
                                 &session_id,
@@ -365,8 +380,11 @@ impl HistoryStateSequencer {
 
                                         let _ = cache.update_files_delta(&app_handle, &session_id, &add_included, &remove_included, &add_excluded, &remove_excluded).await;
                                     }
+                                    // Emit session-files-updated event with the new lists
+                                    let _ = session_events::emit_session_files_updated(&app_handle, &session_id, &new_included, &new_excluded);
                                 }
                             }
+                            // Emit history-state-changed event
                             session_events::emit_history_state_changed(
                                 &app_handle,
                                 &session_id,

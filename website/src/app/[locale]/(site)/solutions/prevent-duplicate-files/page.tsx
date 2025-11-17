@@ -201,16 +201,15 @@ export default function PreventDuplicateFilesPage() {
                       <h3 className="text-xl font-semibold">Comprehensive File Discovery</h3>
                     </div>
                     <p className="text-foreground/70 leading-relaxed mb-4">
-                      PlanToCode runs a 5-stage file discovery workflow before generating any implementation plan. This workflow uses git integration, regex filtering, AI-powered relevance assessment, relationship analysis, and path validation to build a complete map of your codebase.
+                      PlanToCode runs a 4-stage file discovery workflow before generating any implementation plan. This workflow uses git integration, regex filtering, AI-powered relevance assessment, and relationship analysis to build a complete map of your codebase.
                     </p>
                     <div className="bg-muted/30 rounded-lg p-4 mb-4">
                       <h4 className="text-sm font-semibold mb-2">Discovery Process:</h4>
                       <ol className="text-sm text-foreground/70 space-y-1 list-decimal list-inside">
-                        <li>Validate git repository and root folder</li>
-                        <li>Generate task-specific regex patterns</li>
-                        <li>AI relevance assessment of file contents</li>
-                        <li>Extended path discovery via relationships</li>
-                        <li>Final path correction and validation</li>
+                        <li>Stage 1: Validate git repository and root folder</li>
+                        <li>Stage 2: Generate task-specific regex patterns</li>
+                        <li>Stage 3: AI relevance assessment of file contents</li>
+                        <li>Stage 4: Extended path discovery via relationships</li>
                       </ol>
                     </div>
                     <p className="text-foreground/70 leading-relaxed">
@@ -346,7 +345,7 @@ export default function PreventDuplicateFilesPage() {
                       <div className="flex items-start gap-2">
                         <span className="text-green-500 font-bold mt-0.5">2.</span>
                         <div>
-                          <p className="font-medium text-foreground">5-stage discovery maps entire codebase</p>
+                          <p className="font-medium text-foreground">4-stage discovery maps entire codebase</p>
                           <p className="text-xs mt-1">Finds <code className="bg-muted/50 px-1 py-0.5 rounded">authService.ts</code>, <code className="bg-muted/50 px-1 py-0.5 rounded">auth-helpers.ts</code>, related config files</p>
                         </div>
                       </div>
@@ -430,7 +429,7 @@ export default function PreventDuplicateFilesPage() {
                 <GlassCard className="p-6">
                   <h3 className="text-xl font-semibold mb-4">Step 4: Review the File Discovery</h3>
                   <p className="text-foreground/70 leading-relaxed mb-4">
-                    PlanToCode will run the 5-stage file discovery workflow in the background. You'll see real-time progress updates as it discovers relevant files. The workflow typically completes in 30-90 seconds depending on codebase size.
+                    PlanToCode will run the 4-stage file discovery workflow in the background. You'll see real-time progress updates as it discovers relevant files. The workflow typically completes in 30-90 seconds depending on codebase size.
                   </p>
                   <p className="text-foreground/70 leading-relaxed mb-4">
                     Once complete, review the list of discovered files. You'll see which files PlanToCode identified as relevant to your task. This is your first checkpoint to ensure the system has proper context about existing files.

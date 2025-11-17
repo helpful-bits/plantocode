@@ -3,12 +3,14 @@
 import React, { createContext, useContext, useMemo } from 'react';
 import type { Locale } from '@/lib/i18n';
 import { getByPath } from '@/lib/i18n';
+import { renderBold } from './RichText';
 
 type MessagesMap = Record<string, any>;
 type I18nContextValue = {
   locale: Locale;
   messages: MessagesMap;
   t: (key: string, fallback?: any) => any;
+  tRich: (key: string, fallback?: string) => React.ReactNode;
 };
 
 const I18nContext = createContext<I18nContextValue | null>(null);
@@ -33,6 +35,12 @@ export function I18nProvider({
           return result;
         }
         return fallback ?? '';
+      },
+      tRich: (key: string, fallback?: string): React.ReactNode => {
+        const m = initialMessages ?? {};
+        const result = getByPath(m, key);
+        const text = result !== undefined ? result : (fallback ?? '');
+        return renderBold(text);
       },
     }),
     [locale, initialMessages]

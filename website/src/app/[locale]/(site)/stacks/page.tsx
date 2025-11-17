@@ -5,6 +5,7 @@ import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Breadcrumbs } from '@/components/Breadcrumbs';
 import { buildHubBreadcrumbs } from '@/components/breadcrumbs/utils';
 import { getPagesByCategory } from '@/data/pseo';
+import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { Code2, Layers } from 'lucide-react';
 import { loadMessages, type Locale } from '@/lib/i18n';
 import { locales } from '@/i18n/config';
@@ -155,12 +156,19 @@ export default async function StacksHubPage({ params }: { params: Promise<{ loca
                 <h2 className="text-2xl sm:text-3xl font-bold mb-4">
                   {t['stacks.cta.heading'] || 'Build Better Code in Your Stack'}
                 </h2>
-                <p className="text-lg text-foreground/80 mb-8">
+                <p className="text-lg text-foreground/80 mb-8 max-w-2xl mx-auto">
                   {t['stacks.cta.description'] || 'AI that truly understands your technology choices and architectural patterns.'}
                 </p>
-                <LinkWithArrow href="/downloads" className="text-lg">
-                  {t['stacks.cta.button'] || 'Start Building'}
-                </LinkWithArrow>
+                <PlatformDownloadSection location="stacks_hub" />
+                <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4 text-sm text-foreground/60">
+                  <LinkWithArrow href="/features">
+                    {t['stacks.cta.links.features'] || 'Explore features'}
+                  </LinkWithArrow>
+                  <span className="hidden sm:inline">•</span>
+                  <LinkWithArrow href="/solutions">
+                    {t['stacks.cta.links.solutions'] || 'View solutions'}
+                  </LinkWithArrow>
+                </div>
               </GlassCard>
             </div>
           </section>

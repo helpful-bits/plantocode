@@ -1,7 +1,8 @@
 use tauri::AppHandle;
 use serde_json::{json, Value};
 use serde::Deserialize;
-use crate::remote_api::types::{RpcRequest, RpcResponse};
+use crate::remote_api::types::RpcRequest;
+use crate::remote_api::error::{RpcError, RpcResult};
 use crate::commands::{
     workflow_commands, implementation_plan_commands,
     web_search_commands, generic_task_commands
@@ -35,7 +36,7 @@ struct CreatePlanParams {
     include_project_structure: Option<bool>,
 }
 
-pub async fn dispatch(app_handle: AppHandle, req: RpcRequest) -> RpcResponse {
+pub async fn dispatch(app_handle: AppHandle, req: RpcRequest) -> RpcResult<Value> {
     match req.method.as_str() {
         "actions.findRelevantFiles" => handle_actions_find_relevant_files(&app_handle, req).await,
         "actions.createImplementationPlan" => handle_actions_create_implementation_plan(&app_handle, req).await,
@@ -48,12 +49,7 @@ pub async fn dispatch(app_handle: AppHandle, req: RpcRequest) -> RpcResponse {
         "actions.readImplementationPlan" => handle_actions_read_implementation_plan(&app_handle, req).await,
         "actions.getImplementationPlanPrompt" => handle_actions_get_implementation_plan_prompt(&app_handle, req).await,
         "actions.estimatePromptTokens" => handle_actions_estimate_prompt_tokens(&app_handle, req).await,
-        _ => RpcResponse {
-            correlation_id: req.correlation_id,
-            result: None,
-            error: Some(format!("Unknown method: {}", req.method)),
-            is_final: true,
-        },
+        _ => Err(RpcError::method_not_found(&req.method)),
     }
 }
 
@@ -63,20 +59,11 @@ pub async fn dispatch(app_handle: AppHandle, req: RpcRequest) -> RpcResponse {
 async fn handle_actions_find_relevant_files(
     app_handle: &AppHandle,
     request: RpcRequest,
-) -> RpcResponse {
-    let params: FindRelevantFilesParams = match serde_json::from_value(request.params.clone()) {
-        Ok(p) => p,
-        Err(e) => {
-            return RpcResponse {
-                correlation_id: request.correlation_id,
-                result: None,
-                error: Some(format!("Invalid parameters: {}", e)),
-                is_final: true,
-            };
-        }
-    };
+) -> RpcResult<Value> {
+    let params: FindRelevantFilesParams = serde_json::from_value(request.params.clone())
+        .map_err(|e| RpcError::invalid_params(format!("Invalid parameters: {}", e)))?;
 
-    match workflow_commands::start_file_finder_workflow(
+    let response = workflow_commands::start_file_finder_workflow(
         params.session_id,
         params.task_description,
         params.project_directory,
@@ -85,20 +72,9 @@ async fn handle_actions_find_relevant_files(
         app_handle.clone(),
     )
     .await
-    {
-        Ok(response) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: Some(json!({ "workflowId": response.job_id })),
-            error: None,
-            is_final: true,
-        },
-        Err(error) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: None,
-            error: Some(error),
-            is_final: true,
-        },
-    }
+    .map_err(RpcError::from)?;
+
+    Ok(json!({ "workflowId": response.job_id }))
 }
 
 /// Handle actions.createImplementationPlan request
@@ -107,20 +83,11 @@ async fn handle_actions_find_relevant_files(
 async fn handle_actions_create_implementation_plan(
     app_handle: &AppHandle,
     request: RpcRequest,
-) -> RpcResponse {
-    let params: CreatePlanParams = match serde_json::from_value(request.params.clone()) {
-        Ok(p) => p,
-        Err(e) => {
-            return RpcResponse {
-                correlation_id: request.correlation_id,
-                result: None,
-                error: Some(format!("Invalid parameters: {}", e)),
-                is_final: true,
-            };
-        }
-    };
+) -> RpcResult<Value> {
+    let params: CreatePlanParams = serde_json::from_value(request.params.clone())
+        .map_err(|e| RpcError::invalid_params(format!("Invalid parameters: {}", e)))?;
 
-    match implementation_plan_commands::create_implementation_plan_command(
+    let response = implementation_plan_commands::create_implementation_plan_command(
         params.session_id,
         params.task_description,
         params.project_directory,
@@ -135,61 +102,29 @@ async fn handle_actions_create_implementation_plan(
         app_handle.clone(),
     )
     .await
-    {
-        Ok(response) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: Some(json!({ "jobId": response.job_id })),
-            error: None,
-            is_final: true,
-        },
-        Err(error) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: None,
-            error: Some(error.to_string()),
-            is_final: true,
-        },
-    }
+    .map_err(RpcError::from)?;
+
+    Ok(json!({ "jobId": response.job_id }))
 }
 
 /// Handle actions.deepResearch request
 /// Params: sessionId (String), taskDescription (String), projectDirectory (String), excludedPaths (Option<Vec<String>>), timeoutMs (Option<u64>)
 /// Response: {"workflowId": workflow_id}
-async fn handle_actions_deep_research(app_handle: &AppHandle, request: RpcRequest) -> RpcResponse {
-    let session_id = match request.params.get("sessionId") {
-        Some(Value::String(id)) => id.clone(),
-        _ => {
-            return RpcResponse {
-                correlation_id: request.correlation_id,
-                result: None,
-                error: Some("Missing or invalid sessionId parameter".to_string()),
-                is_final: true,
-            };
-        }
-    };
+async fn handle_actions_deep_research(app_handle: &AppHandle, request: RpcRequest) -> RpcResult<Value> {
+    let session_id = request.params.get("sessionId")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| RpcError::invalid_params("Missing param: sessionId"))?
+        .to_string();
 
-    let task_description = match request.params.get("taskDescription") {
-        Some(Value::String(desc)) => desc.clone(),
-        _ => {
-            return RpcResponse {
-                correlation_id: request.correlation_id,
-                result: None,
-                error: Some("Missing or invalid taskDescription parameter".to_string()),
-                is_final: true,
-            };
-        }
-    };
+    let task_description = request.params.get("taskDescription")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| RpcError::invalid_params("Missing param: taskDescription"))?
+        .to_string();
 
-    let project_directory = match request.params.get("projectDirectory") {
-        Some(Value::String(dir)) => dir.clone(),
-        _ => {
-            return RpcResponse {
-                correlation_id: request.correlation_id,
-                result: None,
-                error: Some("Missing or invalid projectDirectory parameter".to_string()),
-                is_final: true,
-            };
-        }
-    };
+    let project_directory = request.params.get("projectDirectory")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| RpcError::invalid_params("Missing param: projectDirectory"))?
+        .to_string();
 
     let excluded_paths = request
         .params
@@ -204,7 +139,7 @@ async fn handle_actions_deep_research(app_handle: &AppHandle, request: RpcReques
 
     let timeout_ms = request.params.get("timeoutMs").and_then(|v| v.as_u64());
 
-    match web_search_commands::start_web_search_workflow(
+    let response = web_search_commands::start_web_search_workflow(
         session_id,
         task_description,
         project_directory,
@@ -213,52 +148,26 @@ async fn handle_actions_deep_research(app_handle: &AppHandle, request: RpcReques
         app_handle.clone(),
     )
     .await
-    {
-        Ok(response) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: Some(json!({ "workflowId": response.job_id })),
-            error: None,
-            is_final: true,
-        },
-        Err(error) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: None,
-            error: Some(error),
-            is_final: true,
-        },
-    }
+    .map_err(RpcError::from)?;
+
+    Ok(json!({ "workflowId": response.job_id }))
 }
 
 /// Handle actions.mergePlans request
 /// Params: sessionId, sourceJobIds (Vec<String>), mergeInstructions (Option<String>)
 /// Response: {"jobId": job_id}
-async fn handle_actions_merge_plans(app_handle: &AppHandle, request: RpcRequest) -> RpcResponse {
-    let session_id = match request.params.get("sessionId") {
-        Some(Value::String(id)) => id.clone(),
-        _ => {
-            return RpcResponse {
-                correlation_id: request.correlation_id,
-                result: None,
-                error: Some("Missing or invalid sessionId parameter".to_string()),
-                is_final: true,
-            };
-        }
-    };
+async fn handle_actions_merge_plans(app_handle: &AppHandle, request: RpcRequest) -> RpcResult<Value> {
+    let session_id = request.params.get("sessionId")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| RpcError::invalid_params("Missing param: sessionId"))?
+        .to_string();
 
-    let source_job_ids = match request.params.get("sourceJobIds") {
-        Some(Value::Array(arr)) => arr
-            .iter()
-            .filter_map(|v| v.as_str().map(String::from))
-            .collect(),
-        _ => {
-            return RpcResponse {
-                correlation_id: request.correlation_id,
-                result: None,
-                error: Some("Missing or invalid sourceJobIds parameter".to_string()),
-                is_final: true,
-            };
-        }
-    };
+    let source_job_ids = request.params.get("sourceJobIds")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| RpcError::invalid_params("Missing param: sourceJobIds"))?
+        .iter()
+        .filter_map(|v| v.as_str().map(String::from))
+        .collect();
 
     let merge_instructions = request
         .params
@@ -266,27 +175,16 @@ async fn handle_actions_merge_plans(app_handle: &AppHandle, request: RpcRequest)
         .and_then(|v| v.as_str())
         .map(String::from);
 
-    match implementation_plan_commands::create_merged_implementation_plan_command(
+    let response = implementation_plan_commands::create_merged_implementation_plan_command(
         app_handle.clone(),
         session_id,
         source_job_ids,
         merge_instructions,
     )
     .await
-    {
-        Ok(response) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: Some(json!({ "jobId": response.job_id })),
-            error: None,
-            is_final: true,
-        },
-        Err(error) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: None,
-            error: Some(error.to_string()),
-            is_final: true,
-        },
-    }
+    .map_err(RpcError::from)?;
+
+    Ok(json!({ "jobId": response.job_id }))
 }
 
 /// Handle actions.refineTaskDescription request
@@ -295,59 +193,30 @@ async fn handle_actions_merge_plans(app_handle: &AppHandle, request: RpcRequest)
 async fn handle_actions_refine_task_description(
     app_handle: &AppHandle,
     request: RpcRequest,
-) -> RpcResponse {
-    let session_id = match request.params.get("sessionId") {
-        Some(Value::String(id)) => id.clone(),
-        _ => {
-            return RpcResponse {
-                correlation_id: request.correlation_id,
-                result: None,
-                error: Some("Missing or invalid sessionId parameter".to_string()),
-                is_final: true,
-            };
-        }
-    };
+) -> RpcResult<Value> {
+    let session_id = request.params.get("sessionId")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| RpcError::invalid_params("Missing param: sessionId"))?
+        .to_string();
 
-    let task_description = match request.params.get("taskDescription") {
-        Some(Value::String(desc)) => desc.clone(),
-        _ => {
-            return RpcResponse {
-                correlation_id: request.correlation_id,
-                result: None,
-                error: Some("Missing or invalid taskDescription parameter".to_string()),
-                is_final: true,
-            };
-        }
-    };
+    let task_description = request.params.get("taskDescription")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| RpcError::invalid_params("Missing param: taskDescription"))?
+        .to_string();
 
-    let project_directory = match request.params.get("projectDirectory") {
-        Some(Value::String(dir)) => dir.clone(),
-        _ => {
-            return RpcResponse {
-                correlation_id: request.correlation_id,
-                result: None,
-                error: Some("Missing or invalid projectDirectory parameter".to_string()),
-                is_final: true,
-            };
-        }
-    };
+    let project_directory = request.params.get("projectDirectory")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| RpcError::invalid_params("Missing param: projectDirectory"))?
+        .to_string();
 
-    let relevant_files = match request.params.get("relevantFiles") {
-        Some(Value::Array(arr)) => arr
-            .iter()
-            .filter_map(|v| v.as_str().map(String::from))
-            .collect(),
-        _ => {
-            return RpcResponse {
-                correlation_id: request.correlation_id,
-                result: None,
-                error: Some("Missing or invalid relevantFiles parameter".to_string()),
-                is_final: true,
-            };
-        }
-    };
+    let relevant_files = request.params.get("relevantFiles")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| RpcError::invalid_params("Missing param: relevantFiles"))?
+        .iter()
+        .filter_map(|v| v.as_str().map(String::from))
+        .collect();
 
-    match generic_task_commands::refine_task_description_command(
+    let response = generic_task_commands::refine_task_description_command(
         session_id,
         task_description,
         relevant_files,
@@ -355,20 +224,9 @@ async fn handle_actions_refine_task_description(
         app_handle.clone(),
     )
     .await
-    {
-        Ok(response) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: Some(json!({ "jobId": response.job_id })),
-            error: None,
-            is_final: true,
-        },
-        Err(error) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: None,
-            error: Some(error.to_string()),
-            is_final: true,
-        },
-    }
+    .map_err(RpcError::from)?;
+
+    Ok(json!({ "jobId": response.job_id }))
 }
 
 /// Handle actions.continueWebSearchFromJob request
@@ -377,34 +235,17 @@ async fn handle_actions_refine_task_description(
 async fn handle_actions_continue_web_search_from_job(
     app_handle: &AppHandle,
     request: RpcRequest,
-) -> RpcResponse {
-    let job_id = match request.params.get("jobId") {
-        Some(Value::String(id)) => id.clone(),
-        _ => {
-            return RpcResponse {
-                correlation_id: request.correlation_id,
-                result: None,
-                error: Some("Missing or invalid jobId parameter".to_string()),
-                is_final: true,
-            };
-        }
-    };
+) -> RpcResult<Value> {
+    let job_id = request.params.get("jobId")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| RpcError::invalid_params("Missing param: jobId"))?
+        .to_string();
 
-    match web_search_commands::continue_workflow_from_job_command(job_id, app_handle.clone()).await
-    {
-        Ok(response) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: Some(json!({ "jobId": response.job_id })),
-            error: None,
-            is_final: true,
-        },
-        Err(error) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: None,
-            error: Some(error),
-            is_final: true,
-        },
-    }
+    let response = web_search_commands::continue_workflow_from_job_command(job_id, app_handle.clone())
+        .await
+        .map_err(RpcError::from)?;
+
+    Ok(json!({ "jobId": response.job_id }))
 }
 
 /// Handle actions.retryWorkflowStage request
@@ -413,51 +254,26 @@ async fn handle_actions_continue_web_search_from_job(
 async fn handle_actions_retry_workflow_stage(
     app_handle: &AppHandle,
     request: RpcRequest,
-) -> RpcResponse {
-    let workflow_id = match request.params.get("workflowId") {
-        Some(Value::String(id)) => id.clone(),
-        _ => {
-            return RpcResponse {
-                correlation_id: request.correlation_id,
-                result: None,
-                error: Some("Missing or invalid workflowId parameter".to_string()),
-                is_final: true,
-            };
-        }
-    };
+) -> RpcResult<Value> {
+    let workflow_id = request.params.get("workflowId")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| RpcError::invalid_params("Missing param: workflowId"))?
+        .to_string();
 
-    let failed_stage_job_id = match request.params.get("failedStageJobId") {
-        Some(Value::String(id)) => id.clone(),
-        _ => {
-            return RpcResponse {
-                correlation_id: request.correlation_id,
-                result: None,
-                error: Some("Missing or invalid failedStageJobId parameter".to_string()),
-                is_final: true,
-            };
-        }
-    };
+    let failed_stage_job_id = request.params.get("failedStageJobId")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| RpcError::invalid_params("Missing param: failedStageJobId"))?
+        .to_string();
 
-    match workflow_commands::retry_workflow_stage_command(
+    let new_job_id = workflow_commands::retry_workflow_stage_command(
         workflow_id,
         failed_stage_job_id,
         app_handle.clone(),
     )
     .await
-    {
-        Ok(new_job_id) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: Some(json!({ "newJobId": new_job_id })),
-            error: None,
-            is_final: true,
-        },
-        Err(error) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: None,
-            error: Some(error),
-            is_final: true,
-        },
-    }
+    .map_err(RpcError::from)?;
+
+    Ok(json!({ "newJobId": new_job_id }))
 }
 
 /// Handle actions.cancelWorkflowStage request
@@ -466,51 +282,26 @@ async fn handle_actions_retry_workflow_stage(
 async fn handle_actions_cancel_workflow_stage(
     app_handle: &AppHandle,
     request: RpcRequest,
-) -> RpcResponse {
-    let workflow_id = match request.params.get("workflowId") {
-        Some(Value::String(id)) => id.clone(),
-        _ => {
-            return RpcResponse {
-                correlation_id: request.correlation_id,
-                result: None,
-                error: Some("Missing or invalid workflowId parameter".to_string()),
-                is_final: true,
-            };
-        }
-    };
+) -> RpcResult<Value> {
+    let workflow_id = request.params.get("workflowId")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| RpcError::invalid_params("Missing param: workflowId"))?
+        .to_string();
 
-    let stage_job_id = match request.params.get("stageJobId") {
-        Some(Value::String(id)) => id.clone(),
-        _ => {
-            return RpcResponse {
-                correlation_id: request.correlation_id,
-                result: None,
-                error: Some("Missing or invalid stageJobId parameter".to_string()),
-                is_final: true,
-            };
-        }
-    };
+    let stage_job_id = request.params.get("stageJobId")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| RpcError::invalid_params("Missing param: stageJobId"))?
+        .to_string();
 
-    match workflow_commands::cancel_workflow_stage_command(
+    workflow_commands::cancel_workflow_stage_command(
         workflow_id,
         stage_job_id,
         app_handle.clone(),
     )
     .await
-    {
-        Ok(_) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: Some(json!({ "success": true })),
-            error: None,
-            is_final: true,
-        },
-        Err(error) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: None,
-            error: Some(error),
-            is_final: true,
-        },
-    }
+    .map_err(RpcError::from)?;
+
+    Ok(json!({ "success": true }))
 }
 
 /// Handle actions.readImplementationPlan request
@@ -519,86 +310,44 @@ async fn handle_actions_cancel_workflow_stage(
 async fn handle_actions_read_implementation_plan(
     app_handle: &AppHandle,
     request: RpcRequest,
-) -> RpcResponse {
-    let job_id = match request.params.get("jobId") {
-        Some(Value::String(id)) => id.clone(),
-        _ => {
-            return RpcResponse {
-                correlation_id: request.correlation_id,
-                result: None,
-                error: Some("Missing or invalid jobId parameter".to_string()),
-                is_final: true,
-            };
-        }
-    };
+) -> RpcResult<Value> {
+    let job_id = request.params.get("jobId")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| RpcError::invalid_params("Missing param: jobId"))?
+        .to_string();
 
-    match implementation_plan_commands::read_implementation_plan_command(job_id, app_handle.clone())
+    let plan = implementation_plan_commands::read_implementation_plan_command(job_id, app_handle.clone())
         .await
-    {
-        Ok(plan) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: Some(json!({ "plan": plan })),
-            error: None,
-            is_final: true,
-        },
-        Err(error) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: None,
-            error: Some(error.to_string()),
-            is_final: true,
-        },
-    }
+        .map_err(RpcError::from)?;
+
+    Ok(json!({ "plan": plan }))
 }
 
 async fn handle_actions_get_implementation_plan_prompt(
     app_handle: &AppHandle,
     request: RpcRequest,
-) -> RpcResponse {
-    let session_id = match request.params.get("sessionId") {
-        Some(Value::String(id)) => id.clone(),
-        _ => {
-            return RpcResponse {
-                correlation_id: request.correlation_id,
-                result: None,
-                error: Some("Missing or invalid sessionId parameter".to_string()),
-                is_final: true,
-            };
-        }
-    };
+) -> RpcResult<Value> {
+    let session_id = request.params.get("sessionId")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| RpcError::invalid_params("Missing param: sessionId"))?
+        .to_string();
 
-    let task_description = match request.params.get("taskDescription") {
-        Some(Value::String(desc)) => desc.clone(),
-        _ => {
-            return RpcResponse {
-                correlation_id: request.correlation_id,
-                result: None,
-                error: Some("Missing or invalid taskDescription parameter".to_string()),
-                is_final: true,
-            };
-        }
-    };
+    let task_description = request.params.get("taskDescription")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| RpcError::invalid_params("Missing param: taskDescription"))?
+        .to_string();
 
-    let project_directory = match request.params.get("projectDirectory") {
-        Some(Value::String(dir)) => dir.clone(),
-        _ => {
-            return RpcResponse {
-                correlation_id: request.correlation_id,
-                result: None,
-                error: Some("Missing or invalid projectDirectory parameter".to_string()),
-                is_final: true,
-            };
-        }
-    };
+    let project_directory = request.params.get("projectDirectory")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| RpcError::invalid_params("Missing param: projectDirectory"))?
+        .to_string();
 
-    let relevant_files = match request.params.get("relevantFiles") {
-        Some(Value::Array(arr)) => arr
-            .iter()
-            .filter_map(|v| v.as_str().map(String::from))
-            .collect(),
-        _ => vec![],
-    };
+    let relevant_files = request.params.get("relevantFiles")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_else(Vec::new);
 
-    match implementation_plan_commands::get_prompt_command(
+    let prompt = implementation_plan_commands::get_prompt_command(
         "implementation_plan".to_string(),
         session_id,
         task_description,
@@ -608,81 +357,46 @@ async fn handle_actions_get_implementation_plan_prompt(
         app_handle.clone(),
     )
     .await
-    {
-        Ok(prompt) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: Some(json!({ "prompt": prompt })),
-            error: None,
-            is_final: true,
-        },
-        Err(e) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: None,
-            error: Some(format!("{}", e)),
-            is_final: true,
-        },
-    }
+    .map_err(RpcError::from)?;
+
+    Ok(json!({ "prompt": prompt }))
 }
 
 async fn handle_actions_estimate_prompt_tokens(
     app_handle: &AppHandle,
     request: RpcRequest,
-) -> RpcResponse {
-    let session_id = match request.params.get("sessionId") {
-        Some(Value::String(id)) => id.clone(),
-        _ => {
-            return RpcResponse {
-                correlation_id: request.correlation_id,
-                result: None,
-                error: Some("Missing or invalid sessionId parameter".to_string()),
-                is_final: true,
-            };
-        }
-    };
+) -> RpcResult<Value> {
+    let session_id = request.params.get("sessionId")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| RpcError::invalid_params("Missing param: sessionId"))?
+        .to_string();
 
-    let task_description = match request.params.get("taskDescription") {
-        Some(Value::String(desc)) => desc.clone(),
-        _ => {
-            return RpcResponse {
-                correlation_id: request.correlation_id,
-                result: None,
-                error: Some("Missing or invalid taskDescription parameter".to_string()),
-                is_final: true,
-            };
-        }
-    };
+    let task_description = request.params.get("taskDescription")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| RpcError::invalid_params("Missing param: taskDescription"))?
+        .to_string();
 
-    let project_directory = match request.params.get("projectDirectory") {
-        Some(Value::String(dir)) => dir.clone(),
-        _ => {
-            return RpcResponse {
-                correlation_id: request.correlation_id,
-                result: None,
-                error: Some("Missing or invalid projectDirectory parameter".to_string()),
-                is_final: true,
-            };
-        }
-    };
+    let project_directory = request.params.get("projectDirectory")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| RpcError::invalid_params("Missing param: projectDirectory"))?
+        .to_string();
 
-    let relevant_files = match request.params.get("relevantFiles") {
-        Some(Value::Array(arr)) => arr
-            .iter()
-            .filter_map(|v| v.as_str().map(String::from))
-            .collect(),
-        _ => vec![],
-    };
+    let relevant_files = request.params.get("relevantFiles")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_else(Vec::new);
 
-    let task_type = match request.params.get("taskType") {
-        Some(Value::String(t)) => t.clone(),
-        _ => "implementation_plan".to_string(),
-    };
+    let task_type = request.params.get("taskType")
+        .and_then(|v| v.as_str())
+        .map(String::from)
+        .unwrap_or_else(|| "implementation_plan".to_string());
 
-    let model = match request.params.get("model") {
-        Some(Value::String(m)) => m.clone(),
-        _ => "claude-3-5-sonnet-20241022".to_string(),
-    };
+    let model = request.params.get("model")
+        .and_then(|v| v.as_str())
+        .map(String::from)
+        .unwrap_or_else(|| "claude-3-5-sonnet-20241022".to_string());
 
-    match implementation_plan_commands::get_prompt_command(
+    let prompt_response = implementation_plan_commands::get_prompt_command(
         task_type,
         session_id,
         task_description,
@@ -692,24 +406,11 @@ async fn handle_actions_estimate_prompt_tokens(
         app_handle.clone(),
     )
     .await
-    {
-        Ok(prompt_response) => {
-            let system_tokens = token_estimator::estimate_tokens(&prompt_response.system_prompt, &model);
-            let user_tokens = token_estimator::estimate_tokens(&prompt_response.user_prompt, &model);
-            let total_tokens = system_tokens + user_tokens;
+    .map_err(RpcError::from)?;
 
-            RpcResponse {
-                correlation_id: request.correlation_id,
-                result: Some(json!({ "totalTokens": total_tokens })),
-                error: None,
-                is_final: true,
-            }
-        }
-        Err(e) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: None,
-            error: Some(format!("{}", e)),
-            is_final: true,
-        },
-    }
+    let system_tokens = token_estimator::estimate_tokens(&prompt_response.system_prompt, &model);
+    let user_tokens = token_estimator::estimate_tokens(&prompt_response.user_prompt, &model);
+    let total_tokens = system_tokens + user_tokens;
+
+    Ok(json!({ "totalTokens": total_tokens }))
 }

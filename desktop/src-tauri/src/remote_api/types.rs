@@ -15,7 +15,7 @@ pub struct RpcRequest {
 pub struct RpcResponse {
     pub correlation_id: String,
     pub result: Option<Value>,
-    pub error: Option<String>,
+    pub error: Option<super::error::RpcError>,
     pub is_final: bool,
 }
 
