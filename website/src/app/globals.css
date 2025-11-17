@@ -3,6 +3,8 @@
 @import "../styles/desktop-compat.css";
 @import "../styles/blog-content.css";
 
+@plugin "@tailwindcss/typography";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -327,6 +329,33 @@
 }
 
 @layer utilities {
+  /* Override Tailwind Typography prose defaults - must be in utilities layer for specificity */
+  .prose p,
+  .prose li,
+  .prose td,
+  .prose h1,
+  .prose h2,
+  .prose h3,
+  .prose h4,
+  .prose h5,
+  .prose h6,
+  .prose strong,
+  .prose b,
+  .prose th,
+  .prose blockquote,
+  .prose figcaption,
+  .prose cite {
+    color: var(--color-foreground);
+  }
+
+  /* Keep links and code with primary color */
+  .prose a {
+    color: var(--color-primary);
+  }
+
+  .prose code {
+    color: var(--color-primary);
+  }
 
   /* Intelligent Color Adaptation System */
   .color-adaptive-text { 
@@ -1780,6 +1809,16 @@ html {
 @media (prefers-color-scheme: dark) {
   .wer-del {
     color: oklch(0.72 0.15 25);
+  }
+}
+
+/* Gradient shimmer animation for hero bold text */
+@keyframes gradient-shift {
+  0% {
+    background-position: 0% center;
+  }
+  100% {
+    background-position: 200% center;
   }
 }
 

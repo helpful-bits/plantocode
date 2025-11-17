@@ -16,7 +16,6 @@ public class JobsDataService: ObservableObject {
 
     // MARK: - Private Properties
     private let apiClient: APIClientProtocol
-    private let cacheManager: CacheManager
     private var cancellables = Set<AnyCancellable>()
     private var progressSubscription: AnyCancellable?
     private var jobsIndex: [String: Int] = [:]
@@ -24,13 +23,14 @@ public class JobsDataService: ObservableObject {
     private var activeProjectDirectory: String?
     private var currentListJobsRequestToken: UUID?
     @Published public private(set) var hasLoadedOnce = false
-    private var lastJobsFetch: [String: Date] = [:] // cacheKey -> timestamp
     private var lastAccumulatedLengths: [String: Int] = [:]
     private var hydrationWaiters: [String: [() -> Void]] = [:]
     private var coalescedResyncWorkItem: DispatchWorkItem?
     private var lastCoalescedResyncAt: Date?
     private var activeWorkflowJobsBySession: [String: Int] = [:]
     private var workflowJobsCache: [String: BackgroundJob] = [:]
+    private var relayJobEventObserver: NSObjectProtocol?
+    private var viewedImplementationPlanId: String? = nil
 
     private var deviceKey: String {
         MultiConnectionManager.shared.activeDeviceId?.uuidString ?? "no_device"
@@ -39,10 +39,20 @@ public class JobsDataService: ObservableObject {
     // MARK: - Initialization
     public init(
         apiClient: APIClientProtocol = APIClient.shared,
-        cacheManager: CacheManager = CacheManager.shared
+        cacheManager _cacheManager: CacheManager = CacheManager.shared
     ) {
         self.apiClient = apiClient
-        self.cacheManager = cacheManager
+
+        relayJobEventObserver = NotificationCenter.default.addObserver(
+            forName: Notification.Name("relay-event-job"),
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            guard let event = note.userInfo?["event"] as? RelayEvent else { return }
+            Task { @MainActor in
+                self?.applyRelayEvent(event)
+            }
+        }
     }
 
     public convenience init() {
@@ -62,7 +72,6 @@ public class JobsDataService: ObservableObject {
         activeProjectDirectory = nil
         currentListJobsRequestToken = nil
         hasLoadedOnce = false
-        lastJobsFetch = [:]
         lastAccumulatedLengths = [:]
         hydrationWaiters = [:]
         coalescedResyncWorkItem?.cancel()
@@ -74,6 +83,10 @@ public class JobsDataService: ObservableObject {
         activeWorkflowJobsBySession.removeAll()
         sessionActiveWorkflowJobs = 0
         workflowJobsCache.removeAll()
+        if let obs = relayJobEventObserver {
+            NotificationCenter.default.removeObserver(obs)
+            relayJobEventObserver = nil
+        }
     }
 
     // MARK: - Public Methods
@@ -84,32 +97,9 @@ public class JobsDataService: ObservableObject {
         isLoading = true
         error = nil
 
-        let cacheKey = "dev_\(deviceKey)_jobs_\(request.cacheKey)"
-
-        // Try cache first if enabled
-        if let cached: JobListResponse = cacheManager.get(key: cacheKey) {
-            isLoading = false
-            // Replace jobs array with cached data
-            replaceJobsArray(with: cached.jobs)
-            updateWorkflowCountsFromJobs(cached.jobs)
-
-            let now = Date()
-            let shouldRefresh = lastJobsFetch[cacheKey].map { now.timeIntervalSince($0) > 5.0 } ?? true
-            if shouldRefresh {
-                lastJobsFetch[cacheKey] = now
-                listJobsViaRPC(request: request, cacheKey: cacheKey, shouldReplace: true)
-                    .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
-                    .store(in: &cancellables)
-            }
-
-            return Just(cached)
-                .setFailureType(to: DataServiceError.self)
-                .eraseToAnyPublisher()
-        }
-
         // Relay-first: directly use RPC-via-relay
         logger.debug("Jobs RPC path selected")
-        return listJobsViaRPC(request: request, cacheKey: cacheKey, shouldReplace: true)
+        return listJobsViaRPC(request: request, shouldReplace: true)
     }
 
     /// Get a single job by ID (returns raw dictionary)
@@ -166,17 +156,9 @@ public class JobsDataService: ObservableObject {
 
     /// Get detailed job information
     public func getJobDetails(request: JobDetailsRequest) -> AnyPublisher<JobDetailsResponse, DataServiceError> {
-        let cacheKey = "dev_\(deviceKey)_job_details_\(request.jobId)"
-
-        if let cached: JobDetailsResponse = cacheManager.get(key: cacheKey) {
-            return Just(cached)
-                .setFailureType(to: DataServiceError.self)
-                .eraseToAnyPublisher()
-        }
-
         // Relay-first: directly use RPC-via-relay
         logger.debug("Jobs RPC path selected")
-        return getJobDetailsViaRPC(request: request, cacheKey: cacheKey)
+        return getJobDetailsViaRPC(request: request)
     }
 
     /// Cancel a background job
@@ -282,11 +264,6 @@ public class JobsDataService: ObservableObject {
         // Clear all jobs
         clearJobs()
 
-        // Invalidate caches with device-specific prefix
-        let deviceKey = MultiConnectionManager.shared.activeDeviceId?.uuidString ?? "no_device"
-        cacheManager.invalidatePattern("dev_\(deviceKey)_jobs_")
-        cacheManager.invalidatePattern("dev_\(deviceKey)_job_details_")
-
         // Reset flags
         hasLoadedOnce = false
         error = nil
@@ -346,16 +323,29 @@ public class JobsDataService: ObservableObject {
         prefetchJobDetails(jobIds: Array(topJobs), limit: 10)
     }
 
-    /// Fast-path job fetch with cache-first strategy
-    public func getJobFast(jobId: String) -> AnyPublisher<BackgroundJob, DataServiceError> {
-        // Check cache first
-        let cacheKey = "dev_\(deviceKey)_job_details_\(jobId)"
-        if let cached: JobDetailsResponse = cacheManager.get(key: cacheKey) {
-            return Just(cached.job)
-                .setFailureType(to: DataServiceError.self)
-                .eraseToAnyPublisher()
+    @MainActor
+    public func setViewedImplementationPlanId(_ jobId: String?) {
+        if jobId == nil {
+            viewedImplementationPlanId = nil
+            return
         }
+        guard let id = jobId else { return }
+        viewedImplementationPlanId = id
 
+        Task { [weak self] in
+            guard let self else { return }
+            await self.refreshJob(jobId: id)
+            if let index = self.jobsIndex[id] {
+                let currentLen = self.jobs[index].response?.count ?? 0
+                self.lastAccumulatedLengths[id] = currentLen
+            } else {
+                await self.scheduleCoalescedListJobsForActiveSession()
+            }
+        }
+    }
+
+    /// Fast-path job fetch with direct network call
+    public func getJobFast(jobId: String) -> AnyPublisher<BackgroundJob, DataServiceError> {
         // Use existing getJob RPC
         return getJob(jobId: jobId)
             .tryMap { [weak self] jobDict -> BackgroundJob in
@@ -375,15 +365,40 @@ public class JobsDataService: ObservableObject {
                     throw error
                 }
             }
-            .handleEvents(receiveOutput: { [weak self] job in
-                // Cache as JobDetailsResponse for consistency
-                let response = JobDetailsResponse(job: job, metrics: nil)
-                self?.cacheManager.set(response, forKey: cacheKey, ttl: 600)
-            })
             .mapError { error in
                 error as? DataServiceError ?? .networkError(error)
             }
             .eraseToAnyPublisher()
+    }
+
+    /// Update job content (for plan edits)
+    public func updateJobContent(jobId: String, newContent: String) -> AsyncThrowingStream<Any, Error> {
+        return AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    for try await response in CommandRouter.updateImplementationPlanContent(
+                        jobId: jobId,
+                        newContent: newContent
+                    ) {
+                        if let error = response.error {
+                            continuation.finish(throwing: DataServiceError.serverError("RPC Error: \(error.message)"))
+                            return
+                        }
+
+                        if let result = response.result?.value {
+                            continuation.yield(result)
+                            if response.isFinal {
+                                continuation.finish()
+                                return
+                            }
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
     }
 
     // MARK: - Private Methods
@@ -403,10 +418,8 @@ public class JobsDataService: ObservableObject {
             pageSize: 100
         )
 
-        let cacheKey = "dev_\(deviceKey)_jobs_\(request.cacheKey)"
-
         // Fetch without replacing - we'll merge instead
-        listJobsViaRPC(request: request, cacheKey: cacheKey, shouldReplace: false)
+        listJobsViaRPC(request: request, shouldReplace: false)
             .receive(on: DispatchQueue.main)
             .sink(
                 receiveCompletion: { _ in },
@@ -459,10 +472,6 @@ public class JobsDataService: ObservableObject {
             jobs[index] = job
         }
 
-        // Invalidate relevant cache entries
-        cacheManager.invalidatePattern("jobs_")
-        cacheManager.invalidatePattern("job_details_\(update.jobId)")
-
         // Update sync status
         syncStatus = JobSyncStatus(
             activeJobs: jobs.filter { JobStatus(rawValue: $0.status)?.isActive == true }.count,
@@ -474,15 +483,7 @@ public class JobsDataService: ObservableObject {
     // MARK: - RPC Helper Methods
 
     @MainActor
-    private func listJobsViaRPC(request: JobListRequest, cacheKey: String, shouldReplace: Bool) -> AnyPublisher<JobListResponse, DataServiceError> {
-        // Time-based deduplication: if we fetched recently, return cached data
-        if let lastFetch = lastJobsFetch[cacheKey],
-           Date().timeIntervalSince(lastFetch) < 5.0 {
-            if let cached: JobListResponse = cacheManager.get(key: cacheKey) {
-                return Just(cached).setFailureType(to: DataServiceError.self).eraseToAnyPublisher()
-            }
-        }
-
+    private func listJobsViaRPC(request: JobListRequest, shouldReplace: Bool) -> AnyPublisher<JobListResponse, DataServiceError> {
         let token = UUID()
         return Future<JobListResponse, DataServiceError> { [weak self] promise in
             Task {
@@ -508,7 +509,8 @@ public class JobsDataService: ObservableObject {
                         taskTypeFilter: request.taskTypeFilter?.joined(separator: ","),
                         page: request.page.map { Int($0) },
                         pageSize: request.pageSize.map { Int($0) },
-                        filter: nil
+                        filter: nil,
+                        bypassCache: true
                     ) {
                         if let error = response.error {
                             promise(.failure(.serverError("RPC Error: \(error.message)")))
@@ -548,8 +550,6 @@ public class JobsDataService: ObservableObject {
                                 self.updateWorkflowCountsFromJobs(response.jobs)
                                 self.hasLoadedOnce = true
                             }
-                            self.cacheManager.set(response, forKey: cacheKey, ttl: 300)
-                            self.lastJobsFetch[cacheKey] = Date()
                         }
                     }
                     promise(.success(response))
@@ -583,7 +583,7 @@ public class JobsDataService: ObservableObject {
     }
 
     @MainActor
-    private func getJobDetailsViaRPC(request: JobDetailsRequest, cacheKey: String) -> AnyPublisher<JobDetailsResponse, DataServiceError> {
+    private func getJobDetailsViaRPC(request: JobDetailsRequest) -> AnyPublisher<JobDetailsResponse, DataServiceError> {
         guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
               let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
             return Fail(error: DataServiceError.connectionError("No active device connection"))
@@ -597,7 +597,7 @@ public class JobsDataService: ObservableObject {
             ]
         )
 
-        return Future<JobDetailsResponse, DataServiceError> { [weak self] promise in
+        return Future<JobDetailsResponse, DataServiceError> { promise in
             Task {
                 do {
                     var jobDetailsData: [String: Any]?
@@ -637,7 +637,6 @@ public class JobsDataService: ObservableObject {
 
                     let response = JobDetailsResponse(job: job, metrics: metrics)
 
-                    self?.cacheManager.set(response, forKey: cacheKey, ttl: 600)
                     promise(.success(response))
 
                 } catch {
@@ -741,10 +740,6 @@ public class JobsDataService: ObservableObject {
                         cancelledAt: data["cancelledAt"] as? Int64
                     )
 
-                    // Invalidate cache
-                    self?.cacheManager.invalidatePattern("jobs_")
-                    self?.cacheManager.invalidatePattern("job_details_")
-
                     promise(.success(response))
 
                 } catch {
@@ -830,10 +825,6 @@ public class JobsDataService: ObservableObject {
             }
             lastAccumulatedLengths[job.id] = job.response?.count ?? 0
         }
-        
-        // Invalidate cache when jobs are modified via events to prevent stale data
-        let cacheKeyPrefix = "dev_\(deviceKey)_jobs_"
-        cacheManager.invalidatePattern(cacheKeyPrefix)
     }
 
     private func decodeJob(from dictionary: [String: Any]) -> BackgroundJob? {
@@ -961,9 +952,7 @@ public class JobsDataService: ObservableObject {
                     pageSize: 100
                 )
 
-                let cacheKey = "dev_\(self.deviceKey)_jobs_\(request.cacheKey)"
-
-                self.listJobsViaRPC(request: request, cacheKey: cacheKey, shouldReplace: false)
+                self.listJobsViaRPC(request: request, shouldReplace: false)
                     .sink(
                         receiveCompletion: { _ in },
                         receiveValue: { [weak self] response in
@@ -1053,10 +1042,13 @@ public class JobsDataService: ObservableObject {
 
     @MainActor
     public func applyRelayEvent(_ event: RelayEvent) {
-        guard event.eventType.hasPrefix("job:") else { return }
+        // Handle job:* events and plan events
+        guard event.eventType.hasPrefix("job:") || event.eventType == "PlanCreated" || event.eventType == "PlanModified" else { return }
 
-        // Update workflow job counters
-        updateWorkflowJobCounts(from: event)
+        // Update workflow job counters (only for job:* events)
+        if event.eventType.hasPrefix("job:") {
+            updateWorkflowJobCounts(from: event)
+        }
 
         // Early guard: coalesced fallback for job:* events missing jobId
         if event.eventType.hasPrefix("job:"),
@@ -1110,10 +1102,6 @@ public class JobsDataService: ObservableObject {
                     jobsIndex.removeValue(forKey: jobId)
                     jobsIndex = Dictionary(uniqueKeysWithValues: jobs.enumerated().map { ($1.id, $0) })
                 }
-                
-                // Invalidate cache when jobs are deleted via events
-                let cacheKeyPrefix = "dev_\(deviceKey)_jobs_"
-                cacheManager.invalidatePattern(cacheKeyPrefix)
             }
 
         case "job:metadata-updated":
@@ -1222,15 +1210,10 @@ public class JobsDataService: ObservableObject {
                 jobs[index] = job
             }
 
-            // Invalidate cache when jobs are modified via events
-            if event.eventType == "job:finalized" || event.eventType == "job:status-changed" {
-                let cacheKeyPrefix = "dev_\(deviceKey)_jobs_"
-                cacheManager.invalidatePattern(cacheKeyPrefix)
-            }
-
         case "job:response-appended":
-            guard let jobId = jobId,
-                  let chunk = payload["chunk"] as? String else { return }
+            guard let jobId = jobId else { return }
+            if let vid = viewedImplementationPlanId, jobId != vid { return }
+            guard let chunk = payload["chunk"] as? String else { return }
             if ensureJobPresent(jobId: jobId, onReady: { [weak self] in
                 self?.applyRelayEvent(event)
             }) == false {
@@ -1308,6 +1291,10 @@ public class JobsDataService: ObservableObject {
                     }
                 }
             }
+
+        case "PlanCreated", "PlanModified":
+            // Plan events trigger a coalesced list refresh to ensure convergence
+            scheduleCoalescedListJobsForActiveSession()
 
         default:
             break

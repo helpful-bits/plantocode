@@ -270,8 +270,8 @@ export default async function HirePage({ params }: { params: Promise<{ locale: L
                   {t['planMode.hero.subtitle']}
                 </p>
                 <p className="text-base sm:text-lg text-foreground/80 mb-8">
-                  <strong>{t['planMode.hero.insight']}</strong><br/>
-                  {t['planMode.hero.guidance']}
+                  <strong>{t['planMode.hero.insight'] || 'The complete planning pipeline:'}</strong><br/>
+                  {t['planMode.hero.guidance'] || 'Voice → Text Improvement → Task Refinement → File Discovery (Root selection, Regex, AI Relevance, Extended Pathfinder) → Generate multiple plans (GPT-5/GPT-5.1, Gemini 2.5 Pro) → Merge → Execute in agents (Aider, Cursor, Claude Code, Codex)'}
                 </p>
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                   <Button variant="cta" size="lg" asChild>
@@ -368,7 +368,6 @@ export default async function HirePage({ params }: { params: Promise<{ locale: L
 
               {/* FAQ */}
               <div className="mb-16">
-                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">{t['planMode.faq.title']}</h2>
                 <FAQOptimized />
               </div>
 

@@ -40,11 +40,37 @@ public struct SessionWorkspaceView: View {
         container.currentProject?.directory ?? appState.selectedProjectDirectory ?? ""
     }
 
-    private var mainContentView: some View {
-        ZStack {
-            sessionContentView
-            connectionStatusOverlay
+    private var hasAnyBannerVisible: Bool {
+        // Check if any banner should be shown
+        if reconnectionSuccess != nil {
+            return true
         }
+        if isOfflineMode {
+            return true
+        }
+        if let activeDeviceId = multiConnectionManager.activeDeviceId,
+           let connectionState = multiConnectionManager.connectionStates[activeDeviceId],
+           !connectionState.isConnected {
+            return true
+        }
+        return false
+    }
+
+    private var shouldShowConnectionOverlay: Bool {
+        hasAnyBannerVisible
+    }
+
+    private var mainContentView: some View {
+        ZStack(alignment: .top) {
+            taskTabsView
+            if shouldShowConnectionOverlay {
+                connectionStatusOverlay
+            }
+        }
+    }
+
+    private var taskTabsView: some View {
+        sessionContentView
     }
 
     private var sessionContentView: some View {
@@ -114,11 +140,11 @@ public struct SessionWorkspaceView: View {
         .tint(Color.primary)
     }
 
+    @ViewBuilder
     private var connectionStatusOverlay: some View {
         VStack(spacing: 0) {
             successBannerView
             connectionBannerView
-            Spacer()
         }
     }
 
@@ -494,16 +520,13 @@ struct TaskTab: View {
                     sessionId: session.id,
                     projectDirectory: session.projectDirectory
                 )
+                .id(session.id)
                 .padding(.horizontal)
                 .padding(.bottom)
                 .padding(.top, isKeyboardVisible ? 0 : 16)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .background(Color.background)
-            .onTapGesture {
-                // Dismiss keyboard when tapping outside
-                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-            }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
                 withAnimation(.easeOut(duration: 0.25)) {
                     isKeyboardVisible = true
@@ -584,7 +607,7 @@ struct FilesTab: View {
     @EnvironmentObject private var container: AppContainer
     let session: Session
     let isOfflineMode: Bool
-    let jobsService: JobsDataService
+    @ObservedObject var jobsService: JobsDataService
 
     var body: some View {
         NavigationStack {
@@ -629,7 +652,8 @@ struct FilesTab: View {
 
                     FileManagementView(
                         filesService: container.filesService,
-                        jobsService: container.jobsService
+                        sessionService: container.sessionService,
+                        jobsService: jobsService
                     )
                 }
                 .navigationTitle("Files")
@@ -1297,9 +1321,6 @@ struct ConnectionModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .onAppear {
-                checkConnectionAndLoad()
-            }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
                 // Reconnect when app comes back to foreground
                 Task {

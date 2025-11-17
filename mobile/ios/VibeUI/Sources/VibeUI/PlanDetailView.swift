@@ -4,9 +4,8 @@ import Combine
 
 /// Simplified plan viewer for mobile - maximum reading space
 public struct PlanDetailView: View {
-    let plan: PlanSummary
-    let allPlans: [PlanSummary]
-    let plansService: PlansDataService
+    let jobId: String
+    let allPlanJobIds: [String]
     @EnvironmentObject private var container: AppContainer
     @Environment(\.dismiss) private var dismiss
 
@@ -21,7 +20,7 @@ public struct PlanDetailView: View {
     @State private var hasRetriedLoad = false
     @State private var loadToken = UUID()
     @State private var isEditMode = false
-    @State private var selectedCopyButtonId: String? = nil
+    @State private var retryTask: Task<Void, Never>?
 
     @State private var cancellables = Set<AnyCancellable>()
     @FocusState private var isEditorFocused: Bool
@@ -32,11 +31,30 @@ public struct PlanDetailView: View {
         return verticalSizeClass == .compact
     }
 
-    public init(plan: PlanSummary, allPlans: [PlanSummary], plansService: PlansDataService) {
-        self.plan = plan
-        self.allPlans = allPlans
-        self.plansService = plansService
-        let index = allPlans.firstIndex { $0.jobId == plan.jobId } ?? 0
+    private var jobsService: JobsDataService {
+        return container.jobsService
+    }
+
+    private var observedJob: BackgroundJob? {
+        container.jobsService.jobs.first(where: { $0.id == currentJobId })
+    }
+
+    private var isStreaming: Bool {
+        let status = observedJob?.status.lowercased() ?? ""
+        if status == "running" || status == "processingstream" { return true }
+        if let job = observedJob,
+           let md = job.metadata,
+           let data = md.data(using: .utf8),
+           let dict = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
+           let taskData = dict["taskData"] as? [String: Any],
+           let flag = taskData["isStreaming"] as? Bool, flag { return true }
+        return false
+    }
+
+    public init(jobId: String, allPlanJobIds: [String]) {
+        self.jobId = jobId
+        self.allPlanJobIds = allPlanJobIds
+        let index = allPlanJobIds.firstIndex(of: jobId) ?? 0
         self._currentIndex = State(initialValue: index)
     }
 
@@ -52,7 +70,11 @@ public struct PlanDetailView: View {
                 editorView()
             }
         }
-        .navigationTitle(currentPlan.title ?? "Implementation Plan")
+        .navigationTitle(
+            PlanContentParser.extractPlanTitle(metadata: observedJob?.metadata, response: observedJob?.response)
+            ?? observedJob?.taskType
+            ?? "Implementation Plan"
+        )
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarHidden(isLandscape)
         .statusBarHidden(isLandscape)
@@ -76,7 +98,7 @@ public struct PlanDetailView: View {
         }
         .sheet(isPresented: $showingTerminal) {
             NavigationStack {
-                RemoteTerminalView(jobId: currentPlan.jobId, initialCopyButtonId: selectedCopyButtonId)
+                RemoteTerminalView(jobId: currentJobId)
             }
         }
         .alert("Unsaved Changes", isPresented: $showingSaveConfirmation) {
@@ -97,8 +119,14 @@ public struct PlanDetailView: View {
             }
         }
         .onAppear {
+            container.jobsService.setViewedImplementationPlanId(currentJobId)
+            hydrateJob()
             loadPlanContent()
-            setupRealTimeUpdates()
+        }
+        .onDisappear {
+            container.jobsService.setViewedImplementationPlanId(nil)
+            retryTask?.cancel()
+            retryTask = nil
         }
     }
 
@@ -150,9 +178,23 @@ public struct PlanDetailView: View {
             // Minimal status bar with navigation (hidden in landscape for max space)
             if !isLandscape {
                 HStack(spacing: 0) {
-                    Text(currentPlan.formattedDate)
-                        .small()
-                        .foregroundColor(Color.mutedForeground)
+                    if let createdAt = observedJob?.createdAt {
+                        Text(formatDate(createdAt))
+                            .small()
+                            .foregroundColor(Color.mutedForeground)
+                    }
+
+                    // Merged marker
+                    if observedJob?.taskType == "implementation_plan_merge" {
+                        Text("Merged")
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.secondary.opacity(0.15))
+                            .foregroundColor(.secondary)
+                            .clipShape(Capsule())
+                            .padding(.leading, 8)
+                    }
 
                     Spacer()
 
@@ -199,7 +241,6 @@ public struct PlanDetailView: View {
 
                     // Terminal button - launch directly
                     Button {
-                        selectedCopyButtonId = nil
                         showingTerminal = true
                     } label: {
                         Image(systemName: "terminal")
@@ -222,16 +263,16 @@ public struct PlanDetailView: View {
             // Maximum space for editor
             PlanRunestoneEditorView(
                 text: Binding(
-                    get: { content },
+                    get: { observedJob?.response ?? content },
                     set: { newValue in
-                        if newValue != content {
+                        if !isStreaming && newValue != content {
                             hasUnsavedChanges = true
                         }
                         content = newValue
                     }
                 ),
-                isReadOnly: !isEditMode,
-                languageHint: "markdown"
+                isReadOnly: isStreaming || !isEditMode,
+                languageHint: "xml"
             )
             .focused($isEditorFocused)
             .ignoresSafeArea(.keyboard)
@@ -279,7 +320,6 @@ public struct PlanDetailView: View {
                             .frame(width: 40)
 
                         Button {
-                            selectedCopyButtonId = nil
                             showingTerminal = true
                         } label: {
                             Image(systemName: "terminal")
@@ -310,11 +350,11 @@ public struct PlanDetailView: View {
 
     // MARK: - Computed Properties
 
-    private var currentPlan: PlanSummary {
-        guard currentIndex >= 0 && currentIndex < allPlans.count else {
-            return plan
+    private var currentJobId: String {
+        guard currentIndex >= 0 && currentIndex < allPlanJobIds.count else {
+            return jobId
         }
-        return allPlans[currentIndex]
+        return allPlanJobIds[currentIndex]
     }
 
     private var canGoPrevious: Bool {
@@ -322,7 +362,15 @@ public struct PlanDetailView: View {
     }
 
     private var canGoNext: Bool {
-        return currentIndex < allPlans.count - 1
+        return currentIndex < allPlanJobIds.count - 1
+    }
+
+    private func formatDate(_ timestamp: Int64) -> String {
+        let date = Date(timeIntervalSince1970: TimeInterval(timestamp) / 1000)
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
     }
 
     // MARK: - Navigation
@@ -336,20 +384,21 @@ public struct PlanDetailView: View {
         guard canGoPrevious || canGoNext else { return }
 
         let newIndex = direction == .previous ? currentIndex - 1 : currentIndex + 1
-        guard newIndex >= 0 && newIndex < allPlans.count else { return }
+        guard newIndex >= 0 && newIndex < allPlanJobIds.count else { return }
+
+        // Cancel any pending retry tasks
+        retryTask?.cancel()
+        retryTask = nil
 
         currentIndex = newIndex
+        container.jobsService.setViewedImplementationPlanId(currentJobId)
         loadToken = UUID()
         hasUnsavedChanges = false
         isEditMode = false
         isEditorFocused = false
 
-        // Reset cancellables
-        cancellables.removeAll()
-        cancellables = Set<AnyCancellable>()
-
-        // Prefetch neighbors
-        prefetchNeighbors()
+        // Hydrate job for streaming content
+        hydrateJob()
 
         loadPlanContent()
     }
@@ -357,211 +406,136 @@ public struct PlanDetailView: View {
     // MARK: - Data Loading
 
     private func loadPlanContent() {
-        let planToLoad = currentPlan
         let localToken = loadToken
 
+        // Cancel any pending retry tasks
+        retryTask?.cancel()
+        retryTask = nil
+
+        // Streaming-aware logic
+        if let job = observedJob {
+            if job.status == "active" || job.status == "queued" {
+                // Job is currently generating
+                if let response = job.response, !response.isEmpty {
+                    // We have streaming content, use it
+                    content = response
+                    isLoading = false
+                    errorMessage = nil
+                    return
+                } else {
+                    // Active but no response yet, schedule retry
+                    isLoading = true
+                    retryTask = Task {
+                        try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+                        await MainActor.run {
+                            guard localToken == self.loadToken else { return }
+                            self.loadPlanContent()
+                        }
+                    }
+                    return
+                }
+            }
+        }
+
+        // Job is completed/failed or not found - fetch full content
         isLoading = true
         errorMessage = nil
         hasRetriedLoad = false
 
-        plansService.getFullPlanContent(jobId: planToLoad.jobId)
+        jobsService.getJobFast(jobId: currentJobId)
             .receive(on: DispatchQueue.main)
             .sink(
                 receiveCompletion: { completion in
-                    // Guard: only process if token matches
                     guard localToken == self.loadToken else { return }
 
                     self.isLoading = false
                     if case .failure(let error) = completion {
                         let errorDescription = error.localizedDescription
 
-                        // Treat in-progress states as non-fatal
-                        if errorDescription.contains("not completed") ||
-                           errorDescription.contains("response is not available") ||
-                           errorDescription.contains("still being generated") {
-                            // Plan is still being created, wait and retry
-                            self.isLoading = true
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                                self.loadPlanContent()
-                            }
-                            return
-                        }
-
                         // Handle "Job not found" with retry
                         if errorDescription.contains("Job not found") || errorDescription.contains("Not found") {
                             if !self.hasRetriedLoad {
                                 self.hasRetriedLoad = true
-                                self.container.plansService.invalidateCache()
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                                    self.loadPlanContent()
+                                self.retryTask = Task {
+                                    try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 seconds
+                                    await MainActor.run {
+                                        guard localToken == self.loadToken else { return }
+                                        self.loadPlanContent()
+                                    }
                                 }
                                 return
                             }
-                            // After retry, show user-friendly message
                             self.errorMessage = "This plan no longer exists or has been deleted."
                             return
                         }
 
-                        // Handle other errors
-                        if let range = errorDescription.range(of: "message: ") {
-                            let startIndex = errorDescription.index(range.upperBound, offsetBy: 0)
-                            if let endRange = errorDescription[startIndex...].range(of: ")") {
-                                let cleanMessage = String(errorDescription[startIndex..<endRange.lowerBound])
-                                self.errorMessage = cleanMessage.replacingOccurrences(of: "AnyCodable(value: \"", with: "")
-                                    .replacingOccurrences(of: "\")", with: "")
-                            } else {
-                                self.errorMessage = errorDescription
-                            }
-                        } else {
-                            self.errorMessage = errorDescription
-                        }
+                        self.errorMessage = errorDescription
                     }
                 },
-                receiveValue: { planContent in
-                    // Guard: only process if token matches
+                receiveValue: { job in
                     guard localToken == self.loadToken else { return }
 
-                    self.content = planContent
+                    self.content = job.response ?? ""
                     self.isLoading = false
                 }
             )
             .store(in: &cancellables)
     }
 
-    private func prefetchNeighbors() {
-        // Prefetch previous plan
-        if currentIndex > 0 {
-            let prevPlan = allPlans[currentIndex - 1]
-            plansService.getFullPlanContent(jobId: prevPlan.jobId)
-                .sink(
-                    receiveCompletion: { _ in },
-                    receiveValue: { _ in }
-                )
-                .store(in: &cancellables)
-        }
-
-        // Prefetch next plan
-        if currentIndex < allPlans.count - 1 {
-            let nextPlan = allPlans[currentIndex + 1]
-            plansService.getFullPlanContent(jobId: nextPlan.jobId)
-                .sink(
-                    receiveCompletion: { _ in },
-                    receiveValue: { _ in }
-                )
-                .store(in: &cancellables)
-        }
-    }
-
     private func savePlan() {
-        let planToSave = currentPlan
-
         isSaving = true
         errorMessage = nil
 
         Task {
             do {
-                for try await result in plansService.savePlan(id: planToSave.jobId, content: content) {
-                    await MainActor.run {
-                        if let resultDict = result as? [String: Any],
-                           let success = resultDict["success"] as? Bool, success {
-                            hasUnsavedChanges = false
-                        }
-                    }
+                for try await _ in jobsService.updateJobContent(jobId: currentJobId, newContent: content) {
+                    // Consume stream
                 }
-
                 await MainActor.run {
-                    isSaving = false
+                    self.isSaving = false
+                    self.hasUnsavedChanges = false
                 }
-
             } catch {
                 await MainActor.run {
-                    isSaving = false
-                    errorMessage = "Save failed: \(error.localizedDescription)"
+                    self.isSaving = false
+                    self.errorMessage = "Save failed: \(error.localizedDescription)"
                 }
             }
         }
     }
 
-    private func setupRealTimeUpdates() {
-        container.plansService.$lastUpdateEvent
-            .compactMap { $0 }
-            .sink { event in
-                DispatchQueue.main.async {
-                    // Extract jobId from event payload
-                    let eventJobId = event.data["jobId"]?.value as? String
+    private func hydrateJob() {
+        // Check if job is already present in jobsService
+        if jobsService.jobs.contains(where: { $0.id == currentJobId }) {
+            return
+        }
 
-                    switch event.eventType {
-                    case "PlanModified":
-                        // Reload content when this plan is modified on desktop
-                        if let planJobId = eventJobId, planJobId == self.currentPlan.jobId {
-                            self.loadPlanContent()
-                        }
-
-                    case "job:deleted":
-                        let eventJobId = (event.data["jobId"]?.value as? String) ?? (event.data["id"]?.value as? String)
-                        if eventJobId == self.currentPlan.jobId {
-                            self.errorMessage = "This plan has been deleted on desktop."
-                            self.content = ""
-                        }
-
-                    case "job:response-appended":
-                        // Only process if matches current plan
-                        guard let jobId = eventJobId, jobId == self.currentPlan.jobId else { return }
-
-                        if let chunk = event.data["chunk"]?.value as? String {
-                            self.content += chunk
-                        } else {
-                            self.loadPlanContent()
-                        }
-
-                    case "job:finalized":
-                        // Reload on finalization
-                        if let jobId = eventJobId, jobId == self.currentPlan.jobId {
-                            self.loadPlanContent()
-                        }
-
-                    case "job:status-changed":
-                        // Check if status is completed
-                        if let jobId = eventJobId, jobId == self.currentPlan.jobId,
-                           let status = event.data["status"]?.value as? String,
-                           status == "completed" {
-                            self.loadPlanContent()
-                        }
-
-                    default:
-                        break
+        // Fetch job to populate jobsService.jobs array
+        jobsService.getJobFast(jobId: currentJobId)
+            .receive(on: DispatchQueue.main)
+            .sink(
+                receiveCompletion: { completion in
+                    if case .failure(let error) = completion {
+                        // Don't set error here, let loadPlanContent handle it
+                        print("Failed to hydrate job: \(error.localizedDescription)")
                     }
+                },
+                receiveValue: { _ in
+                    // Job is now in jobsService.jobs, observedJob computed property will pick it up
                 }
-            }
+            )
             .store(in: &cancellables)
     }
+
 }
 
 // MARK: - Supporting Views
 // (None needed - all inline)
 
 #Preview {
-    let planJSON = """
-    {
-        "id": "1",
-        "jobId": "job-1",
-        "title": "Sample Implementation Plan",
-        "filePath": "/path/to/file.swift",
-        "createdAt": \(Int64(Date().timeIntervalSince1970)),
-        "sizeBytes": 1024,
-        "status": "completed",
-        "sessionId": "session-1"
-    }
-    """
+    let jobId = "job-1"
+    let allPlanJobIds = ["job-1", "job-2", "job-3"]
 
-    guard let jsonData = planJSON.data(using: .utf8),
-          let samplePlan = try? JSONDecoder().decode(PlanSummary.self, from: jsonData),
-          let serverURL = URL(string: Config.serverURL) else {
-        return Text("Preview data unavailable")
-    }
-
-    let allPlans = [samplePlan]
-    let plansService = DataServicesManager(baseURL: serverURL, deviceId: DeviceManager.shared.getOrCreateDeviceID()).plansService
-
-    return PlanDetailView(plan: samplePlan, allPlans: allPlans, plansService: plansService)
+    PlanDetailView(jobId: jobId, allPlanJobIds: allPlanJobIds)
+        .environmentObject(AppContainer.preview)
 }

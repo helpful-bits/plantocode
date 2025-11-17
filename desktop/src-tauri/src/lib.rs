@@ -647,11 +647,6 @@ pub fn run() {
             commands::terminal_commands::get_terminal_metadata_command,
             commands::terminal_commands::graceful_exit_terminal_command,
             commands::image_commands::save_pasted_image_command,
-            commands::sync_commands::queue_task_description_update_command,
-            commands::sync_commands::queue_merge_instructions_update_command,
-            commands::sync_commands::queue_start_task_edit_command,
-            commands::sync_commands::queue_end_task_edit_command,
-            commands::sync_commands::queue_external_task_description_update_command,
         ])
         .run(tauri_context)
         .expect("Error while running tauri application");

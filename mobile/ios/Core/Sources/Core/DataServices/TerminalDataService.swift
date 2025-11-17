@@ -169,9 +169,10 @@ public class TerminalDataService: ObservableObject {
         self.isLoading = true
         defer { self.isLoading = false }
 
-        var params: [String: Any] = ["jobId": jobId]
-
-        // Use provided shell or fetch default from settings
+        var params: [String: Any] = [:]
+        if jobId.hasPrefix("task-terminal-") == false {
+            params["jobId"] = jobId
+        }
         if let shell = shell {
             params["shell"] = shell
         }

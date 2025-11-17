@@ -65,10 +65,13 @@ public final class WorkflowNotificationCoordinator: ObservableObject {
             )
         } else if planTypes.contains(taskType) {
             logger.info("Implementation plan job completed: \(job.id)")
+            let planTitle = PlanContentParser.extractPlanTitle(metadata: job.metadata, response: job.response)
             PushNotificationManager.shared.scheduleImplementationPlanCompleted(
                 sessionId: sessionId,
                 projectDirectory: projectDirectory,
-                jobId: job.id
+                jobId: job.id,
+                planTitle: planTitle,
+                model: job.modelUsed
             )
         }
     }

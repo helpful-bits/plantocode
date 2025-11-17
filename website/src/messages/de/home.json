@@ -165,54 +165,54 @@
     "title": "Human-in-the-loop Governance"
   },
   "hero": {
+    "titleLine1": "Komplexe Änderungen planen",
+    "titleLine2": "ohne Production zu brechen",
+    "subtitle": "[b]KI-Architekt[/b] generiert detaillierte Implementierungspläne mit exakten Dateipfaden. Sie prüfen und genehmigen jede Änderung vor der Ausführung. [b]Saubere Architektur[/b].",
     "cta": {
-      "demo": "Interaktive Demo testen →",
-      "download": "Kostenlos herunterladen",
-      "howItWorks": "So funktioniert es",
-      "viewDemo": "Sehen Sie, wie der Entwickler es täglich nutzt"
+      "viewDemo": "Demo ansehen",
+      "howItWorks": "So funktioniert es"
     },
     "panel1": {
-      "description": "Suchmuster generieren, Relevanz-Scoring durchführen und gestaffelte Ergebnisse prüfen, bevor Dateien in Ihren Plan aufgenommen werden.",
-      "descriptionDesktop": "Die richtigen Dateien finden, bevor Sie Prompts schreiben.",
-      "features": {
-        "context": "Kontext-Optimierung",
-        "patterns": "Mustergruppen",
-        "progress": "Echtzeit-Fortschritt",
-        "relevance": "Relevanz-Scores",
-        "stage": "Stufen-Reviews"
-      },
+      "title": "Kristallisieren & Abgrenzen",
+      "description": "Sprach- oder Texteingabe mit optionaler KI-Verfeinerung. Isolieren Sie Dateien, die speziell für diese Aufgabe relevant sind.",
+      "descriptionDesktop": "Beginnen Sie mit Sprache oder Text. Nutzen Sie KI für optionale Textverbesserung und Task-Verfeinerung. Dann grenzen Sie exakte Dateien über gezielte Discovery ab.",
       "link": "So funktioniert es",
-      "linkDesktop": "Mehr erfahren",
-      "title": "Datei-Discovery-Workflow"
+      "linkDesktop": "Discovery erkunden",
+      "features": {
+        "voice": "Sprachdiktat",
+        "textImprovement": "Textverbesserung",
+        "taskRefinement": "Task-Verfeinerung",
+        "fileDiscovery": "Gezielte Datei-Discovery",
+        "scopedSelection": "Task-spezifische Auswahl"
+      }
     },
     "panel2": {
-      "description": "Führen Sie beliebige Modelle parallel aus - einschließlich mehrerer Instanzen desselben Modells - und führen Sie die besten Ideen zusammen.",
+      "title": "Mehrere Perspektiven",
+      "description": "Gleiche Aufgabe, gleiche Dateien, gleicher Kontext. Mehrfach ausführen - gleiches Modell oder gemischt. Jede KI hat einen einzigartigen architektonischen Geschmack. Sehen Sie verschiedene gültige Ansätze in standardisiertem Format.",
       "link": "Workflow erkunden",
-      "models": {
-        "claude": "Claude Sonnet 4",
-        "gemini": "Gemini 2.5 Pro",
-        "gpt5": "GPT-5"
+      "runs": {
+        "run1": "Durchlauf 1 - GPT-5",
+        "run2": "Durchlauf 2 - Gemini 2.5 Pro",
+        "run3": "Durchlauf 3 - GPT-5"
       },
-      "title": "Multi-Modell-Planung"
+      "tags": {
+        "middlewareFirst": "Middleware-Ansatz",
+        "serviceLayer": "Service-Layer-Ansatz",
+        "apiFirst": "API-First-Ansatz"
+      }
     },
     "panel3": {
-      "description": "Claude, Cursor, Codex oder Gemini starten ohne den Workspace zu verlassen. Health-Monitoring und Recovery halten lange Jobs am Laufen.",
-      "link": "Terminal-Details",
-      "terminal": {
-        "line1": "$ codex | claude | cursor | gemini",
-        "line2": "> Sprachtranskription verfügbar",
-        "line3": "> Prompt-Vorschau vor Ausführung",
-        "line4": "> Token-Guardrails aktiv",
-        "line5": "> Logs lokal gespeichert"
-      },
-      "title": "Integriertes Terminal"
-    },
-    "srOnly": {
-      "description": "PlanToCode hilft Ihnen die richtigen Dateien zu finden, Implementierungspläne zu generieren und zusammenzuführen, dann in einem persistenten Terminal auszuführen. Sie sehen den Scope bevor etwas läuft. Pläne sind editierbar und nachvollziehbar.",
-      "heading": "Software-Änderungen planen bevor Sie coden"
-    },
-    "subtitle": "KI generiert detaillierte Implementierungspläne mit exakten Dateipfaden. Sie prüfen und genehmigen jede Änderung vor der Ausführung. Null Risiko, volle Kontrolle.",
-    "title": "Komplexe Änderungen planen ohne Production zu brechen"
+      "title": "Automatisches Mergen",
+      "description": "System bewertet und ratet alle Pläne, um die architektonisch am besten geeigneten Ansätze für Ihre Codebasis zu identifizieren, und führt sie dann zu einer überlegenen Implementierung zusammen. Optionale Merge-Anweisungen leiten die Synthese.",
+      "link": "Merge-Details",
+      "merge": {
+        "line1": "Input: 4 Pläne (2×GPT-5, 2×Gemini)",
+        "line2": "Scope: Dateien aus allen Plänen",
+        "line3": "Strategie: Merge-Anweisungen anwenden",
+        "line4": "Output: Datei-für-Datei-Plan",
+        "line5": "Provenienz: [src:P2], [src:P1]"
+      }
+    }
   },
   "integrations": {
     "cards": {

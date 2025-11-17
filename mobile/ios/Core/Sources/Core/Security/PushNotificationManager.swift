@@ -186,19 +186,31 @@ public class PushNotificationManager: NSObject, ObservableObject {
     }
 
     /// Schedule notification for completed implementation plan
-    public func scheduleImplementationPlanCompleted(sessionId: String, projectDirectory: String?, jobId: String) {
+    public func scheduleImplementationPlanCompleted(
+        sessionId: String,
+        projectDirectory: String?,
+        jobId: String,
+        planTitle: String?,
+        model: String?
+    ) {
         guard PlanToCodeCore.shared.dataServices?.settingsService.notifyPlanReadyEnabled ?? true else {
             return
         }
 
+        let displayModel = model.map(PlanContentParser.displayModelName)
+        let titleText = (planTitle?.isEmpty == false) ? "Plan ready: \(planTitle!)" : "Plan ready"
+        let bodyText = displayModel.map { "Completed on \($0)" } ?? "An implementation plan has completed"
+
         scheduleLocalNotification(
-            title: "Plan ready",
-            body: "An implementation plan has completed",
+            title: titleText,
+            body: bodyText,
             userInfo: [
                 "type": Self.IMPLEMENTATION_PLAN_COMPLETE,
                 "sessionId": sessionId,
                 "projectDirectory": projectDirectory ?? "",
-                "jobId": jobId
+                "jobId": jobId,
+                "planTitle": planTitle ?? "",
+                "modelUsed": model ?? ""
             ],
             categoryIdentifier: Self.IMPLEMENTATION_PLAN_COMPLETE
         )

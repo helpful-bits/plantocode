@@ -346,6 +346,13 @@ export default async function HowItWorksPage({ params }: { params: Promise<{ loc
                     </GlassCard>
                   ))}
                 </div>
+
+                <div className="glass-card p-6 mt-8">
+                  <h3 className="text-base font-semibold">Remote control on iOS</h3>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Revisa y combina planes desde iOS y abre una sesión de terminal remota vía device link.
+                  </p>
+                </div>
               </div>
               {/* Use Cases */}
               <div className="mb-16">

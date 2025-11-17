@@ -427,7 +427,7 @@
           "title": "Monorepo-bewusste Auflösung"
         },
         "pathValidation": {
-          "description": "Stufe 5 des Discovery-Workflows validiert und korrigiert speziell Dateipfade. Dies geschieht automatisch, bevor irgendein KI-Modell Ihre Codebasis sieht.",
+          "description": "Pfad-Validierung im Discovery-Workflow validiert und korrigiert Dateipfade. Dies geschieht automatisch, bevor irgendein KI-Modell Ihre Codebasis sieht.",
           "features": [
             "Prüft Dateizugänglichkeit und Berechtigungen",
             "Löst Pfad-Inkonsistenzen automatisch auf",
@@ -438,7 +438,7 @@
           "title": "Pfad-Validierungs-Pipeline"
         },
         "preExecutionDiscovery": {
-          "description": "Bevor KI Code generiert, führt PlanToCode einen 5-stufigen File-Discovery-Workflow aus, der Ihr tatsächliches Dateisystem mappt. Jeder Dateipfad wird verifiziert zu existieren, bevor er in den Kontext aufgenommen wird.",
+          "description": "Bevor KI Code generiert, führt PlanToCode einen 4-stufigen File-Discovery-Workflow aus, der Ihr tatsächliches Dateisystem mappt. Jeder Dateipfad wird verifiziert zu existieren, bevor er in den Kontext aufgenommen wird.",
           "features": [
             "Scannt Repository mit git ls-files-Integration",
             "Validiert Dateiexistenz gegen tatsächliches Dateisystem",
@@ -1076,7 +1076,7 @@
           "title": "Schritt 3: Ihre Aufgabe beschreiben"
         },
         "step4": {
-          "description": "PlanToCode führt den 5-stufigen File-Discovery-Workflow im Hintergrund aus. Sie sehen Echtzeit-Fortschritts-Updates, während es relevante Dateien entdeckt. Der Workflow dauert typischerweise 30-90 Sekunden je nach Codebasis-Größe. Sobald abgeschlossen, reviewen Sie die Liste der entdeckten Dateien. Sie sehen, welche Dateien PlanToCode als relevant für Ihre Aufgabe identifiziert hat. Dies ist Ihr erster Checkpoint, um sicherzustellen, dass das System ordnungsgemäßen Kontext über bestehende Dateien hat.",
+          "description": "PlanToCode führt den 4-stufigen File-Discovery-Workflow im Hintergrund aus. Sie sehen Echtzeit-Fortschritts-Updates, während es relevante Dateien entdeckt. Der Workflow dauert typischerweise 30-90 Sekunden je nach Codebasis-Größe. Sobald abgeschlossen, reviewen Sie die Liste der entdeckten Dateien. Sie sehen, welche Dateien PlanToCode als relevant für Ihre Aufgabe identifiziert hat. Dies ist Ihr erster Checkpoint, um sicherzustellen, dass das System ordnungsgemäßen Kontext über bestehende Dateien hat.",
           "link": "Mehr über den Discovery-Prozess erfahren",
           "title": "Schritt 4: Die File Discovery reviewen"
         },
@@ -1100,7 +1100,7 @@
       },
       "howPlanToCodePrevents": {
         "comprehensiveDiscovery": {
-          "description": "PlanToCode führt einen 5-stufigen File-Discovery-Workflow aus, bevor es einen Implementierungsplan generiert. Dieser Workflow verwendet Git-Integration, Regex-Filterung, KI-gestützte Relevanz-Bewertung, Beziehungs-Analyse und Pfad-Validierung, um eine vollständige Karte Ihrer Codebasis zu erstellen.",
+          "description": "PlanToCode führt einen 4-stufigen File-Discovery-Workflow aus, bevor es einen Implementierungsplan generiert. Dieser Workflow verwendet Git-Integration, Regex-Filterung, KI-gestützte Relevanz-Bewertung, Beziehungs-Analyse und Pfad-Validierung, um eine vollständige Karte Ihrer Codebasis zu erstellen.",
           "link": "Technische Dokumentation",
           "process": {
             "steps": [

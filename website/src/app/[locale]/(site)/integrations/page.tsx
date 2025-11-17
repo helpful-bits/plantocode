@@ -10,6 +10,7 @@ import { loadMessagesFor, type Locale } from '@/lib/i18n';
 import { Terminal, Plug } from 'lucide-react';
 import { locales } from '@/i18n/config';
 import { generatePageMetadata } from '@/content/metadata';
+import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
   const { locale } = await params;
@@ -138,12 +139,19 @@ export default async function IntegrationsHubPage({ params }: { params: Promise<
                 <h2 className="text-2xl sm:text-3xl font-bold mb-4">
                   {t['integrations.cta.title'] || 'Enhance Your AI Coding Tools Today'}
                 </h2>
-                <p className="text-lg text-foreground/80 mb-8">
+                <p className="text-lg text-foreground/80 mb-8 max-w-2xl mx-auto">
                   {t['integrations.cta.subtitle'] || 'Add architectural awareness, file discovery, and persistent terminals to the tools you already use.'}
                 </p>
-                <LinkWithArrow href="/downloads" className="text-lg">
-                  {t['integrations.cta.button'] || 'Download PlanToCode'}
-                </LinkWithArrow>
+                <PlatformDownloadSection location="integrations_hub" />
+                <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4 text-sm text-foreground/60">
+                  <LinkWithArrow href="/plan-mode">
+                    {t['integrations.cta.links.planMode'] || 'See integration guides'}
+                  </LinkWithArrow>
+                  <span className="hidden sm:inline">•</span>
+                  <LinkWithArrow href="/docs">
+                    {t['integrations.cta.links.docs'] || 'Read documentation'}
+                  </LinkWithArrow>
+                </div>
               </GlassCard>
             </div>
           </section>

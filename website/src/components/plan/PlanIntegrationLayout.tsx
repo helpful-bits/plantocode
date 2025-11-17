@@ -60,6 +60,11 @@ export interface PlanIntegrationFAQ {
   a: string;
 }
 
+export interface PlanIntegrationLearnMore {
+  label: string;
+  href: string;
+}
+
 export interface PlanIntegrationContent {
   meta: PlanIntegrationMeta;
   hero: PlanIntegrationHero;
@@ -67,6 +72,9 @@ export interface PlanIntegrationContent {
   valueBullets: PlanIntegrationValueBullet[];
   integrationNotes: PlanIntegrationNote[];
   quickstart: PlanIntegrationQuickstartStep[];
+  quickstartHeading?: string;
+  quickstartGlassCard?: boolean;
+  learnMore?: PlanIntegrationLearnMore[];
   verifiedFacts: PlanIntegrationVerifiedFact[];
   faq?: PlanIntegrationFAQ[];
   jsonLd?: unknown;
@@ -78,7 +86,7 @@ interface PlanIntegrationLayoutProps {
 }
 
 export function PlanIntegrationLayout({ content, location }: PlanIntegrationLayoutProps) {
-  const { hero, intro, valueBullets, integrationNotes, quickstart, verifiedFacts, faq, jsonLd } = content;
+  const { hero, intro, valueBullets, integrationNotes, quickstart, quickstartHeading, quickstartGlassCard, learnMore, verifiedFacts, faq, jsonLd } = content;
 
   return (
     <>
@@ -132,7 +140,6 @@ export function PlanIntegrationLayout({ content, location }: PlanIntegrationLayo
                     </>
                   )}
                 </div>
-                <p className="text-sm text-foreground/60">$5 free credits • Pay-as-you-go • Works with all major AI coding tools</p>
               </div>
 
               {/* Optional intro paragraph for authenticity */}
@@ -177,29 +184,68 @@ export function PlanIntegrationLayout({ content, location }: PlanIntegrationLayo
               {/* Quickstart section */}
               {quickstart.length > 0 && (
                 <div className="space-y-6">
-                  <GlassCard className="p-8" highlighted>
-                    <div className="flex items-start gap-4">
-                      <div className="mt-1">
-                        <CheckCircle2 className="w-6 h-6 text-primary" />
-                      </div>
-                      <div>
-                        <h2 className="text-2xl sm:text-3xl font-bold mb-4">Quickstart</h2>
-                        <ol className="space-y-4 text-foreground/80 text-sm sm:text-base">
-                          {quickstart.map((item, index) => (
-                            <li key={index} className="flex gap-3">
-                              <span className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-semibold">
-                                {index + 1}
-                              </span>
-                              <div>
-                                <div className="font-semibold text-foreground mb-1">{item.step}</div>
-                                <p className="leading-relaxed">{item.detail}</p>
-                              </div>
-                            </li>
+                  {quickstartGlassCard ? (
+                    <GlassCard className="p-8" highlighted>
+                      <h2 className="text-2xl sm:text-3xl font-bold mb-4">{quickstartHeading || 'Quick start'}</h2>
+                      <ol className="space-y-4 text-foreground/80 text-sm sm:text-base list-decimal list-inside">
+                        {quickstart.map((item, index) => (
+                          <li key={index} className="leading-relaxed">
+                            {item.step}
+                          </li>
+                        ))}
+                      </ol>
+                      {learnMore && learnMore.length > 0 && (
+                        <div className="mt-8 text-sm text-muted-foreground">
+                          <span className="mr-2">Learn more:</span>
+                          {learnMore.map((link, index) => (
+                            <span key={index}>
+                              {index > 0 && <span className="mx-1">·</span>}
+                              <a href={link.href} target="_blank" rel="noopener noreferrer" className="underline">
+                                {link.label}
+                              </a>
+                            </span>
                           ))}
-                        </ol>
+                        </div>
+                      )}
+                    </GlassCard>
+                  ) : (
+                    <GlassCard className="p-8" highlighted>
+                      <div className="flex items-start gap-4">
+                        <div className="mt-1">
+                          <CheckCircle2 className="w-6 h-6 text-primary" />
+                        </div>
+                        <div>
+                          <h2 className="text-2xl sm:text-3xl font-bold mb-4">{quickstartHeading || 'Quickstart'}</h2>
+                          <ol className="space-y-4 text-foreground/80 text-sm sm:text-base">
+                            {quickstart.map((item, index) => (
+                              <li key={index} className="flex gap-3">
+                                <span className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-semibold">
+                                  {index + 1}
+                                </span>
+                                <div>
+                                  <div className="font-semibold text-foreground mb-1">{item.step}</div>
+                                  <p className="leading-relaxed">{item.detail}</p>
+                                </div>
+                              </li>
+                            ))}
+                          </ol>
+                          {learnMore && learnMore.length > 0 && (
+                            <div className="mt-8 text-sm text-muted-foreground">
+                              <span className="mr-2">Learn more:</span>
+                              {learnMore.map((link, index) => (
+                                <span key={index}>
+                                  {index > 0 && <span className="mx-1">·</span>}
+                                  <a href={link.href} target="_blank" rel="noopener noreferrer" className="underline">
+                                    {link.label}
+                                  </a>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </GlassCard>
+                    </GlassCard>
+                  )}
                 </div>
               )}
 

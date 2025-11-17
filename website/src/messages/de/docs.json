@@ -39,7 +39,7 @@
       "heading": "Benötigen Sie die Desktop-App?"
     },
     "date": "2025-09-21",
-    "description": "Umfassender technischer Leitfaden zum 5-stufigen KI-Workflow, der relevante Dateien für die Aufgabenausführung identifiziert und filtert.",
+    "description": "Umfassender technischer Leitfaden zum 4-stufigen KI-Workflow, der relevante Dateien für die Aufgabenausführung identifiziert und filtert.",
     "errorHandling": {
       "commonIssues": {
         "binaryDetection": "Binärdateierkennung: Verwendet sowohl erweiterungsbasierte als auch inhaltsbasierte Binärerkennung",
@@ -77,7 +77,7 @@
       }
     },
     "intro": "PlanToCode identifiziert die richtigen Dateien, bevor Sie planen oder Befehle ausführen. Der 5-stufige Workflow grenzt den Umfang ein und hält den Kontext eng.",
-    "metaDescription": "Umfassender technischer Leitfaden zum 5-stufigen KI-Workflow, der relevante Dateien für die Aufgabenausführung identifiziert und filtert.",
+    "metaDescription": "Umfassender technischer Leitfaden zum 4-stufigen KI-Workflow, der relevante Dateien für die Aufgabenausführung identifiziert und filtert.",
     "metaTitle": "File-Discovery-Workflow - PlanToCode",
     "ogDescription": "Technische Dokumentation zur mehrstufigen File-Discovery-Workflow-Architektur.",
     "ogTitle": "File-Discovery-Workflow - PlanToCode",

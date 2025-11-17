@@ -5,6 +5,7 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Breadcrumbs } from '@/components/Breadcrumbs';
 import { buildHubBreadcrumbs } from '@/components/breadcrumbs/utils';
+import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { locales } from '@/i18n/config';
 import {
   AlertTriangle, Boxes, Wrench, Library, Code2, FileWarning, Shield, Cog
@@ -163,12 +164,19 @@ export default async function SolutionsHubPage({ params }: { params: Promise<{ l
                 <h2 className="text-2xl sm:text-3xl font-bold mb-4">
                   {t['hub.cta.title'] || 'Ready to Solve Your Development Challenges?'}
                 </h2>
-                <p className="text-lg text-foreground/80 mb-8">
+                <p className="text-lg text-foreground/80 mb-8 max-w-2xl mx-auto">
                   {t['hub.cta.description'] || 'Start planning complex changes with confidence.'}
                 </p>
-                <LinkWithArrow href="/downloads" className="text-lg">
-                  {t['hub.cta.button'] || 'Download PlanToCode'}
-                </LinkWithArrow>
+                <PlatformDownloadSection location="solutions_hub" />
+                <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4 text-sm text-foreground/60">
+                  <LinkWithArrow href="/features">
+                    {t['hub.cta.links.features'] || 'Explore features'}
+                  </LinkWithArrow>
+                  <span className="hidden sm:inline">•</span>
+                  <LinkWithArrow href="/docs">
+                    {t['hub.cta.links.docs'] || 'Read documentation'}
+                  </LinkWithArrow>
+                </div>
               </GlassCard>
             </div>
           </section>

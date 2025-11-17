@@ -3,6 +3,7 @@
 import { Link } from '@/i18n/navigation';
 import { ArrowLeft, Calendar, Clock, Share2, Copy, CheckCircle, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { useState } from 'react';
 
 interface BlogArticleProps {
@@ -135,62 +136,39 @@ export function BlogArticle({
 
         {/* Article Content - Professional blog typography with proper spacing */}
         <div className="prose dark:prose-invert prose-xl max-w-none
-            /* Headings - Clear hierarchy with generous spacing */
             prose-headings:font-bold prose-headings:text-foreground prose-headings:tracking-tight
             prose-h2:text-3xl sm:prose-h2:text-4xl prose-h2:mt-20 prose-h2:mb-8 prose-h2:leading-[1.15]
             prose-h3:text-2xl sm:prose-h3:text-3xl prose-h3:mt-14 prose-h3:mb-6 prose-h3:leading-[1.2]
             prose-h4:text-xl sm:prose-h4:text-2xl prose-h4:mt-12 prose-h4:mb-5 prose-h4:leading-[1.3]
-
-            /* Paragraphs - Maximum readability with larger font and line height */
-            prose-p:text-[1.125rem] sm:prose-p:text-[1.1875rem] prose-p:text-foreground/90 prose-p:leading-[1.85] prose-p:mb-8 prose-p:mt-0 prose-p:font-normal
-
-            /* Links - Subtle but clear */
+            prose-p:text-[1.125rem] sm:prose-p:text-[1.1875rem] prose-p:text-foreground prose-p:leading-[1.85] prose-p:mb-8 prose-p:mt-0 prose-p:font-normal
             prose-a:text-primary prose-a:font-medium prose-a:no-underline prose-a:underline-offset-4
             hover:prose-a:underline prose-a:transition-all
-
-            /* Strong text - Better contrast */
             prose-strong:text-foreground prose-strong:font-semibold prose-strong:tracking-tight
-
-            /* Code - Inline */
             prose-code:text-primary prose-code:bg-primary/10 prose-code:px-2 prose-code:py-1
             prose-code:rounded-md prose-code:font-medium prose-code:text-[0.9em]
             prose-code:before:content-[''] prose-code:after:content-['']
-
-            /* Code blocks - Proper padding */
             prose-pre:bg-slate-900 dark:prose-pre:bg-slate-950
             prose-pre:border prose-pre:border-slate-700 dark:prose-pre:border-slate-800
             prose-pre:rounded-xl prose-pre:my-8 prose-pre:p-6 prose-pre:leading-relaxed
             prose-pre:shadow-lg prose-pre:overflow-x-auto
-
-            /* Lists - Proper spacing and readability */
             prose-ul:my-8 prose-ul:space-y-4 prose-ul:list-disc prose-ul:pl-6
             prose-ol:my-8 prose-ol:space-y-4 prose-ol:list-decimal prose-ol:pl-6
-            prose-li:text-[1.125rem] sm:prose-li:text-[1.1875rem] prose-li:text-foreground/90 prose-li:leading-[1.85] prose-li:pl-2
+            prose-li:text-[1.125rem] sm:prose-li:text-[1.1875rem] prose-li:text-foreground prose-li:leading-[1.85] prose-li:pl-2
             prose-li:marker:text-primary/80 prose-li:font-normal
-
-            /* Nested lists */
             prose-li>ul:mt-4 prose-li>ul:mb-2
             prose-li>ol:mt-4 prose-li>ol:mb-2
-
-            /* Blockquotes - Stand out */
             prose-blockquote:border-l-4 prose-blockquote:border-primary/50
             prose-blockquote:pl-6 prose-blockquote:pr-4 prose-blockquote:py-4
             prose-blockquote:italic prose-blockquote:text-muted-foreground
             prose-blockquote:my-8 prose-blockquote:bg-primary/5 prose-blockquote:rounded-r-lg
-
-            /* Tables - Professional spacing and readability */
             prose-table:w-full prose-table:my-10 prose-table:border-collapse prose-table:text-base
             prose-thead:border-b-2 prose-thead:border-border
             prose-th:px-5 prose-th:py-4 prose-th:text-left prose-th:font-bold prose-th:text-foreground prose-th:text-base
-            prose-td:px-5 prose-td:py-4 prose-td:text-foreground/85 prose-td:align-top prose-td:text-base prose-td:leading-relaxed
+            prose-td:px-5 prose-td:py-4 prose-td:text-foreground prose-td:align-top prose-td:text-base prose-td:leading-relaxed
             prose-tr:border-b prose-tr:border-border/30
             prose-tbody>tr:last-child:border-0
             prose-tbody>tr:hover:bg-primary/5
-
-            /* Images */
             prose-img:rounded-xl prose-img:shadow-lg prose-img:my-10
-
-            /* HR */
             prose-hr:border-border/50 prose-hr:my-12
           ">
           {children}
@@ -199,6 +177,15 @@ export function BlogArticle({
         {/* Article Footer */}
         {showFooter && (
           <footer className="mt-24 pt-12 border-t border-border/40">
+            {/* Download Section */}
+            <div className="mb-12 p-8 glass rounded-xl border border-border/50">
+              <h3 className="text-2xl font-bold text-center mb-4">Try PlanToCode</h3>
+              <p className="text-center text-muted-foreground mb-8 max-w-2xl mx-auto">
+                Experience planning-first development with deep research, file discovery, and implementation plans.
+              </p>
+              <PlatformDownloadSection location="blog_footer" />
+            </div>
+
             <div className="flex flex-col sm:flex-row justify-between items-center gap-6">
               <div className="flex flex-col sm:flex-row items-center gap-4">
                 <Button asChild variant="outline" size="default" className="min-w-[180px]">
@@ -212,8 +199,8 @@ export function BlogArticle({
                 <Button asChild variant="ghost" size="default">
                   <Link href="/docs">Documentation</Link>
                 </Button>
-                <Button asChild variant="default" size="default">
-                  <Link href="/downloads">Download App</Link>
+                <Button asChild variant="ghost" size="default">
+                  <Link href="/features">Features</Link>
                 </Button>
               </div>
             </div>

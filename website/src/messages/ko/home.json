@@ -165,54 +165,54 @@
     "title": "인간 참여형 거버넌스"
   },
   "hero": {
+    "titleLine1": "복잡한 변경 사항 계획",
+    "titleLine2": "프로덕션을 깨지 않고",
+    "subtitle": "[b]AI 아키텍트[/b]가 정확한 파일 경로와 함께 상세한 구현 계획을 생성합니다. 실행 전에 모든 변경 사항을 검토하고 승인합니다. [b]클린 아키텍처[/b].",
     "cta": {
-      "demo": "인터랙티브 데모 사용해보기 →",
-      "download": "무료 다운로드",
-      "howItWorks": "작동 방식 보기",
-      "viewDemo": "개발자가 매일 사용하는 방법 보기"
+      "viewDemo": "데모 보기",
+      "howItWorks": "작동 방식 보기"
     },
     "panel1": {
-      "description": "검색 패턴을 생성하고, 관련성 점수를 실행하고, 계획에 파일을 포함하기 전에 단계별 결과를 검토하십시오.",
-      "descriptionDesktop": "프롬프트를 작성하기 전에 올바른 파일을 표시합니다.",
-      "features": {
-        "context": "컨텍스트 최적화",
-        "patterns": "패턴 그룹",
-        "progress": "실시간 진행 상황",
-        "relevance": "관련성 점수",
-        "stage": "단계 검토"
-      },
+      "title": "명확화 및 범위 설정",
+      "description": "선택적 AI 개선 기능을 갖춘 음성 또는 텍스트 입력. 이 작업과 특별히 관련된 파일을 격리합니다.",
+      "descriptionDesktop": "음성 또는 텍스트로 시작합니다. 선택적 텍스트 개선 및 작업 개선에 AI를 사용합니다. 그런 다음 대상 검색을 통해 정확한 파일 범위를 지정합니다.",
       "link": "작동 방식 보기",
-      "linkDesktop": "자세히 알아보기",
-      "title": "파일 발견 워크플로우"
+      "linkDesktop": "검색 탐색",
+      "features": {
+        "voice": "음성 받아쓰기",
+        "textImprovement": "텍스트 개선",
+        "taskRefinement": "작업 개선",
+        "fileDiscovery": "대상 파일 검색",
+        "scopedSelection": "작업별 선택"
+      }
     },
     "panel2": {
-      "description": "동일한 모델의 여러 인스턴스를 포함하여 - 모든 모델을 병렬로 실행하고 최고의 아이디어를 병합하십시오.",
+      "title": "다중 관점",
+      "description": "동일한 작업, 동일한 파일, 동일한 컨텍스트. 여러 번 실행 - 동일한 모델 또는 혼합. 각 AI는 고유한 아키텍처 취향을 가지고 있습니다. 표준화된 형식으로 다양한 유효한 접근 방식을 확인하십시오.",
       "link": "워크플로우 탐색",
-      "models": {
-        "claude": "Claude Sonnet 4",
-        "gemini": "Gemini 2.5 Pro",
-        "gpt5": "GPT-5"
+      "runs": {
+        "run1": "실행 1 - GPT-5",
+        "run2": "실행 2 - Gemini 2.5 Pro",
+        "run3": "실행 3 - GPT-5"
       },
-      "title": "다중 모델 계획"
+      "tags": {
+        "middlewareFirst": "미들웨어 접근 방식",
+        "serviceLayer": "서비스 레이어 접근 방식",
+        "apiFirst": "API 우선 접근 방식"
+      }
     },
     "panel3": {
-      "description": "작업 공간을 벗어나지 않고 claude, cursor, codex 또는 gemini를 시작합니다. 상태 모니터링 및 복구로 장기 작업이 계속 실행됩니다.",
-      "link": "터미널 세부 정보",
-      "terminal": {
-        "line1": "$ codex | claude | cursor | gemini",
-        "line2": "> 음성 전사 사용 가능",
-        "line3": "> 실행 전 프롬프트 미리보기",
-        "line4": "> 토큰 가드레일 적용",
-        "line5": "> 로그는 로컬에 유지됨"
-      },
-      "title": "통합 터미널"
-    },
-    "srOnly": {
-      "description": "PlanToCode는 올바른 파일을 찾고, 구현 계획을 생성 및 병합한 다음 영구 터미널에서 실행하는 데 도움을 줍니다. 무엇이든 실행하기 전에 범위를 확인합니다. 계획은 편집 및 추적 가능합니다.",
-      "heading": "코딩하기 전에 소프트웨어 변경 사항 계획"
-    },
-    "subtitle": "AI는 정확한 파일 경로로 상세한 구현 계획을 생성합니다. 실행 전에 모든 변경 사항을 검토하고 승인합니다. 위험 없음, 완전한 제어.",
-    "title": "프로덕션을 깨지 않고 복잡한 변경 사항 계획"
+      "title": "자동 병합",
+      "description": "시스템은 모든 계획을 평가하고 등급을 매겨 코드베이스에 아키텍처적으로 가장 적합한 접근 방식을 식별한 다음 이를 하나의 우수한 구현으로 병합합니다. 선택적 병합 지침이 합성을 안내합니다.",
+      "link": "병합 세부 정보",
+      "merge": {
+        "line1": "입력: 4개 계획(2×GPT-5, 2×Gemini)",
+        "line2": "범위: 모든 계획의 파일",
+        "line3": "전략: 병합 지침 적용",
+        "line4": "출력: 파일별 계획",
+        "line5": "출처: [src:P2], [src:P1]"
+      }
+    }
   },
   "integrations": {
     "cards": {

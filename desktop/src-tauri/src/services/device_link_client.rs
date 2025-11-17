@@ -290,16 +290,13 @@ impl DeviceLinkClient {
             *listener_guard = Some(listener_id);
         }
 
-        // Get hostname for device name
-        let hostname = std::env::var("HOSTNAME")
-            .or_else(|_| std::env::var("COMPUTERNAME"))
-            .unwrap_or_else(|_| "Desktop".to_string());
+        let device_name = crate::utils::get_device_display_name();
 
         // Send register message
         let register_msg = DeviceLinkMessage::Register {
             payload: RegisterPayload {
                 device_id: device_id.clone(),
-                device_name: hostname,
+                device_name,
             },
         };
 
@@ -362,9 +359,9 @@ impl DeviceLinkClient {
             while let Some(msg) = ws_receiver.next().await {
                 match msg {
                     Ok(Message::Text(text)) => {
-                        // Rate-limited validation for missing "type" field with diagnostic context
+                        // Rate-limited validation for missing "type", "messageType", or "message_type" field with diagnostic context
                         if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
-                            if json.get("type").is_none() && json.get("message_type").is_none() {
+                            if json.get("type").is_none() && json.get("messageType").is_none() && json.get("message_type").is_none() {
                                 static LAST_TYPE_WARN: AtomicU64 = AtomicU64::new(0);
                                 let now = std::time::SystemTime::now()
                                     .duration_since(std::time::UNIX_EPOCH)
@@ -380,7 +377,7 @@ impl DeviceLinkClient {
                                     };
                                     let text_prefix: String = text.chars().take(128).collect();
                                     warn!(
-                                        "Dropping relay frame: missing 'type' field. Available keys: {:?}, Prefix: {}",
+                                        "Dropping relay frame: missing 'type', 'messageType', or 'message_type' field. Available keys: {:?}, Prefix: {}",
                                         available_keys, text_prefix
                                     );
                                     LAST_TYPE_WARN.store(now, Ordering::Relaxed);
@@ -389,7 +386,21 @@ impl DeviceLinkClient {
                             }
                         }
 
-                        // Try parsing as RelayEnvelope first (handles both "type" and "message_type")
+                        // Try parsing as ServerMessage first (RPC responses and connection management)
+                        if let Ok(server_msg) = serde_json::from_str::<ServerMessage>(&text) {
+                            if let Err(e) = Self::handle_server_message(
+                                &app_handle,
+                                server_msg,
+                                &tx_for_receiver,
+                            )
+                            .await
+                            {
+                                error!("Failed to handle server message: {}", e);
+                            }
+                            continue;
+                        }
+
+                        // Fall back to RelayEnvelope parsing (handles both "type" and "message_type")
                         if let Ok(env) = serde_json::from_str::<RelayEnvelope>(&text) {
                             // Route based on event type
                             if env.kind == "terminal.binary.bind" {
@@ -521,31 +532,15 @@ impl DeviceLinkClient {
                             continue;
                         }
 
-                        // Fall back to ServerMessage parsing for connection management messages
-                        match serde_json::from_str::<ServerMessage>(&text) {
-                            Ok(server_msg) => {
-                                if let Err(e) = Self::handle_server_message(
-                                    &app_handle,
-                                    server_msg,
-                                    &tx_for_receiver,
-                                )
-                                .await
-                                {
-                                    error!("Failed to handle server message: {}", e);
-                                }
-                            }
-                            Err(e) => {
-                                // Rate-limited warning
-                                let now = std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap()
-                                    .as_millis() as u64;
-                                let last = LAST_WARN_MS.load(Ordering::Relaxed);
-                                if now - last > 200 {
-                                    warn!("Failed to parse server message: {}", e);
-                                    LAST_WARN_MS.store(now, Ordering::Relaxed);
-                                }
-                            }
+                        // If neither ServerMessage nor RelayEnvelope parsed successfully, log a warning
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_millis() as u64;
+                        let last = LAST_WARN_MS.load(Ordering::Relaxed);
+                        if now - last > 200 {
+                            warn!("Failed to parse message as ServerMessage or RelayEnvelope");
+                            LAST_WARN_MS.store(now, Ordering::Relaxed);
                         }
                     },
                     Ok(Message::Close(_)) => {
@@ -751,11 +746,7 @@ impl DeviceLinkClient {
     async fn register_device(&self, device_id: &str, token: &str) -> Result<(), AppError> {
         info!("Registering device with server - device_id: {}, server: {}", device_id, self.server_url);
 
-        // Get device information
-        let device_name = hostname::get()
-            .ok()
-            .and_then(|h| h.into_string().ok())
-            .unwrap_or_else(|| "Desktop Device".to_string());
+        let device_name = crate::utils::get_device_display_name();
 
         let platform = std::env::consts::OS.to_string();
         let app_version = self.app_handle.package_info().version.to_string();

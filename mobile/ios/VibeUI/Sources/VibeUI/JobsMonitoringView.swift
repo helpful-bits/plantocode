@@ -233,21 +233,28 @@ public struct JobsMonitoringView: View {
 
     private func loadPlansForFiltering() {
         guard let session = container.sessionService.currentSession else { return }
-        let req = PlanListRequest(
+        let req = JobListRequest(
             projectDirectory: session.projectDirectory,
             sessionId: session.id,
-            includeMetadataOnly: true
+            statusFilter: nil,
+            taskTypeFilter: ["implementation_plan"],
+            dateFrom: nil,
+            dateTo: nil,
+            page: 0,
+            pageSize: 100,
+            sortBy: .createdAt,
+            sortOrder: .desc
         )
-        container.plansService.listPlans(request: req)
+        container.jobsService.listJobs(request: req)
             .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
             .store(in: &cancellables)
     }
 
     private var planJobIdsForCurrentSession: Set<String> {
         let sid = container.sessionService.currentSession?.id
-        return Set(container.plansService.plans
-            .filter { $0.sessionId == sid }
-            .compactMap { $0.jobId })
+        return Set(container.jobsService.jobs
+            .filter { $0.sessionId == sid && $0.taskType.hasPrefix("implementation_plan") }
+            .map { $0.id })
     }
 
     private func loadJobs() async {
@@ -413,20 +420,13 @@ public struct JobsMonitoringView: View {
 
         Task {
             do {
-                for try await response in CommandRouter.sessionUpdateFiles(
-                    id: sessionId,
+                try await container.sessionService.updateSessionFiles(
+                    sessionId: sessionId,
                     addIncluded: filePaths,
                     removeIncluded: nil,
                     addExcluded: nil,
-                    removeExcluded: nil
-                ) {
-                    if let error = response.error {
-                        return
-                    }
-                    if response.isFinal {
-                        break
-                    }
-                }
+                    removeExcluded: filePaths
+                )
             } catch {
                 // Silent error handling
             }

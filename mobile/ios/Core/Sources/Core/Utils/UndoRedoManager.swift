@@ -174,7 +174,8 @@ public class UndoRedoManager: ObservableObject {
                 createdAt: timestamp,
                 deviceId: deviceId,
                 opType: "edit",
-                sequenceNumber: Int32(index)
+                sequenceNumber: Int32(index),
+                version: version
             )
         }
 
@@ -236,7 +237,8 @@ public class UndoRedoManager: ObservableObject {
                 createdAt: timestamp,
                 deviceId: deviceId,
                 opType: "edit",
-                sequenceNumber: Int32(index)
+                sequenceNumber: Int32(index),
+                version: version
             )
         }
 
@@ -274,6 +276,7 @@ public struct HistoryEntry: Codable, Equatable {
     public let deviceId: String?
     public let opType: String?
     public let sequenceNumber: Int32?
+    public let version: Int64  // Entry version
 
     enum CodingKeys: String, CodingKey {
         case value
@@ -282,14 +285,16 @@ public struct HistoryEntry: Codable, Equatable {
         case deviceId
         case opType
         case sequenceNumber
+        case version
     }
 
-    public init(value: String, createdAt: Int64, deviceId: String? = nil, opType: String? = nil, sequenceNumber: Int32? = nil) {
+    public init(value: String, createdAt: Int64, deviceId: String? = nil, opType: String? = nil, sequenceNumber: Int32? = nil, version: Int64 = 1) {
         self.value = value
         self.createdAt = createdAt
         self.deviceId = deviceId
         self.opType = opType
         self.sequenceNumber = sequenceNumber
+        self.version = version
     }
 
     public init(from decoder: Decoder) throws {
@@ -304,6 +309,7 @@ public struct HistoryEntry: Codable, Equatable {
         deviceId = try container.decodeIfPresent(String.self, forKey: .deviceId)
         opType = try container.decodeIfPresent(String.self, forKey: .opType)
         sequenceNumber = try container.decodeIfPresent(Int32.self, forKey: .sequenceNumber)
+        version = (try? container.decode(Int64.self, forKey: .version)) ?? 1
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -313,6 +319,7 @@ public struct HistoryEntry: Codable, Equatable {
         try container.encodeIfPresent(deviceId, forKey: .deviceId)
         try container.encodeIfPresent(opType, forKey: .opType)
         try container.encodeIfPresent(sequenceNumber, forKey: .sequenceNumber)
+        try container.encode(version, forKey: .version)
     }
 }
 

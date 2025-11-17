@@ -39,6 +39,36 @@ let unlistenSessionDeleted: UnlistenFn | null = null;
 const handlers = new Set<Handlers>();
 const lastAppliedSwitch = { sessionId: null as null | string };
 const historyStateChangedCallbacks = new Map<string, Set<(event: HistoryStateChangedEvent) => void>>();
+const lastHistorySeen = new Map<string, { version: number; checksum: string }>();
+
+function emitHistoryChanged(detail: any) {
+  const key = `${detail.sessionId}:${detail.kind}`;
+  const last = lastHistorySeen.get(key);
+
+  if (last) {
+    if (detail.version < last.version) return;
+    if (detail.version === last.version && detail.checksum === last.checksum) return;
+  }
+
+  lastHistorySeen.set(key, { version: detail.version, checksum: detail.checksum });
+
+  window.dispatchEvent(
+    new CustomEvent('history-state-changed', {
+      detail,
+    })
+  );
+
+  if (historyStateChangedCallbacks.has(detail.sessionId)) {
+    const callbacks = historyStateChangedCallbacks.get(detail.sessionId);
+    callbacks?.forEach(callback => {
+      try {
+        callback(detail);
+      } catch (err) {
+        console.error('History state changed callback error:', err);
+      }
+    });
+  }
+}
 
 export async function initSessionEventBridge() {
   if (initialized) return;
@@ -104,22 +134,7 @@ export async function initSessionEventBridge() {
         relayOrigin: data.relayOrigin || 'local',
       };
 
-      window.dispatchEvent(
-        new CustomEvent('history-state-changed', {
-          detail: transformedDetail,
-        })
-      );
-
-      if (historyStateChangedCallbacks.has(detail.sessionId)) {
-        const callbacks = historyStateChangedCallbacks.get(detail.sessionId);
-        callbacks?.forEach(callback => {
-          try {
-            callback(transformedDetail);
-          } catch (err) {
-            console.error('History state changed callback error:', err);
-          }
-        });
-      }
+      emitHistoryChanged(transformedDetail);
       return;
     }
   });

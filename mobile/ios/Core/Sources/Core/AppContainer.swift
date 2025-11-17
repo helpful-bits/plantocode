@@ -5,10 +5,6 @@ import Combine
 public final class AppContainer: ObservableObject {
     private let manager: DataServicesManager
 
-    public var plansService: PlansDataService {
-        manager.plansService
-    }
-
     public var filesService: FilesDataService {
         manager.filesService
     }
@@ -111,4 +107,14 @@ public final class AppContainer: ObservableObject {
     public func exportProjectData(_ project: ProjectInfo, format: ExportFormat = .json) -> AnyPublisher<URL, DataServiceError> {
         manager.exportProjectData(project, format: format)
     }
+
+    // MARK: - Preview Support
+
+    #if DEBUG
+    public static var preview: AppContainer {
+        let baseURL = URL(string: "http://localhost:3000")!
+        let deviceId = "preview-device"
+        return AppContainer(baseURL: baseURL, deviceId: deviceId)
+    }
+    #endif
 }

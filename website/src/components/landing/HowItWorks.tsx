@@ -229,7 +229,7 @@ export const HowItWorks = memo(function HowItWorks({ steps = defaultSteps }: How
             className="text-2xl sm:text-3xl md:text-4xl mb-4 text-center text-primary font-bold"
             delay={prefersReducedMotion ? 0 : 0}
           >
-            Watch It In Action
+            See It In Action
           </Reveal>
           <Reveal
             as="p"

@@ -76,6 +76,9 @@ public final class InitializationOrchestrator: ObservableObject {
             return
         }
 
+        // Linear bootstrap sequence - execute steps strictly in order
+
+        // Step 1: Restore connections
         await multi.restoreConnections()
         log.info("Connection restore completed")
 
@@ -89,7 +92,7 @@ public final class InitializationOrchestrator: ObservableObject {
             return
         }
 
-        // Device is configured, wait briefly for connection
+        // Step 2: Wait for active device to connect
         let connected = await awaitActiveDeviceConnected(timeoutSeconds: 12)
         guard connected else {
             MultiConnectionManager.shared.setActive(nil)
@@ -99,39 +102,19 @@ public final class InitializationOrchestrator: ObservableObject {
         }
 
         do {
+            // Step 3: Fetch project directory
             log.info("InitializationOrchestrator: fetching project directory via RPC")
-            let projectDir: String?
-            do {
-                projectDir = try await repo.fetchProjectDirectory()
-                log.info("InitializationOrchestrator: project directory fetched successfully")
-            } catch {
-                log.error("InitializationOrchestrator: fetchProjectDirectory failed - \(String(describing: error))")
-                throw error
-            }
-            guard let pd = projectDir else {
+            guard let projectDir = try await repo.fetchProjectDirectory() else {
                 appState.setBootstrapNeedsConfig(.init(projectMissing: true, sessionsEmpty: true, activeSessionMissing: true))
                 log.info("Missing project directory in desktop DB")
                 return
             }
+            log.info("InitializationOrchestrator: project directory fetched successfully")
 
+            // Step 4: Fetch sessions
             log.info("InitializationOrchestrator: fetching sessions via RPC")
-            let sessions: [Session]
-            do {
-                sessions = try await repo.fetchSessions(projectDirectory: pd)
-                log.info("InitializationOrchestrator: sessions fetched successfully, count=\(sessions.count)")
-            } catch {
-                log.error("InitializationOrchestrator: fetchSessions failed - \(String(describing: error))")
-                throw error
-            }
-            log.info("InitializationOrchestrator: fetching active session ID via RPC")
-            let activeId: String?
-            do {
-                activeId = try await repo.fetchActiveSessionId()
-                log.info("InitializationOrchestrator: active session ID fetched, present=\(activeId != nil)")
-            } catch {
-                log.error("InitializationOrchestrator: fetchActiveSessionId failed - \(String(describing: error))")
-                throw error
-            }
+            let sessions = try await repo.fetchSessions(projectDirectory: projectDir)
+            log.info("InitializationOrchestrator: sessions fetched successfully, count=\(sessions.count)")
 
             if sessions.isEmpty {
                 appState.setBootstrapNeedsConfig(.init(projectMissing: false, sessionsEmpty: true, activeSessionMissing: true))
@@ -139,48 +122,52 @@ public final class InitializationOrchestrator: ObservableObject {
                 return
             }
 
+            // Step 5: Fetch active session ID
+            log.info("InitializationOrchestrator: fetching active session ID via RPC")
+            let activeId = try await repo.fetchActiveSessionId()
+            log.info("InitializationOrchestrator: active session ID fetched, present=\(activeId != nil)")
+
             // Auto-select first session if no active session is set
             let finalActiveId = activeId ?? sessions.first?.id
             if activeId == nil, let firstId = sessions.first?.id {
                 log.info("No active session set, auto-selecting first session: \(firstId)")
             }
 
-            let project = ProjectInfo(name: (pd as NSString).lastPathComponent, directory: pd, hash: String(pd.hashValue))
+            // Step 6: Hydrate data services with fetched data
+            let project = ProjectInfo(name: (projectDir as NSString).lastPathComponent, directory: projectDir, hash: String(projectDir.hashValue))
+            appState.setSelectedProjectDirectory(projectDir)
 
-            // Set project directory in AppState for UI routing
-            appState.setSelectedProjectDirectory(pd)
-
-            if let manager = PlanToCodeCore.shared.dataServices {
-                manager.setCurrentProject(project)
-                await manager.sessionService.setSessions(sessions, activeId: finalActiveId)
-
-                // Hydrate active session before marking bootstrap ready
-                if let id = finalActiveId {
-                    log.info("InitializationOrchestrator: hydrating active session via RPC (id=\(id))")
-                    do {
-                        let session = try await manager.sessionService.getSession(id: id)
-                        // Prime JobsDataService during bootstrap after session is resolved
-                        if let session = session {
-                            manager.jobsService.setActiveSession(sessionId: session.id, projectDirectory: session.projectDirectory)
-                        }
-                    } catch {
-                        log.warning("InitializationOrchestrator: failed to hydrate active session: \(error)")
-                    }
-                }
-
-                manager.hasCompletedInitialLoad = true
+            guard let dataServices = PlanToCodeCore.shared.dataServices else {
+                throw NSError(domain: "InitializationOrchestrator", code: -1, userInfo: [NSLocalizedDescriptionKey: "DataServices not available"])
             }
 
-            // Trigger live bootstrap to prefetch data
-            if let manager = PlanToCodeCore.shared.dataServices {
-                Task {
-                    await manager.performLiveBootstrap()
+            dataServices.setCurrentProject(project)
+            await dataServices.sessionService.setSessions(sessions, activeId: finalActiveId)
+
+            // Hydrate active session before marking bootstrap ready
+            if let id = finalActiveId {
+                log.info("InitializationOrchestrator: hydrating active session via RPC (id=\(id))")
+                do {
+                    let session = try await dataServices.sessionService.getSession(id: id)
+                    // Prime JobsDataService during bootstrap after session is resolved
+                    if let session = session {
+                        dataServices.jobsService.setActiveSession(sessionId: session.id, projectDirectory: session.projectDirectory)
+                    }
+                } catch {
+                    log.warning("InitializationOrchestrator: failed to hydrate active session: \(error)")
                 }
+            }
+
+            dataServices.hasCompletedInitialLoad = true
+
+            // Trigger live bootstrap to prefetch data (non-blocking)
+            Task {
+                await dataServices.performLiveBootstrap()
             }
 
             appState.setBootstrapReady()
             log.info("Bootstrap ready (project and sessions applied, activeSessionId=\(finalActiveId ?? "none"))")
-            
+
             // Navigate to main app after successful bootstrap
             AppState.shared.navigateToMainApp()
         } catch {

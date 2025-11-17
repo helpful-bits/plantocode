@@ -265,7 +265,7 @@ import { generatePageMetadata, COMMON_KEYWORDS, mergeKeywords } from '@/content/
                       <h3 className="text-xl font-semibold">Pre-execution file discovery</h3>
                     </div>
                     <p className="text-foreground/70 leading-relaxed mb-4">
-                      Before AI generates any code, PlanToCode runs a 5-stage file discovery workflow that maps
+                      Before AI generates any code, PlanToCode runs a 4-stage file discovery workflow that maps
                       your actual filesystem. Every file path is verified to exist before being included in context.
                     </p>
                     <ul className="space-y-2 text-foreground/70 text-sm">
@@ -297,7 +297,7 @@ import { generatePageMetadata, COMMON_KEYWORDS, mergeKeywords } from '@/content/
                       <h3 className="text-xl font-semibold">Path validation pipeline</h3>
                     </div>
                     <p className="text-foreground/70 leading-relaxed mb-4">
-                      Stage 5 of the discovery workflow specifically validates and corrects file paths. This happens
+                      Path validation throughout the discovery workflow validates and corrects file paths. This happens
                       automatically before any AI model sees your codebase.
                     </p>
                     <ul className="space-y-2 text-foreground/70 text-sm">
@@ -506,7 +506,7 @@ Respecting .gitignore: 589 final candidates`}
                     </h3>
                     <div className="space-y-4 text-foreground/70 text-sm leading-relaxed">
                       <p>
-                        You open PlanToCode and run file discovery on your authentication workspace. The 5-stage workflow scans
+                        You open PlanToCode and run file discovery on your authentication workspace. The 4-stage workflow scans
                         589 files in 23 seconds, validating every path against your actual filesystem. It detects your monorepo
                         structure, parses workspace configurations, and resolves all internal package references.
                       </p>
@@ -741,7 +741,7 @@ Respecting .gitignore: 589 final candidates`}
                     <h3 className="text-lg font-semibold mb-3">How much does file discovery cost per run?</h3>
                     <p className="text-foreground/70 text-sm leading-relaxed">
                       Typically $0.10-0.15 per complete workflow, depending on repository size and complexity.
-                      The 5-stage discovery process uses intelligent token batching and content-aware estimation
+                      The 4-stage discovery process uses intelligent token batching and content-aware estimation
                       to minimize API costs while maximizing accuracy. Cost tracking is built into every stage.
                     </p>
                   </GlassCard>

@@ -1,7 +1,7 @@
 import { Metadata } from 'next';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Header } from '@/components/landing/Header';
-import { Building, Globe, Mail, Brain, Terminal, Layers, FileText, Zap, Copy } from 'lucide-react';
+import { Building, Globe, Mail, Brain, Layers, FileText, Zap, Copy } from 'lucide-react';
 import { ObfuscatedEmail } from '@/components/ui/ObfuscatedEmail';
 import { loadMessages, type Locale } from '@/lib/i18n';
 import { locales } from '@/i18n/config';
@@ -61,7 +61,7 @@ export default async function AboutPage({ params }: { params: Promise<{ locale: 
                     {t['about.whatWeBuilt.intro']}
                   </p>
 
-                  <div className="grid md:grid-cols-2 gap-8">
+                  <div className="grid md:grid-cols-1 gap-8">
                     <div>
                       <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
                         <Brain className="w-6 h-6 text-primary" />
@@ -71,25 +71,16 @@ export default async function AboutPage({ params }: { params: Promise<{ locale: 
                         {t['about.whatWeBuilt.multiModel.description']}
                       </p>
                     </div>
-
-                    <div>
-                      <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-                        <Terminal className="w-6 h-6 text-primary" />
-                        {t['about.whatWeBuilt.environment.title']}
-                      </h3>
-                      <p className="text-foreground/80 leading-relaxed">
-                        {t['about.whatWeBuilt.environment.description']}
-                      </p>
-                    </div>
                   </div>
                 </GlassCard>
               </div>
 
-              {/* Core Capabilities */}
+              {/* Core Capabilities - Planning First */}
               <div className="mb-16">
                 <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">{t['about.capabilities.title']}</h2>
 
                 <div className="grid md:grid-cols-3 gap-6">
+                  {/* Row 1: Planning-focused capabilities */}
                   <GlassCard className="p-6">
                     <div className="text-primary mb-3">
                       <FileText className="w-8 h-8" />
@@ -97,36 +88,6 @@ export default async function AboutPage({ params }: { params: Promise<{ locale: 
                     <h3 className="text-lg font-semibold mb-2">{t['about.capabilities.planning.title']}</h3>
                     <p className="text-foreground/80 text-sm">
                       {t['about.capabilities.planning.description']}
-                    </p>
-                  </GlassCard>
-
-                  <GlassCard className="p-6">
-                    <div className="text-primary mb-3">
-                      <Layers className="w-8 h-8" />
-                    </div>
-                    <h3 className="text-lg font-semibold mb-2">{t['about.capabilities.discovery.title']}</h3>
-                    <p className="text-foreground/80 text-sm">
-                      {t['about.capabilities.discovery.description']}
-                    </p>
-                  </GlassCard>
-
-                  <GlassCard className="p-6">
-                    <div className="text-primary mb-3">
-                      <Copy className="w-8 h-8" />
-                    </div>
-                    <h3 className="text-lg font-semibold mb-2">{t['about.capabilities.automation.title']}</h3>
-                    <p className="text-foreground/80 text-sm">
-                      {t['about.capabilities.automation.description']}
-                    </p>
-                  </GlassCard>
-
-                  <GlassCard className="p-6">
-                    <div className="text-primary mb-3">
-                      <Terminal className="w-8 h-8" />
-                    </div>
-                    <h3 className="text-lg font-semibold mb-2">{t['about.capabilities.terminal.title']}</h3>
-                    <p className="text-foreground/80 text-sm">
-                      {t['about.capabilities.terminal.description']}
                     </p>
                   </GlassCard>
 
@@ -142,11 +103,42 @@ export default async function AboutPage({ params }: { params: Promise<{ locale: 
 
                   <GlassCard className="p-6">
                     <div className="text-primary mb-3">
+                      <Layers className="w-8 h-8" />
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2">{t['about.capabilities.discovery.title']}</h3>
+                    <p className="text-foreground/80 text-sm">
+                      {t['about.capabilities.discovery.description']}
+                    </p>
+                  </GlassCard>
+
+                  {/* Row 2: Supporting capabilities */}
+                  <GlassCard className="p-6">
+                    <div className="text-primary mb-3">
                       <Zap className="w-8 h-8" />
                     </div>
                     <h3 className="text-lg font-semibold mb-2">{t['about.capabilities.voice.title']}</h3>
                     <p className="text-foreground/80 text-sm">
                       {t['about.capabilities.voice.description']}
+                    </p>
+                  </GlassCard>
+
+                  <GlassCard className="p-6">
+                    <div className="text-primary mb-3">
+                      <Copy className="w-8 h-8" />
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2">{t['about.capabilities.automation.title']}</h3>
+                    <p className="text-foreground/80 text-sm">
+                      {t['about.capabilities.automation.description']}
+                    </p>
+                  </GlassCard>
+
+                  <GlassCard className="p-6">
+                    <div className="text-primary mb-3">
+                      <Zap className="w-8 h-8" />
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2">{t['about.capabilities.remote.title']}</h3>
+                    <p className="text-foreground/80 text-sm">
+                      {t['about.capabilities.remote.description']}
                     </p>
                   </GlassCard>
                 </div>
@@ -191,45 +183,43 @@ export default async function AboutPage({ params }: { params: Promise<{ locale: 
 
               {/* Technical Architecture */}
               <div className="mb-16">
-                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">{t['about.architecture.title']}</h2>
+                <GlassCard className="p-8 sm:p-12">
+                  <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">{t['about.architecture.title']}</h2>
 
-                <GlassCard className="p-8 bg-black/50">
-                  <div className="font-mono text-sm">
-                    <div className="text-gray-500 mb-4"># PlanToCode Architecture</div>
-
-                    <div className="mb-6">
-                      <div className="text-green-400 mb-2">## Frontend</div>
-                      <div className="text-white ml-4">
-                        → React + TypeScript<br />
-                        → Monaco Editor (VS Code's editor)<br />
-                        → xterm.js for terminal rendering<br />
-                        → Tauri for cross-platform desktop
-                      </div>
+                  <div className="space-y-6">
+                    <div>
+                      <h3 className="text-xl font-bold mb-3">Planning Engine</h3>
+                      <ul className="text-foreground/80 leading-relaxed list-disc list-inside space-y-2">
+                        <li>Multi-model AI orchestration (GPT-5.1, Claude Sonnet 4.5, Gemini 2.5 Pro)</li>
+                        <li>Structured XML plan generation</li>
+                        <li>Intelligent plan merging with SOLID principles</li>
+                        <li>Source attribution tracking</li>
+                      </ul>
                     </div>
 
-                    <div className="mb-6">
-                      <div className="text-green-400 mb-2">## Backend Services</div>
-                      <div className="text-white ml-4">
-                        → Rust/Tauri for system integration<br />
-                        → SQLite for local persistence<br />
-                        → PTY sessions with health monitoring<br />
-                        → Multi-provider AI orchestration
-                      </div>
+                    <div>
+                      <h3 className="text-xl font-bold mb-3">File Discovery Workflow</h3>
+                      <ul className="text-foreground/80 leading-relaxed list-disc list-inside space-y-2">
+                        <li>Root folder selection (hierarchical intelligence)</li>
+                        <li>Regex pattern filtering with path validation</li>
+                        <li>AI-powered relevance assessment</li>
+                        <li>Extended discovery for related files</li>
+                      </ul>
                     </div>
 
-                    <div className="mb-6">
-                      <div className="text-green-400 mb-2">## Key Patterns</div>
-                      <div className="text-white ml-4">
-                        → Job-centric design with background processing<br />
-                        → Real-time streaming with progress tracking<br />
-                        → Context-aware template processing<br />
-                        → Session persistence across restarts
-                      </div>
+                    <div>
+                      <h3 className="text-xl font-bold mb-3">Development Tools</h3>
+                      <ul className="text-foreground/80 leading-relaxed list-disc list-inside space-y-2">
+                        <li>Monaco Editor for plan review and editing</li>
+                        <li>React + TypeScript frontend</li>
+                        <li>SQLite for local persistence</li>
+                        <li>Tauri for cross-platform desktop</li>
+                      </ul>
                     </div>
 
-                    <div className="text-cyan-400 mt-4">
-                      [{t['about.architecture.comment']}]
-                    </div>
+                    <p className="text-foreground/60 italic text-sm mt-6">
+                      {t['about.architecture.comment']}
+                    </p>
                   </div>
                 </GlassCard>
               </div>

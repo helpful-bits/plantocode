@@ -16,6 +16,30 @@ struct SessionDeletedEventPayload<'a> {
     session_id: &'a str,
 }
 
+/// Emitted when session task description is updated
+/// event: "session-task-updated"
+/// payload: { sessionId, taskDescription }
+pub fn emit_session_task_updated(
+    app: &tauri::AppHandle,
+    session_id: &str,
+    task_description: &str,
+) -> Result<(), String> {
+    let payload = serde_json::json!({
+        "sessionId": session_id,
+        "taskDescription": task_description
+    });
+
+    app.emit("session-task-updated", &payload)
+        .map_err(|e| format!("local emit failed: {e}"))?;
+
+    app.emit("device-link-event", serde_json::json!({
+        "type": "session-task-updated",
+        "payload": payload
+    })).map_err(|e| format!("relay emit failed: {e}"))?;
+
+    Ok(())
+}
+
 /// Emitted when session files are updated (unified event for all file selection changes)
 /// event: "session-files-updated"
 /// payload: { sessionId, includedFiles, forceExcludedFiles }

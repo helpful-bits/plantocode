@@ -10,7 +10,6 @@ pub mod history_state_sequencer;
 pub mod session_cache;
 pub mod system_prompt_cache_service;
 pub mod task_services;
-pub mod task_update_sequencer;
 pub mod terminal_manager;
 
 // Re-export service modules
@@ -25,5 +24,4 @@ pub use history_state_sequencer::*;
 pub use session_cache::SessionCache;
 pub use system_prompt_cache_service::*;
 pub use task_services::*;
-pub use task_update_sequencer::*;
 pub use terminal_manager::*;

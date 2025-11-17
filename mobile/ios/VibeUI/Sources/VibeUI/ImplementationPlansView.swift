@@ -12,10 +12,8 @@ public struct ImplementationPlansView: View {
     @State private var selectedPlans: Set<String> = []
     @State private var mergeInstructions = ""
     @FocusState private var isMergeInstructionsFocused: Bool
-    @State private var isLoading = false
     @State private var isMerging = false
-    @State private var errorMessage: String?
-    @State private var plans: [PlanSummary] = []
+    @State private var localErrorMessage: String?
     @State private var currentPlanIndex = 0
     @State private var selectedModel: String = ""
     @State private var availableModels: [String] = []
@@ -32,8 +30,8 @@ public struct ImplementationPlansView: View {
     @State private var promptContent: String?
     @State private var isCreatingPlan = false
     @State private var refreshTrigger = UUID()
-    @State private var activatingPlans = Set<String>()
     @State private var deletingPlans = Set<String>()
+    @State private var cancellables = Set<AnyCancellable>()
 
     // Terminal launch states
     @State private var showTerminal = false
@@ -42,152 +40,207 @@ public struct ImplementationPlansView: View {
 
     public init() {}
 
-    public var body: some View {
-        let _ = refreshTrigger // Force view dependency
+    private var sanitizedMergeInstructions: String? {
+        let trimmed = mergeInstructions.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
 
-        VStack(spacing: 0) {
-            // Streamlined Action Bar with Desktop Parity
-            VStack(spacing: Theme.Spacing.sectionSpacing) {
-                // Token Estimation Display - Silent background estimation
-                if canCreatePlan, let tokens = estimatedTokens {
-                    HStack(spacing: Theme.Spacing.sm) {
-                        Image(systemName: "number.square")
-                            .font(.footnote)
-                            .foregroundColor(Color.primary.opacity(0.7))
+    // Computed properties for reactive data from JobsDataService
+    private var plans: [PlanSummary] {
+        container.jobsService.jobs
+            .filter { $0.taskType == "implementation_plan" || $0.taskType == "implementation_plan_merge" }
+            .map(PlanSummary.init(from:))
+            .sorted { ($0.updatedAt ?? $0.createdAt) > ($1.updatedAt ?? $1.createdAt) }
+    }
 
-                        Text("Estimated tokens: ")
-                            .font(.footnote)
-                            .foregroundColor(Color.primary.opacity(0.7))
+    private var isLoading: Bool {
+        container.jobsService.isLoading && !container.jobsService.hasLoadedOnce
+    }
 
-                        Text("\(tokens)")
-                            .font(.footnote)
-                            .fontWeight(.medium)
-                            .foregroundColor(tokenCountColor(tokens))
+    private var errorMessage: String? {
+        localErrorMessage ?? container.jobsService.error?.localizedDescription
+    }
 
-                        Spacer()
-                    }
-                    .padding(.horizontal, Theme.Spacing.md)
-                    .padding(.vertical, Theme.Spacing.sm)
-                    .background(Color(.secondarySystemBackground))
-                    .cornerRadius(Theme.Radii.md)
-                }
+    private var allPlanJobIds: [String] {
+        plans.map { $0.jobId }
+    }
 
-                // Model Selector - Desktop-style segmented toggle
-                if isLoadingModels {
-                    // Loading state
-                    HStack(spacing: Theme.Spacing.xs) {
-                        ProgressView()
-                            .scaleEffect(0.6)
-                        Text("Loading models...")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(.horizontal, Theme.Spacing.md)
-                    .padding(.vertical, Theme.Spacing.itemSpacing)
-                    .background(Color(.secondarySystemBackground))
-                    .cornerRadius(Theme.Radii.base)
-                } else if availableModelInfos.count > 1 {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        ModelSelectorToggle(
-                            models: availableModelInfos,
-                            selectedModelId: selectedModel,
-                            onSelect: { modelId in
-                                selectedModel = modelId
-                                saveModelPreference(modelId)
-                                requestTokenEstimation()
-                            }
-                        )
-                        .padding(.horizontal, 2)
-                    }
-                    .frame(maxHeight: 32)
-                }
+    // MARK: - Action Bar Section
+    @ViewBuilder
+    private var actionBarSection: some View {
+        VStack(spacing: Theme.Spacing.sectionSpacing) {
+            // Token Estimation Display
+            if canCreatePlan, let tokens = estimatedTokens {
+                tokenEstimationView(tokens: tokens)
+            }
 
-                // Toggles Section
-                if canCreatePlan {
-                    VStack(spacing: Theme.Spacing.sm) {
-                        // Web Search Toggle (only for OpenAI models)
-                        if isOpenAIModel {
-                            Toggle(isOn: $enableWebSearch) {
-                                HStack(spacing: Theme.Spacing.itemSpacing) {
-                                    Image(systemName: "globe")
-                                        .font(.footnote)
-                                        .foregroundColor(Color.primary.opacity(0.6))
-                                    Text("Web Search")
-                                        .font(.subheadline)
-                                        .foregroundColor(Color.primary)
-                                    Spacer()
-                                }
-                            }
-                            .toggleStyle(SwitchToggleStyle(tint: Color.primary))
-                            .onChange(of: enableWebSearch) { _ in
-                                requestTokenEstimation()
-                            }
-                        }
+            // Model Selector
+            modelSelectorView
 
-                        // Project Structure Toggle
-                        Toggle(isOn: $includeProjectStructure) {
-                            HStack(spacing: Theme.Spacing.itemSpacing) {
-                                Image(systemName: "folder.badge.gearshape")
-                                    .font(.footnote)
-                                    .foregroundColor(Color.primary.opacity(0.6))
-                                Text("Include Project Tree")
-                                    .font(.subheadline)
-                                    .foregroundColor(Color.primary)
-                                Spacer()
-                            }
-                        }
-                        .toggleStyle(SwitchToggleStyle(tint: Color.primary))
-                        .onChange(of: includeProjectStructure) { _ in
-                            requestTokenEstimation()
-                        }
-                    }
+            // Toggles Section
+            if canCreatePlan {
+                togglesSection
 
-                    // Web Search Warning
-                    if enableWebSearch && isOpenAIModel {
-                        HStack(spacing: Theme.Spacing.itemSpacing) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.footnote)
-                                .foregroundColor(Color.orange)
-                            Text("Web search will increase token usage by 3-10x")
-                                .font(.footnote)
-                                .foregroundColor(Color.primary)
-                            Spacer()
-                        }
-                        .padding(.horizontal, Theme.Spacing.cardSpacing)
-                        .padding(.vertical, Theme.Spacing.itemSpacing)
-                        .background(Color.orange.opacity(0.2))
-                        .cornerRadius(Theme.Radii.sm)
-                    }
-
-                }
-
-                // Create Plan Button - Primary Action
-                Button(action: createPlan) {
-                    HStack {
-                        Image(systemName: "sparkles")
-                        Text("Create Implementation Plan")
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(!canCreatePlan || isCreatingPlan || isTokenLimitExceeded)
-
-                if isLoading {
-                    HStack {
-                        Spacer()
-                        ProgressView()
-                            .scaleEffect(0.8)
-                    }
+                // Web Search Warning
+                if enableWebSearch && isOpenAIModel {
+                    webSearchWarningView
                 }
             }
-            .padding()
-            .background(Color(.systemGroupedBackground))
+
+            // Create Plan Button
+            createPlanButton
+
+            // Loading Indicator
+            if isLoading {
+                HStack {
+                    Spacer()
+                    ProgressView()
+                        .scaleEffect(0.8)
+                }
+            }
+        }
+        .padding()
+        .background(Color(.systemGroupedBackground))
+    }
+
+    @ViewBuilder
+    private func tokenEstimationView(tokens: Int) -> some View {
+        HStack(spacing: Theme.Spacing.sm) {
+            Image(systemName: "number.square")
+                .font(.footnote)
+                .foregroundColor(Color.primary.opacity(0.7))
+
+            Text("Estimated tokens: ")
+                .font(.footnote)
+                .foregroundColor(Color.primary.opacity(0.7))
+
+            Text("\(tokens)")
+                .font(.footnote)
+                .fontWeight(.medium)
+                .foregroundColor(tokenCountColor(tokens))
+
+            Spacer()
+        }
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.vertical, Theme.Spacing.sm)
+        .background(Color(.secondarySystemBackground))
+        .cornerRadius(Theme.Radii.md)
+    }
+
+    @ViewBuilder
+    private var modelSelectorView: some View {
+        if isLoadingModels {
+            HStack(spacing: Theme.Spacing.xs) {
+                ProgressView()
+                    .scaleEffect(0.6)
+                Text("Loading models...")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.vertical, Theme.Spacing.itemSpacing)
+            .background(Color(.secondarySystemBackground))
+            .cornerRadius(Theme.Radii.base)
+        } else if availableModelInfos.count > 1 {
+            ScrollView(.horizontal, showsIndicators: false) {
+                ModelSelectorToggle(
+                    models: availableModelInfos,
+                    selectedModelId: selectedModel,
+                    onSelect: { modelId in
+                        selectedModel = modelId
+                        saveModelPreference(modelId)
+                        requestTokenEstimation()
+                    }
+                )
+                .padding(.horizontal, 2)
+            }
+            .frame(maxHeight: 32)
+        }
+    }
+
+    @ViewBuilder
+    private var togglesSection: some View {
+        VStack(spacing: Theme.Spacing.sm) {
+            // Web Search Toggle
+            if isOpenAIModel {
+                Toggle(isOn: $enableWebSearch) {
+                    HStack(spacing: Theme.Spacing.itemSpacing) {
+                        Image(systemName: "globe")
+                            .font(.footnote)
+                            .foregroundColor(Color.primary.opacity(0.6))
+                        Text("Web Search")
+                            .font(.subheadline)
+                            .foregroundColor(Color.primary)
+                        Spacer()
+                    }
+                }
+                .toggleStyle(SwitchToggleStyle(tint: Color.primary))
+                .onChange(of: enableWebSearch) { _ in
+                    requestTokenEstimation()
+                }
+            }
+
+            // Project Structure Toggle
+            Toggle(isOn: $includeProjectStructure) {
+                HStack(spacing: Theme.Spacing.itemSpacing) {
+                    Image(systemName: "folder.badge.gearshape")
+                        .font(.footnote)
+                        .foregroundColor(Color.primary.opacity(0.6))
+                    Text("Include Project Tree")
+                        .font(.subheadline)
+                        .foregroundColor(Color.primary)
+                    Spacer()
+                }
+            }
+            .toggleStyle(SwitchToggleStyle(tint: Color.primary))
+            .onChange(of: includeProjectStructure) { _ in
+                requestTokenEstimation()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var webSearchWarningView: some View {
+        HStack(spacing: Theme.Spacing.itemSpacing) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.footnote)
+                .foregroundColor(Color.orange)
+            Text("Web search will increase token usage by 3-10x")
+                .font(.footnote)
+                .foregroundColor(Color.primary)
+            Spacer()
+        }
+        .padding(.horizontal, Theme.Spacing.cardSpacing)
+        .padding(.vertical, Theme.Spacing.itemSpacing)
+        .background(Color.orange.opacity(0.2))
+        .cornerRadius(Theme.Radii.sm)
+    }
+
+    @ViewBuilder
+    private var createPlanButton: some View {
+        Button(action: createPlan) {
+            HStack {
+                Image(systemName: "sparkles")
+                Text("Create Implementation Plan")
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(PrimaryButtonStyle())
+        .disabled(!canCreatePlan || isCreatingPlan || isTokenLimitExceeded)
+    }
+
+    public var body: some View {
+        // Force view dependency on refresh trigger
+        let _ = refreshTrigger
+
+        VStack(spacing: 0) {
+            actionBarSection
 
             Divider()
 
             // Content Area
             // Avoid repeated full-screen spinner after first load
-            if isLoading && !container.plansService.hasLoadedOnce {
+            if isLoading && !container.jobsService.hasLoadedOnce {
                 VStack {
                     Spacer()
                     ProgressView()
@@ -208,10 +261,9 @@ public struct ImplementationPlansView: View {
                     Spacer()
                     StatusAlertView(variant: .destructive, title: "Error", message: errorMessage)
                         .padding()
-                    Button("Try Again") {
-                        loadPlans()
-                    }
-                    .buttonStyle(SecondaryButtonStyle())
+                    Text("JobsDataService will automatically retry")
+                        .small()
+                        .foregroundColor(Color.mutedForeground)
                     Spacer()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -223,87 +275,9 @@ public struct ImplementationPlansView: View {
                     LazyVStack(spacing: Theme.Spacing.sm) {
                         // Show all plans (grouped by session but without visual headers)
                         ForEach(Array(groupedPlans.keys.sorted()), id: \.self) { sessionId in
-                            let sessionPlans = groupedPlans[sessionId] ?? []
-
-                            // Plans in this group
-                            ForEach(sessionPlans) { plan in
-                                    NavigationLink(
-                                        tag: plan.jobId,
-                                        selection: $selectedPlanJobIdForNav
-                                    ) {
-                                        PlanDetailView(plan: plan, allPlans: plans, plansService: container.plansService)
-                                    } label: {
-                                        PlanCard(
-                                            plan: plan,
-                                            isSelected: selectedPlans.contains(plan.jobId),
-                                            onSelectionChanged: { isSelected in
-                                                if isSelected {
-                                                    selectedPlans.insert(plan.jobId)
-                                                } else {
-                                                    selectedPlans.remove(plan.jobId)
-                                                }
-                                            },
-                                            onTap: {
-                                                // Navigation handled by NavigationLink
-                                            }
-                                        )
-                                    }
-                                    .buttonStyle(PlainButtonStyle())
-                                    .contextMenu {
-                                        Button {
-                                            openTerminal(for: plan.jobId)
-                                        } label: {
-                                            Label("Open Terminal", systemImage: "terminal.fill")
-                                        }
-
-                                        Divider()
-
-                                        Button("Activate") {
-                                            guard !activatingPlans.contains(plan.id) else { return }
-                                            activatingPlans.insert(plan.id)
-
-                                            Task {
-                                                do {
-                                                    for try await _ in container.plansService.activatePlan(id: plan.id) {
-                                                        await MainActor.run {
-                                                            activatingPlans.remove(plan.id)
-                                                            loadPlans()
-                                                        }
-                                                    }
-                                                } catch {
-                                                    await MainActor.run {
-                                                        errorMessage = error.localizedDescription
-                                                        activatingPlans.remove(plan.id)
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        .disabled(activatingPlans.contains(plan.id))
-
-                                        Button(role: .destructive) {
-                                            guard !deletingPlans.contains(plan.id) else { return }
-                                            deletingPlans.insert(plan.id)
-
-                                            Task {
-                                                do {
-                                                    for try await _ in container.plansService.deletePlan(id: plan.id) {
-                                                        await MainActor.run {
-                                                            deletingPlans.remove(plan.id)
-                                                            loadPlans()
-                                                        }
-                                                    }
-                                                } catch {
-                                                    await MainActor.run {
-                                                        errorMessage = error.localizedDescription
-                                                        deletingPlans.remove(plan.id)
-                                                    }
-                                                }
-                                            }
-                                        } label: {
-                                            Text("Delete")
-                                        }
-                                        .disabled(deletingPlans.contains(plan.id))
-                                    }
+                            let sessionPlans: [PlanSummary] = groupedPlans[sessionId] ?? []
+                            ForEach(sessionPlans, id: \.id) { plan in
+                                planItem(for: plan)
                                     .padding(.horizontal)
                                     .padding(.bottom, Theme.Spacing.sm)
                             }
@@ -319,7 +293,7 @@ public struct ImplementationPlansView: View {
                         Divider()
 
                         VStack(spacing: Theme.Spacing.md) {
-                            TextField("Merge instructions...", text: $mergeInstructions, axis: .vertical)
+                            TextField("Merge instructions (optional)...", text: $mergeInstructions, axis: .vertical)
                                 .lineLimit(2...3)
                                 .textFieldStyle(PlainTextFieldStyle())
                                 .padding(Theme.Spacing.md)
@@ -350,7 +324,7 @@ public struct ImplementationPlansView: View {
                                 .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(PrimaryButtonStyle())
-                            .disabled(mergeInstructions.isEmpty || isMerging)
+                            .disabled(isMerging)
                         }
                         .padding()
                         .background(Color.card)
@@ -405,7 +379,7 @@ public struct ImplementationPlansView: View {
             }
         }
         .refreshable {
-            await refreshPlans()
+            // JobsDataService handles automatic refresh via reactive updates
         }
         .onReceive(appState.$pendingPlanJobIdToOpen) { jobId in
             guard let jobId else { return }
@@ -416,10 +390,9 @@ public struct ImplementationPlansView: View {
             }
         }
         .task(id: container.sessionService.currentSession?.id) {
-            // Runs immediately when view is created AND whenever session ID changes
-            setupRealTimeUpdates()
+            // Load model settings when session changes
+            // Plans are automatically reactive through JobsDataService
             if isConnected, container.sessionService.currentSession != nil {
-                loadPlans()
                 loadModelSettings()
             }
         }
@@ -427,19 +400,19 @@ public struct ImplementationPlansView: View {
             guard let activeId = multiConnectionManager.activeDeviceId,
                   let state = states[activeId] else { return }
 
-            if state.isConnected && plans.isEmpty && !isLoading {
-                loadPlans()
+            if state.isConnected {
                 loadModelSettings()
             }
         }
         .onReceive(container.sessionService.currentSessionPublisher) { session in
-            // Trigger on ANY session change, including initial value
-            // This ensures plans load even if session was set before view appeared
+            // Trigger view refresh on session change
             if session != nil {
                 refreshTrigger = UUID()
-                loadPlans()
                 loadModelSettings()
             }
+        }
+        .onAppear {
+            requestTokenEstimation()
         }
     }
 
@@ -462,6 +435,17 @@ public struct ImplementationPlansView: View {
         let hasSessionId = !session.id.isEmpty
 
         return hasProjectDirectory && hasTaskDescription && hasFiles && hasSessionId && !isCreatingPlan
+    }
+
+    private var canEstimateTokens: Bool {
+        guard isConnected,
+              let session = container.sessionService.currentSession,
+              !session.id.isEmpty,
+              !session.projectDirectory.isEmpty,
+              let taskDescription = session.taskDescription, !taskDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !selectedModel.isEmpty
+        else { return false }
+        return true
     }
 
     private var modelDisplayName: String {
@@ -493,138 +477,10 @@ public struct ImplementationPlansView: View {
         return modelInfos
     }
 
-    private func loadPlans() {
-        // Guard against nil session - wait for session to be properly synchronized
-        guard let currentSession = container.sessionService.currentSession else {
-            // Don't return silently - mark as "loaded" to prevent indefinite waiting
-            // The onReceive for currentSession will trigger again when session is available
-            return
-        }
-
-        // Cache-first strategy: only show loading if we have no cached plans
-        let hasCachedPlans = !container.plansService.plans.isEmpty
-        if !hasCachedPlans {
-            isLoading = true
-        }
-
-        errorMessage = nil
-
-        let projectDirectory = currentSession.projectDirectory.isEmpty ? container.currentProject?.directory : currentSession.projectDirectory
-
-        guard let projectDir = projectDirectory else {
-            isLoading = false
-            return
-        }
-
-        let sessionId: String? = currentSession.id
-
-        let capturedSessionId = sessionId
-
-        // Show cached plans immediately
-        if hasCachedPlans {
-            self.plans = container.plansService.plans.filter { plan in
-                if let sessionId = sessionId {
-                    return plan.sessionId == sessionId
-                }
-                return true
-            }
-        }
-
-        let request = PlanListRequest(
-            projectDirectory: projectDir,
-            sessionId: sessionId,
-            page: 0,
-            pageSize: 50,
-            sortBy: .createdAt,
-            sortOrder: .desc,
-            includeMetadataOnly: true
-        )
-
-        container.plansService.listPlans(request: request)
-            .receive(on: DispatchQueue.main)
-            .sink(
-                receiveCompletion: { [self] completion in
-                    self.isLoading = false
-                    if case .failure(let error) = completion {
-                        self.errorMessage = error.localizedDescription
-                    }
-                },
-                receiveValue: { [self] response in
-                    // Verify session hasn't changed mid-flight
-                    if let captured = capturedSessionId, captured != container.sessionService.currentSession?.id {
-                        return
-                    }
-
-                    self.plans = response.plans
-                    self.isLoading = false
-
-                    // Prefetch top plan contents
-                    container.plansService.prefetchTopPlanContents(limit: 3)
-
-                    // Check if there's a pending plan to open
-                    if let pending = appState.pendingPlanJobIdToOpen,
-                       response.plans.contains(where: { $0.jobId == pending }) {
-                        selectedPlanJobIdForNav = pending
-                        appState.setPendingPlanToOpen(nil)
-                    }
-                }
-            )
-            .store(in: &cancellables)
-    }
-
-    private func refreshPlans() async {
-        await withCheckedContinuation { continuation in
-            let currentSession = container.sessionService.currentSession
-            let projectDirectory = currentSession?.projectDirectory ?? container.currentProject?.directory
-
-            guard let projectDir = projectDirectory else {
-                continuation.resume()
-                return
-            }
-
-            let sessionId: String? = currentSession?.id
-
-            let capturedSessionId = sessionId
-
-            let request = PlanListRequest(
-                projectDirectory: projectDir,
-                sessionId: sessionId,
-                page: 0,
-                pageSize: 50,
-                sortBy: .createdAt,
-                sortOrder: .desc,
-                includeMetadataOnly: true
-            )
-
-            container.plansService.listPlans(request: request)
-                .receive(on: DispatchQueue.main)
-                .sink(
-                    receiveCompletion: { [self] completion in
-                        if case .failure(let error) = completion {
-                            self.errorMessage = error.localizedDescription
-                        }
-                        continuation.resume()
-                    },
-                    receiveValue: { [self] response in
-                        // Verify session hasn't changed
-                        if let captured = capturedSessionId, captured != container.sessionService.currentSession?.id {
-                            continuation.resume()
-                            return
-                        }
-
-                        self.plans = response.plans
-
-                        // Prefetch top plan contents
-                        container.plansService.prefetchTopPlanContents(limit: 3)
-                    }
-                )
-                .store(in: &cancellables)
-        }
-    }
+    // Removed loadPlans() and refreshPlans() - plans are now reactive through JobsDataService computed property
 
     private func mergePlans() {
-        guard selectedPlans.count > 1,
-              !mergeInstructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        guard selectedPlans.count > 1 else {
             return
         }
 
@@ -637,41 +493,33 @@ public struct ImplementationPlansView: View {
         guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
               let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
             await MainActor.run {
-                errorMessage = "No active device connection"
+                localErrorMessage = "No active device connection"
             }
             return
         }
 
         await MainActor.run {
             isMerging = true
-            errorMessage = nil
         }
 
         // Get actual session ID from container
         guard let currentSessionId = container.sessionService.currentSession?.id else {
             await MainActor.run {
-                errorMessage = "No active session. Please select or create a session first."
                 isMerging = false
             }
             return
         }
 
-        let request = RpcRequest(
-            method: "actions.mergePlans",
-            params: [
-                "sessionId": currentSessionId,
-                "sourceJobIds": Array(selectedPlans),
-                "mergeInstructions": mergeInstructions.trimmingCharacters(in: .whitespacesAndNewlines)
-            ]
-        )
-
         do {
             var mergeResult: [String: Any]?
 
-            for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
+            for try await response in CommandRouter.plansMerge(
+                sessionId: currentSessionId,
+                sourceJobIds: Array(selectedPlans),
+                mergeInstructions: sanitizedMergeInstructions ?? ""
+            ) {
                 if let error = response.error {
                     await MainActor.run {
-                        errorMessage = "Merge error: \(error.message)"
                         isMerging = false
                     }
                     return
@@ -689,20 +537,17 @@ public struct ImplementationPlansView: View {
                 isMerging = false
                 if let result = mergeResult {
                     // Handle successful merge
-                    if let newJobId = result["jobId"] as? String {
+                    if let _ = result["jobId"] as? String {
                         // Clear selection and instructions
                         selectedPlans.removeAll()
                         mergeInstructions = ""
-
-                        // Refresh plans to show the new merged plan
-                        loadPlans()
+                        // JobsDataService will automatically update via events
                     }
                 }
             }
 
         } catch {
             await MainActor.run {
-                errorMessage = error.localizedDescription
                 isMerging = false
             }
         }
@@ -784,6 +629,11 @@ public struct ImplementationPlansView: View {
             } catch {
                 // Failed to load model settings
             }
+
+            // Trigger token estimation after loading model settings
+            await MainActor.run {
+                requestTokenEstimation()
+            }
         }
     }
 
@@ -811,7 +661,7 @@ public struct ImplementationPlansView: View {
               let currentSessionId = container.sessionService.currentSession?.id,
               let taskDescription = container.sessionService.currentSession?.taskDescription,
               let projectDirectory = container.sessionService.currentSession?.projectDirectory else {
-            errorMessage = "Missing session information. Please select a session first."
+            localErrorMessage = "Missing session information. Please select a session first."
             return
         }
 
@@ -820,7 +670,7 @@ public struct ImplementationPlansView: View {
         Task {
             await MainActor.run {
                 isCreatingPlan = true
-                errorMessage = nil
+                localErrorMessage = nil
             }
 
             defer {
@@ -856,28 +706,23 @@ public struct ImplementationPlansView: View {
                 for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
                     if let error = response.error {
                         await MainActor.run {
-                            errorMessage = "Create plan error: \(error.message)"
+                            localErrorMessage = "Create plan error: \(error.message)"
                         }
                         return
                     }
 
                     if response.isFinal {
-                        await MainActor.run {
-                            // Refresh plans list to show the new plan
-                            loadPlans()
-                        }
+                        // JobsDataService will automatically update via events
                         break
                     }
                 }
             } catch {
                 await MainActor.run {
-                    errorMessage = error.localizedDescription
+                    localErrorMessage = error.localizedDescription
                 }
             }
         }
     }
-
-    @State private var cancellables = Set<AnyCancellable>()
 
     private func previousPlan() {
         if currentPlanIndex > 0 {
@@ -897,32 +742,6 @@ public struct ImplementationPlansView: View {
         }
     }
 
-    private func setupRealTimeUpdates() {
-        container.plansService.$lastUpdateEvent
-            .compactMap { $0 }
-            .sink { event in
-                DispatchQueue.main.async {
-                    handleRealTimeUpdate(event: event)
-                }
-            }
-            .store(in: &cancellables)
-
-        // Removed global plans mirroring subscription - plans are now session-filtered
-    }
-
-    private func handleRealTimeUpdate(event: RelayEvent) {
-        let currentSessionId = container.sessionService.currentSession?.id
-        let eventSessionId = event.data["sessionId"]?.value as? String
-
-        if let evtSid = eventSessionId, let curSid = currentSessionId, evtSid != curSid {
-            return
-        }
-
-        if event.eventType.hasPrefix("job:") ||
-           ["PlansUpdated", "PlanCreated", "PlanDeleted", "PlanModified"].contains(event.eventType) {
-            loadPlans()
-        }
-    }
 
     private func openTerminal(for planJobId: String) {
         if multiConnectionManager.activeDeviceId != nil {
@@ -931,6 +750,76 @@ public struct ImplementationPlansView: View {
         } else {
             showDeviceSelector = true
         }
+    }
+
+    // MARK: - Helper Methods for Plan Items
+
+    @ViewBuilder
+    private func planItem(for plan: PlanSummary) -> some View {
+        let isSelected = selectedPlans.contains(plan.jobId)
+        NavigationLink(
+            tag: plan.jobId,
+            selection: $selectedPlanJobIdForNav
+        ) {
+            PlanDetailView(jobId: plan.jobId, allPlanJobIds: allPlanJobIds)
+        } label: {
+            PlanCard(
+                plan: plan,
+                isSelected: isSelected,
+                onSelectionChanged: { newValue in
+                    if newValue {
+                        selectedPlans.insert(plan.jobId)
+                    } else {
+                        selectedPlans.remove(plan.jobId)
+                    }
+                },
+                onTap: {
+                    // Trigger navigation by setting the selected plan
+                    selectedPlanJobIdForNav = plan.jobId
+                }
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+        .contextMenu {
+            planItemContextMenu(for: plan)
+        }
+    }
+
+    @ViewBuilder
+    private func planItemContextMenu(for plan: PlanSummary) -> some View {
+        Button {
+            openTerminal(for: plan.jobId)
+        } label: {
+            Label("Open Terminal", systemImage: "terminal.fill")
+        }
+
+        Divider()
+
+        Button(role: .destructive) {
+            guard !deletingPlans.contains(plan.id) else { return }
+            deletingPlans.insert(plan.id)
+            deletePlan(plan)
+        } label: {
+            Text("Delete")
+        }
+        .disabled(deletingPlans.contains(plan.id))
+    }
+
+    private func deletePlan(_ plan: PlanSummary) {
+        container.jobsService.deleteJob(jobId: plan.jobId)
+            .receive(on: DispatchQueue.main)
+            .sink(
+                receiveCompletion: { completion in
+                    self.deletingPlans.remove(plan.id)
+                    if case .failure(let error) = completion {
+                        self.localErrorMessage = error.localizedDescription
+                    }
+                },
+                receiveValue: { _ in
+                    // Job deleted successfully
+                }
+            )
+            .store(in: &cancellables)
     }
 }
 
@@ -941,60 +830,84 @@ private struct PlanCard: View {
     let onTap: () -> Void
 
     var body: some View {
-        HStack(spacing: Theme.Spacing.sectionSpacing) {
-            // Selection checkbox
+        HStack(spacing: Theme.Spacing.md) {
             Button(action: {
                 onSelectionChanged(!isSelected)
             }) {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .h3()
+                    .font(.system(size: 22))
                     .foregroundColor(isSelected ? Color.primary : Color.mutedForeground)
             }
             .buttonStyle(PlainButtonStyle())
 
             VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                HStack {
-                    Text(plan.title ?? "Untitled Plan")
-                        .h4()
-                        .foregroundColor(Color.cardForeground)
-                        .lineLimit(2)
+                Text(plan.title ?? "Untitled Plan")
+                    .h4()
+                    .foregroundColor(Color.cardForeground)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
 
-                    Spacer()
-
-                    // Status badge
+                HStack(spacing: Theme.Spacing.xs) {
+                    if plan.taskType == "implementation_plan_merge" {
+                        PillBadge(
+                            text: "Merged",
+                            foreground: Color.infoForeground,
+                            background: Color.infoBackground,
+                            border: Color.infoBorder,
+                            systemImage: "arrow.triangle.merge"
+                        )
+                    }
                     StatusBadge(status: plan.status)
                 }
 
                 if let status = plan.executionStatus, status.isExecuting {
-                    ProgressView(value: Double(status.progressPercentage ?? 0) / 100.0, total: 1.0)
-                        .progressViewStyle(.linear)
-                        .padding(.top, Theme.Spacing.xs)
+                    VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                        ProgressView(value: Double(status.progressPercentage ?? 0) / 100.0, total: 1.0)
+                            .progressViewStyle(.linear)
+                            .tint(Color.primary)
 
-                    if let step = status.currentStep {
-                        Text(step)
-                            .small()
-                            .foregroundColor(Color.mutedForeground)
-                            .lineLimit(1)
+                        if let step = status.currentStep {
+                            Text(step)
+                                .small()
+                                .foregroundColor(Color.mutedForeground)
+                                .lineLimit(2)
+                        }
                     }
                 }
 
-                HStack {
-                    Text(plan.formattedDate)
-                        .small()
-                        .foregroundColor(Color.mutedForeground)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: Theme.Spacing.xs) {
+                        if let model = plan.modelDisplayName, !model.isEmpty {
+                            PillBadge(
+                                text: model,
+                                foreground: Color.cardForeground,
+                                background: Color.muted,
+                                border: Color.border,
+                                systemImage: "cpu"
+                            )
+                        }
 
-                    Spacer()
-
-                    Text(plan.tokenCount)
-                        .small()
-                        .foregroundColor(Color.mutedForeground)
+                        PillBadge(
+                            text: plan.tokenCount,
+                            foreground: Color.cardForeground,
+                            background: Color.muted,
+                            border: Color.border,
+                            systemImage: "number.square"
+                        )
+                    }
                 }
+
+                Text(plan.formattedDate)
+                    .small()
+                    .foregroundColor(Color.mutedForeground)
+                    .lineLimit(1)
 
                 if let filePath = plan.filePath {
                     Text(filePath)
                         .small()
                         .foregroundColor(Color.mutedForeground)
                         .lineLimit(1)
+                        .truncationMode(.middle)
                 }
             }
 
@@ -1005,7 +918,7 @@ private struct PlanCard: View {
         .padding(Theme.Spacing.lg)
         .background(
             RoundedRectangle(cornerRadius: Theme.Radii.base)
-                .fill(isSelected ? Color.primary.opacity(0.1) : Color.card)
+                .fill(isSelected ? Color.primary.opacity(0.08) : Color.card)
                 .overlay(
                     RoundedRectangle(cornerRadius: Theme.Radii.base)
                         .stroke(
@@ -1015,6 +928,56 @@ private struct PlanCard: View {
                 )
         )
         .contentShape(Rectangle())
+        .onTapGesture {
+            onTap()
+        }
+    }
+}
+
+private struct PillBadge: View {
+    let text: String
+    let foreground: Color
+    let background: Color
+    let border: Color?
+    let systemImage: String?
+
+    init(
+        text: String,
+        foreground: Color,
+        background: Color,
+        border: Color? = nil,
+        systemImage: String? = nil
+    ) {
+        self.text = text
+        self.foreground = foreground
+        self.background = background
+        self.border = border
+        self.systemImage = systemImage
+    }
+
+    var body: some View {
+        HStack(spacing: Theme.Spacing.xs) {
+            if let systemImage = systemImage {
+                Image(systemName: systemImage)
+            }
+            Text(text)
+                .small()
+                .fontWeight(.semibold)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, Theme.Spacing.sm)
+        .padding(.vertical, Theme.Spacing.xs)
+        .foregroundColor(foreground)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.Radii.sm)
+                .fill(background)
+        )
+        .overlay(
+            border.map { borderColor in
+                RoundedRectangle(cornerRadius: Theme.Radii.sm)
+                    .stroke(borderColor, lineWidth: 1)
+            }
+        )
     }
 }
 
@@ -1022,27 +985,28 @@ private struct StatusBadge: View {
     let status: String
 
     var body: some View {
-        Text(status.capitalized)
-            .small()
-            .padding(.horizontal, Theme.Spacing.sm)
-            .padding(.vertical, Theme.Spacing.xs)
-            .background(statusColor.opacity(0.2))
-            .foregroundColor(statusColor)
-            .cornerRadius(Theme.Radii.sm)
+        let mapping = statusMapping(for: status.lowercased())
+        PillBadge(
+            text: status.capitalized,
+            foreground: mapping.foreground,
+            background: mapping.background,
+            border: mapping.border,
+            systemImage: mapping.icon
+        )
     }
 
-    private var statusColor: Color {
-        switch status.lowercased() {
+    private func statusMapping(for status: String) -> (foreground: Color, background: Color, border: Color?, icon: String?) {
+        switch status {
         case "completed":
-            return Color.success
-        case "running", "processing":
-            return Color.primary
+            return (Color.successForeground, Color.successBackground, Color.successBorder, "checkmark.circle.fill")
+        case "running", "processing", "processingstream":
+            return (Color.infoForeground, Color.infoBackground, Color.infoBorder, "arrow.circlepath")
         case "failed", "error":
-            return Color.destructive
+            return (Color.destructive, Color.destructive.opacity(0.12), Color.destructive, "xmark.circle.fill")
         case "pending", "queued":
-            return Color.warning
+            return (Color.warningForeground, Color.warningBackground, Color.warningBorder, "clock.fill")
         default:
-            return Color.mutedForeground
+            return (Color.mutedForeground, Color.muted, Color.border, nil)
         }
     }
 }
@@ -1129,7 +1093,7 @@ extension ImplementationPlansView {
 
     // Action functions
     private func requestTokenEstimation() {
-        guard canCreatePlan else {
+        guard canEstimateTokens else {
             estimatedTokens = nil
             return
         }
@@ -1160,7 +1124,7 @@ extension ImplementationPlansView {
             let params: [String: Any] = [
                 "sessionId": session.id,
                 "taskDescription": session.taskDescription ?? "",
-                "projectDirectory": session.projectDirectory ?? "",
+                "projectDirectory": session.projectDirectory,
                 "relevantFiles": session.includedFiles ?? [],
                 "taskType": "implementation_plan",
                 "model": selectedModel,
@@ -1217,7 +1181,7 @@ extension ImplementationPlansView {
         guard let session = container.sessionService.currentSession else { return }
 
         do {
-            let result = try await container.plansService.getPlanPrompt(
+            let result = try await container.sessionService.getPlanPrompt(
                 sessionId: session.id,
                 taskDescription: session.taskDescription ?? "",
                 projectDirectory: session.projectDirectory,
@@ -1229,7 +1193,7 @@ extension ImplementationPlansView {
             }
         } catch {
             await MainActor.run {
-                self.errorMessage = error.localizedDescription
+                self.localErrorMessage = error.localizedDescription
             }
         }
     }

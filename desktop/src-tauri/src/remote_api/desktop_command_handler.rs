@@ -1,4 +1,5 @@
 use crate::error::AppResult;
+use crate::remote_api::error::RpcError;
 use crate::remote_api::router;
 use crate::remote_api::types::{RpcRequest, RpcResponse};
 use log::{debug, error};
@@ -54,7 +55,7 @@ where
                 RpcResponse {
                     correlation_id,
                     result: None,
-                    error: Some(format!("Serialization error: {}", serialization_error)),
+                    error: Some(RpcError::internal_error(format!("Serialization error: {}", serialization_error))),
                     is_final: true,
                 }
             }
@@ -62,7 +63,7 @@ where
         Err(app_error) => RpcResponse {
             correlation_id,
             result: None,
-            error: Some(app_error.to_string()),
+            error: Some(RpcError::from(app_error)),
             is_final: true,
         },
     }
@@ -79,7 +80,7 @@ pub fn serialize_success_result(correlation_id: String) -> RpcResponse {
 }
 
 /// Convert an error into an RpcResponse
-pub fn serialize_error_result(correlation_id: String, error: String) -> RpcResponse {
+pub fn serialize_error_result(correlation_id: String, error: RpcError) -> RpcResponse {
     RpcResponse {
         correlation_id,
         result: None,
@@ -112,7 +113,9 @@ mod tests {
         assert_eq!(response.correlation_id, "test-id");
         assert_eq!(response.result, None);
         assert!(response.error.is_some());
-        assert!(response.error.unwrap().contains("Test error"));
+        let error = response.error.unwrap();
+        assert!(error.message.contains("Test error"));
+        assert_eq!(error.code, RpcError::UNAUTHORIZED);
     }
 
     #[test]
@@ -126,10 +129,14 @@ mod tests {
 
     #[test]
     fn test_serialize_error_result() {
-        let response = serialize_error_result("test-id".to_string(), "Test error".to_string());
+        let error = RpcError::internal_error("Test error");
+        let response = serialize_error_result("test-id".to_string(), error);
 
         assert_eq!(response.correlation_id, "test-id");
         assert_eq!(response.result, None);
-        assert_eq!(response.error, Some("Test error".to_string()));
+        assert!(response.error.is_some());
+        let error = response.error.unwrap();
+        assert_eq!(error.message, "Test error");
+        assert_eq!(error.code, RpcError::INTERNAL_ERROR);
     }
 }

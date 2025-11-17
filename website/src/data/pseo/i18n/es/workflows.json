@@ -1,0 +1,35 @@
+{
+  "bug-triage/cursor/windows": {
+    "headline": "Triage de bugs con Cursor en Windows (WSL recomendado)",
+    "subhead": "PlanToCode prepara el contexto y el plan; ejecútalo en Cursor. Recomendamos WSL para máxima compatibilidad.",
+    "meta_title": "Triage de bugs con Cursor en Windows - WSL",
+    "meta_description": "PlanToCode prepara el contexto y el plan; ejecútalo en Cursor. Recomendamos WSL para máxima compatibilidad.",
+    "primary_cta": "Descargar PlanToCode",
+    "pain_points": [
+      {
+        "problem": "Contexto insuficiente para el triage de bugs",
+        "solution": "Descubrimiento de archivos (raíces, regex, relevancia, pathfinder) + Validación de rutas"
+      },
+      {
+        "problem": "Planificación manual consume tiempo",
+        "solution": "Genera múltiples planes y combina con instrucciones"
+      },
+      {
+        "problem": "Incompatibilidades en Windows sin WSL",
+        "solution": "Usa rutas WSL donde convenga; evita caracteres no compatibles; valida rutas antes de ejecutar"
+      }
+    ],
+    "workflow_steps": [
+      "Captura por voz → Mejora de texto → Refinamiento",
+      "Descubrimiento de archivos (raíces, regex, relevancia, pathfinder) + Validación de rutas",
+      "Genera múltiples planes y combina con instrucciones",
+      "Pega el plan aprobado en Cursor (Agente o Terminal; WSL recomendado)"
+    ],
+    "key_features": [
+      "Windows 10/11, WSL instalado, Cursor configurado, repositorio accesible",
+      "Rutas WSL validadas antes de ejecutar",
+      "Múltiples planes con instrucciones combinadas"
+    ],
+    "example": "Consulta /plan-mode/cursor y /downloads para recursos adicionales."
+  }
+}

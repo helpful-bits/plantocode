@@ -15,11 +15,6 @@ import enFaqMessages from '@/messages/en/home.json';
 import { loadMessagesFor } from '@/lib/i18n';
 
 
-const Features = dynamic(() => import('@/components/landing/Features').then(mod => ({ default: mod.Features })), {
-  loading: () => <div className="h-[50vh]" />,
-});
-
-
 const Pricing = dynamic(() => import('@/components/landing/Pricing').then(mod => ({ default: mod.Pricing })), {
   loading: () => <div className="h-[40vh]" />,
 });
@@ -37,10 +32,6 @@ const GovernanceSection = dynamic(() => import('@/components/landing/GovernanceS
 });
 
 const SpecificationCaptureSection = dynamic(() => import('@/components/landing/SpecificationCaptureSection').then(mod => ({ default: mod.SpecificationCaptureSection })), {
-  loading: () => <div className="h-[30vh]" />,
-});
-
-const MeetingsSection = dynamic(() => import('@/components/landing/MeetingsSection').then(mod => ({ default: mod.MeetingsSection })), {
   loading: () => <div className="h-[30vh]" />,
 });
 
@@ -86,7 +77,6 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
       'corporate ai governance',
       'file-by-file implementation plans',
       'legacy codebase planning',
-      'microsoft teams meeting ingestion',
       'ai plan approval workflow',
       'ai plan editor',
       'monaco editor plans',
@@ -406,23 +396,16 @@ export default function Home() {
             </section>
             <SectionDividerMesh />
 
-            {/* Human-in-the-loop Implementation Planning */}
-            <GovernanceSection />
+            {/* Solve Complex Development Challenges - Internal Linking */}
+            <ProblemsSection />
             <SectionDividerMesh />
 
             {/* Specification Capture Mode */}
             <SpecificationCaptureSection />
             <SectionDividerMesh />
 
-            {/* Meeting & Recording Ingestion */}
-            <MeetingsSection />
-            <SectionDividerMesh />
-
-            {/* Common Problems Section - Internal Linking */}
-            <ProblemsSection />
-            <SectionDividerMesh />
-
-            <Features />
+            {/* Human-in-the-loop Implementation Planning */}
+            <GovernanceSection />
             <SectionDividerMesh />
 
             {/* Tool Integrations Section */}

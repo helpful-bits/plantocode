@@ -1310,7 +1310,7 @@
         "question": "¿Qué modelo de IA se usa para la transcripción?"
       },
       "offline": {
-        "answer": "No, la transcripción de voz requiere una conexión a Internet para enviar audio a la API de OpenAI Whisper. La transcripción ocurre en tiempo real con latencia mínima.",
+        "answer": "No, la transcripción de voz requiere una conexión a Internet para enviar audio a la API de OpenAI gpt-4o-transcribe. La transcripción ocurre en tiempo real con latencia mínima.",
         "question": "¿Funciona la transcripción de voz sin conexión?"
       },
       "whereToUse": {

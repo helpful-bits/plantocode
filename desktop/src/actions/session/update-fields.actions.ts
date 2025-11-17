@@ -24,20 +24,6 @@ export async function updateSessionFieldsAction(
       };
     }
 
-    // Dev-only guard: prevent misuse of updateSessionFieldsAction for queue-managed fields
-    if (process.env.NODE_ENV !== "production") {
-      const prohibitedFields = ["taskDescription", "mergeInstructions"];
-      const hasProhibitedField = prohibitedFields.some(field => field in fieldsToUpdate);
-
-      if (hasProhibitedField) {
-        const error = new Error(
-          `[DEV ERROR] Do NOT use updateSessionFieldsAction for ${prohibitedFields.filter(f => f in fieldsToUpdate).join(", ")}. ` +
-          `Use queueTaskDescriptionUpdate() or queueMergeInstructionsUpdate() from @/actions/session/task-fields.actions instead.`
-        );
-        console.error(error.message);
-        throw error;
-      }
-    }
 
     // Call the Tauri command that emits relay events
     const updatedSession = await invoke<Session>("update_session_fields_command", {

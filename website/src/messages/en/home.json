@@ -165,16 +165,17 @@
     "title": "Human-in-the-loop Governance"
   },
   "hero": {
-    "title": "Turn Vague Ideas Into File‑Level Plans",
-    "subtitle": "Dictate or type your task. Scope the exact files. Generate multiple AI perspectives. Automatically merge into one superior plan.",
+    "titleLine1": "Plan Complex Changes",
+    "titleLine2": "Without Breaking Production",
+    "subtitle": "[b]AI Architect[/b] generates detailed implementation plans with exact file paths. You review and approve every change before execution. [b]Clean architecture[/b].",
     "cta": {
       "viewDemo": "View Demo",
       "howItWorks": "See how it works"
     },
     "panel1": {
       "title": "Crystallize & Scope",
-      "description": "Voice or text with AI refinement. Isolate files for this specific task.",
-      "descriptionDesktop": "Type or dictate. Refine with AI. Scope exact files via targeted discovery.",
+      "description": "Voice or text input with optional AI refinement. Isolate files specifically relevant to this task.",
+      "descriptionDesktop": "Start with voice or text. Use AI for optional text improvement and task refinement. Then scope exact files via targeted discovery.",
       "link": "See how it works",
       "linkDesktop": "Explore discovery",
       "features": {
@@ -186,30 +187,30 @@
       }
     },
     "panel2": {
-      "title": "Multiple AI Perspectives",
-      "description": "Generate plans multiple times with any model mix. Each AI brings different architectural thinking. Compare and choose what fits.",
+      "title": "Multiple Perspectives",
+      "description": "Same task, same files, same context. Run multiple times - same model or mixed. Each AI has unique architectural taste. See different valid approaches in standardized format.",
       "link": "Explore the workflow",
       "runs": {
-        "run1": "Run 1 — GPT‑5",
-        "run2": "Run 2 — Gemini 2.5 Pro",
-        "run3": "Run 3 — GPT‑5"
+        "run1": "Run 1 - GPT-5",
+        "run2": "Run 2 - Gemini 2.5 Pro",
+        "run3": "Run 3 - GPT-5"
       },
       "tags": {
-        "middlewareFirst": "Middleware‑first",
-        "serviceLayer": "Service‑layer‑first",
-        "apiFirst": "API‑first"
+        "middlewareFirst": "Middleware approach",
+        "serviceLayer": "Service layer approach",
+        "apiFirst": "API-first approach"
       }
     },
     "panel3": {
-      "title": "Intelligent Merge",
-      "description": "System analyzes all plans with referenced files. Apply merge instructions to guide synthesis. Output: one superior plan with provenance.",
+      "title": "Automatic Merge",
+      "description": "System evaluates and rates all plans to identify the most architecturally appropriate approaches for your codebase, then merges them into one superior implementation. Optional merge instructions guide synthesis.",
       "link": "Merge details",
       "merge": {
-        "line1": "Input: 4 AI plans",
-        "line2": "Scope: Referenced files",
-        "line3": "Strategy: Merge instructions",
-        "line4": "Output: Unified plan",
-        "line5": "Provenance: [src:P2 step 3]"
+        "line1": "Input: 4 plans (2×GPT-5, 2×Gemini)",
+        "line2": "Scope: Files across all plans",
+        "line3": "Strategy: Apply merge instructions",
+        "line4": "Output: File-by-file plan",
+        "line5": "Provenance: [src:P2], [src:P1]"
       }
     }
   },

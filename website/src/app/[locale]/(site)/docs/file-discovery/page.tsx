@@ -96,15 +96,6 @@ export default async function FileDiscoveryDocPage({ params }: { params: Promise
               {t['fileDiscovery.stages.stage4.relationship']}
             </div>
           </GlassCard>
-          <GlassCard className="p-6">
-            <h3 className="text-lg font-semibold mb-3">{t['fileDiscovery.stages.stage5.heading']}</h3>
-            <p className="text-muted-foreground leading-relaxed mb-3">
-              {t['fileDiscovery.stages.stage5.description']}
-            </p>
-            <div className="bg-muted/30 rounded-lg p-3 text-sm">
-              {t['fileDiscovery.stages.stage5.validation']}
-            </div>
-          </GlassCard>
         </div>
       </section>
       <section className="space-y-6 mb-12">

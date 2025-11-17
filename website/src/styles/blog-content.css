@@ -1,6 +1,12 @@
 /* Blog Content Styling - Professional spacing and typography */
 
 /* Callout boxes (replacing GlassCards) */
+.prose-callout {
+  margin-top: 2rem;
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+}
+
 .prose .bg-primary\/5 h2,
 .prose .bg-primary\/5 h3 {
   font-size: 1.375rem;
@@ -66,15 +72,45 @@
   gap: 1.5rem;
 }
 
-/* Tables within content - ensure proper spacing */
+/* Tables within content - ensure proper spacing and responsive overflow */
+.prose .overflow-x-auto {
+  overflow-x: auto;
+  margin-left: -1rem;
+  margin-right: -1rem;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
 .prose table {
   font-size: 0.9375rem;
   line-height: 1.6;
+  border-collapse: collapse;
+  width: 100%;
 }
 
 .prose table code {
   font-size: 0.875rem;
   white-space: nowrap;
+}
+
+/* Table container alignment with consistent padding */
+.prose table th,
+.prose table td {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.prose table thead {
+  border-bottom: 2px solid var(--color-border);
+}
+
+.prose table tbody tr {
+  border-bottom: 1px solid color-mix(in oklch, var(--color-border) 30%, transparent);
+}
+
+.prose table tbody tr:last-child {
+  border-bottom: none;
 }
 
 /* Ensure proper spacing between different content types */
@@ -147,6 +183,12 @@
     margin-bottom: 2rem;
   }
 
+  .prose-callout {
+    margin-top: 1.5rem;
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+  }
+
   .prose .grid {
     gap: 1rem;
   }
@@ -174,6 +216,18 @@
 
   .prose table {
     font-size: 0.875rem;
+  }
+
+  .prose table th,
+  .prose table td {
+    padding: 0.5rem 0.75rem;
+  }
+
+  .prose .overflow-x-auto {
+    margin-left: -0.5rem;
+    margin-right: -0.5rem;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
   }
 
   .prose pre {

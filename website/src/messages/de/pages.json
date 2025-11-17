@@ -33,8 +33,12 @@
       },
       "title": "Kernfähigkeiten",
       "voice": {
-        "description": "OpenAI Whisper Integration für Terminal-Befehle. Selektionsbasierte Textverbesserung mit kontextbewusster Verarbeitung und Echtzeit-Job-Tracking.",
+        "description": "OpenAI gpt-4o-transcribe Integration für Terminal-Befehle. Selektionsbasierte Textverbesserung mit kontextbewusster Verarbeitung und Echtzeit-Job-Tracking.",
         "title": "Sprach- & Text-Integration"
+      },
+      "remote": {
+        "description": "Pläne überprüfen und zusammenführen, Jobs, Payloads, Prompts und Metadaten inspizieren; Modelle und Parameter ändern, System-Prompt überprüfen und Terminal über Device-Link öffnen — ohne SSH-Ports freizugeben.",
+        "title": "Fernsteuerung (iOS)"
       }
     },
     "company": {
@@ -438,7 +442,7 @@
         "subtitle": "Meeting-Aufzeichnungen, Screen-Captures und Sprach-Diktat",
         "title": "Ideen & Kontext erfassen",
         "voice": {
-          "description": "Anforderungen natürlich sprechen. OpenAI Whisper transkribiert mit intelligenter Text-Insertion und Sprecher-Identifikation für schnelle Spezifikations-Erfassung.",
+          "description": "Anforderungen natürlich sprechen. OpenAI gpt-4o-transcribe transkribiert mit intelligenter Text-Insertion und Sprecher-Identifikation für schnelle Spezifikations-Erfassung.",
           "title": "Sprach-Diktat"
         }
       },
@@ -545,7 +549,7 @@
     "github-copilot-alternatives-2025": {
       "meta": {
         "title": "GitHub Copilot Alternativen 2025 | Beste Optionen",
-        "description": "Umfassender Vergleich: Cursor, Codeium, Tabnine, PlanToCode, Aider. Preise, Funktionen, beste Wahl fürs Team."
+        "description": "Umfassender Vergleich: Cursor, Windsurf, Codeium, Tabnine, PlanToCode, Aider. Preise, Funktionen, beste Wahl fürs Team."
       }
     },
     "best-ai-coding-assistants-2025": {

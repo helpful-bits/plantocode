@@ -165,54 +165,54 @@
     "title": "Gouvernance avec humain dans la boucle"
   },
   "hero": {
+    "titleLine1": "Planifiez des Changements Complexes",
+    "titleLine2": "Sans Casser la Production",
+    "subtitle": "[b]Architecte IA[/b] génère des plans de mise en œuvre détaillés avec des chemins de fichiers exacts. Vous examinez et approuvez chaque modification avant exécution. [b]Architecture propre[/b].",
     "cta": {
-      "demo": "Essayer la démo interactive →",
-      "download": "Télécharger gratuitement",
-      "howItWorks": "Voir comment ça marche",
-      "viewDemo": "Voir Comment le Créateur l'Utilise Quotidiennement"
+      "viewDemo": "Voir la Démo",
+      "howItWorks": "Voir comment ça marche"
     },
     "panel1": {
-      "description": "Générez des modèles de recherche, exécutez le scoring de pertinence et examinez les résultats échelonnés avant d'inclure les fichiers dans votre plan.",
-      "descriptionDesktop": "Faites ressortir les bons fichiers avant d'écrire les invites.",
-      "features": {
-        "context": "Optimisation du contexte",
-        "patterns": "Groupes de modèles",
-        "progress": "Progression en temps réel",
-        "relevance": "Scores de pertinence",
-        "stage": "Examens d'étape"
-      },
+      "title": "Cristalliser et Délimiter",
+      "description": "Saisie vocale ou textuelle avec amélioration IA optionnelle. Isolez les fichiers spécifiquement pertinents pour cette tâche.",
+      "descriptionDesktop": "Commencez avec la voix ou le texte. Utilisez l'IA pour l'amélioration de texte optionnelle et le raffinement de tâche. Ensuite, délimitez les fichiers exacts via une découverte ciblée.",
       "link": "Voir comment ça marche",
-      "linkDesktop": "En savoir plus",
-      "title": "Workflow de découverte de fichiers"
+      "linkDesktop": "Explorer la découverte",
+      "features": {
+        "voice": "Dictée vocale",
+        "textImprovement": "Amélioration de texte",
+        "taskRefinement": "Raffinement de tâche",
+        "fileDiscovery": "Découverte de fichiers ciblée",
+        "scopedSelection": "Sélection spécifique à la tâche"
+      }
     },
     "panel2": {
-      "description": "Exécutez n'importe quel modèle en parallèle - y compris plusieurs instances du même - et fusionnez les meilleures idées.",
+      "title": "Perspectives Multiples",
+      "description": "Même tâche, mêmes fichiers, même contexte. Exécutez plusieurs fois - même modèle ou mixte. Chaque IA a un goût architectural unique. Voyez différentes approches valides dans un format standardisé.",
       "link": "Explorer le workflow",
-      "models": {
-        "claude": "Claude Sonnet 4",
-        "gemini": "Gemini 2.5 Pro",
-        "gpt5": "GPT-5"
+      "runs": {
+        "run1": "Exécution 1 - GPT-5",
+        "run2": "Exécution 2 - Gemini 2.5 Pro",
+        "run3": "Exécution 3 - GPT-5"
       },
-      "title": "Planification multi-modèle"
+      "tags": {
+        "middlewareFirst": "Approche middleware",
+        "serviceLayer": "Approche couche service",
+        "apiFirst": "Approche API-first"
+      }
     },
     "panel3": {
-      "description": "Lancez claude, cursor, codex ou gemini sans quitter l'espace de travail. La surveillance de l'état et la récupération maintiennent les longs travaux en cours d'exécution.",
-      "link": "Détails du terminal",
-      "terminal": {
-        "line1": "$ codex | claude | cursor | gemini",
-        "line2": "> Transcription vocale disponible",
-        "line3": "> Aperçu de l'invite avant l'exécution",
-        "line4": "> Garde-fous de jetons en place",
-        "line5": "> Logs persistants localement"
-      },
-      "title": "Terminal intégré"
-    },
-    "srOnly": {
-      "description": "PlanToCode vous aide à trouver les bons fichiers, générer et fusionner des plans de mise en œuvre, puis les exécuter dans un terminal persistant. Vous voyez la portée avant d'exécuter quoi que ce soit. Les plans sont modifiables et traçables.",
-      "heading": "Planifiez les modifications logicielles avant de coder"
-    },
-    "subtitle": "L'IA génère des plans de mise en œuvre détaillés avec des chemins de fichiers exacts. Vous examinez et approuvez chaque changement avant l'exécution. Zéro risque, contrôle total.",
-    "title": "Planifiez des changements complexes sans casser la production"
+      "title": "Fusion Automatique",
+      "description": "Le système évalue et note tous les plans pour identifier les approches architecturalement les plus appropriées pour votre base de code, puis les fusionne en une implémentation supérieure. Les instructions de fusion optionnelles guident la synthèse.",
+      "link": "Détails de fusion",
+      "merge": {
+        "line1": "Entrée : 4 plans (2×GPT-5, 2×Gemini)",
+        "line2": "Portée : Fichiers de tous les plans",
+        "line3": "Stratégie : Appliquer les instructions de fusion",
+        "line4": "Sortie : Plan fichier par fichier",
+        "line5": "Provenance : [src:P2], [src:P1]"
+      }
+    }
   },
   "integrations": {
     "cards": {

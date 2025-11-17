@@ -245,28 +245,24 @@ public final class AppState: ObservableObject {
     }
   }
 
+  @MainActor
   public func setBootstrapRunning() {
-    Task { @MainActor in
-      self.bootstrapState = .running
-    }
+    self.bootstrapState = .running
   }
 
+  @MainActor
   public func setBootstrapReady() {
-    Task { @MainActor in
-      self.bootstrapState = .ready
-    }
+    self.bootstrapState = .ready
   }
 
+  @MainActor
   public func setBootstrapNeedsConfig(_ missing: MissingConfig) {
-    Task { @MainActor in
-      self.bootstrapState = .needsConfiguration(missing)
-    }
+    self.bootstrapState = .needsConfiguration(missing)
   }
 
+  @MainActor
   public func setBootstrapFailed(_ message: String) {
-    Task { @MainActor in
-      self.bootstrapState = .failed(message)
-    }
+    self.bootstrapState = .failed(message)
   }
 
   // URL handling is no longer needed with Auth0.swift 2.13+

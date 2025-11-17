@@ -1305,12 +1305,19 @@ impl SessionRepository {
         let new_version = current_version + 1;
         let new_checksum = compute_file_history_checksum(&trimmed_entries, state.current_index, new_version);
 
-        // Update version and current_index in sessions table
+        // Extract included_files and force_excluded_files from current entry
+        let current_entry_opt = state.entries.get(state.current_index as usize);
+        let new_included_files = current_entry_opt.map(|e| e.included_files.clone());
+        let new_force_excluded_files = current_entry_opt.map(|e| e.force_excluded_files.clone());
+
+        // Update version, current_index, included_files, and force_excluded_files in sessions table
         sqlx::query(
-            "UPDATE sessions SET file_history_version = $1, file_history_current_index = $2, updated_at = $3 WHERE id = $4"
+            "UPDATE sessions SET file_history_version = $1, file_history_current_index = $2, included_files = $3, force_excluded_files = $4, updated_at = $5 WHERE id = $6"
         )
         .bind(new_version)
         .bind(state.current_index)
+        .bind(&new_included_files)
+        .bind(&new_force_excluded_files)
         .bind(crate::utils::date_utils::get_timestamp())
         .bind(session_id)
         .execute(&mut *conn)

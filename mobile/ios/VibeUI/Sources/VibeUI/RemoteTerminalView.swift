@@ -18,6 +18,7 @@ public struct RemoteTerminalView: View {
     @StateObject private var terminalController = SwiftTermController()
 
     @State private var shouldShowKeyboard = false
+    @State private var isKeyboardVisible: Bool = false
     @State private var outputCancellable: AnyCancellable?
     @State private var hasInitialResize = false
     @State private var pendingTerminalInput = "" // Track input that hasn't been sent yet
@@ -26,13 +27,16 @@ public struct RemoteTerminalView: View {
 
     @State private var copyButtons: [CopyButton] = []
     @State private var planContentForJob: String = ""
-    @State private var didAutoPaste: Bool = false
-    @State private var initialCopyButtonId: String? = nil
     @State private var isActionsExpanded: Bool = false
 
-    public init(jobId: String, initialCopyButtonId: String? = nil) {
+    private let contextType: TerminalContextType
+
+    public init(
+        jobId: String,
+        contextType: TerminalContextType = .implementationPlan
+    ) {
         self.jobId = jobId
-        self._initialCopyButtonId = State(initialValue: initialCopyButtonId)
+        self.contextType = contextType
     }
 
     private func loadCopyButtons() async {
@@ -45,8 +49,8 @@ public struct RemoteTerminalView: View {
     }
 
     private func loadPlanContent(jobId: String) async {
-        if let content = try? await container.plansService.getFullPlanContent(jobId: jobId).async() {
-            await MainActor.run { self.planContentForJob = content }
+        if let job = try? await container.jobsService.getJobFast(jobId: jobId).async() {
+            await MainActor.run { self.planContentForJob = job.response ?? "" }
         }
     }
 
@@ -67,21 +71,6 @@ public struct RemoteTerminalView: View {
             text: processed,
             appendCarriageReturn: true
         )
-    }
-
-    private func tryAutoPaste(jobId: String) {
-        guard !didAutoPaste, !planContentForJob.isEmpty, !copyButtons.isEmpty else { return }
-        didAutoPaste = true
-        Task {
-            try? await Task.sleep(nanoseconds: 150_000_000) // PTY readiness delay
-            let chosen: CopyButton
-            if let id = initialCopyButtonId, let found = copyButtons.first(where: { $0.id == id }) {
-                chosen = found
-            } else {
-                chosen = copyButtons[0]
-            }
-            await paste(using: chosen, jobId: jobId)
-        }
     }
 
     public var body: some View {
@@ -118,7 +107,6 @@ public struct RemoteTerminalView: View {
                 .background(Color.black)
         }
         .background(Color.background)
-        .navigationTitle("Terminal")
         .navigationBarTitleDisplayMode(.inline)
         .fullScreenCover(isPresented: $showCompose, onDismiss: {
             composeAutoStartRecording = false
@@ -150,6 +138,16 @@ public struct RemoteTerminalView: View {
                         .buttonStyle(ToolbarButtonStyle())
                         .accessibilityLabel("Hide Keyboard")
                         .accessibilityHint("Dismisses the on-screen keyboard")
+                    } else {
+                        Button(action: {
+                            shouldShowKeyboard = true
+                        }) {
+                            Image(systemName: "keyboard")
+                                .font(.system(size: 16))
+                        }
+                        .buttonStyle(ToolbarButtonStyle())
+                        .accessibilityLabel("Show Keyboard")
+                        .accessibilityHint("Shows the on-screen keyboard")
                     }
 
                     Button(action: {
@@ -177,9 +175,11 @@ public struct RemoteTerminalView: View {
                         .accessibilityHint("Terminates the current process")
                     }
 
-                    Button("Close") {
+                    Button {
                         cleanupSession()
                         dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
                     }
                     .buttonStyle(ToolbarButtonStyle())
                     .accessibilityLabel("Close")
@@ -188,6 +188,9 @@ public struct RemoteTerminalView: View {
             }
         }
         .onAppear {
+            // Keyboard will be shown after terminal session is ready (not immediately)
+            // This prevents timing race conditions with terminal initialization
+
             // Ensure relay connection is ready before starting terminal
             Task {
                 let connectionManager = MultiConnectionManager.shared
@@ -218,6 +221,12 @@ public struct RemoteTerminalView: View {
 
                 startTerminalSession()
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            isKeyboardVisible = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            isKeyboardVisible = false
         }
     }
 
@@ -300,7 +309,7 @@ public struct RemoteTerminalView: View {
                 let appSid = container.sessionService.currentSession?.id ?? ""
                 let contextBinding = TerminalContextBinding(
                     appSessionId: appSid,
-                    contextType: .implementationPlan,
+                    contextType: self.contextType,
                     jobId: capturedJobId
                 )
 
@@ -371,14 +380,24 @@ public struct RemoteTerminalView: View {
                         }
                     }
 
-                    // Enable keyboard after setup
-                    shouldShowKeyboard = true
+                    // Show keyboard ONLY after terminal is fully ready
+                    // Small delay ensures view hierarchy is stable after session initialization
+                    Task {
+                        try? await Task.sleep(nanoseconds: 200_000_000) // 200ms
+                        await MainActor.run {
+                            shouldShowKeyboard = true
+                        }
+                    }
                 }
 
-                // Load copy buttons and plan content (no auto-paste)
-                Task {
-                    await loadCopyButtons()
-                    await ensurePlanContent(jobId: jobId)
+                // Load copy buttons and plan content (only for implementation plans)
+                // User will manually trigger paste via Actions toolbar
+                if self.contextType == .implementationPlan {
+                    Task {
+                        await loadCopyButtons()
+                        await ensurePlanContent(jobId: jobId)
+                        // Auto-paste removed - user controls pasting via Actions toolbar
+                    }
                 }
             } catch {
                 await MainActor.run {
@@ -391,6 +410,9 @@ public struct RemoteTerminalView: View {
     }
 
     private func openCompose() {
+        // Resign first responder to avoid UIReparenting warnings
+        terminalController.terminalView?.resignFirstResponder()
+
         // Clear the current terminal input line by sending Ctrl+U (clear line before cursor)
         // This ensures no duplicate text between terminal and compose view
         Task {
@@ -413,6 +435,9 @@ public struct RemoteTerminalView: View {
     }
 
     private func openComposeWithVoice() {
+        // Resign first responder to avoid UIReparenting warnings
+        terminalController.terminalView?.resignFirstResponder()
+
         // Clear the current terminal input line by sending Ctrl+U (clear line before cursor)
         // This ensures no duplicate text between terminal and compose view
         Task {
@@ -594,8 +619,8 @@ struct SwiftTerminalView: UIViewRepresentable {
         Coordinator(controller: controller, shouldShowKeyboard: $shouldShowKeyboard)
     }
 
-    func makeUIView(context: Context) -> TerminalView {
-        let terminalView = TerminalView(frame: .zero)
+    func makeUIView(context: Context) -> FirstResponderTerminalView {
+        let terminalView = FirstResponderTerminalView(frame: .zero)
         terminalView.terminalDelegate = controller
 
         // Use Menlo font for better emoji and wide character support
@@ -657,63 +682,49 @@ struct SwiftTerminalView: UIViewRepresentable {
         // Enable keyboard input
         terminalView.isUserInteractionEnabled = true
 
-        // Add keyboard dismiss accessory view above the keyboard
-        let accessoryView = KeyboardDismissAccessoryView(attachedTo: terminalView)
-        terminalView.inputAccessoryView = accessoryView
+        // Use SwiftTerm's default TerminalAccessory keyboard (includes ESC, Tab, Ctrl, arrows)
+        // Do NOT override inputAccessoryView - SwiftTerm sets it up in setup()
 
         // Store reference to terminal view in controller
         controller.terminalView = terminalView
 
-        // Observe keyboard notifications to sync state bidirectionally
-        NotificationCenter.default.addObserver(
-            forName: UIResponder.keyboardWillShowNotification,
-            object: nil,
-            queue: .main
-        ) { _ in
-            if terminalView.isFirstResponder {
-                context.coordinator.updateKeyboardState(true)
-            }
-        }
+        let tapGesture = UITapGestureRecognizer()
+        tapGesture.cancelsTouchesInView = false
+        tapGesture.addTarget(context.coordinator, action: #selector(Coordinator.handleTap(_:)))
+        terminalView.addGestureRecognizer(tapGesture)
 
-        NotificationCenter.default.addObserver(
-            forName: UIResponder.keyboardWillHideNotification,
-            object: nil,
-            queue: .main
-        ) { _ in
-            if !terminalView.isFirstResponder {
-                context.coordinator.updateKeyboardState(false)
-            }
-        }
+        // Keyboard is managed solely via updateUIView watching shouldShowKeyboard binding
+        // No need for shouldFocusOnAttach mechanism
 
         return terminalView
     }
 
-    func updateUIView(_ uiView: TerminalView, context: Context) {
-        // Ensure terminal view reference is up to date
+    func updateUIView(_ uiView: FirstResponderTerminalView, context: Context) {
+        // Ensure controller has the live view reference if applicable
         if controller.terminalView !== uiView {
             controller.terminalView = uiView
         }
 
-        // Handle keyboard visibility changes
         if shouldShowKeyboard {
-            if !uiView.isFirstResponder && !context.coordinator.didBecomeFirstResponder {
-                DispatchQueue.main.async {
-                    uiView.becomeFirstResponder()
-                    context.coordinator.didBecomeFirstResponder = true
+            // Defer to next run loop to avoid hierarchy timing issues
+            DispatchQueue.main.async {
+                // Enhanced defensive guards for stable keyboard display
+                guard uiView.window != nil,          // View is attached to a window
+                      uiView.superview != nil,       // View is in view hierarchy
+                      !uiView.isFirstResponder else { // Not already first responder
+                    return
                 }
+                _ = uiView.becomeFirstResponder()
             }
         } else {
+            // Only resign if actually first responder
             if uiView.isFirstResponder {
-                DispatchQueue.main.async {
-                    uiView.resignFirstResponder()
-                    context.coordinator.didBecomeFirstResponder = false
-                }
+                _ = uiView.resignFirstResponder()
             }
         }
     }
 
     class Coordinator {
-        var didBecomeFirstResponder = false
         let controller: SwiftTermController
         var shouldShowKeyboard: Binding<Bool>
 
@@ -722,12 +733,21 @@ struct SwiftTerminalView: UIViewRepresentable {
             self.shouldShowKeyboard = shouldShowKeyboard
         }
 
-        func updateKeyboardState(_ isShowing: Bool) {
-            DispatchQueue.main.async {
-                self.shouldShowKeyboard.wrappedValue = isShowing
-            }
+        @objc func handleTap(_ gesture: UITapGestureRecognizer) {
+            guard let termView = controller.terminalView, !termView.isFirstResponder else { return }
+            _ = termView.becomeFirstResponder()
         }
     }
+}
+
+// MARK: - FirstResponderTerminalView
+/// Custom TerminalView subclass that properly handles first responder status for keyboard presentation
+final class FirstResponderTerminalView: TerminalView {
+    /// Explicitly allow first responder to present the iOS keyboard
+    override var canBecomeFirstResponder: Bool { true }
+
+    // Keyboard management is handled by updateUIView watching shouldShowKeyboard binding
+    // No special lifecycle handling needed here
 }
 
 #Preview {

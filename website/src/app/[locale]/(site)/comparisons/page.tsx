@@ -7,6 +7,7 @@ import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Breadcrumbs } from '@/components/Breadcrumbs';
 import { buildHubBreadcrumbs } from '@/components/breadcrumbs/utils';
 import { getPagesByCategory } from '@/data/pseo';
+import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { loadMessagesFor, type Locale } from '@/lib/i18n';
 import { Layers, GitCompare } from 'lucide-react';
 import { locales } from '@/i18n/config';
@@ -142,15 +143,24 @@ export default async function ComparisonsHubPage({ params }: { params: Promise<{
                 <h2 className="text-2xl sm:text-3xl font-bold mb-4">
                   {t['comparisons.hub.cta.title']}
                 </h2>
-                <p className="text-lg text-foreground/80 mb-8">
+                <p className="text-lg text-foreground/80 mb-8 max-w-2xl mx-auto">
                   {t['comparisons.hub.cta.subtitle']}
                 </p>
-                <LinkWithArrow href="/downloads" className="text-lg">
-                  {t['comparisons.hub.cta.button']}
-                </LinkWithArrow>
-                <p className="text-sm text-foreground/60 mt-4">
-                  {t['comparisons.hub.cta.footer']}
-                </p>
+                <PlatformDownloadSection location="comparisons_hub" />
+                <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4 text-sm text-foreground/60">
+                  <LinkWithArrow href="/features">
+                    {t['comparisons.hub.cta.links.features'] || 'See features'}
+                  </LinkWithArrow>
+                  <span className="hidden sm:inline">•</span>
+                  <LinkWithArrow href="/demo">
+                    {t['comparisons.hub.cta.links.demo'] || 'Watch demo'}
+                  </LinkWithArrow>
+                </div>
+                {t['comparisons.hub.cta.footer'] && (
+                  <p className="text-sm text-foreground/60 mt-6">
+                    {t['comparisons.hub.cta.footer']}
+                  </p>
+                )}
               </GlassCard>
             </div>
           </section>

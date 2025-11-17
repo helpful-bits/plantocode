@@ -325,7 +325,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
     ///     "payload": {
     ///       "method": "<method-name>",
     ///       "params": {...},
-    ///       "id": "<correlation-id>"
+    ///       "correlationId": "<correlation-id>"
     ///     }
     ///   }
     /// }
@@ -411,11 +411,11 @@ public class ServerRelayClient: NSObject, ObservableObject {
                 }
             }
 
-            // Build canonical envelope
+            // Build canonical envelope with ONLY camelCase
             let rpcPayload: [String: Any] = [
                 "method": req.method,
                 "params": req.params.mapValues { $0.jsonValue },
-                "id": req.id
+                "correlationId": req.id
             ]
 
             // Build payload based on strictRelayEnvelope flag
@@ -946,17 +946,13 @@ public class ServerRelayClient: NSObject, ObservableObject {
             return
         }
 
-        // Extract correlationId
-        let correlationId = (responseDict["correlationId"] as? String)
-            ?? (responseDict["id"] as? String)
-            ?? (json["id"] as? String)
-
-        guard let correlationId = correlationId else {
+        // Extract correlationId - ONLY camelCase
+        guard let correlationId = responseDict["correlationId"] as? String else {
             logger.warning("Relay response missing correlationId")
             return
         }
 
-        // Parse isFinal, default to true if not present
+        // Parse isFinal - ONLY camelCase, default to true if not present
         let isFinal = (responseDict["isFinal"] as? Bool) ?? true
 
         rpcQueue.async {
@@ -1039,6 +1035,14 @@ public class ServerRelayClient: NSObject, ObservableObject {
             self.eventPublisher.send(relayEvent)
         }
 
+        if relayEvent.eventType.hasPrefix("job:") {
+            NotificationCenter.default.post(
+                name: Notification.Name("relay-event-job"),
+                object: self,
+                userInfo: ["event": relayEvent]
+            )
+        }
+
         // Forward history-state-changed events to NotificationCenter
         if eventType == "history-state-changed" {
             NotificationCenter.default.post(
@@ -1065,6 +1069,14 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
         publishOnMain {
             self.eventPublisher.send(relayEvent)
+        }
+
+        if relayEvent.eventType.hasPrefix("job:") {
+            NotificationCenter.default.post(
+                name: Notification.Name("relay-event-job"),
+                object: self,
+                userInfo: ["event": relayEvent]
+            )
         }
     }
 
@@ -1128,6 +1140,14 @@ public class ServerRelayClient: NSObject, ObservableObject {
         let payload = (json["payload"] as? [String: Any]) ?? [:]
         let event = RelayEvent(eventType: "device-status", data: payload, timestamp: Date(), sourceDeviceId: nil)
         eventPublisher.send(event)
+
+        if event.eventType.hasPrefix("job:") {
+            NotificationCenter.default.post(
+                name: Notification.Name("relay-event-job"),
+                object: self,
+                userInfo: ["event": event]
+            )
+        }
     }
 
     private func handleConnectionError(_ error: Error) {

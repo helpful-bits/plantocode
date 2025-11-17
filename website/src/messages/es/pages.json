@@ -33,8 +33,12 @@
       },
       "title": "Capacidades Principales",
       "voice": {
-        "description": "Integración de OpenAI Whisper para comandos de terminal. Mejora de texto basada en selección con procesamiento consciente del contexto y seguimiento de trabajos en tiempo real.",
+        "description": "Integración de OpenAI gpt-4o-transcribe para comandos de terminal. Mejora de texto basada en selección con procesamiento consciente del contexto y seguimiento de trabajos en tiempo real.",
         "title": "Integración de Voz y Texto"
+      },
+      "remote": {
+        "description": "Revisa y combina planes, inspecciona trabajos, payloads, prompts y metadatos; cambia modelos y parámetros, revisa el system prompt y abre terminal mediante device link — sin exponer puertos SSH.",
+        "title": "Control Remoto (iOS)"
       }
     },
     "company": {
@@ -641,7 +645,7 @@
         "subtitle": "Grabaciones de reuniones, capturas de pantalla y dictado de voz",
         "title": "Captura Ideas y Contexto",
         "voice": {
-          "description": "Habla requisitos naturalmente. OpenAI Whisper transcribe con inserción de texto inteligente e identificación de hablante para captura rápida de especificaciones.",
+          "description": "Habla requisitos naturalmente. OpenAI gpt-4o-transcribe transcribe con inserción de texto inteligente e identificación de hablante para captura rápida de especificaciones.",
           "title": "Dictado de Voz"
         }
       },

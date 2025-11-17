@@ -165,54 +165,54 @@
     "title": "Gobernanza con Humano en el Ciclo"
   },
   "hero": {
+    "titleLine1": "Planifica Cambios Complejos",
+    "titleLine2": "Sin Romper Producción",
+    "subtitle": "[b]Arquitecto de IA[/b] genera planes de implementación detallados con rutas de archivo exactas. Revisas y apruebas cada cambio antes de la ejecución. [b]Arquitectura limpia[/b].",
     "cta": {
-      "demo": "Probar Demo Interactiva →",
-      "download": "Descargar Gratis",
-      "howItWorks": "Ver cómo funciona",
-      "viewDemo": "Ver Cómo el Creador lo Usa Diariamente"
+      "viewDemo": "Ver Demo",
+      "howItWorks": "Ver cómo funciona"
     },
     "panel1": {
-      "description": "Genera patrones de búsqueda, ejecuta puntuación de relevancia y revisa resultados escalonados antes de incluir archivos en tu plan.",
-      "descriptionDesktop": "Muestra los archivos correctos antes de escribir prompts.",
-      "features": {
-        "context": "Optimización de contexto",
-        "patterns": "Grupos de patrones",
-        "progress": "Progreso en tiempo real",
-        "relevance": "Puntuaciones de relevancia",
-        "stage": "Revisiones de etapas"
-      },
+      "title": "Cristalizar y Delimitar",
+      "description": "Entrada de voz o texto con refinamiento de IA opcional. Aísla archivos específicamente relevantes para esta tarea.",
+      "descriptionDesktop": "Comienza con voz o texto. Usa IA para mejora de texto opcional y refinamiento de tareas. Luego delimita archivos exactos mediante descubrimiento dirigido.",
       "link": "Ver cómo funciona",
-      "linkDesktop": "Más información",
-      "title": "Flujo de trabajo de descubrimiento de archivos"
+      "linkDesktop": "Explorar descubrimiento",
+      "features": {
+        "voice": "Dictado por voz",
+        "textImprovement": "Mejora de texto",
+        "taskRefinement": "Refinamiento de tareas",
+        "fileDiscovery": "Descubrimiento dirigido de archivos",
+        "scopedSelection": "Selección específica de tarea"
+      }
     },
     "panel2": {
-      "description": "Ejecuta cualquier modelo en paralelo - incluyendo múltiples instancias del mismo - y fusiona las mejores ideas.",
+      "title": "Múltiples Perspectivas",
+      "description": "Misma tarea, mismos archivos, mismo contexto. Ejecuta múltiples veces - mismo modelo o mixto. Cada IA tiene un gusto arquitectónico único. Ve diferentes enfoques válidos en formato estandarizado.",
       "link": "Explorar el flujo de trabajo",
-      "models": {
-        "claude": "Claude Sonnet 4",
-        "gemini": "Gemini 2.5 Pro",
-        "gpt5": "GPT-5"
+      "runs": {
+        "run1": "Ejecución 1 - GPT-5",
+        "run2": "Ejecución 2 - Gemini 2.5 Pro",
+        "run3": "Ejecución 3 - GPT-5"
       },
-      "title": "Planificación multi-modelo"
+      "tags": {
+        "middlewareFirst": "Enfoque middleware",
+        "serviceLayer": "Enfoque capa de servicio",
+        "apiFirst": "Enfoque API-first"
+      }
     },
     "panel3": {
-      "description": "Lanza claude, cursor, codex o gemini sin salir del espacio de trabajo. Monitoreo de salud y recuperación mantienen trabajos largos ejecutándose.",
-      "link": "Detalles del terminal",
-      "terminal": {
-        "line1": "$ codex | claude | cursor | gemini",
-        "line2": "> Transcripción de voz disponible",
-        "line3": "> Vista previa de prompt antes de ejecutar",
-        "line4": "> Barreras de tokens en su lugar",
-        "line5": "> Registros persisten localmente"
-      },
-      "title": "Terminal integrado"
-    },
-    "srOnly": {
-      "description": "PlanToCode te ayuda a encontrar los archivos correctos, generar y fusionar planes de implementación, luego ejecutarlos en un terminal persistente. Ves el alcance antes de ejecutar cualquier cosa. Los planes son editables y rastreables.",
-      "heading": "Planifica cambios de software antes de programar"
-    },
-    "subtitle": "La IA genera planes de implementación detallados con rutas de archivo exactas. Tú revisas y apruebas cada cambio antes de la ejecución. Cero riesgo, control total.",
-    "title": "Planifica Cambios Complejos Sin Romper Producción"
+      "title": "Fusión Automática",
+      "description": "El sistema evalúa y califica todos los planes para identificar los enfoques arquitectónicamente más apropiados para tu código base, luego los fusiona en una implementación superior. Las instrucciones de fusión opcionales guían la síntesis.",
+      "link": "Detalles de fusión",
+      "merge": {
+        "line1": "Entrada: 4 planes (2×GPT-5, 2×Gemini)",
+        "line2": "Alcance: Archivos de todos los planes",
+        "line3": "Estrategia: Aplicar instrucciones de fusión",
+        "line4": "Salida: Plan archivo por archivo",
+        "line5": "Procedencia: [src:P2], [src:P1]"
+      }
+    }
   },
   "integrations": {
     "cards": {

@@ -617,6 +617,10 @@ public final class FilesDataService: ObservableObject {
         try await CommandRouter.sessionGetHistoryStateRaw(sessionId: sessionId, kind: "files")
     }
 
+    public func syncFileHistoryState(sessionId: String, state: HistoryState, expectedVersion: Int64) async throws -> HistoryState {
+        return try await CommandRouter.sessionSyncHistoryState(sessionId: sessionId, kind: "files", state: state, expectedVersion: expectedVersion)
+    }
+
     public func undoFileSelection(sessionId: String) async throws {
         var state = try await getFileHistoryState(sessionId: sessionId)
         let entries = (state["entries"] as? [Any]) ?? []
