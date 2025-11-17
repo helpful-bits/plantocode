@@ -5,6 +5,7 @@ import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Breadcrumbs } from '@/components/Breadcrumbs';
 import { buildHubBreadcrumbs } from '@/components/breadcrumbs/utils';
 import { getPagesByCategory } from '@/data/pseo';
+import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { Users } from 'lucide-react';
 import { loadMessagesFor, type Locale } from '@/lib/i18n';
 import { locales } from '@/i18n/config';
@@ -111,12 +112,19 @@ export default async function UseCasesHubPage({ params }: { params: Promise<{ lo
                 <h2 className="text-2xl sm:text-3xl font-bold mb-4">
                   {t['useCases.cta.heading'] || 'Ready to Enhance Your Engineering Workflow?'}
                 </h2>
-                <p className="text-lg text-foreground/80 mb-8">
+                <p className="text-lg text-foreground/80 mb-8 max-w-2xl mx-auto">
                   {t['useCases.cta.description'] || 'Join engineers who trust PlanToCode for complex development challenges.'}
                 </p>
-                <LinkWithArrow href="/downloads" className="text-lg">
-                  {t['useCases.cta.downloadButton'] || 'Download PlanToCode'}
-                </LinkWithArrow>
+                <PlatformDownloadSection location="use_cases_hub" />
+                <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4 text-sm text-foreground/60">
+                  <LinkWithArrow href="/solutions">
+                    {t['useCases.cta.links.solutions'] || 'View solutions'}
+                  </LinkWithArrow>
+                  <span className="hidden sm:inline">•</span>
+                  <LinkWithArrow href="/demo">
+                    {t['useCases.cta.links.demo'] || 'Watch demo'}
+                  </LinkWithArrow>
+                </div>
               </GlassCard>
             </div>
           </section>

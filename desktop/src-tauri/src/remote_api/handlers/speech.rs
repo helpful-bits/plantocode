@@ -1,23 +1,15 @@
 use tauri::AppHandle;
-use crate::remote_api::types::{RpcRequest, RpcResponse};
+use crate::remote_api::error::{RpcError, RpcResult};
+use crate::remote_api::types::RpcRequest;
+use serde_json::Value;
 
-pub async fn dispatch(_app_handle: AppHandle, req: RpcRequest) -> RpcResponse {
+pub async fn dispatch(_app_handle: AppHandle, req: RpcRequest) -> RpcResult<Value> {
     match req.method.as_str() {
         "speech.transcribe" => handle_speech_transcribe(req).await,
-        _ => RpcResponse {
-            correlation_id: req.correlation_id,
-            result: None,
-            error: Some(format!("Unknown method: {}", req.method)),
-            is_final: true,
-        },
+        _ => Err(RpcError::method_not_found(&req.method)),
     }
 }
 
-async fn handle_speech_transcribe(request: RpcRequest) -> RpcResponse {
-    RpcResponse {
-        correlation_id: request.correlation_id,
-        result: None,
-        error: Some("Speech transcription not available via RPC".to_string()),
-        is_final: true,
-    }
+async fn handle_speech_transcribe(_request: RpcRequest) -> RpcResult<Value> {
+    Err(RpcError::not_implemented("Speech transcription is not available via RPC"))
 }

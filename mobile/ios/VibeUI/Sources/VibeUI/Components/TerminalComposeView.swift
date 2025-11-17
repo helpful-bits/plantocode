@@ -16,12 +16,12 @@ public struct TerminalComposeView: View {
 
     @StateObject private var voiceDictationService = VoiceDictationService.shared
     @StateObject private var textEnhancementService = TextEnhancementService.shared
-    @StateObject private var settingsService = SettingsDataService()
     @StateObject private var undoRedoManager = UndoRedoManager()
 
     @State private var lastSavedText: String = ""
     @State private var saveHistoryTimer: Timer?
 
+    @State private var didLoadVoiceSettings = false
     @State private var showingLanguagePicker = false
     @State private var selectedLanguage = "en-US"
 
@@ -238,35 +238,19 @@ public struct TerminalComposeView: View {
                     }
                 }
             }
-            .task {
-                // Fetch voice transcription settings when view appears
-                do {
-                    if let projectDir = container.sessionService.currentSession?.projectDirectory {
-                        try await settingsService.fetchProjectTaskModelSettings(projectDirectory: projectDir)
-                        if let settings = settingsService.projectTaskSettings["voiceTranscription"] {
-                            transcriptionModel = settings.model
-                            transcriptionTemperature = settings.temperature
-                            transcriptionPrompt = settings.prompt
-                            // Set language code from settings if available
-                            if let shortCode = settings.languageCode {
-                                selectedLanguage = mapShortCodeToLocale(shortCode)
-                            }
-                        } else {
-                            // Project doesn't have voice transcription settings configured yet
-                            // Fetch server defaults as fallback
-                            let serverDefaults = try await settingsService.fetchServerDefaults()
-                            if let defaultSettings = serverDefaults["voiceTranscription"] {
-                                transcriptionModel = defaultSettings.model
-                                transcriptionTemperature = defaultSettings.temperature
-                                transcriptionPrompt = defaultSettings.prompt
-                                if let shortCode = defaultSettings.languageCode {
-                                    selectedLanguage = mapShortCodeToLocale(shortCode)
-                                }
-                            }
-                        }
+            .task(id: container.currentProject?.directory) {
+                guard !didLoadVoiceSettings, let projectDir = container.currentProject?.directory else { return }
+                didLoadVoiceSettings = true
+                try? await container.settingsService.fetchProjectTaskModelSettings(projectDirectory: projectDir)
+
+                if let settings = container.settingsService.projectTaskSettings["voiceTranscription"] {
+                    transcriptionModel = settings.model
+                    transcriptionTemperature = settings.temperature
+                    transcriptionPrompt = settings.prompt
+                    // Set language code from settings if available
+                    if let shortCode = settings.languageCode {
+                        selectedLanguage = mapShortCodeToLocale(shortCode)
                     }
-                } catch {
-                    print("Failed to fetch transcription settings: \(error)")
                 }
             }
             .sheet(isPresented: $showingLanguagePicker) {

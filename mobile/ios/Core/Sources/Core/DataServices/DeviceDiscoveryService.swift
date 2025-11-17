@@ -119,6 +119,12 @@ public class DeviceDiscoveryService: ObservableObject {
             }
             let connected = allDesktops.filter { $0.isConnected }
             self.devices = connected
+            if let activeId = MultiConnectionManager.shared.activeDeviceId {
+                let stillPresent = connected.contains(where: { $0.deviceId == activeId })
+                if !stillPresent {
+                    MultiConnectionManager.shared.removeConnection(deviceId: activeId)
+                }
+            }
 
             if !allDesktops.isEmpty && connected.isEmpty {
                 self.error = .serverError("Desktop is registered but not reachable. Enable 'Allow Remote Access' in Desktop settings.")

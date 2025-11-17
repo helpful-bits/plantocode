@@ -119,7 +119,7 @@
     "github-copilot-alternatives-2025": {
       "meta": {
         "title": "GitHub Copilot Alternatives 2025 | Best Options",
-        "description": "Compare Copilot alternatives: Cursor, Codeium, Tabnine, PlanToCode, Aider. See pricing, features, and find the best fit for your team."
+        "description": "Compare Copilot alternatives: Cursor, Windsurf, Codeium, Tabnine, PlanToCode, Aider. See pricing, features, and find the best fit for your team."
       }
     },
     "best-ai-coding-assistants-2025": {
@@ -157,8 +157,12 @@
       },
       "title": "Core Capabilities",
       "voice": {
-        "description": "OpenAI Whisper integration for terminal commands. Selection-based text improvement with context-aware processing and real-time job tracking.",
+        "description": "OpenAI gpt-4o-transcribe integration for terminal commands. Selection-based text improvement with context-aware processing and real-time job tracking.",
         "title": "Voice & Text Integration"
+      },
+      "remote": {
+        "description": "Review and merge plans, inspect jobs, payloads, prompts and metadata; change models and parameters, review the system prompt and open terminal via device link — without exposing SSH ports.",
+        "title": "Remote Control (iOS)"
       }
     },
     "company": {
@@ -201,7 +205,7 @@
       },
       "intro": "PlanToCode is a comprehensive development planning environment designed for serious development work where context, traceability, and professional tooling matter more than quick AI interactions. We've built a system for complex, multi-step implementations where traditional AI tools fall short.",
       "multiModel": {
-        "description": "Integration with GPT-5, Claude Sonnet 4, and Gemini 2.5 Pro. Not just API calls - intelligent orchestration with project-specific configurations, real-time streaming, and complete traceability.",
+        "description": "Integration with GPT-5/GPT-5.1, Claude Sonnet 4.5, and Gemini 2.5 Pro. Not just API calls - intelligent orchestration with project-specific configurations, real-time streaming, and complete traceability.",
         "title": "Multi-Model Intelligence"
       },
       "title": "What We Built"
@@ -242,7 +246,7 @@
           "title": "Human-in-the-Loop"
         },
         "multiModel": {
-          "description": "Generate plans from multiple AI models (GPT-5, Claude 4.5, Gemini 2.5 Pro) and merge the best insights. Single-model tools miss perspectives.",
+          "description": "Generate plans from multiple AI models (GPT-5/GPT-5.1, Claude Sonnet 4.5, Gemini 2.5 Pro) and merge the best insights. Single-model tools miss perspectives.",
           "title": "Multi-Model Planning"
         },
         "title": "What Makes PlanToCode Different"
@@ -551,7 +555,7 @@
       "intro": "The most effective workflow combines both tools, using each for what it does best:",
       "step1": {
         "catch": "What you catch: Wrong file paths, duplicate files, missing dependencies, scope creep",
-        "description": "Describe your task (voice or text), run file discovery to find all impacted files, generate implementation plans from multiple AI models (Claude, GPT, Gemini).",
+        "description": "Describe your task (voice or text), run file discovery to find all impacted files, generate implementation plans from multiple AI models (GPT-5/GPT-5.1, Claude Sonnet 4.5, Gemini 2.5 Pro).",
         "title": "Plan in PlanToCode"
       },
       "step2": {
@@ -580,7 +584,7 @@
     },
     "hero": {
       "screenshots": "View Real Screenshots",
-      "subtitle": "See how PlanToCode plans and runs code changes.",
+      "subtitle": "Generate, review, approve — then execute in your preferred agent.",
       "title": "Interactive demo",
       "video": "View Demo"
     },
@@ -598,7 +602,7 @@
       "title": "Ready to Level Up?"
     },
     "hero": {
-      "subtitle": "Plan code changes with one tool - find relevant files, generate and merge plans, and run commands in a persistent terminal.",
+      "subtitle": "Plan → Review → Execute. Prepare context-rich implementation plans, then run with your preferred CLI or IDE.",
       "title": "Download PlanToCode"
     },
     "macos": {
@@ -639,7 +643,7 @@
     },
     "trust": {
       "planning": {
-        "description": "GPT-5, Claude Sonnet 4, Gemini 2.5 Pro, o3/o4-mini, Grok 4, DeepSeek R1, Kimi K2. Council of LLMs approach.",
+        "description": "GPT-5/GPT-5.1, Claude Sonnet 4.5, Gemini 2.5 Pro. Council-of-LLMs approach.",
         "title": "Multi-Model Planning"
       },
       "pricing": {
@@ -765,7 +769,7 @@
         "subtitle": "Meeting recordings, screen captures, and voice dictation",
         "title": "Capture Ideas & Context",
         "voice": {
-          "description": "Speak requirements naturally. OpenAI Whisper transcribes with smart text insertion and speaker identification for rapid specification capture.",
+          "description": "Speak requirements naturally. OpenAI gpt-4o-transcribe transcribes with smart text insertion and speaker identification for rapid specification capture.",
           "title": "Voice Dictation"
         }
       },
@@ -786,7 +790,7 @@
         "description": "AI file discovery identifies relevant files across your codebase. Multiple AI models generate implementation plans with file-by-file granularity—exact file paths, specific line ranges, and clear operation types (modify/create/delete). This granularity makes impact assessment crystal clear.",
         "features": {
           "dependencies": "Dependency analysis and impact assessment",
-          "models": "Multi-model support (GPT-5, Claude 4, Gemini 2.5 Pro)",
+          "models": "Multi-model support (GPT-5/GPT-5.1, Claude Sonnet 4.5, Gemini 2.5 Pro)",
           "multiple": "Multiple plan generation for approach comparison",
           "operations": "Clear operation types (modify, create, delete)",
           "paths": "Exact file paths from your repository structure",
@@ -1024,7 +1028,7 @@
     }
   },
   "screenshots": {
-    "title": "PlanToCode Screenshots",
+    "title": "See PlanToCode in Action — Plan → Review → Execute",
     "description": "See PlanToCode in action with real screenshots from actual workflows."
   },
   "support": {

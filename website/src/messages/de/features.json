@@ -1234,7 +1234,7 @@
         "question": "Welches KI-Modell wird für Transkription verwendet?"
       },
       "offline": {
-        "answer": "Nein, Sprachtranskription erfordert eine Internetverbindung, um Audio an OpenAI Whisper API zu senden. Die Transkription erfolgt in Echtzeit mit minimaler Latenz.",
+        "answer": "Nein, Sprachtranskription erfordert eine Internetverbindung, um Audio an OpenAI gpt-4o-transcribe API zu senden. Die Transkription erfolgt in Echtzeit mit minimaler Latenz.",
         "question": "Funktioniert Sprachtranskription offline?"
       },
       "whereToUse": {

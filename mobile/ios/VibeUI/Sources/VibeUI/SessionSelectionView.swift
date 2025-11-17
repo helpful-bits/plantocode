@@ -556,27 +556,28 @@ class SessionListEventMonitor: ObservableObject {
 
         guard let dataServices = PlanToCodeCore.shared.dataServices else { return }
 
-        // Monitor plans service events for new/updated plans
-        dataServices.plansService.$lastUpdateEvent
-            .compactMap { $0 }
+        // Monitor jobs service for new/updated jobs (including plans)
+        // We monitor the jobs array changes which indicates relay events have been processed
+        dataServices.jobsService.$jobs
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] event in
+            .sink { [weak self] jobs in
                 guard let self = self else { return }
-                // Only refresh if event is relevant to current project
-                if let eventProjectDir = event.data["projectDirectory"]?.value as? String,
-                   eventProjectDir == self.currentProjectDirectory {
-                    self.shouldRefresh = true
-                } else if event.eventType.hasPrefix("job:") || event.eventType.hasPrefix("Plan") {
-                    // Refresh for any plan/job events (they may affect sessions)
+                // Check if any jobs are relevant to current project (plans or job events)
+                let hasRelevantJobs = jobs.contains { job in
+                    job.taskType.hasPrefix("implementation_plan")
+                }
+
+                // Only trigger refresh if we have relevant jobs (indicates activity)
+                if hasRelevantJobs {
                     self.shouldRefresh = true
                 }
             }
             .store(in: &cancellables)
 
-        // Note: We intentionally don't monitor sessionService.$sessions or jobsService.$jobs here because:
+        // Note: We intentionally don't monitor sessionService.$sessions here because:
         // - These update frequently during background processing and when this view calls loadSessions()
         // - This causes excessive session list refreshes and flickering (reactive loop)
-        // - Session list updates are triggered by server events via plansService.$lastUpdateEvent
+        // - Session list updates are triggered by server events via jobs changes
         // - Direct user actions (create/delete session) update the UI immediately without needing refresh
     }
 

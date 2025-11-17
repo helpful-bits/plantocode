@@ -1,6 +1,7 @@
 use tauri::{AppHandle, Manager};
 use serde_json::{json, Value};
 use crate::remote_api::types::{RpcRequest, RpcResponse};
+use crate::remote_api::error::{RpcError, RpcResult};
 use crate::commands::job_commands;
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
@@ -64,21 +65,33 @@ pub fn invalidate_job_list_cache_for_session(session_id: &str) {
 // mobile and desktop clients operate on identical, pre-filtered datasets.
 
 pub async fn dispatch(app_handle: AppHandle, req: RpcRequest) -> RpcResponse {
-    match req.method.as_str() {
+    let correlation_id = req.correlation_id.clone();
+    let result = match req.method.as_str() {
         "job.list" => handle_job_list(&app_handle, req).await,
         "job.get" => handle_job_get(&app_handle, req).await,
         "job.cancel" => handle_job_cancel(&app_handle, req).await,
         "job.delete" => handle_job_delete(&app_handle, req).await,
-        _ => RpcResponse {
-            correlation_id: req.correlation_id,
+        "job.updateContent" => handle_job_update_content(&app_handle, req).await,
+        _ => Err(RpcError::method_not_found(&req.method)),
+    };
+
+    match result {
+        Ok(value) => RpcResponse {
+            correlation_id,
+            result: Some(value),
+            error: None,
+            is_final: true,
+        },
+        Err(error) => RpcResponse {
+            correlation_id,
             result: None,
-            error: Some(format!("Unknown method: {}", req.method)),
+            error: Some(error),
             is_final: true,
         },
     }
 }
 
-async fn handle_job_list(app_handle: &AppHandle, request: RpcRequest) -> RpcResponse {
+async fn handle_job_list(app_handle: &AppHandle, request: RpcRequest) -> RpcResult<Value> {
     let mut project_directory = request
         .params
         .get("projectDirectory")
@@ -97,13 +110,14 @@ async fn handle_job_list(app_handle: &AppHandle, request: RpcRequest) -> RpcResp
         session_id = None;
     }
 
+    let bypass_cache = request
+        .params
+        .get("bypassCache")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
     if session_id.is_none() && project_directory.is_none() {
-        return RpcResponse {
-            correlation_id: request.correlation_id,
-            result: None,
-            error: Some("Missing required sessionId or projectDirectory".to_string()),
-            is_final: true,
-        };
+        return Err(RpcError::invalid_params("Missing required sessionId or projectDirectory"));
     }
 
     let cache_key = if let Some(ref session_id) = session_id {
@@ -117,17 +131,12 @@ async fn handle_job_list(app_handle: &AppHandle, request: RpcRequest) -> RpcResp
     };
 
     // Fast path: return cached result without DB lookup
-    {
+    if !bypass_cache {
         let cache = JOB_LIST_CACHE.lock().unwrap();
         if let Some(entry) = cache.get(&cache_key) {
             if entry.inserted_at.elapsed() < CACHE_TTL {
                 log::debug!("Cache hit for key {}, skipping DB validation", cache_key);
-                return RpcResponse {
-                    correlation_id: request.correlation_id,
-                    result: Some(entry.value.clone()),
-                    error: None,
-                    is_final: true,
-                };
+                return Ok(entry.value.clone());
             }
         }
     }
@@ -138,17 +147,11 @@ async fn handle_job_list(app_handle: &AppHandle, request: RpcRequest) -> RpcResp
     
     let jobs_result = if let Some(session_id) = session_id.clone() {
         // Resolve effective project directory from session to maintain existing invariants
-        let pool = match app_handle.try_state::<Arc<sqlx::SqlitePool>>() {
-            Some(p) => p.inner().clone(),
-            None => {
-                return RpcResponse {
-                    correlation_id: request.correlation_id,
-                    result: None,
-                    error: Some("Database not available".to_string()),
-                    is_final: true,
-                };
-            }
-        };
+        let pool = app_handle.try_state::<Arc<sqlx::SqlitePool>>()
+            .ok_or_else(|| RpcError::database_error("Database not available"))?
+            .inner()
+            .clone();
+
         let session_repo = SessionRepository::new(pool.clone());
         let resolved_dir = match session_repo.get_session_by_id(&session_id).await {
             Ok(Some(session)) => {
@@ -160,12 +163,7 @@ async fn handle_job_list(app_handle: &AppHandle, request: RpcRequest) -> RpcResp
                 Some(session.project_directory)
             }
             Ok(None) | Err(_) => {
-                return RpcResponse {
-                    correlation_id: request.correlation_id,
-                    result: None,
-                    error: Some("Invalid sessionId: not found".to_string()),
-                    is_final: true,
-                };
+                return Err(RpcError::not_found("Invalid sessionId: not found"));
             }
         };
 
@@ -193,158 +191,113 @@ async fn handle_job_list(app_handle: &AppHandle, request: RpcRequest) -> RpcResp
         .await
     };
 
-    match jobs_result {
-        Ok(jobs) => {
-            let result_value = json!({ "jobs": jobs });
+    let jobs = jobs_result.map_err(RpcError::from)?;
+    let result_value = json!({ "jobs": jobs });
 
-            // Store in cache and update session→project mapping
-            {
-                let mut cache = JOB_LIST_CACHE.lock().unwrap();
-                if cache.len() >= MAX_ENTRIES {
-                    // Evict oldest
-                    if let Some(oldest_key) = cache.iter().min_by_key(|(_, v)| v.inserted_at).map(|(k, _)| k.clone()) {
-                        // Clean up SESSION_PROJECT_MAP if we're evicting a session key
-                        if let Some(session_id) = oldest_key.strip_prefix("jobs::session::") {
-                            let mut map = SESSION_PROJECT_MAP.lock().unwrap();
-                            map.remove(session_id);
-                        }
-                        cache.remove(&oldest_key);
-                    }
-                }
-                cache.insert(cache_key.clone(), CacheEntry {
-                    inserted_at: Instant::now(),
-                    value: result_value.clone(),
-                });
-            }
-
-            // Update SESSION_PROJECT_MAP if this was a session-scoped query
-            if let Some(ref session_id) = session_id {
-                // Compute project key for mapping using effective project directory
-                if let Some(ref proj_dir) = effective_project_directory {
-                    let project_hash = generate_project_hash(proj_dir);
-                    let project_key = format!("jobs::project::{}", project_hash);
-                    
+    // Store in cache and update session→project mapping
+    {
+        let mut cache = JOB_LIST_CACHE.lock().unwrap();
+        if cache.len() >= MAX_ENTRIES {
+            // Evict oldest
+            if let Some(oldest_key) = cache.iter().min_by_key(|(_, v)| v.inserted_at).map(|(k, _)| k.clone()) {
+                // Clean up SESSION_PROJECT_MAP if we're evicting a session key
+                if let Some(session_id) = oldest_key.strip_prefix("jobs::session::") {
                     let mut map = SESSION_PROJECT_MAP.lock().unwrap();
-                    // Evict oldest if at capacity
-                    if map.len() >= MAX_SESSION_MAP_ENTRIES {
-                        if let Some(old_k) = map.iter().min_by_key(|(_, v)| v.inserted_at).map(|(k, _)| k.clone()) {
-                            map.remove(&old_k);
-                        }
-                    }
-                    map.insert(session_id.clone(), SessionProjectEntry {
-                        inserted_at: Instant::now(),
-                        project_cache_key: project_key,
-                    });
+                    map.remove(session_id);
+                }
+                cache.remove(&oldest_key);
+            }
+        }
+        cache.insert(cache_key.clone(), CacheEntry {
+            inserted_at: Instant::now(),
+            value: result_value.clone(),
+        });
+    }
+
+    // Update SESSION_PROJECT_MAP if this was a session-scoped query
+    if let Some(ref session_id) = session_id {
+        // Compute project key for mapping using effective project directory
+        if let Some(ref proj_dir) = effective_project_directory {
+            let project_hash = generate_project_hash(proj_dir);
+            let project_key = format!("jobs::project::{}", project_hash);
+
+            let mut map = SESSION_PROJECT_MAP.lock().unwrap();
+            // Evict oldest if at capacity
+            if map.len() >= MAX_SESSION_MAP_ENTRIES {
+                if let Some(old_k) = map.iter().min_by_key(|(_, v)| v.inserted_at).map(|(k, _)| k.clone()) {
+                    map.remove(&old_k);
                 }
             }
-
-            RpcResponse {
-                correlation_id: request.correlation_id,
-                result: Some(result_value),
-                error: None,
-                is_final: true,
-            }
+            map.insert(session_id.clone(), SessionProjectEntry {
+                inserted_at: Instant::now(),
+                project_cache_key: project_key,
+            });
         }
-        Err(error) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: None,
-            error: Some(error.to_string()),
-            is_final: true,
-        },
     }
+
+    Ok(result_value)
 }
 
-async fn handle_job_get(app_handle: &AppHandle, request: RpcRequest) -> RpcResponse {
-    let job_id = match request.params.get("jobId") {
-        Some(Value::String(id)) => id.clone(),
-        _ => {
-            return RpcResponse {
-                correlation_id: request.correlation_id,
-                result: None,
-                error: Some("Missing or invalid jobId parameter".to_string()),
-                is_final: true,
-            };
-        }
-    };
+async fn handle_job_get(app_handle: &AppHandle, request: RpcRequest) -> RpcResult<Value> {
+    let job_id = request.params.get("jobId")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| RpcError::invalid_params("Missing param: jobId"))?
+        .to_string();
 
     // Fixed parameter order: job_id, app_handle
-    match job_commands::get_background_job_by_id_command(job_id.clone(), app_handle.clone()).await {
-        Ok(Some(job)) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: Some(json!({ "job": job })),
-            error: None,
-            is_final: true,
-        },
-        Ok(None) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: None,
-            error: Some(format!("Job not found: {}", job_id)),
-            is_final: true,
-        },
-        Err(error) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: None,
-            error: Some(error.to_string()),
-            is_final: true,
-        },
-    }
+    let job = job_commands::get_background_job_by_id_command(job_id.clone(), app_handle.clone())
+        .await
+        .map_err(RpcError::from)?
+        .ok_or_else(|| RpcError::not_found(format!("Job not found: {}", job_id)))?;
+
+    Ok(json!({ "job": job }))
 }
 
-async fn handle_job_cancel(app_handle: &AppHandle, request: RpcRequest) -> RpcResponse {
-    let job_id = match request.params.get("jobId") {
-        Some(Value::String(id)) => id.clone(),
-        _ => {
-            return RpcResponse {
-                correlation_id: request.correlation_id,
-                result: None,
-                error: Some("Missing or invalid jobId parameter".to_string()),
-                is_final: true,
-            };
-        }
-    };
+async fn handle_job_cancel(app_handle: &AppHandle, request: RpcRequest) -> RpcResult<Value> {
+    let job_id = request.params.get("jobId")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| RpcError::invalid_params("Missing param: jobId"))?
+        .to_string();
 
     // Fixed parameter order: job_id, app_handle
-    match job_commands::cancel_background_job_command(job_id, app_handle.clone()).await {
-        Ok(_) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: Some(json!({ "success": true })),
-            error: None,
-            is_final: true,
-        },
-        Err(error) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: None,
-            error: Some(error.to_string()),
-            is_final: true,
-        },
-    }
+    job_commands::cancel_background_job_command(job_id, app_handle.clone())
+        .await
+        .map_err(RpcError::from)?;
+
+    Ok(json!({ "success": true }))
 }
 
-async fn handle_job_delete(app_handle: &AppHandle, request: RpcRequest) -> RpcResponse {
-    let job_id = match request.params.get("jobId") {
-        Some(Value::String(id)) => id.clone(),
-        _ => {
-            return RpcResponse {
-                correlation_id: request.correlation_id,
-                result: None,
-                error: Some("Missing or invalid jobId parameter".to_string()),
-                is_final: true,
-            };
-        }
-    };
+async fn handle_job_delete(app_handle: &AppHandle, request: RpcRequest) -> RpcResult<Value> {
+    let job_id = request.params.get("jobId")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| RpcError::invalid_params("Missing param: jobId"))?
+        .to_string();
 
-    match job_commands::delete_background_job_command(job_id, app_handle.clone()).await {
-        Ok(_) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: Some(json!({ "success": true })),
-            error: None,
-            is_final: true,
-        },
-        Err(error) => RpcResponse {
-            correlation_id: request.correlation_id,
-            result: None,
-            error: Some(error.to_string()),
-            is_final: true,
-        },
-    }
+    job_commands::delete_background_job_command(job_id, app_handle.clone())
+        .await
+        .map_err(RpcError::from)?;
+
+    Ok(json!({ "success": true }))
+}
+
+async fn handle_job_update_content(app_handle: &AppHandle, request: RpcRequest) -> RpcResult<Value> {
+    let job_id = request.params.get("jobId")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| RpcError::invalid_params("Missing param: jobId"))?
+        .to_string();
+
+    let content = request.params.get("content")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| RpcError::invalid_params("Missing param: content"))?
+        .to_string();
+
+    crate::commands::implementation_plan_commands::update_implementation_plan_content_command(
+        job_id,
+        content,
+        app_handle.clone(),
+    )
+    .await
+    .map_err(RpcError::from)?;
+
+    Ok(json!({ "success": true }))
 }

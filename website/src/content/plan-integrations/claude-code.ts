@@ -44,6 +44,11 @@ export const claudeCodeContent: PlanIntegrationContent = {
       description:
         'PlanToCode generates detailed file-by-file specs. Claude Code Plan Mode lets you review and approve changes. This two-stage workflow ensures enterprise-grade governance and visibility.',
     },
+    {
+      title: 'Plan Mode specifics',
+      description:
+        'Toggle Plan Mode with Shift+Tab (read-only analysis). Start in Plan Mode via --permission-mode plan.',
+    },
   ],
 
   quickstart: [
@@ -69,6 +74,17 @@ export const claudeCodeContent: PlanIntegrationContent = {
     },
   ],
 
+  learnMore: [
+    {
+      label: 'Plan Mode guide',
+      href: 'https://docs.anthropic.com/en/docs/claude-code/tutorials',
+    },
+    {
+      label: 'Permission modes',
+      href: 'https://docs.anthropic.com/fr/docs/claude-code/sdk/sdk-permissions',
+    },
+  ],
+
   verifiedFacts: [
     {
       claim: 'Claude Code is an official AI coding CLI from Anthropic with built-in planning capabilities.',
@@ -88,6 +104,16 @@ export const claudeCodeContent: PlanIntegrationContent = {
     {
       claim: 'Claude Code integrates with local development environments and respects user permissions.',
       href: 'https://docs.anthropic.com/claude/docs/claude-code',
+      source: 'official',
+    },
+    {
+      claim: 'Plan Mode tutorial',
+      href: 'https://docs.anthropic.com/en/docs/claude-code/tutorials',
+      source: 'official',
+    },
+    {
+      claim: 'SDK permissions note',
+      href: 'https://docs.anthropic.com/fr/docs/claude-code/sdk/sdk-permissions',
       source: 'official',
     },
   ],

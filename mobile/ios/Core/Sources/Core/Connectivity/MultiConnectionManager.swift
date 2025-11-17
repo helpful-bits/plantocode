@@ -490,7 +490,11 @@ public final class MultiConnectionManager: ObservableObject {
 
     public func setActive(_ deviceId: UUID?) {
         activeDeviceId = deviceId
-        persistActiveDeviceId()
+        if deviceId == nil {
+            UserDefaults.standard.removeObject(forKey: activeDeviceKey)
+        } else {
+            persistActiveDeviceId()
+        }
     }
 
     public func allConnections() -> [UUID] {

@@ -1,3 +1,4 @@
+import { GlassCard } from '@/components/ui/GlassCard';
 import { BlogArticle } from '@/components/blog/BlogArticle';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Link } from '@/i18n/navigation';
@@ -46,7 +47,7 @@ export default function WhatIsAICodePlanningPage() {
       author="PlanToCode Team"
     >
 
-          <div className="bg-primary/5 border-l-4 border-primary rounded-r-lg p-6 my-8">
+          <GlassCard className="my-8" highlighted>
             <h2 className="text-2xl font-bold mb-4">TL;DR</h2>
             <p className="mb-0">
               <strong>AI Code Planning</strong> is the practice of using AI to generate detailed implementation plans
@@ -54,7 +55,7 @@ export default function WhatIsAICodePlanningPage() {
               roadmap that humans review and approve. This prevents duplicate files, wrong paths, and production
               breaks common with direct AI code generation.
             </p>
-          </div>
+          </GlassCard>
 
           <h2 className="text-3xl font-bold mt-12 mb-6">The Problem with Direct AI Code Generation</h2>
 
@@ -63,7 +64,7 @@ export default function WhatIsAICodePlanningPage() {
             and seconds later, files are created or modified. Fast, but chaotic:
           </p>
 
-          <blockquote className="border-l-4 border-primary/50 pl-6 pr-4 py-4 my-8 bg-primary/5 rounded-r-lg not-italic">
+          <GlassCard className="my-8" highlighted>
             <h3 className="text-xl font-semibold mb-4">Common Problems</h3>
             <ul className="space-y-2 mb-0">
               <li>🔴 <strong>Duplicate files:</strong> AI creates <code>user-service.ts</code> when <code>userService.ts</code> already exists</li>
@@ -71,7 +72,7 @@ export default function WhatIsAICodePlanningPage() {
               <li>🔴 <strong>Missed dependencies:</strong> Updates a function without updating files that import it</li>
               <li>🔴 <strong>Breaking changes:</strong> Modifies an API that 15 components depend on without updating them</li>
             </ul>
-          </blockquote>
+          </GlassCard>
 
           <p>
             These aren't edge cases. Browse the <a href="https://forum.cursor.com" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">Cursor forum</a> or <a href="https://community.openai.com/c/api/copilot/49" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">Copilot discussions</a>,
@@ -84,7 +85,7 @@ export default function WhatIsAICodePlanningPage() {
             AI code planning flips the workflow: instead of generating code immediately, AI creates a <strong>detailed implementation plan</strong> first.
           </p>
 
-          <div className="my-8">
+          <GlassCard className="my-8">
             <h3 className="text-xl font-semibold mb-4">The Planning-First Workflow</h3>
             <ol className="space-y-3 mb-0">
               <li>
@@ -118,7 +119,7 @@ export default function WhatIsAICodePlanningPage() {
                 </p>
               </li>
             </ol>
-          </div>
+          </GlassCard>
 
           <p className="mt-6">
             The key difference: <strong>visibility and control</strong>. You see what will change before any code is written.
@@ -126,44 +127,46 @@ export default function WhatIsAICodePlanningPage() {
 
           <h2 className="text-3xl font-bold mt-12 mb-6">AI Code Planning vs AI Code Generation</h2>
 
-          <div className="overflow-x-auto my-8">
-            <table className="min-w-full">
-              <thead>
-                <tr>
-                  <th>Aspect</th>
-                  <th>Direct Generation</th>
-                  <th>Planning-First</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td><strong>Speed</strong></td>
-                  <td>⚡ Instant (seconds)</td>
-                  <td>⏱️ Slightly slower (+ review time)</td>
-                </tr>
-                <tr>
-                  <td><strong>Visibility</strong></td>
-                  <td>❌ After-the-fact</td>
-                  <td>✅ Pre-execution</td>
-                </tr>
-                <tr>
-                  <td><strong>Control</strong></td>
-                  <td>❌ AI decides everything</td>
-                  <td>✅ Human approval required</td>
-                </tr>
-                <tr>
-                  <td><strong>Error Recovery</strong></td>
-                  <td>🔴 Hard (undo/revert)</td>
-                  <td>✅ Easy (edit plan)</td>
-                </tr>
-                <tr>
-                  <td><strong>Best For</strong></td>
-                  <td>Prototypes, small projects</td>
-                  <td>Production code, teams, large codebases</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <GlassCard className="my-8">
+            <div className="overflow-x-auto">
+              <table className="min-w-full">
+                <thead>
+                  <tr>
+                    <th>Aspect</th>
+                    <th>Direct Generation</th>
+                    <th>Planning-First</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>Speed</strong></td>
+                    <td>⚡ Instant (seconds)</td>
+                    <td>⏱️ Slightly slower (+ review time)</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Visibility</strong></td>
+                    <td>❌ After-the-fact</td>
+                    <td>✅ Pre-execution</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Control</strong></td>
+                    <td>❌ AI decides everything</td>
+                    <td>✅ Human approval required</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Error Recovery</strong></td>
+                    <td>🔴 Hard (undo/revert)</td>
+                    <td>✅ Easy (edit plan)</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Best For</strong></td>
+                    <td>Prototypes, small projects</td>
+                    <td>Production code, teams, large codebases</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </GlassCard>
 
           <h2 className="text-3xl font-bold mt-12 mb-6">Why Planning Matters for Large Codebases</h2>
 
@@ -172,7 +175,7 @@ export default function WhatIsAICodePlanningPage() {
             Impossible. You need structure.
           </p>
 
-          <div className="my-8">
+          <GlassCard className="my-8">
             <h3 className="text-xl font-semibold mb-4">Scale Challenges</h3>
             <div className="grid md:grid-cols-2 gap-4">
               <div>
@@ -194,7 +197,7 @@ export default function WhatIsAICodePlanningPage() {
                 </ul>
               </div>
             </div>
-          </div>
+          </GlassCard>
 
           <p className="mt-6">
             <strong>Example:</strong> You ask AI to "refactor user authentication." In a small project, it modifies 3 files.
@@ -205,42 +208,42 @@ export default function WhatIsAICodePlanningPage() {
           <h2 className="text-3xl font-bold mt-12 mb-6">Key Features of AI Code Planning Tools</h2>
 
           <div className="grid md:grid-cols-2 gap-6 my-8">
-            <div>
+            <GlassCard>
               <h3 className="text-xl font-semibold mb-3">🗺️ Dependency Mapping</h3>
               <p className="text-sm">
                 AI analyzes import statements, type definitions, and cross-file references to identify all files
                 affected by a change. No more "forgot to update the tests" surprises.
               </p>
-            </div>
+            </GlassCard>
 
-            <div>
+            <GlassCard>
               <h3 className="text-xl font-semibold mb-3">📋 File-by-File Breakdown</h3>
               <p className="text-sm">
                 Plans specify exactly what changes in each file: "Update <code>auth.ts</code> line 45-67, add new function..."
                 You know the scope before execution.
               </p>
-            </div>
+            </GlassCard>
 
-            <div>
+            <GlassCard>
               <h3 className="text-xl font-semibold mb-3">✅ Human Approval Gate</h3>
               <p className="text-sm">
                 Nothing happens automatically. Review the plan, edit it, approve it—then hand off to code generation.
                 You stay in control.
               </p>
-            </div>
+            </GlassCard>
 
-            <div>
+            <GlassCard>
               <h3 className="text-xl font-semibold mb-3">🔄 Multi-Model Planning</h3>
               <p className="text-sm">
                 Generate plans from Claude, GPT-4, and Gemini. Compare approaches, merge the best ideas.
                 Diversity improves plan quality.
               </p>
-            </div>
+            </GlassCard>
           </div>
 
           <h2 className="text-3xl font-bold mt-12 mb-6">Real-World Use Cases</h2>
 
-          <blockquote className="border-l-4 border-primary/50 pl-6 pr-4 py-4 my-8 bg-primary/5 rounded-r-lg not-italic">
+          <GlassCard className="my-8">
             <h3 className="text-xl font-semibold mb-4">1. Refactoring a Monolith to Microservices</h3>
             <p className="mb-2">
               <strong>Task:</strong> Extract user management into a separate service
@@ -253,9 +256,9 @@ export default function WhatIsAICodePlanningPage() {
               <strong>With planning:</strong> Plan shows service boundary, API contracts, migration order. Review
               catches breaking changes before they happen. Clean execution.
             </p>
-          </blockquote>
+          </GlassCard>
 
-          <blockquote className="border-l-4 border-primary/50 pl-6 pr-4 py-4 my-8 bg-primary/5 rounded-r-lg not-italic">
+          <GlassCard className="my-8">
             <h3 className="text-xl font-semibold mb-4">2. Upgrading a Major Library</h3>
             <p className="mb-2">
               <strong>Task:</strong> Migrate from React Router v5 to v6
@@ -268,9 +271,9 @@ export default function WhatIsAICodePlanningPage() {
               <strong>With planning:</strong> Plan identifies all route files, shows v5→v6 pattern changes,
               catches edge cases in review. Smooth migration.
             </p>
-          </blockquote>
+          </GlassCard>
 
-          <blockquote className="border-l-4 border-primary/50 pl-6 pr-4 py-4 my-8 bg-primary/5 rounded-r-lg not-italic">
+          <GlassCard className="my-8">
             <h3 className="text-xl font-semibold mb-4">3. Adding Feature Flags to 200 Components</h3>
             <p className="mb-2">
               <strong>Task:</strong> Wrap experimental features in feature flags
@@ -283,11 +286,11 @@ export default function WhatIsAICodePlanningPage() {
               <strong>With planning:</strong> Plan shows standardized flag pattern, lists all 200 components,
               ensures consistency. QA verifies against the plan.
             </p>
-          </blockquote>
+          </GlassCard>
 
           <h2 className="text-3xl font-bold mt-12 mb-6">When to Use AI Code Planning</h2>
 
-          <div className="my-8">
+          <GlassCard className="my-8">
             <h3 className="text-xl font-semibold mb-4">Use Planning When:</h3>
             <ul className="space-y-2 mb-0">
               <li>✓ <strong>Large codebase (50K+ lines)</strong> - Too complex to review all changes manually</li>
@@ -297,16 +300,16 @@ export default function WhatIsAICodePlanningPage() {
               <li>✓ <strong>Complex refactoring</strong> - Architectural changes, API migrations, library upgrades</li>
               <li>✓ <strong>Monorepos</strong> - Cross-package changes with shared dependencies</li>
             </ul>
-          </div>
+          </GlassCard>
 
-          <div className="my-8">
+          <GlassCard className="my-8">
             <h3 className="text-xl font-semibold mb-4">Skip Planning When:</h3>
             <ul className="space-y-2 mb-0">
               <li>• <strong>Prototypes</strong> - Throwaway code where breaking things is fine</li>
               <li>• <strong>Single-file changes</strong> - Isolated modifications with no dependencies</li>
               <li>• <strong>Small projects (&lt;1K lines)</strong> - Easy to review everything manually</li>
             </ul>
-          </div>
+          </GlassCard>
 
           <h2 className="text-3xl font-bold mt-12 mb-6">How to Get Started with AI Code Planning</h2>
 
@@ -339,13 +342,13 @@ export default function WhatIsAICodePlanningPage() {
             </li>
           </ol>
 
-          <blockquote className="border-l-4 border-primary/50 pl-6 pr-4 py-4 my-8 bg-primary/5 rounded-r-lg not-italic">
+          <GlassCard className="my-8" highlighted>
             <h3 className="text-xl font-semibold mb-3">Pro Tip: Multi-Model Planning</h3>
             <p className="text-sm mb-0">
               Don't rely on a single AI model. Generate plans from Claude Sonnet, GPT-4, and Gemini Pro. Compare
               approaches—one might catch edge cases the others miss. Merge the best ideas into a final plan.
             </p>
-          </blockquote>
+          </GlassCard>
 
           <h2 className="text-3xl font-bold mt-12 mb-6">The Future of AI-Assisted Development</h2>
 
@@ -358,27 +361,6 @@ export default function WhatIsAICodePlanningPage() {
             The trend is clear: <strong>AI should help us think, not just type</strong>. Code planning tools are the
             missing piece between "AI generated some code" and "AI helped me ship a solid feature."
           </p>
-
-          <div className="bg-gradient-to-r from-primary/20 to-primary/10 border border-primary/30 rounded-lg p-8 my-12 text-center">
-            <h3 className="text-2xl font-bold mb-4">Try Planning-First Development</h3>
-            <p className="text-foreground/80 mb-6">
-              See how AI code planning prevents chaos in large codebases. Review before execution.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <LinkWithArrow
-                href="/downloads"
-                className="inline-flex items-center"
-              >
-                Download PlanToCode
-              </LinkWithArrow>
-              <LinkWithArrow
-                href="/docs/implementation-plans"
-                className="inline-flex items-center"
-              >
-                Read the Docs
-              </LinkWithArrow>
-            </div>
-          </div>
 
           <h2 className="text-3xl font-bold mt-12 mb-6">Further Reading</h2>
 

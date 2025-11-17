@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { BlogArticle } from '@/components/blog/BlogArticle';
-import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Link } from '@/i18n/navigation';
 import { locales } from '@/i18n/config';
 import { loadMessages, type Locale } from '@/lib/i18n';
@@ -162,94 +161,145 @@ export default function BestAICodingAssistantsPage() {
           </p>
 
           <h3>GitHub Copilot: Best AI Coding Assistant for Autocomplete</h3>
-          <GlassCard className="my-6">
-            <p><strong>Best for:</strong> General autocomplete across all languages</p>
-            <p><strong>Pricing:</strong> $10/month (free for students/open-source maintainers)</p>
 
-            <p><strong>Strengths:</strong></p>
-            <ul>
-              <li>Excellent context awareness within single files</li>
-              <li>Works in VS Code, JetBrains IDEs, Neovim, and more</li>
-              <li>Strong documentation and test generation</li>
-              <li>Massive training dataset from GitHub repositories</li>
-              <li>Ghost text preview before accepting suggestions</li>
-            </ul>
+          <p><strong>Best for:</strong> General autocomplete across all languages</p>
+          <p><strong>Pricing:</strong> $10/month (free for students/open-source maintainers)</p>
 
-            <p><strong>Weaknesses:</strong></p>
-            <ul>
-              <li>No implementation planning features</li>
-              <li>Can suggest insecure code patterns (SQL injection, XSS vulnerabilities)</li>
-              <li>Limited multi-file understanding (doesn&apos;t see full codebase context)</li>
-              <li>Requires manual review of every suggestion</li>
-              <li>Sometimes suggests outdated libraries or deprecated APIs</li>
-            </ul>
+          <h4>Strengths</h4>
+          <ul>
+            <li>
+              <strong>Excellent context awareness:</strong> Understands code within single files very well
+            </li>
+            <li>
+              <strong>Multi-IDE support:</strong> Works in VS Code, JetBrains IDEs, Neovim, and more
+            </li>
+            <li>
+              <strong>Documentation generation:</strong> Strong at generating docs and tests
+            </li>
+            <li>
+              <strong>Training dataset:</strong> Massive dataset from GitHub repositories
+            </li>
+            <li>
+              <strong>Ghost text preview:</strong> See suggestions before accepting them
+            </li>
+          </ul>
 
-            <p><strong>Real-world use case:</strong></p>
-            <p>
-              A developer building a REST API used Copilot to autocomplete boilerplate route handlers.
-              It saved ~30% of typing time but suggested an outdated authentication pattern that had
-              to be manually corrected. Best used for routine code, not security-critical logic.
-            </p>
-          </GlassCard>
+          <h4>Weaknesses</h4>
+          <ul>
+            <li>
+              <strong>No planning features:</strong> Jumps straight to code without showing what will change
+            </li>
+            <li>
+              <strong>Security concerns:</strong> Can suggest insecure code patterns (SQL injection, XSS vulnerabilities)
+            </li>
+            <li>
+              <strong>Limited multi-file understanding:</strong> Doesn&apos;t see full codebase context
+            </li>
+            <li>
+              <strong>Manual review required:</strong> Every suggestion needs manual review
+            </li>
+            <li>
+              <strong>Outdated suggestions:</strong> Sometimes suggests outdated libraries or deprecated APIs
+            </li>
+          </ul>
+
+          <p><strong>Real-world use case:</strong></p>
+          <p>
+            A developer building a REST API used Copilot to autocomplete boilerplate route handlers.
+            It saved ~30% of typing time but suggested an outdated authentication pattern that had
+            to be manually corrected. Best used for routine code, not security-critical logic.
+          </p>
 
           <h3>Tabnine: Best Coding AI for Privacy-Focused Teams</h3>
-          <GlassCard className="my-6">
-            <p><strong>Best for:</strong> Organizations with strict data privacy requirements</p>
-            <p><strong>Pricing:</strong> $12/month (enterprise pricing available)</p>
 
-            <p><strong>Strengths:</strong></p>
-            <ul>
-              <li>On-premise deployment option (your code never leaves your servers)</li>
-              <li>Trains on your private codebase for better suggestions</li>
-              <li>GDPR and SOC 2 compliant</li>
-              <li>Works offline once trained</li>
-              <li>Team analytics dashboard</li>
-            </ul>
+          <p><strong>Best for:</strong> Organizations with strict data privacy requirements</p>
+          <p><strong>Pricing:</strong> $12/month (enterprise pricing available)</p>
 
-            <p><strong>Weaknesses:</strong></p>
-            <ul>
-              <li>Suggestion quality slightly below Copilot in our tests</li>
-              <li>Requires significant setup for on-premise deployment</li>
-              <li>Higher cost for enterprise features</li>
-              <li>Limited natural language to code translation</li>
-            </ul>
+          <h4>Strengths</h4>
+          <ul>
+            <li>
+              <strong>On-premise deployment:</strong> Your code never leaves your servers
+            </li>
+            <li>
+              <strong>Custom training:</strong> Trains on your private codebase for better suggestions
+            </li>
+            <li>
+              <strong>Compliance:</strong> GDPR and SOC 2 compliant
+            </li>
+            <li>
+              <strong>Offline mode:</strong> Works offline once trained
+            </li>
+            <li>
+              <strong>Team analytics:</strong> Dashboard showing adoption metrics
+            </li>
+          </ul>
 
-            <p><strong>Real-world use case:</strong></p>
-            <p>
-              A fintech startup chose Tabnine over Copilot due to regulatory requirements preventing
-              code from being sent to external servers. After training on their internal codebase,
-              suggestions improved to match their coding standards and internal libraries.
-            </p>
-          </GlassCard>
+          <h4>Weaknesses</h4>
+          <ul>
+            <li>
+              <strong>Suggestion quality:</strong> Slightly below Copilot in our tests
+            </li>
+            <li>
+              <strong>Complex setup:</strong> Requires significant setup for on-premise deployment
+            </li>
+            <li>
+              <strong>Higher cost:</strong> Enterprise features are more expensive
+            </li>
+            <li>
+              <strong>Limited NL to code:</strong> Natural language to code translation is limited
+            </li>
+          </ul>
+
+          <p><strong>Real-world use case:</strong></p>
+          <p>
+            A fintech startup chose Tabnine over Copilot due to regulatory requirements preventing
+            code from being sent to external servers. After training on their internal codebase,
+            suggestions improved to match their coding standards and internal libraries.
+          </p>
 
           <h3>Codeium: Best Free AI Coding Tool</h3>
-          <GlassCard className="my-6">
-            <p><strong>Best for:</strong> Developers wanting Copilot-like features for free</p>
-            <p><strong>Pricing:</strong> Free (Pro at $10/month for teams)</p>
 
-            <p><strong>Strengths:</strong></p>
-            <ul>
-              <li>Completely free for individual developers</li>
-              <li>Supports 80+ programming languages</li>
-              <li>Chat interface for explaining code</li>
-              <li>Fast inline suggestions (often faster than Copilot)</li>
-              <li>No telemetry or tracking in free tier</li>
-            </ul>
+          <p><strong>Best for:</strong> Developers wanting Copilot-like features for free</p>
+          <p><strong>Pricing:</strong> Free (Pro at $10/month for teams)</p>
 
-            <p><strong>Weaknesses:</strong></p>
-            <ul>
-              <li>Suggestion accuracy slightly below Copilot</li>
-              <li>Limited context window compared to premium tools</li>
-              <li>Free tier has rate limits during peak hours</li>
-            </ul>
+          <h4>Strengths</h4>
+          <ul>
+            <li>
+              <strong>Completely free:</strong> Full features for individual developers
+            </li>
+            <li>
+              <strong>80+ languages:</strong> Supports more languages than most competitors
+            </li>
+            <li>
+              <strong>Chat interface:</strong> Ask questions about your code
+            </li>
+            <li>
+              <strong>Fast suggestions:</strong> Often faster than Copilot in speed tests
+            </li>
+            <li>
+              <strong>No tracking:</strong> No telemetry or tracking in free tier
+            </li>
+          </ul>
 
-            <p><strong>Real-world use case:</strong></p>
-            <p>
-              An open-source project with 20+ contributors switched from Copilot to Codeium to avoid
-              requiring paid subscriptions. While suggestion quality was slightly lower, the zero-cost
-              model enabled broader adoption across the contributor base.
-            </p>
-          </GlassCard>
+          <h4>Weaknesses</h4>
+          <ul>
+            <li>
+              <strong>Accuracy:</strong> Suggestion accuracy slightly below Copilot
+            </li>
+            <li>
+              <strong>Context window:</strong> Limited compared to premium tools
+            </li>
+            <li>
+              <strong>Rate limits:</strong> Free tier has rate limits during peak hours
+            </li>
+          </ul>
+
+          <p><strong>Real-world use case:</strong></p>
+          <p>
+            An open-source project with 20+ contributors switched from Copilot to Codeium to avoid
+            requiring paid subscriptions. While suggestion quality was slightly lower, the zero-cost
+            model enabled broader adoption across the contributor base.
+          </p>
 
           <h2>Category 2: AI-Powered Code Editors</h2>
 
@@ -260,97 +310,152 @@ export default function BestAICodingAssistantsPage() {
           </p>
 
           <h3>Cursor: Best AI Coding Assistant Overall</h3>
-          <GlassCard className="my-6">
-            <p><strong>Best for:</strong> Full-file code generation and rapid prototyping</p>
-            <p><strong>Pricing:</strong> $20/month</p>
 
-            <p><strong>Strengths:</strong></p>
-            <ul>
-              <li>Cmd+K for inline editing is incredibly intuitive</li>
-              <li>Can generate entire files from natural language</li>
-              <li>Multi-file awareness (understands project structure)</li>
-              <li>Built on VS Code, so existing extensions work</li>
-              <li>Composer mode for orchestrating multi-file changes</li>
-              <li>Best-in-class code quality in our testing</li>
-            </ul>
+          <p><strong>Best for:</strong> Full-file code generation and rapid prototyping</p>
+          <p><strong>Pricing:</strong> $20/month</p>
 
-            <p><strong>Weaknesses:</strong></p>
-            <ul>
-              <li>No preview of which files will change before execution</li>
-              <li>Frequently creates duplicate files (UserService.ts and user-service.ts)</li>
-              <li>Can hallucinate file paths in large codebases</li>
-              <li>No approval workflow for team environments</li>
-              <li>Expensive for teams ($20/user/month adds up)</li>
-            </ul>
+          <h4>Strengths</h4>
+          <ul>
+            <li>
+              <strong>Cmd+K inline editing:</strong> Incredibly intuitive editing workflow
+            </li>
+            <li>
+              <strong>Full-file generation:</strong> Can generate entire files from natural language
+            </li>
+            <li>
+              <strong>Multi-file awareness:</strong> Understands project structure
+            </li>
+            <li>
+              <strong>Built on VS Code:</strong> All existing extensions work
+            </li>
+            <li>
+              <strong>Composer mode:</strong> Orchestrates multi-file changes
+            </li>
+            <li>
+              <strong>Code quality:</strong> Best-in-class in our testing
+            </li>
+          </ul>
 
-            <p><strong>Real-world use case:</strong></p>
-            <p>
-              A developer asked Cursor to add authentication to an e-commerce app. It generated
-              excellent code across 8 files, but created a new <code>AuthService.ts</code> file
-              instead of using the existing <code>auth-service.ts</code>, causing merge conflicts.
-              This is why planning tools like PlanToCode matter.
-            </p>
-          </GlassCard>
+          <h4>Weaknesses</h4>
+          <ul>
+            <li>
+              <strong>No preview:</strong> Doesn&apos;t show which files will change before execution
+            </li>
+            <li>
+              <strong>Duplicate files:</strong> Frequently creates duplicates (UserService.ts and user-service.ts)
+            </li>
+            <li>
+              <strong>Path hallucinations:</strong> Can hallucinate file paths in large codebases
+            </li>
+            <li>
+              <strong>No approval workflow:</strong> Not suitable for team governance
+            </li>
+            <li>
+              <strong>Expensive:</strong> $20/user/month adds up for teams
+            </li>
+          </ul>
+
+          <p><strong>Real-world use case:</strong></p>
+          <p>
+            A developer asked Cursor to add authentication to an e-commerce app. It generated
+            excellent code across 8 files, but created a new <code>AuthService.ts</code> file
+            instead of using the existing <code>auth-service.ts</code>, causing merge conflicts.
+            This is why planning tools like PlanToCode matter.
+          </p>
 
           <h3>Windsurf: Best AI Coding Tool for Beginners</h3>
-          <GlassCard className="my-6">
-            <p><strong>Best for:</strong> Developers new to AI coding assistants</p>
-            <p><strong>Pricing:</strong> $15/month</p>
 
-            <p><strong>Strengths:</strong></p>
-            <ul>
-              <li>Most intuitive user interface we tested</li>
-              <li>Visual flow showing changes before applying</li>
-              <li>Excellent onboarding and tutorials</li>
-              <li>Built-in templates for common tasks</li>
-              <li>Less intimidating than Cursor for new users</li>
-            </ul>
+          <p><strong>Best for:</strong> Developers new to AI coding assistants</p>
+          <p><strong>Pricing:</strong> $15/month</p>
 
-            <p><strong>Weaknesses:</strong></p>
-            <ul>
-              <li>Smaller community than Cursor or Copilot</li>
-              <li>Limited extension ecosystem</li>
-              <li>Code quality slightly below Cursor in complex scenarios</li>
-              <li>Fewer integrations with third-party tools</li>
-            </ul>
+          <h4>Strengths</h4>
+          <ul>
+            <li>
+              <strong>Intuitive UI:</strong> Most intuitive user interface we tested
+            </li>
+            <li>
+              <strong>Visual flow:</strong> Shows changes before applying
+            </li>
+            <li>
+              <strong>Great onboarding:</strong> Excellent onboarding and tutorials
+            </li>
+            <li>
+              <strong>Built-in templates:</strong> Templates for common tasks
+            </li>
+            <li>
+              <strong>Beginner-friendly:</strong> Less intimidating than Cursor for new users
+            </li>
+          </ul>
 
-            <p><strong>Real-world use case:</strong></p>
-            <p>
-              A junior developer switching from traditional IDEs found Windsurf&apos;s visual approach
-              easier to understand than Cursor&apos;s command-based interface. The preview feature
-              helped build confidence before applying AI-generated changes.
-            </p>
-          </GlassCard>
+          <h4>Weaknesses</h4>
+          <ul>
+            <li>
+              <strong>Smaller community:</strong> Less community support than Cursor or Copilot
+            </li>
+            <li>
+              <strong>Limited extensions:</strong> Extension ecosystem is limited
+            </li>
+            <li>
+              <strong>Code quality:</strong> Slightly below Cursor in complex scenarios
+            </li>
+            <li>
+              <strong>Fewer integrations:</strong> Limited third-party tool integrations
+            </li>
+          </ul>
+
+          <p><strong>Real-world use case:</strong></p>
+          <p>
+            A junior developer switching from traditional IDEs found Windsurf&apos;s visual approach
+            easier to understand than Cursor&apos;s command-based interface. The preview feature
+            helped build confidence before applying AI-generated changes.
+          </p>
 
           <h3>Aider: Best AI Coding Assistant for CLI Workflows</h3>
-          <GlassCard className="my-6">
-            <p><strong>Best for:</strong> Terminal-focused developers and automation</p>
-            <p><strong>Pricing:</strong> Free and open-source</p>
 
-            <p><strong>Strengths:</strong></p>
-            <ul>
-              <li>Works entirely in the terminal (no GUI required)</li>
-              <li>Scriptable and automatable</li>
-              <li>Git-aware (automatically creates commits)</li>
-              <li>Can use any LLM backend (GPT-4, Claude, local models)</li>
-              <li>Completely free and open-source</li>
-            </ul>
+          <p><strong>Best for:</strong> Terminal-focused developers and automation</p>
+          <p><strong>Pricing:</strong> Free and open-source</p>
 
-            <p><strong>Weaknesses:</strong></p>
-            <ul>
-              <li>Steep learning curve for GUI-oriented developers</li>
-              <li>No visual diff preview</li>
-              <li>Requires configuring API keys manually</li>
-              <li>Limited multi-file refactoring compared to Cursor</li>
-            </ul>
+          <h4>Strengths</h4>
+          <ul>
+            <li>
+              <strong>Terminal-native:</strong> Works entirely in the terminal (no GUI required)
+            </li>
+            <li>
+              <strong>Scriptable:</strong> Fully scriptable and automatable
+            </li>
+            <li>
+              <strong>Git-aware:</strong> Automatically creates commits with messages
+            </li>
+            <li>
+              <strong>Model-agnostic:</strong> Can use any LLM backend (GPT-4, Claude, local models)
+            </li>
+            <li>
+              <strong>Open-source:</strong> Completely free and open-source
+            </li>
+          </ul>
 
-            <p><strong>Real-world use case:</strong></p>
-            <p>
-              A DevOps engineer integrated Aider into CI/CD pipelines to automatically fix linting
-              errors. Running <code>aider --yes-always --message &quot;Fix all ESLint errors&quot;</code>
-              in pre-commit hooks reduced manual cleanup by 70%.
-            </p>
-          </GlassCard>
+          <h4>Weaknesses</h4>
+          <ul>
+            <li>
+              <strong>Learning curve:</strong> Steep learning curve for GUI-oriented developers
+            </li>
+            <li>
+              <strong>No visual diff:</strong> No visual diff preview
+            </li>
+            <li>
+              <strong>Manual setup:</strong> Requires configuring API keys manually
+            </li>
+            <li>
+              <strong>Limited refactoring:</strong> Limited multi-file refactoring compared to Cursor
+            </li>
+          </ul>
+
+          <p><strong>Real-world use case:</strong></p>
+          <p>
+            A DevOps engineer integrated Aider into CI/CD pipelines to automatically fix linting
+            errors. Running <code>aider --yes-always --message &quot;Fix all ESLint errors&quot;</code>
+            in pre-commit hooks reduced manual cleanup by 70%.
+          </p>
 
           <h2>Category 3: Implementation Planning Tools</h2>
 
@@ -361,77 +466,76 @@ export default function BestAICodingAssistantsPage() {
           </p>
 
           <h3>PlanToCode: Best AI Coding Tool for Teams and Large Codebases</h3>
-          <GlassCard className="my-6">
-            <p><strong>Best for:</strong> Planning multi-file changes before code execution</p>
-            <p><strong>Pricing:</strong> Pay-as-you-go (no subscription required)</p>
 
-            <p><strong>The Unique Approach:</strong></p>
-            <p>
-              Unlike code generators that immediately modify files, PlanToCode creates a detailed
-              implementation plan showing exactly which files will change, what functions will be
-              added or modified, and how components will interact. You review and approve the plan
-              before any code is generated.
-            </p>
+          <p><strong>Best for:</strong> Planning multi-file changes before code execution</p>
+          <p><strong>Pricing:</strong> Pay-as-you-go (no subscription required)</p>
 
-            <p><strong>Why This Matters:</strong></p>
-            <ul>
-              <li>
-                <strong>Prevents duplicate files:</strong> See that it&apos;s creating <code>UserService.ts</code>
-                when <code>user-service.ts</code> already exists? Reject the plan and clarify.
-              </li>
-              <li>
-                <strong>Catches wrong file paths:</strong> Planning phase reveals hallucinated imports
-                like <code>@/utils/helper</code> when the real path is <code>@/lib/helpers</code>.
-              </li>
-              <li>
-                <strong>Provides governance:</strong> Team leads can review plans before junior developers
-                execute changes, preventing architectural mistakes.
-              </li>
-              <li>
-                <strong>Works with any AI tool:</strong> Use the plan with Cursor, Copilot, or Claude Code
-                for actual code generation.
-              </li>
-              <li>
-                <strong>Reduces debugging time:</strong> Fixing a bad plan takes 2 minutes. Fixing bad
-                generated code takes 2 hours.
-              </li>
-            </ul>
+          <p><strong>The Unique Approach:</strong></p>
+          <p>
+            Unlike code generators that immediately modify files, PlanToCode creates a detailed
+            implementation plan showing exactly which files will change, what functions will be
+            added or modified, and how components will interact. You review and approve the plan
+            before any code is generated.
+          </p>
 
-            <p><strong>How It Works:</strong></p>
-            <ol>
-              <li>Describe your feature: &quot;Add user authentication with JWT tokens&quot;</li>
-              <li>PlanToCode analyzes your codebase and generates an implementation plan</li>
-              <li>Review the plan: Which files will change? Are the paths correct?</li>
-              <li>Approve or request revisions</li>
-              <li>Execute the plan with your preferred code generator</li>
-            </ol>
+          <p><strong>Why This Matters:</strong></p>
+          <ul>
+            <li>
+              <strong>Prevents duplicate files:</strong> See that it&apos;s creating <code>UserService.ts</code>
+              when <code>user-service.ts</code> already exists? Reject the plan and clarify.
+            </li>
+            <li>
+              <strong>Catches wrong file paths:</strong> Planning phase reveals hallucinated imports
+              like <code>@/utils/helper</code> when the real path is <code>@/lib/helpers</code>.
+            </li>
+            <li>
+              <strong>Provides governance:</strong> Team leads can review plans before junior developers
+              execute changes, preventing architectural mistakes.
+            </li>
+            <li>
+              <strong>Works with any AI tool:</strong> Use the plan with Cursor, Copilot, or Claude Code
+              for actual code generation.
+            </li>
+            <li>
+              <strong>Reduces debugging time:</strong> Fixing a bad plan takes 2 minutes. Fixing bad
+              generated code takes 2 hours.
+            </li>
+          </ul>
 
-            <p><strong>Best Used With:</strong></p>
-            <p>
-              PlanToCode + Cursor/Copilot/Claude Code is the winning combination. Use PlanToCode to
-              decide what to build, then use execution tools to generate the actual code.
-            </p>
+          <p><strong>How It Works:</strong></p>
+          <ol>
+            <li>Describe your feature: &quot;Add user authentication with JWT tokens&quot;</li>
+            <li>PlanToCode analyzes your codebase and generates an implementation plan</li>
+            <li>Review the plan: Which files will change? Are the paths correct?</li>
+            <li>Approve or request revisions</li>
+            <li>Execute the plan with your preferred code generator</li>
+          </ol>
 
-            <p><strong>Real-world use case:</strong></p>
-            <p>
-              A team at a SaaS company was struggling with Cursor creating inconsistent file structures.
-              After adopting PlanToCode, they caught 3 major issues in the planning phase:
-            </p>
-            <ul>
-              <li>Plan wanted to create a new database client instead of using the existing one</li>
-              <li>Import paths referenced a <code>/services</code> directory that didn&apos;t exist</li>
-              <li>Authentication logic was duplicated in two different files</li>
-            </ul>
-            <p>
-              They revised the plan, then executed it with Cursor. Total time saved: 4 hours of debugging.
-            </p>
+          <p><strong>Best Used With:</strong></p>
+          <p>
+            PlanToCode + Cursor/Copilot/Claude Code is the winning combination. Use PlanToCode to
+            decide what to build, then use execution tools to generate the actual code.
+          </p>
 
-            <p className="mt-6">
-              <Link href="/features/plan-mode" className="text-primary hover:underline">
-                Learn more about Plan Mode →
-              </Link>
-            </p>
-          </GlassCard>
+          <p><strong>Real-world use case:</strong></p>
+          <p>
+            A team at a SaaS company was struggling with Cursor creating inconsistent file structures.
+            After adopting PlanToCode, they caught 3 major issues in the planning phase:
+          </p>
+          <ul>
+            <li>Plan wanted to create a new database client instead of using the existing one</li>
+            <li>Import paths referenced a <code>/services</code> directory that didn&apos;t exist</li>
+            <li>Authentication logic was duplicated in two different files</li>
+          </ul>
+          <p>
+            They revised the plan, then executed it with Cursor. Total time saved: 4 hours of debugging.
+          </p>
+
+          <p className="mt-6">
+            <Link href="/features/plan-mode" className="text-primary hover:underline">
+              Learn more about Plan Mode →
+            </Link>
+          </p>
 
           <h2>What Most Developers Get Wrong About AI Coding</h2>
 
@@ -512,11 +616,11 @@ export default function BestAICodingAssistantsPage() {
           <h3>Solo Developer or Team?</h3>
           <ul>
             <li>
-              <strong>Solo:</strong> Cursor + GitHub Copilot is sufficient. You can move fast and fix
+              <strong>Solo developers:</strong> Cursor + GitHub Copilot is sufficient. You can move fast and fix
               mistakes quickly.
             </li>
             <li>
-              <strong>Team:</strong> Add PlanToCode for governance. Plans can be reviewed by senior
+              <strong>Teams:</strong> Add PlanToCode for governance. Plans can be reviewed by senior
               developers before juniors execute changes.
             </li>
           </ul>
@@ -524,11 +628,11 @@ export default function BestAICodingAssistantsPage() {
           <h3>Greenfield or Legacy Codebase?</h3>
           <ul>
             <li>
-              <strong>Greenfield:</strong> Code generators like Cursor work great. There&apos;s less
+              <strong>Greenfield projects:</strong> Code generators like Cursor work great. There&apos;s less
               context to understand, fewer existing patterns to match.
             </li>
             <li>
-              <strong>Legacy:</strong> Planning tools become critical. Large codebases have hidden
+              <strong>Legacy codebases:</strong> Planning tools become critical. Large codebases have hidden
               dependencies and naming conventions that AI often misses.
             </li>
           </ul>
@@ -625,36 +729,39 @@ export default function BestAICodingAssistantsPage() {
             We tracked 50 developers over 3 months to measure real productivity gains. Here&apos;s what we found:
           </p>
 
-          <GlassCard className="my-6">
-            <h3>Measured Results</h3>
-            <ul>
-              <li>
-                <strong>Autocomplete tools (Copilot):</strong> 25-30% reduction in typing time for
-                boilerplate code
-              </li>
-              <li>
-                <strong>Code generators (Cursor):</strong> 40-50% faster feature development for
-                well-defined tasks
-              </li>
-              <li>
-                <strong>Planning tools (PlanToCode):</strong> 60% reduction in debugging time caused
-                by AI mistakes
-              </li>
-              <li>
-                <strong>Combined stack:</strong> 2-3x overall productivity increase for complex features
-              </li>
-            </ul>
-          </GlassCard>
-
-          <p>
-            However, these gains came with important caveats:
-          </p>
-
+          <h3>Measured Results</h3>
           <ul>
-            <li>Senior developers saw bigger gains than juniors (experience matters for reviewing AI code)</li>
-            <li>Well-structured codebases benefited more than messy legacy code</li>
-            <li>Teams using planning tools first avoided hours of rework</li>
-            <li>Initial adoption took 2-4 weeks before productivity gains materialized</li>
+            <li>
+              <strong>Autocomplete tools (Copilot):</strong> 25-30% reduction in typing time for
+              boilerplate code
+            </li>
+            <li>
+              <strong>Code generators (Cursor):</strong> 40-50% faster feature development for
+              well-defined tasks
+            </li>
+            <li>
+              <strong>Planning tools (PlanToCode):</strong> 60% reduction in debugging time caused
+              by AI mistakes
+            </li>
+            <li>
+              <strong>Combined stack:</strong> 2-3x overall productivity increase for complex features
+            </li>
+          </ul>
+
+          <h3>Important Caveats</h3>
+          <ul>
+            <li>
+              <strong>Experience matters:</strong> Senior developers saw bigger gains than juniors (experience matters for reviewing AI code)
+            </li>
+            <li>
+              <strong>Code quality matters:</strong> Well-structured codebases benefited more than messy legacy code
+            </li>
+            <li>
+              <strong>Planning prevents rework:</strong> Teams using planning tools first avoided hours of rework
+            </li>
+            <li>
+              <strong>Learning period:</strong> Initial adoption took 2-4 weeks before productivity gains materialized
+            </li>
           </ul>
 
           <h2>The Future of AI Coding Assistants</h2>
@@ -730,15 +837,6 @@ export default function BestAICodingAssistantsPage() {
               </li>
             </ul>
           </GlassCard>
-
-          <div className="bg-primary/10 rounded-lg p-8 text-center my-12">
-            <h3>Try Planning-First Development</h3>
-            <p className="mb-6">
-              See how implementation planning prevents the chaos of duplicate files, wrong imports,
-              and unexpected modifications that waste hours of debugging time.
-            </p>
-            <LinkWithArrow href="/downloads">Download PlanToCode Free</LinkWithArrow>
-          </div>
 
           <div className="mt-12 border-t border-white/10 pt-8">
             <h3>Related Resources</h3>

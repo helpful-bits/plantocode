@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import { useState, useMemo, useCallback } from "react";
 
 import { useBackgroundJobs } from "@/contexts/background-jobs/useBackgroundJobs";
 import { useProject } from "@/contexts/project-context";
@@ -12,7 +12,6 @@ import { createMergedImplementationPlanAction } from "@/actions/ai/implementatio
 import { useTerminalSessions } from "@/contexts/terminal-sessions/useTerminalSessions";
 import { useSessionStateContext, useSessionActionsContext } from "@/contexts/session";
 import { invoke } from "@tauri-apps/api/core";
-import { queueMergeInstructionsUpdate, createDebouncer } from "@/actions/session/task-fields.actions";
 
 const logger = createLogger({ namespace: "ImplPlansLogic" });
 
@@ -52,29 +51,10 @@ export function useImplementationPlansLogic({
 
   const mergeInstructions = sessionState.currentSession?.mergeInstructions || "";
 
-  const lastSubmittedMergeInstructionsRef = useRef<string | null>(null);
-  const debouncedQueueUpdateRef = useRef<((sessionId: string, content: string) => void) | null>(null);
-
-  useEffect(() => {
-    if (!debouncedQueueUpdateRef.current) {
-      debouncedQueueUpdateRef.current = createDebouncer(queueMergeInstructionsUpdate, 250);
-    }
-    return () => {
-      debouncedQueueUpdateRef.current = null;
-    };
-  }, []);
-
   const handleMergeInstructionsChange = useCallback((content: string) => {
     if (!sessionId) return;
-
-    // Immediate local echo for responsive UI
+    // Update session state - will be persisted via normal session update mechanism
     updateCurrentSessionFields({ mergeInstructions: content });
-
-    // Only queue backend update if content has changed
-    if (content !== lastSubmittedMergeInstructionsRef.current && debouncedQueueUpdateRef.current) {
-      lastSubmittedMergeInstructionsRef.current = content;
-      debouncedQueueUpdateRef.current(sessionId, content);
-    }
   }, [sessionId, updateCurrentSessionFields]);
 
   // Filter implementation plans for the current project and optionally session
@@ -174,14 +154,8 @@ export function useImplementationPlansLogic({
 
         setSelectedPlanIds([]);
 
-        // Clear merge instructions immediately (both local and backend)
+        // Clear merge instructions
         updateCurrentSessionFields({ mergeInstructions: "" });
-        lastSubmittedMergeInstructionsRef.current = "";
-
-        // Cancel any pending debounced work
-        if (debouncedQueueUpdateRef.current) {
-          debouncedQueueUpdateRef.current = createDebouncer(queueMergeInstructionsUpdate, 250);
-        }
 
         await refreshJobs();
       } else {

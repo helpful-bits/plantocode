@@ -8,7 +8,6 @@ import { useProject } from "@/contexts/project-context";
 import { useBackgroundJob } from "@/contexts/_hooks/use-background-job";
 import { createImproveTextJobAction } from "@/actions/ai/improve-text";
 import { refineTaskDescriptionAction } from "@/actions/ai/task-refinement.actions";
-import { queueTaskDescriptionUpdate, queueMergeInstructionsUpdate } from "@/actions/session/task-fields.actions";
 import { logError } from "@/utils/error-handling";
 
 interface TextImprovementContextType {
@@ -132,12 +131,6 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
               }
               targetElem.dispatchEvent(new Event('input', { bubbles: true }));
 
-              if (sessionBasicFields.id) {
-                queueTaskDescriptionUpdate(sessionBasicFields.id, newValue).catch(err => {
-                  console.error("Failed to queue task description after improvement:", err);
-                });
-              }
-
               updateCurrentSessionFields({ taskDescription: newValue });
 
               window.dispatchEvent(new CustomEvent('task-description-local-change', {
@@ -164,12 +157,6 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
                 valueSetter.set.call(targetElem, newValue);
               }
               targetElem.dispatchEvent(new Event('input', { bubbles: true }));
-
-              if (sessionBasicFields.id) {
-                queueMergeInstructionsUpdate(sessionBasicFields.id, newValue).catch(err => {
-                  console.error("Failed to queue merge instructions after improvement:", err);
-                });
-              }
 
               updateCurrentSessionFields({ mergeInstructions: newValue });
 
@@ -213,7 +200,7 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
         setJobId(null);
       }
     }
-  }, [job, jobStatus, targetElement, targetMonacoEditor, selectionRange, selectedText, sessionBasicFields.id, updateCurrentSessionFields, queueTaskDescriptionUpdate, queueMergeInstructionsUpdate]);
+  }, [job, jobStatus, targetElement, targetMonacoEditor, selectionRange, selectedText, sessionBasicFields.id, updateCurrentSessionFields]);
 
   // Handle refinement job completion
   useEffect(() => {
@@ -260,13 +247,6 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
               }
               targetElement.dispatchEvent(new Event('input', { bubbles: true }));
 
-              // Queue to Rust for persistence
-              if (sessionBasicFields.id) {
-                queueTaskDescriptionUpdate(sessionBasicFields.id, newValue).catch(err => {
-                  console.error("Failed to queue task description after refinement:", err);
-                });
-              }
-
               // Sync session state to prevent disappearing text on blur
               updateCurrentSessionFields({ taskDescription: newValue });
 
@@ -299,13 +279,6 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
                 valueSetter.set.call(targetElement, newValue);
               }
               targetElement.dispatchEvent(new Event('input', { bubbles: true }));
-
-              // Queue to Rust for persistence
-              if (sessionBasicFields.id) {
-                queueMergeInstructionsUpdate(sessionBasicFields.id, newValue).catch(err => {
-                  console.error("Failed to queue merge instructions after refinement:", err);
-                });
-              }
 
               // Sync session state to prevent disappearing text on blur
               updateCurrentSessionFields({ mergeInstructions: newValue });
@@ -356,7 +329,7 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
         setRefineJobId(null);
       }
     }
-  }, [refineJob, targetElement, targetMonacoEditor, selectionRange, selectedText, flushSaves, updateCurrentSessionFields, sessionBasicFields.id, queueTaskDescriptionUpdate, queueMergeInstructionsUpdate]);
+  }, [refineJob, targetElement, targetMonacoEditor, selectionRange, selectedText, flushSaves, updateCurrentSessionFields, sessionBasicFields.id]);
 
   // Handle Monaco Editor selection events
   const handleMonacoSelection = useCallback((event: CustomEvent) => {

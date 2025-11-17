@@ -105,13 +105,21 @@ public struct JobCardView: View {
     }
 
     private var jobDisplayName: String {
+        // For implementation plan types, try PlanContentParser first
+        if job.taskType == "implementation_plan" || job.taskType == "implementation_plan_merge" {
+            if let title = PlanContentParser.extractPlanTitle(metadata: job.metadata, response: job.response),
+               !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return title
+            }
+        }
+
         // Extract from metadata if available
         if let metadata = job.metadata,
            let data = metadata.data(using: .utf8),
            let metaDict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let taskData = metaDict["taskData"] as? [String: Any] {
 
-            // For implementation plans
+            // For implementation plans (fallback if PlanContentParser didn't find title)
             if job.taskType == "implementation_plan",
                let sessionName = taskData["sessionName"] as? String {
                 return sessionName

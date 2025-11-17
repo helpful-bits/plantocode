@@ -226,21 +226,6 @@ pub async fn update_session_fields_command(
         .inner()
         .clone();
 
-    // Get the current session to detect changes
-    let session = cache.get_session(&app_handle, &session_id).await?;
-
-    // Detect if task description changed
-    let task_description_changed = if let Some(fields) = fields_to_update.as_object() {
-        if fields.contains_key("taskDescription") {
-            let new_task_desc = fields["taskDescription"].as_str().map(|s| s.to_string());
-            session.task_description != new_task_desc
-        } else {
-            false
-        }
-    } else {
-        false
-    };
-
     // Update via cache using partial update (cache emits session-updated)
     cache.update_fields_partial(&app_handle, &session_id, &fields_to_update).await?;
 
@@ -248,26 +233,6 @@ pub async fn update_session_fields_command(
     if let Some(fields) = fields_to_update.as_object() {
         if fields.contains_key("name") {
             cache.flush_session_if_dirty(&app_handle, &session_id).await?;
-        }
-    }
-
-    // Keep history-synced for backward compatibility if task description changed
-    if task_description_changed {
-        if let Some(fields) = fields_to_update.as_object() {
-            if let Some(new_desc) = fields["taskDescription"].as_str() {
-                let _ = repo.append_task_description_history(&session_id, new_desc).await;
-                let _ = app_handle.emit("session-history-synced", serde_json::json!({
-                    "sessionId": &session_id,
-                    "taskDescription": new_desc
-                }));
-                let _ = app_handle.emit("device-link-event", serde_json::json!({
-                    "type": "session-history-synced",
-                    "payload": {
-                        "sessionId": &session_id,
-                        "taskDescription": new_desc
-                    }
-                }));
-            }
         }
     }
 

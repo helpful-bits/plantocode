@@ -97,6 +97,10 @@ struct SelectableTextView: UIViewRepresentable {
         textView.spellCheckingType = .yes
         textView.keyboardType = .default
         textView.textAlignment = .left
+        textView.isEditable = true
+        textView.isSelectable = true
+        textView.delaysContentTouches = false
+        textView.canCancelContentTouches = true
 
         if singleLine {
             // Single-line mode: minimal insets and no scrolling
@@ -255,6 +259,7 @@ struct SelectableTextView: UIViewRepresentable {
 
         @objc private func keyboardWillShow(_ notification: Notification) {
             guard let textView = textView,
+                  textView.isFirstResponder,  // Only adjust if THIS textView has keyboard
                   let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect,
                   let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double else {
                 return
@@ -262,28 +267,16 @@ struct SelectableTextView: UIViewRepresentable {
 
             keyboardHeight = keyboardFrame.height
 
-            // Calculate bottom inset accounting for tab bar
-            let window = UIApplication.shared.windows.first { $0.isKeyWindow }
-            let bottomSafeArea = window?.safeAreaInsets.bottom ?? 0
-
-            // Get actual tab bar height from view hierarchy instead of hardcoding
-            var tabBarHeight: CGFloat = 0
-            if let tabBarController = window?.rootViewController as? UITabBarController {
-                tabBarHeight = tabBarController.tabBar.frame.height
-            } else if let tabBarController = textView.window?.rootViewController as? UITabBarController {
-                tabBarHeight = tabBarController.tabBar.frame.height
-            } else {
-                // Fallback for SwiftUI TabView: use safe area + typical tab bar height
-                tabBarHeight = bottomSafeArea + 49
-            }
-
-            let adjustedHeight = keyboardFrame.height - bottomSafeArea - tabBarHeight
+            // Safe-area-based calculation to prevent over-adjustment
+            let keyWindow = UIApplication.shared.connectedScenes
+                .compactMap { ($0 as? UIWindowScene)?.keyWindow }
+                .first
+            let safeBottom = keyWindow?.safeAreaInsets.bottom ?? 0
+            let adjustedHeight = max(0, keyboardFrame.height - safeBottom)
 
             UIView.animate(withDuration: duration) {
                 textView.contentInset.bottom = adjustedHeight
                 textView.scrollIndicatorInsets.bottom = adjustedHeight
-                // Remove manual scroll - UITextView automatically keeps cursor visible
-                // when contentInset changes. Manual scrolling here causes jumpiness.
             }
         }
 
@@ -387,10 +380,10 @@ public struct TaskInputView: View {
 
     @StateObject private var voiceService = VoiceDictationService.shared
     @StateObject private var enhancementService = TextEnhancementService.shared
-    @StateObject private var settingsService = SettingsDataService()
     @StateObject private var undoRedoManager = UndoRedoManager()
 
     @State private var selectedRange: NSRange = NSRange(location: 0, length: 0)
+    @State private var didLoadVoiceSettings = false
     @State private var showingLanguagePicker = false
     @State private var selectedLanguage = "en-US"
     @State private var selectionRect: CGRect = .zero
@@ -405,6 +398,8 @@ public struct TaskInputView: View {
     @State private var isEditing: Bool = false
     @State private var pendingHistoryState: HistoryState?
     @State private var forceSelectionApply: Bool = false
+    @State private var prevRemoteVersion: Int64?
+    @State private var prevRemoteChecksum: String?
 
     let placeholder: String
     let onInteraction: () -> Void
@@ -441,15 +436,6 @@ public struct TaskInputView: View {
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .frame(minHeight: 250)
-            .gesture(
-                DragGesture()
-                    .onEnded { value in
-                        if value.translation.height > 50 {
-                            // Swipe down to dismiss keyboard
-                            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                        }
-                    }
-            )
 
             // Action Buttons Row - New Order: Voice, Language, Sparkles, Undo, Redo, Menu
             HStack(spacing: 12) {
@@ -564,13 +550,14 @@ public struct TaskInputView: View {
                 Spacer()
             }
         }
+        .dismissKeyboardOnTap()  // Applied to VStack only, not to sheets
         .sheet(isPresented: $showingLanguagePicker) {
             LanguagePickerSheet(selectedLanguage: $selectedLanguage)
         }
         .sheet(isPresented: $showTerminal, onDismiss: { terminalJobId = nil }) {
             if let jobId = terminalJobId {
                 NavigationStack {
-                    RemoteTerminalView(jobId: jobId)
+                    RemoteTerminalView(jobId: jobId, contextType: .taskDescription)
                 }
             }
         }
@@ -582,34 +569,19 @@ public struct TaskInputView: View {
         } message: {
             Text("This will search the web for relevant information to enhance your task description. This can be expensive in terms of API usage.")
         }
-        .task {
-            // Fetch voice transcription settings when view appears
-            if let projectDir = projectDirectory {
-                do {
-                    try await settingsService.fetchProjectTaskModelSettings(projectDirectory: projectDir)
-                    if let settings = settingsService.projectTaskSettings["voiceTranscription"] {
-                        transcriptionModel = settings.model
-                        transcriptionTemperature = settings.temperature
-                        transcriptionPrompt = settings.prompt
-                        // Set language code from settings if available
-                        // Backend stores short codes (e.g., "en"), but UI uses full locale codes (e.g., "en-US")
-                        if let shortCode = settings.languageCode {
-                            selectedLanguage = mapShortCodeToLocale(shortCode)
-                        }
-                    } else {
-                        // Project doesn't have voice transcription settings configured yet
-                        // Fetch server defaults as fallback
-                        let serverDefaults = try await settingsService.fetchServerDefaults()
-                        if let defaultSettings = serverDefaults["voiceTranscription"] {
-                            transcriptionModel = defaultSettings.model
-                            transcriptionTemperature = defaultSettings.temperature
-                            transcriptionPrompt = defaultSettings.prompt
-                            if let shortCode = defaultSettings.languageCode {
-                                selectedLanguage = mapShortCodeToLocale(shortCode)
-                            }
-                        }
-                    }
-                } catch {
+        .task(id: projectDirectory) {
+            guard !didLoadVoiceSettings, let projectDir = projectDirectory else { return }
+            didLoadVoiceSettings = true
+            try? await container.settingsService.fetchProjectTaskModelSettings(projectDirectory: projectDir)
+
+            if let settings = container.settingsService.projectTaskSettings["voiceTranscription"] {
+                transcriptionModel = settings.model
+                transcriptionTemperature = settings.temperature
+                transcriptionPrompt = settings.prompt
+                // Set language code from settings if available
+                // Backend stores short codes (e.g., "en"), but UI uses full locale codes (e.g., "en-US")
+                if let shortCode = settings.languageCode {
+                    selectedLanguage = mapShortCodeToLocale(shortCode)
                 }
             }
         }
@@ -628,11 +600,43 @@ public struct TaskInputView: View {
                 return
             }
 
-            if isEditing {
-                pendingHistoryState = remoteState
+            if let prev = prevRemoteVersion, remoteState.version < prev {
                 return
             }
-            applyHistoryState(remoteState)
+            if let prev = prevRemoteChecksum, remoteState.checksum == prev {
+                return
+            }
+
+            let base = undoRedoManager.exportState().entries.last?.value ?? ""
+            let local = taskDescription
+            guard let remoteValue = container.sessionService.lastNonEmptyHistoryValue(remoteState) else {
+                return
+            }
+            let remote = remoteValue
+
+            let cursorPos = selectedRange.location
+            let mergeResult = TextMerger.merge(base: base, local: local, remote: remote, cursorOffset: cursorPos)
+            taskDescription = mergeResult.mergedText
+            selectedRange = NSRange(location: mergeResult.newCursorOffset, length: 0)
+            forceSelectionApply = true
+
+            prevRemoteVersion = remoteState.version
+            prevRemoteChecksum = remoteState.checksum
+
+            Task {
+                do {
+                    let localState = undoRedoManager.exportState()
+                    let merged = try await container.sessionService.mergeHistoryState(
+                        sessionId: sessionId,
+                        kind: kind,
+                        remoteState: remoteState
+                    )
+                    await MainActor.run {
+                        undoRedoManager.applyRemoteHistoryState(merged, suppressRecording: true)
+                    }
+                } catch {
+                }
+            }
         }
     }
 
@@ -699,6 +703,11 @@ public struct TaskInputView: View {
             undoRedoManager.reset(with: trimmed)
         }
         taskDescription = trimmed
+
+        // Reset caret/selection state after text replacement on session change
+        let newCount = trimmed.count
+        selectedRange = NSRange(location: newCount, length: 0)
+        forceSelectionApply = true
     }
 
     private func enhanceSelectedOrAll() {
@@ -775,15 +784,19 @@ public struct TaskInputView: View {
         undoRedoManager.saveState(taskDescription)
         debounceTask?.cancel()
         debounceTask = Task {
-            try? await Task.sleep(nanoseconds: 800_000_000)
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
             guard !Task.isCancelled else { return }
 
             do {
-                try await container.sessionService.updateTaskDescription(
+                let state = undoRedoManager.exportState()
+                let newState = try await container.sessionService.syncHistoryState(
                     sessionId: sessionId,
-                    content: taskDescription
+                    kind: "task",
+                    state: state,
+                    expectedVersion: state.version
                 )
                 await MainActor.run {
+                    undoRedoManager.applyRemoteHistoryState(newState, suppressRecording: true)
                     isEditing = false
                     if let pending = pendingHistoryState {
                         applyHistoryState(pending)

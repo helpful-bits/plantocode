@@ -1,5 +1,5 @@
 import { BlogArticle } from '@/components/blog/BlogArticle';
-import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
+import { GlassCard } from '@/components/ui/GlassCard';
 import type { Metadata } from 'next';
 import { locales } from '@/i18n/config';
 import { loadMessages, type Locale } from '@/lib/i18n';
@@ -45,7 +45,7 @@ export default function AICodePlanningBestPracticesPage() {
       author="PlanToCode Team"
     >
 
-          <div className="bg-primary/5 border-l-4 border-primary rounded-r-lg p-6 my-8">
+          <GlassCard className="my-8" highlighted>
             <h2 className="text-2xl font-bold mb-4">Quick Reference</h2>
             <ul className="space-y-1 mb-0">
               <li>✓ Always use multi-model planning (Claude + GPT-4 + Gemini)</li>
@@ -54,7 +54,7 @@ export default function AICodePlanningBestPracticesPage() {
               <li>✓ Version control plans alongside code</li>
               <li>✓ Measure plan quality with post-execution audits</li>
             </ul>
-          </div>
+          </GlassCard>
 
           <h2 className="text-3xl font-bold mt-12 mb-6">1. Multi-Model Planning Strategy</h2>
 
@@ -126,7 +126,7 @@ export default function AICodePlanningBestPracticesPage() {
             Every plan needs review before execution. Use a systematic checklist to catch common issues.
           </p>
 
-          <div className="bg-primary/5 border-l-4 border-primary rounded-r-lg p-6 my-8">
+          <GlassCard className="my-8">
             <h3 className="text-xl font-semibold mb-4">Essential Plan Review Questions</h3>
 
             <div className="space-y-4">
@@ -170,7 +170,7 @@ export default function AICodePlanningBestPracticesPage() {
                 </ul>
               </div>
             </div>
-          </div>
+          </GlassCard>
 
           <h2 className="text-3xl font-bold mt-12 mb-6">4. Version Control for Plans</h2>
 
@@ -178,7 +178,7 @@ export default function AICodePlanningBestPracticesPage() {
             Treat implementation plans as code. Check them into version control for traceability.
           </p>
 
-          <div className="bg-primary/5 border-l-4 border-primary rounded-r-lg p-6 my-8">
+          <GlassCard className="my-8">
             <h3 className="text-xl font-semibold mb-4">Plan Versioning Workflow</h3>
             <div className="bg-foreground/5 rounded-lg p-4 font-mono text-sm">
               <div className="mb-2"># Create plan directory</div>
@@ -197,7 +197,7 @@ export default function AICodePlanningBestPracticesPage() {
               <div className="mb-2">git add plans/</div>
               <div>git commit -m "Add auth refactoring plan"</div>
             </div>
-          </div>
+          </GlassCard>
 
           <p className="mt-6">
             <strong>Benefits:</strong> Audit trail for team review, rollback capability if plans fail,
@@ -210,7 +210,7 @@ export default function AICodePlanningBestPracticesPage() {
             Don't try to plan a 6-month migration in one shot. Break it into weekly milestones.
           </p>
 
-          <div className="bg-primary/5 border-l-4 border-primary rounded-r-lg p-6 my-8">
+          <GlassCard className="my-8">
             <h3 className="text-xl font-semibold mb-4">Example: Monolith to Microservices Migration</h3>
 
             <div className="space-y-3">
@@ -229,7 +229,7 @@ export default function AICodePlanningBestPracticesPage() {
                 <p className="text-sm text-foreground/80 mt-1">Files: 8 | Risk: High | Feature flag required</p>
               </div>
             </div>
-          </div>
+          </GlassCard>
 
           <p className="mt-6">
             Each week gets its own plan, review cycle, and execution. If Week 2 fails, Week 1 is already stable.
@@ -241,7 +241,7 @@ export default function AICodePlanningBestPracticesPage() {
             Measure plan quality to improve your process. Track these metrics after execution:
           </p>
 
-          <div className="bg-primary/5 border-l-4 border-primary rounded-r-lg p-6 my-8">
+          <GlassCard className="my-8">
             <h3 className="text-xl font-semibold mb-4">Post-Execution Audit Questions</h3>
             <ul className="space-y-2 mb-0">
               <li>✓ <strong>Completeness:</strong> Did the plan include all files that needed modification?</li>
@@ -250,7 +250,7 @@ export default function AICodePlanningBestPracticesPage() {
               <li>✓ <strong>Test Coverage:</strong> Did test updates match actual code changes?</li>
               <li>✓ <strong>Execution Time:</strong> How long did it take vs plan estimate?</li>
             </ul>
-          </div>
+          </GlassCard>
 
           <div className="my-8">
             <h4 className="font-semibold mb-3">Example Quality Tracking</h4>
@@ -291,7 +291,7 @@ export default function AICodePlanningBestPracticesPage() {
             In team environments, plans need review from multiple perspectives: architecture, security, testing, ops.
           </p>
 
-          <div className="bg-primary/5 border-l-4 border-primary rounded-r-lg p-6 my-8">
+          <GlassCard className="my-8">
             <h3 className="text-xl font-semibold mb-4">Team Review Workflow</h3>
             <ol className="space-y-3 mb-0">
               <li>
@@ -315,7 +315,7 @@ export default function AICodePlanningBestPracticesPage() {
                 <p className="text-sm text-foreground/80">Plan marked approved, engineer proceeds with implementation</p>
               </li>
             </ol>
-          </div>
+          </GlassCard>
 
           <h2 className="text-3xl font-bold mt-12 mb-6">8. Common Pitfalls to Avoid</h2>
 
@@ -355,7 +355,7 @@ export default function AICodePlanningBestPracticesPage() {
             Some tasks have multiple valid approaches. Generate conditional plans for different scenarios.
           </p>
 
-          <div className="bg-primary/5 border-l-4 border-primary rounded-r-lg p-6 my-8">
+          <GlassCard className="my-8">
             <h3 className="text-xl font-semibold mb-4">Example: Database Migration</h3>
             <div className="space-y-3">
               <div className="bg-foreground/5 rounded-lg p-3">
@@ -382,7 +382,7 @@ export default function AICodePlanningBestPracticesPage() {
             <p className="text-sm text-foreground/80 mt-4">
               Team reviews all 3 plans, chooses Plan C for production safety. Plans A and B kept as fallback options.
             </p>
-          </div>
+          </GlassCard>
 
           <h2 className="text-3xl font-bold mt-12 mb-6">10. Continuous Improvement</h2>
 
@@ -390,7 +390,7 @@ export default function AICodePlanningBestPracticesPage() {
             AI code planning is a skill. The more you practice, the better your plans become.
           </p>
 
-          <div className="bg-primary/5 border-l-4 border-primary rounded-r-lg p-6 my-8">
+          <GlassCard className="my-8">
             <h3 className="text-xl font-semibold mb-4">Monthly Planning Retrospective</h3>
             <ul className="space-y-2 mb-0">
               <li>✓ Review last month's plans: which were accurate, which missed things?</li>
@@ -398,7 +398,7 @@ export default function AICodePlanningBestPracticesPage() {
               <li>✓ Update your review checklist based on learnings</li>
               <li>✓ Share insights with the team, improve collective process</li>
             </ul>
-          </div>
+          </GlassCard>
 
           <h2 className="text-3xl font-bold mt-12 mb-6">Conclusion</h2>
 
@@ -411,27 +411,6 @@ export default function AICodePlanningBestPracticesPage() {
             Start small—pick one best practice and apply it to your next refactoring. Measure the results.
             Iterate. Over time, your planning process becomes a competitive advantage.
           </p>
-
-          <div className="bg-gradient-to-r from-primary/20 to-primary/10 border border-primary/30 rounded-lg p-8 my-12 text-center">
-            <h3 className="text-2xl font-bold mb-4">Implement These Best Practices Today</h3>
-            <p className="text-foreground/80 mb-6">
-              PlanToCode supports multi-model planning, file discovery, and team review workflows out of the box.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <LinkWithArrow
-                href="/downloads"
-                className="inline-flex items-center"
-              >
-                Get Started Free
-              </LinkWithArrow>
-              <LinkWithArrow
-                href="/docs"
-                className="inline-flex items-center"
-              >
-                Read the Documentation
-              </LinkWithArrow>
-            </div>
-          </div>
 
     </BlogArticle>
   );

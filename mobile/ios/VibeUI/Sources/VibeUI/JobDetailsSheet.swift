@@ -146,7 +146,15 @@ public struct JobDetailsSheet: View {
     // MARK: - Helper Methods
 
     private func getJobTitle(_ job: BackgroundJob) -> String {
-        // Extract meaningful title from job
+        // For implementation plan types, try PlanContentParser first
+        if job.taskType == "implementation_plan" || job.taskType == "implementation_plan_merge" {
+            if let title = PlanContentParser.extractPlanTitle(metadata: job.metadata, response: job.response),
+               !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return title
+            }
+        }
+
+        // Extract meaningful title from job metadata
         if let metadata = job.metadata,
            let data = metadata.data(using: .utf8),
            let metaDict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

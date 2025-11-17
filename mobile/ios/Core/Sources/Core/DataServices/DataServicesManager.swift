@@ -9,7 +9,6 @@ public class DataServicesManager: ObservableObject {
 
     // MARK: - Services
     public let jobsService: JobsDataService
-    public let plansService: PlansDataService
     public let filesService: FilesDataService
     public let taskSyncService: TaskSyncDataService
     public let sqliteService: SQLiteDataService
@@ -37,7 +36,6 @@ public class DataServicesManager: ObservableObject {
     private var relayEventsCancellable: AnyCancellable?
     private let logger = Logger(subsystem: "PlanToCode", category: "DataServicesManager")
     private var isApplyingRemoteActiveSession = false
-    private var isInitialProjectFetchInProgress = false
     private var lastAppliedConnectedState: Bool? = nil
     private var isPerformingLiveBootstrap = false
     private var lastSwitchDeviceId: UUID?
@@ -57,11 +55,6 @@ public class DataServicesManager: ObservableObject {
         self.jobsService = JobsDataService(
             apiClient: apiClient,
             cacheManager: cacheManager
-        )
-        self.plansService = PlansDataService(
-            apiClient: apiClient,
-            cacheManager: cacheManager,
-            jobsService: self.jobsService
         )
         self.filesService = FilesDataService(apiClient: apiClient, cacheManager: cacheManager)
         self.taskSyncService = TaskSyncDataService(
@@ -113,8 +106,6 @@ public class DataServicesManager: ObservableObject {
         sessionService.sessions = []
 
         // Invalidate caches
-        plansService.invalidateCache()
-        plansService.plans.removeAll()
         filesService.invalidateCache()
         filesService.files = []
         jobsService.clearJobs()
@@ -155,7 +146,6 @@ public class DataServicesManager: ObservableObject {
         // Reset per-service state
         sessionService.resetState()
         jobsService.reset()
-        plansService.reset()
         filesService.reset()
 
         terminalService.cleanForDeviceSwitch()
@@ -182,8 +172,6 @@ public class DataServicesManager: ObservableObject {
         filesService.files = []
 
         jobsService.clearJobs()
-
-        plansService.plans.removeAll()
 
         taskSyncService.tasks.removeAll()
         taskSyncService.conflicts.removeAll()
@@ -250,7 +238,6 @@ public class DataServicesManager: ObservableObject {
                     jobsConnected: jobsConnected,
                     tasksConnected: tasksConnected,
                     filesConnected: jobsConnected, // Files use same connection as jobs
-                    plansConnected: jobsConnected, // Plans use same connection as jobs
                     sqliteConnected: jobsConnected, // SQLite uses same connection as jobs
                     lastChecked: Date()
                 )
@@ -264,7 +251,7 @@ public class DataServicesManager: ObservableObject {
         cacheManager.clear()
     }
 
-    /// Perform live bootstrap - fetch session sequentially, then rely on broadcasting to preload plans/jobs
+    /// Perform live bootstrap - fetch session sequentially, then rely on broadcasting to preload jobs
     @MainActor
     public func performLiveBootstrap() async {
         if let projectDir = currentProject?.directory,
@@ -287,7 +274,7 @@ public class DataServicesManager: ObservableObject {
             return
         }
 
-        // Fetch active session - broadcasting will handle plans/jobs/files preload
+        // Fetch active session - broadcasting will handle jobs/files preload
         #if DEBUG
         let sessionStart = Date()
         #endif
@@ -442,33 +429,25 @@ public class DataServicesManager: ObservableObject {
            Date().timeIntervalSince(ts) < 2.0 {
             return
         }
-        
+
         // Execute switch logic
         self.onActiveDeviceSwitch(newId: newId)
         self.activeDesktopDeviceId = newId
-        
+
         // Update debounce tracking
         self.lastSwitchDeviceId = newId
         self.lastSwitchAt = Date()
-        
+
         // Clear UI state immediately
         self.filesService.onActiveDeviceChanged()
         self.jobsService.onActiveDeviceChanged()
         self.sessionService.onActiveDeviceChanged()
-        
-        self.plansService.onActiveDeviceChanged(newId)
-        if let project = self.currentProject {
-            self.plansService.preloadPlans(
-                for: project.directory,
-                sessionId: self.sessionService.currentSession?.id
-            )
-        }
-        
-        // Trigger orchestrator once
+
+        // Trigger orchestrator to handle all initialization
         if !orchestratorTriggerInFlight {
             orchestratorTriggerInFlight = true
             Task { [weak self] in
-                defer { 
+                defer {
                     Task { @MainActor in
                         self?.orchestratorTriggerInFlight = false
                     }
@@ -493,11 +472,10 @@ public class DataServicesManager: ObservableObject {
                 self.jobsService.setActiveSession(sessionId: s.id, projectDirectory: s.projectDirectory)
 
                 // Unified preloads for immediacy across tabs
-                self.plansService.preloadPlans(for: s.projectDirectory, sessionId: s.id)
                 self.filesService.performSearch(query: self.filesService.currentSearchTerm)
 
                 #if DEBUG
-                self.logger.info("Session changed → preloads: plans/files/jobs initialized for session \(s.id)")
+                self.logger.info("Session changed → preloads: files/jobs initialized for session \(s.id)")
                 #endif
 
                 Task {
@@ -535,6 +513,12 @@ public class DataServicesManager: ObservableObject {
                     self.logger.info("Received device-status event")
                     Task { @MainActor in
                         await DeviceDiscoveryService.shared.refreshDevices()
+                        if let activeId = MultiConnectionManager.shared.activeDeviceId {
+                            let ids = DeviceDiscoveryService.shared.devices.map { $0.deviceId }
+                            if !ids.contains(activeId) {
+                                MultiConnectionManager.shared.removeConnection(deviceId: activeId)
+                            }
+                        }
                     }
 
                 case "device-unlinked":
@@ -601,6 +585,9 @@ public class DataServicesManager: ObservableObject {
                         }
                     }
 
+                case "PlanCreated", "PlanModified", "PlanDeleted":
+                    self.jobsService.applyRelayEvent(event)
+
                 default:
                     if eventType.hasPrefix("job:") {
                         // Extract event sessionId to seed JobsDataService if needed
@@ -631,6 +618,8 @@ public class DataServicesManager: ObservableObject {
                     logger.info("Bootstrap is running - skipping connection state change handler")
                     return
                 }
+
+                // If initial load not completed, trigger orchestrator instead of handling here
                 guard self.hasCompletedInitialLoad else {
                     self.triggerOrchestratorIfNeeded(context: "connection")
                     return
@@ -641,15 +630,6 @@ public class DataServicesManager: ObservableObject {
                 await self.sessionService.processOfflineQueue()
                 // Terminal bootstrap handled by TerminalDataService itself
 
-                // Guard: Skip initial fetch if orchestrator has already set state
-                if !self.hasCompletedInitialLoad && self.currentProject == nil {
-                    logger.info("Fetching initial project directory from desktop")
-                    await self.fetchInitialProjectDirectory()
-                    logger.info("Completed fetching initial project directory")
-                } else {
-                    logger.info("Skipping initial fetch - state already set by orchestrator")
-                }
-
                 if let project = self.currentProject {
                     if self.sessionService.hasRecentSessionsFetch(for: project.directory, within: 10.0) {
                         logger.info("Skipping session preload - recently fetched")
@@ -659,9 +639,9 @@ public class DataServicesManager: ObservableObject {
                     }
                 }
 
-                // Guard session before preloading plans/jobs
+                // Guard session before preloading jobs
                 guard let session = self.sessionService.currentSession else {
-                    logger.info("Skipping plans/jobs preload - no valid session available")
+                    logger.info("Skipping jobs preload - no valid session available")
                     return
                 }
 
@@ -680,122 +660,17 @@ public class DataServicesManager: ObservableObject {
                     .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
                     .store(in: &self.cancellables)
                 }
-
-                guard let project = self.currentProject else {
-                    logger.info("Skipping plans preload - no project directory")
-                    return
-                }
-
-                self.plansService.preloadPlans(
-                    for: project.directory,
-                    sessionId: self.sessionService.currentSession?.id
-                )
                 self.filesService.performSearch(query: self.filesService.currentSearchTerm)
-                self.taskSyncService.getActiveTasks(request: GetActiveTasksRequest(
-                    sessionIds: nil,
-                    deviceId: self.deviceId,
-                    projectDirectory: project.directory,
-                    includeInactive: false
-                ))
-                .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
-                .store(in: &self.cancellables)
-            }
-        }
-    }
-
-    /// Fetch the initial project directory from desktop when connecting
-    private func fetchInitialProjectDirectory() async {
-        if AppState.shared.bootstrapState == .running { return }
-        guard !isInitialProjectFetchInProgress else { return }
-        isInitialProjectFetchInProgress = true
-        defer { isInitialProjectFetchInProgress = false }
-
-        guard MultiConnectionManager.shared.activeDeviceId != nil else {
-            logger.info("No active device selected, skipping initial project fetch")
-            return
-        }
-
-        let startTime = Date()
-        let timeout: TimeInterval = 8.0
-        var isConnected = false
-
-        while Date().timeIntervalSince(startTime) < timeout {
-            if let activeId = MultiConnectionManager.shared.activeDeviceId,
-               case .connected = MultiConnectionManager.shared.connectionStates[activeId] {
-                isConnected = true
-                break
-            }
-            try? await Task.sleep(nanoseconds: 100_000_000)
-        }
-
-        guard isConnected else {
-            logger.info("Connection not established within \(timeout)s, deferring initial project fetch to connection handler")
-            return
-        }
-
-        await MainActor.run {
-            self.isInitializing = true
-        }
-
-        guard self.currentProject == nil else {
-            await MainActor.run { self.hasCompletedInitialLoad = true }
-            return
-        }
-        guard self.hasCompletedInitialLoad == false else { return }
-
-        defer {
-            Task { @MainActor in
-                self.isInitializing = false
-                self.hasCompletedInitialLoad = true
-            }
-        }
-
-        do {
-            for try await response in CommandRouter.appGetProjectDirectory() {
-                if let result = response.result?.value as? [String: Any],
-                   let projectDir = result["projectDirectory"] as? String,
-                   !projectDir.isEmpty {
-
-                    // Check if desktop-reported project differs from current mobile project
-                    if let currentProj = self.currentProject, currentProj.directory != projectDir {
-                        logger.info("Detected project directory mismatch - Mobile: \(currentProj.directory), Desktop: \(projectDir)")
-                        logger.info("Updating mobile project to match desktop")
-
-                        let name = URL(fileURLWithPath: projectDir).lastPathComponent
-                        let hash = String(projectDir.hashValue)
-                        let project = ProjectInfo(name: name, directory: projectDir, hash: hash)
-                        await MainActor.run {
-                            self.setCurrentProject(project)
-                            AppState.shared.setSelectedProjectDirectory(projectDir)
-                        }
-                        logger.info("Updated project directory to: \(projectDir)")
-                    } else if self.currentProject == nil {
-                        // Only initialize if we don't already have a project set
-                        let name = URL(fileURLWithPath: projectDir).lastPathComponent
-                        let hash = String(projectDir.hashValue)
-                        let project = ProjectInfo(name: name, directory: projectDir, hash: hash)
-                        await MainActor.run {
-                            self.setCurrentProject(project)
-                            AppState.shared.setSelectedProjectDirectory(projectDir)
-                        }
-                        logger.info("Initialized project directory from desktop: \(projectDir)")
-                    } else {
-                        logger.info("Project directory already synchronized: \(projectDir)")
-                    }
-
-                    // After setting project directory, fetch and load the active session
-                    await fetchAndLoadActiveSession(projectDirectory: projectDir)
+                if let projectDirectory = self.currentProject?.directory {
+                    self.taskSyncService.getActiveTasks(request: GetActiveTasksRequest(
+                        sessionIds: nil,
+                        deviceId: self.deviceId,
+                        projectDirectory: projectDirectory,
+                        includeInactive: false
+                    ))
+                    .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
+                    .store(in: &self.cancellables)
                 }
-                if response.isFinal {
-                    break
-                }
-            }
-        } catch {
-            let errorMessage = error.localizedDescription
-            if errorMessage.contains("Not connected") {
-                logger.debug("Connection not ready for initial project fetch (transient): \(errorMessage)")
-            } else {
-                logger.error("Failed to fetch initial project directory: \(errorMessage)")
             }
         }
     }
@@ -813,54 +688,9 @@ public class DataServicesManager: ObservableObject {
         }
     }
 
-    /// Fetch the active session ID from desktop and load that session
-    private func fetchAndLoadActiveSession(projectDirectory: String) async {
-        do {
-            var foundActiveSession = false
-
-            // First, fetch the active session ID from desktop
-            for try await response in CommandRouter.appGetActiveSessionId() {
-                if let result = response.result?.value as? [String: Any],
-                   let sessionId = result["sessionId"] as? String,
-                   !sessionId.isEmpty {
-
-                    logger.info("Desktop reports active session ID: \(sessionId)")
-                    await loadSessionFromDesktop(sessionId: sessionId, projectDirectory: projectDirectory)
-                    foundActiveSession = true
-                }
-
-                if response.isFinal {
-                    break
-                }
-            }
-
-            // Fallback: If no active session found on desktop, load the most recent session
-            if !foundActiveSession {
-                logger.info("No active session ID found on desktop, loading most recent session as fallback")
-                do {
-                    let sessions = try await self.sessionService.fetchSessions(projectDirectory: projectDirectory)
-                    if let mostRecent = sessions.sorted(by: { $0.updatedAt > $1.updatedAt }).first {
-                        logger.info("Loading most recent session: \(mostRecent.id)")
-                        await loadSessionFromDesktop(sessionId: mostRecent.id, projectDirectory: projectDirectory)
-                    } else {
-                        logger.info("No sessions found for project directory: \(projectDirectory)")
-                    }
-                } catch {
-                    logger.error("Failed to fetch sessions for fallback: \(error.localizedDescription)")
-                }
-            }
-        } catch {
-            logger.error("Failed to fetch active session ID: \(error.localizedDescription)")
-        }
-    }
-
     private func preloadProjectData(_ project: ProjectInfo) {
-        // Preload plans/jobs ONLY if session is available
+        // Preload jobs ONLY if session is available
         if let sessionId = self.sessionService.currentSession?.id, !sessionId.isEmpty {
-            plansService.preloadPlans(
-                for: project.directory,
-                sessionId: sessionId
-            )
             jobsService.listJobs(request: JobListRequest(
                 projectDirectory: project.directory,
                 sessionId: sessionId
@@ -900,7 +730,6 @@ public class DataServicesManager: ObservableObject {
         return ProjectExportData(
             project: project,
             jobs: [],
-            plans: [],
             tasks: [],
             exportedAt: Date()
         )
@@ -957,19 +786,18 @@ public struct ServicesSyncStatus {
     public let jobsConnected: Bool
     public let tasksConnected: Bool
     public let filesConnected: Bool
-    public let plansConnected: Bool
     public let sqliteConnected: Bool
     public let lastChecked: Date
 
     public var allConnected: Bool {
-        jobsConnected && tasksConnected && filesConnected && plansConnected && sqliteConnected
+        jobsConnected && tasksConnected && filesConnected && sqliteConnected
     }
 
     public var connectedServicesCount: Int {
-        [jobsConnected, tasksConnected, filesConnected, plansConnected, sqliteConnected].filter { $0 }.count
+        [jobsConnected, tasksConnected, filesConnected, sqliteConnected].filter { $0 }.count
     }
 
-    public var totalServicesCount: Int { 5 }
+    public var totalServicesCount: Int { 4 }
 }
 
 public enum ExportFormat: String, CaseIterable {
@@ -991,7 +819,6 @@ public enum ExportFormat: String, CaseIterable {
 public struct ProjectExportData: Codable {
     public let project: ProjectInfo
     public let jobs: [BackgroundJob]
-    public let plans: [PlanSummary]
     public let tasks: [TaskDescription]
     public let exportedAt: Date
 }

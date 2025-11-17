@@ -25,7 +25,9 @@ public final class SessionDataService: ObservableObject {
     private let offlineQueue = OfflineActionQueue()
     private var sessionsIndex: [String: Int] = [:]
     private var sessionsFetchInFlight: [String: Task<[Session], Error>] = [:]
-    private var lastSessionsFetch: [String: Date] = [:] // projectDirectory -> timestamp
+    private var lastSessionsFetch: [String: Date] = [:]
+    private var lastHistoryVersionBySession: [String: Int64] = [:]
+    private var lastHistoryChecksumBySession: [String: String] = [:] // projectDirectory -> timestamp
 
     private var deviceKey: String {
         MultiConnectionManager.shared.activeDeviceId?.uuidString ?? "no_device"
@@ -58,6 +60,13 @@ public final class SessionDataService: ObservableObject {
                     let stateData = try JSONSerialization.data(withJSONObject: stateDict)
                     let historyState = try JSONDecoder().decode(HistoryState.self, from: stateData)
 
+                    if let lastVer = self.lastHistoryVersionBySession[sessionId], historyState.version < lastVer {
+                        return
+                    }
+                    if let lastChecksum = self.lastHistoryChecksumBySession[sessionId], historyState.checksum == lastChecksum {
+                        return
+                    }
+
                     if kind == "files" {
                         guard let currentIndex = Int(exactly: historyState.currentIndex),
                               currentIndex >= 0,
@@ -75,6 +84,9 @@ public final class SessionDataService: ObservableObject {
                             )
                         }
                     }
+
+                    self.lastHistoryVersionBySession[sessionId] = historyState.version
+                    self.lastHistoryChecksumBySession[sessionId] = historyState.checksum
 
                     NotificationCenter.default.post(
                         name: NSNotification.Name("apply-history-state"),
@@ -1337,6 +1349,69 @@ public final class SessionDataService: ObservableObject {
             includedFiles: dict["includedFiles"] as? [String] ?? [],
             forceExcludedFiles: dict["forceExcludedFiles"] as? [String] ?? []
         )
+    }
+
+    // MARK: - Prompt Methods
+
+    /// Get implementation plan prompt for viewing
+    public func getPlanPrompt(
+        sessionId: String,
+        taskDescription: String,
+        projectDirectory: String,
+        relevantFiles: [String]
+    ) async throws -> PromptResponse {
+        isLoading = true
+        error = nil
+
+        do {
+            let stream = CommandRouter.getImplementationPlanPrompt(
+                sessionId: sessionId,
+                taskDescription: taskDescription,
+                projectDirectory: projectDirectory,
+                relevantFiles: relevantFiles
+            )
+
+            var result: PromptResponse?
+            for try await response in stream {
+                if let error = response.error {
+                    await MainActor.run {
+                        self.isLoading = false
+                    }
+                    throw DataServiceError.serverError(error.message)
+                }
+
+                if let resultData = response.result?.value as? [String: Any],
+                   let promptDict = resultData["prompt"] as? [String: Any],
+                   let systemPrompt = promptDict["systemPrompt"] as? String,
+                   let userPrompt = promptDict["userPrompt"] as? String,
+                   let combinedPrompt = promptDict["combinedPrompt"] as? String {
+                    result = PromptResponse(
+                        systemPrompt: systemPrompt,
+                        userPrompt: userPrompt,
+                        combinedPrompt: combinedPrompt
+                    )
+                    if response.isFinal {
+                        break
+                    }
+                }
+            }
+
+            await MainActor.run {
+                self.isLoading = false
+            }
+
+            guard let finalResult = result else {
+                throw DataServiceError.invalidResponse("No prompt data received")
+            }
+
+            return finalResult
+        } catch {
+            await MainActor.run {
+                self.error = DataServiceError.networkError(error)
+                self.isLoading = false
+            }
+            throw error
+        }
     }
 
 }

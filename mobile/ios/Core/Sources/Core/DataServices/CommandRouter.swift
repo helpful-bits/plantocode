@@ -942,7 +942,8 @@ public struct CommandRouter {
         taskTypeFilter: String? = nil,
         page: Int? = nil,
         pageSize: Int? = nil,
-        filter: String? = nil
+        filter: String? = nil,
+        bypassCache: Bool = false
     ) -> AsyncThrowingStream<RpcResponse, Error> {
         guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
@@ -951,9 +952,9 @@ public struct CommandRouter {
         }
         let (deviceId, relayClient) = usable
 
-        guard let sessionId = sessionId, !sessionId.isEmpty else {
+        guard (sessionId != nil && !sessionId!.isEmpty) || (projectDirectory != nil && !projectDirectory!.isEmpty) else {
             return AsyncThrowingStream { continuation in
-                continuation.finish(throwing: DataServiceError.invalidState("sessionId is required"))
+                continuation.finish(throwing: DataServiceError.invalidState("Either sessionId or projectDirectory is required"))
             }
         }
 
@@ -962,7 +963,9 @@ public struct CommandRouter {
         if let projectDirectory = projectDirectory {
             params["projectDirectory"] = projectDirectory
         }
-        params["sessionId"] = sessionId
+        if let sessionId = sessionId {
+            params["sessionId"] = sessionId
+        }
         if let statusFilter = statusFilter {
             params["statusFilter"] = statusFilter
         }
@@ -978,6 +981,7 @@ public struct CommandRouter {
         if let filter = filter {
             params["filter"] = filter
         }
+        params["bypassCache"] = bypassCache
 
         let request = RpcRequest(
             method: "job.list",
@@ -1309,5 +1313,81 @@ public struct CommandRouter {
         }
 
         throw ServerRelayError.invalidState("No sync result received")
+    }
+
+    // MARK: - Actions
+
+    public static func getImplementationPlanPrompt(
+        sessionId: String,
+        taskDescription: String,
+        projectDirectory: String,
+        relevantFiles: [String]
+    ) -> AsyncThrowingStream<RpcResponse, Error> {
+        guard let usable = getUsableRelay() else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: ServerRelayError.notConnected)
+            }
+        }
+        let (deviceId, relayClient) = usable
+
+        let request = RpcRequest(
+            method: "actions.getImplementationPlanPrompt",
+            params: [
+                "sessionId": sessionId,
+                "taskDescription": taskDescription,
+                "projectDirectory": projectDirectory,
+                "relevantFiles": relevantFiles
+            ]
+        )
+
+        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+    }
+
+    /// Update implementation plan content
+    public static func updateImplementationPlanContent(
+        jobId: String,
+        newContent: String
+    ) -> AsyncThrowingStream<RpcResponse, Error> {
+        guard let usable = getUsableRelay() else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: ServerRelayError.notConnected)
+            }
+        }
+        let (deviceId, relayClient) = usable
+
+        let request = RpcRequest(
+            method: "job.updateContent",
+            params: [
+                "jobId": jobId,
+                "content": newContent
+            ]
+        )
+
+        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+    }
+
+    /// Create merged implementation plan
+    public static func plansMerge(
+        sessionId: String,
+        sourceJobIds: [String],
+        mergeInstructions: String
+    ) -> AsyncThrowingStream<RpcResponse, Error> {
+        guard let usable = getUsableRelay() else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: ServerRelayError.notConnected)
+            }
+        }
+        let (deviceId, relayClient) = usable
+
+        let request = RpcRequest(
+            method: "actions.mergePlans",
+            params: [
+                "sessionId": sessionId,
+                "sourceJobIds": sourceJobIds,
+                "mergeInstructions": mergeInstructions
+            ]
+        )
+
+        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
     }
 }

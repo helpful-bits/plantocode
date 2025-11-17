@@ -1,10 +1,12 @@
 use crate::remote_api::types::{RpcRequest, RpcResponse, UserContext};
+use crate::remote_api::error::{into_response, RpcError, RpcResult};
 use crate::remote_api::handlers;
 use log::{debug, info};
 use tauri::AppHandle;
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use std::time::{Duration, Instant};
+use serde_json::Value;
 
 #[derive(Clone)]
 struct CachedResp {
@@ -54,12 +56,8 @@ pub async fn dispatch(
 
     // Check user permissions for certain operations
     if !user_context.permissions.contains(&"rpc".to_string()) {
-        return RpcResponse {
-            correlation_id: request.correlation_id,
-            result: None,
-            error: Some("Insufficient permissions for RPC operations".to_string()),
-            is_final: true,
-        };
+        let result: RpcResult<Value> = Err(RpcError::forbidden("Insufficient permissions for RPC operations"));
+        return into_response(request.correlation_id.clone(), result);
     }
 
     // Check idempotency cache for mutating methods
@@ -75,29 +73,56 @@ pub async fn dispatch(
         let namespace = &request.method[..dot_pos];
 
         match namespace {
+            // Handlers still returning RpcResponse directly (to be refactored)
             "settings" => handlers::settings::dispatch(app_handle.clone(), request.clone()).await,
             "systemPrompts" => handlers::system_prompts::dispatch(app_handle.clone(), request.clone()).await,
             "session" => handlers::session::dispatch(app_handle.clone(), request.clone()).await,
-            "terminal" => handlers::terminal::dispatch(app_handle.clone(), request.clone()).await,
-            "config" => handlers::config::dispatch(app_handle.clone(), request.clone()).await,
-            "fs" | "files" => handlers::files::dispatch(app_handle.clone(), request.clone()).await,
             "job" => handlers::jobs::dispatch(app_handle.clone(), request.clone()).await,
-            "workflow" | "workflows" => handlers::workflows::dispatch(app_handle.clone(), request.clone()).await,
-            "actions" => handlers::actions::dispatch(app_handle.clone(), request.clone()).await,
-            "plans" => handlers::plans::dispatch(app_handle.clone(), request.clone()).await,
-            "app" => handlers::app::dispatch(app_handle.clone(), request.clone()).await,
-            "text" => handlers::text::dispatch(app_handle.clone(), request.clone()).await,
-            "speech" => handlers::speech::dispatch(app_handle.clone(), request.clone()).await,
-            _ => RpcResponse {
-                correlation_id: request.correlation_id.clone(),
-                result: None,
-                error: Some(format!("Unknown namespace: {}", namespace)),
-                is_final: true,
-            },
+
+            // Handlers returning RpcResult<Value> - use central response building
+            "config" => {
+                let result = handlers::config::dispatch(app_handle.clone(), request.clone()).await;
+                into_response(request.correlation_id.clone(), result)
+            }
+            "fs" | "files" => {
+                let result = handlers::files::dispatch(app_handle.clone(), request.clone()).await;
+                into_response(request.correlation_id.clone(), result)
+            }
+            "app" => {
+                let result = handlers::app::dispatch(app_handle.clone(), request.clone()).await;
+                into_response(request.correlation_id.clone(), result)
+            }
+            "terminal" => {
+                let result = handlers::terminal::dispatch(app_handle.clone(), request.clone()).await;
+                into_response(request.correlation_id.clone(), result)
+            }
+            "workflow" | "workflows" => {
+                let result = handlers::workflows::dispatch(app_handle.clone(), request.clone()).await;
+                into_response(request.correlation_id.clone(), result)
+            }
+            "actions" => {
+                let result = handlers::actions::dispatch(app_handle.clone(), request.clone()).await;
+                into_response(request.correlation_id.clone(), result)
+            }
+            "text" => {
+                let result = handlers::text::dispatch(app_handle.clone(), request.clone()).await;
+                into_response(request.correlation_id.clone(), result)
+            }
+            "speech" => {
+                let result = handlers::speech::dispatch(app_handle.clone(), request.clone()).await;
+                into_response(request.correlation_id.clone(), result)
+            }
+
+            // Unknown namespace
+            _ => {
+                let result: RpcResult<Value> = Err(RpcError::method_not_found(format!("Unknown namespace: {}", namespace)));
+                into_response(request.correlation_id.clone(), result)
+            }
         }
     } else {
         // Methods without namespace (ping, echo, get_status)
-        handlers::system::dispatch(app_handle.clone(), request.clone()).await
+        let result = handlers::system::dispatch(app_handle.clone(), request.clone()).await;
+        into_response(request.correlation_id.clone(), result)
     };
 
     // Store response in idempotency cache if key is provided

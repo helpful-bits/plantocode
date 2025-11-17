@@ -207,6 +207,115 @@ public class PlanContentParser {
         return "<steps>\n\(stepsContent)\n</steps>"
     }
 
+    /// Extract plan title from metadata JSON string or response content
+    /// - Parameters:
+    ///   - metadata: Optional JSON string containing metadata
+    ///   - response: Optional plan response content
+    /// - Returns: Extracted title or nil if not found
+    public static func extractPlanTitle(metadata: String?, response: String?) -> String? {
+        // Try metadata JSON first
+        if let metadataString = metadata,
+           let metadataData = metadataString.data(using: .utf8),
+           let metadataDict = try? JSONSerialization.jsonObject(with: metadataData) as? [String: Any] {
+
+            // Check direct keys
+            if let uiTitle = metadataDict["uiTitle"] as? String, !uiTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return uiTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            if let title = metadataDict["title"] as? String, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return title.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            if let planTitle = metadataDict["planTitle"] as? String, !planTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return planTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+
+            // Check nested under taskData
+            if let taskData = metadataDict["taskData"] as? [String: Any] {
+                if let uiTitle = taskData["uiTitle"] as? String, !uiTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return uiTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                if let title = taskData["title"] as? String, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return title.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                if let planTitle = taskData["planTitle"] as? String, !planTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return planTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                if let sessionName = taskData["sessionName"] as? String, !sessionName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return sessionName.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            }
+
+            // Check nested under plan
+            if let plan = metadataDict["plan"] as? [String: Any] {
+                if let uiTitle = plan["uiTitle"] as? String, !uiTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return uiTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                if let title = plan["title"] as? String, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return title.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                if let planTitle = plan["planTitle"] as? String, !planTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return planTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            }
+        }
+
+        // Try extracting from response content
+        if let responseContent = response, !responseContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            // Try <title>...</title> tags
+            if let titleFromTag = extractTagContent("title", from: responseContent),
+               !titleFromTag.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return titleFromTag.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+
+            // Try first Markdown H1
+            let h1Pattern = #"^#\s+(.+)$"#
+            if let h1Regex = try? NSRegularExpression(pattern: h1Pattern, options: .anchorsMatchLines),
+               let match = h1Regex.firstMatch(in: responseContent, options: [], range: NSRange(location: 0, length: (responseContent as NSString).length)),
+               match.numberOfRanges >= 2 {
+                let titleRange = match.range(at: 1)
+                if titleRange.location != NSNotFound {
+                    let title = (responseContent as NSString).substring(with: titleRange).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !title.isEmpty {
+                        return title
+                    }
+                }
+            }
+
+            // Try "Title: ..." lines
+            let titleLinePattern = #"^Title:\s*(.+)$"#
+            if let titleLineRegex = try? NSRegularExpression(pattern: titleLinePattern, options: [.anchorsMatchLines, .caseInsensitive]),
+               let match = titleLineRegex.firstMatch(in: responseContent, options: [], range: NSRange(location: 0, length: (responseContent as NSString).length)),
+               match.numberOfRanges >= 2 {
+                let titleRange = match.range(at: 1)
+                if titleRange.location != NSNotFound {
+                    let title = (responseContent as NSString).substring(with: titleRange).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !title.isEmpty {
+                        return title
+                    }
+                }
+            }
+        }
+
+        return nil
+    }
+
+    /// Extract plan title from a BackgroundJob
+    /// - Parameter job: The BackgroundJob to extract title from
+    /// - Returns: Extracted title or nil if not found
+    public static func extractPlanTitle(from job: BackgroundJob) -> String? {
+        return extractPlanTitle(metadata: job.metadata, response: job.response)
+    }
+
+    /// Convert model ID to display name (last path component)
+    /// - Parameter modelId: Full model identifier
+    /// - Returns: Display-friendly model name
+    public static func displayModelName(_ modelId: String) -> String {
+        if let lastComponent = modelId.split(separator: "/").last {
+            return String(lastComponent)
+        }
+        return modelId
+    }
+
     // MARK: - Private Methods
 
     private static func extractTitle(from stepContent: String) -> String? {

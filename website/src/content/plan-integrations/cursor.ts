@@ -32,7 +32,7 @@ export const cursorContent: PlanIntegrationContent = {
     {
       title: 'Cursor Background Agents operate in isolated VM environments',
       description:
-        'Cursor Background Agents run tasks in isolated virtual machine environments, providing separation from your local system. These agents can execute longer-running operations independently.',
+        'Cursor Background Agents run tasks in isolated ubuntu-based machines, providing separation from your local system. These agents can execute longer-running operations independently and can be configured via environment.json.',
     },
     {
       title: 'PlanToCode provides pre-execution architectural context',
@@ -68,6 +68,17 @@ export const cursorContent: PlanIntegrationContent = {
     },
   ],
 
+  learnMore: [
+    {
+      label: 'Agent Terminal',
+      href: 'https://docs.cursor.com/en/agent/terminal',
+    },
+    {
+      label: 'Pricing',
+      href: 'https://cursor.com/pricing',
+    },
+  ],
+
   verifiedFacts: [
     {
       claim: 'Cursor Agent Terminal provides AI-powered command execution directly in the IDE',
@@ -92,6 +103,21 @@ export const cursorContent: PlanIntegrationContent = {
     {
       claim: 'Cursor CLI enables terminal-based interactions with AI features',
       href: 'https://docs.cursor.com/cli',
+      source: 'official',
+    },
+    {
+      claim: 'Cursor Agent Terminal natively executes commands in the IDE',
+      href: 'https://docs.cursor.com/en/agent/terminal',
+      source: 'official',
+    },
+    {
+      claim: 'Background Agents run on ubuntu-based machines',
+      href: 'https://docs.cursor.com/en/background-agents',
+      source: 'official',
+    },
+    {
+      claim: 'Cursor provides pricing tiers for different usage levels',
+      href: 'https://cursor.com/pricing',
       source: 'official',
     },
   ],

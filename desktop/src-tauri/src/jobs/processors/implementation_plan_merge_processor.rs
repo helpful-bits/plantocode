@@ -12,7 +12,6 @@ use crate::jobs::processors::utils::prompt_utils;
 use crate::jobs::processors::{LlmPromptContext, LlmTaskConfigBuilder, LlmTaskRunner};
 use crate::jobs::types::{
     ImplementationPlanMergePayload, Job, JobPayload, JobProcessResult, JobResultData,
-    StructuredImplementationPlan, StructuredImplementationPlanStep,
 };
 use crate::models::{JobStatus, TaskType};
 use crate::utils::get_timestamp;
@@ -244,11 +243,6 @@ impl JobProcessor for ImplementationPlanMergeProcessor {
             ));
         }
 
-        // Create a simple structured plan for UI compatibility
-        let structured_plan = StructuredImplementationPlan {
-            agent_instructions: None,
-            steps: vec![],
-        };
         let human_readable_summary = "Merged implementation plan".to_string();
 
         // Re-fetch latest metadata before finalization to avoid races
@@ -284,10 +278,9 @@ impl JobProcessor for ImplementationPlanMergeProcessor {
             "merge_instructions": payload.merge_instructions,
             "source_count": payload.source_job_ids.len(),
             "merged_at": get_timestamp(),
-            "planData": serde_json::to_value(structured_plan.clone()).unwrap_or_default(),
             "planTitle": final_title.clone(),
             "summary": human_readable_summary.clone(),
-            "isStructured": true,
+            "isStructured": false,
             "sessionName": session.name,
             "isStreaming": false,
             "fullPromptContent": prompt_for_display,

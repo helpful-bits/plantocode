@@ -5,15 +5,15 @@ import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { refineTaskDescriptionAction } from "@/actions/ai/task-refinement.actions";
 import { startWebSearchWorkflowOrchestratorAction, cancelWorkflowAction } from "@/actions/workflows/workflow.actions";
 import { startWebSearchPromptsGenerationJobAction } from '@/actions/ai/web-search-workflow.actions';
-// Legacy imports removed - using only HistoryState API now
-import { queueTaskDescriptionUpdate } from "@/actions/session/task-fields.actions";
 import {
   getHistoryStateAction,
   syncHistoryStateAction,
+  mergeHistoryStateAction,
   getDeviceIdAction,
   type HistoryState,
   type HistoryEntry,
 } from '@/actions/session/history.actions';
+import { mergeThreeWayWithCursor } from '@/utils/text-merge';
 // listen import removed - legacy 'session-history-synced' listener was removed
 import { useBackgroundJob } from "@/contexts/_hooks/use-background-job";
 import { useNotification } from "@/contexts/notification-context";
@@ -100,6 +100,8 @@ export function useTaskDescriptionState({
   const lastCommittedValueRef = useRef('');
   const pendingRemoteStateRef = useRef<HistoryState | null>(null);
   const [showMergePulse, setShowMergePulse] = useState(false);
+  const lastAppliedRemoteRef = useRef<{ version: number; checksum: string } | null>(null);
+  const historyChangeDebounceRef = useRef<number | null>(null);
 
   // STEP 5: Add historyLoadStatus lifecycle
   const [historyLoadStatus, setHistoryLoadStatus] = useState<'idle'|'loading'|'ready'|'error'>('idle');
@@ -268,14 +270,15 @@ export function useTaskDescriptionState({
   }, []);
 
 
-  const recordTaskChange = useCallback((source: 'typing' | 'paste' | 'voice' | 'improvement' | 'refine' | 'remote', value: string) => {
+  const recordTaskChange = useCallback(async (source: 'typing' | 'paste' | 'voice' | 'improvement' | 'refine' | 'remote', value: string) => {
     if (!historyReady) return; // Guard before ready
     if (isNavigatingHistoryRef.current) return; // Guard undo/redo echoes
+    if (!activeSessionId) return;
 
     const normalized = value ?? '';
-    const last = historyState.entries[historyState.entries.length - 1];
+    const last = historyState.entries[historyState.currentIndex];
 
-    // Dedupe: skip if same as last entry
+    // Dedupe: skip if same as current entry
     if (last && normalized === last.value) return;
 
     // Compute hash for additional deduplication
@@ -283,30 +286,44 @@ export function useTaskDescriptionState({
     if (hash === lastRecordedHashRef.current) return;
     lastRecordedHashRef.current = hash;
 
-    setHistoryState(prev => {
-      const newEntries = prev.entries.slice(0, prev.currentIndex + 1);
-      const newEntry: HistoryEntry = {
-        value: normalized,
-        timestampMs: Date.now(),
-        deviceId: deviceId || 'unknown',
-        opType: source,
-        sequenceNumber: newEntries.length,
-        version: prev.version,
-      };
-      newEntries.push(newEntry);
+    // Create new entry
+    const newEntry: HistoryEntry = {
+      value: normalized,
+      timestampMs: Date.now(),
+      deviceId: deviceId || 'unknown',
+      opType: source,
+      sequenceNumber: historyState.entries.length,
+      version: historyState.version,
+    };
 
-      // Cap at 200 entries
-      const trimmedEntries = newEntries.slice(-200);
-      return {
-        entries: trimmedEntries,
-        currentIndex: trimmedEntries.length - 1,
-        version: prev.version,
-        checksum: prev.checksum,
-      };
-    });
+    // Create new state with entry appended and index incremented
+    const newEntries = historyState.entries.slice(0, historyState.currentIndex + 1);
+    newEntries.push(newEntry);
 
-    scheduleSync();
-  }, [historyReady, historyState.entries, deviceId]);
+    // Cap at 200 entries
+    const trimmedEntries = newEntries.slice(-200);
+
+    const newState: HistoryState = {
+      entries: trimmedEntries,
+      currentIndex: trimmedEntries.length - 1,
+      version: historyState.version,
+      checksum: historyState.checksum,
+    };
+
+    // Update local state immediately for responsiveness
+    setHistoryState(newState);
+    setValue(normalized);
+    lastCommittedValueRef.current = normalized;
+
+    // Sync to backend
+    try {
+      const updatedState = await syncHistoryStateAction(activeSessionId, 'task', newState, historyState.version);
+      setHistoryState(updatedState);
+    } catch (err) {
+      console.error('[recordTaskChange] Failed to sync:', err);
+      // Keep local state even if sync fails
+    }
+  }, [historyReady, historyState, deviceId, activeSessionId]);
 
   const saveToHistory = useCallback((description: string) => {
     if (!historyReady) return; // Guard before ready
@@ -376,9 +393,6 @@ export function useTaskDescriptionState({
 
             recordTaskChange('refine', newValue);
             sessionActions.updateCurrentSessionFields({ taskDescription: newValue });
-            if (activeSessionId) {
-              queueTaskDescriptionUpdate(activeSessionId, newValue).catch(() => {});
-            }
             onInteraction?.();
             showNotification({
               title: "Task refined",
@@ -391,9 +405,6 @@ export function useTaskDescriptionState({
             }
             recordTaskChange('refine', finalTaskDescription);
             sessionActions.updateCurrentSessionFields({ taskDescription: finalTaskDescription });
-            if (activeSessionId) {
-              queueTaskDescriptionUpdate(activeSessionId, finalTaskDescription).catch(() => {});
-            }
             onInteraction?.();
             showNotification({ title: "Task refined", message: "Task description has been refined.", type: "success" });
           }
@@ -410,7 +421,7 @@ export function useTaskDescriptionState({
     };
 
     handleJobCompletion();
-  }, [taskRefinementJob.job?.status, taskRefinementJobId, isSwitchingSession, activeSessionId, onInteraction, showNotification, sessionTaskDescription, sessionActions, refinementOriginalTask, recordTaskChange, queueTaskDescriptionUpdate, taskDescriptionRef]);
+  }, [taskRefinementJob.job?.status, taskRefinementJobId, isSwitchingSession, activeSessionId, onInteraction, showNotification, sessionTaskDescription, sessionActions, refinementOriginalTask, recordTaskChange, taskDescriptionRef]);
 
   // Prompts generation job monitoring
   useEffect(() => {
@@ -818,8 +829,6 @@ export function useTaskDescriptionState({
     [historyReady, activeSessionId, deviceId, historyState]
   );
 
-  const scheduleSync = useMemo(() => debounce(() => commitNewEntry(valueRef.current), 600), []);
-
   // Listen for local changes from decoupled components
   useEffect(() => {
     const onLocalChange = (e: Event) => {
@@ -838,62 +847,97 @@ export function useTaskDescriptionState({
 
   // Listen for "history-state-changed" events
   useEffect(() => {
-    if (!activeSessionId) return;
+    if (!activeSessionId || !deviceId) return;
 
-    const handleHistoryStateChanged = (event: CustomEvent) => {
-      const { sessionId: eventSessionId, kind, state } = event.detail;
+    const handleHistoryStateChanged = async (event: Event) => {
+      const customEvent = event as CustomEvent;
+      const { sessionId: eventSessionId, kind, state, relayOrigin } = customEvent.detail;
 
       if (eventSessionId !== activeSessionId || kind !== 'task') return;
-      if (remoteHistoryApplyingRef.current) return;
 
-      const currentValue = valueRef.current;
-      const hasUncommittedEdits = currentValue !== lastCommittedValueRef.current;
+      const remoteVersion = state.version;
+      const remoteChecksum = state.checksum;
 
-      if (hasUncommittedEdits && document.activeElement?.id === 'taskDescArea') {
-        pendingRemoteStateRef.current = state;
+      if (lastAppliedRemoteRef.current) {
+        if (remoteVersion < lastAppliedRemoteRef.current.version) return;
+        if (remoteVersion === lastAppliedRemoteRef.current.version && remoteChecksum === lastAppliedRemoteRef.current.checksum) return;
+      }
+
+      if (relayOrigin === 'local') {
+        lastAppliedRemoteRef.current = { version: remoteVersion, checksum: remoteChecksum };
         return;
       }
 
-      remoteHistoryApplyingRef.current = true;
+      const remoteEntry = state.entries[state.currentIndex];
+      if (!remoteEntry) return;
+      const remoteValue = remoteEntry.value;
 
-      try {
-        setHistoryState(state);
+      const localValue = valueRef.current;
+      const baseValue = lastCommittedValueRef.current;
+      const hasLocalEdits = localValue !== baseValue;
 
-        const currentEntry = state.entries[state.currentIndex];
-        if (currentEntry) {
-          // STEP 5: Guard against destructive empty overwrites
-          const incoming = currentEntry.value ?? "";
-          const local = valueRef.current ?? "";
+      if (hasLocalEdits) {
+        if (historyChangeDebounceRef.current !== null) {
+          clearTimeout(historyChangeDebounceRef.current);
+          historyChangeDebounceRef.current = null;
+        }
 
-          // Skip destructive empty overwrites - do not apply empty remote updates when local is non-empty
-          if (incoming.trim() === "" && local.trim() !== "") {
-            remoteHistoryApplyingRef.current = false;
-            return; // Do not apply
+        const textarea = taskDescriptionRef.current;
+        const cursorPos = textarea?.selectionStart ?? localValue.length;
+
+        const { merged, newCursor } = mergeThreeWayWithCursor(baseValue, localValue, remoteValue, cursorPos);
+
+        setValue(merged);
+        valueRef.current = merged;
+
+        if (textarea) {
+          if (textarea.setValueFromHistory) {
+            textarea.setValueFromHistory(merged);
           }
+          setTimeout(() => {
+            const el = document.getElementById('taskDescArea') as HTMLTextAreaElement | null;
+            if (el) {
+              el.setSelectionRange(newCursor, newCursor);
+            }
+          }, 0);
+        }
 
-          setValue(currentEntry.value);
-          lastCommittedValueRef.current = currentEntry.value;
+        sessionActions.updateCurrentSessionFields({ taskDescription: merged });
 
-          // Update legacy components using silent setter to prevent double-queueing
-          if (taskDescriptionRef.current?.setValueFromHistory) {
-            taskDescriptionRef.current.setValueFromHistory(currentEntry.value);
-          }
-          sessionActions.updateCurrentSessionFields({ taskDescription: currentEntry.value });
+        try {
+          const mergedState = await mergeHistoryStateAction(activeSessionId, 'task', state);
+          setHistoryState(mergedState);
+          lastCommittedValueRef.current = merged;
+        } catch (err) {
+          console.error('[history-state-changed] merge failed:', err);
         }
 
         setShowMergePulse(true);
+        setTimeout(() => setShowMergePulse(false), 500);
+      } else {
+        setHistoryState(state);
+        setValue(remoteValue);
+        valueRef.current = remoteValue;
+        lastCommittedValueRef.current = remoteValue;
+
+        if (taskDescriptionRef.current?.setValueFromHistory) {
+          taskDescriptionRef.current.setValueFromHistory(remoteValue);
+        }
+        sessionActions.updateCurrentSessionFields({ taskDescription: remoteValue });
+
+        setShowMergePulse(true);
         setTimeout(() => setShowMergePulse(false), 300);
-      } finally {
-        remoteHistoryApplyingRef.current = false;
       }
+
+      lastAppliedRemoteRef.current = { version: remoteVersion, checksum: remoteChecksum };
     };
 
-    window.addEventListener('history-state-changed', handleHistoryStateChanged as EventListener);
+    window.addEventListener('history-state-changed', handleHistoryStateChanged);
 
     return () => {
-      window.removeEventListener('history-state-changed', handleHistoryStateChanged as EventListener);
+      window.removeEventListener('history-state-changed', handleHistoryStateChanged);
     };
-  }, [activeSessionId, taskDescriptionRef, sessionActions]);
+  }, [activeSessionId, deviceId, taskDescriptionRef, sessionActions]);
 
   // Apply pending remote updates at debounce boundary
   useEffect(() => {
@@ -952,16 +996,17 @@ export function useTaskDescriptionState({
 
     try {
       const newIndex = historyState.currentIndex - 1;
-
-      // Use the entry value directly without syncing to backend
-      // Backend sync will happen via periodic sync timer
       const entry = historyState.entries[newIndex];
-      if (entry) {
-        setHistoryState(prev => ({
-          ...prev,
-          currentIndex: newIndex,
-        }));
 
+      if (entry) {
+        // Create new state with decremented index
+        const newState: HistoryState = {
+          ...historyState,
+          currentIndex: newIndex,
+        };
+
+        // Update local state immediately
+        setHistoryState(newState);
         setValue(entry.value);
         lastCommittedValueRef.current = entry.value;
 
@@ -970,14 +1015,19 @@ export function useTaskDescriptionState({
           taskDescriptionRef.current.setValueFromHistory(entry.value);
         }
         sessionActions.updateCurrentSessionFields({ taskDescription: entry.value });
-        // Explicit persistence call for undo
-        queueTaskDescriptionUpdate(activeSessionId, entry.value).catch(() => {});
         onInteraction?.();
 
-        scheduleSync();
+        // Sync to backend
+        try {
+          const updatedState = await syncHistoryStateAction(activeSessionId, 'task', newState, historyState.version);
+          setHistoryState(updatedState);
+        } catch (err) {
+          console.error('[handleUndo] Failed to sync:', err);
+          // Keep local state even if sync fails
+        }
       }
     } catch (err) {
-      // Ignore undo errors
+      console.error('[handleUndo] Error:', err);
     } finally {
       isNavigatingHistoryRef.current = false;
       isUndoRedoInProgress.current = false;
@@ -993,16 +1043,17 @@ export function useTaskDescriptionState({
 
     try {
       const newIndex = historyState.currentIndex + 1;
-
-      // Use the entry value directly without syncing to backend
-      // Backend sync will happen via periodic sync timer
       const entry = historyState.entries[newIndex];
-      if (entry) {
-        setHistoryState(prev => ({
-          ...prev,
-          currentIndex: newIndex,
-        }));
 
+      if (entry) {
+        // Create new state with incremented index
+        const newState: HistoryState = {
+          ...historyState,
+          currentIndex: newIndex,
+        };
+
+        // Update local state immediately
+        setHistoryState(newState);
         setValue(entry.value);
         lastCommittedValueRef.current = entry.value;
 
@@ -1011,14 +1062,19 @@ export function useTaskDescriptionState({
           taskDescriptionRef.current.setValueFromHistory(entry.value);
         }
         sessionActions.updateCurrentSessionFields({ taskDescription: entry.value });
-        // Explicit persistence call for redo
-        queueTaskDescriptionUpdate(activeSessionId, entry.value).catch(() => {});
         onInteraction?.();
 
-        scheduleSync();
+        // Sync to backend
+        try {
+          const updatedState = await syncHistoryStateAction(activeSessionId, 'task', newState, historyState.version);
+          setHistoryState(updatedState);
+        } catch (err) {
+          console.error('[handleRedo] Failed to sync:', err);
+          // Keep local state even if sync fails
+        }
       }
     } catch (err) {
-      // Ignore redo errors
+      console.error('[handleRedo] Error:', err);
     } finally {
       isNavigatingHistoryRef.current = false;
       isUndoRedoInProgress.current = false;
@@ -1088,9 +1144,6 @@ ${formattedResults}
     recordTaskChange('improvement', finalTaskDescription);
     // Update session context immediately to keep it in sync
     sessionActions.updateCurrentSessionFields({ taskDescription: finalTaskDescription });
-    if (activeSessionId) {
-      queueTaskDescriptionUpdate(activeSessionId, finalTaskDescription).catch(() => {});
-    }
     onInteraction?.();
 
     // Clear the web search results after applying

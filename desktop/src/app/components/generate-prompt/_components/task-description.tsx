@@ -19,7 +19,6 @@ import { cn } from "@/utils/utils";
 import VoiceTranscription from "./voice-transcription";
 import { VideoRecordingDialog } from "./video-recording-dialog";
 import { useTaskContext } from "../_contexts/task-context";
-import { queueTaskDescriptionUpdate, startTaskEdit, endTaskEdit, createDebouncer } from "@/actions/session/task-fields.actions";
 import { useTextareaResize } from "@/hooks/use-textarea-resize";
 
 export interface TaskDescriptionHandle {
@@ -87,48 +86,23 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
     const isFocusedRef = React.useRef(false);
     const isUserTypingRef = React.useRef(false);
     const typingIdleTimerRef = React.useRef<number | null>(null);
-    const heartbeatIntervalRef = React.useRef<number | null>(null);
-    const lastQueuedRef = useRef<string | null>(null);
     const wasPasteRef = useRef(false);
     const historyChangeDebounceRef = useRef<number | null>(null);
 
-    // Create a stable debounced update function (200ms matches backend's 150ms batch + margin)
-    const debouncedQueueUpdate = React.useMemo(
-      () => createDebouncer((sid: string, value: string) => {
-        queueTaskDescriptionUpdate(sid, value).catch((error) => {
-          console.error("Failed to queue task description update:", error);
-        });
-      }, 200),
-      []
-    );
-
-    // Immediate flush function for blur events
-    const flushPendingUpdate = React.useCallback((value: string) => {
-      // Cancel any pending debounced call and execute immediately
-      return queueTaskDescriptionUpdate(sessionId, value).catch(() => {});
-    }, [sessionId]);
+    // No longer needed - recordTaskChange handles syncing via syncHistoryStateAction
 
     const handleValueChange = React.useCallback((newValue: string) => {
       if (suppressNextDebounceRef.current) {
         suppressNextDebounceRef.current = false;
         valueRef.current = newValue;
         setLocalValue(newValue);
-        // DO NOT call debouncedQueueUpdate or mutate lastQueuedRef here
         return;
       }
       // Update ref immediately
       valueRef.current = newValue;
       // Update state for controlled component
       setLocalValue(newValue);
-
-      // Deduplicate: Skip IPC if we already queued this exact value
-      if (newValue === lastQueuedRef.current) {
-        return;
-      }
-      lastQueuedRef.current = newValue;
-      // Debounce the IPC call to reduce overhead
-      debouncedQueueUpdate(sessionId, newValue);
-    }, [sessionId, debouncedQueueUpdate]);
+    }, []);
 
     const TYPING_IDLE_MS = 200;
     const handleKeyActivity = () => {
@@ -143,29 +117,14 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
     const handleFocus = () => {
       isFocusedRef.current = true;
       (window as any).__taskDescriptionEditorFocused = true;
-      startTaskEdit(sessionId).catch(() => {});
       onFocusExtra?.();
-
-      heartbeatIntervalRef.current = window.setInterval(() => {
-        startTaskEdit(sessionId).catch(() => {});
-      }, 3000);
     };
 
     const handleBlur = async () => {
       isFocusedRef.current = false;
       (window as any).__taskDescriptionEditorFocused = false;
 
-      if (heartbeatIntervalRef.current) {
-        clearInterval(heartbeatIntervalRef.current);
-        heartbeatIntervalRef.current = null;
-      }
-
-      // Flush any pending debounced updates immediately
-      const currentValue = valueRef.current;
-      await flushPendingUpdate(currentValue);
-
       sessionActions.updateCurrentSessionFields({ taskDescription: valueRef.current });
-      await endTaskEdit(sessionId).catch(() => {});
 
       onBlurExtra?.();
     };
@@ -282,12 +241,9 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
     const handleChange = useCallback((e: ChangeEvent<HTMLTextAreaElement>) => {
       const newValue = e.target.value;
 
-      // ✅ Update state directly in event handler
+      // Update state directly in event handler
       valueRef.current = newValue;
       setLocalValue(newValue);
-
-      // Queue IPC update (debounced)
-      debouncedQueueUpdate(sessionId, newValue);
 
       // History tracking with debounce for typing, immediate for paste
       if (historyChangeDebounceRef.current) {
@@ -306,7 +262,7 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
       } else {
         historyChangeDebounceRef.current = window.setTimeout(scheduleRecord, 1000); // 1s debounce for typing
       }
-    }, [sessionId, debouncedQueueUpdate, recordTaskChange]);
+    }, [recordTaskChange]);
 
     return (
       <>
@@ -368,10 +324,9 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
                   const trimmedText = text.trim();
                   const newValue = beforeCursor + prefix + trimmedText + afterCursor;
 
-                  // ✅ Update state directly - let React handle the DOM
+                  // Update state directly - let React handle the DOM
                   valueRef.current = newValue;
                   setLocalValue(newValue);
-                  debouncedQueueUpdate(sessionId, newValue);
 
                   // Record voice input in history
                   if (recordTaskChange) {
