@@ -5,7 +5,7 @@ VALUES (
     "tasks": {
       "implementation_plan": {
         "model": "openai/gpt-5.1-2025-11-13",
-        "allowed_models": ["openai/o3", "openai/gpt-5.1-2025-11-13", "deepseek/deepseek-r1-0528", "moonshotai/kimi-k2", "google/gemini-2.5-pro", "xai/grok-4", "anthropic/claude-sonnet-4-5-20250929"],
+        "allowed_models": ["openai/gpt-5.1-2025-11-13", "deepseek/deepseek-r1-0528", "google/gemini-2.5-pro", "google/gemini-3-pro-preview", "xai/grok-4"],
         "max_tokens": 23000,
         "temperature": 0.7,
         "copy_buttons": [
@@ -39,7 +39,7 @@ VALUES (
       },
       "implementation_plan_merge": {
         "model": "openai/gpt-5.1-2025-11-13",
-        "allowed_models": ["google/gemini-2.5-flash", "openai/gpt-5.1-2025-11-13", "google/gemini-2.5-pro", "moonshotai/kimi-k2", "openai/o4-mini", "xai/grok-4"],
+        "allowed_models": ["google/gemini-2.5-flash", "openai/gpt-5.1-2025-11-13", "google/gemini-2.5-pro", "google/gemini-3-pro-preview", "openai/o4-mini", "xai/grok-4"],
         "max_tokens": 35000,
         "temperature": 0.35
       },

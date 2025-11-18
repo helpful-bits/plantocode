@@ -352,7 +352,7 @@ Analyze the task and create an ARRAY of targeted pattern groups. Each group shou
                           className="w-full"
                         >
                           <DesktopSelectOption value="google/gemini-2.5-pro">
-                            Google Gemini 2.5 Pro
+                            Google Gemini 3 Pro
                           </DesktopSelectOption>
                           <DesktopSelectOption value="anthropic/claude-sonnet-4-5-20250929">
                             Anthropic Claude Sonnet 4.5

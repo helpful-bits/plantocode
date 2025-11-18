@@ -72,7 +72,7 @@
         "q": "Muss ich programmieren können?"
       },
       "q6": {
-        "a": "Die Standard-Konfiguration wird mit Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet, o3, Grok 4, DeepSeek R1 und Kimi K2 ausgeliefert. Sie können Modelle pro Task aus dem Einstellungspanel wechseln, bevor Sie einen Job absenden.",
+        "a": "Die Standard-Konfiguration wird mit Gemini 3 Pro, GPT-5.1, Claude 4.5 Sonnet, o3, Grok 4, DeepSeek R1 und Kimi K2 ausgeliefert. Sie können Modelle pro Task aus dem Einstellungspanel wechseln, bevor Sie einen Job absenden.",
         "q": "Welche KI-Modelle können Pläne generieren?"
       },
       "q7": {
@@ -114,7 +114,7 @@
         "title": "Pläne mit Anweisungen zusammenführen"
       },
       "modelConfiguration": {
-        "description": "Wählen Sie zwischen Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet, Grok 4, DeepSeek R1 und Kimi K2 für Implementierungspläne. Einstellungen bleiben pro Projekt bestehen.",
+        "description": "Wählen Sie zwischen Gemini 3 Pro, GPT-5.1, Claude 4.5 Sonnet, Grok 4, DeepSeek R1 und Kimi K2 für Implementierungspläne. Einstellungen bleiben pro Projekt bestehen.",
         "title": "Modell-Konfiguration pro Aufgabe"
       },
       "monacoEditor": {
@@ -191,9 +191,9 @@
       "description": "Gleiche Aufgabe, gleiche Dateien, gleicher Kontext. Mehrfach ausführen - gleiches Modell oder gemischt. Jede KI hat einen einzigartigen architektonischen Geschmack. Sehen Sie verschiedene gültige Ansätze in standardisiertem Format.",
       "link": "Workflow erkunden",
       "runs": {
-        "run1": "Durchlauf 1 - GPT-5",
-        "run2": "Durchlauf 2 - Gemini 2.5 Pro",
-        "run3": "Durchlauf 3 - GPT-5"
+        "run1": "Durchlauf 1 - GPT-5.1",
+        "run2": "Durchlauf 2 - Gemini 3 Pro",
+        "run3": "Durchlauf 3 - GPT-5.1"
       },
       "tags": {
         "middlewareFirst": "Middleware-Ansatz",
@@ -206,7 +206,7 @@
       "description": "System bewertet und ratet alle Pläne, um die architektonisch am besten geeigneten Ansätze für Ihre Codebasis zu identifizieren, und führt sie dann zu einer überlegenen Implementierung zusammen. Optionale Merge-Anweisungen leiten die Synthese.",
       "link": "Merge-Details",
       "merge": {
-        "line1": "Input: 4 Pläne (2×GPT-5, 2×Gemini)",
+        "line1": "Input: 4 Pläne (2×GPT-5.1, 2×Gemini)",
         "line2": "Scope: Dateien aus allen Plänen",
         "line3": "Strategie: Merge-Anweisungen anwenden",
         "line4": "Output: Datei-für-Datei-Plan",

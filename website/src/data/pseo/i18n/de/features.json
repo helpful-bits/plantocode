@@ -46,9 +46,9 @@
   },
   "multi-model-planning/best-of-all": {
     "headline": "Multi-Modell-Planungssynthese",
-    "subhead": "Erhalten Sie die besten Erkenntnisse von GPT-5, Claude und Gemini kombiniert",
+    "subhead": "Erhalten Sie die besten Erkenntnisse von GPT-5.1, Claude und Gemini kombiniert",
     "meta_title": "Multi-Modell-KI-Planung - Das Beste aller Modelle",
-    "meta_description": "Erstellen Sie Pläne mit mehreren KI-Modellen, dann synthetisieren Sie den besten Ansatz. GPT-5, Claude 4, Gemini 2.5 Pro arbeiten zusammen.",
+    "meta_description": "Erstellen Sie Pläne mit mehreren KI-Modellen, dann synthetisieren Sie den besten Ansatz. GPT-5.1, Claude 4, Gemini 3 Pro arbeiten zusammen.",
     "primary_cta": "Multi-Modell-Planung testen",
     "workflow_steps": [
       "Mit Modell A generieren",

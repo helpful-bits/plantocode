@@ -834,7 +834,7 @@ Debugging time saved: 1-3 hours
 > "One painful lesson from my earlier experiments: out-of-date documentation is actively harmful. If you keep shoveling stale .md files and hand-written 'rules' into the prompt, you're just teaching the model the wrong thing."
 
 ### On Multi-Model Planning
-> "I do not want a single opinionated answer - I want several strong options. So Stage 3 is deliberately fan-out heavy: A Multi-Model Planning Engine runs the implementation_plan prompt across several leading models (for example GPT-5 and Gemini 2.5 Pro) and configurations in parallel."
+> "I do not want a single opinionated answer - I want several strong options. So Stage 3 is deliberately fan-out heavy: A Multi-Model Planning Engine runs the implementation_plan prompt across several leading models (for example GPT-5 and Gemini 3 Pro) and configurations in parallel."
 
 ### On Plan Merge
 > "That merge step rates the individual plans, understands where they agree and disagree, and often combines parts of multiple plans into a single, more precise and more complete blueprint."

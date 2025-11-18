@@ -704,7 +704,7 @@
         "title": "Traitement intelligent des instructions"
       },
       "multiModel": {
-        "description": "Exécutez GPT-5 et Gemini plusieurs fois. Chaque exécution aborde le contexte large différemment, révélant des détails d'implémentation complémentaires.",
+        "description": "Exécutez GPT-5.1 et Gemini plusieurs fois. Chaque exécution aborde le contexte large différemment, révélant des détails d'implémentation complémentaires.",
         "features": [
           "Chaque plan stocké avec métadonnées complètes",
           "Fichiers pertinents automatiquement extraits",
@@ -829,7 +829,7 @@
       "multiModel": {
         "description": "Choisissez parmi plusieurs modèles d'IA avec configurations spécifiques au projet et paramètres de température.",
         "features": [
-          "GPT-5, Claude Sonnet 4, Gemini 2.5 Pro",
+          "GPT-5.1, Claude Sonnet 4, Gemini 3 Pro",
           "Paramètres de modèle spécifiques au projet",
           "Estimation de tokens en temps réel",
           "Validation de fenêtre de contexte"
@@ -920,7 +920,7 @@
         },
         {
           "title": "Génération multi-modèles",
-          "description": "Exécutez les modèles plusieurs fois (3x GPT-5, 2x Gemini). Chaque exécution révèle des détails d'implémentation complémentaires. Streaming en temps réel avec suivi de progression."
+          "description": "Exécutez les modèles plusieurs fois (3x GPT-5.1, 2x Gemini). Chaque exécution révèle des détails d'implémentation complémentaires. Streaming en temps réel avec suivi de progression."
         },
         {
           "title": "Éditer dans Monaco",
@@ -1093,7 +1093,7 @@
         "title": "Contrôle FPS (1-10 FPS)"
       },
       "gemini": {
-        "description": "Alimenté par Google Gemini 2.5 Pro ou Flash pour une compréhension avancée de la vision. Extrait les erreurs, les patterns et fournit des suggestions.",
+        "description": "Alimenté par Google Gemini 3 Pro ou Flash pour une compréhension avancée de la vision. Extrait les erreurs, les patterns et fournit des suggestions.",
         "features": [
           "Extraction de messages d'erreur",
           "Détection d'état UI et transitions",
@@ -1130,7 +1130,7 @@
         "question": "Quels paramètres FPS dois-je utiliser ?"
       },
       "model": {
-        "answer": "Utilisez Gemini 2.5 Flash pour les captures de bugs simples, les démos UI rapides et la documentation où la vitesse et le coût importent. Choisissez Gemini 2.5 Pro pour les problèmes UI complexes, l'analyse détaillée de patterns et lorsque vous avez besoin d'une compréhension contextuelle plus profonde. Pro fournit des insights plus nuancés mais coûte plus cher par frame.",
+        "answer": "Utilisez Gemini 2.5 Flash pour les captures de bugs simples, les démos UI rapides et la documentation où la vitesse et le coût importent. Choisissez Gemini 3 Pro pour les problèmes UI complexes, l'analyse détaillée de patterns et lorsque vous avez besoin d'une compréhension contextuelle plus profonde. Pro fournit des insights plus nuancés mais coûte plus cher par frame.",
         "question": "Quel modèle d'IA dois-je choisir ?"
       },
       "optimization": {
@@ -1151,7 +1151,7 @@
         },
         {
           "title": "Gemini Vision analyse les frames",
-          "description": "La vidéo est traitée à votre FPS choisi (1-10), et les frames sont analysées par Gemini 2.5 Pro ou Flash. L'IA identifie les erreurs, les états UI, les interactions utilisateur et les patterns visuels."
+          "description": "La vidéo est traitée à votre FPS choisi (1-10), et les frames sont analysées par Gemini 3 Pro ou Flash. L'IA identifie les erreurs, les états UI, les interactions utilisateur et les patterns visuels."
         },
         {
           "title": "Extraire les détails exploitables",
@@ -1197,7 +1197,7 @@
           "Compréhension contextuelle plus profonde",
           "Meilleur pour les flux UI complexes"
         ],
-        "title": "Gemini 2.5 Pro"
+        "title": "Gemini 3 Pro"
       },
       "title": "Choisissez votre modèle d'analyse"
     },

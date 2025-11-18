@@ -408,7 +408,7 @@ export default async function PseoPage({ params }: { params: PageParams }) {
                         <ul className="space-y-2 text-foreground/70">
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
-                            <span>OpenAI GPT‑5 family (GPT‑5 and GPT‑5 Thinking/Pro), historical o‑series (e.g., o3 variants); Anthropic Claude Sonnet 4 and Opus 4.1; Google Gemini 2.5 Pro - availability and features vary by plan and endpoint (ChatGPT vs API).</span>
+                            <span>OpenAI GPT‑5 family (GPT‑5 and GPT‑5 Thinking/Pro), historical o‑series (e.g., o3 variants); Anthropic Claude Sonnet 4 and Opus 4.1; Google Gemini 3 Pro - availability and features vary by plan and endpoint (ChatGPT vs API).</span>
                           </li>
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
