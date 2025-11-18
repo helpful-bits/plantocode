@@ -288,7 +288,7 @@
         "title": "Intelligent Instruction Processing"
       },
       "multiModel": {
-        "description": "Run GPT-5 and Gemini multiple times. Each run tackles large context differently, surfacing complementary implementation details.",
+        "description": "Run GPT-5.1 and Gemini multiple times. Each run tackles large context differently, surfacing complementary implementation details.",
         "features": [
           "Each plan stored with complete metadata",
           "Relevant files automatically extracted",
@@ -413,7 +413,7 @@
       "multiModel": {
         "description": "Choose from multiple AI models with project-specific configurations and temperature settings.",
         "features": [
-          "GPT-5, Claude Sonnet 4, Gemini 2.5 Pro",
+          "GPT-5.1, Claude Sonnet 4, Gemini 3 Pro",
           "Project-specific model settings",
           "Real-time token estimation",
           "Context window validation"
@@ -504,7 +504,7 @@
         },
         {
           "title": "Multi-Model Generation",
-          "description": "Run models multiple times (3x GPT-5, 2x Gemini). Each run surfaces complementary implementation details. Real-time streaming with progress tracking."
+          "description": "Run models multiple times (3x GPT-5.1, 2x Gemini). Each run surfaces complementary implementation details. Real-time streaming with progress tracking."
         },
         {
           "title": "Edit in Monaco",
@@ -825,7 +825,7 @@
         "title": "FPS Control (1-10 FPS)"
       },
       "gemini": {
-        "description": "Powered by Google Gemini 2.5 Pro or Flash for advanced vision understanding. Extracts errors, patterns, and provides suggestions.",
+        "description": "Powered by Google Gemini 3 Pro or Flash for advanced vision understanding. Extracts errors, patterns, and provides suggestions.",
         "features": [
           "Error message extraction",
           "UI state detection and transitions",
@@ -862,7 +862,7 @@
         "question": "What FPS settings should I use?"
       },
       "model": {
-        "answer": "Use Gemini 2.5 Flash for straightforward bug captures, quick UI demos, and documentation where speed and cost matter. Choose Gemini 2.5 Pro for complex UI issues, detailed pattern analysis, and when you need deeper contextual understanding. Pro provides more nuanced insights but costs more per frame.",
+        "answer": "Use Gemini 2.5 Flash for straightforward bug captures, quick UI demos, and documentation where speed and cost matter. Choose Gemini 3 Pro for complex UI issues, detailed pattern analysis, and when you need deeper contextual understanding. Pro provides more nuanced insights but costs more per frame.",
         "question": "Which AI model should I choose?"
       },
       "optimization": {
@@ -883,7 +883,7 @@
         },
         {
           "title": "Gemini Vision Analyzes Frames",
-          "description": "Video is processed at your chosen FPS (1-10), and frames are analyzed by Gemini 2.5 Pro or Flash. AI identifies errors, UI states, user interactions, and visual patterns."
+          "description": "Video is processed at your chosen FPS (1-10), and frames are analyzed by Gemini 3 Pro or Flash. AI identifies errors, UI states, user interactions, and visual patterns."
         },
         {
           "title": "Extract Actionable Details",
@@ -929,7 +929,7 @@
           "Deeper contextual understanding",
           "Better for complex UI flows"
         ],
-        "title": "Gemini 2.5 Pro"
+        "title": "Gemini 3 Pro"
       },
       "title": "Choose Your Analysis Model"
     },

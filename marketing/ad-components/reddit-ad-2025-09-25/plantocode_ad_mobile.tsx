@@ -33,7 +33,7 @@ export default function PlanToCodeAdMobile() {
   const models = [
     { name: "Claude 4", progress: 85, status: "Analyzing patterns..." },
     { name: "GPT-5", progress: 72, status: "Structuring approach..." },
-    { name: "Gemini 2.5 Pro", progress: 91, status: "Reviewing trade-offs..." }
+    { name: "Gemini 3 Pro", progress: 91, status: "Reviewing trade-offs..." }
   ];
 
   return (

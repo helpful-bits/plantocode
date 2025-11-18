@@ -72,7 +72,7 @@
         "q": "¿Necesito saber programar?"
       },
       "q6": {
-        "a": "La configuración predeterminada incluye Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet, o3, Grok 4, DeepSeek R1 y Kimi K2. Puedes cambiar de modelo por tarea desde el panel de configuración antes de enviar un trabajo.",
+        "a": "La configuración predeterminada incluye Gemini 3 Pro, GPT-5.1, Claude 4.5 Sonnet, o3, Grok 4, DeepSeek R1 y Kimi K2. Puedes cambiar de modelo por tarea desde el panel de configuración antes de enviar un trabajo.",
         "q": "¿Qué modelos de IA pueden generar planes?"
       },
       "q7": {
@@ -114,7 +114,7 @@
         "title": "Fusionar planes con instrucciones"
       },
       "modelConfiguration": {
-        "description": "Elige entre Gemini 2.5 Pro, GPT-5, Claude 4.5 Sonnet, Grok 4, DeepSeek R1 y Kimi K2 para planes de implementación. La configuración persiste por proyecto.",
+        "description": "Elige entre Gemini 3 Pro, GPT-5.1, Claude 4.5 Sonnet, Grok 4, DeepSeek R1 y Kimi K2 para planes de implementación. La configuración persiste por proyecto.",
         "title": "Configuración de modelo por tarea"
       },
       "monacoEditor": {
@@ -191,9 +191,9 @@
       "description": "Misma tarea, mismos archivos, mismo contexto. Ejecuta múltiples veces - mismo modelo o mixto. Cada IA tiene un gusto arquitectónico único. Ve diferentes enfoques válidos en formato estandarizado.",
       "link": "Explorar el flujo de trabajo",
       "runs": {
-        "run1": "Ejecución 1 - GPT-5",
-        "run2": "Ejecución 2 - Gemini 2.5 Pro",
-        "run3": "Ejecución 3 - GPT-5"
+        "run1": "Ejecución 1 - GPT-5.1",
+        "run2": "Ejecución 2 - Gemini 3 Pro",
+        "run3": "Ejecución 3 - GPT-5.1"
       },
       "tags": {
         "middlewareFirst": "Enfoque middleware",
@@ -206,7 +206,7 @@
       "description": "El sistema evalúa y califica todos los planes para identificar los enfoques arquitectónicamente más apropiados para tu código base, luego los fusiona en una implementación superior. Las instrucciones de fusión opcionales guían la síntesis.",
       "link": "Detalles de fusión",
       "merge": {
-        "line1": "Entrada: 4 planes (2×GPT-5, 2×Gemini)",
+        "line1": "Entrada: 4 planes (2×GPT-5.1, 2×Gemini)",
         "line2": "Alcance: Archivos de todos los planes",
         "line3": "Estrategia: Aplicar instrucciones de fusión",
         "line4": "Salida: Plan archivo por archivo",

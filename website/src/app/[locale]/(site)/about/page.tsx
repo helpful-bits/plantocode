@@ -190,7 +190,7 @@ export default async function AboutPage({ params }: { params: Promise<{ locale: 
                     <div>
                       <h3 className="text-xl font-bold mb-3">Planning Engine</h3>
                       <ul className="text-foreground/80 leading-relaxed list-disc list-inside space-y-2">
-                        <li>Multi-model AI orchestration (GPT-5.1, Claude Sonnet 4.5, Gemini 2.5 Pro)</li>
+                        <li>Multi-model AI orchestration (GPT-5.1, Claude Sonnet 4.5, Gemini 3 Pro)</li>
                         <li>Structured XML plan generation</li>
                         <li>Intelligent plan merging with SOLID principles</li>
                         <li>Source attribution tracking</li>
