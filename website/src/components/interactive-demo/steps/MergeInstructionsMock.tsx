@@ -18,7 +18,7 @@ const mockPlans = [
     id: 'plan-service-oriented',
     title: 'Implementation Plan',
     planTitle: 'Plan B: Service-Oriented Architecture Design',
-    model: 'Google Gemini 2.5 Pro',
+    model: 'Google Gemini 3 Pro',
     tokens: 7890,
     completionTime: '2m 15s',
     timeAgo: 'just now',
@@ -105,7 +105,7 @@ const mockPlans = [
     id: 'plan-event-driven',
     title: 'Implementation Plan', 
     planTitle: 'Plan C: Event-Driven Architecture Pattern',
-    model: 'GPT-5',
+    model: 'GPT-5.1',
     tokens: 9156,
     completionTime: '3m 42s',
     timeAgo: 'just now',
@@ -579,7 +579,7 @@ export function MergeInstructionsMock({ isInView }: { isInView: boolean; resetKe
                         {phase === 'job-completed' ? 'Merged Implementation Plan' : 'Merging Implementation Plans'}
                       </DesktopCardTitle>
                       <DesktopCardDescription className="flex flex-wrap gap-x-2 text-xs mt-1">
-                        <span>GPT-5</span>
+                        <span>GPT-5.1</span>
                         <span>•</span>
                         <span>{phase === 'job-completed' ? '12,847' : 'Calculating...'} tokens</span>
                       </DesktopCardDescription>

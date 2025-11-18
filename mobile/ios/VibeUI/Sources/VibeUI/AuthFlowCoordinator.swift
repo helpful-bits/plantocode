@@ -164,6 +164,11 @@ public struct AuthFlowCoordinator: View {
 
   @MainActor
   private func updateRoute() {
+    // TEMPORARY: Force onboarding screen for testing purposes
+    // TODO: Remove this to restore normal flow
+//     route = .onboarding
+//     return
+
     // 1. Region check
     guard appState.hasSelectedRegionOnce else {
       route = .regionSelection

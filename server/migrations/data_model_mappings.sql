@@ -52,10 +52,12 @@ VALUES
 -- Google models routed through OpenRouter (for fallback scenarios)
 ('google/gemini-2.5-pro', 'openrouter', 'google/gemini-2.5-pro'),
 ('google/gemini-2.5-flash', 'openrouter', 'google/gemini-2.5-flash'),
+('google/gemini-3-pro-preview', 'openrouter', 'google/gemini-3-pro-preview'),
 
 -- Google direct API mappings (clean model IDs without google/ prefix)
 ('google/gemini-2.5-pro', 'google', 'gemini-2.5-pro'),
 ('google/gemini-2.5-flash', 'google', 'gemini-2.5-flash'),
+('google/gemini-3-pro-preview', 'google', 'gemini-3-pro-preview'),
 
 -- =============================================================================
 -- OPENROUTER MODELS

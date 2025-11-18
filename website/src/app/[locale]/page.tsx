@@ -265,7 +265,7 @@ export default function Home() {
     {
       '@type': 'VideoObject',
       name: 'Plan Creation & Merge from Multiple AI Models',
-      description: 'Demonstrates generating implementation plans from configured models such as Gemini 2.5 Pro, GPT-5, and Claude 4.5 Sonnet, then merging the preferred steps into a single draft.',
+      description: 'Demonstrates generating implementation plans from configured models such as Gemini 3 Pro, GPT-5.1, and Claude 4.5 Sonnet, then merging the preferred steps into a single draft.',
       thumbnailUrl: cdnUrl('/assets/images/step-4-poster.jpg'),
       contentUrl: cdnUrl('/assets/videos/step-4-merge.mp4'),
       uploadDate: '2025-09-20T00:00:00Z',
@@ -352,7 +352,7 @@ export default function Home() {
     {
       '@type': 'ImageObject',
       name: 'Video Analysis Feature',
-      description: 'Screen recording analysis interface showing Gemini 2.5 Pro extracting technical details from visual context',
+      description: 'Screen recording analysis interface showing Gemini 3 Pro extracting technical details from visual context',
       contentUrl: cdnUrl('/assets/images/demo-video-analysis.jpg'),
       thumbnailUrl: cdnUrl('/assets/images/demo-video-analysis.jpg'),
     },

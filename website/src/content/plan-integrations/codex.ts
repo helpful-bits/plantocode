@@ -68,7 +68,7 @@ export const codexContent: PlanIntegrationContent = {
     {
       title: 'Model note',
       description:
-        'Defaults to GPT-5; switch to GPT-5-Codex via /model or --model gpt-5-codex',
+        'Defaults to GPT-5.1; switch to GPT-5.1-Codex via /model or --model gpt-5-codex',
     },
     {
       title: 'Windows hint',
@@ -83,7 +83,7 @@ export const codexContent: PlanIntegrationContent = {
       detail: '',
     },
     {
-      step: 'Login and select model (GPT-5 or GPT-5-Codex)',
+      step: 'Login and select model (GPT-5.1 or GPT-5.1-Codex)',
       detail: '',
     },
     {
@@ -130,7 +130,7 @@ export const codexContent: PlanIntegrationContent = {
     },
     {
       claim:
-        'Codex CLI defaults to GPT-5. Users can switch to GPT-5-Codex via the /model command or --model flag.',
+        'Codex CLI defaults to GPT-5.1. Users can switch to GPT-5.1-Codex via the /model command or --model flag.',
       href: 'https://help.openai.com/en/articles/10274290-codex-cli-models',
       source: 'official',
     },

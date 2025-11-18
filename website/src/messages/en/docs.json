@@ -561,7 +561,7 @@
     "title": "Text Improvement",
     "triggerImprovement": {
       "action": "Pressing the popover button calls {code}. The action validates the selection, ensures a session identifier exists, and invokes the Rust command {code} via Tauri. The command builds a {code} containing the original text and queues a background job against the active session.",
-      "backend": "On the backend, the {code} resolves the configured model for the {code} task, wraps the selection in XML tags, and runs the request through the {code} without streaming. When the model response returns it records token usage, cost, and the system prompt template before emitting the improved text back to the UI. The default configuration ships with Claude Sonnet 4.5 and Gemini 2.5 Pro as the approved models, capped at 4,096 tokens with a temperature of 0.7.",
+      "backend": "On the backend, the {code} resolves the configured model for the {code} task, wraps the selection in XML tags, and runs the request through the {code} without streaming. When the model response returns it records token usage, cost, and the system prompt template before emitting the improved text back to the UI. The default configuration ships with Claude Sonnet 4.5 and Gemini 3 Pro as the approved models, capped at 4,096 tokens with a temperature of 0.7.",
       "heading": "What happens when you trigger an improvement",
       "metadata": "The background jobs sidebar records the original text in job metadata, so you can review what was sent alongside the rewritten copy. If the selection changes while a job is running, the provider skips replacing the text to avoid clobbering manual edits."
     },

@@ -541,7 +541,7 @@ mod tests {
             provider_code: "google".to_string(),
         };
 
-        // Test with long context and cached input (like Gemini 2.5 Pro)
+        // Test with long context and cached input (like Gemini 3 Pro)
         // Total input: 250000 tokens (200000 regular + 50000 cached)
         let usage = ProviderUsage::new(250000, 3000, 0, 50000, "gemini-2.5-pro".to_string());
         let result = model.calculate_total_cost(&usage);
