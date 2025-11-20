@@ -130,11 +130,11 @@ public struct SubscriptionSettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             subscriptionManager = container.subscriptionManager
-            Task {
-                if let manager = subscriptionManager {
-                    try? await manager.loadProducts()
-                    await manager.refreshStatus()
-                }
+        }
+        .task {
+            if let manager = subscriptionManager {
+                try? await manager.loadProducts()
+                await manager.refreshStatus()
             }
         }
     }

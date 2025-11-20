@@ -12,22 +12,38 @@ public extension UITextField {
     /// This method creates and attaches a `KeyboardDismissAccessoryView` as the `inputAccessoryView`,
     /// allowing users to dismiss the keyboard with a dedicated button.
     ///
-    /// - Parameter height: The height of the accessory view. Defaults to `KeyboardDismissAccessoryView.defaultHeight`.
+    /// - Parameters:
+    ///   - height: The height of the accessory view. Defaults to `KeyboardDismissAccessoryView.defaultHeight`.
+    ///   - onDismiss: Optional callback invoked when the dismiss button is tapped.
     ///
     /// Example:
     /// ```swift
     /// let textField = UITextField()
     /// textField.addDismissKeyboardAccessory()
     /// ```
-    func addDismissKeyboardAccessory(height: CGFloat = KeyboardDismissAccessoryView.defaultHeight) {
-        let accessoryView = KeyboardDismissAccessoryView(attachedTo: self, height: height)
-        inputAccessoryView = accessoryView
+    func addDismissKeyboardAccessory(
+        height: CGFloat = KeyboardDismissAccessoryView.defaultHeight,
+        onDismiss: (() -> Void)? = nil
+    ) {
+        // Reuse existing accessory if already present
+        if let existingAccessory = inputAccessoryView as? KeyboardDismissAccessoryView {
+            existingAccessory.targetResponder = self
+            existingAccessory.onDismiss = onDismiss
+            return
+        }
+
+        // Create new accessory if not present
+        let accessory = KeyboardDismissAccessoryView(
+            height: height,
+            targetResponder: self,
+            onDismiss: onDismiss
+        )
+        inputAccessoryView = accessory
     }
 
     /// Removes the keyboard dismiss accessory view from the text field.
     ///
-    /// This method sets the `inputAccessoryView` to `nil`, removing any previously attached
-    /// keyboard accessory view.
+    /// This method sets the `inputAccessoryView` to `nil`, only if it's our KeyboardDismissAccessoryView.
     ///
     /// Example:
     /// ```swift
@@ -35,7 +51,10 @@ public extension UITextField {
     /// textField.removeDismissKeyboardAccessory()
     /// ```
     func removeDismissKeyboardAccessory() {
-        inputAccessoryView = nil
+        // Only remove if it's our KeyboardDismissAccessoryView
+        if inputAccessoryView is KeyboardDismissAccessoryView {
+            inputAccessoryView = nil
+        }
     }
 }
 
@@ -50,22 +69,38 @@ public extension UITextView {
     /// This method creates and attaches a `KeyboardDismissAccessoryView` as the `inputAccessoryView`,
     /// allowing users to dismiss the keyboard with a dedicated button.
     ///
-    /// - Parameter height: The height of the accessory view. Defaults to `KeyboardDismissAccessoryView.defaultHeight`.
+    /// - Parameters:
+    ///   - height: The height of the accessory view. Defaults to `KeyboardDismissAccessoryView.defaultHeight`.
+    ///   - onDismiss: Optional callback invoked when the dismiss button is tapped.
     ///
     /// Example:
     /// ```swift
     /// let textView = UITextView()
     /// textView.addDismissKeyboardAccessory()
     /// ```
-    func addDismissKeyboardAccessory(height: CGFloat = KeyboardDismissAccessoryView.defaultHeight) {
-        let accessoryView = KeyboardDismissAccessoryView(attachedTo: self, height: height)
-        inputAccessoryView = accessoryView
+    func addDismissKeyboardAccessory(
+        height: CGFloat = KeyboardDismissAccessoryView.defaultHeight,
+        onDismiss: (() -> Void)? = nil
+    ) {
+        // Reuse existing accessory if already present
+        if let existingAccessory = inputAccessoryView as? KeyboardDismissAccessoryView {
+            existingAccessory.targetResponder = self
+            existingAccessory.onDismiss = onDismiss
+            return
+        }
+
+        // Create new accessory if not present
+        let accessory = KeyboardDismissAccessoryView(
+            height: height,
+            targetResponder: self,
+            onDismiss: onDismiss
+        )
+        inputAccessoryView = accessory
     }
 
     /// Removes the keyboard dismiss accessory view from the text view.
     ///
-    /// This method sets the `inputAccessoryView` to `nil`, removing any previously attached
-    /// keyboard accessory view.
+    /// This method sets the `inputAccessoryView` to `nil`, only if it's our KeyboardDismissAccessoryView.
     ///
     /// Example:
     /// ```swift
@@ -73,7 +108,10 @@ public extension UITextView {
     /// textView.removeDismissKeyboardAccessory()
     /// ```
     func removeDismissKeyboardAccessory() {
-        inputAccessoryView = nil
+        // Only remove if it's our KeyboardDismissAccessoryView
+        if inputAccessoryView is KeyboardDismissAccessoryView {
+            inputAccessoryView = nil
+        }
     }
 }
 
@@ -88,17 +126,36 @@ public extension Runestone.TextView {
     /// This method creates and attaches a `KeyboardDismissAccessoryView` as the `inputAccessoryView`,
     /// allowing users to dismiss the keyboard with a dedicated button.
     ///
-    /// - Parameter height: The height of the accessory view. Defaults to `KeyboardDismissAccessoryView.defaultHeight`.
-    func addDismissKeyboardAccessory(height: CGFloat = KeyboardDismissAccessoryView.defaultHeight) {
-        let accessoryView = KeyboardDismissAccessoryView(attachedTo: self, height: height)
-        inputAccessoryView = accessoryView
+    /// - Parameters:
+    ///   - height: The height of the accessory view. Defaults to `KeyboardDismissAccessoryView.defaultHeight`.
+    ///   - onDismiss: Optional callback invoked when the dismiss button is tapped.
+    func addDismissKeyboardAccessory(
+        height: CGFloat = KeyboardDismissAccessoryView.defaultHeight,
+        onDismiss: (() -> Void)? = nil
+    ) {
+        // Reuse existing accessory if already present
+        if let existingAccessory = inputAccessoryView as? KeyboardDismissAccessoryView {
+            existingAccessory.targetResponder = self
+            existingAccessory.onDismiss = onDismiss
+            return
+        }
+
+        // Create new accessory if not present
+        let accessory = KeyboardDismissAccessoryView(
+            height: height,
+            targetResponder: self,
+            onDismiss: onDismiss
+        )
+        inputAccessoryView = accessory
     }
 
     /// Removes the keyboard dismiss accessory view from the text view.
     ///
-    /// This method sets the `inputAccessoryView` to `nil`, removing any previously attached
-    /// keyboard accessory view.
+    /// This method sets the `inputAccessoryView` to `nil`, only if it's our KeyboardDismissAccessoryView.
     func removeDismissKeyboardAccessory() {
-        inputAccessoryView = nil
+        // Only remove if it's our KeyboardDismissAccessoryView
+        if inputAccessoryView is KeyboardDismissAccessoryView {
+            inputAccessoryView = nil
+        }
     }
 }

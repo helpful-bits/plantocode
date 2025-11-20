@@ -582,6 +582,20 @@ public class DataServicesManager: ObservableObject {
                         if self.sessionService.currentSession?.id == sessionId { return }
                         Task {
                             await self.loadSessionFromDesktop(sessionId: sessionId, projectDirectory: projectDir)
+
+                            // Wire JobsDataService to accept events for this session
+                            self.jobsService.setActiveSession(sessionId: sessionId, projectDirectory: projectDir)
+
+                            // Prime baseline with initial job list
+                            self.jobsService.listJobs(request: JobListRequest(
+                                projectDirectory: projectDir,
+                                sessionId: sessionId,
+                                pageSize: 100,
+                                sortBy: .createdAt,
+                                sortOrder: .desc
+                            ))
+                            .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
+                            .store(in: &self.cancellables)
                         }
                     }
 
@@ -691,9 +705,15 @@ public class DataServicesManager: ObservableObject {
     private func preloadProjectData(_ project: ProjectInfo) {
         // Preload jobs ONLY if session is available
         if let sessionId = self.sessionService.currentSession?.id, !sessionId.isEmpty {
+            // Check if sessionId starts with "mobile-session-"
+            let isMobileSession = sessionId.hasPrefix("mobile-session-")
+
+            // Set effectiveSessionId to nil for mobile sessions, otherwise use the real session ID
+            let effectiveSessionId: String? = isMobileSession ? nil : sessionId
+
             jobsService.listJobs(request: JobListRequest(
                 projectDirectory: project.directory,
-                sessionId: sessionId
+                sessionId: effectiveSessionId
             ))
             .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
             .store(in: &cancellables)
@@ -759,6 +779,14 @@ public class DataServicesManager: ObservableObject {
     }
 
     // MARK: - Subscription
+
+    public var subscriptionGate: SubscriptionGate {
+        SubscriptionGate(manager: subscriptionManager)
+    }
+
+    public func ensureFreshSubscriptionStatus() async {
+        await subscriptionManager.refreshStatus()
+    }
 
     public func hasActiveSubscription() -> Bool {
         subscriptionManager.hasActiveSubscription()

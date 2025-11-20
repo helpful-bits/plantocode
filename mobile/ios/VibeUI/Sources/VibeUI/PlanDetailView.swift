@@ -2,6 +2,12 @@ import SwiftUI
 import Core
 import Combine
 
+private func dynamicColor(_ pair: Theme.DynamicColorPair) -> Color {
+    Color(UIColor { traitCollection in
+        traitCollection.userInterfaceStyle == .dark ? UIColor(pair.dark) : UIColor(pair.light)
+    })
+}
+
 /// Simplified plan viewer for mobile - maximum reading space
 public struct PlanDetailView: View {
     let jobId: String
@@ -17,10 +23,7 @@ public struct PlanDetailView: View {
     @State private var showingTerminal = false
     @State private var hasUnsavedChanges = false
     @State private var showingSaveConfirmation = false
-    @State private var hasRetriedLoad = false
-    @State private var loadToken = UUID()
     @State private var isEditMode = false
-    @State private var retryTask: Task<Void, Never>?
 
     @State private var cancellables = Set<AnyCancellable>()
     @FocusState private var isEditorFocused: Bool
@@ -60,7 +63,7 @@ public struct PlanDetailView: View {
 
     public var body: some View {
         ZStack {
-            Color.background.ignoresSafeArea()
+            Color.backgroundPrimary.ignoresSafeArea()
 
             if isLoading {
                 loadingView()
@@ -120,13 +123,16 @@ public struct PlanDetailView: View {
         }
         .onAppear {
             container.jobsService.setViewedImplementationPlanId(currentJobId)
-            hydrateJob()
             loadPlanContent()
         }
         .onDisappear {
             container.jobsService.setViewedImplementationPlanId(nil)
-            retryTask?.cancel()
-            retryTask = nil
+        }
+        .onChange(of: observedJob?.response) { newResponse in
+            guard let response = newResponse, !response.isEmpty else { return }
+            if response != content {
+                content = response
+            }
         }
     }
 
@@ -141,10 +147,10 @@ public struct PlanDetailView: View {
 
             Text("Loading plan content...")
                 .paragraph()
-                .foregroundColor(Color.mutedForeground)
+                .foregroundColor(Color.textMuted)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.background)
+        .background(Color.backgroundPrimary)
     }
 
     @ViewBuilder
@@ -167,7 +173,7 @@ public struct PlanDetailView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.appBackground)
+        .background(Color.backgroundPrimary)
     }
 
     // MARK: - Editor View
@@ -181,7 +187,7 @@ public struct PlanDetailView: View {
                     if let createdAt = observedJob?.createdAt {
                         Text(formatDate(createdAt))
                             .small()
-                            .foregroundColor(Color.mutedForeground)
+                            .foregroundColor(Color.textMuted)
                     }
 
                     // Merged marker
@@ -190,8 +196,8 @@ public struct PlanDetailView: View {
                             .font(.caption2)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(Color.secondary.opacity(0.15))
-                            .foregroundColor(.secondary)
+                            .background(dynamicColor(Theme.Semantic.Status.infoBackground))
+                            .foregroundColor(Color.info)
                             .clipShape(Capsule())
                             .padding(.leading, 8)
                     }
@@ -219,7 +225,7 @@ public struct PlanDetailView: View {
                     } label: {
                         Image(systemName: "chevron.left")
                             .font(.title3)
-                            .foregroundColor(canGoPrevious ? Color.primary : Color.mutedForeground)
+                            .foregroundColor(canGoPrevious ? Color.textPrimary : Color.textMuted)
                     }
                     .disabled(!canGoPrevious)
 
@@ -232,7 +238,7 @@ public struct PlanDetailView: View {
                     } label: {
                         Image(systemName: "chevron.right")
                             .font(.title3)
-                            .foregroundColor(canGoNext ? Color.primary : Color.mutedForeground)
+                            .foregroundColor(canGoNext ? Color.textPrimary : Color.textMuted)
                     }
                     .disabled(!canGoNext)
 
@@ -251,7 +257,7 @@ public struct PlanDetailView: View {
                 .padding(.horizontal)
                 .padding(.top, 4)
                 .padding(.bottom, 8)
-                .background(Color.card)
+                .background(Color.surfacePrimary)
                 .overlay(
                     Rectangle()
                         .frame(height: 1)
@@ -262,21 +268,19 @@ public struct PlanDetailView: View {
 
             // Maximum space for editor
             PlanRunestoneEditorView(
-                text: Binding(
-                    get: { observedJob?.response ?? content },
-                    set: { newValue in
-                        if !isStreaming && newValue != content {
-                            hasUnsavedChanges = true
-                        }
-                        content = newValue
-                    }
-                ),
+                text: $content,
                 isReadOnly: isStreaming || !isEditMode,
                 languageHint: "xml"
             )
             .focused($isEditorFocused)
             .ignoresSafeArea(.keyboard)
             .background(Color.codeBackground)
+            .onChange(of: content) { newValue in
+                // Only mark as unsaved if not streaming
+                if !isStreaming {
+                    hasUnsavedChanges = true
+                }
+            }
 
             // Keyboard toolbar (when keyboard is visible) - compact in landscape
             if isEditorFocused {
@@ -336,7 +340,7 @@ public struct PlanDetailView: View {
                 }
                 .padding(.horizontal)
                 .padding(.vertical, isLandscape ? 4 : 8)
-                .background(Color.card)
+                .background(Color.surfacePrimary)
                 .overlay(
                     Rectangle()
                         .frame(height: 1)
@@ -386,19 +390,11 @@ public struct PlanDetailView: View {
         let newIndex = direction == .previous ? currentIndex - 1 : currentIndex + 1
         guard newIndex >= 0 && newIndex < allPlanJobIds.count else { return }
 
-        // Cancel any pending retry tasks
-        retryTask?.cancel()
-        retryTask = nil
-
         currentIndex = newIndex
         container.jobsService.setViewedImplementationPlanId(currentJobId)
-        loadToken = UUID()
         hasUnsavedChanges = false
         isEditMode = false
         isEditorFocused = false
-
-        // Hydrate job for streaming content
-        hydrateJob()
 
         loadPlanContent()
     }
@@ -406,79 +402,49 @@ public struct PlanDetailView: View {
     // MARK: - Data Loading
 
     private func loadPlanContent() {
-        let localToken = loadToken
+        let jobId = currentJobId
 
-        // Cancel any pending retry tasks
-        retryTask?.cancel()
-        retryTask = nil
-
-        // Streaming-aware logic
-        if let job = observedJob {
-            if job.status == "active" || job.status == "queued" {
-                // Job is currently generating
-                if let response = job.response, !response.isEmpty {
-                    // We have streaming content, use it
-                    content = response
-                    isLoading = false
-                    errorMessage = nil
-                    return
-                } else {
-                    // Active but no response yet, schedule retry
-                    isLoading = true
-                    retryTask = Task {
-                        try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
-                        await MainActor.run {
-                            guard localToken == self.loadToken else { return }
-                            self.loadPlanContent()
-                        }
-                    }
-                    return
-                }
+        // 1) Local jobsService.jobs fast path
+        if let localJob = container.jobsService.jobs.first(where: { $0.id == jobId }),
+           let localResponse = localJob.response,
+           !localResponse.isEmpty {
+            if localResponse.count > content.count {
+                self.content = localResponse
             }
+            self.isLoading = false
+            self.errorMessage = nil
+            return
         }
 
-        // Job is completed/failed or not found - fetch full content
-        isLoading = true
-        errorMessage = nil
-        hasRetriedLoad = false
+        // 2) Observed job fast path
+        if let job = observedJob,
+           let response = job.response,
+           !response.isEmpty {
+            if response.count > content.count {
+                self.content = response
+            }
+            self.isLoading = false
+            self.errorMessage = nil
+            return
+        }
 
-        jobsService.getJobFast(jobId: currentJobId)
+        // 3) Fallback to single getJobFast RPC
+        self.isLoading = true
+        container.jobsService
+            .getJobFast(jobId: jobId)
             .receive(on: DispatchQueue.main)
-            .sink(
-                receiveCompletion: { completion in
-                    guard localToken == self.loadToken else { return }
-
-                    self.isLoading = false
-                    if case .failure(let error) = completion {
-                        let errorDescription = error.localizedDescription
-
-                        // Handle "Job not found" with retry
-                        if errorDescription.contains("Job not found") || errorDescription.contains("Not found") {
-                            if !self.hasRetriedLoad {
-                                self.hasRetriedLoad = true
-                                self.retryTask = Task {
-                                    try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 seconds
-                                    await MainActor.run {
-                                        guard localToken == self.loadToken else { return }
-                                        self.loadPlanContent()
-                                    }
-                                }
-                                return
-                            }
-                            self.errorMessage = "This plan no longer exists or has been deleted."
-                            return
-                        }
-
-                        self.errorMessage = errorDescription
-                    }
-                },
-                receiveValue: { job in
-                    guard localToken == self.loadToken else { return }
-
-                    self.content = job.response ?? ""
-                    self.isLoading = false
+            .sink(receiveCompletion: { completion in
+                self.isLoading = false
+                if case let .failure(error) = completion {
+                    self.errorMessage = error.localizedDescription
                 }
-            )
+            }, receiveValue: { job in
+                self.errorMessage = nil
+                let response = job.response ?? ""
+                if response.count > self.content.count {
+                    self.content = response
+                }
+            })
             .store(in: &cancellables)
     }
 
@@ -502,29 +468,6 @@ public struct PlanDetailView: View {
                 }
             }
         }
-    }
-
-    private func hydrateJob() {
-        // Check if job is already present in jobsService
-        if jobsService.jobs.contains(where: { $0.id == currentJobId }) {
-            return
-        }
-
-        // Fetch job to populate jobsService.jobs array
-        jobsService.getJobFast(jobId: currentJobId)
-            .receive(on: DispatchQueue.main)
-            .sink(
-                receiveCompletion: { completion in
-                    if case .failure(let error) = completion {
-                        // Don't set error here, let loadPlanContent handle it
-                        print("Failed to hydrate job: \(error.localizedDescription)")
-                    }
-                },
-                receiveValue: { _ in
-                    // Job is now in jobsService.jobs, observedJob computed property will pick it up
-                }
-            )
-            .store(in: &cancellables)
     }
 
 }

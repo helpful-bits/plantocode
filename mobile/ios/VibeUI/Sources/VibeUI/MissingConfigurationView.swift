@@ -69,7 +69,7 @@ public struct MissingConfigurationView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
+        .background(Color.backgroundSecondary)
     }
 
     private var idleView: some View {
@@ -116,7 +116,7 @@ public struct MissingConfigurationView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
+        .background(Color.backgroundSecondary)
     }
 
     private func configurationView(missing: AppState.MissingConfig) -> some View {
@@ -183,7 +183,7 @@ public struct MissingConfigurationView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
+        .background(Color.backgroundSecondary)
     }
 }
 

@@ -7,7 +7,6 @@ public struct JobsMonitoringView: View {
     @ObservedObject private var jobsService: JobsDataService
     @StateObject private var multiConnectionManager = MultiConnectionManager.shared
     @Environment(\.colorScheme) var colorScheme
-    @State private var searchQuery: String = ""
     @State private var selectedJobId: IdentifiableString? = nil
     @State private var isLoading = false
     @State private var cancellingJobs = Set<String>()
@@ -16,6 +15,8 @@ public struct JobsMonitoringView: View {
     @State private var showingError = false
     @State private var cancellables = Set<AnyCancellable>()
     @State private var refreshToken = UUID()
+    @State private var successMessage: String?
+    @State private var showingSuccess = false
     
     public init(jobsService: JobsDataService) {
         self._jobsService = ObservedObject(wrappedValue: jobsService)
@@ -51,17 +52,9 @@ public struct JobsMonitoringView: View {
             }
     }
 
-    // Filtered jobs with search applied
+    // Filtered jobs sorted by date
     private var filteredJobs: [BackgroundJob] {
-        let search = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-
         return baseFilteredJobs
-            .filter { job in
-                search.isEmpty ||
-                job.taskType.localizedCaseInsensitiveContains(search) ||
-                job.id.localizedCaseInsensitiveContains(search) ||
-                job.status.localizedCaseInsensitiveContains(search)
-            }
             .sorted { ($0.updatedAt ?? $0.createdAt) > ($1.updatedAt ?? $1.createdAt) }
     }
 
@@ -69,47 +62,6 @@ public struct JobsMonitoringView: View {
         let _ = refreshToken // bind into body to force recompute when changed
         VStack(spacing: 0) {
             VStack(spacing: 0) {
-                // Search and Summary Section
-                VStack(spacing: 16) {
-                    // Search bar
-                    ZStack(alignment: .leading) {
-                        // Custom placeholder
-                        if searchQuery.isEmpty {
-                            HStack(spacing: 8) {
-                                Image(systemName: "magnifyingglass")
-                                    .foregroundColor(Color.mutedForeground)
-                                    .frame(width: 16)
-                                Text("Search jobs...")
-                                    .foregroundColor(Color.mutedForeground)
-                            }
-                            .padding(14)
-                            .allowsHitTesting(false)
-                        }
-
-                        HStack(spacing: 8) {
-                            Image(systemName: "magnifyingglass")
-                                .foregroundColor(Color.mutedForeground)
-                                .frame(width: 16)
-                            TextField("", text: $searchQuery)
-                                .textFieldStyle(.plain)
-                                .foregroundColor(Color.foreground)
-                            if !searchQuery.isEmpty {
-                                Button(action: { searchQuery = "" }) {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundColor(Color.mutedForeground)
-                                }
-                            }
-                        }
-                        .padding(14)
-                    }
-                    .background(Color.input)
-                    .cornerRadius(Theme.Radii.base)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: Theme.Radii.base)
-                            .stroke(Color.border, lineWidth: 1)
-                    )
-                }
-                .padding()
 
                 // Job List
                 // Show loading if we're loading AND have no jobs for current session
@@ -121,7 +73,7 @@ public struct JobsMonitoringView: View {
                             .scaleEffect(1.5)
                         Text("Loading jobs...")
                             .font(.system(size: 15))
-                            .foregroundColor(Color.mutedForeground)
+                            .foregroundColor(Color.textMuted)
                             .padding(.top, 16)
                         Spacer()
                     }
@@ -131,24 +83,22 @@ public struct JobsMonitoringView: View {
                         Spacer()
                         Image(systemName: "tray")
                             .font(.system(size: 48))
-                            .foregroundColor(Color.mutedForeground.opacity(0.6))
-                        Text(searchQuery.isEmpty ? "No jobs yet" : "No matching jobs")
+                            .foregroundColor(Color.textMuted.opacity(0.6))
+                        Text("No jobs yet")
                             .h4()
-                            .foregroundColor(Color.foreground)
+                            .foregroundColor(Color.textPrimary)
 
-                        if searchQuery.isEmpty {
-                            Text("Background jobs will appear here once they are created")
-                                .font(.system(size: 15))
-                                .foregroundColor(Color.mutedForeground)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal, 40)
-                        }
+                        Text("Background jobs will appear here once they are created")
+                            .font(.system(size: 15))
+                            .foregroundColor(Color.textMuted)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 40)
                         Spacer()
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollView {
-                        LazyVStack(spacing: 10) {
+                        LazyVStack(spacing: Theme.Spacing.cardSpacing) {
                             ForEach(filteredJobs) { job in
                                 JobCardView(
                                     job: job,
@@ -172,7 +122,7 @@ public struct JobsMonitoringView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(.systemBackground))
+            .background(Color.backgroundPrimary)
         }
         .navigationTitle("Background Jobs")
         .sheet(item: $selectedJobId) { identifiableJobId in
@@ -183,6 +133,23 @@ public struct JobsMonitoringView: View {
             selectedJobId = nil
             Task { await loadJobs() }
         }
+        .overlay(
+            Group {
+                if showingSuccess, let message = successMessage {
+                    VStack {
+                        Spacer()
+                        StatusAlertView(
+                            variant: .success,
+                            title: "Success",
+                            message: message
+                        )
+                        .padding()
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                }
+            }
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: showingSuccess)
+        )
         .onAppear {
             guard let session = container.sessionService.currentSession else { return }
 
@@ -259,12 +226,32 @@ public struct JobsMonitoringView: View {
 
     private func loadJobs() async {
         // Gate: only fetch when session exists
-        guard let rawSessionId = container.sessionService.currentSession?.id else {
+        guard let currentSession = container.sessionService.currentSession else {
             return
         }
 
-        // Mobile sessions should fetch all jobs (pass nil for sessionId)
-        let sessionId: String? = rawSessionId.hasPrefix("mobile-session-") ? nil : rawSessionId
+        // Determine if it's a mobile session
+        let isMobileSession = currentSession.id.hasPrefix("mobile-session-")
+
+        // Set effectiveSessionId to nil for mobile sessions, otherwise use the real session ID
+        let effectiveSessionId: String? = isMobileSession ? nil : currentSession.id
+
+        // Get projectDirectory from session or currentProject
+        let projectDirectory = currentSession.projectDirectory ?? container.currentProject?.directory
+
+        // Guard that for mobile sessions, projectDirectory must be non-empty
+        if isMobileSession {
+            guard let projectDir = projectDirectory, !projectDir.isEmpty else {
+                return
+            }
+        }
+
+        // Guard that for non-mobile sessions, at least one of effectiveSessionId or projectDirectory is non-empty
+        if !isMobileSession {
+            guard effectiveSessionId != nil || (projectDirectory != nil && !projectDirectory!.isEmpty) else {
+                return
+            }
+        }
 
         // Show loading if we have no jobs for the CURRENT session (not just any jobs)
         let hasCachedJobsForCurrentSession = !baseFilteredJobs.isEmpty
@@ -272,14 +259,12 @@ public struct JobsMonitoringView: View {
             isLoading = true
         }
 
-        let projectDir = container.sessionService.currentSession?.projectDirectory ?? container.currentProject?.directory
-
         // Capture RAW session ID for verification (not the transformed one)
-        let capturedRawSessionId = rawSessionId
+        let capturedRawSessionId = currentSession.id
 
         let request = JobListRequest(
-            projectDirectory: projectDir,
-            sessionId: sessionId,
+            projectDirectory: projectDirectory,
+            sessionId: effectiveSessionId,
             pageSize: 100,
             sortBy: .createdAt,
             sortOrder: .desc
@@ -418,6 +403,8 @@ public struct JobsMonitoringView: View {
             return
         }
 
+        let fileCount = filePaths.count
+
         Task {
             do {
                 try await container.sessionService.updateSessionFiles(
@@ -427,8 +414,26 @@ public struct JobsMonitoringView: View {
                     addExcluded: nil,
                     removeExcluded: filePaths
                 )
+
+                await MainActor.run {
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.success)
+
+                    successMessage = "Added \(fileCount) \(fileCount == 1 ? "file" : "files") to selection"
+                    showingSuccess = true
+
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                        showingSuccess = false
+                    }
+                }
             } catch {
-                // Silent error handling
+                await MainActor.run {
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.error)
+
+                    errorMessage = "Failed to apply files"
+                    showingError = true
+                }
             }
         }
     }
@@ -459,11 +464,28 @@ public struct JobsMonitoringView: View {
                         return
                     }
                     if response.isFinal {
+                        await MainActor.run {
+                            let generator = UINotificationFeedbackGenerator()
+                            generator.notificationOccurred(.success)
+
+                            successMessage = "Research findings added to task description"
+                            showingSuccess = true
+
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                                showingSuccess = false
+                            }
+                        }
                         break
                     }
                 }
             } catch {
-                // Silent error handling
+                await MainActor.run {
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.error)
+
+                    errorMessage = "Failed to apply research"
+                    showingError = true
+                }
             }
         }
     }
@@ -490,11 +512,28 @@ public struct JobsMonitoringView: View {
                         return
                     }
                     if response.isFinal {
+                        await MainActor.run {
+                            let generator = UINotificationFeedbackGenerator()
+                            generator.notificationOccurred(.success)
+
+                            successMessage = "Video analysis added to task description"
+                            showingSuccess = true
+
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                                showingSuccess = false
+                            }
+                        }
                         break
                     }
                 }
             } catch {
-                // Silent error handling
+                await MainActor.run {
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.error)
+
+                    errorMessage = "Failed to apply video analysis"
+                    showingError = true
+                }
             }
         }
     }

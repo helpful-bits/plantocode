@@ -49,6 +49,10 @@ public final class AppContainer: ObservableObject {
         manager.onboardingService
     }
 
+    public var subscriptionGate: SubscriptionGate {
+        manager.subscriptionGate
+    }
+
     @Published public var connectionStatus: ConnectionStatus = .disconnected
     @Published public var currentProject: ProjectInfo?
     @Published public var isInitializing: Bool = false
@@ -106,6 +110,10 @@ public final class AppContainer: ObservableObject {
 
     public func exportProjectData(_ project: ProjectInfo, format: ExportFormat = .json) -> AnyPublisher<URL, DataServiceError> {
         manager.exportProjectData(project, format: format)
+    }
+
+    public func ensureFreshSubscriptionStatus() async {
+        await manager.ensureFreshSubscriptionStatus()
     }
 
     // MARK: - Preview Support

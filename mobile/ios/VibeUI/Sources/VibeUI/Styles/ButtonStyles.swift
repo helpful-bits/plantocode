@@ -356,25 +356,35 @@ public struct RecordingButtonStyle: ButtonStyle {
     }
 
     public func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 14, weight: .medium))
-            .foregroundColor(isRecording ? AppColors.destructiveForeground : AppColors.foreground)
-            .padding(.horizontal, Theme.Spacing.cardPadding)
-            .padding(.vertical, Theme.Spacing.cardSpacing)
-            .background(
-                isRecording ? AppColors.destructive : AppColors.muted
-            )
+        let pressed = configuration.isPressed
+
+        return configuration.label
+            .padding(.horizontal, Theme.Spacing.lg)
+            .padding(.vertical, Theme.Spacing.sm)
+            .background(backgroundColor(pressed: pressed))
             .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(
-                        isRecording ? AppColors.destructive : AppColors.border,
-                        lineWidth: 1
-                    )
+                RoundedRectangle(cornerRadius: 999, style: .continuous)
+                    .stroke(borderColor(pressed: pressed), lineWidth: 1)
             )
-            .cornerRadius(10)
-            .opacity(isEnabled ? 1.0 : 0.5)
-            .animation(.easeInOut(duration: 0.2), value: configuration.isPressed)
-            .animation(.easeInOut(duration: 0.2), value: isRecording)
+            .clipShape(RoundedRectangle(cornerRadius: 999, style: .continuous))
+            .scaleEffect(pressed ? 0.97 : 1.0)
+            .animation(.easeInOut(duration: 0.12), value: pressed)
+    }
+
+    private func backgroundColor(pressed: Bool) -> Color {
+        if isRecording {
+            return AppColors.destructive.opacity(pressed ? 0.18 : 0.14)
+        } else {
+            return AppColors.muted.opacity(pressed ? 0.16 : 0.12)
+        }
+    }
+
+    private func borderColor(pressed: Bool) -> Color {
+        if isRecording {
+            return AppColors.destructiveForeground.opacity(pressed ? 0.9 : 0.7)
+        } else {
+            return AppColors.border.opacity(pressed ? 0.9 : 0.6)
+        }
     }
 }
 
@@ -486,10 +496,10 @@ public struct UtilityButtonStyle: ButtonStyle {
 
     public func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 13, weight: .medium))
+            .font(.system(size: 14, weight: .medium))
             .foregroundColor(AppColors.mutedForeground)
-            .padding(.horizontal, Theme.Spacing.cardSpacing)
-            .padding(.vertical, Theme.Spacing.sm)
+            .padding(.horizontal, Theme.Spacing.lg)
+            .padding(.vertical, Theme.Spacing.cardSpacing)
             .background(AppColors.muted)
             .overlay(
                 RoundedRectangle(cornerRadius: AppColors.radiusSm)

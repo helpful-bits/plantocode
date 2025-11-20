@@ -614,3 +614,35 @@ extension DateFormatter {
         return formatter
     }()
 }
+
+extension BackgroundJob {
+    public var streamProgressPercentage: Int? {
+        if let storedProgress = self.progressPercentage {
+            return Int(storedProgress)
+        }
+
+        guard let metadata = self.metadata,
+              let data = metadata.data(using: .utf8),
+              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let taskData = dict["taskData"] as? [String: Any],
+              let raw = taskData["streamProgress"] else {
+            return nil
+        }
+
+        let value: Double
+        if let d = raw as? Double {
+            value = d
+        } else if let i = raw as? Int {
+            value = Double(i)
+        } else {
+            return nil
+        }
+
+        let clamped = max(0, min(100, Int(round(value))))
+        return clamped
+    }
+
+    public var isActive: Bool {
+        jobStatus.isActive
+    }
+}

@@ -31,6 +31,7 @@ public struct TerminalComposeView: View {
 
     @State private var hasAutoStarted = false
     @State private var forceSelectionApply: Bool = false
+    @State private var isEditing: Bool = false
 
     public init(jobId: String, autoStartRecording: Bool = false) {
         self.jobId = jobId
@@ -67,6 +68,7 @@ public struct TerminalComposeView: View {
                     text: $composedText,
                     selectedRange: $selectedRange,
                     forceApplySelection: $forceSelectionApply,
+                    isEditing: $isEditing,
                     placeholder: "Compose text to send to terminal...",
                     onInteraction: {
                         saveToUndoHistory()
@@ -123,6 +125,12 @@ public struct TerminalComposeView: View {
                                 undoRedoManager.saveState(composedText)
                             }
                         )
+
+                        if voiceDictationService.isTranscribing {
+                            Text("Processing…")
+                                .font(.caption2)
+                                .foregroundColor(.mutedForeground)
+                        }
 
                         if !voiceDictationService.isRecording {
                             // 2. Language Picker

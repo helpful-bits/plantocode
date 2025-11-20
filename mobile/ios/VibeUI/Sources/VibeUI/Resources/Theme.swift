@@ -18,27 +18,27 @@ public enum Theme {
         )
 
         public static let card = DynamicColorPair(
-            light: Color(red: 0.987, green: 0.987, blue: 0.987),
+            light: Color(red: 0.98, green: 0.98, blue: 0.985),
             dark: Color(red: 0.059, green: 0.115, blue: 0.122)
         )
 
         public static let foreground = DynamicColorPair(
-            light: Color(red: 0.15, green: 0.15, blue: 0.15),
+            light: Color(red: 0.12, green: 0.12, blue: 0.12),
             dark: Color(red: 0.9, green: 0.9, blue: 0.9)
         )
 
         public static let cardForeground = DynamicColorPair(
-            light: Color(red: 0.18, green: 0.18, blue: 0.18),
+            light: Color(red: 0.15, green: 0.15, blue: 0.15),
             dark: Color(red: 0.88, green: 0.88, blue: 0.88)
         )
 
         public static let mutedForeground = DynamicColorPair(
-            light: Color(red: 0.4, green: 0.4, blue: 0.4),
+            light: Color(red: 0.50, green: 0.50, blue: 0.50),
             dark: Color(red: 0.62, green: 0.62, blue: 0.62)
         )
 
         public static let secondaryForeground = DynamicColorPair(
-            light: Color(red: 0.2, green: 0.2, blue: 0.2),
+            light: Color(red: 0.25, green: 0.25, blue: 0.25),
             dark: Color(red: 0.82, green: 0.82, blue: 0.82)
         )
 
@@ -53,17 +53,17 @@ public enum Theme {
         )
 
         public static let secondary = DynamicColorPair(
-            light: Color(red: 0.97, green: 0.97, blue: 0.97),
+            light: Color(red: 0.975, green: 0.987, blue: 0.987),
             dark: Color(red: 0.114, green: 0.172, blue: 0.179)
         )
 
         public static let muted = DynamicColorPair(
-            light: Color(red: 0.98, green: 0.98, blue: 0.98),
+            light: Color(red: 0.97, green: 0.97, blue: 0.98),
             dark: Color(red: 0.077, green: 0.134, blue: 0.141)
         )
 
         public static let accent = DynamicColorPair(
-            light: Color(red: 0.94, green: 0.98, blue: 0.98),
+            light: Color(red: 0.96, green: 0.97, blue: 0.98),
             dark: Color(red: 0.105, green: 0.198, blue: 0.198)
         )
 
@@ -113,12 +113,12 @@ public enum Theme {
         )
 
         public static let border = DynamicColorPair(
-            light: Color(red: 0.92, green: 0.92, blue: 0.92),
+            light: Color(red: 0.94, green: 0.96, blue: 0.96),
             dark: Color(red: 0.172, green: 0.232, blue: 0.239)
         )
 
         public static let input = DynamicColorPair(
-            light: Color(red: 0.985, green: 0.985, blue: 0.985),
+            light: Color(red: 0.96, green: 0.975, blue: 0.975),
             dark: Color(red: 0.096, green: 0.153, blue: 0.160)
         )
 
@@ -128,12 +128,12 @@ public enum Theme {
         )
 
         public static let popover = DynamicColorPair(
-            light: Color(red: 1.0, green: 1.0, blue: 1.0),
+            light: Color(red: 0.99, green: 0.995, blue: 0.995),
             dark: Color(red: 0.041, green: 0.097, blue: 0.104)
         )
 
         public static let popoverForeground = DynamicColorPair(
-            light: Color(red: 0.15, green: 0.15, blue: 0.15),
+            light: Color(red: 0.12, green: 0.12, blue: 0.12),
             dark: Color(red: 0.9, green: 0.9, blue: 0.9)
         )
 
@@ -173,17 +173,17 @@ public enum Theme {
         )
 
         public static let codeBackground = DynamicColorPair(
-            light: Color(red: 0.06, green: 0.09, blue: 0.16),
+            light: Color(red: 0.98, green: 0.98, blue: 0.99),
             dark: Color(red: 0.001, green: 0.029, blue: 0.035)
         )
 
         public static let codeForeground = DynamicColorPair(
-            light: Color(red: 0.95, green: 0.95, blue: 0.95),
+            light: Color(red: 0.12, green: 0.12, blue: 0.12),
             dark: Color(red: 0.90, green: 0.90, blue: 0.90)
         )
 
         public static let codeBorder = DynamicColorPair(
-            light: Color(red: 0.20, green: 0.24, blue: 0.32),
+            light: Color(red: 0.90, green: 0.90, blue: 0.90),
             dark: Color(red: 0.172, green: 0.232, blue: 0.239)
         )
 
@@ -196,6 +196,90 @@ public enum Theme {
             light: Color(red: 0.15, green: 0.15, blue: 0.15),
             dark: Color(red: 0.82, green: 0.82, blue: 0.82)
         )
+
+        public static let destructiveBackground = DynamicColorPair(
+            light: Color(red: 0.99, green: 0.93, blue: 0.93),
+            dark: Color(red: 0.175, green: 0.036, blue: 0.040)
+        )
+
+        public static let destructiveBorder = DynamicColorPair(
+            light: Color(red: 0.90, green: 0.70, blue: 0.70),
+            dark: Color(red: 0.445, green: 0.084, blue: 0.102)
+        )
+
+        public static let selectionBackground = DynamicColorPair(
+            light: Color(red: 0.000, green: 0.473, blue: 0.474).opacity(0.04),
+            dark: Color(red: 0.096, green: 0.153, blue: 0.160)
+        )
+
+        public static let subtleHighlight = DynamicColorPair(
+            light: Color(red: 0.98, green: 0.98, blue: 0.985),
+            dark: Color(red: 0.077, green: 0.134, blue: 0.141)
+        )
+    }
+
+    public enum Semantic {
+        public struct Background {
+            public static let primary = Colors.background
+            public static let secondary = Colors.card
+            public static let tertiary = Colors.muted
+        }
+
+        public struct Surface {
+            public static let card = Colors.card
+            public static let cardMuted = Colors.muted
+            public static let elevated = Colors.card
+        }
+
+        public struct Text {
+            public static let primary = Colors.foreground
+            public static let secondary = Colors.secondaryForeground
+            public static let muted = Colors.mutedForeground
+            public static let inverse = Colors.primaryForeground
+        }
+
+        public struct Border {
+            public static let standard = Colors.border
+            public static let strong = Colors.borderModal
+            public static let subtle = Colors.muted
+        }
+
+        public struct Status {
+            public static let successBackground = Colors.successBackground
+            public static let successBorder = Colors.successBorder
+            public static let successForeground = Colors.successForeground
+
+            public static let warningBackground = Colors.warningBackground
+            public static let warningBorder = Colors.warningBorder
+            public static let warningForeground = Colors.warningForeground
+
+            public static let infoBackground = Colors.infoBackground
+            public static let infoBorder = Colors.infoBorder
+            public static let infoForeground = Colors.infoForeground
+
+            public static let destructiveBackground = Colors.destructiveBackground
+            public static let destructiveBorder = Colors.destructiveBorder
+            public static let destructiveForeground = Colors.destructiveForeground
+        }
+
+        public struct Input {
+            public static let background = Colors.input
+            public static let border = Colors.border
+            public static let placeholder = Colors.mutedForeground
+        }
+
+        public struct Selection {
+            public static let background = Colors.selectionBackground
+            public static let subtleHighlight = Colors.subtleHighlight
+        }
+
+        public struct Code {
+            public static let background = Colors.codeBackground
+            public static let foreground = Colors.codeForeground
+            public static let border = Colors.codeBorder
+            public static let inlineBackground = Colors.inlineCodeBackground
+            public static let inlineForeground = Colors.inlineCodeForeground
+        }
     }
 
     public enum Radii {
