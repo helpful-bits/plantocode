@@ -1,4 +1,5 @@
 import UIKit
+import SwiftUI
 
 /// A reusable keyboard accessory view that provides a dismiss button to hide the keyboard.
 ///
@@ -14,8 +15,8 @@ public final class KeyboardDismissAccessoryView: UIInputView {
 
     // MARK: - Public Properties
 
-    /// The default height for the accessory view.
-    public static let defaultHeight: CGFloat = 44
+    /// The default height for the accessory view (minimal to be invisible)
+    public static let defaultHeight: CGFloat = 1
 
     /// The target responder that will resign first responder status when the dismiss button is tapped.
     /// This is a weak reference to avoid retain cycles.
@@ -35,9 +36,14 @@ public final class KeyboardDismissAccessoryView: UIInputView {
     /// Creates a new keyboard dismiss accessory view.
     ///
     /// - Parameters:
-    ///   - targetResponder: The responder that should resign first responder when dismissed.
     ///   - height: The height of the accessory view. Defaults to `defaultHeight`.
-    public init(attachedTo targetResponder: UIResponder, height: CGFloat = defaultHeight, onDismiss: (() -> Void)? = nil) {
+    ///   - targetResponder: The responder that should resign first responder when dismissed.
+    ///   - onDismiss: Optional callback invoked when the dismiss button is tapped.
+    public init(
+        height: CGFloat = KeyboardDismissAccessoryView.defaultHeight,
+        targetResponder: UIResponder? = nil,
+        onDismiss: (() -> Void)? = nil
+    ) {
         self.targetResponder = targetResponder
         self.baseHeight = height
         self.onDismiss = onDismiss
@@ -50,7 +56,8 @@ public final class KeyboardDismissAccessoryView: UIInputView {
         self.dismissButton = UIButton(type: .system)
 
         // Initialize as UIInputView with keyboard style
-        super.init(frame: .zero, inputViewStyle: .keyboard)
+        let initialFrame = CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: height)
+        super.init(frame: initialFrame, inputViewStyle: .keyboard)
 
         setupViews()
         setupConstraints()
@@ -76,41 +83,71 @@ public final class KeyboardDismissAccessoryView: UIInputView {
     // MARK: - Setup
 
     private func setupViews() {
-        // Add blur effect view as background
+        backgroundColor = .clear
+
+        // Configure blur effect view - make it invisible
         blurEffectView.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(blurEffectView)
+        blurEffectView.isUserInteractionEnabled = false
+        blurEffectView.alpha = 0
 
         // Configure dismiss button
-        if let image = UIImage(systemName: "keyboard.chevron.compact.down") {
+        // Use "keyboard.chevron.compact.down" if available (iOS 14+), fallback to "chevron.down"
+        let iconName = UIImage(systemName: "keyboard.chevron.compact.down") != nil
+            ? "keyboard.chevron.compact.down"
+            : "chevron.down"
+        if let image = UIImage(systemName: iconName) {
             let templateImage = image.withRenderingMode(.alwaysTemplate)
             dismissButton.setImage(templateImage, for: .normal)
         }
         dismissButton.tintColor = .label
-        dismissButton.contentEdgeInsets = UIEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
+        dismissButton.backgroundColor = UIColor(Color.inputBackground)
+        dismissButton.layer.cornerRadius = 8
         dismissButton.translatesAutoresizingMaskIntoConstraints = false
+        dismissButton.contentEdgeInsets = UIEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
 
         // Use target/action pattern to avoid retain cycles
         dismissButton.addTarget(self, action: #selector(dismissButtonTapped), for: .touchUpInside)
 
+        // Add blur first, then button on top
+        addSubview(blurEffectView)
         addSubview(dismissButton)
     }
 
     private func setupConstraints() {
+        // Set margins for layout
+        directionalLayoutMargins = NSDirectionalEdgeInsets(top: 0, leading: 12, bottom: 0, trailing: 12)
+
         NSLayoutConstraint.activate([
-            // Blur effect view fills entire accessory view
+            // Blur effect view fills entire accessory view (but invisible)
             blurEffectView.topAnchor.constraint(equalTo: topAnchor),
             blurEffectView.leadingAnchor.constraint(equalTo: leadingAnchor),
             blurEffectView.trailingAnchor.constraint(equalTo: trailingAnchor),
             blurEffectView.bottomAnchor.constraint(equalTo: bottomAnchor),
 
-            // Position button in top-right corner with safe area
-            dismissButton.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor, constant: 8),
-            dismissButton.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor, constant: -8),
-
-            // Minimum 44x44 size for tap target (iOS Human Interface Guidelines)
-            dismissButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 44),
-            dismissButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 44)
+            // Position dismiss button ABOVE the accessory bar (floating)
+            dismissButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            dismissButton.bottomAnchor.constraint(equalTo: topAnchor, constant: -8),
+            dismissButton.widthAnchor.constraint(equalToConstant: 44),
+            dismissButton.heightAnchor.constraint(equalToConstant: 44)
         ])
+    }
+
+    // Allow taps on the dismiss button even though it's outside the accessory bounds
+    public override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        let buttonFrame = dismissButton.frame
+        if buttonFrame.contains(point) {
+            return dismissButton
+        }
+        return super.hitTest(point, with: event)
+    }
+
+    public override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        // Extend hit area to include the dismiss button
+        let buttonFrame = dismissButton.frame
+        if buttonFrame.contains(point) {
+            return true
+        }
+        return super.point(inside: point, with: event)
     }
 
     private func setupAccessibility() {
@@ -129,41 +166,7 @@ public final class KeyboardDismissAccessoryView: UIInputView {
     // MARK: - Overrides
 
     /// Returns the natural size for the receiving view.
-    ///
-    /// The intrinsic content size adjusts for accessibility text sizes to ensure
-    /// the button remains tappable when the user has increased text size.
     public override var intrinsicContentSize: CGSize {
-        let adjustedHeight = calculateAdjustedHeight()
-        return CGSize(width: UIView.noIntrinsicMetric, height: adjustedHeight)
-    }
-
-    /// Called when the trait collection changes, typically for Dark Mode or Dynamic Type changes.
-    public override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
-        super.traitCollectionDidChange(previousTraitCollection)
-
-        // Invalidate intrinsic content size when content size category changes
-        if previousTraitCollection?.preferredContentSizeCategory != traitCollection.preferredContentSizeCategory {
-            invalidateIntrinsicContentSize()
-        }
-    }
-
-    // MARK: - Private Methods
-
-    /// Calculates the adjusted height based on the current content size category.
-    ///
-    /// For accessibility text sizes (larger than .extraExtraLarge), the height is increased
-    /// to accommodate larger tap targets and maintain usability.
-    private func calculateAdjustedHeight() -> CGFloat {
-        let contentSizeCategory = traitCollection.preferredContentSizeCategory
-
-        if contentSizeCategory.isAccessibilityCategory {
-            // Increase height for accessibility sizes
-            return baseHeight * 1.2
-        } else if contentSizeCategory >= .extraExtraLarge {
-            // Slightly increase for large non-accessibility sizes
-            return baseHeight * 1.1
-        } else {
-            return baseHeight
-        }
+        return CGSize(width: UIView.noIntrinsicMetric, height: baseHeight)
     }
 }

@@ -304,8 +304,8 @@ struct JobStatusHeader: View {
 
             Spacer()
 
-            if job.jobStatus.isActive, let progress = job.progressPercentage {
-                CircularProgressView(progress: Double(progress) / 100)
+            if job.jobStatus.isActive, let progress = job.streamProgressPercentage {
+                CircularProgressView(progress: Double(progress) / 100.0)
                     .frame(width: 50, height: 50)
             }
         }

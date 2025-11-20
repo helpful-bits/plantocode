@@ -70,9 +70,10 @@ public class JobsDataService: ObservableObject {
         jobsIndex = [:]
         activeSessionId = nil
         activeProjectDirectory = nil
+        viewedImplementationPlanId = nil
         currentListJobsRequestToken = nil
         hasLoadedOnce = false
-        lastAccumulatedLengths = [:]
+        lastAccumulatedLengths.removeAll()
         hydrationWaiters = [:]
         coalescedResyncWorkItem?.cancel()
         coalescedResyncWorkItem = nil
@@ -83,6 +84,8 @@ public class JobsDataService: ObservableObject {
         activeWorkflowJobsBySession.removeAll()
         sessionActiveWorkflowJobs = 0
         workflowJobsCache.removeAll()
+
+        // Safely manage event subscriptions - remove before re-adding in init if needed
         if let obs = relayJobEventObserver {
             NotificationCenter.default.removeObserver(obs)
             relayJobEventObserver = nil
@@ -329,12 +332,15 @@ public class JobsDataService: ObservableObject {
             viewedImplementationPlanId = nil
             return
         }
+
         guard let id = jobId else { return }
+
         viewedImplementationPlanId = id
 
         Task { [weak self] in
             guard let self else { return }
             await self.refreshJob(jobId: id)
+
             if let index = self.jobsIndex[id] {
                 let currentLen = self.jobs[index].response?.count ?? 0
                 self.lastAccumulatedLengths[id] = currentLen
@@ -344,9 +350,18 @@ public class JobsDataService: ObservableObject {
         }
     }
 
-    /// Fast-path job fetch with direct network call
+    /// Fast-path job fetch with local cache first, then direct network call
     public func getJobFast(jobId: String) -> AnyPublisher<BackgroundJob, DataServiceError> {
-        // Use existing getJob RPC
+        // Local cache fast-path: check if job exists with non-empty response
+        if let cached = self.job(byId: jobId),
+           let response = cached.response,
+           !response.isEmpty {
+            return Just(cached)
+                .setFailureType(to: DataServiceError.self)
+                .eraseToAnyPublisher()
+        }
+
+        // Fallback to network RPC
         return getJob(jobId: jobId)
             .tryMap { [weak self] jobDict -> BackgroundJob in
                 do {
@@ -403,7 +418,7 @@ public class JobsDataService: ObservableObject {
 
     // MARK: - Private Methods
 
-    private func refreshActiveJobs() {
+    public func refreshActiveJobs() {
         // Early return if no active session
         guard let sessionId = activeSessionId else {
             return
@@ -525,21 +540,34 @@ public class JobsDataService: ObservableObject {
                         }
                     }
 
-                    guard let data = jobsData,
-                          let jobs = data["jobs"] as? [[String: Any]] else {
-                        promise(.failure(.invalidResponse("No jobs data received")))
+                    // Tolerant response parsing - handle missing/partial data gracefully
+                    guard let data = jobsData as? [String: Any] else {
+                        // No valid data dictionary - return empty response
+                        let emptyResponse = JobListResponse(
+                            jobs: [],
+                            totalCount: 0,
+                            page: request.page ?? 0,
+                            pageSize: request.pageSize ?? 50,
+                            hasMore: false
+                        )
+                        promise(.success(emptyResponse))
                         return
                     }
 
-                    let jsonData = try JSONSerialization.data(withJSONObject: jobs)
+                    // Safely extract jobs array, defaulting to empty if missing or wrong type
+                    let jobsArray = data["jobs"] as? [[String: Any]] ?? []
+
+                    // Decode jobs array (even if empty)
+                    let jsonData = try JSONSerialization.data(withJSONObject: jobsArray)
                     let decoder = JSONDecoder()
                     let backgroundJobs = try decoder.decode([BackgroundJob].self, from: jsonData)
 
+                    // Extract pagination fields with sensible defaults
                     let response = JobListResponse(
                         jobs: backgroundJobs,
                         totalCount: UInt32(data["totalCount"] as? Int ?? backgroundJobs.count),
                         page: request.page ?? 0,
-                        pageSize: request.pageSize ?? 50,
+                        pageSize: request.pageSize ?? (backgroundJobs.isEmpty ? 50 : UInt32(backgroundJobs.count)),
                         hasMore: data["hasMore"] as? Bool ?? false
                     )
 
@@ -571,7 +599,16 @@ public class JobsDataService: ObservableObject {
                 guard let self = self else { return }
                 self.isLoading = false
                 if case .failure(let error) = completion {
-                    self.error = error
+                    // Only set error state if:
+                    // - This is a replacing fetch (shouldReplace == true), OR
+                    // - The jobs array is empty (no existing data to fall back on)
+                    // This prevents background refreshes from nuking the UI with error banners
+                    if shouldReplace || self.jobs.isEmpty {
+                        self.error = error
+                    } else {
+                        // Log but don't show error to user when background refresh fails
+                        self.logger.warning("Background jobs refresh failed (not shown to user): \(error.localizedDescription)")
+                    }
                     // Set hasLoadedOnce even on error to stop indefinite loading
                     if self.currentListJobsRequestToken == token {
                         self.hasLoadedOnce = true
@@ -913,6 +950,7 @@ public class JobsDataService: ObservableObject {
                     }
                     guard let job = self.decodeJob(from: jobDict) else { return }
                     self.insertOrReplace(job: job)
+                    self.lastAccumulatedLengths[jobId] = job.response?.count ?? 0
                 }
             )
             .store(in: &cancellables)
@@ -1205,6 +1243,11 @@ public class JobsDataService: ObservableObject {
                     if let response = payload["response"] as? String {
                         job.response = response
                         lastAccumulatedLengths[jobId] = response.count
+                    } else {
+                        // No response in finalized event - may be truncated, refresh to get full content
+                        Task { @MainActor [weak self] in
+                            self?.refreshJob(jobId: jobId)
+                        }
                     }
                 }
                 jobs[index] = job
@@ -1212,7 +1255,6 @@ public class JobsDataService: ObservableObject {
 
         case "job:response-appended":
             guard let jobId = jobId else { return }
-            if let vid = viewedImplementationPlanId, jobId != vid { return }
             guard let chunk = payload["chunk"] as? String else { return }
             if ensureJobPresent(jobId: jobId, onReady: { [weak self] in
                 self?.applyRelayEvent(event)
@@ -1223,34 +1265,29 @@ public class JobsDataService: ObservableObject {
             var job = jobs[index]
             guard shouldIgnore(job: job) == false else { return }
 
-            let accumulatedLength = intValue(from: payload["accumulatedLength"]) ??
-                intValue(from: payload["accumulated_length"])
-            let currentResponse = job.response ?? ""
-            let currentLength = currentResponse.count
-            let expectedLength = lastAccumulatedLengths[jobId] ?? currentLength
+            guard let accumulatedLength = intValue(from: payload["accumulatedLength"]) ??
+                intValue(from: payload["accumulated_length"]) else {
+                refreshJob(jobId: jobId)
+                return
+            }
 
-            if let accLength = accumulatedLength {
-                if accLength <= expectedLength {
-                    return
-                }
-                if currentLength + chunk.count == accLength {
-                    mutateJobs {
-                        job.response = currentResponse + chunk
-                        lastAccumulatedLengths[jobId] = accLength
-                        job.updatedAt = intValue(from: payload["updatedAt"]).map(Int64.init) ?? job.updatedAt
-                        jobs[index] = job
-                    }
-                } else {
-                    refreshJob(jobId: jobId)
-                }
-            } else {
+            let currentResponse = job.response ?? ""
+            let lastKnownLength = lastAccumulatedLengths[jobId] ?? 0
+
+            if accumulatedLength <= lastKnownLength {
+                return
+            }
+
+            if lastKnownLength + chunk.count == accumulatedLength {
                 mutateJobs {
                     job.response = currentResponse + chunk
-                    let newLength = currentLength + chunk.count
-                    lastAccumulatedLengths[jobId] = newLength
+                    lastAccumulatedLengths[jobId] = accumulatedLength
                     job.updatedAt = intValue(from: payload["updatedAt"]).map(Int64.init) ?? job.updatedAt
                     jobs[index] = job
                 }
+            } else {
+                lastAccumulatedLengths[jobId] = accumulatedLength
+                refreshJob(jobId: jobId)
             }
 
         case "job:stream-progress":

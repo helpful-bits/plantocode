@@ -37,12 +37,12 @@ public struct SessionsView: View {
                         Image(systemName: "magnifyingglass")
                             .foregroundColor(Color.mutedForeground)
 
-                        TextField("Search sessions...", text: $searchText)
-                            .textFieldStyle(PlainTextFieldStyle())
+                        DismissableTextField("Search sessions...", text: $searchText)
+                            .frame(height: 22)
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
-                    .background(Color.card)
+                    .background(Color.surfacePrimary)
                     .cornerRadius(Theme.Radii.base)
                     .overlay(
                         RoundedRectangle(cornerRadius: Theme.Radii.base)
@@ -359,7 +359,7 @@ struct SessionCard: View {
         .padding(16)
         .background(
             RoundedRectangle(cornerRadius: Theme.Radii.base)
-                .fill(Color.card)
+                .fill(Color.surfacePrimary)
                 .overlay(
                     RoundedRectangle(cornerRadius: Theme.Radii.base)
                         .stroke(Color.border, lineWidth: 1)
@@ -408,7 +408,7 @@ struct SessionDetailView: View {
                         }
                     }
                     .padding(16)
-                    .background(Color.card)
+                    .background(Color.surfacePrimary)
                     .cornerRadius(Theme.Radii.base)
                     .overlay(
                         RoundedRectangle(cornerRadius: Theme.Radii.base)
@@ -441,7 +441,7 @@ struct SessionDetailView: View {
                             }
                         }
                         .padding(16)
-                        .background(Color.card)
+                        .background(Color.surfacePrimary)
                         .cornerRadius(Theme.Radii.base)
                         .overlay(
                             RoundedRectangle(cornerRadius: Theme.Radii.base)

@@ -11,7 +11,11 @@ public struct PaywallView: View {
     @State private var isPurchasingMonthly = false
     @State private var isPurchasingAnnual = false
 
-    public init() {}
+    private let allowsDismiss: Bool
+
+    public init(allowsDismiss: Bool = true) {
+        self.allowsDismiss = allowsDismiss
+    }
 
     public var body: some View {
         NavigationStack {
@@ -100,16 +104,14 @@ public struct PaywallView: View {
             .background(Color.background)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        dismiss()
-                    }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 24))
-                            .foregroundColor(Color.mutedForeground)
+                if allowsDismiss {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button {
+                            dismiss()
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                        }
                     }
-                    .accessibilityLabel("Close")
-                    .frame(minWidth: 44, minHeight: 44) // Ensure minimum hit target
                 }
             }
         }

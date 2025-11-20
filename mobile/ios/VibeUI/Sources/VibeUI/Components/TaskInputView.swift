@@ -35,6 +35,7 @@ struct SelectableTextView: UIViewRepresentable {
     @Binding var text: String
     @Binding var selectedRange: NSRange
     @Binding var forceApplySelection: Bool
+    @Binding var isEditing: Bool
 
     let placeholder: String
     let onInteraction: () -> Void
@@ -50,6 +51,7 @@ struct SelectableTextView: UIViewRepresentable {
         text: Binding<String>,
         selectedRange: Binding<NSRange>,
         forceApplySelection: Binding<Bool>,
+        isEditing: Binding<Bool>,
         placeholder: String,
         onInteraction: @escaping () -> Void,
         singleLine: Bool = false,
@@ -63,6 +65,7 @@ struct SelectableTextView: UIViewRepresentable {
         self._text = text
         self._selectedRange = selectedRange
         self._forceApplySelection = forceApplySelection
+        self._isEditing = isEditing
         self.placeholder = placeholder
         self.onInteraction = onInteraction
         self.singleLine = singleLine
@@ -75,20 +78,76 @@ struct SelectableTextView: UIViewRepresentable {
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(self)
+        Coordinator(self, isEditing: $isEditing)
+    }
+
+    private func scrollToCursorIfNeeded(in textView: UITextView, coordinator: Coordinator) {
+        // Early exit if content fits entirely within bounds
+        if textView.contentSize.height <= textView.bounds.height { return }
+
+        guard let selectedTextRange = textView.selectedTextRange else { return }
+
+        let caretRect = textView.caretRect(for: selectedTextRange.end)
+
+        let contentInset = textView.contentInset
+        let bounds = textView.bounds
+
+        let visibleHeight = bounds.height - contentInset.top - contentInset.bottom
+        if visibleHeight <= 0 { return }
+
+        let visibleTop = textView.contentOffset.y + contentInset.top
+        let visibleBottom = visibleTop + visibleHeight
+
+        // Allow a comfortable band before scrolling
+        let padding: CGFloat = 16
+
+        // If caret already comfortably visible, do nothing
+        if caretRect.minY >= visibleTop + padding &&
+           caretRect.maxY <= visibleBottom - padding {
+            return
+        }
+
+        // Compute min / max offsets
+        let minOffsetY = -contentInset.top
+        let maxOffsetY = max(
+            -contentInset.top,
+            textView.contentSize.height - bounds.height + contentInset.bottom
+        )
+
+        var targetOffsetY = textView.contentOffset.y
+
+        if caretRect.maxY > visibleBottom - padding {
+            // caret is below visible area – scroll just enough up
+            targetOffsetY += (caretRect.maxY - (visibleBottom - padding))
+        } else if caretRect.minY < visibleTop + padding {
+            // caret is above visible area – scroll just enough down
+            targetOffsetY -= ((visibleTop + padding) - caretRect.minY)
+        }
+
+        // Clamp targetOffsetY between min and max before applying
+        targetOffsetY = min(max(targetOffsetY, minOffsetY), maxOffsetY)
+
+        guard abs(targetOffsetY - textView.contentOffset.y) > 0.5 else { return }
+
+        UIView.performWithoutAnimation {
+            textView.setContentOffset(
+                CGPoint(x: textView.contentOffset.x, y: targetOffsetY),
+                animated: false
+            )
+        }
     }
 
     func makeUIView(context: Context) -> UITextView {
         let textView = KeyCommandTextView()
         textView.font = font ?? UIFont.preferredFont(forTextStyle: .body)
-        textView.textColor = textColor ?? UIColor.label
-        textView.backgroundColor = backgroundColor ?? UIColor.secondarySystemBackground
+        textView.textColor = textColor ?? UIColor(Color.textPrimary)
+        textView.backgroundColor = backgroundColor ?? UIColor(Color.inputBackground)
 
         // Only apply border styling if custom background is not provided
         if backgroundColor == nil {
             textView.layer.cornerRadius = 12
             textView.layer.borderWidth = 1
-            textView.layer.borderColor = UIColor.separator.cgColor
+            textView.layer.borderColor = UIColor(Color.inputBorder).cgColor
         }
 
         textView.delegate = context.coordinator
@@ -154,13 +213,8 @@ struct SelectableTextView: UIViewRepresentable {
 
             uiView.selectedRange = clampedRange
 
-            // Scroll to show the cursor
-            DispatchQueue.main.async {
-                if let selectedTextRange = uiView.selectedTextRange {
-                    let rect = uiView.caretRect(for: selectedTextRange.start)
-                    uiView.scrollRectToVisible(rect, animated: false)
-                }
-            }
+            // Scroll to show the cursor, accounting for keyboard and content insets
+            scrollToCursorIfNeeded(in: uiView, coordinator: context.coordinator)
 
             // Reset the flag
             DispatchQueue.main.async {
@@ -178,16 +232,8 @@ struct SelectableTextView: UIViewRepresentable {
                     let validLength = min(selectedRange.length, textLength - selectedRange.location)
                     uiView.selectedRange = NSRange(location: selectedRange.location, length: validLength)
 
-                    // Only scroll for programmatic changes (like undo/redo) when keyboard is NOT visible
-                    // Scrolling during keyboard animations causes jumpiness
-                    if coordinator.keyboardHeight == 0 {
-                        DispatchQueue.main.async {
-                            if let selectedTextRange = uiView.selectedTextRange {
-                                let rect = uiView.caretRect(for: selectedTextRange.start)
-                                uiView.scrollRectToVisible(rect, animated: false)
-                            }
-                        }
-                    }
+                    // Don't scroll for programmatic changes - let UITextView handle it naturally
+                    // This prevents viewport jumps during undo/redo/remote updates
                 }
             }
         }
@@ -198,7 +244,7 @@ struct SelectableTextView: UIViewRepresentable {
                 let placeholderLabel = UILabel()
                 placeholderLabel.text = placeholder
                 placeholderLabel.font = font ?? UIFont.preferredFont(forTextStyle: .body)
-                placeholderLabel.textColor = textColor?.withAlphaComponent(0.5) ?? UIColor.tertiaryLabel
+                placeholderLabel.textColor = UIColor(Color.inputPlaceholder)
                 placeholderLabel.tag = 999
                 placeholderLabel.translatesAutoresizingMaskIntoConstraints = false
                 uiView.addSubview(placeholderLabel)
@@ -225,73 +271,20 @@ struct SelectableTextView: UIViewRepresentable {
     class Coordinator: NSObject, UITextViewDelegate {
         var parent: SelectableTextView
         weak var textView: UITextView?
-        var keyboardHeight: CGFloat = 0
         var isUserEditing: Bool = false
         var isFocused: Bool = false
         var isUserTyping: Bool = false
         var typingIdleTimer: Timer?
+        var isEditingBinding: Binding<Bool>
 
-        init(_ parent: SelectableTextView) {
+        init(_ parent: SelectableTextView, isEditing: Binding<Bool>) {
             self.parent = parent
+            self.isEditingBinding = isEditing
             super.init()
-            setupKeyboardObservers()
         }
 
         deinit {
-            NotificationCenter.default.removeObserver(self)
             typingIdleTimer?.invalidate()
-        }
-
-        private func setupKeyboardObservers() {
-            NotificationCenter.default.addObserver(
-                self,
-                selector: #selector(keyboardWillShow),
-                name: UIResponder.keyboardWillShowNotification,
-                object: nil
-            )
-            NotificationCenter.default.addObserver(
-                self,
-                selector: #selector(keyboardWillHide),
-                name: UIResponder.keyboardWillHideNotification,
-                object: nil
-            )
-        }
-
-        @objc private func keyboardWillShow(_ notification: Notification) {
-            guard let textView = textView,
-                  textView.isFirstResponder,  // Only adjust if THIS textView has keyboard
-                  let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect,
-                  let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double else {
-                return
-            }
-
-            keyboardHeight = keyboardFrame.height
-
-            // Safe-area-based calculation to prevent over-adjustment
-            let keyWindow = UIApplication.shared.connectedScenes
-                .compactMap { ($0 as? UIWindowScene)?.keyWindow }
-                .first
-            let safeBottom = keyWindow?.safeAreaInsets.bottom ?? 0
-            let adjustedHeight = max(0, keyboardFrame.height - safeBottom)
-
-            UIView.animate(withDuration: duration) {
-                textView.contentInset.bottom = adjustedHeight
-                textView.scrollIndicatorInsets.bottom = adjustedHeight
-            }
-        }
-
-        @objc private func keyboardWillHide(_ notification: Notification) {
-            guard let textView = textView,
-                  let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double else {
-                return
-            }
-
-            keyboardHeight = 0
-
-            UIView.animate(withDuration: duration) {
-                textView.contentInset.bottom = 0
-                textView.scrollIndicatorInsets.bottom = 0
-            }
         }
 
         func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
@@ -356,6 +349,9 @@ struct SelectableTextView: UIViewRepresentable {
 
         func textViewDidBeginEditing(_ textView: UITextView) {
             isFocused = true
+            DispatchQueue.main.async { [weak self] in
+                self?.isEditingBinding.wrappedValue = true
+            }
         }
 
         func textViewDidEndEditing(_ textView: UITextView) {
@@ -363,6 +359,9 @@ struct SelectableTextView: UIViewRepresentable {
             isUserTyping = false
             typingIdleTimer?.invalidate()
             typingIdleTimer = nil
+            DispatchQueue.main.async { [weak self] in
+                self?.isEditingBinding.wrappedValue = false
+            }
         }
 
         @objc func dismissKeyboard() {
@@ -384,14 +383,12 @@ public struct TaskInputView: View {
 
     @State private var selectedRange: NSRange = NSRange(location: 0, length: 0)
     @State private var didLoadVoiceSettings = false
-    @State private var showingLanguagePicker = false
     @State private var selectedLanguage = "en-US"
     @State private var selectionRect: CGRect = .zero
     @State private var transcriptionModel: String?
     @State private var transcriptionPrompt: String?
     @State private var transcriptionTemperature: Double?
-    @State private var showTerminal = false
-    @State private var terminalJobId: String? = nil
+    @State private var terminalJobId: TerminalJobIdentifier? = nil
     @State private var showDeepResearch = false
     @State private var initializedForSessionId: String?
     @State private var debounceTask: Task<Void, Never>?
@@ -421,23 +418,23 @@ public struct TaskInputView: View {
     }
 
     public var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: Theme.Spacing.sm) {
             // Text Editor (no floating sparkles for selection anymore)
             SelectableTextView(
                 text: $taskDescription,
                 selectedRange: $selectedRange,
                 forceApplySelection: $forceSelectionApply,
+                isEditing: $isEditing,
                 placeholder: placeholder,
                 onInteraction: {
-                    isEditing = true
                     onInteraction()
                     debouncedSync()
                 }
             )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity)
             .frame(minHeight: 250)
 
-            // Action Buttons Row - New Order: Voice, Language, Sparkles, Undo, Redo, Menu
+            // Action Buttons Row - Order: Voice, Sparkles, Wand, Undo, Redo, Menu
             HStack(spacing: 12) {
                 // 1. Voice Recording Button (using reusable component)
                 VoiceRecordingButton(
@@ -459,19 +456,8 @@ public struct TaskInputView: View {
                     }
                 )
 
-                if !voiceService.isRecording {
-                    // 2. Language Picker
-                    Button(action: { showingLanguagePicker = true }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "globe")
-                                .font(.system(size: 16))
-                            Text(languageCode(selectedLanguage))
-                                .font(.system(size: 12))
-                        }
-                    }
-                    .buttonStyle(UtilityButtonStyle())
-
-                    // 3. Sparkles - Enhance selected text or all
+                if !voiceService.isRecording && !voiceService.isTranscribing {
+                    // 2. Sparkles - Enhance selected text or all
                     Button(action: { enhanceSelectedOrAll() }) {
                         HStack(spacing: 4) {
                             if enhancementService.isEnhancing {
@@ -489,7 +475,7 @@ public struct TaskInputView: View {
                     .accessibilityLabel("Enhance text")
                     .accessibilityHint("Enhance selected text or full task description")
 
-                    // 3b. Wand - Refine selected text or all
+                    // 3. Wand - Refine selected text or all
                     Button(action: { refineSelectedOrAll() }) {
                         HStack(spacing: 4) {
                             if enhancementService.isEnhancing {
@@ -530,35 +516,36 @@ public struct TaskInputView: View {
                     // 6. More Menu (Terminal + Deep Research)
                     Menu {
                         Button(action: {
-                            terminalJobId = "task-terminal-\(sessionId)"
-                            showTerminal = true
+                            terminalJobId = TerminalJobIdentifier(id: "task-terminal-\(sessionId)")
                         }) {
                             Label("Terminal", systemImage: "terminal")
                         }
 
-                        Button(action: { showDeepResearch = true }) {
+                        let isTaskEmpty = taskDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        Button(action: {
+                            if !isTaskEmpty {
+                                showDeepResearch = true
+                            }
+                        }) {
                             Label("Deep Research", systemImage: "sparkle.magnifyingglass")
                         }
-                        .disabled(taskDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .disabled(isTaskEmpty)
                     } label: {
                         Image(systemName: "ellipsis.circle")
                             .font(.system(size: 18))
                     }
+                    .menuStyle(.button)
                     .buttonStyle(UtilityButtonStyle())
                 }
 
                 Spacer()
             }
+            .padding(.bottom, Theme.Spacing.md)
         }
-        .dismissKeyboardOnTap()  // Applied to VStack only, not to sheets
-        .sheet(isPresented: $showingLanguagePicker) {
-            LanguagePickerSheet(selectedLanguage: $selectedLanguage)
-        }
-        .sheet(isPresented: $showTerminal, onDismiss: { terminalJobId = nil }) {
-            if let jobId = terminalJobId {
-                NavigationStack {
-                    RemoteTerminalView(jobId: jobId, contextType: .taskDescription)
-                }
+        .sheet(item: $terminalJobId) { item in
+            NavigationStack {
+                RemoteTerminalView(jobId: item.id, contextType: .taskDescription)
+                    .environmentObject(container)
             }
         }
         .alert("Deep Research", isPresented: $showDeepResearch) {
@@ -658,10 +645,6 @@ public struct TaskInputView: View {
     }
 
     private func applyAuthoritativeTaskDescription(for sessionId: String) async {
-        await MainActor.run {
-            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-        }
-
         do {
             let state = try await container.sessionService.getHistoryState(sessionId: sessionId, kind: "task")
             await MainActor.run {
@@ -844,6 +827,10 @@ public struct TaskInputView: View {
         default: return "EN"
         }
     }
+}
+
+struct TerminalJobIdentifier: Identifiable {
+    let id: String
 }
 
 #Preview {

@@ -28,25 +28,25 @@ public struct AISettingsView: View {
                         ProgressView()
                         Text("Loading AI Settings...")
                             .font(.subheadline)
-                            .foregroundColor(Color.appMutedForeground)
+                            .foregroundColor(Color.textMuted)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.appBackground)
+                    .background(Color.backgroundPrimary)
                 } else if let error = loadError {
                     ScrollView {
                         VStack(spacing: 16) {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .font(.system(size: 48))
-                                .foregroundColor(Color.appWarning)
+                                .foregroundColor(Color.warning)
                                 .padding(.top, 32)
 
                             Text("Failed to load settings")
                                 .font(.headline)
-                                .foregroundColor(Color.appForeground)
+                                .foregroundColor(Color.textPrimary)
 
                             Text(error)
                                 .font(.callout)
-                                .foregroundColor(Color.appMutedForeground)
+                                .foregroundColor(Color.textSecondary)
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal, 32)
 
@@ -65,32 +65,32 @@ public struct AISettingsView: View {
                         }
                         .padding()
                     }
-                    .background(Color.appBackground)
+                    .background(Color.backgroundPrimary)
                 } else if dataService.projectTaskSettings.isEmpty {
                     VStack(spacing: 16) {
                         Image(systemName: "doc.text.magnifyingglass")
                             .font(.system(size: 48))
-                            .foregroundColor(Color.appMutedForeground)
+                            .foregroundColor(Color.textMuted)
                             .padding(.top, 32)
 
                         Text("No settings available")
                             .font(.headline)
-                            .foregroundColor(Color.appForeground)
+                            .foregroundColor(Color.textPrimary)
 
                         if !container.connectionStatus.mode.isOnline {
                             Label("Desktop app is not connected", systemImage: "wifi.slash")
                                 .font(.callout)
-                                .foregroundColor(Color.appWarning)
+                                .foregroundColor(Color.warning)
                                 .padding(.horizontal, 32)
                         } else {
                             Text("Select a project in the Sessions tab")
                                 .font(.callout)
-                                .foregroundColor(Color.appMutedForeground)
+                                .foregroundColor(Color.textMuted)
                                 .padding(.horizontal, 32)
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.appBackground)
+                    .background(Color.backgroundPrimary)
                 } else {
                     taskTypesList
                 }
@@ -109,7 +109,7 @@ public struct AISettingsView: View {
     private var taskTypesList: some View {
         List {
             ForEach(Array(groupedTaskTypes.keys.sorted()), id: \.self) { category in
-                Section(header: Text(category).font(.subheadline).foregroundColor(Color.appMutedForeground)) {
+                Section(header: Text(category).font(.subheadline).foregroundColor(Color.textMuted)) {
                     ForEach(groupedTaskTypes[category] ?? [], id: \.self) { taskKey in
                         taskTypeRow(for: taskKey)
                     }
@@ -127,27 +127,28 @@ public struct AISettingsView: View {
                 // Icon
                 Image(systemName: iconName(for: taskKey))
                     .font(.system(size: 20))
-                    .foregroundColor(Color.appPrimary)
+                    .foregroundColor(Color.primary)
                     .frame(width: 32, height: 32)
-                    .background(Color.appAccent)
+                    .background(Color.accent)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
 
                 // Task name
                 VStack(alignment: .leading, spacing: 2) {
                     Text(TaskTypeFormatter.displayName(for: taskKey))
                         .font(.body)
-                        .foregroundColor(Color.appForeground)
+                        .foregroundColor(Color.textPrimary)
 
                     if let category = TaskTypeFormatter.category(for: taskKey) {
                         Text(category)
                             .font(.caption)
-                            .foregroundColor(Color.appMutedForeground)
+                            .foregroundColor(Color.textSecondary)
                     }
                 }
 
                 Spacer()
             }
             .padding(.vertical, 4)
+            .background(Color.surfacePrimary)
         }
     }
 
@@ -170,7 +171,7 @@ public struct AISettingsView: View {
         } else {
             VStack {
                 Text("Settings not available")
-                    .foregroundColor(Color.appMutedForeground)
+                    .foregroundColor(Color.textMuted)
             }
         }
     }

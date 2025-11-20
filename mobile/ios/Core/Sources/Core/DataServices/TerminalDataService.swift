@@ -365,12 +365,16 @@ public class TerminalDataService: ObservableObject {
                 }
             }
 
-            // Trigger first-resize binding
+            // Trigger first-resize binding with delay to allow layout to stabilize
             let sessionId = session.id
             if !firstResizeCompleted.contains(sessionId) && cols > 10 && rows > 5 {
-                self.logger.info("first_resize.bind sid=\(sessionId)")
-                attachLiveBinary(for: jobId, includeSnapshot: true)
                 firstResizeCompleted.insert(sessionId)
+
+                // Delay binding to ensure terminal layout is fully stable
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 300_000_000) // 300ms
+                    self.attachLiveBinary(for: jobId, includeSnapshot: true)
+                }
             }
         } catch {
             self.lastError = error as? DataServiceError ?? DataServiceError.networkError(error)

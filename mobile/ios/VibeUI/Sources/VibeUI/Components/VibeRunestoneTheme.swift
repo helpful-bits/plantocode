@@ -71,10 +71,7 @@ final class VibeRunestoneTheme: Runestone.Theme {
     }
 
     var selectionHighlightColor: UIColor {
-        UIColor { traitCollection in
-            let color = traitCollection.userInterfaceStyle == .dark ? Theme.Colors.primary.dark : Theme.Colors.primary.light
-            return UIColor(color.opacity(0.22))
-        }
+        dynamicColor(Theme.Colors.selectionBackground)
     }
 
     var pageGuideBackgroundColor: UIColor {
@@ -111,34 +108,34 @@ final class VibeRunestoneTheme: Runestone.Theme {
     func textColor(for highlightName: String) -> UIColor? {
         switch highlightName {
         case "comment":
-            return UIColor.systemGray
+            return dynamicColor(Theme.Colors.mutedForeground)
 
         case "keyword", "control", "operator":
-            return UIColor.systemPurple
+            return dynamicColor(Theme.Colors.primary)
 
         case "string", "character":
-            return UIColor.systemRed
+            return dynamicColor(Theme.Colors.success)
 
         case "number", "constant":
-            return UIColor.systemOrange
+            return dynamicColor(Theme.Colors.info)
 
         case "type", "class", "struct", "enum", "interface":
-            return UIColor.systemTeal
+            return dynamicColor(Theme.Colors.primary)
 
         case "function", "method", "call":
-            return UIColor.systemBlue
+            return dynamicColor(Theme.Colors.primary)
 
         case "property", "attribute":
-            return UIColor.systemCyan
+            return dynamicColor(Theme.Colors.info)
 
         case "tag", "markup.heading":
-            return UIColor.systemIndigo
+            return dynamicColor(Theme.Colors.primary)
 
         case "markup.italic", "markup.bold", "markup.list":
-            return UIColor.systemGreen
+            return dynamicColor(Theme.Colors.success)
 
         case "url", "link":
-            return UIColor.systemBlue
+            return dynamicColor(Theme.Colors.primary)
 
         default:
             return textColor

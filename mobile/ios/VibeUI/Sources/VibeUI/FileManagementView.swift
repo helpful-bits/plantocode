@@ -21,6 +21,8 @@ public struct FileManagementView: View {
     @State private var canRedoFiles = false
     @State private var isSyncingHistory = false
     @State private var fileHistoryState: HistoryState?
+    @State private var allFilesCount: Int = 0
+    @State private var selectedFilesCount: Int = 0
 
     public init(filesService: FilesDataService, sessionService: SessionDataService, jobsService: JobsDataService) {
         self.filesService = filesService
@@ -72,6 +74,10 @@ public struct FileManagementView: View {
         }
         .onReceive(container.filesService.$files) { newFiles in
             files = newFiles
+            updateFileCounts()
+        }
+        .onReceive(sessionService.currentSessionPublisher) { _ in
+            updateFileCounts()
         }
         .task(id: sessionService.currentSession?.projectDirectory) {
             let currentProjectDir = sessionService.currentSession?.projectDirectory
@@ -83,6 +89,7 @@ public struct FileManagementView: View {
                     loadFiles()
                 }
             }
+            updateFileCounts()
             await refreshUndoRedoState()
         }
         .onReceive(filesService.$currentSearchTerm) { newValue in
@@ -136,7 +143,7 @@ public struct FileManagementView: View {
         .padding(.horizontal)
         .padding(.top, Theme.Spacing.sm)
         .padding(.bottom, Theme.Spacing.md)
-        .background(Color.muted)
+        .background(Color.surfaceSecondary)
     }
 
     private var searchBarWithSort: some View {
@@ -147,8 +154,8 @@ public struct FileManagementView: View {
                     .foregroundColor(.mutedForeground)
                     .frame(width: 20)
 
-                TextField("Filter files...", text: $localSearchTerm)
-                    .textFieldStyle(PlainTextFieldStyle())
+                DismissableTextField("Filter files...", text: $localSearchTerm)
+                    .frame(height: 22)
                     .onChange(of: localSearchTerm) { newValue in
                         searchDebounceTimer?.invalidate()
                         searchDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
@@ -167,7 +174,7 @@ public struct FileManagementView: View {
                 }
             }
             .padding(Theme.Spacing.cardPadding)
-            .background(Color.input)
+            .background(Color.inputBackground)
             .cornerRadius(10)
 
             // Sort controls inline
@@ -279,36 +286,39 @@ public struct FileManagementView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemBackground))
+        .background(Color.backgroundPrimary)
     }
 
     private var filesList: some View {
-        ScrollView {
-            LazyVStack(spacing: Theme.Spacing.xs) {
-                fileCountHeader
-                selectedFilesSection
-                searchResultsSection
+        VStack(spacing: 0) {
+            fileCountHeader
+
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    selectedFilesSection
+                    searchResultsSection
+                }
+                .background(Color.backgroundPrimary)
+                .padding(.vertical, Theme.Spacing.sm)
             }
-            .padding(.vertical, Theme.Spacing.sm)
+            .background(Color.backgroundPrimary)
+            .scrollDismissesKeyboard(.interactively)
         }
-        .background(Color.background)
-        .scrollDismissesKeyboard(.interactively)
     }
 
     private var fileCountHeader: some View {
-        let includedSet = Set(sessionService.currentSession?.includedFiles ?? [])
-        let excludedSet = Set(sessionService.currentSession?.forceExcludedFiles ?? [])
+        HStack(spacing: Theme.Spacing.sm) {
+            // All/Selected Filter Toggle with counts
+            FilterModeToggle(
+                allCount: allFilesCount,
+                selectedCount: selectedFilesCount,
+                currentMode: filesService.currentFilterMode,
+                onSelect: { mode in
+                    filesService.currentFilterMode = mode
+                }
+            )
 
-        let allFilesCount = files.count + includedFilesNotInList.count
-        let selectedFilesCount = includedSet.count
-
-        return HStack(spacing: Theme.Spacing.sm) {
-            // All/Selected Filter Picker with counts
-            Picker("Filter", selection: $filesService.currentFilterMode) {
-                Text("All (\(allFilesCount))").tag("all")
-                Text("Selected (\(selectedFilesCount))").tag("selected")
-            }
-            .pickerStyle(SegmentedPickerStyle())
+            Spacer()
 
             // Find Files Button
             Button(action: {
@@ -410,7 +420,7 @@ public struct FileManagementView: View {
             let excludedSet = Set(sessionService.currentSession?.forceExcludedFiles ?? [])
 
             Section {
-                ForEach(includedFilesNotInList, id: \.self) { filePath in
+                ForEach(Array(includedFilesNotInList.enumerated()), id: \.element) { index, filePath in
                     if let file = FileInfo(from: [
                         "path": filePath,
                         "name": URL(fileURLWithPath: filePath).lastPathComponent,
@@ -420,14 +430,20 @@ public struct FileManagementView: View {
                         "modifiedAt": Int64(0),
                         "isBinary": false
                     ]) {
-                        FileManagementRowView(
-                            file: file,
-                            isIncluded: true,
-                            isExcluded: excludedSet.contains(filePath),
-                            onIncludeToggle: { toggleInclude(filePath) },
-                            onExcludeToggle: { toggleExclude(filePath) }
-                        )
-                        .padding(.horizontal)
+                        VStack(spacing: 0) {
+                            FileManagementRowView(
+                                file: file,
+                                isIncluded: true,
+                                isExcluded: excludedSet.contains(filePath),
+                                onIncludeToggle: { toggleInclude(filePath) },
+                                onExcludeToggle: { toggleExclude(filePath) }
+                            )
+
+                            if index < includedFilesNotInList.count - 1 {
+                                Divider()
+                                    .padding(.leading, Theme.Spacing.cardPadding)
+                            }
+                        }
                     }
                 }
             } header: {
@@ -468,15 +484,21 @@ public struct FileManagementView: View {
                 }
             }
 
-        return ForEach(displayedFiles, id: \.path) { file in
-            FileManagementRowView(
-                file: file,
-                isIncluded: includedSet.contains(file.path),
-                isExcluded: excludedSet.contains(file.path),
-                onIncludeToggle: { toggleInclude(file.path) },
-                onExcludeToggle: { toggleExclude(file.path) }
-            )
-            .padding(.horizontal)
+        return ForEach(Array(displayedFiles.enumerated()), id: \.element.path) { index, file in
+            VStack(spacing: 0) {
+                FileManagementRowView(
+                    file: file,
+                    isIncluded: includedSet.contains(file.path),
+                    isExcluded: excludedSet.contains(file.path),
+                    onIncludeToggle: { toggleInclude(file.path) },
+                    onExcludeToggle: { toggleExclude(file.path) }
+                )
+
+                if index < displayedFiles.count - 1 {
+                    Divider()
+                        .padding(.leading, Theme.Spacing.cardPadding)
+                }
+            }
         }
     }
 
@@ -503,7 +525,7 @@ public struct FileManagementView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemBackground))
+        .background(Color.backgroundPrimary)
     }
 
     private var isConnected: Bool {
@@ -795,6 +817,12 @@ public struct FileManagementView: View {
         }
     }
 
+    private func updateFileCounts() {
+        let includedSet = Set(sessionService.currentSession?.includedFiles ?? [])
+        allFilesCount = files.count + includedFilesNotInList.count
+        selectedFilesCount = includedSet.count
+    }
+
 }
 
 private struct FileManagementRowView: View {
@@ -804,64 +832,106 @@ private struct FileManagementRowView: View {
     let onIncludeToggle: () -> Void
     let onExcludeToggle: () -> Void
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            // First line: File path ONLY with highlighted filename
-            formattedPath
-                .small().fontWeight(.semibold)
+    private var rowBackground: Color {
+        if isExcluded {
+            return Color.destructiveBackground
+        } else if isIncluded {
+            return Color.selectionBackground
+        } else {
+            return Color.backgroundPrimary
+        }
+    }
 
-            // Second line: Metadata inline + toggles
-            HStack(spacing: Theme.Spacing.md) {
-                // Modified time
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // SECTION 1: Header (path + actions)
+            HStack(alignment: .top, spacing: Theme.Spacing.cardSpacing) {
+                // Path with inline checkmark when selected
+                VStack(alignment: .leading, spacing: 2) {
+                    formattedPathWithCheckmark
+                        .mediumText()
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+
+                // Exclude Button
+                Button {
+                    onExcludeToggle()
+                } label: {
+                    Image(systemName: isExcluded ? "minus.circle.fill" : "minus.circle")
+                        .font(.system(size: 24))
+                        .foregroundColor(isExcluded ? .red : .mutedForeground)
+                }
+            }
+            .padding(.horizontal, Theme.Spacing.cardPadding)
+            .padding(.top, Theme.Spacing.sm)
+            .padding(.bottom, Theme.Spacing.xs)
+
+            // SECTION 2: Metadata Row
+            HStack(spacing: Theme.Spacing.sm) {
+                // Modified Time
                 Text(formattedDate)
                     .small()
                     .foregroundColor(.mutedForeground)
 
-                Text("•")
+                // Size
+                Text(formattedSize)
                     .small()
                     .foregroundColor(.mutedForeground)
 
-                // Size
-                Text(ByteCountFormatter.string(fromByteCount: Int64(file.size), countStyle: .file))
-                    .small()
-                    .foregroundColor(.mutedForeground)
+                // Extension Badge
+                if let ext = file.fileExtension, !ext.isEmpty {
+                    Text("•")
+                        .small()
+                        .foregroundColor(.mutedForeground)
+
+                    Text(".\(ext)")
+                        .small()
+                        .fontWeight(.medium)
+                        .foregroundColor(.mutedForeground)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.muted)
+                        .cornerRadius(4)
+                }
 
                 Spacer()
-
-                // Include toggle
-                Toggle("", isOn: Binding(
-                    get: { isIncluded },
-                    set: { _ in onIncludeToggle() }
-                ))
-                .labelsHidden()
-                .toggleStyle(SwitchToggleStyle(tint: Color.success))
-                .frame(width: 50)
-                .disabled(isExcluded)
-                .accessibilityLabel(isIncluded ? "Exclude file from task context" : "Include file in task context")
-                .accessibilityHint("Toggles whether this file is included in the current task")
-                .accessibilityValue(isIncluded ? "On" : "Off")
-
-                // Exclude toggle
-                Toggle("", isOn: Binding(
-                    get: { isExcluded },
-                    set: { _ in onExcludeToggle() }
-                ))
-                .labelsHidden()
-                .toggleStyle(SwitchToggleStyle(tint: Color.destructive))
-                .frame(width: 50)
-                .accessibilityLabel(isExcluded ? "Un-exclude file" : "Exclude file")
-                .accessibilityHint("Toggles whether this file is forcibly excluded from tasks")
-                .accessibilityValue(isExcluded ? "On" : "Off")
+            }
+            .padding(.horizontal, Theme.Spacing.cardPadding)
+            .padding(.bottom, Theme.Spacing.sm)
+        }
+        .background(rowBackground)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if !isExcluded {
+                onIncludeToggle()
             }
         }
-        .padding(Theme.Spacing.md)
-        .background(isIncluded && !isExcluded ? Color.accent : Color.card)
-        .cornerRadius(8)
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(isIncluded && !isExcluded ? Color.primary.opacity(0.5) : Color.border, lineWidth: 1)
-        )
-        .opacity(isExcluded ? 0.5 : 1.0)
+        .swipeActions(edge: .leading) {
+            Button {
+                onIncludeToggle()
+            } label: {
+                Label(isIncluded ? "Remove" : "Include", systemImage: isIncluded ? "xmark" : "checkmark")
+            }
+            .tint(isIncluded ? .orange : .green)
+        }
+        .swipeActions(edge: .trailing) {
+            Button(role: .destructive) {
+                onExcludeToggle()
+            } label: {
+                Label(isExcluded ? "Un-exclude" : "Exclude", systemImage: "minus.circle")
+            }
+        }
+    }
+
+    // MARK: - Computed Properties
+
+    private var formattedSize: String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        formatter.allowedUnits = [.useKB, .useMB]
+        return formatter.string(fromByteCount: Int64(file.size))
     }
 
     private var fileIcon: String {
@@ -921,11 +991,109 @@ private struct FileManagementRowView: View {
         }
     }
 
+    private var formattedPathWithCheckmark: Text {
+        let pathComponents = file.path.split(separator: "/")
+        if pathComponents.isEmpty {
+            if isIncluded && !isExcluded {
+                return Text(Image(systemName: "checkmark.circle.fill"))
+                    .foregroundColor(.green)
+                    .font(.system(size: 16)) +
+                    Text("  ") +
+                    Text(file.path).foregroundColor(.foreground)
+            }
+            return Text(file.path).foregroundColor(.foreground)
+        }
+
+        let filename = String(pathComponents.last ?? "")
+        let directory = pathComponents.dropLast().joined(separator: "/")
+
+        if isIncluded && !isExcluded {
+            let checkmark = Text(Image(systemName: "checkmark.circle.fill"))
+                .foregroundColor(.green)
+                .font(.system(size: 16)) +
+                Text("  ")
+
+            if directory.isEmpty {
+                return checkmark + Text(filename).foregroundColor(.primary)
+            } else {
+                return checkmark +
+                       Text(directory + "/").foregroundColor(.foreground) +
+                       Text(filename).foregroundColor(.primary)
+            }
+        } else {
+            if directory.isEmpty {
+                return Text(filename).foregroundColor(.primary)
+            } else {
+                return Text(directory + "/").foregroundColor(.foreground) +
+                       Text(filename).foregroundColor(.primary)
+            }
+        }
+    }
+
     private var formattedDate: String {
         let date = Date(timeIntervalSince1970: TimeInterval(file.modifiedAt) / 1000.0)
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
         return formatter.localizedString(for: date, relativeTo: Date())
+    }
+}
+
+// MARK: - Filter Mode Toggle Component
+private struct FilterModeToggle: View {
+    let allCount: Int
+    let selectedCount: Int
+    let currentMode: String
+    let onSelect: (String) -> Void
+
+    var body: some View {
+        HStack(spacing: 0) {
+            // All button
+            Button(action: {
+                onSelect("all")
+            }) {
+                Text("All (\(allCount))")
+                    .font(.footnote)
+                    .fontWeight(currentMode == "all" ? .semibold : .regular)
+                    .foregroundColor(currentMode == "all" ? Color.primary : Color.mutedForeground)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, 7)
+                    .background(
+                        currentMode == "all" ?
+                        Color.primary.opacity(0.1) :
+                        Color.clear
+                    )
+            }
+            .buttonStyle(PlainButtonStyle())
+
+            // Divider
+            Rectangle()
+                .fill(Color.border.opacity(0.4))
+                .frame(width: 1, height: 24)
+
+            // Selected button
+            Button(action: {
+                onSelect("selected")
+            }) {
+                Text("Selected (\(selectedCount))")
+                    .font(.footnote)
+                    .fontWeight(currentMode == "selected" ? .semibold : .regular)
+                    .foregroundColor(currentMode == "selected" ? Color.primary : Color.mutedForeground)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, 7)
+                    .background(
+                        currentMode == "selected" ?
+                        Color.primary.opacity(0.1) :
+                        Color.clear
+                    )
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+        .background(Color.surfacePrimary)
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radii.base)
+                .stroke(Color.border.opacity(0.5), lineWidth: 1)
+        )
+        .cornerRadius(Theme.Radii.base)
     }
 }
 
