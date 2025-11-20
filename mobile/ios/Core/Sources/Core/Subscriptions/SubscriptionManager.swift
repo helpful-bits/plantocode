@@ -159,62 +159,61 @@ public final class SubscriptionManager: ObservableObject {
     }
 
     public func refreshStatus() async {
-        var activeTransaction: Transaction?
-        var activeTier: SubscriptionTier = .none
-        var activeProductId: String?
+        do {
+            var activeTransaction: Transaction?
+            var activeTier: SubscriptionTier = .none
+            var activeProductId: String?
 
-        // Iterate through current entitlements
-        for await result in Transaction.currentEntitlements {
-            guard case .verified(let transaction) = result else {
-                continue
+            for await result in Transaction.currentEntitlements {
+                guard case .verified(let transaction) = result else {
+                    continue
+                }
+
+                if transaction.productID == Config.IAP.weeklyProductId {
+                    activeTransaction = transaction
+                    activeTier = .weekly
+                    activeProductId = transaction.productID
+                    break
+                } else if transaction.productID == Config.IAP.monthlyProductId {
+                    activeTransaction = transaction
+                    activeTier = .monthly
+                    activeProductId = transaction.productID
+                    break
+                } else if transaction.productID == Config.IAP.annualProductId {
+                    activeTransaction = transaction
+                    activeTier = .annual
+                    activeProductId = transaction.productID
+                    break
+                }
             }
 
-            // Check if this is one of our subscription products
-            if transaction.productID == Config.IAP.weeklyProductId {
-                activeTransaction = transaction
-                activeTier = .weekly
-                activeProductId = transaction.productID
-                break
-            } else if transaction.productID == Config.IAP.monthlyProductId {
-                activeTransaction = transaction
-                activeTier = .monthly
-                activeProductId = transaction.productID
-                break
-            } else if transaction.productID == Config.IAP.annualProductId {
-                activeTransaction = transaction
-                activeTier = .annual
-                activeProductId = transaction.productID
-                break
+            if let transaction = activeTransaction {
+                let willRenew = transaction.revocationDate == nil && transaction.expirationDate != nil
+                let renewalDate = transaction.expirationDate
+                let trialEnd: Date? = nil
+
+                status = SubscriptionStatus(
+                    isActive: true,
+                    tier: activeTier,
+                    willAutoRenew: willRenew,
+                    renewalDate: renewalDate,
+                    trialEndDate: trialEnd,
+                    currentProductId: activeProductId
+                )
+                configurationError = nil
+            } else {
+                status = SubscriptionStatus(
+                    isActive: false,
+                    tier: .none,
+                    willAutoRenew: false,
+                    renewalDate: nil,
+                    trialEndDate: nil,
+                    currentProductId: nil
+                )
+                configurationError = nil
             }
-        }
-
-        if let transaction = activeTransaction {
-            // User has an active subscription
-            let willRenew = transaction.revocationDate == nil && transaction.expirationDate != nil
-            let renewalDate = transaction.expirationDate
-
-            // Trial end date tracking is complex in StoreKit 2
-            // For now, we'll leave it as nil and rely on the transaction's expiration date
-            let trialEnd: Date? = nil
-
-            status = SubscriptionStatus(
-                isActive: true,
-                tier: activeTier,
-                willAutoRenew: willRenew,
-                renewalDate: renewalDate,
-                trialEndDate: trialEnd,
-                currentProductId: activeProductId
-            )
-        } else {
-            // No active subscription
-            status = SubscriptionStatus(
-                isActive: false,
-                tier: .none,
-                willAutoRenew: false,
-                renewalDate: nil,
-                trialEndDate: nil,
-                currentProductId: nil
-            )
+        } catch {
+            configurationError = "Failed to refresh subscription status: \(error.localizedDescription)"
         }
     }
 

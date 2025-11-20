@@ -16,6 +16,7 @@ public struct JobCardView: View {
     @State private var isDeleting = false
     @State private var progress: Double = 0
     @State private var progressTimer: Timer?
+    @State private var jobStartTime: Date?
 
     public init(
         job: BackgroundJob,
@@ -56,17 +57,17 @@ public struct JobCardView: View {
     private var statusColor: Color {
         switch job.jobStatus {
         case .completed, .completedByTag:
-            return .green
+            return Color.success
         case .failed:
-            return .red
+            return Color.destructive
         case .canceled:
-            return .orange
+            return Color.warning
         case .running, .generatingStream, .processingStream:
-            return .blue
+            return Color.info
         case .queued, .created, .preparing, .preparingInput:
-            return .purple
+            return Color.primary
         default:
-            return .gray
+            return Color.secondary
         }
     }
 
@@ -174,35 +175,30 @@ public struct JobCardView: View {
         VStack(spacing: 0) {
             // Header
             HStack(alignment: .center, spacing: Theme.Spacing.cardSpacing) {
-                // Status Icon
-                Image(systemName: statusIcon)
-                    .foregroundColor(statusColor)
-                    .font(.system(size: 14))
-                    .frame(width: 18, height: 18)
-                    .if(isJobRunning) { view in
-                        view.rotationEffect(.degrees(progress * 360))
-                            .animation(.linear(duration: 1).repeatForever(autoreverses: false), value: progress)
-                    }
-
                 // Job Name and Type
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    Text(jobDisplayName)
-                        .font(.system(size: 16, weight: .semibold))
+                    // Job name with inline status icon (part of text flow)
+                    (Text(Image(systemName: statusIcon))
+                        .foregroundColor(statusColor)
+                        .font(.system(size: 14))
+                     + Text("  ")
+                     + Text(jobDisplayName))
+                        .largeText()
                         .foregroundColor(Color.foreground)
                         .lineLimit(1)
 
                     HStack(spacing: Theme.Spacing.itemSpacing) {
                         Text(formatTaskType(job.taskType))
                             .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(Color.mutedForeground)
+                            .foregroundColor(Color.textMuted)
                             .padding(.horizontal, Theme.Spacing.sm)
                             .padding(.vertical, 3)
-                            .background(Color.muted)
+                            .background(Color.surfaceSecondary)
                             .cornerRadius(Theme.Radii.sm)
 
                         Text(job.formattedTimeAgo)
                             .font(.footnote)
-                            .foregroundColor(Color.mutedForeground)
+                            .foregroundColor(Color.textMuted)
                     }
                 }
 
@@ -227,7 +223,7 @@ public struct JobCardView: View {
                             }
                         }
                         .frame(width: 28, height: 28)
-                        .foregroundColor(Color.mutedForeground)
+                        .foregroundColor(Color.textMuted)
                         .disabled(isCancelling)
                     } else if let onDelete = onDelete {
                         Button {
@@ -246,7 +242,7 @@ public struct JobCardView: View {
                             }
                         }
                         .frame(width: 28, height: 28)
-                        .foregroundColor(Color.mutedForeground)
+                        .foregroundColor(Color.textMuted)
                         .disabled(isDeleting)
                     }
                 }
@@ -258,9 +254,10 @@ public struct JobCardView: View {
             // Progress Bar (for active jobs)
             if isJobRunning {
                 VStack(spacing: Theme.Spacing.itemSpacing) {
-                    if let progressPct = job.progressPercentage, progressPct > 0 {
+                    if let progressPct = job.streamProgressPercentage, progressPct > 0 {
                         ProgressView(value: Double(progressPct), total: 100)
                             .tint(statusColor)
+                            .frame(maxWidth: .infinity)
                             .frame(height: 4)
                             .padding(.horizontal, Theme.Spacing.cardPadding)
 
@@ -268,26 +265,28 @@ public struct JobCardView: View {
                             if let subStatus = job.subStatusMessage {
                                 Text(subStatus)
                                     .font(.footnote)
-                                    .foregroundColor(Color.mutedForeground)
+                                    .foregroundColor(Color.textMuted)
                                     .lineLimit(1)
                             }
                             Spacer()
                             Text("\(progressPct)%")
                                 .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(Color.mutedForeground)
+                                .foregroundColor(Color.textSecondary)
                         }
                         .padding(.horizontal, Theme.Spacing.cardPadding)
                     } else {
-                        ProgressView()
-                            .progressViewStyle(LinearProgressViewStyle())
+                        ProgressView(value: progress, total: 1.0)
                             .tint(statusColor)
+                            .frame(maxWidth: .infinity)
                             .frame(height: 4)
                             .padding(.horizontal, Theme.Spacing.cardPadding)
+                            .onAppear { startProgressAnimation() }
+                            .onDisappear { stopProgressAnimation() }
 
                         if let subStatus = job.subStatusMessage {
                             Text(subStatus)
                                 .font(.footnote)
-                                .foregroundColor(Color.mutedForeground)
+                                .foregroundColor(Color.textMuted)
                                 .lineLimit(1)
                                 .padding(.horizontal, Theme.Spacing.cardPadding)
                         }
@@ -296,32 +295,41 @@ public struct JobCardView: View {
                 .padding(.bottom, Theme.Spacing.sm)
             }
 
-            // Metrics Row (tokens, model, duration)
+            // Metrics Row (model, tokens, duration)
             if job.tokensSent ?? 0 > 0 || job.tokensReceived ?? 0 > 0 || job.modelUsed != nil {
                 VStack(alignment: .leading, spacing: Theme.Spacing.itemSpacing) {
+                    // Model (first)
+                    if let model = job.modelUsed {
+                        Text(model)
+                            .font(.footnote)
+                            .foregroundColor(Color.textSecondary)
+                            .lineLimit(1)
+                    }
+
+                    // Token counts and duration (second)
                     HStack(spacing: Theme.Spacing.sm) {
                         // Token counts
                         if job.tokensSent ?? 0 > 0 || job.tokensReceived ?? 0 > 0 {
                             HStack(spacing: 3) {
                                 Text("Tokens:")
                                     .font(.footnote)
-                                    .foregroundColor(Color.mutedForeground)
+                                    .foregroundColor(Color.textMuted)
                                 Text(formatTokenCount(job.tokensSent))
                                     .font(.system(size: 11, design: .monospaced))
-                                    .foregroundColor(Color.secondaryForeground)
+                                    .foregroundColor(Color.textSecondary)
                                 Image(systemName: "arrow.right")
                                     .font(.system(size: 9))
-                                    .foregroundColor(Color.mutedForeground)
+                                    .foregroundColor(Color.textMuted)
                                 Text(formatTokenCount(job.tokensReceived))
                                     .font(.system(size: 11, design: .monospaced))
-                                    .foregroundColor(Color.secondaryForeground)
+                                    .foregroundColor(Color.textSecondary)
 
                                 // Cache tokens if present
                                 if let cacheRead = job.cacheReadTokens, cacheRead > 0,
                                    let cacheWrite = job.cacheWriteTokens, cacheWrite > 0 {
                                     Text("(cache: R\(formatTokenCount(cacheRead))/W\(formatTokenCount(cacheWrite)))")
                                         .font(.system(size: 10))
-                                        .foregroundColor(.teal)
+                                        .foregroundColor(Color.info)
                                 }
                             }
                         }
@@ -332,16 +340,8 @@ public struct JobCardView: View {
                         if let duration = job.formattedDuration {
                             Text(duration)
                                 .font(.system(size: 11, design: .monospaced))
-                                .foregroundColor(Color.mutedForeground)
+                                .foregroundColor(Color.textMuted)
                         }
-                    }
-
-                    // Model
-                    if let model = job.modelUsed {
-                        Text(model)
-                            .font(.footnote)
-                            .foregroundColor(Color.mutedForeground)
-                            .lineLimit(1)
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.cardPadding)
@@ -364,7 +364,7 @@ public struct JobCardView: View {
                             // Two-row layout: summary on first row, buttons+cost on second
                             Text(getCompletionSummary())
                                 .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(Color.primary)
+                                .foregroundColor(Color.textPrimary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
 
                             HStack(alignment: .center, spacing: Theme.Spacing.sm) {
@@ -416,7 +416,7 @@ public struct JobCardView: View {
                                 if let cost = job.actualCost, cost > 0 {
                                     Text(formatCurrency(cost))
                                         .font(.system(size: 12, weight: .medium, design: .monospaced))
-                                        .foregroundColor(Color.mutedForeground)
+                                        .foregroundColor(Color.textMuted)
                                 }
                             }
                         } else {
@@ -424,7 +424,7 @@ public struct JobCardView: View {
                             HStack(alignment: .center, spacing: Theme.Spacing.sm) {
                                 Text(getCompletionSummary())
                                     .font(.system(size: 14, weight: .medium))
-                                    .foregroundColor(Color.primary)
+                                    .foregroundColor(Color.textPrimary)
                                     .lineLimit(1)
 
                                 Spacer()
@@ -432,7 +432,7 @@ public struct JobCardView: View {
                                 if let cost = job.actualCost, cost > 0 {
                                     Text(formatCurrency(cost))
                                         .font(.system(size: 12, weight: .medium, design: .monospaced))
-                                        .foregroundColor(Color.mutedForeground)
+                                        .foregroundColor(Color.textMuted)
                                 }
                             }
                         }
@@ -441,7 +441,7 @@ public struct JobCardView: View {
                         if let error = job.errorMessage {
                             Text(getErrorPreview(error))
                                 .font(.footnote)
-                                .foregroundColor(job.jobStatus == .failed ? Color.destructive : Color.mutedForeground)
+                                .foregroundColor(job.jobStatus == .failed ? Color.destructive : Color.textMuted)
                                 .lineLimit(2)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
@@ -449,19 +449,10 @@ public struct JobCardView: View {
                 }
                 .padding(.horizontal, Theme.Spacing.cardPadding)
                 .padding(.vertical, Theme.Spacing.md)
-                .background(Color.muted)
+                .background(Color.surfaceSecondary)
             }
         }
-        .background(isCurrentSession ? Color.primary.opacity(0.1) : Color.card)
-        .cornerRadius(Theme.Radii.base)
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.Radii.base)
-                .stroke(
-                    isCurrentSession ? Color.primary.opacity(0.3) : Color.border,
-                    lineWidth: 1
-                )
-        )
-        .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
+        .selectableCard(isCurrentContext: isCurrentSession)
         .onTapGesture {
             onSelect()
         }
@@ -477,15 +468,49 @@ public struct JobCardView: View {
 
     // MARK: - Helper Methods
 
+    private func getEstimatedDuration() -> TimeInterval {
+        let taskDurations: [String: TimeInterval] = [
+            "extended_path_finder": 20,
+            "file_relevance_assessment": 20,
+            "regex_file_filter": 20,
+            "implementation_plan": 90,
+            "implementation_plan_merge": 90,
+            "web_search_prompts_generation": 30,
+            "web_search_execution": 120,
+            "text_improvement": 45,
+            "task_refinement": 30,
+            "generic_llm_stream": 60,
+        ]
+        return taskDurations[job.taskType] ?? 30
+    }
+
     private func startProgressAnimation() {
-        progressTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
-            withAnimation(.linear(duration: 0.05)) {
-                progress += 0.05
-                if progress >= 1 {
-                    progress = 0
-                }
+        if jobStartTime == nil {
+            if let startTime = job.startTime {
+                jobStartTime = Date(timeIntervalSince1970: TimeInterval(startTime) / 1000.0)
+            } else {
+                jobStartTime = Date(timeIntervalSince1970: TimeInterval(job.createdAt) / 1000.0)
             }
         }
+
+        progress = 0
+        progressTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+            guard let startTime = jobStartTime else { return }
+
+            let elapsed = Date().timeIntervalSince(startTime)
+            let estimatedDuration = getEstimatedDuration()
+            let calculatedProgress = min(0.90, elapsed / estimatedDuration)
+
+            withAnimation(.linear(duration: 1.0)) {
+                progress = calculatedProgress
+            }
+        }
+    }
+
+    private func stopProgressAnimation() {
+        progressTimer?.invalidate()
+        progressTimer = nil
+        jobStartTime = nil
     }
 
     private func getCompletionSummary() -> String {
@@ -640,19 +665,6 @@ public struct JobCardView: View {
     private func getErrorPreview(_ error: String) -> String {
         let maxLength = 150
         return error.count > maxLength ? String(error.prefix(maxLength)) + "..." : error
-    }
-}
-
-// MARK: - View Modifier Extension
-
-extension View {
-    @ViewBuilder
-    func `if`<Transform: View>(_ condition: Bool, transform: (Self) -> Transform) -> some View {
-        if condition {
-            transform(self)
-        } else {
-            self
-        }
     }
 }
 

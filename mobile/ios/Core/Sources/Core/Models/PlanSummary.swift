@@ -72,6 +72,76 @@ public struct PlanSummary: Codable, Identifiable {
         return ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
     }
 
+    /// Relative time display (e.g., "5m ago", "2h ago")
+    public var formattedTimeAgo: String {
+        let timestamp = updatedAt ?? createdAt
+        let date = Date(timeIntervalSince1970: Double(timestamp) / 1000)
+        let interval = Date().timeIntervalSince(date)
+
+        if interval < 60 {
+            return "just now"
+        } else if interval < 3600 {
+            let mins = Int(interval / 60)
+            return "\(mins)m ago"
+        } else if interval < 86400 {
+            let hours = Int(interval / 3600)
+            return "\(hours)h ago"
+        } else {
+            let days = Int(interval / 86400)
+            return "\(days)d ago"
+        }
+    }
+
+    /// Format token count for display (e.g., "1.5K" or "150")
+    public func formatTokenCount(_ count: Int?) -> String {
+        guard let count = count, count > 0 else { return "0" }
+        if count >= 1000 {
+            return String(format: "%.1fK", Double(count) / 1000.0)
+        }
+        return "\(count)"
+    }
+
+    /// Status-based color
+    public var statusColor: String {
+        switch status.lowercased() {
+        case "completed", "completed_by_tag":
+            return "green"
+        case "failed":
+            return "red"
+        case "canceled":
+            return "orange"
+        case "running", "processingstream", "generatingstream":
+            return "blue"
+        case "queued", "created", "preparing", "preparing_input":
+            return "purple"
+        default:
+            return "gray"
+        }
+    }
+
+    /// Status icon name
+    public var statusIcon: String {
+        switch status.lowercased() {
+        case "completed", "completed_by_tag":
+            return "checkmark.circle.fill"
+        case "failed":
+            return "exclamationmark.circle.fill"
+        case "canceled":
+            return "xmark.circle.fill"
+        case "running", "processingstream", "generatingstream":
+            return "arrow.clockwise"
+        case "queued", "created", "preparing", "preparing_input":
+            return "clock.fill"
+        default:
+            return "circle.fill"
+        }
+    }
+
+    /// Whether the plan is currently executing
+    public var isExecuting: Bool {
+        executionStatus?.isExecuting ?? false
+    }
+
     /// Initialize a PlanSummary from a BackgroundJob
     /// - Parameter job: The BackgroundJob to extract plan summary from
     public init(from job: BackgroundJob) {

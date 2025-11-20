@@ -44,4 +44,31 @@ public extension Color {
     static let codeBorder = dynamicColor(Theme.Colors.codeBorder)
     static let inlineCodeBackground = dynamicColor(Theme.Colors.inlineCodeBackground)
     static let inlineCodeForeground = dynamicColor(Theme.Colors.inlineCodeForeground)
+    static let destructiveBackground = dynamicColor(Theme.Colors.destructiveBackground)
+    static let destructiveBorder = dynamicColor(Theme.Colors.destructiveBorder)
+
+    static var backgroundPrimary: Color { dynamicColor(Theme.Semantic.Background.primary) }
+    static var backgroundSecondary: Color { dynamicColor(Theme.Semantic.Background.secondary) }
+    static var backgroundTertiary: Color { dynamicColor(Theme.Semantic.Background.tertiary) }
+
+    static var surfacePrimary: Color { dynamicColor(Theme.Semantic.Surface.card) }
+    static var surfaceSecondary: Color { dynamicColor(Theme.Semantic.Surface.cardMuted) }
+    static var surfaceElevated: Color { dynamicColor(Theme.Semantic.Surface.elevated) }
+
+    static var textPrimary: Color { dynamicColor(Theme.Semantic.Text.primary) }
+    static var textSecondary: Color { dynamicColor(Theme.Semantic.Text.secondary) }
+    static var textMuted: Color { dynamicColor(Theme.Semantic.Text.muted) }
+    static var textInverse: Color { dynamicColor(Theme.Semantic.Text.inverse) }
+
+    static var inputBackground: Color { dynamicColor(Theme.Semantic.Input.background) }
+    static var inputBorder: Color { dynamicColor(Theme.Semantic.Input.border) }
+    static var inputPlaceholder: Color { dynamicColor(Theme.Semantic.Input.placeholder) }
+
+    static var selectionBackground: Color { dynamicColor(Theme.Semantic.Selection.background) }
+    static var subtleHighlight: Color { dynamicColor(Theme.Semantic.Selection.subtleHighlight) }
+
+    static var appBackground: Color { backgroundPrimary }
+    static var appCard: Color { surfacePrimary }
+    static var appForeground: Color { textPrimary }
+    static var appMutedForeground: Color { textMuted }
 }

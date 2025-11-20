@@ -23,6 +23,8 @@ public struct AuthFlowCoordinator: View {
   }
   @State private var route: FlowRoute = .loading
   @State private var subscriptionStatusObserver: Task<Void, Never>?
+  @State private var reconnectionGracePeriodTask: Task<Void, Never>?
+  @State private var isInReconnectionGracePeriod: Bool = false
 
   public init() {}
 
@@ -53,7 +55,8 @@ public struct AuthFlowCoordinator: View {
           }
         )
       case .paywall:
-        PaywallView()
+        PaywallView(allowsDismiss: false)
+          .environmentObject(container)
       case .deviceSelection:
         DeviceSelectionView()
       case .projectFolderSelection:
@@ -79,7 +82,12 @@ public struct AuthFlowCoordinator: View {
     .onChange(of: appState.hasSelectedRegionOnce) { _ in withAnimation { updateRoute() } }
     .onChange(of: appState.isAuthenticated) { _ in withAnimation { updateRoute() } }
     .onChange(of: multiConnectionManager.activeDeviceId) { _ in withAnimation { updateRoute() } }
-    .onChange(of: multiConnectionManager.connectionStates) { _ in withAnimation { updateRoute() } }
+    .onChange(of: multiConnectionManager.isActivelyReconnecting) { isReconnecting in
+      handleReconnectionStateChange(isReconnecting)
+    }
+    .onChange(of: multiConnectionManager.connectionStates) { newStates in
+      handleConnectionStateChange(newStates)
+    }
     .onChange(of: appState.activeRegion) { newRegion in
       if newRegion != nil {
         withAnimation { updateRoute() }
@@ -163,6 +171,80 @@ public struct AuthFlowCoordinator: View {
   }
 
   @MainActor
+  private func handleReconnectionStateChange(_ isReconnecting: Bool) {
+    // When reconnection starts and we've previously completed initial load,
+    // immediately start grace period to prevent device selection screen
+    if isReconnecting && container.hasCompletedInitialLoad {
+      startReconnectionGracePeriod()
+    }
+    // When reconnection ends (success or failure), clear grace period
+    else if !isReconnecting {
+      clearReconnectionGracePeriod()
+    }
+
+    withAnimation { updateRoute() }
+  }
+
+  @MainActor
+  private func handleConnectionStateChange(_ newStates: [UUID: ConnectionState]) {
+    // Additional check: if state changes to connected, ensure grace period is cleared
+    if let activeId = multiConnectionManager.activeDeviceId,
+       let state = newStates[activeId],
+       state.isConnected {
+      clearReconnectionGracePeriod()
+    }
+
+    withAnimation { updateRoute() }
+  }
+
+  private func startReconnectionGracePeriod() {
+    // Cancel any existing grace period
+    reconnectionGracePeriodTask?.cancel()
+
+    // Mark that we're in grace period
+    isInReconnectionGracePeriod = true
+
+    // Start 5-second grace period
+    reconnectionGracePeriodTask = Task { @MainActor in
+      try? await Task.sleep(nanoseconds: 5_000_000_000) // 5 seconds
+
+      if !Task.isCancelled {
+        isInReconnectionGracePeriod = false
+        withAnimation { updateRoute() }
+      }
+    }
+  }
+
+  private func clearReconnectionGracePeriod() {
+    reconnectionGracePeriodTask?.cancel()
+    reconnectionGracePeriodTask = nil
+    isInReconnectionGracePeriod = false
+  }
+
+  private func shouldAllowWorkspaceAccess() -> Bool {
+    // Priority 1: If actively reconnecting and we've been connected before, stay in workspace
+    if multiConnectionManager.isActivelyReconnecting && container.hasCompletedInitialLoad {
+      return true
+    }
+
+    // Priority 2: During grace period, allow access if we have an active device
+    if isInReconnectionGracePeriod && multiConnectionManager.activeDeviceId != nil {
+      return true
+    }
+
+    // Priority 3: If we've completed initial load before and currently in a connecting state, be lenient
+    if container.hasCompletedInitialLoad,
+       let activeId = multiConnectionManager.activeDeviceId,
+       let state = multiConnectionManager.connectionStates[activeId],
+       state.isConnectedOrConnecting {
+      return true
+    }
+
+    // Priority 4: Otherwise require full connection
+    return multiConnectionManager.activeDeviceIsFullyConnected && isActiveDeviceAvailable
+  }
+
+  @MainActor
   private func updateRoute() {
     // TEMPORARY: Force onboarding screen for testing purposes
     // TODO: Remove this to restore normal flow
@@ -187,13 +269,15 @@ public struct AuthFlowCoordinator: View {
       return
     }
 
-    // 4. Subscription check (only after onboarding and bootstrap is not in early stages)
-    // Skip subscription check during initial loading to avoid accessing container too early
-    if appState.authBootstrapCompleted && appState.bootstrapState != .idle && appState.bootstrapState != .running {
-      if !container.subscriptionManager.status.isActive {
-        route = .paywall
-        return
-      }
+    // 4. Subscription check via SubscriptionGate
+    let gate = container.subscriptionGate
+
+    if gate.shouldShowPaywallForWorkspaceEntry(
+      bootstrapState: appState.bootstrapState,
+      authBootstrapCompleted: appState.authBootstrapCompleted
+    ) {
+      route = .paywall
+      return
     }
 
     // 5. Bootstrap state checks
@@ -206,7 +290,7 @@ public struct AuthFlowCoordinator: View {
       return
     case .needsConfiguration(let missing):
       if missing.projectMissing {
-        if multiConnectionManager.activeDeviceIsFullyConnected && isActiveDeviceAvailable {
+        if shouldAllowWorkspaceAccess() {
           route = .projectFolderSelection
         } else {
           route = .deviceSelection
@@ -217,7 +301,7 @@ public struct AuthFlowCoordinator: View {
         return
       }
     case .ready:
-      if multiConnectionManager.activeDeviceIsFullyConnected && isActiveDeviceAvailable {
+      if shouldAllowWorkspaceAccess() {
         if appState.selectedProjectDirectory == nil {
           route = .projectFolderSelection
         } else {

@@ -14,6 +14,20 @@ public struct OnboardingFlowView: View {
         self.onComplete = onComplete
     }
 
+    private func handleComplete() {
+        Task {
+            await container.ensureFreshSubscriptionStatus()
+            onComplete()
+        }
+    }
+
+    private func handleSkip() {
+        Task {
+            await container.ensureFreshSubscriptionStatus()
+            onSkip()
+        }
+    }
+
     public var body: some View {
         ZStack {
             // Background gradient
@@ -33,7 +47,7 @@ public struct OnboardingFlowView: View {
                 HStack {
                     Spacer()
                     Button(action: {
-                        onSkip()
+                        handleSkip()
                     }) {
                         Image(systemName: "xmark")
                             .font(.system(size: 18, weight: .medium))
@@ -124,7 +138,7 @@ public struct OnboardingFlowView: View {
                                 page += 1
                             }
                         } else {
-                            onComplete()
+                            handleComplete()
                         }
                     }) {
                         Text(page == 3 ? "Get Started" : "Continue")

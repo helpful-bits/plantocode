@@ -1,7 +1,14 @@
 import SwiftUI
 import Core
 
+private func dynamicColor(_ pair: Theme.DynamicColorPair) -> Color {
+    Color(UIColor { traitCollection in
+        traitCollection.userInterfaceStyle == .dark ? UIColor(pair.dark) : UIColor(pair.light)
+    })
+}
+
 public enum StatusVariant {
+  case success
   case destructive
   case warning
   case info
@@ -33,7 +40,7 @@ public struct StatusAlertView: View {
 
         Text(message)
           .font(.caption)
-          .foregroundColor(Color.appMutedForeground)
+          .foregroundColor(.textMuted)
           .fixedSize(horizontal: false, vertical: true)
           .lineLimit(nil)
       }
@@ -42,53 +49,60 @@ public struct StatusAlertView: View {
     }
     .padding(12)
     .background(backgroundColor)
-    .cornerRadius(AppColors.radius)
+    .cornerRadius(Theme.Radii.md)
     .overlay(
-      RoundedRectangle(cornerRadius: AppColors.radius)
+      RoundedRectangle(cornerRadius: Theme.Radii.md)
         .stroke(borderColor, lineWidth: 1)
     )
   }
 
   private var iconColor: Color {
     switch variant {
-    case .destructive: return Color.appDestructive
-    case .warning: return Color.appWarning
-    case .info: return Color.appInfo
+    case .success: return dynamicColor(Theme.Semantic.Status.successForeground)
+    case .destructive: return dynamicColor(Theme.Semantic.Status.destructiveForeground)
+    case .warning: return dynamicColor(Theme.Semantic.Status.warningForeground)
+    case .info: return dynamicColor(Theme.Semantic.Status.infoForeground)
     }
   }
 
   private var textColor: Color {
     switch variant {
-    case .destructive: return Color.appDestructiveForeground
-    case .warning: return Color.appWarningForeground
-    case .info: return Color.appInfoForeground
+    case .success: return dynamicColor(Theme.Semantic.Status.successForeground)
+    case .destructive: return dynamicColor(Theme.Semantic.Status.destructiveForeground)
+    case .warning: return dynamicColor(Theme.Semantic.Status.warningForeground)
+    case .info: return dynamicColor(Theme.Semantic.Status.infoForeground)
     }
   }
 
   private var backgroundColor: Color {
     switch variant {
+    case .success:
+      return dynamicColor(Theme.Semantic.Status.successBackground)
     case .destructive:
-      return Color.appDestructive.opacity(0.1)
+      return dynamicColor(Theme.Semantic.Status.destructiveBackground)
     case .warning:
-      return Color.appWarningBackground
+      return dynamicColor(Theme.Semantic.Status.warningBackground)
     case .info:
-      return Color.appInfoBackground
+      return dynamicColor(Theme.Semantic.Status.infoBackground)
     }
   }
 
   private var borderColor: Color {
     switch variant {
+    case .success:
+      return dynamicColor(Theme.Semantic.Status.successBorder)
     case .destructive:
-      return Color.appDestructive.opacity(0.3)
+      return dynamicColor(Theme.Semantic.Status.destructiveBorder)
     case .warning:
-      return Color.appWarningBorder
+      return dynamicColor(Theme.Semantic.Status.warningBorder)
     case .info:
-      return Color.appInfoBorder
+      return dynamicColor(Theme.Semantic.Status.infoBorder)
     }
   }
 
   private var iconName: String {
     switch variant {
+    case .success: return "checkmark.circle.fill"
     case .destructive: return "exclamationmark.octagon.fill"
     case .warning: return "exclamationmark.triangle.fill"
     case .info: return "info.circle.fill"

@@ -12,6 +12,7 @@ public final class MultiConnectionManager: ObservableObject {
     private var storage: [UUID: ServerRelayClient] = [:]
     @Published public private(set) var activeDeviceId: UUID?
     @Published public private(set) var connectionStates: [UUID: ConnectionState] = [:]
+    @Published public private(set) var isActivelyReconnecting: Bool = false
     private let connectedDevicesKey = "vm_connected_devices"
     private let activeDeviceKey = "ActiveDesktopDeviceId"
     private var cancellables = Set<AnyCancellable>()
@@ -363,6 +364,10 @@ public final class MultiConnectionManager: ObservableObject {
                                     } else {
                                         self.connectionStates[deviceId] = .connected(handshake)
                                         self.persistConnectedDevice(deviceId)
+                                        // Clear reconnection flag if this is the active device
+                                        if deviceId == self.activeDeviceId {
+                                            self.isActivelyReconnecting = false
+                                        }
                                     }
                                     // Auto-assign if this is the only connected device and no active device is set
                                     if self.activeDeviceId == nil {
@@ -406,6 +411,8 @@ public final class MultiConnectionManager: ObservableObject {
                         self.persistConnectedDevice(deviceId)
                         self.setActive(deviceId)
                         self.verifyingDevices.remove(deviceId)
+                        // Clear reconnection flag since this is the active device
+                        self.isActivelyReconnecting = false
                         self.lastConnectedServerURL = Config.serverURL
                         UserDefaults.standard.set(self.lastConnectedServerURL, forKey: self.serverContextKey)
                     }
@@ -550,6 +557,17 @@ public final class MultiConnectionManager: ObservableObject {
         return false
     }
 
+    /// Returns true if active device is connected OR actively reconnecting
+    /// This is more tolerant than activeDeviceIsFullyConnected and useful for UI decisions
+    /// during network transitions to avoid prematurely showing device selection
+    public var activeDeviceIsConnectedOrReconnecting: Bool {
+        guard let id = self.activeDeviceId else { return false }
+        if let state = self.connectionStates[id] {
+            return state.isConnectedOrConnecting
+        }
+        return false
+    }
+
     // MARK: - Aggressive Reconnection
 
     public func triggerAggressiveReconnect(reason: ReconnectReason, deviceIds: [UUID]? = nil) {
@@ -580,6 +598,11 @@ public final class MultiConnectionManager: ObservableObject {
     private func startAggressiveSequence(for deviceId: UUID, reason: ReconnectReason) {
         guard canAttemptReconnect(for: deviceId) else {
             return
+        }
+
+        // Set reconnecting flag if this is the active device
+        if deviceId == activeDeviceId {
+            isActivelyReconnecting = true
         }
 
         if reconnectStates[deviceId] == nil {

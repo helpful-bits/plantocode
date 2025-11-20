@@ -189,23 +189,19 @@ public struct PlanRunestoneEditorView: UIViewRepresentable {
     }
 
     public func updateUIView(_ textView: TextView, context: Context) {
-        // Only update text if it changed from outside (not from user typing)
-        if textView.text != text && !context.coordinator.isUpdatingFromEditor {
-            // Update text directly without resetting state
-            textView.text = text
-        }
+        // Cache old values for restoration
+        let oldSelectedRange = textView.selectedRange
+        let oldContentOffset = textView.contentOffset
 
-        // Update editability
-        if textView.isEditable != !isReadOnly {
+        // Update editability FIRST before any other changes
+        let editabilityChanged = textView.isEditable != !isReadOnly
+        if editabilityChanged {
             textView.isEditable = !isReadOnly
-        }
 
-        if textView.isEditable {
-            if textView.inputAccessoryView == nil {
+            // Only update accessory when editability actually changes
+            if textView.isEditable {
                 textView.addDismissKeyboardAccessory()
-            }
-        } else {
-            if textView.inputAccessoryView != nil {
+            } else {
                 textView.removeDismissKeyboardAccessory()
             }
         }
@@ -215,23 +211,47 @@ public struct PlanRunestoneEditorView: UIViewRepresentable {
         let languageChanged = currentLanguage != context.coordinator.lastAppliedLanguage
         let schemeChanged = colorScheme != context.coordinator.lastAppliedScheme
 
-        if languageChanged || schemeChanged {
-            // Save selection and scroll position
-            let selectedRange = textView.selectedRange
-            let contentOffset = textView.contentOffset
+        // Only update text if it changed from outside (not from user typing)
+        if textView.text != text && !context.coordinator.isUpdatingFromEditor {
+            // Update text directly without resetting state - avoids unnecessary parsing
+            textView.text = text
 
+            // Clamp selection to valid range after text change
+            let textLength = (textView.text as NSString).length
+            let clampedLocation = min(oldSelectedRange.location, textLength)
+            let clampedLength = min(oldSelectedRange.length, textLength - clampedLocation)
+            textView.selectedRange = NSRange(location: clampedLocation, length: clampedLength)
+        }
+
+        // Handle language/theme changes with setState (triggers full re-parse)
+        if languageChanged || schemeChanged {
             // Update state with new theme and language
             let theme = VibeRunestoneTheme(fontSize: fontSize)
             let state = TextViewState(text: textView.text, theme: theme, language: currentLanguage.treeSitterLanguage)
             textView.setState(state)
 
-            // Restore selection and scroll position
-            textView.selectedRange = selectedRange
-            textView.contentOffset = contentOffset
+            // Clamp and restore selection after setState
+            let textLength = (textView.text as NSString).length
+            let clampedLocation = min(oldSelectedRange.location, textLength)
+            let clampedLength = min(oldSelectedRange.length, textLength - clampedLocation)
+            textView.selectedRange = NSRange(location: clampedLocation, length: clampedLength)
+
+            // Restore scroll position
+            textView.contentOffset = oldContentOffset
 
             // Update cached values
             context.coordinator.lastAppliedLanguage = currentLanguage
             context.coordinator.lastAppliedScheme = colorScheme
+        }
+
+        // Final defensive selection clamp - ensure selection is always valid
+        let finalTextLength = (textView.text as NSString).length
+        let currentRange = textView.selectedRange
+        if currentRange.location > finalTextLength ||
+           currentRange.location + currentRange.length > finalTextLength {
+            let safeLocation = min(currentRange.location, finalTextLength)
+            let safeLength = min(currentRange.length, finalTextLength - safeLocation)
+            textView.selectedRange = NSRange(location: safeLocation, length: safeLength)
         }
     }
 
@@ -242,8 +262,9 @@ public struct PlanRunestoneEditorView: UIViewRepresentable {
     public class Coordinator: NSObject, TextViewDelegate {
         @Binding var text: String
         var isUpdatingFromEditor = false
+        var lastSentText: String = ""
         var lastAppliedLanguage: LocalLanguage = .plaintext
-        var lastAppliedScheme: ColorScheme = .light
+        var lastAppliedScheme: ColorScheme?
 
         init(text: Binding<String>) {
             self._text = text
@@ -252,6 +273,7 @@ public struct PlanRunestoneEditorView: UIViewRepresentable {
         public func textViewDidChange(_ textView: TextView) {
             isUpdatingFromEditor = true
             text = textView.text
+            lastSentText = textView.text
             isUpdatingFromEditor = false
         }
     }

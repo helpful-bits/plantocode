@@ -27,6 +27,7 @@ public struct KeyboardAwareModifier: ViewModifier {
                     let animationDuration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
 
                     withAnimation(.easeOut(duration: animationDuration)) {
+                        // Use keyboard height directly since accessory is now minimal (1pt)
                         keyboardHeight = keyboardFrame.height
                     }
                 }

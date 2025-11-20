@@ -107,18 +107,6 @@ public struct SessionWorkspaceView: View {
             }
             .tag(1)
 
-            // Tab 3: Plans - No lazy loading to ensure onReceive handlers fire
-            PlansTab(
-                session: session,
-                taskText: taskText,
-                onCreatePlan: createImplementationPlan,
-                isOfflineMode: isOfflineMode
-            )
-            .tabItem {
-                Label("Plans", systemImage: "list.bullet.rectangle")
-            }
-            .tag(2)
-
             // Tab 4: Jobs - No lazy loading to ensure onReceive handlers fire
             JobsTab(
                 session: session,
@@ -129,6 +117,19 @@ public struct SessionWorkspaceView: View {
                 Label("Jobs", systemImage: "chart.bar.doc.horizontal")
             }
             .tag(3)
+
+            // Tab 3: Plans - No lazy loading to ensure onReceive handlers fire
+            PlansTab(
+                session: session,
+                taskText: taskText,
+                onCreatePlan: createImplementationPlan,
+                isOfflineMode: isOfflineMode,
+                jobsService: container.jobsService
+            )
+            .tabItem {
+                Label("Plans", systemImage: "list.bullet.rectangle")
+            }
+            .tag(2)
 
             // Tab 5: Settings
             SettingsView()
@@ -276,12 +277,13 @@ public struct SessionWorkspaceView: View {
                 currentSession: $currentSession,
                 loadMostRecentSession: loadMostRecentSession
             ))
-            .onChange(of: selectedTab) { newTab in
-                // Gate interactive tabs (Files, Plans, Jobs) - tabs 1, 2, 3
-                if [1, 2, 3].contains(newTab) {
-                    if !container.subscriptionManager.status.isActive {
-                        showingPaywall = true
-                    }
+            .onChange(of: selectedTab) { newValue in
+                let gate = container.subscriptionGate
+
+                if [1, 2, 3].contains(newValue),
+                   gate.shouldShowPaywallForFeatureAccess() {
+                    selectedTab = 0
+                    showingPaywall = true
                 }
             }
             .sheet(isPresented: $showingPaywall) {
@@ -360,8 +362,6 @@ public struct SessionWorkspaceView: View {
     }
 
     private func loadSession(_ session: Session) {
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-
         currentSession = session
         taskText = session.taskDescription ?? ""
         errorMessage = nil
@@ -522,9 +522,8 @@ struct TaskTab: View {
                 )
                 .id(session.id)
                 .padding(.horizontal)
-                .padding(.bottom)
                 .padding(.top, isKeyboardVisible ? 0 : 16)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity)
             }
             .background(Color.background)
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
@@ -724,6 +723,7 @@ struct PlansTab: View {
     let taskText: String
     let onCreatePlan: () -> Void
     let isOfflineMode: Bool
+    @ObservedObject var jobsService: JobsDataService
 
     var body: some View {
         NavigationStack {
@@ -752,8 +752,7 @@ struct PlansTab: View {
                 .navigationTitle("Plans")
                 .navigationBarTitleDisplayMode(.inline)
             } else {
-                // Wrapper that ensures session is synchronized before rendering
-                SessionSynchronizedPlansView(session: session)
+                SessionSynchronizedPlansView(session: session, taskText: taskText, jobsService: jobsService)
             }
         }
     }
@@ -763,9 +762,11 @@ struct PlansTab: View {
 private struct SessionSynchronizedPlansView: View {
     @EnvironmentObject private var container: AppContainer
     let session: Session
+    let taskText: String
+    @ObservedObject var jobsService: JobsDataService
 
     var body: some View {
-        ImplementationPlansView()
+        ImplementationPlansView(jobsService: jobsService, currentTaskDescription: taskText)
             .navigationTitle("Plans")
             .navigationBarTitleDisplayMode(.inline)
             .task {

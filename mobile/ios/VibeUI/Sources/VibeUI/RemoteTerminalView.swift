@@ -2,6 +2,7 @@ import SwiftUI
 import Core
 import Combine
 import SwiftTerm
+import OSLog
 
 public struct RemoteTerminalView: View {
     let jobId: String
@@ -22,11 +23,13 @@ public struct RemoteTerminalView: View {
     @State private var outputCancellable: AnyCancellable?
     @State private var hasInitialResize = false
     @State private var pendingTerminalInput = "" // Track input that hasn't been sent yet
+    @State private var isTerminalReady = false // Track if terminal is ready for data
 
     private let outputBufferLimit = 1000
 
     @State private var copyButtons: [CopyButton] = []
     @State private var planContentForJob: String = ""
+    @State private var taskDescriptionContent: String = ""
     @State private var isActionsExpanded: Bool = false
 
     private let contextType: TerminalContextType
@@ -60,6 +63,14 @@ public struct RemoteTerminalView: View {
         }
     }
 
+    private func loadTaskDescription() async {
+        if let taskDesc = container.sessionService.currentSession?.taskDescription, !taskDesc.isEmpty {
+            await MainActor.run {
+                taskDescriptionContent = taskDesc
+            }
+        }
+    }
+
     private func paste(using button: CopyButton, jobId: String) async {
         let processed = button.processContent(
             planContent: planContentForJob,
@@ -73,38 +84,95 @@ public struct RemoteTerminalView: View {
         )
     }
 
+    private func pasteTaskDescription() async {
+        guard !taskDescriptionContent.isEmpty else { return }
+        try? await container.terminalService.sendLargeText(
+            jobId: jobId,
+            text: taskDescriptionContent,
+            appendCarriageReturn: true
+        )
+    }
+
     public var body: some View {
         VStack(spacing: 0) {
-            // Compose + Copy buttons toolbar - only visible when Actions is expanded
-            if isActionsExpanded {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        Button("Compose") {
-                            openCompose()
-                        }
-                        .buttonStyle(PrimaryButtonStyle())
-
-                        if !copyButtons.isEmpty && !planContentForJob.isEmpty {
-                            ForEach(copyButtons, id: \.id) { btn in
-                                Button(btn.label) {
-                                    Task { await paste(using: btn, jobId: jobId) }
-                                }
-                                .buttonStyle(SecondaryButtonStyle())
-                                .disabled(planContentForJob.isEmpty)
+            // Error/Loading overlay
+            if let error = errorMessage {
+                VStack(spacing: 16) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 48))
+                        .foregroundColor(Color.destructive)
+                    Text("Terminal Error")
+                        .font(.headline)
+                        .foregroundColor(Color.textPrimary)
+                    Text(error)
+                        .font(.body)
+                        .foregroundColor(Color.muted)
+                        .multilineTextAlignment(.center)
+                        .padding(EdgeInsets(top: 0, leading: 32, bottom: 0, trailing: 32))
+                    Button("Retry") {
+                        errorMessage = nil
+                        Task {
+                            await MainActor.run {
+                                startTerminalSession()
                             }
                         }
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
+                    .buttonStyle(PrimaryButtonStyle())
                 }
-                .background(Color(.systemGroupedBackground))
-                .transition(.move(edge: .top).combined(with: .opacity))
-            }
-
-            // SwiftTerm terminal view - handles input, output, and keyboard accessories
-            SwiftTerminalView(controller: terminalController, shouldShowKeyboard: $shouldShowKeyboard)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.black)
+                .background(Color.background)
+            } else if isLoading {
+                VStack(spacing: 16) {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: Color.success))
+                        .scaleEffect(1.5)
+                    Text("Starting terminal...")
+                        .font(.body)
+                        .foregroundColor(Color.muted)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.background)
+            } else {
+                // Compose + Copy buttons toolbar - only visible when Actions is expanded
+                if isActionsExpanded {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            Button("Compose") {
+                                openCompose()
+                            }
+                            .buttonStyle(PrimaryButtonStyle())
+
+                            // Show "Task" button for task description context
+                            if contextType == .taskDescription && !taskDescriptionContent.isEmpty {
+                                Button("Task") {
+                                    Task { await pasteTaskDescription() }
+                                }
+                                .buttonStyle(SecondaryButtonStyle())
+                            }
+
+                            // Show copy buttons for implementation plan context
+                            if contextType == .implementationPlan && !copyButtons.isEmpty && !planContentForJob.isEmpty {
+                                ForEach(copyButtons, id: \.id) { btn in
+                                    Button(btn.label) {
+                                        Task { await paste(using: btn, jobId: jobId) }
+                                    }
+                                    .buttonStyle(SecondaryButtonStyle())
+                                    .disabled(planContentForJob.isEmpty)
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                    }
+                    .background(Color.backgroundSecondary)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+
+                // SwiftTerm terminal view - handles input, output, and keyboard accessories
+                SwiftTerminalView(controller: terminalController, shouldShowKeyboard: $shouldShowKeyboard)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.black)
+            }
         }
         .background(Color.background)
         .navigationBarTitleDisplayMode(.inline)
@@ -136,7 +204,7 @@ public struct RemoteTerminalView: View {
                                 .font(.system(size: 16))
                         }
                         .buttonStyle(ToolbarButtonStyle())
-                        .accessibilityLabel("Hide Keyboard")
+                        .accessibilityLabel("Hide Terminal Keyboard")
                         .accessibilityHint("Dismisses the on-screen keyboard")
                     } else {
                         Button(action: {
@@ -146,7 +214,7 @@ public struct RemoteTerminalView: View {
                                 .font(.system(size: 16))
                         }
                         .buttonStyle(ToolbarButtonStyle())
-                        .accessibilityLabel("Show Keyboard")
+                        .accessibilityLabel("Show Terminal Keyboard")
                         .accessibilityHint("Shows the on-screen keyboard")
                     }
 
@@ -380,23 +448,31 @@ public struct RemoteTerminalView: View {
                         }
                     }
 
-                    // Show keyboard ONLY after terminal is fully ready
-                    // Small delay ensures view hierarchy is stable after session initialization
+                    // Mark terminal as ready for rendering
+                    isTerminalReady = true
+
+                    // Show keyboard ONLY after terminal is fully ready AND layout is stable
+                    // Longer delay to prevent rapid keyboard show/hide cycles during initial layout
                     Task {
-                        try? await Task.sleep(nanoseconds: 200_000_000) // 200ms
+                        try? await Task.sleep(nanoseconds: 500_000_000) // 500ms
                         await MainActor.run {
-                            shouldShowKeyboard = true
+                            // Only show keyboard if view is still visible and ready
+                            if isTerminalReady {
+                                shouldShowKeyboard = true
+                            }
                         }
                     }
                 }
 
-                // Load copy buttons and plan content (only for implementation plans)
-                // User will manually trigger paste via Actions toolbar
+                // Load content based on context type
                 if self.contextType == .implementationPlan {
                     Task {
                         await loadCopyButtons()
                         await ensurePlanContent(jobId: jobId)
-                        // Auto-paste removed - user controls pasting via Actions toolbar
+                    }
+                } else if self.contextType == .taskDescription {
+                    Task {
+                        await loadTaskDescription()
                     }
                 }
             } catch {
@@ -496,10 +572,25 @@ public struct RemoteTerminalView: View {
 // MARK: - SwiftTerm Controller
 
 class SwiftTermController: ObservableObject {
-    weak var terminalView: TerminalView?
+    weak var terminalView: TerminalView? {
+        didSet {
+            // When terminal view becomes available, flush any buffered data
+            if terminalView != nil && !pendingData.isEmpty {
+                for buffered in pendingData {
+                    let buffer = ArraySlice([UInt8](buffered))
+                    terminalView?.feed(byteArray: buffer)
+                }
+                terminalView?.setNeedsDisplay()
+                terminalView?.layoutIfNeeded()
+                pendingData.removeAll()
+                objectWillChange.send()
+            }
+        }
+    }
     var onSend: (([UInt8]) -> Void)?
     var onResize: ((Int, Int) -> Void)?
     var isFirstResize = true
+    private var pendingData: [Data] = []
 
     func feed(data: String) {
         guard let terminalView = terminalView else {
@@ -518,10 +609,29 @@ class SwiftTermController: ObservableObject {
     }
 
     func feedBytes(data: Data) {
+        guard !data.isEmpty else { return }
+
+        // If terminal view not ready, buffer the data
         guard let terminalView = terminalView else {
+            pendingData.append(data)
+
+            // Prevent unbounded buffering
+            if pendingData.count > 100 {
+                pendingData.removeFirst(50)
+            }
             return
         }
 
+        // Feed any buffered data first
+        if !pendingData.isEmpty {
+            for buffered in pendingData {
+                let buffer = ArraySlice([UInt8](buffered))
+                terminalView.feed(byteArray: buffer)
+            }
+            pendingData.removeAll()
+        }
+
+        // Feed current data
         let buffer = ArraySlice([UInt8](data))
         terminalView.feed(byteArray: buffer)
 
@@ -565,12 +675,12 @@ extension SwiftTermController: TerminalViewDelegate {
             isFirstResize = false
             onResize?(newCols, newRows)
         } else {
-            // Debounce subsequent resize events with 200ms delay
+            // More aggressive debounce (400ms) to handle rapid keyboard show/hide cycles
             resizeDebouncer?.cancel()
             resizeDebouncer = DispatchWorkItem { [weak self] in
                 self?.onResize?(newCols, newRows)
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: resizeDebouncer!)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: resizeDebouncer!)
         }
     }
 

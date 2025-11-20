@@ -1,6 +1,12 @@
 import SwiftUI
 import Core
 
+private func dynamicColor(_ pair: Theme.DynamicColorPair) -> Color {
+    Color(UIColor { traitCollection in
+        traitCollection.userInterfaceStyle == .dark ? UIColor(pair.dark) : UIColor(pair.light)
+    })
+}
+
 public struct TaskSettingsEditorView: View {
     public let projectDirectory: String
     public let taskKey: String
@@ -33,22 +39,22 @@ public struct TaskSettingsEditorView: View {
                 if let error = resetError {
                     HStack {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(Color.appDestructive)
+                            .foregroundColor(Color.destructive)
                         Text(error)
                             .font(.callout)
-                            .foregroundColor(Color.appDestructive)
+                            .foregroundColor(Color.destructive)
                         Spacer()
                         Button {
                             resetError = nil
                         } label: {
                             Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(Color.appMutedForeground)
+                                .foregroundColor(Color.textMuted)
                         }
                         .buttonStyle(PlainButtonStyle())
                     }
                     .padding()
-                    .background(Color.appDestructive.opacity(0.1))
-                    .cornerRadius(AppColors.radius)
+                    .background(dynamicColor(Theme.Semantic.Status.destructiveBackground))
+                    .cornerRadius(Theme.Radii.base)
                 }
 
                 // Model Selection
@@ -56,7 +62,7 @@ public struct TaskSettingsEditorView: View {
                     HStack {
                         Label("Model", systemImage: "cpu")
                             .font(.headline)
-                            .foregroundColor(Color.appForeground)
+                            .foregroundColor(Color.textPrimary)
                         Spacer()
                     }
 
@@ -70,25 +76,25 @@ public struct TaskSettingsEditorView: View {
                 }
 
                 Divider()
-                    .background(Color.appBorder)
+                    .background(Color.border)
 
                 // Temperature
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
                         Label("Temperature", systemImage: "thermometer.medium")
                             .font(.headline)
-                            .foregroundColor(Color.appForeground)
+                            .foregroundColor(Color.textPrimary)
 
                         Spacer()
 
                         Text(String(format: "%.2f", temp))
                             .font(.subheadline)
                             .fontWeight(.semibold)
-                            .foregroundColor(Color.appPrimary)
+                            .foregroundColor(Color.primary)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 4)
-                            .background(Color.appAccent)
-                            .cornerRadius(AppColors.radiusSm)
+                            .background(Color.accent)
+                            .cornerRadius(Theme.Radii.sm)
                     }
 
                     Slider(value: $temp, in: 0.0...1.0, step: 0.01, onEditingChanged: { editing in
@@ -99,11 +105,11 @@ public struct TaskSettingsEditorView: View {
                             }
                         }
                     })
-                    .tint(Color.appPrimary)
+                    .tint(Color.primary)
 
                     Text("Controls randomness in responses. Lower values are more focused and deterministic.")
                         .font(.caption)
-                        .foregroundColor(Color.appMutedForeground)
+                        .foregroundColor(Color.textMuted)
 
                     Button {
                         Task {
@@ -130,25 +136,25 @@ public struct TaskSettingsEditorView: View {
                 }
 
                 Divider()
-                    .background(Color.appBorder)
+                    .background(Color.border)
 
                 // Max Tokens
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
                         Label("Max Tokens", systemImage: "text.word.spacing")
                             .font(.headline)
-                            .foregroundColor(Color.appForeground)
+                            .foregroundColor(Color.textPrimary)
 
                         Spacer()
 
                         Text("\(formatTokenCount(Int(maxTokens)))")
                             .font(.subheadline)
                             .fontWeight(.semibold)
-                            .foregroundColor(Color.appPrimary)
+                            .foregroundColor(Color.primary)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 4)
-                            .background(Color.appAccent)
-                            .cornerRadius(AppColors.radiusSm)
+                            .background(Color.accent)
+                            .cornerRadius(Theme.Radii.sm)
                     }
 
                     Slider(value: $maxTokens, in: 1000...100000, step: 1000, onEditingChanged: { editing in
@@ -159,11 +165,11 @@ public struct TaskSettingsEditorView: View {
                             }
                         }
                     })
-                    .tint(Color.appPrimary)
+                    .tint(Color.primary)
 
                     Text("Maximum length of the response. Higher values allow longer outputs.")
                         .font(.caption)
-                        .foregroundColor(Color.appMutedForeground)
+                        .foregroundColor(Color.textMuted)
 
                     Button {
                         Task {
@@ -197,12 +203,12 @@ public struct TaskSettingsEditorView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Language Code")
                             .font(.headline)
-                        TextField("e.g., en, de, fr", text: $voiceLang)
-                            .textFieldStyle(.roundedBorder)
-                            .focused($isLanguageFieldFocused)
-                            .onSubmit {
-                                isLanguageFieldFocused = false
-                            }
+                        DismissableTextField("e.g., en, de, fr", text: $voiceLang, onSubmit: {
+                            isLanguageFieldFocused = false
+                        })
+                        .padding(8)
+                        .background(Color.inputBackground)
+                        .cornerRadius(Theme.Radii.base)
                         HStack {
                             Button("Save Language") {
                                 Task {
@@ -231,7 +237,7 @@ public struct TaskSettingsEditorView: View {
                     HStack {
                         Label("System Prompt", systemImage: "doc.text")
                             .font(.headline)
-                            .foregroundColor(Color.appForeground)
+                            .foregroundColor(Color.textPrimary)
                         Spacer()
                     }
 
@@ -241,7 +247,7 @@ public struct TaskSettingsEditorView: View {
             }
             .padding()
         }
-        .background(Color.appBackground)
+        .background(Color.backgroundPrimary)
         .onAppear {
             selectedModel = settings.model
             if taskKey == "voiceTranscription" {

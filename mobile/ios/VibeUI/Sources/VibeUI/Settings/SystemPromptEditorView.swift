@@ -1,6 +1,12 @@
 import SwiftUI
 import Core
 
+private func dynamicColor(_ pair: Theme.DynamicColorPair) -> Color {
+    Color(UIColor { traitCollection in
+        traitCollection.userInterfaceStyle == .dark ? UIColor(pair.dark) : UIColor(pair.light)
+    })
+}
+
 public struct SystemPromptEditorView: View {
     public let projectDirectory: String
     public let taskType: String
@@ -35,11 +41,11 @@ public struct SystemPromptEditorView: View {
                 VStack(spacing: 12) {
                     Label("Failed to load system prompt", systemImage: "exclamationmark.triangle")
                         .font(.callout)
-                        .foregroundColor(Color.appDestructive)
+                        .foregroundColor(Color.destructive)
 
                     Text(error)
                         .font(.caption)
-                        .foregroundColor(Color.appMutedForeground)
+                        .foregroundColor(Color.textSecondary)
 
                     Button("Retry") {
                         Task {
@@ -111,19 +117,19 @@ public struct SystemPromptEditorView: View {
                     } label: {
                         Text("Default")
                             .font(.system(size: 12, weight: !useCustom ? .semibold : .regular))
-                            .foregroundColor(!useCustom ? Color.primary : Color.mutedForeground)
+                            .foregroundColor(!useCustom ? Color.textPrimary : Color.textMuted)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 7)
                             .background(
                                 !useCustom ?
-                                Color.primary.opacity(0.1) :
+                                Color.selectionBackground :
                                 Color.clear
                             )
                     }
                     .buttonStyle(PlainButtonStyle())
 
                     Rectangle()
-                        .fill(Color.border.opacity(0.4))
+                        .fill(Color.inputBorder)
                         .frame(width: 1, height: 24)
 
                     Button {
@@ -139,21 +145,21 @@ public struct SystemPromptEditorView: View {
                     } label: {
                         Text("Custom")
                             .font(.system(size: 12, weight: useCustom ? .semibold : .regular))
-                            .foregroundColor(useCustom ? Color.primary : Color.mutedForeground)
+                            .foregroundColor(useCustom ? Color.textPrimary : Color.textMuted)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 7)
                             .background(
                                 useCustom ?
-                                Color.primary.opacity(0.1) :
+                                Color.selectionBackground :
                                 Color.clear
                             )
                     }
                     .buttonStyle(PlainButtonStyle())
                 }
-                .background(Color(UIColor.secondarySystemBackground))
+                .background(Color.inputBackground)
                 .overlay(
                     RoundedRectangle(cornerRadius: Theme.Radii.base)
-                        .stroke(Color.border.opacity(0.5), lineWidth: 1)
+                        .stroke(Color.inputBorder, lineWidth: 1)
                 )
                 .cornerRadius(Theme.Radii.base)
             }
@@ -165,18 +171,7 @@ public struct SystemPromptEditorView: View {
                 defaultPromptViewer
             }
         }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-        }
         .keyboardAware()
-        .toolbar {
-            ToolbarItem(placement: .keyboard) {
-                Button("Done") {
-                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                }
-            }
-        }
     }
 
     private var customPromptEditor: some View {
@@ -187,7 +182,7 @@ public struct SystemPromptEditorView: View {
                     Text("Custom System Prompt")
                         .font(.subheadline)
                         .fontWeight(.semibold)
-                        .foregroundColor(Color.appForeground)
+                        .foregroundColor(Color.textPrimary)
 
                     Spacer()
 
@@ -273,7 +268,7 @@ public struct SystemPromptEditorView: View {
                     .padding(.top, 8)
                 }
                 .font(.callout)
-                .foregroundColor(Color.appMutedForeground)
+                .foregroundColor(Color.textMuted)
             }
         }
     }
@@ -284,7 +279,7 @@ public struct SystemPromptEditorView: View {
                 Text("Default System Prompt")
                     .font(.subheadline)
                     .fontWeight(.semibold)
-                    .foregroundColor(Color.appForeground)
+                    .foregroundColor(Color.textPrimary)
 
                 Spacer()
 
@@ -320,10 +315,10 @@ public struct SystemPromptEditorView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Image(systemName: "info.circle")
-                                .foregroundColor(Color.accentColor)
+                                .foregroundColor(Color.info)
                             Text("Custom prompt is set")
                                 .font(.callout)
-                                .foregroundColor(Color.appForeground)
+                                .foregroundColor(Color.textPrimary)
                             Spacer()
                             Button {
                                 viewerText = customPrompt
@@ -339,7 +334,7 @@ public struct SystemPromptEditorView: View {
                         }
                     }
                     .padding(12)
-                    .background(Color.accentColor.opacity(0.1))
+                    .background(dynamicColor(Theme.Semantic.Status.infoBackground))
                     .cornerRadius(Theme.Radii.base)
                 }
             } else {
@@ -347,12 +342,12 @@ public struct SystemPromptEditorView: View {
                     Spacer()
                     Text("No default prompt available")
                         .font(.callout)
-                        .foregroundColor(Color.appMutedForeground)
+                        .foregroundColor(Color.textMuted)
                     Spacer()
                 }
                 .padding()
-                .background(Color.appMuted)
-                .cornerRadius(AppColors.radius)
+                .background(Color.surfaceSecondary)
+                .cornerRadius(Theme.Radii.base)
             }
         }
     }

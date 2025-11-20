@@ -126,15 +126,14 @@ public struct SettingsView: View {
                 Text("Command:")
                   .font(.caption)
                   .foregroundColor(Color.mutedForeground)
-                TextField("custom-cli", text: $customCommand)
-                  .textFieldStyle(RoundedBorderTextFieldStyle())
-                  .autocapitalization(.none)
-                  .disableAutocorrection(true)
-                  .focused($focusedField, equals: .customCommand)
-                  .onSubmit {
+                DismissableTextField("custom-cli", text: $customCommand, autocapitalization: .none, autocorrection: .no, onSubmit: {
                     saveCustomCommand()
                     focusedField = nil
-                  }
+                })
+                .padding(8)
+                .background(Color.inputBackground)
+                .cornerRadius(8)
+                .focused($focusedField, equals: .customCommand)
               }
             }
 
@@ -142,15 +141,14 @@ public struct SettingsView: View {
               Text("Args:")
                 .font(.caption)
                 .foregroundColor(Color.mutedForeground)
-              TextField("Additional arguments", text: $additionalArgs)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
-                .autocapitalization(.none)
-                .disableAutocorrection(true)
-                .focused($focusedField, equals: .additionalArgs)
-                .onSubmit {
+              DismissableTextField("Additional arguments", text: $additionalArgs, autocapitalization: .none, autocorrection: .no, onSubmit: {
                   saveAdditionalArgs()
                   focusedField = nil
-                }
+              })
+              .padding(8)
+              .background(Color.inputBackground)
+              .cornerRadius(8)
+              .focused($focusedField, equals: .additionalArgs)
             }
           }
 

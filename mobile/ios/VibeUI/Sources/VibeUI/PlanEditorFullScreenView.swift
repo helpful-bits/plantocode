@@ -21,7 +21,7 @@ public struct PlanEditorFullScreenView: View {
     public var body: some View {
         NavigationStack {
             ZStack {
-                Color.background
+                Color.backgroundPrimary
                     .ignoresSafeArea(.all)
 
                 VStack {

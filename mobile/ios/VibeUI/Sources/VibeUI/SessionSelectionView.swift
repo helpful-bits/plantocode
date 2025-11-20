@@ -41,25 +41,21 @@ public struct SessionSelectionView: View {
                     HStack {
                         Image(systemName: "magnifyingglass")
                             .foregroundColor(Color.mutedForeground)
+                            .frame(width: 20)
 
-                        TextField("Search sessions...", text: $searchText)
-                            .textFieldStyle(PlainTextFieldStyle())
+                        DismissableTextField("Search sessions...", text: $searchText)
+                            .frame(height: 22)
 
                         if !searchText.isEmpty {
                             Button(action: { searchText = "" }) {
                                 Image(systemName: "xmark.circle.fill")
-                                    .foregroundColor(Color.mutedForeground)
                             }
+                            .buttonStyle(CompactIconButtonStyle())
                         }
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color.card)
-                    .cornerRadius(Theme.Radii.base)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: Theme.Radii.base)
-                            .stroke(Color.border, lineWidth: 1)
-                    )
+                    .padding(Theme.Spacing.cardPadding)
+                    .background(Color.inputBackground)
+                    .cornerRadius(10)
 
                     // Action buttons
                     HStack(spacing: 12) {
@@ -455,16 +451,11 @@ struct NewSessionFormView: View {
                         .h4()
                         .foregroundColor(Color.cardForeground)
 
-                    TextField("e.g., Feature Implementation", text: $sessionName)
-                        .textFieldStyle(PlainTextFieldStyle())
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .background(Color.card)
-                        .cornerRadius(Theme.Radii.base)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: Theme.Radii.base)
-                                .stroke(Color.border, lineWidth: 1)
-                        )
+                    DismissableTextField("e.g., Feature Implementation", text: $sessionName)
+                        .frame(height: 22)
+                        .padding(Theme.Spacing.cardPadding)
+                        .background(Color.inputBackground)
+                        .cornerRadius(10)
                 }
 
                 if let errorMessage = errorMessage {

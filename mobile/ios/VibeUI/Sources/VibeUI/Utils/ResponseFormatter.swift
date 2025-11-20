@@ -251,7 +251,7 @@ struct ResponseFormatter {
                         .font(.body)
                         .textSelection(.enabled)
                         .padding()
-                        .background(Color(.systemGray6))
+        .background(Color.surfaceSecondary)
                         .cornerRadius(Theme.Radii.base)
 
                     if let analysis = analysis {

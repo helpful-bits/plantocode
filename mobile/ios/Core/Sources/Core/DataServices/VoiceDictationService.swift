@@ -7,6 +7,8 @@ public final class VoiceDictationService: ObservableObject {
     public static let shared = VoiceDictationService()
 
     @Published public private(set) var isRecording = false
+    @Published public private(set) var isTranscribing = false
+    @Published public private(set) var audioLevels: [Float] = [0, 0, 0, 0, 0] // 5 bars for waveform
 
     private let engine = AVAudioEngine()
     private var audioFileURL: URL?
@@ -14,6 +16,7 @@ public final class VoiceDictationService: ObservableObject {
     private let serverFeatureService = ServerFeatureService()
     private let audioQueue = DispatchQueue(label: "com.plantocode.audio", qos: .userInitiated)
     private var recordingStartTime: Date?
+    private var levelUpdateTimer: Timer?
 
     private init() {}
 
@@ -37,11 +40,9 @@ public final class VoiceDictationService: ObservableObject {
             throw VoiceDictationError.permissionDenied
         }
 
-        // Configure audio session for recording
         let audioSession = AVAudioSession.sharedInstance()
-        try audioSession.setCategory(.record, mode: .measurement, options: .duckOthers)
+        try audioSession.setCategory(.playAndRecord, mode: .spokenAudio, options: [.allowBluetooth, .duckOthers, .defaultToSpeaker])
 
-        // Verify AVAudioSession is activated successfully
         try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
 
         // Create temporary WAV file URL
@@ -96,6 +97,13 @@ public final class VoiceDictationService: ObservableObject {
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
             guard let self = self else { return }
             guard buffer.frameLength > 0 else { return }
+
+            // Calculate audio levels for visualization
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                self.updateAudioLevels(from: buffer)
+            }
+
             guard let bufferCopy = self.makePCMBufferCopy(buffer) else {
                 return
             }
@@ -172,6 +180,7 @@ public final class VoiceDictationService: ObservableObject {
         engine.stop()
         engine.inputNode.removeTap(onBus: 0)
         isRecording = false
+        audioLevels = [0, 0, 0, 0, 0] // Reset levels
 
         // Wait for any pending audio writes to complete
         audioQueue.sync {
@@ -186,6 +195,35 @@ public final class VoiceDictationService: ObservableObject {
         }
     }
 
+    private func updateAudioLevels(from buffer: AVAudioPCMBuffer) {
+        guard let channelData = buffer.floatChannelData?[0] else { return }
+        let channelDataCount = Int(buffer.frameLength)
+
+        // Calculate RMS (Root Mean Square) for overall amplitude
+        var sum: Float = 0
+        for i in 0..<channelDataCount {
+            let sample = channelData[i]
+            sum += sample * sample
+        }
+        let rms = sqrt(sum / Float(channelDataCount))
+
+        // Normalize to 0-1 range with boost for better visualization
+        let normalizedLevel = min(rms * 20, 1.0)
+
+        // Create animated levels with slight variations for each bar
+        // This creates a more dynamic waveform effect
+        let barCount = 5
+        var newLevels: [Float] = []
+        for i in 0..<barCount {
+            // Add slight variation based on bar position for more natural look
+            let variation = Float.random(in: 0.8...1.2)
+            let level = normalizedLevel * variation
+            newLevels.append(min(level, 1.0))
+        }
+
+        audioLevels = newLevels
+    }
+
     public func transcribe(
         model: String? = nil,
         language: String? = nil,
@@ -194,25 +232,29 @@ public final class VoiceDictationService: ObservableObject {
     ) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             Task {
+                await MainActor.run {
+                    isTranscribing = true
+                }
+
                 do {
                     guard let audioFileURL = audioFileURL else {
+                        await MainActor.run {
+                            isTranscribing = false
+                        }
                         continuation.finish(throwing: VoiceDictationError.noRecordingFound)
                         return
                     }
 
-                    // Read WAV data from file
                     let audioData = try Data(contentsOf: audioFileURL)
 
-                    // Calculate duration
                     let durationMs: Int64
                     if let startTime = recordingStartTime {
                         let duration = Date().timeIntervalSince(startTime)
                         durationMs = Int64(duration * 1000)
                     } else {
-                        durationMs = 1000 // Fallback: 1 second
+                        durationMs = 1000
                     }
 
-                    // Call server feature service for transcription
                     let response = try await serverFeatureService.transcribeAudio(
                         audioData,
                         durationMs: durationMs,
@@ -222,15 +264,20 @@ public final class VoiceDictationService: ObservableObject {
                         temperature: temperature
                     )
 
-                    // Yield the transcribed text
                     continuation.yield(response.text)
                     continuation.finish()
 
-                    // Clean up temporary file
                     try? FileManager.default.removeItem(at: audioFileURL)
                     self.audioFileURL = nil
 
+                    await MainActor.run {
+                        isTranscribing = false
+                    }
+
                 } catch {
+                    await MainActor.run {
+                        isTranscribing = false
+                    }
                     continuation.finish(throwing: error)
                 }
             }

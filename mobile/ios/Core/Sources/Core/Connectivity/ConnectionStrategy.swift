@@ -493,4 +493,19 @@ public extension ConnectionState {
         }
         return false
     }
+
+    /// Whether actively trying to connect or in intermediate states (including reconnecting)
+    var isConnectingOrHandshaking: Bool {
+        switch self {
+        case .connecting, .handshaking, .authenticating, .reconnecting:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Whether connection is usable or actively being established
+    var isConnectedOrConnecting: Bool {
+        return isConnected || isConnectingOrHandshaking
+    }
 }
