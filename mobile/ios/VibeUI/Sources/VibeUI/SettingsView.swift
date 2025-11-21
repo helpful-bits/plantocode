@@ -5,7 +5,6 @@ public struct SettingsView: View {
   @Environment(\.dismiss) private var dismiss
   @EnvironmentObject private var appState: AppState
   @EnvironmentObject private var container: AppContainer
-  @StateObject private var settingsService = SettingsDataService()
 
   @State private var showRegion = false
   @State private var showDevices = false
@@ -15,11 +14,25 @@ public struct SettingsView: View {
   @State private var additionalArgs = ""
   @State private var isLoadingCliSettings = false
   @State private var hasLoadedInitialSettings = false
+  @State private var showFolderPicker = false
+  @State private var externalFoldersError: String?
   @FocusState private var focusedField: Field?
 
   enum Field {
     case customCommand
     case additionalArgs
+  }
+
+  private var currentProjectDirectory: String? {
+    if let d = container.currentProject?.directory, !d.isEmpty { return d }
+    if let d = container.sessionService.currentSession?.projectDirectory, !d.isEmpty { return d }
+    if let d = appState.selectedProjectDirectory, !d.isEmpty { return d }
+    return nil
+  }
+
+  private var currentExternalFolders: [String] {
+    guard let projectDir = currentProjectDirectory else { return [] }
+    return container.settingsService.externalFolders(for: projectDir)
   }
 
   public init() {}
@@ -32,6 +45,37 @@ public struct SettingsView: View {
             ProjectSelectionHeaderView(onProjectChanged: nil)
             .environmentObject(appState)
             .environmentObject(container)
+
+            if currentProjectDirectory != nil {
+              Button(action: { showFolderPicker = true }) {
+                HStack {
+                  Image(systemName: "folder.badge.plus")
+                    .foregroundColor(.accentColor)
+                  Text("Add External Folder")
+                    .foregroundColor(.primary)
+                  Spacer()
+                }
+              }
+
+              if !currentExternalFolders.isEmpty {
+                ForEach(currentExternalFolders, id: \.self) { folder in
+                  HStack {
+                    Image(systemName: "folder.fill")
+                      .foregroundColor(.accentColor)
+                    Text(relativePath(for: folder))
+                      .font(.system(size: 14))
+                      .lineLimit(1)
+                    Spacer()
+                    Button(role: .destructive) {
+                      removeExternalFolder(folder)
+                    } label: {
+                      Image(systemName: "trash")
+                    }
+                    .buttonStyle(.borderless)
+                  }
+                }
+              }
+            }
           }
 
           Section("Account") {
@@ -181,9 +225,16 @@ public struct SettingsView: View {
       .sheet(isPresented: $showDevices) {
         DeviceSelectionView()
       }
+      .sheet(isPresented: $showFolderPicker) {
+        FolderPickerView(onFolderSelected: addExternalFolder)
+      }
       .onAppear {
         guard !hasLoadedInitialSettings else { return }
         loadCliToolSettings()
+        loadExternalFoldersIfNeeded()
+      }
+      .onChange(of: currentProjectDirectory) { _ in
+        loadExternalFoldersIfNeeded()
       }
     }
   }
@@ -192,11 +243,11 @@ public struct SettingsView: View {
     isLoadingCliSettings = true
     Task {
       do {
-        try await settingsService.loadCliToolSettings()
+        try await container.settingsService.loadCliToolSettings()
         await MainActor.run {
-          selectedCliTool = settingsService.preferredCliTool ?? "claude"
-          customCommand = settingsService.customCliCommand ?? ""
-          additionalArgs = settingsService.cliAdditionalArgs ?? ""
+          selectedCliTool = container.settingsService.preferredCliTool ?? "claude"
+          customCommand = container.settingsService.customCliCommand ?? ""
+          additionalArgs = container.settingsService.cliAdditionalArgs ?? ""
           isLoadingCliSettings = false
           hasLoadedInitialSettings = true
         }
@@ -210,20 +261,80 @@ public struct SettingsView: View {
 
   private func saveCliTool(_ tool: String) {
     Task {
-      try? await settingsService.saveCliToolPreference(tool)
+      try? await container.settingsService.saveCliToolPreference(tool)
     }
   }
 
   private func saveCustomCommand() {
     Task {
-      try? await settingsService.saveCustomCliCommand(customCommand)
+      try? await container.settingsService.saveCustomCliCommand(customCommand)
     }
   }
 
   private func saveAdditionalArgs() {
     Task {
-      try? await settingsService.saveCliAdditionalArgs(additionalArgs)
+      try? await container.settingsService.saveCliAdditionalArgs(additionalArgs)
     }
+  }
+
+  // MARK: - External Folders
+
+  private func loadExternalFoldersIfNeeded() {
+    guard let projectDir = currentProjectDirectory else { return }
+    guard container.settingsService.externalFolders(for: projectDir).isEmpty else { return }
+
+    Task {
+      try? await container.settingsService.loadExternalFolders(projectDirectory: projectDir)
+    }
+  }
+
+  private func addExternalFolder(_ path: String) {
+    guard let projectDir = currentProjectDirectory else { return }
+
+    // Validation: prevent main directory and duplicates
+    guard path != projectDir else { return }
+    guard !currentExternalFolders.contains(path) else { return }
+
+    var updated = currentExternalFolders
+    updated.append(path)
+
+    Task {
+      do {
+        try await container.settingsService.saveExternalFolders(projectDirectory: projectDir, folders: updated)
+        try await container.settingsService.loadExternalFolders(projectDirectory: projectDir)
+      } catch {
+        externalFoldersError = error.localizedDescription
+      }
+    }
+  }
+
+  private func removeExternalFolder(_ path: String) {
+    guard let projectDir = currentProjectDirectory else { return }
+
+    let updated = currentExternalFolders.filter { $0 != path }
+
+    Task {
+      do {
+        try await container.settingsService.saveExternalFolders(projectDirectory: projectDir, folders: updated)
+        try await container.settingsService.loadExternalFolders(projectDirectory: projectDir)
+      } catch {
+        externalFoldersError = error.localizedDescription
+      }
+    }
+  }
+
+  private func relativePath(for folder: String) -> String {
+    guard let projectDir = currentProjectDirectory else { return folder }
+
+    if folder.hasPrefix(projectDir) {
+      let relative = folder.dropFirst(projectDir.count)
+      if relative.hasPrefix("/") {
+        return String(relative.dropFirst())
+      }
+      return String(relative)
+    }
+
+    return String(folder.split(separator: "/").last ?? folder.suffix(from: folder.firstIndex(of: "/") ?? folder.startIndex))
   }
 }
 

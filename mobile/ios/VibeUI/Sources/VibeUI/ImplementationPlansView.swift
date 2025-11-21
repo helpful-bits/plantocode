@@ -253,15 +253,26 @@ public struct ImplementationPlansView: View {
 
     @ViewBuilder
     private var createPlanButton: some View {
-        Button(action: createPlan) {
-            HStack {
-                Image(systemName: "sparkles")
-                Text("Create Implementation Plan")
+        VStack(spacing: Theme.Spacing.xs) {
+            Button(action: createPlan) {
+                HStack {
+                    Image(systemName: "sparkles")
+                    Text("Create Implementation Plan")
+                }
+                .frame(maxWidth: .infinity)
             }
-            .frame(maxWidth: .infinity)
+            .buttonStyle(PrimaryButtonStyle())
+            .disabled(!canCreatePlan || isCreatingPlan)
+
+            // Hint text when button is disabled
+            if let hintText = createPlanHintText {
+                Text(hintText)
+                    .font(.footnote)
+                    .foregroundColor(Color.mutedForeground)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, Theme.Spacing.md)
+            }
         }
-        .buttonStyle(PrimaryButtonStyle())
-        .disabled(!canCreatePlan || isCreatingPlan)
     }
 
     public var body: some View {
@@ -470,9 +481,8 @@ public struct ImplementationPlansView: View {
                     container.jobsService.setActiveSession(sessionId: session.id, projectDirectory: session.projectDirectory)
                     container.jobsService.startSessionScopedSync(sessionId: session.id, projectDirectory: session.projectDirectory)
                 }
-                if session?.id != loadedForSessionId {
-                    loadModelSettings()
-                }
+                // loadModelSettings() has internal caching, no need for redundant check
+                loadModelSettings()
             }
         }
         .onAppear {
@@ -491,8 +501,15 @@ public struct ImplementationPlansView: View {
             container.setJobsViewActive(false)
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-            // Invalidate cache when returning from background to ensure fresh data
-            modelsLoadedAt = nil
+            // Only invalidate cache if it has expired or is close to expiring
+            if let loadedAt = modelsLoadedAt {
+                let cacheAge = Date().timeIntervalSince(loadedAt)
+                // Invalidate if cache is older than 2 minutes (leaving 1 minute buffer)
+                if cacheAge > (modelsCacheDuration - 60) {
+                    modelsLoadedAt = nil
+                }
+            }
+            // loadModelSettings() will check cache freshness and only reload if needed
             loadModelSettings()
         }
     }
@@ -516,6 +533,36 @@ public struct ImplementationPlansView: View {
         let hasFiles = !session.includedFiles.isEmpty
 
         return hasProjectDirectory && hasTaskDescription && hasFiles
+    }
+
+    private var createPlanHintText: String? {
+        guard let session = container.sessionService.currentSession else {
+            return nil
+        }
+
+        let rawTask = (currentTaskDescription ?? session.taskDescription) ?? ""
+        let hasTaskDescription = !rawTask.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let hasFiles = !session.includedFiles.isEmpty
+
+        // If button is enabled, no hint needed
+        if hasTaskDescription && hasFiles {
+            return nil
+        }
+
+        // Generate hint based on what's missing
+        var missingItems: [String] = []
+        if !hasFiles {
+            missingItems.append("select files")
+        }
+        if !hasTaskDescription {
+            missingItems.append("define a task")
+        }
+
+        if missingItems.isEmpty {
+            return nil
+        }
+
+        return "Please " + missingItems.joined(separator: " and ")
     }
 
     private var canEstimateTokens: Bool {
@@ -995,7 +1042,7 @@ private struct PlanCard: View {
                 }) {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                         .font(.system(size: 24))
-                        .foregroundColor(isSelected ? Color.primary : Color.mutedForeground)
+                        .foregroundColor(isSelected ? Color.primary : Color.primary.opacity(0.3))
                 }
                 .buttonStyle(PlainButtonStyle())
                 .padding(.top, 2)
@@ -1302,8 +1349,8 @@ private struct ModelSelectorToggle: View {
                             .font(.footnote)
                             .fontWeight(selectedModelId == model.id ? .semibold : .regular)
                             .foregroundColor(selectedModelId == model.id ? Color.primary : Color.mutedForeground)
+                            .frame(height: 44)
                             .padding(.horizontal, Theme.Spacing.md)
-                            .padding(.vertical, 7)
                             .background(
                                 selectedModelId == model.id ?
                                 Color.primary.opacity(0.1) :
@@ -1315,8 +1362,8 @@ private struct ModelSelectorToggle: View {
                     // Divider between models
                     if index < models.count - 1 {
                         Rectangle()
-                            .fill(Color.border.opacity(0.4))
-                            .frame(width: 1, height: 24)
+                            .fill(Color.primary.opacity(0.15))
+                            .frame(width: 1, height: 28)
                     }
                 }
             }
@@ -1324,7 +1371,7 @@ private struct ModelSelectorToggle: View {
         .background(Color.input)
         .overlay(
             RoundedRectangle(cornerRadius: Theme.Radii.base)
-                .stroke(Color.border.opacity(0.5), lineWidth: 1)
+                .stroke(Color.primary.opacity(0.15), lineWidth: 1)
         )
         .cornerRadius(Theme.Radii.base)
     }

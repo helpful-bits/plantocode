@@ -204,7 +204,7 @@ public struct SessionSelectionView: View {
                         Button("Done") {
                             dismiss()
                         }
-                        .buttonStyle(ToolbarButtonStyle())
+                        .fontWeight(.semibold)
                     }
                 }
                 .sheet(isPresented: $showingNewSessionForm) {

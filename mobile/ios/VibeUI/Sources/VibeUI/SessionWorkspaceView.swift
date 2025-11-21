@@ -29,6 +29,9 @@ public struct SessionWorkspaceView: View {
     @State private var reconnectionMessage: String?
     @State private var isLoadingSession = false
     @State private var showingPaywall = false
+    @State private var showSubtleReconnectingBanner: Bool = false
+    @State private var showFullConnectionBanner: Bool = false
+    @State private var showReconnectedPill: Bool = false
 
     // External update gate for cursor stability (matching desktop behavior)
     @State private var pendingRemoteTaskDescription: String?
@@ -48,10 +51,15 @@ public struct SessionWorkspaceView: View {
         if isOfflineMode {
             return true
         }
+        // Only show full banner when connection is dead (disconnected or failed), not when reconnecting
         if let activeDeviceId = multiConnectionManager.activeDeviceId,
-           let connectionState = multiConnectionManager.connectionStates[activeDeviceId],
-           !connectionState.isConnected {
-            return true
+           let connectionState = multiConnectionManager.connectionStates[activeDeviceId] {
+            switch connectionState {
+            case .disconnected, .failed:
+                return true
+            default:
+                return false
+            }
         }
         return false
     }
@@ -61,12 +69,56 @@ public struct SessionWorkspaceView: View {
     }
 
     private var mainContentView: some View {
-        ZStack(alignment: .top) {
-            taskTabsView
-            if shouldShowConnectionOverlay {
-                connectionStatusOverlay
+        VStack(spacing: 0) {
+            // Inline connection status banner - keeps workspace visible
+            if multiConnectionManager.connectionHealth != .healthy
+                || multiConnectionManager.isActivelyReconnecting
+                || !container.connectionStatus.isConnected {
+
+                HStack {
+                    Image(systemName: "wifi.exclamationmark")
+                        .foregroundColor(Color.appWarning)
+                    Text(statusText)
+                        .font(.footnote)
+                        .foregroundColor(Color.appWarningForeground)
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity)
+                .background(Color.yellow.opacity(0.15))
+            }
+
+            // Workspace content with overlay-based connection banners
+            ZStack(alignment: .top) {
+                taskTabsView
+                if shouldShowConnectionOverlay {
+                    connectionStatusOverlay
+                }
+                VStack {
+                    if showSubtleReconnectingBanner {
+                        ConnectionStatusPill(style: .reconnecting,
+                                            text: "Reconnecting to desktop...")
+                            .padding(.top, 8)
+                    } else if showReconnectedPill {
+                        ConnectionStatusPill(style: .success,
+                                            text: "Reconnected")
+                            .padding(.top, 8)
+                    }
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
         }
+    }
+
+    private var statusText: String {
+        let health = multiConnectionManager.connectionHealth
+        if multiConnectionManager.isActivelyReconnecting || health == .unstable {
+            return "Reconnecting to desktop…"
+        }
+        if health == .dead || !container.connectionStatus.isConnected {
+            return "Disconnected from desktop"
+        }
+        return "Connected"
     }
 
     private var taskTabsView: some View {
@@ -174,54 +226,59 @@ public struct SessionWorkspaceView: View {
                 showingDeviceSelection = true
             })
         } else if let activeDeviceId = multiConnectionManager.activeDeviceId,
-           let connectionState = multiConnectionManager.connectionStates[activeDeviceId],
-           !connectionState.isConnected {
-            ConnectionStatusBanner(
-                state: connectionState,
-                failureMessage: reconnectionSuccess == false ? reconnectionMessage : nil,
-                onReconnect: {
-                    Task {
-                        // Clear previous messages
-                        await MainActor.run {
-                            reconnectionSuccess = nil
-                            reconnectionMessage = nil
-                        }
+           let connectionState = multiConnectionManager.connectionStates[activeDeviceId] {
+            // Only show full banner when disconnected or failed, not when reconnecting
+            switch connectionState {
+            case .disconnected, .failed:
+                ConnectionStatusBanner(
+                    state: connectionState,
+                    failureMessage: reconnectionSuccess == false ? reconnectionMessage : nil,
+                    onReconnect: {
+                        Task {
+                            // Clear previous messages
+                            await MainActor.run {
+                                reconnectionSuccess = nil
+                                reconnectionMessage = nil
+                            }
 
-                        let result = await multiConnectionManager.addConnection(for: activeDeviceId)
+                            let result = await multiConnectionManager.addConnection(for: activeDeviceId)
 
-                        await MainActor.run {
-                            switch result {
-                            case .success:
-                                reconnectionSuccess = true
-                                reconnectionMessage = "Reconnected successfully"
+                            await MainActor.run {
+                                switch result {
+                                case .success:
+                                    reconnectionSuccess = true
+                                    reconnectionMessage = "Reconnected successfully"
 
-                            case .failure(let error):
-                                reconnectionSuccess = false
+                                case .failure(let error):
+                                    reconnectionSuccess = false
 
-                                // Generate diagnostic message based on error type
-                                if let multiError = error as? MultiConnectionError {
-                                    switch multiError {
-                                    case .authenticationRequired:
-                                        reconnectionMessage = "Authentication required. Please sign in again."
-                                    case .invalidConfiguration:
-                                        reconnectionMessage = "Invalid server configuration. Check your settings."
-                                    case .connectionFailed(let reason):
-                                        reconnectionMessage = "Connection failed: \(reason). Ensure desktop app is running."
-                                    case .deviceNotFound:
-                                        reconnectionMessage = "Device not found. Try selecting a different device."
+                                    // Generate diagnostic message based on error type
+                                    if let multiError = error as? MultiConnectionError {
+                                        switch multiError {
+                                        case .authenticationRequired:
+                                            reconnectionMessage = "Authentication required. Please sign in again."
+                                        case .invalidConfiguration:
+                                            reconnectionMessage = "Invalid server configuration. Check your settings."
+                                        case .connectionFailed(let reason):
+                                            reconnectionMessage = "Connection failed: \(reason). Ensure desktop app is running."
+                                        case .deviceNotFound:
+                                            reconnectionMessage = "Device not found. Try selecting a different device."
+                                        }
+                                    } else {
+                                        reconnectionMessage = "Connection failed: \(error.localizedDescription). Check network and desktop app."
                                     }
-                                } else {
-                                    reconnectionMessage = "Connection failed: \(error.localizedDescription). Check network and desktop app."
                                 }
                             }
                         }
+                    },
+                    onDismissFailure: {
+                        reconnectionSuccess = nil
+                        reconnectionMessage = nil
                     }
-                },
-                onDismissFailure: {
-                    reconnectionSuccess = nil
-                    reconnectionMessage = nil
-                }
-            )
+                )
+            default:
+                EmptyView()
+            }
         }
     }
 
@@ -289,6 +346,70 @@ public struct SessionWorkspaceView: View {
             .sheet(isPresented: $showingPaywall) {
                 PaywallView()
                     .environmentObject(container)
+            }
+            .onChange(of: multiConnectionManager.connectionStates) { newStates in
+                // Monitor connection health and show appropriate UI
+                guard let activeDeviceId = multiConnectionManager.activeDeviceId,
+                      let connectionState = newStates[activeDeviceId] else {
+                    return
+                }
+
+                switch connectionState {
+                case .connected:
+                    // Connection restored - show success pill briefly
+                    showFullConnectionBanner = false
+                    showSubtleReconnectingBanner = false
+                    showReconnectedPill = true
+                    Task {
+                        try? await Task.sleep(nanoseconds: 2_000_000_000)
+                        await MainActor.run {
+                            showReconnectedPill = false
+                        }
+                    }
+
+                case .reconnecting, .connecting, .handshaking:
+                    // Show subtle reconnecting pill after 2s delay to avoid flicker
+                    showFullConnectionBanner = false
+                    Task {
+                        try? await Task.sleep(nanoseconds: 2_000_000_000)
+                        await MainActor.run {
+                            // Only show if still in unstable state
+                            if let currentState = multiConnectionManager.connectionStates[activeDeviceId] {
+                                switch currentState {
+                                case .reconnecting, .connecting, .handshaking:
+                                    showSubtleReconnectingBanner = true
+                                default:
+                                    break
+                                }
+                            }
+                        }
+                    }
+                    // Escalate to full banner after 8s total
+                    Task {
+                        try? await Task.sleep(nanoseconds: 8_000_000_000)
+                        await MainActor.run {
+                            // Only escalate if still in unstable state
+                            if let currentState = multiConnectionManager.connectionStates[activeDeviceId] {
+                                switch currentState {
+                                case .reconnecting, .connecting, .handshaking:
+                                    showSubtleReconnectingBanner = false
+                                    showFullConnectionBanner = true
+                                default:
+                                    break
+                                }
+                            }
+                        }
+                    }
+
+                case .disconnected, .failed:
+                    // Connection is dead - show full banner immediately
+                    showSubtleReconnectingBanner = false
+                    showReconnectedPill = false
+                    showFullConnectionBanner = true
+
+                default:
+                    break
+                }
             }
             .onAppear {
                 // Check subscription status on initial load

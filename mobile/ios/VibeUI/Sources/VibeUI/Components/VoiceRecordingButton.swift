@@ -152,7 +152,7 @@ public struct VoiceRecordingButton: View {
     private var micControlBackgroundColor: Color {
         switch phase {
         case .idle:
-            return AppColors.muted
+            return AppColors.primary
         case .recording:
             return AppColors.destructive
         case .transcribing:
@@ -163,7 +163,7 @@ public struct VoiceRecordingButton: View {
     private var micIconColor: Color {
         switch phase {
         case .idle:
-            return AppColors.foreground
+            return AppColors.primaryForeground
         case .recording:
             return AppColors.destructiveForeground
         case .transcribing:
@@ -238,7 +238,7 @@ public struct VoiceRecordingButton: View {
             switch phase {
             case .idle:
                 LinearGradient(
-                    colors: [AppColors.muted, AppColors.muted.opacity(0.85)],
+                    colors: [AppColors.primary.opacity(0.08), AppColors.primary.opacity(0.04)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
@@ -261,7 +261,7 @@ public struct VoiceRecordingButton: View {
     private var shadowColor: Color {
         switch phase {
         case .idle:
-            return AppColors.border.opacity(0.2)
+            return AppColors.primary.opacity(0.12)
         case .recording:
             return AppColors.destructive.opacity(0.4)
         case .transcribing:

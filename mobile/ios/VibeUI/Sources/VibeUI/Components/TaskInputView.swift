@@ -145,9 +145,9 @@ struct SelectableTextView: UIViewRepresentable {
 
         // Only apply border styling if custom background is not provided
         if backgroundColor == nil {
-            textView.layer.cornerRadius = 12
+            textView.layer.cornerRadius = Theme.Radii.base
             textView.layer.borderWidth = 1
-            textView.layer.borderColor = UIColor(Color.inputBorder).cgColor
+            textView.layer.borderColor = UIColor(Color.border).cgColor
         }
 
         textView.delegate = context.coordinator
@@ -189,6 +189,11 @@ struct SelectableTextView: UIViewRepresentable {
     func updateUIView(_ uiView: UITextView, context: Context) {
         // Store reference to textView in coordinator
         context.coordinator.textView = uiView
+
+        // Update border color dynamically to respond to color scheme changes
+        if backgroundColor == nil {
+            uiView.layer.borderColor = UIColor(Color.border).cgColor
+        }
 
         if singleLine {
             let sanitizedText = text.replacingOccurrences(of: "\n", with: " ")

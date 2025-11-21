@@ -198,8 +198,8 @@ public class PushNotificationManager: NSObject, ObservableObject {
         }
 
         let displayModel = model.map(PlanContentParser.displayModelName)
-        let titleText = (planTitle?.isEmpty == false) ? "Plan ready: \(planTitle!)" : "Plan ready"
-        let bodyText = displayModel.map { "Completed on \($0)" } ?? "An implementation plan has completed"
+        let titleText = (planTitle?.isEmpty == false) ? planTitle! : "Implementation plan ready"
+        let bodyText = displayModel ?? ""
 
         scheduleLocalNotification(
             title: titleText,

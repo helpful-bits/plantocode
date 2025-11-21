@@ -110,7 +110,7 @@ public struct ServerSelectionView: View {
             Button("Done") {
               dismiss()
             }
-            .buttonStyle(ToolbarButtonStyle())
+            .fontWeight(.semibold)
           }
         }
       }

@@ -7,10 +7,10 @@ public struct CommandRouter {
 
     /// Resolves a usable relay connection: prefers active device, falls back to single connected device
     private static func getUsableRelay() -> (deviceId: UUID, relay: ServerRelayClient)? {
-        // First, try active device
+        // First, try active device - return it REGARDLESS of connection state
+        // ServerRelayClient will handle wait/queue for reconnection
         if let activeId = MultiConnectionManager.shared.activeDeviceId,
-           let relay = MultiConnectionManager.shared.relayConnection(for: activeId),
-           relay.isConnected {
+           let relay = MultiConnectionManager.shared.relayConnection(for: activeId) {
             return (activeId, relay)
         }
 
@@ -1030,6 +1030,16 @@ public struct CommandRouter {
         invoke("settings.setAppSetting", ["key": key, "value": value])
     }
 
+    // MARK: - External Folders
+
+    public static func settingsGetExternalFolders(projectDirectory: String) -> AsyncThrowingStream<RpcResponse, Error> {
+        invoke("settings.getExternalFolders", ["projectDirectory": projectDirectory])
+    }
+
+    public static func settingsSetExternalFolders(projectDirectory: String, folders: [String]) -> AsyncThrowingStream<RpcResponse, Error> {
+        invoke("settings.setExternalFolders", ["projectDirectory": projectDirectory, "folders": folders])
+    }
+
     // MARK: - System Prompts
 
     public static func systemPromptsGetProject(projectDirectory: String, taskType: String) -> AsyncThrowingStream<RpcResponse, Error> {
@@ -1092,6 +1102,13 @@ public struct CommandRouter {
 
     public static func appListFolders(_ path: String) -> AsyncThrowingStream<RpcResponse, Error> {
         invoke("app.listFolders", ["path": path])
+    }
+
+    // MARK: - System
+
+    /// Ping the active device to check connectivity
+    public static func systemPing() -> AsyncThrowingStream<RpcResponse, Error> {
+        invoke("system.ping", [:])
     }
 
     // MARK: - Helper

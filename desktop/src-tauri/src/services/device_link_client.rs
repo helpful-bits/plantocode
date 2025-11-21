@@ -7,6 +7,7 @@ use futures_util::{SinkExt, StreamExt};
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU64, Ordering};
 use tauri::{AppHandle, Emitter, Listener, Manager};
@@ -35,12 +36,25 @@ struct RelayEnvelope {
     pub timestamp: Option<String>,
 }
 
+/// Session data to persist across restarts for connection resumption
+#[derive(Debug, Serialize, Deserialize)]
+struct DeviceLinkSession {
+    #[serde(rename = "sessionId")]
+    session_id: String,
+    #[serde(rename = "resumeToken")]
+    resume_token: String,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RegisterPayload {
     #[serde(rename = "deviceId")]
     pub device_id: String,
     #[serde(rename = "deviceName")]
     pub device_name: String,
+    #[serde(rename = "sessionId", skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    #[serde(rename = "resumeToken", skip_serializing_if = "Option::is_none")]
+    pub resume_token: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -116,6 +130,89 @@ pub enum ServerMessage {
     #[serde(rename = "pong")]
     Pong,
 }
+
+// ========== Session Persistence Helpers ==========
+
+/// Get the path to the session file
+fn session_file_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+
+    // Ensure directory exists
+    if !app_data_dir.exists() {
+        std::fs::create_dir_all(&app_data_dir)
+            .map_err(|e| format!("Failed to create app data directory: {}", e))?;
+    }
+
+    Ok(app_data_dir.join("device_link_session.json"))
+}
+
+/// Load a persisted session if available
+fn load_session(app_handle: &tauri::AppHandle) -> Option<DeviceLinkSession> {
+    let session_path = session_file_path(app_handle).ok()?;
+
+    if !session_path.exists() {
+        debug!("No persisted session file found at {:?}", session_path);
+        return None;
+    }
+
+    match std::fs::read_to_string(&session_path) {
+        Ok(content) => match serde_json::from_str::<DeviceLinkSession>(&content) {
+            Ok(session) => {
+                info!("Loaded persisted session: session_id={}", session.session_id);
+                Some(session)
+            }
+            Err(e) => {
+                warn!("Failed to parse session file: {}. Deleting invalid file.", e);
+                let _ = std::fs::remove_file(&session_path);
+                None
+            }
+        },
+        Err(e) => {
+            warn!("Failed to read session file: {}", e);
+            None
+        }
+    }
+}
+
+/// Save session data to disk for resumption
+fn save_session(app_handle: &tauri::AppHandle, sess: &DeviceLinkSession) {
+    match session_file_path(app_handle) {
+        Ok(session_path) => {
+            match serde_json::to_string_pretty(sess) {
+                Ok(json) => {
+                    if let Err(e) = std::fs::write(&session_path, json) {
+                        error!("Failed to write session file: {}", e);
+                    } else {
+                        info!("Saved session to disk: session_id={}", sess.session_id);
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to serialize session: {}", e);
+                }
+            }
+        }
+        Err(e) => {
+            error!("Failed to get session file path: {}", e);
+        }
+    }
+}
+
+/// Delete persisted session file (e.g., on invalid_resume error)
+fn delete_session(app_handle: &tauri::AppHandle) {
+    if let Ok(session_path) = session_file_path(app_handle) {
+        if session_path.exists() {
+            match std::fs::remove_file(&session_path) {
+                Ok(_) => info!("Deleted persisted session file"),
+                Err(e) => warn!("Failed to delete session file: {}", e),
+            }
+        }
+    }
+}
+
+// ==================================================
 
 pub struct DeviceLinkClient {
     app_handle: AppHandle,
@@ -292,13 +389,22 @@ impl DeviceLinkClient {
 
         let device_name = crate::utils::get_device_display_name();
 
-        // Send register message
+        // Load persisted session if available for resumption
+        let persisted_session = load_session(&self.app_handle);
+
+        // Send register message with optional session resumption data
         let register_msg = DeviceLinkMessage::Register {
             payload: RegisterPayload {
                 device_id: device_id.clone(),
                 device_name,
+                session_id: persisted_session.as_ref().map(|s| s.session_id.clone()),
+                resume_token: persisted_session.as_ref().map(|s| s.resume_token.clone()),
             },
         };
+
+        if persisted_session.is_some() {
+            info!("Attempting to resume previous session");
+        }
 
         let register_json = serde_json::to_string(&register_msg).map_err(|e| {
             AppError::SerializationError(format!("Failed to serialize register message: {}", e))
@@ -662,6 +768,18 @@ impl DeviceLinkClient {
                     resume_token.as_ref().map(|token| !token.is_empty()).unwrap_or(false),
                     expires_at
                 );
+
+                // Save session to disk if both session_id and resume_token are present
+                if let (Some(sid), Some(token)) = (&session_id, &resume_token) {
+                    if !sid.is_empty() && !token.is_empty() {
+                        let session = DeviceLinkSession {
+                            session_id: sid.clone(),
+                            resume_token: token.clone(),
+                        };
+                        save_session(app_handle, &session);
+                    }
+                }
+
                 let payload = serde_json::json!({
                     "status": "registered",
                     "session_id": session_id,
@@ -676,6 +794,10 @@ impl DeviceLinkClient {
             }
             ServerMessage::Resumed { session_id, expires_at } => {
                 info!("Resumed device link session; session_id={} expires_at={:?}", session_id, expires_at);
+
+                // Session was successfully resumed, no need to update persistence
+                // The existing session file remains valid
+
                 let payload = serde_json::json!({
                     "status": "resumed",
                     "session_id": session_id,
@@ -689,6 +811,13 @@ impl DeviceLinkClient {
             }
             ServerMessage::Error { message } => {
                 error!("Server error: {}", message);
+
+                // Check if this is an invalid_resume error and delete persisted session
+                if message.contains("invalid_resume") || message.contains("Invalid resume token") {
+                    warn!("Session resume failed, deleting persisted session");
+                    delete_session(app_handle);
+                }
+
                 Err(AppError::NetworkError(format!("Server error: {}", message)))
             }
             // Expected server → desktop relay schema:

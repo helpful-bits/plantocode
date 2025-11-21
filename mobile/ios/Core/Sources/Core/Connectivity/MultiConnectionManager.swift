@@ -6,12 +6,20 @@ import Network
 import UIKit
 #endif
 
+/// Connection health status
+public enum ConnectionHealth {
+    case healthy
+    case unstable
+    case dead
+}
+
 @MainActor
 public final class MultiConnectionManager: ObservableObject {
     public static let shared = MultiConnectionManager()
     private var storage: [UUID: ServerRelayClient] = [:]
     @Published public private(set) var activeDeviceId: UUID?
     @Published public private(set) var connectionStates: [UUID: ConnectionState] = [:]
+    @Published public private(set) var connectionHealth: ConnectionHealth = .dead
     @Published public private(set) var isActivelyReconnecting: Bool = false
     private let connectedDevicesKey = "vm_connected_devices"
     private let activeDeviceKey = "ActiveDesktopDeviceId"
@@ -21,6 +29,8 @@ public final class MultiConnectionManager: ObservableObject {
     private var relayHandshakeByDevice = [UUID: ConnectionHandshake]()
     private var isHardResetInProgress = false
     private var hasRestoredOnce = false
+    private var healthGraceTimer: Timer?
+    private let healthGraceDelay: TimeInterval = 12.0
 
     private struct ReconnectPolicy {
         let attemptDelays: [TimeInterval] = [0.0, 0.5, 1, 2, 4, 8, 16, 30]
@@ -91,7 +101,23 @@ public final class MultiConnectionManager: ObservableObject {
             guard let self = self else { return }
             Task { @MainActor in
                 self.lastPath = path
-                self.triggerAggressiveReconnect(reason: .networkChange(path))
+
+                if path.status == .satisfied {
+                    // Network is available - disconnect and reconnect all active clients
+                    for (deviceId, client) in self.storage {
+                        // Non-user-initiated disconnect (network change)
+                        client.disconnect()
+
+                        // Trigger immediate reconnect
+                        Task { @MainActor in
+                            _ = await self.addConnection(for: deviceId)
+                        }
+                    }
+                } else {
+                    // Network is unavailable - set health to unstable
+                    self.connectionHealth = .unstable
+                    // Don't spam reconnects until network is satisfied
+                }
             }
         }
         pathMonitor.start(queue: pathMonitorQueue)
@@ -131,6 +157,9 @@ public final class MultiConnectionManager: ObservableObject {
 
         stopAllReconnectTimers()
         cancelAllCancellables()
+        healthGraceTimer?.invalidate()
+        healthGraceTimer = nil
+        connectionHealth = .dead
 
         for (_, relay) in storage {
             relay.clearResumeToken()
@@ -180,11 +209,9 @@ public final class MultiConnectionManager: ObservableObject {
         await DeviceDiscoveryService.shared.refreshDevices()
     }
 
-    private func verifyDesktopConnection(deviceId: UUID, timeoutSeconds: Int = 5) async throws {
-        guard let relayClient = storage[deviceId] else {
-            throw MultiConnectionError.connectionFailed("Relay client not found")
-        }
-
+    /// Performs system ping to verify desktop connection (handshaking step)
+    /// Reduced timeout from 5s to 3s for faster connection verification
+    private func performSystemPing(deviceId: UUID, relayClient: ServerRelayClient, timeoutSeconds: Int = 3) async throws {
         guard relayClient.isConnected else {
             throw MultiConnectionError.connectionFailed("Relay not connected")
         }
@@ -193,12 +220,12 @@ public final class MultiConnectionManager: ObservableObject {
             var receivedResponse = false
             for try await response in relayClient.invoke(
                 targetDeviceId: deviceId.uuidString,
-                request: RpcRequest(method: "ping", params: [:]),
+                request: RpcRequest(method: "system.ping", params: [:]),
                 timeout: TimeInterval(timeoutSeconds)
             ) {
                 receivedResponse = true
                 if let error = response.error {
-                    throw MultiConnectionError.connectionFailed("Desktop refused the connection: \(error.message)")
+                    throw MultiConnectionError.connectionFailed("Desktop ping failed: \(error.message)")
                 }
                 if response.isFinal {
                     return
@@ -206,13 +233,26 @@ public final class MultiConnectionManager: ObservableObject {
             }
 
             if !receivedResponse {
-                throw MultiConnectionError.connectionFailed("Desktop did not respond in time.")
+                throw MultiConnectionError.connectionFailed("Desktop did not respond to ping.")
             }
         } catch is ServerRelayError {
-            throw MultiConnectionError.connectionFailed("Desktop did not respond in time.")
+            throw MultiConnectionError.connectionFailed("Desktop did not respond to ping.")
         } catch {
             throw error
         }
+    }
+
+    private func verifyDesktopConnection(deviceId: UUID, timeoutSeconds: Int = 3) async throws {
+        guard let relayClient = storage[deviceId] else {
+            throw MultiConnectionError.connectionFailed("Relay client not found")
+        }
+
+        guard relayClient.isConnected else {
+            throw MultiConnectionError.connectionFailed("Relay not connected")
+        }
+
+        // Use system ping for verification
+        try await performSystemPing(deviceId: deviceId, relayClient: relayClient, timeoutSeconds: timeoutSeconds)
     }
 
     public func addConnection(to device: RegisteredDevice, token: String?) async -> Result<UUID, Error> {
@@ -304,6 +344,7 @@ public final class MultiConnectionManager: ObservableObject {
         // Set connecting state immediately for UI feedback
         await MainActor.run {
             connectionStates[deviceId] = .connecting
+            updateConnectionHealth(for: deviceId, state: .connecting)
         }
 
         // If already connecting, wait for that task
@@ -348,6 +389,7 @@ public final class MultiConnectionManager: ObservableObject {
                 await MainActor.run {
                     self.storage[deviceId] = relayClient
                     self.connectionStates[deviceId] = .handshaking
+                    self.updateConnectionHealth(for: deviceId, state: .handshaking)
                     self.verifyingDevices.insert(deviceId)
                 }
 
@@ -361,8 +403,10 @@ public final class MultiConnectionManager: ObservableObject {
                                     self.relayHandshakeByDevice[deviceId] = handshake
                                     if self.verifyingDevices.contains(deviceId) {
                                         self.connectionStates[deviceId] = .handshaking
+                                        self.updateConnectionHealth(for: deviceId, state: .handshaking)
                                     } else {
                                         self.connectionStates[deviceId] = .connected(handshake)
+                                        self.updateConnectionHealth(for: deviceId, state: .connected(handshake))
                                         self.persistConnectedDevice(deviceId)
                                         // Clear reconnection flag if this is the active device
                                         if deviceId == self.activeDeviceId {
@@ -378,17 +422,18 @@ public final class MultiConnectionManager: ObservableObject {
                                     }
                                 case .reconnecting:
                                     self.connectionStates[deviceId] = .reconnecting
+                                    self.updateConnectionHealth(for: deviceId, state: .reconnecting)
                                     self.verifyingDevices.insert(deviceId)
                                 case .failed(let e):
                                     self.connectionStates[deviceId] = .failed(e)
+                                    self.updateConnectionHealth(for: deviceId, state: .failed(e))
                                     self.verifyingDevices.remove(deviceId)
-                                    if self.activeDeviceId == deviceId { self.setActive(nil) }
                                     self.triggerAggressiveReconnect(reason: .connectionLoss(deviceId), deviceIds: [deviceId])
                                 case .disconnected:
                                     self.connectionStates[deviceId] = .disconnected
+                                    self.updateConnectionHealth(for: deviceId, state: .disconnected)
                                     self.verifyingDevices.remove(deviceId)
                                     self.relayHandshakeByDevice.removeValue(forKey: deviceId)
-                                    if self.activeDeviceId == deviceId { self.setActive(nil) }
                                     self.triggerAggressiveReconnect(reason: .connectionLoss(deviceId), deviceIds: [deviceId])
                                 default:
                                     break
@@ -399,7 +444,7 @@ public final class MultiConnectionManager: ObservableObject {
                 }
 
                 do {
-                    try await self.verifyDesktopConnection(deviceId: deviceId, timeoutSeconds: 5)
+                    try await self.verifyDesktopConnection(deviceId: deviceId, timeoutSeconds: 3)
 
                     await MainActor.run {
                         let handshake = self.relayHandshakeByDevice[deviceId] ?? ConnectionHandshake(
@@ -408,6 +453,7 @@ public final class MultiConnectionManager: ObservableObject {
                             transport: "relay"
                         )
                         self.connectionStates[deviceId] = .connected(handshake)
+                        self.updateConnectionHealth(for: deviceId, state: .connected(handshake))
                         self.persistConnectedDevice(deviceId)
                         self.setActive(deviceId)
                         self.verifyingDevices.remove(deviceId)
@@ -419,6 +465,7 @@ public final class MultiConnectionManager: ObservableObject {
                 } catch {
                     await MainActor.run {
                         self.connectionStates[deviceId] = .failed(error)
+                        self.updateConnectionHealth(for: deviceId, state: .failed(error))
                         self.verifyingDevices.remove(deviceId)
                     }
                     relayClient.disconnect()
@@ -430,7 +477,6 @@ public final class MultiConnectionManager: ObservableObject {
             } catch {
                 await MainActor.run {
                     self.connectionStates[deviceId] = .failed(error)
-                    if self.activeDeviceId == deviceId { self.setActive(nil) }
                 }
                 // Do NOT persist on failure
                 return .failure(error)
@@ -445,6 +491,10 @@ public final class MultiConnectionManager: ObservableObject {
         if activeDeviceId == deviceId {
             self.activeDeviceId = nil
             UserDefaults.standard.removeObject(forKey: activeDeviceKey)
+            // Clear health monitoring for removed active device
+            healthGraceTimer?.invalidate()
+            healthGraceTimer = nil
+            connectionHealth = .dead
         }
 
         // Remove from persisted connected devices list
@@ -466,6 +516,9 @@ public final class MultiConnectionManager: ObservableObject {
         cancelAllCancellables()
         reconnectStates.removeAll()
         connectingTasks.removeAll()
+        healthGraceTimer?.invalidate()
+        healthGraceTimer = nil
+        connectionHealth = .dead
 
         for (_, relayClient) in storage {
             relayClient.disconnect()
@@ -499,8 +552,16 @@ public final class MultiConnectionManager: ObservableObject {
         activeDeviceId = deviceId
         if deviceId == nil {
             UserDefaults.standard.removeObject(forKey: activeDeviceKey)
+            // Clear health when no active device
+            healthGraceTimer?.invalidate()
+            healthGraceTimer = nil
+            connectionHealth = .dead
         } else {
             persistActiveDeviceId()
+            // Update health based on new active device's state
+            if let state = connectionStates[deviceId!] {
+                updateConnectionHealth(for: deviceId!, state: state)
+            }
         }
     }
 
@@ -708,6 +769,11 @@ public final class MultiConnectionManager: ObservableObject {
         reconnectStates[deviceId]?.currentTask?.cancel()
         reconnectStates[deviceId]?.currentTask = nil
 
+        // Clear reconnecting flag if this is the active device
+        if deviceId == activeDeviceId {
+            isActivelyReconnecting = false
+        }
+
         let errorMessage: String
         if let lastError = reconnectStates[deviceId]?.lastError {
             errorMessage = lastError.localizedDescription
@@ -838,6 +904,58 @@ public final class MultiConnectionManager: ObservableObject {
 
     private func clearPersistedConnectedDevices(except: [UUID]) {
         persistConnectedDevices(except)
+    }
+
+    // MARK: - Connection Health Management
+
+    private func updateConnectionHealth(for deviceId: UUID, state: ConnectionState) {
+        // Only track health for the active device
+        guard deviceId == activeDeviceId else { return }
+
+        switch state {
+        case .connected:
+            // Connection is healthy - cancel any pending grace timer
+            healthGraceTimer?.invalidate()
+            healthGraceTimer = nil
+            connectionHealth = .healthy
+
+        case .connecting, .handshaking, .authenticating, .reconnecting:
+            // Transient state - set unstable and start grace timer
+            healthGraceTimer?.invalidate()
+            connectionHealth = .unstable
+
+            // Start grace timer - if still transient after delay, mark as dead
+            healthGraceTimer = Timer.scheduledTimer(withTimeInterval: healthGraceDelay, repeats: false) { [weak self] _ in
+                guard let self = self else { return }
+                Task { @MainActor in
+                    // Check if still in transient state
+                    if let currentState = self.connectionStates[deviceId], currentState.isTransient {
+                        self.connectionHealth = .dead
+                    }
+                }
+            }
+
+        case .failed, .disconnected, .closing:
+            // Treat as transient initially (brief blips)
+            // This allows for quick recovery without immediately marking as dead
+            if connectionHealth == .healthy {
+                connectionHealth = .unstable
+
+                // Start grace timer
+                healthGraceTimer?.invalidate()
+                healthGraceTimer = Timer.scheduledTimer(withTimeInterval: healthGraceDelay, repeats: false) { [weak self] _ in
+                    guard let self = self else { return }
+                    Task { @MainActor in
+                        // If still not connected after grace period, mark as dead
+                        if let currentState = self.connectionStates[deviceId], !currentState.isConnected {
+                            self.connectionHealth = .dead
+                        }
+                    }
+                }
+            } else {
+                // Already unstable or dead, keep current state
+            }
+        }
     }
 }
 
