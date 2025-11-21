@@ -28,11 +28,17 @@ public final class SettingsDataService: ObservableObject {
     @Published public var notifyFileFinderResultsEnabled: Bool = true
     @Published public var notifyPlanReadyEnabled: Bool = true
     @Published public var notifyTerminalInactivityEnabled: Bool = true
+    @Published public private(set) var externalFoldersByProject: [String: [String]] = [:]
 
     // Backward compatibility for read-only settings view
     @Published public private(set) var modelSettings: ServerModelSettings?
 
     public init() {}
+
+    // MARK: - External Folders
+    public func externalFolders(for projectDirectory: String) -> [String] {
+        externalFoldersByProject[projectDirectory] ?? []
+    }
 
     // MARK: - Providers
     public func fetchProviders() async throws {
@@ -307,6 +313,33 @@ public final class SettingsDataService: ObservableObject {
     public func saveNotifyTerminalInactivityEnabled(_ enabled: Bool) async throws {
         self.notifyTerminalInactivityEnabled = enabled
         _ = try await drain(CommandRouter.settingsSetAppSetting(key: "notifications.terminalInactivity.enabled", value: enabled ? "true" : "false"))
+    }
+
+    public func loadExternalFolders(projectDirectory: String) async throws {
+        var loaded: [String]?
+        for try await response in CommandRouter.settingsGetExternalFolders(projectDirectory: projectDirectory) {
+            // Decode response - adapt to existing RpcResponse handling patterns
+            // Try dict with "folders" key first, fall back to raw array
+            if let dict = response.resultDict,
+               let folders = dict["folders"] as? [String] {
+                loaded = folders
+            } else if let folders = response.result as? [String] {
+                loaded = folders
+            }
+        }
+        if let folders = loaded {
+            externalFoldersByProject[projectDirectory] = folders
+        }
+    }
+
+    public func saveExternalFolders(projectDirectory: String, folders: [String]) async throws {
+        _ = try await drain(
+            CommandRouter.settingsSetExternalFolders(
+                projectDirectory: projectDirectory,
+                folders: folders
+            )
+        )
+        externalFoldersByProject[projectDirectory] = folders
     }
 
     // MARK: - Backward Compatibility

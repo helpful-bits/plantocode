@@ -14,6 +14,8 @@ pub async fn dispatch(app_handle: AppHandle, req: RpcRequest) -> RpcResponse {
         "settings.resetProjectTaskSetting" => handle_reset_project_task_setting(app_handle, req).await,
         "settings.getAppSetting" => handle_get_app_setting(app_handle, req).await,
         "settings.setAppSetting" => handle_set_app_setting(app_handle, req).await,
+        "settings.getExternalFolders" => handle_get_external_folders(app_handle, req).await,
+        "settings.setExternalFolders" => handle_set_external_folders(app_handle, req).await,
         _ => Err(RpcError::method_not_found(&req.method)),
     };
 
@@ -160,4 +162,37 @@ async fn handle_set_app_setting(app_handle: AppHandle, req: RpcRequest) -> RpcRe
         .map_err(RpcError::from)?;
 
     Ok(json!({ "success": true }))
+}
+
+async fn handle_get_external_folders(app_handle: AppHandle, req: RpcRequest) -> RpcResult<Value> {
+    let project_directory = req.params.get("projectDirectory")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| RpcError::invalid_params("Missing param: projectDirectory"))?
+        .to_string();
+
+    let folders = settings_commands::get_external_folders_command(app_handle, project_directory)
+        .await
+        .map_err(RpcError::from)?;
+
+    Ok(json!({ "folders": folders }))
+}
+
+async fn handle_set_external_folders(app_handle: AppHandle, req: RpcRequest) -> RpcResult<Value> {
+    let project_directory = req.params.get("projectDirectory")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| RpcError::invalid_params("Missing param: projectDirectory"))?
+        .to_string();
+
+    let folders = req.params.get("folders")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| RpcError::invalid_params("Missing param: folders"))?
+        .iter()
+        .filter_map(|v| v.as_str().map(String::from))
+        .collect::<Vec<String>>();
+
+    settings_commands::set_external_folders_command(app_handle, project_directory, folders)
+        .await
+        .map_err(RpcError::from)?;
+
+    Ok(json!({ "ok": true }))
 }

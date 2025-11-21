@@ -6,7 +6,7 @@ use crate::remote_api::types::RpcRequest;
 
 pub async fn dispatch(_app_handle: AppHandle, req: RpcRequest) -> RpcResult<Value> {
     match req.method.as_str() {
-        "ping" => handle_ping().await,
+        "ping" | "system.ping" => handle_ping().await,
         "echo" => handle_echo(req).await,
         "get_status" => handle_get_status().await,
         _ => Err(RpcError::method_not_found(&req.method))
@@ -15,7 +15,7 @@ pub async fn dispatch(_app_handle: AppHandle, req: RpcRequest) -> RpcResult<Valu
 
 async fn handle_ping() -> RpcResult<Value> {
     Ok(json!({
-        "message": "pong",
+        "pong": true,
         "timestamp": Utc::now().to_rfc3339()
     }))
 }

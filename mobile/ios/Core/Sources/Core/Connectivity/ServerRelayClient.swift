@@ -44,6 +44,17 @@ public class ServerRelayClient: NSObject, ObservableObject {
     private var eventPublisher = PassthroughSubject<RelayEvent, Never>()
     private var registrationPromise: ((Result<Void, ServerRelayError>) -> Void)?
 
+    // Message queuing
+    private struct QueuedMessage {
+        let data: Data
+        let isHeartbeat: Bool
+    }
+    private var pendingMessageQueue: [QueuedMessage] = []
+
+    // Connection monitoring
+    private var lastMessageReceivedAt: Date = Date()
+    private var watchdogTimer: Timer?
+
     // RPC metrics tracking
     private struct RpcMetrics {
         let method: String
@@ -141,6 +152,47 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
     // MARK: - Connection Management
 
+    /// Wait for connection to be established, with timeout
+    public func waitForConnection(timeout: TimeInterval) async throws {
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            var cancellable: AnyCancellable?
+            var timeoutTimer: Timer?
+
+            let cleanup = {
+                cancellable?.cancel()
+                timeoutTimer?.invalidate()
+            }
+
+            // Start timeout timer
+            timeoutTimer = Timer.scheduledTimer(withTimeInterval: timeout, repeats: false) { _ in
+                cleanup()
+                continuation.resume(throwing: ConnectionError.timeout)
+            }
+
+            // Observe connectionState
+            cancellable = $connectionState
+                .sink { [weak self] state in
+                    guard let self = self else {
+                        cleanup()
+                        continuation.resume(throwing: ConnectionError.terminal(ServerRelayError.invalidState("Client deallocated")))
+                        return
+                    }
+
+                    switch state {
+                    case .connected:
+                        cleanup()
+                        continuation.resume(returning: ())
+                    case .failed(let error):
+                        cleanup()
+                        continuation.resume(throwing: ConnectionError.terminal(error))
+                    case .disconnected, .connecting, .handshaking, .authenticating, .reconnecting, .closing:
+                        // Still waiting
+                        break
+                    }
+                }
+        }
+    }
+
     /// Connect to the relay endpoint with JWT authentication
     public func connect(jwtToken: String) -> AnyPublisher<Void, ServerRelayError> {
         self.jwtToken = jwtToken
@@ -209,10 +261,11 @@ public class ServerRelayClient: NSObject, ObservableObject {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 self.sendRegistration()
 
-                // Start registration timeout timer (20 seconds)
+                // Start registration timeout timer
                 DispatchQueue.main.async { [weak self] in
-                    // Reduced from 20s → 15s to enforce faster definitive connection outcome (FR-5, NFR-1).
-                    self?.registrationTimer = Timer.scheduledTimer(withTimeInterval: 15.0, repeats: false) { [weak self] _ in
+                    // Reduced timeout for faster failure detection: 20s → 15s → 10s
+                    // Most registrations complete in 1-3s, so 10s is generous but prevents long hangs
+                    self?.registrationTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: false) { [weak self] _ in
                         guard let self = self else { return }
                         if self.registrationPromise != nil {
                             self.logger.error("Registration handshake timeout - no response received")
@@ -242,7 +295,8 @@ public class ServerRelayClient: NSObject, ObservableObject {
     }
 
     /// Disconnect from the relay
-    public func disconnect() {
+    /// - Parameter isUserInitiated: If true, clears all queues and pending RPCs. If false (network drop), keeps state for reconnection.
+    public func disconnect(isUserInitiated: Bool = true) {
         // Idempotency guard to prevent duplicate disconnect calls
         if isDisconnecting { return }
         if webSocketTask == nil, connectionState == .disconnected {
@@ -250,38 +304,49 @@ public class ServerRelayClient: NSObject, ObservableObject {
         }
         isDisconnecting = true
         defer { isDisconnecting = false }
-        
-        logger.info("Disconnecting from server relay")
+
+        logger.info("Disconnecting from server relay (user-initiated: \(isUserInitiated))")
 
         publishOnMain {
             self.connectionState = .disconnected
             self.isConnected = false
         }
         stopHeartbeat()
-        stopReconnection()
+        stopWatchdog()
+
+        if isUserInitiated {
+            stopReconnection()
+        }
 
         // Cancel registration timer
         registrationTimer?.invalidate()
         registrationTimer = nil
 
-        // Clear session state
-        self.sessionId = nil
-        self.resumeToken = nil
+        if isUserInitiated {
+            // Clear session state for user-initiated disconnect
+            self.sessionId = nil
+            self.resumeToken = nil
+        }
 
         webSocketTask?.cancel(with: .goingAway, reason: nil)
         webSocketTask = nil
 
-        // Fail all pending RPC calls
-        // Use safe execution to avoid deadlock when called from rpcQueue (e.g., during deinit)
-        executeSafelyOnRpcQueue {
-            let subjects = Array(self.pendingRPCCalls.values)
-            self.pendingRPCCalls.removeAll()
-            self.rpcMetrics.removeAll()
+        if isUserInitiated {
+            // Fail all pending RPC calls and clear queues
+            executeSafelyOnRpcQueue {
+                let subjects = Array(self.pendingRPCCalls.values)
+                self.pendingRPCCalls.removeAll()
+                self.rpcMetrics.removeAll()
 
-            for subject in subjects {
-                subject.send(completion: .failure(.disconnected))
+                for subject in subjects {
+                    subject.send(completion: .failure(.disconnected))
+                }
             }
+
+            // Clear message queue
+            pendingMessageQueue.removeAll()
         }
+        // If not user-initiated (network drop), keep pending RPCs and message queue
     }
 
     // MARK: - RPC Calls
@@ -358,6 +423,19 @@ public class ServerRelayClient: NSObject, ObservableObject {
                 req = request
             }
 
+            // 4. Determine if this is a mutating method and generate idempotency key
+            let isMutating: Bool = {
+                let lower = req.method.lowercased()
+                return lower.hasPrefix("create")
+                    || lower.hasPrefix("update")
+                    || lower.hasPrefix("delete")
+                    || lower.hasPrefix("set")
+                    || lower.hasPrefix("sync")
+                    || lower.hasPrefix("kill")
+                    || lower.hasPrefix("start")
+            }()
+            let idempotencyKey = isMutating ? UUID().uuidString : nil
+
             // Create response subject for this call
             let responseSubject = PassthroughSubject<RpcResponse, ServerRelayError>()
 
@@ -412,11 +490,15 @@ public class ServerRelayClient: NSObject, ObservableObject {
             }
 
             // Build canonical envelope with ONLY camelCase
-            let rpcPayload: [String: Any] = [
+            var rpcPayload: [String: Any] = [
                 "method": req.method,
                 "params": req.params.mapValues { $0.jsonValue },
                 "correlationId": req.id
             ]
+            // Add idempotencyKey if present
+            if let key = idempotencyKey {
+                rpcPayload["idempotencyKey"] = key
+            }
 
             // Build payload based on strictRelayEnvelope flag
             let payload: [String: Any]
@@ -437,13 +519,35 @@ public class ServerRelayClient: NSObject, ObservableObject {
                 ]
             }
 
-            // 5. Validate encodability
+            // 5. Validate encodability and wait for connection
             Task { [weak self] in
                 guard let self = self else {
                     continuation.finish(throwing: ServerRelayError.invalidState("Client deallocated"))
                     return
                 }
                 do {
+                    // Wait for connection if not already connected
+                    if case .disconnected = self.connectionState {
+                        // Not connected, initiate connection if we have a token
+                        if let token = self.jwtToken {
+                            _ = self.connect(jwtToken: token)
+                        }
+                    }
+
+                    // Wait for connection to be established
+                    // Skip wait for states that already queue messages - they'll be sent when ready
+                    switch self.connectionState {
+                    case .connected:
+                        // Already connected, proceed immediately
+                        break
+                    case .connecting, .handshaking, .authenticating, .reconnecting:
+                        // These states queue messages automatically - use shorter timeout
+                        try await self.waitForConnection(timeout: 2.0)
+                    case .disconnected, .closing, .failed:
+                        // Need full connection - but still reduced timeout
+                        try await self.waitForConnection(timeout: 3.0)
+                    }
+
                     // Validate JSON serializability using existing encodeForWebSocket
                     let envelope: [String: Any] = [
                         "type": "relay",
@@ -610,11 +714,6 @@ public class ServerRelayClient: NSObject, ObservableObject {
     }
 
     public func sendMessage(type: String, payload: [String: Any]?) async throws {
-        guard let webSocketTask = webSocketTask else {
-            logger.error("❌ sendMessage FAILED: webSocketTask is nil (type=\(type))")
-            throw ServerRelayError.notConnected
-        }
-
         // Build envelope manually to avoid Encodable conformance issues
         var envelope: [String: Any] = ["type": type]
         if let payload = payload {
@@ -622,13 +721,57 @@ public class ServerRelayClient: NSObject, ObservableObject {
         }
 
         let jsonString = try encodeForWebSocket(envelope)
+        let messageData = jsonString.data(using: .utf8)!
+        let isHeartbeat = (type == "heartbeat")
 
-        // Use webSocketTask.send(.string(json)) exclusively (no .data frames)
-        do {
-            try await webSocketTask.send(.string(jsonString))
-        } catch {
-            logger.error("WebSocket send failed for type=\(type): \(error)")
-            throw error
+        // Check connection state and queue if needed
+        switch connectionState {
+        case .connected:
+            // Connected: send immediately
+            guard let webSocketTask = webSocketTask else {
+                logger.error("❌ sendMessage FAILED: webSocketTask is nil (type=\(type))")
+                throw ServerRelayError.notConnected
+            }
+
+            do {
+                try await webSocketTask.send(.string(jsonString))
+            } catch {
+                logger.error("WebSocket send failed for type=\(type): \(error)")
+                throw error
+            }
+
+        case .connecting, .handshaking, .authenticating, .reconnecting:
+            // Connecting/reconnecting: queue the message
+            let queuedMessage = QueuedMessage(data: messageData, isHeartbeat: isHeartbeat)
+            pendingMessageQueue.append(queuedMessage)
+
+        case .disconnected, .closing, .failed:
+            // Disconnected/failed: queue the message for when we reconnect
+            let queuedMessage = QueuedMessage(data: messageData, isHeartbeat: isHeartbeat)
+            pendingMessageQueue.append(queuedMessage)
+        }
+    }
+
+    /// Flush all queued messages after connection is established
+    private func flushMessageQueue() {
+        guard !pendingMessageQueue.isEmpty else { return }
+
+        let messagesToSend = pendingMessageQueue
+        pendingMessageQueue.removeAll()
+
+        logger.info("Flushing \(messagesToSend.count) queued messages")
+
+        Task { [weak self] in
+            guard let self = self else { return }
+            for queuedMsg in messagesToSend {
+                if let jsonString = String(data: queuedMsg.data, encoding: .utf8) {
+                    do {
+                        try await self.webSocketTask?.send(.string(jsonString))
+                    } catch {
+                        self.logger.error("Failed to send queued message: \(error)")
+                    }
+                }
+            }
         }
     }
 
@@ -720,6 +863,9 @@ public class ServerRelayClient: NSObject, ObservableObject {
     }
 
     private func handleTextMessage(_ text: String) {
+        // Update watchdog timestamp
+        lastMessageReceivedAt = Date()
+
         guard let data = text.data(using: .utf8) else {
             logger.error("Failed to convert text to data")
             return
@@ -835,6 +981,10 @@ public class ServerRelayClient: NSObject, ObservableObject {
         }
         reconnectAttempts = 0
         startHeartbeat()
+        startWatchdog()
+
+        // Flush any queued messages
+        flushMessageQueue()
 
         // Complete registration promise
         registrationPromise?(.success(()))
@@ -893,6 +1043,10 @@ public class ServerRelayClient: NSObject, ObservableObject {
         }
         reconnectAttempts = 0
         startHeartbeat()
+        startWatchdog()
+
+        // Flush any queued messages
+        flushMessageQueue()
 
         // Complete the registration promise
         registrationPromise?(.success(()))
@@ -959,6 +1113,14 @@ public class ServerRelayClient: NSObject, ObservableObject {
             guard let responseSubject = self.pendingRPCCalls[correlationId] else {
                 self.logger.warning("Received relay response for unknown call: \(correlationId)")
                 return
+            }
+
+            // Check for queued response (not an error)
+            if let resultDict = responseDict["result"] as? [String: Any],
+               let queued = resultDict["queued"] as? Bool,
+               queued == true {
+                // This is a success - message was queued by server for later delivery
+                self.logger.info("RPC response indicates message was queued (correlationId: \(correlationId))")
             }
 
             // Parse error field
@@ -1154,12 +1316,13 @@ public class ServerRelayClient: NSObject, ObservableObject {
         logger.error("Connection error: \(error)")
 
         publishOnMain {
-            self.connectionState = .failed(error)
+            self.connectionState = .reconnecting
             self.isConnected = false
             self.lastError = .networkError(error)
         }
 
         stopHeartbeat()
+        stopWatchdog()
 
         if shouldReconnect() {
             scheduleReconnection()
@@ -1188,6 +1351,31 @@ public class ServerRelayClient: NSObject, ObservableObject {
                 logger.error("Failed to send heartbeat: \(error)")
             }
         }
+    }
+
+    // MARK: - Watchdog
+
+    private func startWatchdog() {
+        stopWatchdog()
+        lastMessageReceivedAt = Date()
+
+        // Check every 15 seconds, trigger reconnect if no message for 1.5x heartbeat interval (45s)
+        watchdogTimer = Timer.scheduledTimer(withTimeInterval: 15.0, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+
+            let timeSinceLastMessage = Date().timeIntervalSince(self.lastMessageReceivedAt)
+            let watchdogThreshold: TimeInterval = 30.0 * 1.5 // 1.5x heartbeat interval
+
+            if timeSinceLastMessage > watchdogThreshold {
+                self.logger.warning("Watchdog timeout: no message received for \(timeSinceLastMessage)s (threshold: \(watchdogThreshold)s)")
+                self.handleConnectionError(ServerRelayError.timeout)
+            }
+        }
+    }
+
+    private func stopWatchdog() {
+        watchdogTimer?.invalidate()
+        watchdogTimer = nil
     }
 
     // MARK: - Reconnection
@@ -1260,6 +1448,11 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
 // MARK: - Supporting Types
 
+public enum ConnectionError: Error {
+    case timeout
+    case terminal(Error)
+}
+
 public enum ServerRelayError: Error, LocalizedError {
     case notConnected
     case invalidURL
@@ -1298,11 +1491,13 @@ public struct RpcRequest: Codable {
     public let method: String
     public let params: [String: AnyCodable]
     public let id: String
+    public let idempotencyKey: String?
 
-    public init(method: String, params: [String: Any] = [:], id: String = UUID().uuidString) {
+    public init(method: String, params: [String: Any] = [:], id: String = UUID().uuidString, idempotencyKey: String? = nil) {
         self.method = method
         self.params = params.mapValues { AnyCodable(any: $0) }
         self.id = id
+        self.idempotencyKey = idempotencyKey
     }
 }
 

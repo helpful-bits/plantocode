@@ -112,11 +112,15 @@ public struct AISettingsView: View {
                 Section(header: Text(category).font(.subheadline).foregroundColor(Color.textMuted)) {
                     ForEach(groupedTaskTypes[category] ?? [], id: \.self) { taskKey in
                         taskTypeRow(for: taskKey)
+                            .listRowBackground(Color.surfacePrimary)
                     }
                 }
+                .listSectionSeparator(.hidden)
             }
         }
-        .listStyle(.insetGrouped)
+        .listStyle(.plain)
+        .background(Color.backgroundPrimary)
+        .scrollContentBackground(.hidden)
     }
 
     private func taskTypeRow(for taskKey: String) -> some View {
@@ -148,7 +152,6 @@ public struct AISettingsView: View {
                 Spacer()
             }
             .padding(.vertical, 4)
-            .background(Color.surfacePrimary)
         }
     }
 

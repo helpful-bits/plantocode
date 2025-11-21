@@ -82,6 +82,11 @@ public struct AuthFlowCoordinator: View {
     .onChange(of: appState.hasSelectedRegionOnce) { _ in withAnimation { updateRoute() } }
     .onChange(of: appState.isAuthenticated) { _ in withAnimation { updateRoute() } }
     .onChange(of: multiConnectionManager.activeDeviceId) { _ in withAnimation { updateRoute() } }
+    .onChange(of: multiConnectionManager.connectionHealth) { _ in
+      withAnimation {
+        updateRoute()
+      }
+    }
     .onChange(of: multiConnectionManager.isActivelyReconnecting) { isReconnecting in
       handleReconnectionStateChange(isReconnecting)
     }
@@ -204,9 +209,9 @@ public struct AuthFlowCoordinator: View {
     // Mark that we're in grace period
     isInReconnectionGracePeriod = true
 
-    // Start 5-second grace period
+    // Start 15-second grace period
     reconnectionGracePeriodTask = Task { @MainActor in
-      try? await Task.sleep(nanoseconds: 5_000_000_000) // 5 seconds
+      try? await Task.sleep(nanoseconds: 15_000_000_000) // 15 seconds
 
       if !Task.isCancelled {
         isInReconnectionGracePeriod = false
@@ -222,25 +227,41 @@ public struct AuthFlowCoordinator: View {
   }
 
   private func shouldAllowWorkspaceAccess() -> Bool {
-    // Priority 1: If actively reconnecting and we've been connected before, stay in workspace
-    if multiConnectionManager.isActivelyReconnecting && container.hasCompletedInitialLoad {
+    // POST-INITIAL-LOAD: make workspace sticky
+    if container.hasCompletedInitialLoad {
+      if appState.isAuthenticated,
+         multiConnectionManager.activeDeviceId != nil,
+         multiConnectionManager.connectionHealth != .dead {
+        return true
+      }
+    }
+
+    // PRE-INITIAL-LOAD: fall through to existing stricter logic
+
+    // Priority 1: Use health-based conditions
+    if multiConnectionManager.connectionHealth == .healthy ||
+       multiConnectionManager.connectionHealth == .unstable {
+      if multiConnectionManager.activeDeviceId != nil {
+        return true
+      }
+    }
+
+    // Priority 2: Check if active device is connected or reconnecting
+    if multiConnectionManager.activeDeviceIsConnectedOrReconnecting {
       return true
     }
 
-    // Priority 2: During grace period, allow access if we have an active device
+    // Priority 3: If actively reconnecting, stay in workspace (fallback)
+    if multiConnectionManager.isActivelyReconnecting {
+      return true
+    }
+
+    // Priority 4: During grace period, allow access if we have an active device (fallback)
     if isInReconnectionGracePeriod && multiConnectionManager.activeDeviceId != nil {
       return true
     }
 
-    // Priority 3: If we've completed initial load before and currently in a connecting state, be lenient
-    if container.hasCompletedInitialLoad,
-       let activeId = multiConnectionManager.activeDeviceId,
-       let state = multiConnectionManager.connectionStates[activeId],
-       state.isConnectedOrConnecting {
-      return true
-    }
-
-    // Priority 4: Otherwise require full connection
+    // Priority 5: Otherwise require full connection
     return multiConnectionManager.activeDeviceIsFullyConnected && isActiveDeviceAvailable
   }
 

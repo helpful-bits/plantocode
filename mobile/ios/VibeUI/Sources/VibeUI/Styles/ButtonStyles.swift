@@ -41,13 +41,18 @@ public struct PrimaryButtonStyle: ButtonStyle {
 /// Maps to CSS: bg-secondary/80 text-secondary-foreground hover:bg-secondary/60 border border-border/50
 public struct SecondaryButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.colorScheme) private var colorScheme
 
     public init() {}
 
     public func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 16, weight: .medium))
-            .foregroundColor(AppColors.secondaryForeground)
+            .foregroundColor(
+                configuration.isPressed
+                    ? AppColors.primary.opacity(0.9)
+                    : AppColors.secondaryForeground
+            )
             .padding(.horizontal, Theme.Spacing.lg)
             .padding(.vertical, Theme.Spacing.md)
             .frame(minHeight: 44)
@@ -56,9 +61,20 @@ public struct SecondaryButtonStyle: ButtonStyle {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: AppColors.radius)
-                    .stroke(AppColors.border.opacity(0.5), lineWidth: 1)
+                    .stroke(
+                        configuration.isPressed
+                            ? AppColors.primary.opacity(colorScheme == .dark ? 0.5 : 0.3)
+                            : AppColors.primary.opacity(colorScheme == .dark ? 0.3 : 0.15),
+                        lineWidth: 1
+                    )
             )
             .cornerRadius(AppColors.radius)
+            .shadow(
+                color: AppColors.primary.opacity(colorScheme == .light ? 0.05 : 0.12),
+                radius: colorScheme == .light ? 2 : 3,
+                x: 0,
+                y: 1
+            )
             .opacity(isEnabled ? 1.0 : 0.5)
             .animation(.easeInOut(duration: 0.2), value: configuration.isPressed)
     }
@@ -79,6 +95,7 @@ public struct SecondaryButtonStyle: ButtonStyle {
 /// Maps to CSS: border border-border bg-background/80 text-foreground hover:bg-accent/60 hover:text-accent-foreground
 public struct OutlineButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.colorScheme) private var colorScheme
 
     public init() {}
 
@@ -86,7 +103,9 @@ public struct OutlineButtonStyle: ButtonStyle {
         configuration.label
             .font(.system(size: 16, weight: .medium))
             .foregroundColor(
-                configuration.isPressed ? AppColors.accentForeground : AppColors.foreground
+                configuration.isPressed
+                    ? AppColors.primary.opacity(0.9)
+                    : AppColors.foreground
             )
             .padding(.horizontal, Theme.Spacing.lg)
             .padding(.vertical, Theme.Spacing.md)
@@ -96,9 +115,20 @@ public struct OutlineButtonStyle: ButtonStyle {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: AppColors.radius)
-                    .stroke(AppColors.border, lineWidth: 1)
+                    .stroke(
+                        configuration.isPressed
+                            ? AppColors.primary.opacity(colorScheme == .dark ? 0.6 : 0.4)
+                            : AppColors.primary.opacity(colorScheme == .dark ? 0.35 : 0.2),
+                        lineWidth: 1
+                    )
             )
             .cornerRadius(AppColors.radius)
+            .shadow(
+                color: AppColors.primary.opacity(colorScheme == .light ? 0.06 : 0.14),
+                radius: colorScheme == .light ? 2 : 3,
+                x: 0,
+                y: 1
+            )
             .opacity(isEnabled ? 1.0 : 0.5)
             .animation(.easeInOut(duration: 0.2), value: configuration.isPressed)
     }
@@ -106,7 +136,7 @@ public struct OutlineButtonStyle: ButtonStyle {
     @ViewBuilder
     private func backgroundView(isPressed: Bool) -> some View {
         if isPressed {
-            AppColors.accent.opacity(0.6)
+            AppColors.primary.opacity(0.08)
         } else {
             AppColors.background.opacity(0.8)
         }
@@ -271,13 +301,18 @@ public struct CompactPrimaryButtonStyle: ButtonStyle {
 /// Compact secondary button for space-constrained UIs
 public struct CompactSecondaryButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.colorScheme) private var colorScheme
 
     public init() {}
 
     public func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 14, weight: .medium))
-            .foregroundColor(AppColors.secondaryForeground)
+            .foregroundColor(
+                configuration.isPressed
+                    ? AppColors.primary.opacity(0.9)
+                    : AppColors.secondaryForeground
+            )
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, Theme.Spacing.sm)
             .background(
@@ -287,9 +322,20 @@ public struct CompactSecondaryButtonStyle: ButtonStyle {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: AppColors.radiusSm)
-                    .stroke(AppColors.border.opacity(0.5), lineWidth: 1)
+                    .stroke(
+                        configuration.isPressed
+                            ? AppColors.primary.opacity(colorScheme == .dark ? 0.5 : 0.3)
+                            : AppColors.primary.opacity(colorScheme == .dark ? 0.3 : 0.15),
+                        lineWidth: 1
+                    )
             )
             .cornerRadius(AppColors.radiusSm)
+            .shadow(
+                color: AppColors.primary.opacity(colorScheme == .light ? 0.04 : 0.1),
+                radius: colorScheme == .light ? 1 : 2,
+                x: 0,
+                y: 0.5
+            )
             .opacity(isEnabled ? 1.0 : 0.5)
             .animation(.easeInOut(duration: 0.2), value: configuration.isPressed)
     }
@@ -300,6 +346,7 @@ public struct CompactSecondaryButtonStyle: ButtonStyle {
 /// Icon-only button style for toolbar and utility actions
 public struct IconButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.colorScheme) private var colorScheme
     private let size: CGFloat
 
     public init(size: CGFloat = 32) {
@@ -310,13 +357,30 @@ public struct IconButtonStyle: ButtonStyle {
         configuration.label
             .font(.system(size: size * 0.5))
             .foregroundColor(
-                configuration.isPressed ? AppColors.accentForeground : AppColors.foreground
+                configuration.isPressed
+                    ? AppColors.primary.opacity(0.8)
+                    : AppColors.primary
             )
             .frame(width: size, height: size)
             .background(
-                configuration.isPressed ? AppColors.accent.opacity(0.4) : Color.clear
+                configuration.isPressed
+                    ? AppColors.primary.opacity(0.12)
+                    : AppColors.primary.opacity(0.05)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: AppColors.radiusSm)
+                    .stroke(
+                        AppColors.primary.opacity(colorScheme == .dark ? 0.25 : 0.12),
+                        lineWidth: 1
+                    )
             )
             .cornerRadius(AppColors.radiusSm)
+            .shadow(
+                color: AppColors.primary.opacity(colorScheme == .light ? 0.1 : 0.18),
+                radius: colorScheme == .light ? 2 : 3,
+                x: 0,
+                y: 1
+            )
             .opacity(isEnabled ? 1.0 : 0.5)
             .animation(.easeInOut(duration: 0.2), value: configuration.isPressed)
     }
@@ -325,6 +389,7 @@ public struct IconButtonStyle: ButtonStyle {
 /// Compact icon button for toolbars and compact UIs
 public struct CompactIconButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.colorScheme) private var colorScheme
 
     public init() {}
 
@@ -332,13 +397,30 @@ public struct CompactIconButtonStyle: ButtonStyle {
         configuration.label
             .font(.system(size: 14))
             .foregroundColor(
-                configuration.isPressed ? AppColors.accentForeground : AppColors.mutedForeground
+                configuration.isPressed
+                    ? AppColors.primary.opacity(0.8)
+                    : AppColors.primary
             )
             .frame(width: 24, height: 24)
             .background(
-                configuration.isPressed ? AppColors.accent.opacity(0.4) : Color.clear
+                configuration.isPressed
+                    ? AppColors.primary.opacity(0.12)
+                    : AppColors.primary.opacity(0.05)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(
+                        AppColors.primary.opacity(colorScheme == .dark ? 0.25 : 0.12),
+                        lineWidth: 0.5
+                    )
             )
             .cornerRadius(4)
+            .shadow(
+                color: AppColors.primary.opacity(colorScheme == .light ? 0.08 : 0.15),
+                radius: colorScheme == .light ? 1 : 2,
+                x: 0,
+                y: 0.5
+            )
             .opacity(isEnabled ? 1.0 : 0.5)
             .animation(.easeInOut(duration: 0.2), value: configuration.isPressed)
     }
@@ -420,21 +502,41 @@ public struct FloatingActionButtonStyle: ButtonStyle {
 /// Toolbar button style for navigation bar buttons (minimal, iOS-native feel)
 public struct ToolbarButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.colorScheme) private var colorScheme
 
     public init() {}
 
     public func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 17, weight: .regular))
-            .foregroundColor(isEnabled ? AppColors.primary : AppColors.mutedForeground)
-            .padding(.horizontal, Theme.Spacing.sm)
-            .padding(.vertical, Theme.Spacing.xs)
+            .font(.system(size: 14, weight: .medium))
+            .foregroundColor(
+                configuration.isPressed
+                    ? AppColors.primary.opacity(0.8)
+                    : AppColors.primary
+            )
+            .frame(minHeight: 44)
+            .padding(.horizontal, Theme.Spacing.md)
             .background(
                 configuration.isPressed
-                    ? AppColors.primary.opacity(0.1)
-                    : Color.clear
+                    ? AppColors.primary.opacity(0.12)
+                    : AppColors.primary.opacity(0.05)
             )
-            .cornerRadius(8)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppColors.radiusSm)
+                    .stroke(
+                        configuration.isPressed
+                            ? AppColors.primary.opacity(colorScheme == .dark ? 0.45 : 0.25)
+                            : AppColors.primary.opacity(colorScheme == .dark ? 0.3 : 0.15),
+                        lineWidth: 1
+                    )
+            )
+            .cornerRadius(AppColors.radiusSm)
+            .shadow(
+                color: AppColors.primary.opacity(colorScheme == .light ? 0.08 : 0.15),
+                radius: colorScheme == .light ? 2 : 3,
+                x: 0,
+                y: 1
+            )
             .opacity(isEnabled ? 1.0 : 0.5)
             .animation(.easeInOut(duration: 0.15), value: configuration.isPressed)
     }
@@ -491,21 +593,41 @@ public struct CompactSuccessButtonStyle: ButtonStyle {
 /// Utility button for secondary actions like language picker
 public struct UtilityButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.colorScheme) private var colorScheme
 
     public init() {}
 
     public func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 14, weight: .medium))
-            .foregroundColor(AppColors.mutedForeground)
+            .foregroundColor(
+                configuration.isPressed
+                    ? AppColors.primary.opacity(0.8)
+                    : AppColors.primary
+            )
             .padding(.horizontal, Theme.Spacing.lg)
             .padding(.vertical, Theme.Spacing.cardSpacing)
-            .background(AppColors.muted)
+            .background(
+                configuration.isPressed
+                    ? AppColors.primary.opacity(0.08)
+                    : AppColors.primary.opacity(0.04)
+            )
             .overlay(
                 RoundedRectangle(cornerRadius: AppColors.radiusSm)
-                    .stroke(AppColors.border, lineWidth: 1)
+                    .stroke(
+                        configuration.isPressed
+                            ? AppColors.primary.opacity(colorScheme == .dark ? 0.5 : 0.3)
+                            : AppColors.primary.opacity(colorScheme == .dark ? 0.3 : 0.15),
+                        lineWidth: 1
+                    )
             )
             .cornerRadius(AppColors.radiusSm)
+            .shadow(
+                color: AppColors.primary.opacity(colorScheme == .light ? 0.12 : 0.2),
+                radius: colorScheme == .light ? 3 : 4,
+                x: 0,
+                y: 1
+            )
             .opacity(isEnabled ? 1.0 : 0.5)
             .animation(.easeInOut(duration: 0.2), value: configuration.isPressed)
     }
