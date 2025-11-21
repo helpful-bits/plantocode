@@ -31,6 +31,7 @@ public class JobsDataService: ObservableObject {
     private var workflowJobsCache: [String: BackgroundJob] = [:]
     private var relayJobEventObserver: NSObjectProtocol?
     private var viewedImplementationPlanId: String? = nil
+    private var cacheValidationTimer: Timer?
 
     private var deviceKey: String {
         MultiConnectionManager.shared.activeDeviceId?.uuidString ?? "no_device"
@@ -84,6 +85,8 @@ public class JobsDataService: ObservableObject {
         activeWorkflowJobsBySession.removeAll()
         sessionActiveWorkflowJobs = 0
         workflowJobsCache.removeAll()
+        cacheValidationTimer?.invalidate()
+        cacheValidationTimer = nil
 
         // Safely manage event subscriptions - remove before re-adding in init if needed
         if let obs = relayJobEventObserver {
@@ -226,6 +229,9 @@ public class JobsDataService: ObservableObject {
 
         // Update workflow job count for new session
         recomputeSessionWorkflowCount(for: sessionId)
+
+        // Start periodic cache validation timer
+        startCacheValidationTimer()
 
         // No polling; rely on relay events while connected and reconnection snapshot orchestrated by DataServicesManager.
 
@@ -814,6 +820,19 @@ public class JobsDataService: ObservableObject {
     private func bumpWorkflowCount(sessionId: String, delta: Int) {
         let current = activeWorkflowJobsBySession[sessionId] ?? 0
         let next = max(0, current + delta)
+
+        // Defensive: sanity check for suspiciously high counts
+        if next > 10 {
+            logger.error("Workflow counter suspiciously high: \(next) for session \(sessionId) - triggering cache validation")
+            scheduleCoalescedListJobsForActiveSession()
+            return
+        }
+
+        // Defensive: warn about negative transitions
+        if next == 0 && current > 1 && delta < 0 {
+            logger.warning("Workflow counter dropped from \(current) to 0 - possible missed events")
+        }
+
         activeWorkflowJobsBySession[sessionId] = next
         if self.activeSessionId == sessionId {
             self.sessionActiveWorkflowJobs = next
@@ -843,6 +862,42 @@ public class JobsDataService: ObservableObject {
         if let activeSessionId = activeSessionId {
             sessionActiveWorkflowJobs = countsBySession[activeSessionId] ?? 0
         }
+    }
+
+    private func startCacheValidationTimer() {
+        // Invalidate existing timer
+        cacheValidationTimer?.invalidate()
+
+        // Validate cache every 15 seconds to catch desync issues
+        cacheValidationTimer = Timer.scheduledTimer(withTimeInterval: 15.0, repeats: true) { [weak self] _ in
+            self?.validateWorkflowCache()
+        }
+    }
+
+    private func validateWorkflowCache() {
+        guard let sessionId = activeSessionId, let projectDirectory = activeProjectDirectory else { return }
+
+        logger.debug("Validating workflow cache for session \(sessionId)")
+
+        // Fetch latest jobs and recompute from authoritative source
+        listJobs(request: JobListRequest(
+            projectDirectory: projectDirectory,
+            sessionId: sessionId,
+            pageSize: 100,
+            sortBy: .createdAt,
+            sortOrder: .desc
+        ))
+        .sink(
+            receiveCompletion: { [weak self] completion in
+                if case .failure(let error) = completion {
+                    self?.logger.error("Cache validation failed: \(error.localizedDescription)")
+                }
+            },
+            receiveValue: { [weak self] response in
+                self?.logger.debug("Cache validation complete - recomputed workflow counts")
+            }
+        )
+        .store(in: &cancellables)
     }
 
     private func job(byId jobId: String) -> BackgroundJob? {
@@ -1050,7 +1105,17 @@ public class JobsDataService: ObservableObject {
             let jobId = payload["jobId"] as? String ?? payload["id"] as? String
             guard let jobId = jobId else { return }
 
-            guard let job = workflowJobsCache[jobId] else { return }
+            guard let job = workflowJobsCache[jobId] else {
+                logger.warning("Workflow job \(jobId) not in cache during status change - attempting hydration")
+
+                // Lazy cache population: fetch missing job and retry
+                hydrateJob(jobId: jobId, force: true, onReady: { [weak self] in
+                    guard let self = self else { return }
+                    // Retry processing the status change with hydrated job
+                    self.updateWorkflowJobCounts(from: event)
+                })
+                return
+            }
 
             if let statusString = payload["status"] as? String,
                let newStatus = JobStatus(rawValue: statusString) {
@@ -1067,7 +1132,10 @@ public class JobsDataService: ObservableObject {
             let jobId = payload["jobId"] as? String ?? payload["id"] as? String
             guard let jobId = jobId else { return }
 
-            guard let job = workflowJobsCache[jobId] else { return }
+            guard let job = workflowJobsCache[jobId] else {
+                logger.debug("Workflow job \(jobId) not in cache during deletion - already removed or never tracked")
+                return
+            }
 
             if isActiveStatus(job.jobStatus) {
                 bumpWorkflowCount(sessionId: job.sessionId, delta: -1)

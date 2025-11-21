@@ -17,6 +17,7 @@ public struct CardContainerStyle: ViewModifier {
     let state: CardState
     let cornerRadius: CGFloat
     let addShadow: Bool
+    @Environment(\.colorScheme) private var colorScheme
 
     public init(state: CardState, cornerRadius: CGFloat = Theme.Radii.base, addShadow: Bool = true) {
         self.state = state
@@ -33,7 +34,12 @@ public struct CardContainerStyle: ViewModifier {
                     .stroke(borderColor, lineWidth: borderWidth)
             )
             .if(addShadow) { view in
-                view.shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
+                view.shadow(
+                    color: colorScheme == .light ? shadowColor : Color.black.opacity(0.05),
+                    radius: 2,
+                    x: 0,
+                    y: 1
+                )
             }
     }
 
@@ -57,11 +63,11 @@ public struct CardContainerStyle: ViewModifier {
     private var borderColor: Color {
         switch state {
         case .normal:
-            return Color.border
+            return Color.primary.opacity(0.15)
         case .selected:
             return Color.primary
         case .currentContext:
-            return Color.border
+            return Color.primary.opacity(0.25)
         case .success:
             return Color.successBorder
         case .destructive:
@@ -77,6 +83,21 @@ public struct CardContainerStyle: ViewModifier {
             return 1
         case .selected, .success, .destructive, .warning:
             return 2
+        }
+    }
+
+    private var shadowColor: Color {
+        switch state {
+        case .normal, .currentContext:
+            return Color.primary.opacity(0.08)
+        case .selected:
+            return Color.primary.opacity(0.15)
+        case .success:
+            return Color.successBorder.opacity(0.15)
+        case .destructive:
+            return Color.destructiveBorder.opacity(0.15)
+        case .warning:
+            return Color.warningBorder.opacity(0.15)
         }
     }
 }

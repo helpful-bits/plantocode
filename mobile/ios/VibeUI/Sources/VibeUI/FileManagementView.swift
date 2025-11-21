@@ -151,11 +151,10 @@ public struct FileManagementView: View {
             // Search input
             HStack {
                 Image(systemName: "magnifyingglass")
-                    .foregroundColor(.mutedForeground)
+                    .foregroundColor(Color.primary.opacity(0.6))
                     .frame(width: 20)
 
                 DismissableTextField("Filter files...", text: $localSearchTerm)
-                    .frame(height: 22)
                     .onChange(of: localSearchTerm) { newValue in
                         searchDebounceTimer?.invalidate()
                         searchDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
@@ -173,8 +172,13 @@ public struct FileManagementView: View {
                     .buttonStyle(CompactIconButtonStyle())
                 }
             }
-            .padding(Theme.Spacing.cardPadding)
+            .frame(height: 44)
+            .padding(.horizontal, Theme.Spacing.cardPadding)
             .background(Color.inputBackground)
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color.primary.opacity(0.15), lineWidth: 1)
+            )
             .cornerRadius(10)
 
             // Sort controls inline
@@ -191,14 +195,18 @@ public struct FileManagementView: View {
             } label: {
                 HStack(spacing: 4) {
                     Text(filesService.currentSortBy.capitalized)
-                        .font(.system(size: 13))
+                        .font(.system(size: 15, weight: .medium))
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 9))
+                        .font(.system(size: 10))
                 }
-                .foregroundColor(Color.foreground)
+                .foregroundColor(Color.primary)
+                .frame(height: 44)
                 .padding(.horizontal, Theme.Spacing.sm)
-                .padding(.vertical, Theme.Spacing.itemSpacing)
-                .background(Color.card)
+                .background(Color.primary.opacity(0.05))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.primary.opacity(0.15), lineWidth: 1)
+                )
                 .cornerRadius(8)
             }
 
@@ -208,7 +216,7 @@ public struct FileManagementView: View {
                 Image(systemName: filesService.currentSortOrder == "asc" ? "arrow.up" : "arrow.down")
                     .font(.system(size: 13))
             }
-            .buttonStyle(IconButtonStyle())
+            .buttonStyle(IconButtonStyle(size: 44))
         }
     }
 
@@ -1055,8 +1063,8 @@ private struct FilterModeToggle: View {
                     .font(.footnote)
                     .fontWeight(currentMode == "all" ? .semibold : .regular)
                     .foregroundColor(currentMode == "all" ? Color.primary : Color.mutedForeground)
+                    .frame(height: 44)
                     .padding(.horizontal, Theme.Spacing.md)
-                    .padding(.vertical, 7)
                     .background(
                         currentMode == "all" ?
                         Color.primary.opacity(0.1) :
@@ -1067,8 +1075,8 @@ private struct FilterModeToggle: View {
 
             // Divider
             Rectangle()
-                .fill(Color.border.opacity(0.4))
-                .frame(width: 1, height: 24)
+                .fill(Color.primary.opacity(0.15))
+                .frame(width: 1, height: 28)
 
             // Selected button
             Button(action: {
@@ -1078,8 +1086,8 @@ private struct FilterModeToggle: View {
                     .font(.footnote)
                     .fontWeight(currentMode == "selected" ? .semibold : .regular)
                     .foregroundColor(currentMode == "selected" ? Color.primary : Color.mutedForeground)
+                    .frame(height: 44)
                     .padding(.horizontal, Theme.Spacing.md)
-                    .padding(.vertical, 7)
                     .background(
                         currentMode == "selected" ?
                         Color.primary.opacity(0.1) :
@@ -1091,7 +1099,7 @@ private struct FilterModeToggle: View {
         .background(Color.surfacePrimary)
         .overlay(
             RoundedRectangle(cornerRadius: Theme.Radii.base)
-                .stroke(Color.border.opacity(0.5), lineWidth: 1)
+                .stroke(Color.primary.opacity(0.15), lineWidth: 1)
         )
         .cornerRadius(Theme.Radii.base)
     }

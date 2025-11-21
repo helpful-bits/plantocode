@@ -80,6 +80,10 @@ pub async fn dispatch(
             "job" => handlers::jobs::dispatch(app_handle.clone(), request.clone()).await,
 
             // Handlers returning RpcResult<Value> - use central response building
+            "system" => {
+                let result = handlers::system::dispatch(app_handle.clone(), request.clone()).await;
+                into_response(request.correlation_id.clone(), result)
+            }
             "config" => {
                 let result = handlers::config::dispatch(app_handle.clone(), request.clone()).await;
                 into_response(request.correlation_id.clone(), result)

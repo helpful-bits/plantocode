@@ -12,7 +12,7 @@ public enum ConnectionStrategy {
 }
 
 /// Connection state for tracking connection lifecycle
-public enum ConnectionState: Equatable {
+public enum ConnectionState: Equatable, CustomStringConvertible {
     case disconnected
     case connecting
     case handshaking
@@ -21,6 +21,19 @@ public enum ConnectionState: Equatable {
     case reconnecting
     case closing
     case failed(Error)
+
+    public var description: String {
+        switch self {
+        case .disconnected: return "disconnected"
+        case .connecting: return "connecting"
+        case .handshaking: return "handshaking"
+        case .authenticating: return "authenticating"
+        case .connected: return "connected"
+        case .reconnecting: return "reconnecting"
+        case .closing: return "closing"
+        case .failed(let error): return "failed(\(error.localizedDescription))"
+        }
+    }
 
     public static func == (lhs: ConnectionState, rhs: ConnectionState) -> Bool {
         switch (lhs, rhs) {
@@ -507,5 +520,15 @@ public extension ConnectionState {
     /// Whether connection is usable or actively being established
     var isConnectedOrConnecting: Bool {
         return isConnected || isConnectingOrHandshaking
+    }
+
+    /// Whether the connection is in a transient state (temporary/transitional)
+    var isTransient: Bool {
+        switch self {
+        case .connecting, .handshaking, .reconnecting, .authenticating:
+            return true
+        default:
+            return false
+        }
     }
 }

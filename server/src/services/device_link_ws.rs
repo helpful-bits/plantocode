@@ -270,10 +270,9 @@ impl Actor for DeviceLinkWs {
             "WebSocket connection stopped for user"
         );
 
-        // Invalidate relay session if present
-        if let (Some(session_id), Some(relay_store)) = (&self.session_id, &self.relay_store) {
-            relay_store.invalidate_session(session_id);
-        }
+        // STEP 1: Preserve relay session across disconnects
+        // Session will be cleaned up by TTL expiration if not resumed
+        // relay_store.invalidate_session() is NO LONGER called here
 
         // Clear binary routes for this device
         if let (Some(user_id), Some(device_id), Some(connection_manager)) =
@@ -815,7 +814,17 @@ impl Handler<HandleRegisterMessage> for DeviceLinkWs {
                 );
                 true
             } else {
-                // Resume failed, create new session
+                // Resume failed - send explicit error before creating new session
+                warn!(
+                    connection_id = %self.connection_id,
+                    user_id = %user_id,
+                    device_id = %device_id,
+                    log_stage = "register:resume_failed",
+                    "Session resume failed, sending error and creating new session"
+                );
+                self.send_error("invalid_resume", "Session resume failed, please re-register", ctx);
+
+                // Create new session for backward compatibility
                 if let Some(relay_store) = &self.relay_store {
                     let (new_session_id, new_resume_token, expires_at) =
                         relay_store.create_session(&user_id, &device_id);

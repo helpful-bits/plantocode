@@ -165,7 +165,8 @@ public struct FolderPickerView: View {
                     Button(action: selectCurrentFolder) {
                         HStack {
                             Image(systemName: "checkmark.circle.fill")
-                            Text("Select This Folder")
+                            Text("Select Folder")
+                                .lineLimit(1)
                         }
                         .frame(maxWidth: .infinity)
                     }
