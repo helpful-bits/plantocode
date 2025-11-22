@@ -6,9 +6,9 @@ import Network
 import UIKit
 #endif
 
-/// Connection health status
 public enum ConnectionHealth {
     case healthy
+    case stable
     case unstable
     case dead
 }
@@ -103,20 +103,15 @@ public final class MultiConnectionManager: ObservableObject {
                 self.lastPath = path
 
                 if path.status == .satisfied {
-                    // Network is available - disconnect and reconnect all active clients
+                    self.connectionHealth = .stable
                     for (deviceId, client) in self.storage {
-                        // Non-user-initiated disconnect (network change)
-                        client.disconnect()
-
-                        // Trigger immediate reconnect
-                        Task { @MainActor in
-                            _ = await self.addConnection(for: deviceId)
+                        if client.isConnected {
+                            continue
                         }
+                        _ = await self.addConnection(for: deviceId)
                     }
                 } else {
-                    // Network is unavailable - set health to unstable
                     self.connectionHealth = .unstable
-                    // Don't spam reconnects until network is satisfied
                 }
             }
         }
@@ -652,6 +647,9 @@ public final class MultiConnectionManager: ObservableObject {
         }
 
         for deviceId in candidates {
+            if reconnectStates[deviceId]?.isAggressiveActive == true {
+                continue
+            }
             startAggressiveSequence(for: deviceId, reason: reason)
         }
     }

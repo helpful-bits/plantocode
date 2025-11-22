@@ -17,6 +17,10 @@ public class ServerRelayClient: NSObject, ObservableObject {
         return connectionState == .connecting
     }
 
+    public var hasSessionCredentials: Bool {
+        return sessionId != nil
+    }
+
     private func publishOnMain(_ block: @escaping () -> Void) {
         if Thread.isMainThread {
             block()
@@ -714,7 +718,6 @@ public class ServerRelayClient: NSObject, ObservableObject {
     }
 
     public func sendMessage(type: String, payload: [String: Any]?) async throws {
-        // Build envelope manually to avoid Encodable conformance issues
         var envelope: [String: Any] = ["type": type]
         if let payload = payload {
             envelope["payload"] = payload
@@ -724,12 +727,10 @@ public class ServerRelayClient: NSObject, ObservableObject {
         let messageData = jsonString.data(using: .utf8)!
         let isHeartbeat = (type == "heartbeat")
 
-        // Check connection state and queue if needed
         switch connectionState {
-        case .connected:
-            // Connected: send immediately
+        case .connected where hasSessionCredentials:
             guard let webSocketTask = webSocketTask else {
-                logger.error("❌ sendMessage FAILED: webSocketTask is nil (type=\(type))")
+                logger.error("sendMessage FAILED: webSocketTask is nil (type=\(type))")
                 throw ServerRelayError.notConnected
             }
 
@@ -741,12 +742,10 @@ public class ServerRelayClient: NSObject, ObservableObject {
             }
 
         case .connecting, .handshaking, .authenticating, .reconnecting:
-            // Connecting/reconnecting: queue the message
             let queuedMessage = QueuedMessage(data: messageData, isHeartbeat: isHeartbeat)
             pendingMessageQueue.append(queuedMessage)
 
-        case .disconnected, .closing, .failed:
-            // Disconnected/failed: queue the message for when we reconnect
+        case .disconnected, .closing, .failed, .connected:
             let queuedMessage = QueuedMessage(data: messageData, isHeartbeat: isHeartbeat)
             pendingMessageQueue.append(queuedMessage)
         }
@@ -787,12 +786,18 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
     /// Send control message to bind this mobile device to a desktop producer for binary terminal output
     public func sendBinaryBind(producerDeviceId: String, sessionId: String, includeSnapshot: Bool = true) async throws {
-        // Track current binding locally for frame annotation
+        if case .connected = connectionState, hasSessionCredentials {
+        } else {
+            do {
+                try await waitForConnection(timeout: 5.0)
+            } catch {
+                logger.error("sendBinaryBind: Connection timeout, cannot bind")
+                return
+            }
+        }
+
         self.currentBinaryBind = (sessionId, producerDeviceId)
 
-        // Relay server needs producerDeviceId for routing to the correct desktop
-        // Desktop needs sessionId to know which terminal session to stream
-        // includeSnapshot tells desktop whether to send buffer snapshot
         let payload: [String: Any] = [
             "producerDeviceId": producerDeviceId,
             "sessionId": sessionId,
@@ -1056,7 +1061,6 @@ public class ServerRelayClient: NSObject, ObservableObject {
     private func handleSessionMessage(_ json: [String: Any]) {
         logger.info("Received session details from server")
 
-        // Update session credentials if provided
         if let sessionId = json["sessionId"] as? String {
             self.sessionId = sessionId
         }
@@ -1064,7 +1068,6 @@ public class ServerRelayClient: NSObject, ObservableObject {
         if let resumeToken = json["resumeToken"] as? String {
             self.resumeToken = resumeToken
 
-            // Persist to keychain
             if let sessionId = self.sessionId {
                 let expiresAt = json["expiresAt"] as? String
                 let resumeMeta = RelaySessionMeta(
@@ -1077,20 +1080,6 @@ public class ServerRelayClient: NSObject, ObservableObject {
                     for: KeychainManager.KeychainItem.relayResumeToken(deviceId: deviceId)
                 )
             }
-        }
-
-        // If we have sessionId and not yet connected, mark as connected
-        if let sessionId = self.sessionId, !isConnected {
-            let handshake = ConnectionHandshake(
-                sessionId: sessionId,
-                clientId: deviceId,
-                transport: "websocket"
-            )
-            publishOnMain {
-                self.connectionState = .connected(handshake)
-                self.isConnected = true
-            }
-            startHeartbeat()
         }
     }
 

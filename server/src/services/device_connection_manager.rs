@@ -502,6 +502,8 @@ impl DeviceConnectionManager {
         Ok(())
     }
 
+    /// Set binary route for terminal I/O forwarding
+    /// Repeated calls replace existing routes (last bind wins) - essential for LTE reconnect
     pub fn set_binary_route(&self, user_id: &Uuid, producer: &str, consumer: &str) {
         let p = producer.to_lowercase();
         let c = consumer.to_lowercase();
