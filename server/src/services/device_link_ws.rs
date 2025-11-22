@@ -1898,6 +1898,7 @@ impl Handler<HandleTerminalBinaryBind> for DeviceLinkWs {
             }
         };
 
+        // Normalize device ID - critical for map lookup consistency
         let producer_device_id = producer_device_id_original.to_lowercase();
 
         // Extract sessionId parameter (required - tells desktop which session to stream)
@@ -1932,7 +1933,7 @@ impl Handler<HandleTerminalBinaryBind> for DeviceLinkWs {
                 return;
             }
 
-            // Set the binary route
+            // Set the binary route (repeated binds replace previous route - LTE reconnect support)
             if let Some(consumer_device_id) = &self.device_id {
                 let consumer_device_id_normalized = consumer_device_id.to_lowercase();
 

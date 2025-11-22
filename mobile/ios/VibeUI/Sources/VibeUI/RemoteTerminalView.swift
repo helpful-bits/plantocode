@@ -17,15 +17,15 @@ public struct RemoteTerminalView: View {
     @State private var composeAutoStartRecording = false
     @StateObject private var settingsService = SettingsDataService()
     @StateObject private var terminalController = SwiftTermController()
+    @StateObject private var pathObserver = NetworkPathObserver.shared
 
     @State private var shouldShowKeyboard = false
     @State private var isKeyboardVisible: Bool = false
     @State private var outputCancellable: AnyCancellable?
     @State private var hasInitialResize = false
-    @State private var pendingTerminalInput = "" // Track input that hasn't been sent yet
-    @State private var isTerminalReady = false // Track if terminal is ready for data
-
-    private let outputBufferLimit = 1000
+    @State private var isTerminalReady = false
+    @State private var sessionIdForReadiness: String?
+    @State private var readinessCancellable: AnyCancellable?
 
     @State private var copyButtons: [CopyButton] = []
     @State private var planContentForJob: String = ""
@@ -91,6 +91,32 @@ public struct RemoteTerminalView: View {
             text: taskDescriptionContent,
             appendCarriageReturn: true
         )
+    }
+
+    private func reattachToExistingSessionIfNeeded() {
+        guard let terminalSession = terminalSession, isSessionActive else { return }
+
+        outputCancellable?.cancel()
+        outputCancellable = nil
+
+        let capturedJobId = jobId
+        let terminalService = container.terminalService
+
+        outputCancellable = terminalService
+            .getHydratedRawOutputStream(for: capturedJobId)
+            .receive(on: DispatchQueue.main)
+            .sink { data in
+                terminalController.feedBytes(data: data)
+                DispatchQueue.main.async {
+                }
+            }
+
+        Task {
+            do {
+                try await terminalService.attachLiveBinary(for: capturedJobId, includeSnapshot: true)
+            } catch {
+            }
+        }
     }
 
     public var body: some View {
@@ -256,38 +282,40 @@ public struct RemoteTerminalView: View {
             }
         }
         .onAppear {
-            // Keyboard will be shown after terminal session is ready (not immediately)
-            // This prevents timing race conditions with terminal initialization
-
-            // Ensure relay connection is ready before starting terminal
-            Task {
-                let connectionManager = MultiConnectionManager.shared
-
-                // Restore connections if needed
-                if !connectionManager.isActiveDeviceConnected {
-                    do {
-                        try await connectionManager.restoreConnections()
-                    } catch {
-                        // Failed to restore connections
-                    }
-
-                    // Wait up to 10 seconds for connection
-                    var attempts = 0
-                    while !connectionManager.isActiveDeviceConnected && attempts < 40 {
-                        try? await Task.sleep(nanoseconds: 250_000_000) // 0.25s
-                        attempts += 1
-                    }
-
-                    if !connectionManager.isActiveDeviceConnected {
-                        await MainActor.run {
-                            errorMessage = "Cannot start terminal: No active device connection. Please ensure desktop is online."
-                            isLoading = false
-                        }
-                        return
+            readinessCancellable = container.terminalService.$readinessBySession
+                .receive(on: DispatchQueue.main)
+                .sink { readinessMap in
+                    if let sid = self.sessionIdForReadiness {
+                        self.isTerminalReady = readinessMap[sid] ?? false
                     }
                 }
 
-                startTerminalSession()
+            Task {
+                let connectionManager = MultiConnectionManager.shared
+                if !connectionManager.isActiveDeviceConnected {
+                    await MainActor.run {
+                        connectionManager.triggerAggressiveReconnect(reason: .appForeground)
+                    }
+                }
+                await MainActor.run {
+                    startTerminalSession()
+                }
+            }
+        }
+        .onDisappear {
+            cleanupSession()
+        }
+        .onChange(of: terminalSession?.id) { newSessionId in
+            sessionIdForReadiness = newSessionId
+            if let sid = newSessionId {
+                isTerminalReady = container.terminalService.isSessionReady(sid)
+            } else {
+                isTerminalReady = false
+            }
+        }
+        .onChange(of: isTerminalReady) { ready in
+            if ready {
+                shouldShowKeyboard = true
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
@@ -295,6 +323,11 @@ public struct RemoteTerminalView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
             isKeyboardVisible = false
+        }
+        .onReceive(pathObserver.$currentPath.compactMap { $0 }) { path in
+            if path.status == .satisfied {
+                reattachToExistingSessionIfNeeded()
+            }
         }
     }
 
@@ -388,6 +421,8 @@ public struct RemoteTerminalView: View {
                 )
                 await MainActor.run {
                     terminalSession = session
+                    sessionIdForReadiness = session.id
+                    isTerminalReady = container.terminalService.isSessionReady(session.id)
                     isSessionActive = true
                     isLoading = false
 
@@ -444,21 +479,6 @@ public struct RemoteTerminalView: View {
                                 } catch {
                                     // Failed manual resize
                                 }
-                            }
-                        }
-                    }
-
-                    // Mark terminal as ready for rendering
-                    isTerminalReady = true
-
-                    // Show keyboard ONLY after terminal is fully ready AND layout is stable
-                    // Longer delay to prevent rapid keyboard show/hide cycles during initial layout
-                    Task {
-                        try? await Task.sleep(nanoseconds: 500_000_000) // 500ms
-                        await MainActor.run {
-                            // Only show keyboard if view is still visible and ready
-                            if isTerminalReady {
-                                shouldShowKeyboard = true
                             }
                         }
                     }
@@ -563,9 +583,10 @@ public struct RemoteTerminalView: View {
     }
 
     private func cleanupSession() {
-        // Do not detach binary binding here; binding is session-scoped and finalized on real teardown.
         outputCancellable?.cancel()
         outputCancellable = nil
+        readinessCancellable?.cancel()
+        readinessCancellable = nil
     }
 }
 
