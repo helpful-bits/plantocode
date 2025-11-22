@@ -623,6 +623,11 @@ public class DataServicesManager: ObservableObject {
     }
 
     private func handleConnectionStateChange(connected: Bool) {
+        // CRITICAL: Update connection status immediately so UI reflects actual state
+        Task { @MainActor [weak self] in
+            self?.updateConnectionStatus(connected: connected)
+        }
+
         if connected {
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
