@@ -3,7 +3,7 @@ use sqlx::{Row, SqlitePool};
 use std::env;
 use std::sync::Arc;
 
-const MAX_OUTPUT_LOG_SIZE: usize = 1_048_576; // 1 MiB
+const TERMINAL_DB_LOG_MAX_BYTES: usize = 8 * 1_048_576;
 
 pub struct TerminalRepository {
     pool: Arc<SqlitePool>,
@@ -20,17 +20,14 @@ impl TerminalRepository {
         started_at: i64,
         working_directory: Option<String>,
     ) -> AppResult<()> {
-        // Check if a background job exists with this id
-        // If it exists, use it as job_id (for plan-associated terminals)
-        // If not, job_id will be NULL (for standalone terminals)
-        let job_exists: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM background_jobs WHERE id = ?1)"
+        let job_id_value: Option<String> = sqlx::query_scalar(
+            "SELECT id FROM background_jobs WHERE id = ?1 LIMIT 1"
         )
         .bind(session_id)
-        .fetch_one(&*self.pool)
+        .fetch_optional(&*self.pool)
         .await?;
 
-        let job_id = if job_exists {
+        let job_id = if job_id_value.is_some() {
             Some(session_id)
         } else {
             None
@@ -77,7 +74,7 @@ impl TerminalRepository {
             "#,
         )
         .bind(text.as_ref())
-        .bind(MAX_OUTPUT_LOG_SIZE as i64)
+        .bind(TERMINAL_DB_LOG_MAX_BYTES as i64)
         .bind(ts_secs)
         .bind(session_id)
         .execute(&*self.pool)

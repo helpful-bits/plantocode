@@ -508,7 +508,6 @@ impl DeviceLinkClient {
 
                         // Fall back to RelayEnvelope parsing (handles both "type" and "message_type")
                         if let Ok(env) = serde_json::from_str::<RelayEnvelope>(&text) {
-                            // Route based on event type
                             if env.kind == "terminal.binary.bind" {
                                 let session_id_opt = env.payload.get("sessionId").and_then(|v| v.as_str());
                                 let include_snapshot = env.payload.get("includeSnapshot").and_then(|v| v.as_bool()).unwrap_or(true);
@@ -516,13 +515,11 @@ impl DeviceLinkClient {
                                 if let Some(session_id_str) = session_id_opt {
                                     let session_id = session_id_str.to_string();
 
-                                    // 1) Mark bound immediately so further chunks are sent directly, not added to pending
                                     if let Ok(mut bound) = this.bound_session_id.lock() {
                                         *bound = Some(session_id.clone());
                                         info!("Bound terminal output to session: {}", session_id);
                                     }
 
-                                    // 2) Optionally send snapshot from TerminalManager
                                     if include_snapshot {
                                         if let Some(terminal_mgr) = app_handle.try_state::<std::sync::Arc<crate::services::TerminalManager>>() {
                                             if let Some(snapshot) = terminal_mgr.get_buffer_snapshot(&session_id, None) {
@@ -987,11 +984,29 @@ impl DeviceLinkClient {
     pub fn send_terminal_output_binary(&self, session_id: &str, data: &[u8]) -> Result<(), AppError> {
         // Early return if not connected
         if !self.is_connected() {
+            // Not connected and session not bound - buffer pending data with cap
+            if !self.is_session_bound(session_id) {
+                let mut pending = self.pending_binary_by_session.lock().unwrap();
+                let buf = pending.entry(session_id.to_string()).or_default();
+                buf.extend_from_slice(data);
+                if buf.len() > MAX_PENDING_BYTES {
+                    let overflow = buf.len() - MAX_PENDING_BYTES;
+                    buf.drain(0..overflow);
+                }
+            }
             return Ok(());
         }
 
         // Early return if session is not bound
         if !self.is_session_bound(session_id) {
+            // Connected but session not bound - buffer pending data with cap
+            let mut pending = self.pending_binary_by_session.lock().unwrap();
+            let buf = pending.entry(session_id.to_string()).or_default();
+            buf.extend_from_slice(data);
+            if buf.len() > MAX_PENDING_BYTES {
+                let overflow = buf.len() - MAX_PENDING_BYTES;
+                buf.drain(0..overflow);
+            }
             return Ok(());
         }
 

@@ -39,14 +39,15 @@ export const GenericTerminalModal: React.FC<GenericTerminalModalProps> = ({
     getSessionRef.current = getSession;
   });
 
-  // Auto-start fresh session when reopening finished
-  // Only triggers when modal opens or sessionId changes, not on status updates
   useEffect(() => {
     if (!open || !sessionId) return;
 
     const currentSession = getSessionRef.current(sessionId);
     if (!currentSession || currentSession.status !== 'running') {
-      startSessionRef.current(sessionId, {});
+      startSessionRef.current(sessionId, {
+        jobId: sessionId,
+        origin: 'adhoc'
+      });
     }
   }, [open, sessionId]);
 

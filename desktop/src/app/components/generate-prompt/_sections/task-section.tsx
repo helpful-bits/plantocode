@@ -88,13 +88,13 @@ const TaskSection = React.memo(function TaskSection({
         }));
         return;
       } else {
-        // Start new with timestamp suffix
         const newId = `${baseId}:${Date.now()}`;
         const taskTitleOrSnippet = currentTaskDescription.split('\n')[0].slice(0, 50) || 'Task';
         await startSession(newId, {
           workingDirectory: projectDirectory,
           displayName: `Task — ${taskTitleOrSnippet}`,
-          origin: 'task_description',
+          origin: 'task',
+          jobId: newId,
           initialInput: currentTaskDescription,
         });
         window.dispatchEvent(new CustomEvent('open-terminal-session', {
@@ -104,12 +104,12 @@ const TaskSection = React.memo(function TaskSection({
       }
     }
 
-    // No existing session or it's completed
     const taskTitleOrSnippet = currentTaskDescription.split('\n')[0].slice(0, 50) || 'Task';
     await startSession(baseId, {
       workingDirectory: projectDirectory,
       displayName: `Task — ${taskTitleOrSnippet}`,
-      origin: 'task_description',
+      origin: 'task',
+      jobId: baseId,
       initialInput: currentTaskDescription,
     });
     window.dispatchEvent(new CustomEvent('open-terminal-session', {

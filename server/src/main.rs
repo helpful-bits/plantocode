@@ -34,8 +34,8 @@ use crate::db::{
 };
 use crate::handlers::{auth0_handlers, config_handlers, region_handlers};
 use crate::middleware::{
-    auth_middleware, create_ip_rate_limiter, create_rate_limit_storage, create_strict_rate_limiter,
-    create_user_rate_limiter, start_memory_store_cleanup_task,
+    api_key_middleware, auth_middleware, create_ip_rate_limiter, create_rate_limit_storage,
+    create_strict_rate_limiter, create_user_rate_limiter, start_memory_store_cleanup_task,
 };
 use crate::models::runtime_config::AppState;
 use crate::routes::{configure_public_auth_routes, configure_routes, configure_webhook_routes};
@@ -581,6 +581,12 @@ async fn main() -> std::io::Result<()> {
         let strict_rate_limiter =
             create_strict_rate_limiter(strict_rate_limit_config, rate_limit_storage.clone());
 
+        // Create dedicated rate limiter for API key routes
+        let mut api_key_rate_limit_config = app_settings.rate_limit.clone();
+        api_key_rate_limit_config.redis_key_prefix = Some("api_key_api".to_string());
+        let api_key_rate_limiter =
+            create_strict_rate_limiter(api_key_rate_limit_config, rate_limit_storage.clone());
+
         // Configure payload limits (5MB = 5,242,880 bytes)
         // PayloadConfig: Controls raw payload size before extraction
         let payload_config = web::PayloadConfig::new(5_242_880);
@@ -714,6 +720,17 @@ async fn main() -> std::io::Result<()> {
                     .configure(|cfg| configure_routes(cfg, strict_rate_limiter.clone()))
             );
         }
+
+        // API Key authenticated routes (same API surface as /api but with API key auth)
+        app = app.service(
+            web::scope("/api-key")
+                .wrap(api_key_rate_limiter.clone())
+                .wrap(api_key_middleware(
+                    db_pools.user_pool.clone(),
+                    db_pools.system_pool.clone(),
+                ))
+                .configure(|cfg| configure_routes(cfg, api_key_rate_limiter.clone()))
+        );
 
         app
             // Public webhook routes with IP-based rate limiting (no authentication)

@@ -22,7 +22,7 @@ use std::{
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter, Manager};
 
-const MAX_BUFFER_SIZE: usize = 1_048_576;
+const TERMINAL_IN_MEMORY_BUFFER_BYTES: usize = 32 * 1_048_576;
 const FLUSH_INTERVAL_SECS: u64 = 10;
 const FLUSH_SCAN_TICK_MILLIS: u64 = 1000;
 
@@ -69,6 +69,22 @@ impl TerminalManager {
     ) -> AppResult<()> {
         log::info!("🚀 Starting terminal session: id={} dir={:?}", session_id, working_dir);
         let now = now_secs();
+
+        if let Some(existing_handle) = self.sessions.get(&session_id) {
+            let writer_exists = existing_handle.writer.lock().unwrap().is_some();
+            let resizer_exists = existing_handle.resizer.lock().unwrap().is_some();
+
+            if writer_exists || resizer_exists {
+                log::info!("✅ Session {} already has active PTY, attaching new subscriber", session_id);
+                if let Some(output_channel) = output {
+                    let snapshot = existing_handle.buffer.lock().unwrap().clone();
+                    let _ = output_channel.send(snapshot);
+                    existing_handle.subscribers.lock().unwrap().push(output_channel);
+                }
+                return Ok(());
+            }
+        }
+
         self.repo
             .ensure_session(&session_id, now, working_dir.clone())
             .await?;
@@ -270,12 +286,10 @@ impl TerminalManager {
                             let mut b = handle.buffer.lock().unwrap();
                             b.extend_from_slice(&chunk);
 
-                            // Cap buffer size
-                            if b.len() > MAX_BUFFER_SIZE {
-                                let overflow = b.len() - MAX_BUFFER_SIZE;
+                            if b.len() > TERMINAL_IN_MEMORY_BUFFER_BYTES {
+                                let overflow = b.len() - TERMINAL_IN_MEMORY_BUFFER_BYTES;
                                 b.drain(0..overflow);
 
-                                // Update last_flushed_len to account for drained bytes
                                 let mut last_flushed = handle.last_flushed_len.lock().unwrap();
                                 *last_flushed = last_flushed.saturating_sub(overflow);
                             }
@@ -885,6 +899,9 @@ impl TerminalManager {
         }
     }
 
+    /// Returns a "last N bytes" snapshot of terminal output for the given session.
+    /// Applies max_bytes after combining in-memory and/or persisted output;
+    /// this is intended for hydrations and historical views, not full history.
     pub async fn get_log_snapshot_entries(&self, session_id: &str, max_bytes: Option<usize>) -> serde_json::Value {
         // First check: if session is in memory (active/restored), use fresh buffer data
         if let Some(bytes) = self.get_buffer_snapshot(session_id, max_bytes) {
@@ -899,17 +916,16 @@ impl TerminalManager {
             });
         }
 
-        // Fallback: session not in memory, try DB for historical/inactive sessions
         if let Ok(Some((text, ts_opt))) = self.repo.get_output_log(session_id).await {
+            let full_bytes = text.into_bytes();
             let bytes = if let Some(max) = max_bytes {
-                let text_bytes = text.into_bytes();
-                if text_bytes.len() > max {
-                    text_bytes[text_bytes.len() - max..].to_vec()
+                if full_bytes.len() > max {
+                    full_bytes[full_bytes.len() - max..].to_vec()
                 } else {
-                    text_bytes
+                    full_bytes
                 }
             } else {
-                text.into_bytes()
+                full_bytes
             };
 
             let data_b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
