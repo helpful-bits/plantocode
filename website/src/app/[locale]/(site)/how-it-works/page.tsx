@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
+import { WorkflowPanels } from '@/components/landing/WorkflowPanels';
 import { Link } from '@/i18n/navigation';
 import { locales } from '@/i18n/config';
 import {
@@ -210,6 +211,13 @@ export default async function HowItWorksPage({ params }: { params: Promise<{ loc
                   {t['howItWorks.hero.subtitle'] ?? ''}
                 </p>
               </div>
+
+              {/* Workflow Panels Overview */}
+              <div className="mb-20">
+                <h2 className="text-2xl sm:text-3xl font-bold mb-12 text-center">{t['howItWorks.workflowOverview.title'] ?? 'The PlanToCode Workflow'}</h2>
+                <WorkflowPanels />
+              </div>
+
               {/* Workflow Steps */}
               <div className="mb-20">
                 <h2 className="text-2xl sm:text-3xl font-bold mb-12 text-center">{t['howItWorks.workflow.title'] ?? ''}</h2>

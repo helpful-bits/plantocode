@@ -9,6 +9,9 @@ pub struct AuthenticatedUser {
     pub email: String,
     pub role: String,
     pub device_id: Option<String>,
+    pub authenticated_via_api_key: bool,
+    pub api_key_id: Option<uuid::Uuid>,
+    pub api_key_label: Option<String>,
 }
 
 impl FromRequest for AuthenticatedUser {

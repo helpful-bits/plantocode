@@ -16,6 +16,7 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::config::settings::RateLimitConfig;
+use crate::middleware::api_key_auth::ApiKeyIdentity;
 use crate::models::AuthenticatedUser;
 
 /// Rate limiting strategy
@@ -771,7 +772,13 @@ impl RateLimitMiddleware {
     }
 
     /// Get client ID from request headers
-    fn get_client_id(&self, _req: &ServiceRequest) -> Option<String> {
+    /// Prefers API key identity if present, otherwise returns None
+    fn get_client_id(&self, req: &ServiceRequest) -> Option<String> {
+        // Check for API key identity first
+        if let Some(api_key_identity) = req.extensions().get::<ApiKeyIdentity>() {
+            return Some(format!("api_key:{}", api_key_identity.api_key_id));
+        }
+
         None
     }
 

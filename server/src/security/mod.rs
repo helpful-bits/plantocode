@@ -1,3 +1,4 @@
+pub mod api_key_hashing;
 pub mod encryption;
 pub mod key_management;
 pub mod rls_session_manager;

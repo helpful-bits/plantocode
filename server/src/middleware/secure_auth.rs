@@ -547,6 +547,9 @@ pub async fn validator(
                 email: user_email,
                 role: user_role,
                 device_id: claims.device_id.clone(),
+                authenticated_via_api_key: false,
+                api_key_id: None,
+                api_key_label: None,
             };
 
             req.extensions_mut().insert(authenticated_user);

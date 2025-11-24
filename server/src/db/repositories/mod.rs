@@ -1,3 +1,4 @@
+pub mod api_key_repository;
 pub mod api_usage_repository;
 pub mod audit_log_repository;
 pub mod consent_repository;
@@ -15,6 +16,7 @@ pub mod user_credit_repository;
 pub mod user_repository;
 pub mod webhook_idempotency_repository;
 
+pub use api_key_repository::{ApiKey, ApiKeyRepository};
 pub use api_usage_repository::ApiUsageRepository;
 pub use audit_log_repository::{
     AuditLog, AuditLogFilter, AuditLogRepository, CreateAuditLogRequest,

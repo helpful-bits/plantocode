@@ -4,6 +4,7 @@ use std::sync::OnceLock;
 
 pub struct KeyConfig {
     pub jwt_secret: String,
+    pub api_key_hash_secret: String,
     // Add other security keys as needed
 }
 
@@ -20,7 +21,20 @@ fn initialize_key_config() -> Result<KeyConfig, AppError> {
         ));
     }
 
-    Ok(KeyConfig { jwt_secret })
+    let api_key_hash_secret = env::var("API_KEY_HASH_SECRET").map_err(|_| {
+        AppError::Configuration("API_KEY_HASH_SECRET environment variable is not set".to_string())
+    })?;
+
+    if api_key_hash_secret.len() < 32 {
+        return Err(AppError::Configuration(
+            "API_KEY_HASH_SECRET must be at least 32 characters long".to_string(),
+        ));
+    }
+
+    Ok(KeyConfig {
+        jwt_secret,
+        api_key_hash_secret,
+    })
 }
 
 pub fn init_global_key_config() -> Result<&'static KeyConfig, AppError> {

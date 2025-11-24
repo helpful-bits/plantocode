@@ -209,16 +209,19 @@ mod tests {
         let user = AuthenticatedUser {
             user_id: Uuid::new_v4(),
             email: "test@example.com".to_string(),
-            role: Some("user".to_string()),
+            role: "user".to_string(),
             device_id: None,
+            authenticated_via_api_key: false,
+            api_key_id: None,
+            api_key_label: None,
         };
 
         // Verify that non-admin role would be rejected
-        assert_eq!(user.role.as_deref(), Some("user"));
-        assert_ne!(user.role.as_deref(), Some("admin"));
+        assert_eq!(user.role.as_str(), "user");
+        assert_ne!(user.role.as_str(), "admin");
 
         // Test the authorization check logic
-        let is_admin = user.role.as_deref() == Some("admin");
+        let is_admin = user.role.as_str() == "admin";
         assert!(!is_admin, "Non-admin user should not have admin privileges");
     }
 
@@ -228,27 +231,33 @@ mod tests {
         let user = AuthenticatedUser {
             user_id: Uuid::new_v4(),
             email: "admin@example.com".to_string(),
-            role: Some("admin".to_string()),
+            role: "admin".to_string(),
             device_id: None,
+            authenticated_via_api_key: false,
+            api_key_id: None,
+            api_key_label: None,
         };
 
         // Test the authorization check logic
-        let is_admin = user.role.as_deref() == Some("admin");
+        let is_admin = user.role.as_str() == "admin";
         assert!(is_admin, "Admin user should have admin privileges");
     }
 
     #[test]
     fn missing_role_forbidden() {
-        // Create an authenticated user with no role
+        // Create an authenticated user with empty role
         let user = AuthenticatedUser {
             user_id: Uuid::new_v4(),
             email: "test@example.com".to_string(),
-            role: None,
+            role: "".to_string(),
             device_id: None,
+            authenticated_via_api_key: false,
+            api_key_id: None,
+            api_key_label: None,
         };
 
         // Test the authorization check logic
-        let is_admin = user.role.as_deref() == Some("admin");
-        assert!(!is_admin, "User with no role should not have admin privileges");
+        let is_admin = user.role.as_str() == "admin";
+        assert!(!is_admin, "User with empty role should not have admin privileges");
     }
 }

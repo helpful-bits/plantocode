@@ -32,6 +32,7 @@ public struct SessionWorkspaceView: View {
     @State private var showSubtleReconnectingBanner: Bool = false
     @State private var showFullConnectionBanner: Bool = false
     @State private var showReconnectedPill: Bool = false
+    @State private var previousConnectionState: ConnectionState?
 
     // External update gate for cursor stability (matching desktop behavior)
     @State private var pendingRemoteTaskDescription: String?
@@ -354,9 +355,15 @@ public struct SessionWorkspaceView: View {
                     return
                 }
 
+                // Only react to actual state transitions
+                let isTransition = !isSameConnectionState(previousConnectionState, connectionState)
+                defer { previousConnectionState = connectionState }
+
+                guard isTransition else { return }
+
                 switch connectionState {
                 case .connected:
-                    // Connection restored - show success pill briefly
+                    // Connection restored - show success pill briefly (only on transition TO connected)
                     showFullConnectionBanner = false
                     showSubtleReconnectingBanner = false
                     showReconnectedPill = true
@@ -420,6 +427,25 @@ public struct SessionWorkspaceView: View {
     }
 
     // MARK: - Helper Methods
+
+    private func isSameConnectionState(_ state1: ConnectionState?, _ state2: ConnectionState) -> Bool {
+        guard let state1 = state1 else { return false }
+
+        switch (state1, state2) {
+        case (.connected, .connected),
+             (.disconnected, .disconnected),
+             (.connecting, .connecting),
+             (.reconnecting, .reconnecting),
+             (.handshaking, .handshaking),
+             (.authenticating, .authenticating),
+             (.closing, .closing):
+            return true
+        case (.failed, .failed):
+            return true
+        default:
+            return false
+        }
+    }
 
     private func checkConnectionAndLoad() {
         if let deviceId = multiConnectionManager.activeDeviceId {

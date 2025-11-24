@@ -1877,7 +1877,6 @@ impl Handler<HandleTerminalBinaryBind> for DeviceLinkWs {
             }
         };
 
-        // Extract payload - try nested structure first, fall back to root (flexible like HandleRelayMessageInternal)
         let payload = msg.payload.get("payload")
             .and_then(|v| v.as_object())
             .or_else(|| msg.payload.as_object());
@@ -1898,10 +1897,8 @@ impl Handler<HandleTerminalBinaryBind> for DeviceLinkWs {
             }
         };
 
-        // Normalize device ID - critical for map lookup consistency
         let producer_device_id = producer_device_id_original.to_lowercase();
 
-        // Extract sessionId parameter (required - tells desktop which session to stream)
         let session_id = match payload.get("sessionId").and_then(|v| v.as_str()) {
             Some(id) => id,
             None => {
@@ -1910,19 +1907,16 @@ impl Handler<HandleTerminalBinaryBind> for DeviceLinkWs {
             }
         };
 
-        // Extract includeSnapshot parameter (defaults to true for backward compatibility)
         let include_snapshot = payload.get("includeSnapshot")
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
 
-        // Verify producer belongs to same user and is connected
         if let Some(connection_manager) = &self.connection_manager {
             if !connection_manager.is_device_connected(&user_id, &producer_device_id) {
                 self.send_error("producer_not_connected", "Producer device not connected", ctx);
                 return;
             }
 
-            // Verify producer belongs to same user by checking connection
             if let Some(producer_conn) = connection_manager.get_connection(&user_id, &producer_device_id) {
                 if producer_conn.user_id != user_id {
                     self.send_error("unauthorized", "Producer device belongs to different user", ctx);
@@ -1933,26 +1927,23 @@ impl Handler<HandleTerminalBinaryBind> for DeviceLinkWs {
                 return;
             }
 
-            // Set the binary route (repeated binds replace previous route - LTE reconnect support)
             if let Some(consumer_device_id) = &self.device_id {
                 let consumer_device_id_normalized = consumer_device_id.to_lowercase();
 
-                connection_manager.set_binary_route(&user_id, &producer_device_id, consumer_device_id);
+                connection_manager.set_binary_route(&user_id, &producer_device_id, &consumer_device_id_normalized);
                 info!(
                     user_id = %user_id,
                     producer = %producer_device_id,
-                    consumer = %consumer_device_id,
+                    consumer = %consumer_device_id_normalized,
                     session_id = %session_id,
                     "Binary route established: {} -> {} (session: {})",
-                    producer_device_id, consumer_device_id, session_id
+                    producer_device_id, consumer_device_id_normalized, session_id
                 );
 
-                // Forward the bind request to the producer (desktop) with sessionId and includeSnapshot
-                // Desktop expects RelayEnvelope format with nested payload
                 let bind_message = serde_json::json!({
                     "type": "terminal.binary.bind",
                     "payload": {
-                        "consumerDeviceId": consumer_device_id,
+                        "consumerDeviceId": consumer_device_id_normalized,
                         "sessionId": session_id,
                         "includeSnapshot": include_snapshot
                     }
@@ -1982,11 +1973,10 @@ impl Handler<HandleTerminalBinaryUnbind> for DeviceLinkWs {
         if let (Some(user_id), Some(device_id), Some(connection_manager)) =
             (self.user_id, &self.device_id, &self.connection_manager) {
 
-            // Before clearing routes, notify all affected producers (desktops) to unbind
-            // This ensures desktop clears its bound_session_id state
-            let affected_routes = connection_manager.get_binary_routes_for_device(&user_id, device_id);
+            let device_id_normalized = device_id.to_lowercase();
+
+            let affected_routes = connection_manager.get_binary_routes_for_device(&user_id, &device_id_normalized);
             for (producer, consumer) in affected_routes {
-                // Send unbind notification to the producer
                 let unbind_msg = serde_json::json!({
                     "type": "terminal.binary.unbind",
                     "payload": {}
@@ -2010,11 +2000,10 @@ impl Handler<HandleTerminalBinaryUnbind> for DeviceLinkWs {
                 }
             }
 
-            // Now clear the routes
-            connection_manager.clear_binary_routes_for_device(&user_id, device_id);
+            connection_manager.clear_binary_routes_for_device(&user_id, &device_id_normalized);
             info!(
                 user_id = %user_id,
-                device_id = %device_id,
+                device_id = %device_id_normalized,
                 "Binary routes cleared for device"
             );
         }

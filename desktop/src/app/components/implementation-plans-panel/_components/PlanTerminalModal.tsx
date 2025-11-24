@@ -86,17 +86,24 @@ export const PlanTerminalModal: React.FC<PlanTerminalModalProps> = ({
 
     const currentSession = getSessionRef.current(planJobId);
     if (!currentSession || currentSession.status !== 'running') {
-      startSessionRef.current(planJobId, { workingDirectory: projectDirectory });
+      startSessionRef.current(planJobId, {
+        workingDirectory: projectDirectory,
+        jobId: planJobId,
+        origin: "plan"
+      });
     }
   }, [open, planJobId, projectDirectory]);
 
   const handleModalOpen = useCallback(async () => {
     if (!open) return;
 
-    // Start session if needed
     const session = getSession(planJobId);
     if (!session) {
-      await startSession(planJobId, { workingDirectory: projectDirectory });
+      await startSession(planJobId, {
+        workingDirectory: projectDirectory,
+        jobId: planJobId,
+        origin: "plan"
+      });
     }
 
     // Load plan content

@@ -87,8 +87,7 @@ async fn handle_terminal_start(app_handle: &AppHandle, request: RpcRequest) -> R
         .and_then(|v| v.as_str())
         .map(String::from);
 
-    // Generate a session ID if not provided in jobId
-    let session_id = job_id.unwrap_or_else(|| format!("session-{}", uuid::Uuid::new_v4()));
+    let session_id = job_id.unwrap_or_else(|| format!("terminal-session-{}", uuid::Uuid::new_v4()));
 
     // Query working directory from key_value_store table
     // Desktop app is the authority - mobile must NOT pass working directory
