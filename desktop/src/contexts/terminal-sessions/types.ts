@@ -25,7 +25,8 @@ export interface TerminalSession {
   lastOutput?: string;
   lastActivityAt?: number;
   displayName?: string;
-  origin?: 'plan' | 'task_description';
+  origin?: 'plan' | 'task' | 'adhoc' | string;
+  jobId?: string;
   isMinimized?: boolean;
 }
 
@@ -36,7 +37,8 @@ export interface TerminalSessionsContextShape {
     cols?: number;
     rows?: number;
     displayName?: string;
-    origin?: 'plan' | 'task_description';
+    origin?: 'plan' | 'task' | 'adhoc' | string;
+    jobId?: string;
     initialInput?: string;
   }) => Promise<void>;
   attachSession: (sessionId: string) => Promise<void>;

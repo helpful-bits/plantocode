@@ -313,11 +313,12 @@ export const TerminalSessionsProvider: React.FC<React.PropsWithChildren> = ({ ch
 
       if (storeState.sessions.has(id) && storeState.channelsRef.has(id)) return;
 
-      // Initialize session with displayName, origin, and lastActivityAt
+      const effectiveJobId = opts?.jobId ?? id;
       store.updateSession(id, {
         status: "starting",
         displayName: opts?.displayName,
         origin: opts?.origin,
+        jobId: effectiveJobId,
         lastActivityAt: Date.now()
       });
 

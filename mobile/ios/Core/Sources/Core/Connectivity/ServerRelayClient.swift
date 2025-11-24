@@ -37,7 +37,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
     private let deviceId: String
 
     // Resume token state management
-    private var sessionId: String?
+    @Published private var sessionId: String?
     public private(set) var resumeToken: String?
 
     // RPC and event handling
@@ -156,7 +156,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
     // MARK: - Connection Management
 
-    /// Wait for connection to be established, with timeout
+    /// Wait for connection with credentials to be established, with timeout
     public func waitForConnection(timeout: TimeInterval) async throws {
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             var cancellable: AnyCancellable?
@@ -167,15 +167,26 @@ public class ServerRelayClient: NSObject, ObservableObject {
                 timeoutTimer?.invalidate()
             }
 
+            // Check if already ready (optimization)
+            if case .connected = connectionState, hasSessionCredentials {
+                cleanup()
+                continuation.resume(returning: ())
+                return
+            }
+
             // Start timeout timer
             timeoutTimer = Timer.scheduledTimer(withTimeInterval: timeout, repeats: false) { _ in
                 cleanup()
                 continuation.resume(throwing: ConnectionError.timeout)
             }
 
-            // Observe connectionState
-            cancellable = $connectionState
-                .sink { [weak self] state in
+            // Observe BOTH connectionState AND sessionId (for credentials)
+            // CombineLatest ensures we react to changes in either publisher
+            let statePublisher = $connectionState
+            let credentialsPublisher = $sessionId.map { _ in () }
+
+            cancellable = Publishers.CombineLatest(statePublisher, credentialsPublisher)
+                .sink { [weak self] state, _ in
                     guard let self = self else {
                         cleanup()
                         continuation.resume(throwing: ConnectionError.terminal(ServerRelayError.invalidState("Client deallocated")))
@@ -183,14 +194,15 @@ public class ServerRelayClient: NSObject, ObservableObject {
                     }
 
                     switch state {
-                    case .connected:
+                    case .connected where self.hasSessionCredentials:
+                        // Connected AND has credentials - ready!
                         cleanup()
                         continuation.resume(returning: ())
                     case .failed(let error):
                         cleanup()
                         continuation.resume(throwing: ConnectionError.terminal(error))
-                    case .disconnected, .connecting, .handshaking, .authenticating, .reconnecting, .closing:
-                        // Still waiting
+                    case .connected, .disconnected, .connecting, .handshaking, .authenticating, .reconnecting, .closing:
+                        // Still waiting (either not connected OR connected but no credentials)
                         break
                     }
                 }

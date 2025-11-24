@@ -877,6 +877,19 @@ final class FirstResponderTerminalView: TerminalView {
     /// Explicitly allow first responder to present the iOS keyboard
     override var canBecomeFirstResponder: Bool { true }
 
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        // Increase scrollback after initialization
+        let terminal = getTerminal()
+        terminal.options.scrollback = 50_000
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        let terminal = getTerminal()
+        terminal.options.scrollback = 50_000
+    }
+
     // Keyboard management is handled by updateUIView watching shouldShowKeyboard binding
     // No special lifecycle handling needed here
 }
