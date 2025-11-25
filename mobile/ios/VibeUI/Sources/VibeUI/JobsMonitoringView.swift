@@ -110,6 +110,7 @@ public struct JobsMonitoringView: View {
                                     onApplyFiles: applyFilesFromJob,
                                     onContinueWorkflow: continueWorkflow,
                                     currentSessionId: container.sessionService.currentSession?.id,
+                                    currentIncludedFiles: container.sessionService.currentSession?.includedFiles ?? [],
                                     hasContinuationJob: checkHasContinuationJob(for: job),
                                     isWorkflowActive: checkIsWorkflowActive(for: job)
                                 )
@@ -403,23 +404,39 @@ public struct JobsMonitoringView: View {
             return
         }
 
-        let fileCount = filePaths.count
+        // Calculate diff - only add files not already in selection
+        let currentIncludedFiles = Set(container.sessionService.currentSession?.includedFiles ?? [])
+        let newFiles = filePaths.filter { !currentIncludedFiles.contains($0) }
+
+        // If all files already selected, show message and return
+        guard !newFiles.isEmpty else {
+            await MainActor.run {
+                successMessage = "All files already in selection"
+                showingSuccess = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    showingSuccess = false
+                }
+            }
+            return
+        }
+
+        let fileCount = newFiles.count
 
         Task {
             do {
                 try await container.sessionService.updateSessionFiles(
                     sessionId: sessionId,
-                    addIncluded: filePaths,
+                    addIncluded: newFiles,
                     removeIncluded: nil,
                     addExcluded: nil,
-                    removeExcluded: filePaths
+                    removeExcluded: newFiles
                 )
 
                 await MainActor.run {
                     let generator = UINotificationFeedbackGenerator()
                     generator.notificationOccurred(.success)
 
-                    successMessage = "Added \(fileCount) \(fileCount == 1 ? "file" : "files") to selection"
+                    successMessage = "Added \(fileCount) new \(fileCount == 1 ? "file" : "files") to selection"
                     showingSuccess = true
 
                     DispatchQueue.main.asyncAfter(deadline: .now() + 3) {

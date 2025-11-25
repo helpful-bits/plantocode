@@ -1360,6 +1360,47 @@ public struct CommandRouter {
         return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
     }
 
+    public static func actionsCreateImplementationPlan(
+        sessionId: String,
+        taskDescription: String,
+        projectDirectory: String,
+        relevantFiles: [String]
+    ) -> AsyncThrowingStream<RpcResponse, Error> {
+        AsyncThrowingStream { continuation in
+            guard let (deviceId, relayClient) = getUsableRelay() else {
+                continuation.finish(throwing: ServerRelayError.notConnected)
+                return
+            }
+
+            let params: [String: AnyCodable] = [
+                "sessionId": AnyCodable(sessionId),
+                "taskDescription": AnyCodable(taskDescription),
+                "projectDirectory": AnyCodable(projectDirectory),
+                "relevantFiles": AnyCodable(relevantFiles)
+            ]
+
+            let request = RpcRequest(
+                method: "actions.createImplementationPlan",
+                params: params,
+                id: UUID().uuidString
+            )
+
+            Task {
+                do {
+                    for try await response in relayClient.invoke(
+                        targetDeviceId: deviceId.uuidString,
+                        request: request
+                    ) {
+                        continuation.yield(response)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
     /// Update implementation plan content
     public static func updateImplementationPlanContent(
         jobId: String,

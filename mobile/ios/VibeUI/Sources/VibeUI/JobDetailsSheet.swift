@@ -300,6 +300,12 @@ struct JobStatusHeader: View {
                 Text(job.formattedDate)
                     .font(.caption2)
                     .foregroundColor(Color.mutedForeground)
+
+                if job.taskType == "file_finder_workflow" {
+                    Text("File Finder Workflow")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundColor(Color.info)
+                }
             }
 
             Spacer()
@@ -479,16 +485,19 @@ struct ResponseTab: View {
     @EnvironmentObject private var container: AppContainer
 
     var body: some View {
+        let currentIncludedFiles = container.sessionService.currentSession?.includedFiles ?? []
+
         VStack(spacing: 16) {
             if let formattedView = ResponseFormatter.formattedView(
                 for: job,
-                onUseFiles: { files in
-                    // Handle Use Files action
+                currentIncludedFiles: currentIncludedFiles,
+                onUseFiles: { newFiles in
+                    // Handle Use Files action - newFiles is already the diff (only new files)
                     guard let sessionId = container.sessionService.currentSession?.id else { return }
                     Task {
                         for try await _ in CommandRouter.sessionUpdateFiles(
                             id: sessionId,
-                            addIncluded: files,
+                            addIncluded: newFiles,
                             removeIncluded: nil,
                             addExcluded: nil,
                             removeExcluded: nil

@@ -2,8 +2,9 @@ import type { Metadata } from 'next';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Header } from '@/components/landing/Header';
 import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
-import { WorkflowPanels } from '@/components/landing/WorkflowPanels';
 import { Link } from '@/i18n/navigation';
+import { cdnUrl } from '@/lib/cdn';
+import Image from 'next/image';
 import { locales } from '@/i18n/config';
 import {
   Code2,
@@ -21,7 +22,6 @@ import {
 } from 'lucide-react';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { Button } from '@/components/ui/button';
-import { cdnUrl } from '@/lib/cdn';
 import { loadMessagesFor, type Locale } from '@/lib/i18n';
 import { generatePageMetadata } from '@/content/metadata';
 
@@ -212,10 +212,32 @@ export default async function HowItWorksPage({ params }: { params: Promise<{ loc
                 </p>
               </div>
 
-              {/* Workflow Panels Overview */}
-              <div className="mb-20">
-                <h2 className="text-2xl sm:text-3xl font-bold mb-12 text-center">{t['howItWorks.workflowOverview.title'] ?? 'The PlanToCode Workflow'}</h2>
-                <WorkflowPanels />
+              {/* Hero Image */}
+              <div className="mb-20 -mx-4 sm:-mx-6">
+                <div className="relative w-full overflow-hidden rounded-2xl">
+                  {/* Desktop Image */}
+                  <div className="hidden lg:block">
+                    <Image
+                      src={cdnUrl('/images/hero-workflow-desktop.jpg')}
+                      alt="PlanToCode workflow visualization"
+                      width={1600}
+                      height={800}
+                      className="w-full h-auto"
+                      priority
+                    />
+                  </div>
+                  {/* Mobile Image */}
+                  <div className="lg:hidden">
+                    <Image
+                      src={cdnUrl('/images/hero-workflow-mobile.jpg')}
+                      alt="PlanToCode workflow visualization"
+                      width={800}
+                      height={1200}
+                      className="w-full h-auto"
+                      priority
+                    />
+                  </div>
+                </div>
               </div>
 
               {/* Workflow Steps */}

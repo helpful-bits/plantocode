@@ -11,71 +11,19 @@ import UIKit
 /// Pending updates are flushed when the keyboard dismisses.
 public struct SessionWorkspaceView: View {
     @EnvironmentObject private var container: AppContainer
+    @StateObject private var viewModel = SessionWorkspaceViewModel()
     @StateObject private var voiceDictationService = VoiceDictationService.shared
     @StateObject private var textEnhancementService = TextEnhancementService.shared
     @StateObject private var multiConnectionManager = MultiConnectionManager.shared
     @ObservedObject private var appState = AppState.shared
 
-    @State private var currentSession: Session?
-    @State private var taskText = ""
-    @State private var errorMessage: String?
-    @State private var showingSessionSelector = false
-    @State private var selectedTab = 0
-    @State private var showingDeviceSelection = false
-    @State private var isOfflineMode = false
-    @State private var activeSyncSessionId: String?
-    @State private var isReceivingRemoteUpdate = false
-    @State private var reconnectionSuccess: Bool?
-    @State private var reconnectionMessage: String?
-    @State private var isLoadingSession = false
-    @State private var showingPaywall = false
-    @State private var showSubtleReconnectingBanner: Bool = false
-    @State private var showFullConnectionBanner: Bool = false
-    @State private var showReconnectedPill: Bool = false
-    @State private var previousConnectionState: ConnectionState?
-
-    // External update gate for cursor stability (matching desktop behavior)
-    @State private var pendingRemoteTaskDescription: String?
-    @State private var lastSyncedSessionId: String?
-
     let autoPresentDeviceSelection: Bool
 
-    private var currentProjectDirectory: String {
-        container.currentProject?.directory ?? appState.selectedProjectDirectory ?? ""
-    }
-
-    private var hasAnyBannerVisible: Bool {
-        // Check if any banner should be shown
-        if reconnectionSuccess != nil {
-            return true
-        }
-        if isOfflineMode {
-            return true
-        }
-        // Only show full banner when connection is dead (disconnected or failed), not when reconnecting
-        if let activeDeviceId = multiConnectionManager.activeDeviceId,
-           let connectionState = multiConnectionManager.connectionStates[activeDeviceId] {
-            switch connectionState {
-            case .disconnected, .failed:
-                return true
-            default:
-                return false
-            }
-        }
-        return false
-    }
-
-    private var shouldShowConnectionOverlay: Bool {
-        hasAnyBannerVisible
-    }
 
     private var mainContentView: some View {
         VStack(spacing: 0) {
             // Inline connection status banner - keeps workspace visible
-            if multiConnectionManager.connectionHealth != .healthy
-                || multiConnectionManager.isActivelyReconnecting
-                || !container.connectionStatus.isConnected {
-
+            if viewModel.shouldShowInlineBanner {
                 HStack {
                     Image(systemName: "wifi.exclamationmark")
                         .foregroundColor(Color.appWarning)
@@ -91,35 +39,24 @@ public struct SessionWorkspaceView: View {
             // Workspace content with overlay-based connection banners
             ZStack(alignment: .top) {
                 taskTabsView
-                if shouldShowConnectionOverlay {
+                if viewModel.shouldShowConnectionOverlay {
                     connectionStatusOverlay
                 }
-                VStack {
-                    if showSubtleReconnectingBanner {
-                        ConnectionStatusPill(style: .reconnecting,
-                                            text: "Reconnecting to desktop...")
-                            .padding(.top, 8)
-                    } else if showReconnectedPill {
-                        ConnectionStatusPill(style: .success,
-                                            text: "Reconnected")
-                            .padding(.top, 8)
-                    }
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
         }
     }
 
     private var statusText: String {
-        let health = multiConnectionManager.connectionHealth
-        if multiConnectionManager.isActivelyReconnecting || health == .unstable {
+        switch viewModel.workspaceConnectivityState {
+        case .healthy:
+            return "Connected"
+        case .transientReconnecting:
             return "Reconnecting to desktop…"
-        }
-        if health == .dead || !container.connectionStatus.isConnected {
+        case .degradedDisconnected:
             return "Disconnected from desktop"
+        case .offlineModeCandidate:
+            return "Offline Mode"
         }
-        return "Connected"
     }
 
     private var taskTabsView: some View {
@@ -128,21 +65,21 @@ public struct SessionWorkspaceView: View {
 
     private var sessionContentView: some View {
         Group {
-            if let session = currentSession {
+            if let session = viewModel.currentSession {
                 tabsView(for: session)
             } else {
-                EmptySessionView(onSelectSession: { showingSessionSelector = true })
+                EmptySessionView(onSelectSession: { viewModel.showingSessionSelector = true })
             }
         }
     }
 
     private func tabsView(for session: Session) -> some View {
-        TabView(selection: $selectedTab) {
+        TabView(selection: $viewModel.selectedTab) {
             // Tab 1: Task Description (Updated with TaskInputView)
             TaskTab(
                 session: session,
-                taskText: $taskText,
-                onSessionChange: { showingSessionSelector = true }
+                taskText: $viewModel.taskText,
+                onSessionChange: { viewModel.showingSessionSelector = true }
             )
             .tabItem {
                 Label("Task", systemImage: "square.and.pencil")
@@ -152,37 +89,40 @@ public struct SessionWorkspaceView: View {
             // Tab 2: Files - No lazy loading to ensure onReceive handlers fire
             FilesTab(
                 session: session,
-                isOfflineMode: isOfflineMode,
+                isOfflineMode: viewModel.isOfflineMode,
                 jobsService: container.jobsService
             )
             .tabItem {
                 Label("Files", systemImage: "doc.text")
             }
             .tag(1)
+            .badge(viewModel.workflowJobCount)
 
             // Tab 4: Jobs - No lazy loading to ensure onReceive handlers fire
             JobsTab(
                 session: session,
-                isOfflineMode: isOfflineMode,
+                isOfflineMode: viewModel.isOfflineMode,
                 jobsService: container.jobsService
             )
             .tabItem {
                 Label("Jobs", systemImage: "chart.bar.doc.horizontal")
             }
             .tag(3)
+            .badge(viewModel.workflowJobCount)
 
             // Tab 3: Plans - No lazy loading to ensure onReceive handlers fire
             PlansTab(
                 session: session,
-                taskText: taskText,
-                onCreatePlan: createImplementationPlan,
-                isOfflineMode: isOfflineMode,
+                taskText: viewModel.taskText,
+                onCreatePlan: { viewModel.createImplementationPlan() },
+                isOfflineMode: viewModel.isOfflineMode,
                 jobsService: container.jobsService
             )
             .tabItem {
                 Label("Plans", systemImage: "list.bullet.rectangle")
             }
             .tag(2)
+            .badge(viewModel.implementationPlanCount)
 
             // Tab 5: Settings
             SettingsView()
@@ -204,15 +144,14 @@ public struct SessionWorkspaceView: View {
 
     @ViewBuilder
     private var successBannerView: some View {
-        if let success = reconnectionSuccess, success, let message = reconnectionMessage {
+        if let success = viewModel.reconnectionSuccess, success, let message = viewModel.reconnectionMessage {
             ReconnectionSuccessBanner(message: message)
                 .onAppear {
-                    // Auto-dismiss after 2 seconds
                     Task {
                         try? await Task.sleep(nanoseconds: 2_000_000_000)
                         await MainActor.run {
-                            reconnectionSuccess = nil
-                            reconnectionMessage = nil
+                            viewModel.reconnectionSuccess = nil
+                            viewModel.reconnectionMessage = nil
                         }
                     }
                 }
@@ -221,65 +160,23 @@ public struct SessionWorkspaceView: View {
 
     @ViewBuilder
     private var connectionBannerView: some View {
-        if isOfflineMode {
+        if viewModel.isOfflineMode {
             OfflineModeBanner(onGoOnline: {
-                isOfflineMode = false
-                showingDeviceSelection = true
+                viewModel.goOnline()
             })
-        } else if let activeDeviceId = multiConnectionManager.activeDeviceId,
-           let connectionState = multiConnectionManager.connectionStates[activeDeviceId] {
-            // Only show full banner when disconnected or failed, not when reconnecting
-            switch connectionState {
-            case .disconnected, .failed:
-                ConnectionStatusBanner(
-                    state: connectionState,
-                    failureMessage: reconnectionSuccess == false ? reconnectionMessage : nil,
-                    onReconnect: {
-                        Task {
-                            // Clear previous messages
-                            await MainActor.run {
-                                reconnectionSuccess = nil
-                                reconnectionMessage = nil
-                            }
-
-                            let result = await multiConnectionManager.addConnection(for: activeDeviceId)
-
-                            await MainActor.run {
-                                switch result {
-                                case .success:
-                                    reconnectionSuccess = true
-                                    reconnectionMessage = "Reconnected successfully"
-
-                                case .failure(let error):
-                                    reconnectionSuccess = false
-
-                                    // Generate diagnostic message based on error type
-                                    if let multiError = error as? MultiConnectionError {
-                                        switch multiError {
-                                        case .authenticationRequired:
-                                            reconnectionMessage = "Authentication required. Please sign in again."
-                                        case .invalidConfiguration:
-                                            reconnectionMessage = "Invalid server configuration. Check your settings."
-                                        case .connectionFailed(let reason):
-                                            reconnectionMessage = "Connection failed: \(reason). Ensure desktop app is running."
-                                        case .deviceNotFound:
-                                            reconnectionMessage = "Device not found. Try selecting a different device."
-                                        }
-                                    } else {
-                                        reconnectionMessage = "Connection failed: \(error.localizedDescription). Check network and desktop app."
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    onDismissFailure: {
-                        reconnectionSuccess = nil
-                        reconnectionMessage = nil
-                    }
-                )
-            default:
-                EmptyView()
-            }
+        } else if viewModel.showFullConnectionBanner && viewModel.workspaceConnectivityState == .degradedDisconnected,
+                  let activeDeviceId = multiConnectionManager.activeDeviceId,
+                  let connectionState = multiConnectionManager.connectionStates[activeDeviceId] {
+            ConnectionStatusBanner(
+                state: connectionState,
+                failureMessage: viewModel.reconnectionSuccess == false ? viewModel.reconnectionMessage : nil,
+                onReconnect: {
+                    viewModel.reconnect()
+                },
+                onDismissFailure: {
+                    viewModel.dismissFailure()
+                }
+            )
         }
     }
 
@@ -288,351 +185,71 @@ public struct SessionWorkspaceView: View {
     }
 
     public var body: some View {
-        configuredMainView
-    }
-
-    private var configuredMainView: some View {
         mainContentView
             .ignoresSafeArea(.keyboard, edges: .bottom)
             .modifier(SyncLifecycleModifier(
-                selectedTab: $selectedTab,
-                currentSessionId: currentSession?.id,
-                pendingRemoteTaskDescription: $pendingRemoteTaskDescription,
-                lastSyncedSessionId: $lastSyncedSessionId,
-                startSync: startSyncIfNeeded,
-                stopSync: stopCurrentSync
+                selectedTab: $viewModel.selectedTab,
+                currentSessionId: viewModel.currentSession?.id,
+                pendingRemoteTaskDescription: $viewModel.pendingRemoteTaskDescription,
+                lastSyncedSessionId: $viewModel.lastSyncedSessionId,
+                startSync: { viewModel.startSyncIfNeeded() },
+                stopSync: { viewModel.stopCurrentSync() }
             ))
             .modifier(SheetModifier(
-                showingSessionSelector: $showingSessionSelector,
-                showingDeviceSelection: $showingDeviceSelection,
-                currentProjectDirectory: currentProjectDirectory,
-                loadSession: loadSession
+                showingSessionSelector: $viewModel.showingSessionSelector,
+                showingDeviceSelection: $viewModel.showingDeviceSelection,
+                currentProjectDirectory: viewModel.currentProjectDirectory,
+                loadSession: { viewModel.loadSession($0) }
             ))
             .modifier(SessionUpdateModifier(
                 container: container,
                 appState: appState,
-                currentSession: $currentSession,
-                taskText: $taskText,
-                errorMessage: $errorMessage,
-                showingDeviceSelection: $showingDeviceSelection,
-                isOfflineMode: $isOfflineMode,
-                handleDeepLink: handleDeepLink
+                currentSession: $viewModel.currentSession,
+                taskText: $viewModel.taskText,
+                errorMessage: $viewModel.errorMessage,
+                showingDeviceSelection: $viewModel.showingDeviceSelection,
+                isOfflineMode: $viewModel.isOfflineMode,
+                handleDeepLink: { await viewModel.handleDeepLink($0) }
             ))
             .modifier(ConnectionModifier(
                 container: container,
                 multiConnectionManager: multiConnectionManager,
-                loadMostRecentSession: loadMostRecentSession,
-                checkConnectionAndLoad: checkConnectionAndLoad
+                loadMostRecentSession: { viewModel.loadMostRecentSession() },
+                checkConnectionAndLoad: { viewModel.checkConnectionAndLoad() }
             ))
             .modifier(TaskSyncModifier(
                 container: container,
-                currentSession: currentSession,
-                taskText: $taskText,
-                pendingRemoteTaskDescription: $pendingRemoteTaskDescription
+                currentSession: viewModel.currentSession,
+                taskText: $viewModel.taskText,
+                pendingRemoteTaskDescription: $viewModel.pendingRemoteTaskDescription
             ))
             .modifier(ProjectChangeModifier(
                 container: container,
-                currentSession: $currentSession,
-                loadMostRecentSession: loadMostRecentSession
+                currentSession: $viewModel.currentSession,
+                loadMostRecentSession: { viewModel.loadMostRecentSession() }
             ))
-            .onChange(of: selectedTab) { newValue in
-                let gate = container.subscriptionGate
-
-                if [1, 2, 3].contains(newValue),
-                   gate.shouldShowPaywallForFeatureAccess() {
-                    selectedTab = 0
-                    showingPaywall = true
-                }
+            .onChange(of: viewModel.selectedTab) { newValue in
+                viewModel.handleSelectedTabChange(newValue)
             }
-            .sheet(isPresented: $showingPaywall) {
+            .sheet(isPresented: $viewModel.showingPaywall) {
                 PaywallView()
                     .environmentObject(container)
             }
-            .onChange(of: multiConnectionManager.connectionStates) { newStates in
-                // Monitor connection health and show appropriate UI
-                guard let activeDeviceId = multiConnectionManager.activeDeviceId,
-                      let connectionState = newStates[activeDeviceId] else {
-                    return
-                }
-
-                // Only react to actual state transitions
-                let isTransition = !isSameConnectionState(previousConnectionState, connectionState)
-                defer { previousConnectionState = connectionState }
-
-                guard isTransition else { return }
-
-                switch connectionState {
-                case .connected:
-                    // Connection restored - show success pill briefly (only on transition TO connected)
-                    showFullConnectionBanner = false
-                    showSubtleReconnectingBanner = false
-                    showReconnectedPill = true
-                    Task {
-                        try? await Task.sleep(nanoseconds: 2_000_000_000)
-                        await MainActor.run {
-                            showReconnectedPill = false
-                        }
-                    }
-
-                case .reconnecting, .connecting, .handshaking:
-                    // Show subtle reconnecting pill after 2s delay to avoid flicker
-                    showFullConnectionBanner = false
-                    Task {
-                        try? await Task.sleep(nanoseconds: 2_000_000_000)
-                        await MainActor.run {
-                            // Only show if still in unstable state
-                            if let currentState = multiConnectionManager.connectionStates[activeDeviceId] {
-                                switch currentState {
-                                case .reconnecting, .connecting, .handshaking:
-                                    showSubtleReconnectingBanner = true
-                                default:
-                                    break
-                                }
-                            }
-                        }
-                    }
-                    // Escalate to full banner after 8s total
-                    Task {
-                        try? await Task.sleep(nanoseconds: 8_000_000_000)
-                        await MainActor.run {
-                            // Only escalate if still in unstable state
-                            if let currentState = multiConnectionManager.connectionStates[activeDeviceId] {
-                                switch currentState {
-                                case .reconnecting, .connecting, .handshaking:
-                                    showSubtleReconnectingBanner = false
-                                    showFullConnectionBanner = true
-                                default:
-                                    break
-                                }
-                            }
-                        }
-                    }
-
-                case .disconnected, .failed:
-                    // Connection is dead - show full banner immediately
-                    showSubtleReconnectingBanner = false
-                    showReconnectedPill = false
-                    showFullConnectionBanner = true
-
-                default:
-                    break
-                }
+            .onChange(of: viewModel.workspaceConnectivityState) { newState in
+                viewModel.handleWorkspaceConnectivityStateChange(newState)
             }
             .onAppear {
-                // Check subscription status on initial load
-                Task {
-                    await container.subscriptionManager.refreshStatus()
+                viewModel.configure(container: container)
+                viewModel.onAppear()
+                if autoPresentDeviceSelection {
+                    viewModel.checkConnectionAndLoad()
                 }
+            }
+            .onDisappear {
+                viewModel.onDisappear()
             }
     }
 
-    // MARK: - Helper Methods
-
-    private func isSameConnectionState(_ state1: ConnectionState?, _ state2: ConnectionState) -> Bool {
-        guard let state1 = state1 else { return false }
-
-        switch (state1, state2) {
-        case (.connected, .connected),
-             (.disconnected, .disconnected),
-             (.connecting, .connecting),
-             (.reconnecting, .reconnecting),
-             (.handshaking, .handshaking),
-             (.authenticating, .authenticating),
-             (.closing, .closing):
-            return true
-        case (.failed, .failed):
-            return true
-        default:
-            return false
-        }
-    }
-
-    private func checkConnectionAndLoad() {
-        if let deviceId = multiConnectionManager.activeDeviceId {
-            if let state = multiConnectionManager.connectionStates[deviceId], state.isConnected {
-                loadMostRecentSession()
-            } else {
-                Task {
-                    _ = await multiConnectionManager.addConnection(for: deviceId)
-                }
-            }
-        } else if autoPresentDeviceSelection {
-            showingDeviceSelection = true
-        }
-    }
-
-    private func loadMostRecentSession() {
-        // Prevent multiple simultaneous loads
-        guard !isLoadingSession else {
-            return
-        }
-
-        // Prevent loading if we already have a session
-        guard currentSession == nil else {
-            return
-        }
-
-        // Wait for initialization to complete
-        guard !container.isInitializing else {
-            return
-        }
-
-        Task {
-            await MainActor.run {
-                isLoadingSession = true
-            }
-
-            defer {
-                Task { @MainActor in
-                    isLoadingSession = false
-                }
-            }
-
-            do {
-                guard !currentProjectDirectory.isEmpty else {
-                    return
-                }
-
-                let sessions = try await container.sessionService.fetchSessions(projectDirectory: currentProjectDirectory)
-
-                if let mostRecent = sessions.sorted(by: { $0.updatedAt > $1.updatedAt }).first {
-                    await MainActor.run {
-                        loadSession(mostRecent)
-                    }
-                }
-            } catch {
-                await MainActor.run {
-                    errorMessage = "Failed to load sessions: \(error.localizedDescription)"
-                }
-            }
-        }
-    }
-
-    private func loadSession(_ session: Session) {
-        currentSession = session
-        taskText = session.taskDescription ?? ""
-        errorMessage = nil
-
-        let dir = session.projectDirectory
-        if container.currentProject?.directory != dir {
-            let name = URL(fileURLWithPath: dir).lastPathComponent
-            let hash = String(dir.hashValue)
-            container.setCurrentProject(ProjectInfo(name: name, directory: dir, hash: hash))
-        }
-
-        container.jobsService.setActiveSession(
-            sessionId: session.id,
-            projectDirectory: session.projectDirectory
-        )
-
-        Task {
-            do {
-                if let fullSession = try await container.sessionService.getSession(id: session.id) {
-                    await MainActor.run {
-                        currentSession = fullSession
-                        taskText = fullSession.taskDescription ?? ""
-
-                        container.sessionService.currentSession = fullSession
-
-                        container.jobsService.setActiveSession(
-                            sessionId: fullSession.id,
-                            projectDirectory: fullSession.projectDirectory
-                        )
-                    }
-                }
-            } catch {
-                await MainActor.run {
-                    container.sessionService.currentSession = session
-                }
-            }
-        }
-    }
-
-    private func handleDeepLink(_ route: AppState.DeepLinkRoute) async {
-        switch route {
-        case let .filesSelected(sessionId, _):
-            // Check if we need to adopt an externally loaded session
-            if currentSession?.id != sessionId {
-                // Give time for session service to publish
-                try? await Task.sleep(nanoseconds: 50_000_000)
-                self.currentSession = container.sessionService.currentSession
-            }
-
-            // Navigate to Files tab and set filter to Selected
-            self.selectedTab = 1
-            container.filesService.currentFilterMode = "selected"
-            appState.clearDeepLinkRoute()
-
-        case let .openPlan(sessionId, _, jobId):
-            // Check if we need to adopt an externally loaded session
-            if currentSession?.id != sessionId {
-                // Give time for session service to publish
-                try? await Task.sleep(nanoseconds: 50_000_000)
-                self.currentSession = container.sessionService.currentSession
-            }
-
-            // Navigate to Plans tab and set pending plan
-            self.selectedTab = 2
-            appState.setPendingPlanToOpen(jobId)
-            appState.clearDeepLinkRoute()
-        }
-    }
-
-    private func createImplementationPlan() {
-        guard let session = currentSession else { return }
-
-        // Check if in offline mode
-        if isOfflineMode {
-            errorMessage = "Cannot create plans in offline mode. Connect to a device to continue."
-            return
-        }
-
-        guard let deviceId = multiConnectionManager.activeDeviceId,
-              let relayClient = multiConnectionManager.relayConnection(for: deviceId) else {
-            errorMessage = "No active device connection"
-            return
-        }
-
-        let request = RpcRequest(
-            method: "actions.createImplementationPlan",
-            params: [
-                "sessionId": session.id,
-                "taskDescription": taskText,
-                "projectDirectory": session.projectDirectory,
-                "relevantFiles": session.includedFiles
-            ]
-        )
-
-        Task {
-            do {
-                for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
-                    if let error = response.error {
-                        await MainActor.run {
-                            errorMessage = "Failed to create plan: \(error.message)"
-                        }
-                        return
-                    }
-                    if response.isFinal {
-                        break
-                    }
-                }
-            } catch {
-                await MainActor.run {
-                    errorMessage = "Failed to create plan: \(error.localizedDescription)"
-                }
-            }
-        }
-    }
-
-    // MARK: - Sync Management
-
-    private func startSyncIfNeeded() {
-        return
-    }
-
-    private func stopCurrentSync() {
-        return
-    }
 }
 
 // MARK: - Task Tab (Using TaskInputView)
@@ -783,19 +400,6 @@ struct FilesTab: View {
                 .navigationBarTitleDisplayMode(.inline)
             } else {
                 VStack(spacing: 0) {
-                    // Finding files indicator
-                    if !isOfflineMode && jobsService.sessionActiveWorkflowJobs > 0 {
-                        HStack(spacing: 8) {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle())
-                                .scaleEffect(0.7)
-                            Text("Finding files… (\(jobsService.sessionActiveWorkflowJobs))")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.vertical, 6)
-                    }
-
                     FileManagementView(
                         filesService: container.filesService,
                         sessionService: container.sessionService,
@@ -1476,6 +1080,14 @@ struct ConnectionModifier: ViewModifier {
                         // Add a small delay to allow the network stack to stabilize
                         try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
                         _ = await multiConnectionManager.addConnection(for: deviceId)
+
+                        // Refresh data that may have changed while in background
+                        await MainActor.run {
+                            // Refresh workflow job counts
+                            container.jobsService.onConnectionRestored()
+                            // Refresh session to get latest file selections
+                            container.sessionService.onConnectionRestored()
+                        }
                     }
                 }
             }

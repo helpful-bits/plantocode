@@ -2,9 +2,17 @@ use tauri::{AppHandle, Manager, Emitter, Listener};
 use tauri::menu::{Menu, MenuItemBuilder, PredefinedMenuItem};
 use tauri::tray::{TrayIcon, TrayIconBuilder};
 use std::sync::{Arc, RwLock};
+use serde::Deserialize;
+use serde_json;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ConnState { Connected, Disconnected, Error }
+
+#[derive(Deserialize)]
+struct DeviceLinkStatusPayload {
+    status: Option<String>,
+    // message, backoffMs, etc. can be ignored for tray
+}
 
 pub struct TrayController {
     icon: TrayIcon,
@@ -85,14 +93,27 @@ impl TrayController {
         let app2 = app.clone();
         let state2 = controller.state.clone();
         app.listen("device-link-status", move |e| {
-            let payload = e.payload();
-            if payload.contains("\"auth_failed\"") || payload.contains("\"error\"") {
-                TrayController::update_status_impl(&app2, &state2, ConnState::Error);
-            } else if payload.contains("\"registered\"") || payload.contains("\"resumed\"") || payload.contains("\"connected\"") {
-                TrayController::update_status_impl(&app2, &state2, ConnState::Connected);
-            } else if payload.contains("\"disconnected\"") || payload.contains("\"reconnecting\"") {
-                TrayController::update_status_impl(&app2, &state2, ConnState::Disconnected);
+            let payload_str = e.payload();
+            let parsed: Result<DeviceLinkStatusPayload, _> =
+                serde_json::from_str::<DeviceLinkStatusPayload>(payload_str);
+
+            if let Ok(p) = parsed {
+                if let Some(status) = p.status.as_deref() {
+                    let conn_state = match status {
+                        "registered" | "resumed" | "connected" => ConnState::Connected,
+                        "disconnected" | "reconnecting" | "disabled" => ConnState::Disconnected,
+                        "auth_failed" | "error" => ConnState::Error,
+                        _ => {
+                            // Unknown status: do not change tray state
+                            return;
+                        }
+                    };
+
+                    TrayController::update_status_impl(&app2, &state2, conn_state);
+                    return;
+                }
             }
+            // Fallback: if parsing fails, do not modify tray state
         });
 
         Ok(controller)

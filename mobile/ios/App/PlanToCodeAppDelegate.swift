@@ -67,10 +67,6 @@ class PlanToCodeAppDelegate: NSObject, UIApplicationDelegate {
     }
   }
 
-  func applicationDidBecomeActive(_ application: UIApplication) {
-      MultiConnectionManager.shared.triggerAggressiveReconnect(reason: .appForeground)
-  }
-
   func applicationWillTerminate(_ application: UIApplication) {
       // Clean up all connections on termination
       Task { @MainActor in

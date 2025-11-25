@@ -16,6 +16,8 @@ const FloatingMergeInstructionsComponent: React.FC<FloatingMergeInstructionsProp
 }) => {
   // Local state for immediate UI responsiveness
   const [localValue, setLocalValue] = useState(mergeInstructions);
+  const isFocusedRef = useRef(false);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // State for natural drag positioning
   const [position, setPosition] = useState({ x: 20, y: 20 });
@@ -29,10 +31,23 @@ const FloatingMergeInstructionsComponent: React.FC<FloatingMergeInstructionsProp
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Sync local value when prop changes from outside
+  // Sync local value when prop changes from outside, but only if not focused
   useEffect(() => {
+    // Skip sync if this editor is focused (global flag covers both editors)
+    if (isFocusedRef.current || (window as any).__mergeInstructionsEditorFocused) {
+      return;
+    }
     setLocalValue(mergeInstructions);
   }, [mergeInstructions]);
+
+  // Cleanup debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
 
   // Add enhancement event listeners
   useEffect(() => {
@@ -74,20 +89,34 @@ const FloatingMergeInstructionsComponent: React.FC<FloatingMergeInstructionsProp
     };
   }, [getWindowDimensions]);
 
-  // Handle input changes - update local state only for instant feedback
+  // Handle input changes - update local state and debounce sync to parent
   const handleInstructionsChange = useCallback((value: string) => {
     setLocalValue(value);
-  }, []);
+
+    // Debounce sync to parent (500ms)
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    debounceTimerRef.current = setTimeout(() => {
+      onMergeInstructionsChange(value);
+    }, 500);
+  }, [onMergeInstructionsChange]);
 
   const handleFocus = useCallback(() => {
-    // Set global flag to prevent backend updates while editing
+    // Set local and global flag to prevent backend updates while editing
+    isFocusedRef.current = true;
     (window as any).__mergeInstructionsEditorFocused = true;
   }, []);
 
   const handleBlur = useCallback(() => {
-    // Clear global flag
+    // Clear local and global flag
+    isFocusedRef.current = false;
     (window as any).__mergeInstructionsEditorFocused = false;
-    // Flush on blur - send to parent
+    // Cancel pending debounce and flush immediately
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
     onMergeInstructionsChange(localValue);
   }, [localValue, onMergeInstructionsChange]);
 
@@ -162,15 +191,24 @@ const FloatingMergeInstructionsComponent: React.FC<FloatingMergeInstructionsProp
       // Reset height to default
       setHeight(128);
     } else {
-      // Clear focus flag when closing
+      // Clear focus flags when closing and flush pending changes
+      isFocusedRef.current = false;
       (window as any).__mergeInstructionsEditorFocused = false;
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
     }
   }, [isOpen, getWindowDimensions, constrainPosition]);
 
-  // Cleanup focus flag on unmount
+  // Cleanup focus flag and debounce timer on unmount
   useEffect(() => {
     return () => {
+      isFocusedRef.current = false;
       (window as any).__mergeInstructionsEditorFocused = false;
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
     };
   }, []);
 

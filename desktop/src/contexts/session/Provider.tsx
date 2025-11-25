@@ -428,8 +428,20 @@ export function SessionProvider({ children }: SessionProviderProps) {
         if (sessionStateHook.currentSession?.id === session.id) {
           if (!isUserPresent) return;
 
-          // Trust authoritative backend state; component-level guards handle focused input UX
-          sessionStateHook.setCurrentSession(session);
+          // Check if merge instructions editor is focused - if so, preserve local merge instructions
+          const mergeEditorFocused = typeof window !== 'undefined' && (window as any).__mergeInstructionsEditorFocused;
+
+          if (mergeEditorFocused && sessionStateHook.currentSession?.mergeInstructions !== undefined) {
+            // Preserve the current merge instructions while updating other fields
+            const preservedMergeInstructions = sessionStateHook.currentSession.mergeInstructions;
+            sessionStateHook.setCurrentSession({
+              ...session,
+              mergeInstructions: preservedMergeInstructions,
+            });
+          } else {
+            // Trust authoritative backend state when not editing merge instructions
+            sessionStateHook.setCurrentSession(session);
+          }
           sessionStateHook.setSessionModified(false);
         }
       },

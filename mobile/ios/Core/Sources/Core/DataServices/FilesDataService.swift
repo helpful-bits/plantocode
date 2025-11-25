@@ -279,109 +279,6 @@ public final class FilesDataService: ObservableObject {
         )
     }
 
-    /// Start file finder workflow using RPC call
-    public func startFileFinderWorkflow(sessionId: String) -> AsyncThrowingStream<Any, Error> {
-        guard let relayClient = serverRelayClient else {
-            return AsyncThrowingStream { continuation in
-                continuation.finish(throwing: DataServiceError.connectionError("No relay client available"))
-            }
-        }
-
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId else {
-            return AsyncThrowingStream { continuation in
-                continuation.finish(throwing: DataServiceError.connectionError("No active device connection"))
-            }
-        }
-
-        return AsyncThrowingStream { continuation in
-            Task {
-                do {
-                    let request = RpcRequest(
-                        method: "workflows.startFileFinder",
-                        params: [
-                            "sessionId": sessionId
-                        ]
-                    )
-
-                    for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
-                        if let error = response.error {
-                            continuation.finish(throwing: DataServiceError.serverError("RPC Error: \(error.message)"))
-                            return
-                        }
-
-                        if let result = response.result?.value {
-                            continuation.yield(result)
-                            if response.isFinal {
-                                continuation.finish()
-                                return
-                            }
-                        }
-                    }
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-        }
-    }
-
-    /// Start web search workflow using RPC call
-    public func startWebSearchWorkflow(sessionId: String, query: String) -> AsyncThrowingStream<Any, Error> {
-        guard let relayClient = serverRelayClient else {
-            return AsyncThrowingStream { continuation in
-                continuation.finish(throwing: DataServiceError.connectionError("No relay client available"))
-            }
-        }
-
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId else {
-            return AsyncThrowingStream { continuation in
-                continuation.finish(throwing: DataServiceError.connectionError("No active device connection"))
-            }
-        }
-
-        return AsyncThrowingStream { continuation in
-            Task {
-                do {
-                    let request = RpcRequest(
-                        method: "workflows.startWebSearch",
-                        params: [
-                            "sessionId": sessionId,
-                            "query": query
-                        ]
-                    )
-
-                    for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
-                        if let error = response.error {
-                            continuation.finish(throwing: DataServiceError.serverError("RPC Error: \(error.message)"))
-                            return
-                        }
-
-                        if let result = response.result?.value {
-                            continuation.yield(result)
-                            if response.isFinal {
-                                continuation.finish()
-                                return
-                            }
-                        }
-                    }
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-        }
-    }
-
-    public func workflowsStartFileFinder(sessionId: String,
-                                       taskDescription: String,
-                                       projectDirectory: String,
-                                       excludedPaths: [String],
-                                       timeoutMs: Int = 120_000) -> AsyncThrowingStream<RpcResponse, Error> {
-        CommandRouter.workflowsStartFileFinder(sessionId: sessionId,
-                                              taskDescription: taskDescription,
-                                              projectDirectory: projectDirectory,
-                                              excludedPaths: excludedPaths,
-                                              timeoutMs: timeoutMs)
-    }
-
     private func parseProgress(_ any: Any) -> Double? {
         if let d = any as? Double { return d > 1.0 ? min(d / 100.0, 1.0) : max(min(d, 1.0), 0.0) }
         if let i = any as? Int { return Double(i) > 1.0 ? min(Double(i) / 100.0, 1.0) : max(min(Double(i), 1.0), 0.0) }
@@ -406,63 +303,74 @@ public final class FilesDataService: ObservableObject {
                              projectDirectory: String,
                              excludedPaths: [String] = [],
                              timeoutMs: Int = 120_000) -> AsyncThrowingStream<FindFilesEvent, Error> {
-        let source = CommandRouter.workflowsStartFileFinder(sessionId: sessionId,
-                                                           taskDescription: taskDescription,
-                                                           projectDirectory: projectDirectory,
-                                                           excludedPaths: excludedPaths,
-                                                           timeoutMs: timeoutMs)
         return AsyncThrowingStream { continuation in
             Task {
+                let source = CommandRouter.workflowsStartFileFinder(
+                    sessionId: sessionId,
+                    taskDescription: taskDescription,
+                    projectDirectory: projectDirectory,
+                    excludedPaths: excludedPaths,
+                    timeoutMs: timeoutMs
+                )
+
                 var bestSuggestionsByPath: [String: FindFilesSuggestion] = [:]
+
                 do {
                     for try await resp in source {
                         if let err = resp.error {
                             continuation.yield(.error(err.message))
                             continuation.finish(throwing: DataServiceError.serverError(err.message))
-                            break
+                            return
                         }
-                        if let dict = resp.result?.value as? [String: Any] {
-                            if let p = dict["progress"].flatMap(parseProgress) {
-                                let msg = (dict["message"] as? String)
-                                    ?? (dict["status"] as? String)
-                                    ?? (dict["stage"] as? String)
-                                continuation.yield(.progress(p, message: msg))
-                            }
-                            if let arr = dict["files"] as? [Any] ?? dict["recommendations"] as? [Any] {
-                                var batch: [FindFilesSuggestion] = []
-                                for item in arr {
-                                    if let d = item as? [String: Any], let s = makeSuggestion(from: d) {
-                                        let existing = bestSuggestionsByPath[s.path]
-                                        let chosen: FindFilesSuggestion
-                                        if let ex = existing {
-                                            let score = max(ex.score ?? -Double.infinity, s.score ?? -Double.infinity)
-                                            let reason = ex.reason ?? s.reason
-                                            chosen = FindFilesSuggestion(path: s.path, reason: reason, score: score.isFinite ? score : nil)
-                                        } else {
-                                            chosen = s
-                                        }
-                                        bestSuggestionsByPath[s.path] = chosen
-                                        batch.append(chosen)
+
+                        guard let dict = resp.result?.value as? [String: Any] else {
+                            continue
+                        }
+
+                        if let p = dict["progress"].flatMap(parseProgress) {
+                            let msg = (dict["message"] as? String)
+                                ?? (dict["status"] as? String)
+                                ?? (dict["stage"] as? String)
+                            continuation.yield(.progress(p, message: msg))
+                        }
+
+                        if let arr = dict["files"] as? [Any] ?? dict["recommendations"] as? [Any] {
+                            var batch: [FindFilesSuggestion] = []
+                            for item in arr {
+                                if let d = item as? [String: Any], let s = makeSuggestion(from: d) {
+                                    let existing = bestSuggestionsByPath[s.path]
+                                    let chosen: FindFilesSuggestion
+                                    if let ex = existing {
+                                        let score = max(ex.score ?? -Double.infinity, s.score ?? -Double.infinity)
+                                        let reason = ex.reason ?? s.reason
+                                        chosen = FindFilesSuggestion(path: s.path, reason: reason, score: score.isFinite ? score : nil)
+                                    } else {
+                                        chosen = s
                                     }
-                                }
-                                if !batch.isEmpty {
-                                    continuation.yield(.suggestions(Array(Set(batch))))
+                                    bestSuggestionsByPath[s.path] = chosen
+                                    batch.append(chosen)
                                 }
                             }
-                            if dict["path"] != nil || dict["filePath"] != nil, let s = makeSuggestion(from: dict) {
-                                let existing = bestSuggestionsByPath[s.path]
-                                let chosen = existing ?? s
-                                bestSuggestionsByPath[s.path] = chosen
-                                continuation.yield(.suggestions([chosen]))
-                            }
-                            if let info = (dict["message"] as? String) ?? (dict["status"] as? String) ?? (dict["stage"] as? String) {
-                                continuation.yield(.info(info))
+                            if !batch.isEmpty {
+                                continuation.yield(.suggestions(Array(Set(batch))))
                             }
                         }
+
+                        if dict["path"] != nil || dict["filePath"] != nil, let s = makeSuggestion(from: dict) {
+                            let existing = bestSuggestionsByPath[s.path]
+                            let chosen = existing ?? s
+                            bestSuggestionsByPath[s.path] = chosen
+                            continuation.yield(.suggestions([chosen]))
+                        }
+
+                        if let info = (dict["message"] as? String) ?? (dict["status"] as? String) ?? (dict["stage"] as? String) {
+                            continuation.yield(.info(info))
+                        }
+
                         if resp.isFinal == true {
                             continuation.yield(.completed)
                             continuation.finish()
-                            break
+                            return
                         }
                     }
                 } catch {

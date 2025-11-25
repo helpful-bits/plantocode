@@ -76,12 +76,22 @@ public struct FileManagementView: View {
             files = newFiles
             updateFileCounts()
         }
-        .onReceive(sessionService.currentSessionPublisher) { _ in
+        .onReceive(sessionService.currentSessionPublisher) { session in
             updateFileCounts()
+            guard let session else { return }
+            if jobsService.activeSessionId != session.id {
+                jobsService.setActiveSession(sessionId: session.id, projectDirectory: session.projectDirectory)
+            }
         }
         .task(id: sessionService.currentSession?.projectDirectory) {
             let currentProjectDir = sessionService.currentSession?.projectDirectory
                 ?? container.currentProject?.directory
+
+            if let session = sessionService.currentSession {
+                if jobsService.activeSessionId != session.id {
+                    jobsService.setActiveSession(sessionId: session.id, projectDirectory: session.projectDirectory)
+                }
+            }
 
             if currentProjectDir != nil && (!hasLoadedFiles || lastLoadedProjectDir != currentProjectDir) {
                 lastLoadedProjectDir = currentProjectDir
@@ -102,6 +112,15 @@ public struct FileManagementView: View {
             if lastLoadedProjectDir != newProjectDir && newProjectDir != nil {
                 lastLoadedProjectDir = newProjectDir
                 loadFiles()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("workflow-completed"))) { notification in
+            // When a file_finder_workflow completes, refresh the session to get updated includedFiles
+            guard let sessionId = notification.userInfo?["sessionId"] as? String,
+                  sessionId == sessionService.currentSession?.id else { return }
+            Task {
+                // getSession automatically updates currentSession which triggers currentSessionPublisher
+                _ = try? await sessionService.getSession(id: sessionId)
             }
         }
     }
@@ -330,7 +349,7 @@ public struct FileManagementView: View {
 
             // Find Files Button
             Button(action: {
-                if !isConnected {
+                guard isConnected else {
                     findFilesError = "No active device connection"
                     return
                 }
@@ -343,64 +362,34 @@ public struct FileManagementView: View {
                     return
                 }
 
-                // Launch workflow directly
                 Task {
                     do {
-                        // Fetch latest session data from server
-                        guard let refreshedSession = try await sessionService.getSession(id: session.id) else {
-                            await MainActor.run {
-                                findFilesError = "Session not found"
-                            }
+                        let refreshedSession = try await sessionService.getSession(id: session.id)
+                        guard let refreshedSession = refreshedSession else {
+                            await MainActor.run { findFilesError = "Session not found" }
+                            return
+                        }
+                        let taskDesc = (refreshedSession.taskDescription ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard taskDesc.count >= 10 else {
+                            await MainActor.run { findFilesError = "Please describe your task in at least 10 characters before finding files." }
                             return
                         }
 
-                        guard let taskDesc = refreshedSession.taskDescription,
-                              !taskDesc.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                              taskDesc.trimmingCharacters(in: .whitespacesAndNewlines).count >= 10 else {
-                            await MainActor.run {
-                                findFilesError = "Task description must be at least 10 characters. Please add a task description first."
-                            }
-                            return
+                        await MainActor.run { findFilesError = nil }
+
+                        if jobsService.activeSessionId != refreshedSession.id {
+                            jobsService.setActiveSession(sessionId: refreshedSession.id, projectDirectory: refreshedSession.projectDirectory)
                         }
 
-                        await MainActor.run {
-                            findFilesError = nil
-                        }
-
-                        let stream = container.filesService.startFindFiles(
+                        _ = container.filesService.startFindFiles(
                             sessionId: refreshedSession.id,
                             taskDescription: taskDesc,
                             projectDirectory: refreshedSession.projectDirectory,
-                            excludedPaths: refreshedSession.forceExcludedFiles ?? []
+                            excludedPaths: refreshedSession.forceExcludedFiles ?? [],
+                            timeoutMs: 120_000
                         )
-
-                        var suggestionPaths: [String] = []
-                        for try await event in stream {
-                            switch event {
-                            case .suggestions(let list):
-                                suggestionPaths.append(contentsOf: list.map { $0.path })
-                            case .completed:
-                                if !suggestionPaths.isEmpty {
-                                    try? await sessionService.updateSessionFiles(
-                                        sessionId: refreshedSession.id,
-                                        addIncluded: suggestionPaths,
-                                        removeIncluded: nil,
-                                        addExcluded: nil,
-                                        removeExcluded: suggestionPaths
-                                    )
-                                }
-                            case .error(let msg):
-                                await MainActor.run {
-                                    findFilesError = msg
-                                }
-                            default:
-                                break
-                            }
-                        }
                     } catch {
-                        await MainActor.run {
-                            findFilesError = "Failed to run workflow: \(error.localizedDescription)"
-                        }
+                        await MainActor.run { findFilesError = "Failed to start file finder: \(error.localizedDescription)" }
                     }
                 }
             }) {
