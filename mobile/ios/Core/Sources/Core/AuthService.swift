@@ -1,5 +1,4 @@
 import Foundation
-import KeychainAccess
 import Combine
 import AuthenticationServices
 import CryptoKit
@@ -16,7 +15,6 @@ private struct LoginAttempt {
 public final class AuthService: NSObject, ObservableObject {
   public static let shared = AuthService()
 
-  private let keychain = Keychain(service: "com.plantocode.mobile.auth")
   @Published public private(set) var isAuthenticated: Bool = false
   @Published public private(set) var currentUser: User? = nil
   @Published public private(set) var authError: String? = nil
@@ -34,16 +32,14 @@ public final class AuthService: NSObject, ObservableObject {
     }
   }
 
-  // Check if we have a valid stored token
   private func checkStoredToken() async {
     defer {
       AppState.shared.markAuthBootstrapCompleted()
     }
 
     do {
-      if let token = try keychain.get("app_jwt") {
-        // Load persisted expiry
-        if let expStr = try? keychain.get("app_jwt_exp"),
+      if let token = try? KeychainManager.shared.retrieveString(for: .appJWT) {
+        if let expStr = try? KeychainManager.shared.retrieveString(for: .appJWTExpiry),
            let expDate = ISO8601DateFormatter().date(from: expStr) {
           await MainActor.run {
             self.tokenExpiresAt = expDate
@@ -51,7 +47,6 @@ public final class AuthService: NSObject, ObservableObject {
           }
         }
 
-        // Validate token by fetching user info
         if let user = await fetchUserInfo(token: token) {
           await MainActor.run {
             self.authError = nil
@@ -59,7 +54,6 @@ public final class AuthService: NSObject, ObservableObject {
             self.currentUser = user
           }
         } else {
-          // Clear state if fetchUserInfo returns nil
           await MainActor.run {
             self.authError = nil
             self.isAuthenticated = false
@@ -299,12 +293,10 @@ public final class AuthService: NSObject, ObservableObject {
         token: nil
       )
 
-      // Store token in keychain
-      try keychain.set(authDataResponse.token, key: "app_jwt")
+      try KeychainManager.shared.store(string: authDataResponse.token, for: .appJWT)
 
-      // Calculate and store token expiry
       let computedExpiry = Date().addingTimeInterval(24 * 3600)
-      try? keychain.set(ISO8601DateFormatter().string(from: computedExpiry), key: "app_jwt_exp")
+      try? KeychainManager.shared.store(string: ISO8601DateFormatter().string(from: computedExpiry), for: .appJWTExpiry)
 
       // Convert FrontendUser to User and update state
       let user = User(from: authDataResponse.user)
@@ -364,8 +356,7 @@ public final class AuthService: NSObject, ObservableObject {
       }
 
       if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
-        // 401/403 error - clear token
-        try? keychain.remove("app_jwt")
+        try? KeychainManager.shared.delete(for: .appJWT)
         throw APIError.invalidResponse(statusCode: httpResponse.statusCode, data: data)
       }
 
@@ -378,15 +369,14 @@ public final class AuthService: NSObject, ObservableObject {
 
     } catch {
       if case APIError.invalidResponse(let code, _) = error, code == 401 || code == 403 {
-        // 401/403 error - clear token
-        try? keychain.remove("app_jwt")
+        try? KeychainManager.shared.delete(for: .appJWT)
       }
       return nil
     }
   }
 
   public func refreshAppJWTAuth0() async throws {
-    guard let token = try keychain.get("app_jwt") else {
+    guard let token = try? KeychainManager.shared.retrieveString(for: .appJWT) else {
       throw APIError.invalidResponse(statusCode: 401, data: Data())
     }
     do {
@@ -397,12 +387,10 @@ public final class AuthService: NSObject, ObservableObject {
         token: token
       )
 
-      // Update stored token
-      try keychain.set(authDataResponse.token, key: "app_jwt")
+      try KeychainManager.shared.store(string: authDataResponse.token, for: .appJWT)
 
-      // Parse or extract expiry from response (if available) or calculate from current time + 24h
       let newExpiry = Date().addingTimeInterval(24 * 3600)
-      try? keychain.set(ISO8601DateFormatter().string(from: newExpiry), key: "app_jwt_exp")
+      try? KeychainManager.shared.store(string: ISO8601DateFormatter().string(from: newExpiry), for: .appJWTExpiry)
 
       await MainActor.run {
         self.authError = nil
@@ -414,7 +402,7 @@ public final class AuthService: NSObject, ObservableObject {
     } catch let apiError as APIError {
       switch apiError {
       case .invalidResponse(let statusCode, _) where statusCode == 401 || statusCode == 403:
-        try? keychain.remove("app_jwt")
+        try? KeychainManager.shared.delete(for: .appJWT)
         await MainActor.run {
           self.authError = "Session expired. Please sign in again."
           self.isAuthenticated = false
@@ -433,16 +421,13 @@ public final class AuthService: NSObject, ObservableObject {
   }
 
   public func logout() async {
-    // Update UI state on MainActor and post notification before clearing
     await MainActor.run {
       NotificationCenter.default.post(name: NSNotification.Name("auth-logged-out"), object: nil)
       self.refreshTimer?.invalidate()
       self.refreshTimer = nil
     }
 
-    // Retrieve token from keychain
-    if let token = try? keychain.get("app_jwt") {
-      // Call server-side logout
+    if let token = try? KeychainManager.shared.retrieveString(for: .appJWT) {
       do {
         _ = try await ServerAPIClient.shared.requestRaw(
           path: "api/auth/logout",
@@ -451,27 +436,23 @@ public final class AuthService: NSObject, ObservableObject {
           token: token
         )
       } catch {
-        // Ignore response - proceed with local logout
       }
     }
 
-    // Clear keychain
-    try? keychain.remove("app_jwt")
+    try? KeychainManager.shared.delete(for: .appJWT)
 
-    // Update UI state on MainActor
     await MainActor.run {
       self.authError = nil
       self.isAuthenticated = false
       self.currentUser = nil
     }
 
-    // Build Auth0 logout URL and start authentication session
     let logoutURL = buildAuth0LogoutURL()
     await startAuth0LogoutSession(url: logoutURL)
   }
 
   public func getValidAccessToken() async -> String? {
-    try? keychain.get("app_jwt")
+    try? KeychainManager.shared.retrieveString(for: .appJWT)
   }
 
   private func buildAuth0LogoutURL() -> URL {

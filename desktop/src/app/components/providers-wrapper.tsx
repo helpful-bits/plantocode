@@ -26,6 +26,7 @@ import { DatabaseProvider } from "@/contexts";
 import { BackgroundJobsProvider } from "@/contexts/background-jobs";
 import { SessionProvider } from "@/contexts/session";
 import { NotificationProvider } from "@/contexts";
+import { DeviceLinkProvider } from "@/contexts";
 import { TextImprovementProvider } from "@/contexts/text-improvement";
 import { BillingProvider } from "@/contexts/billing-context";
 import { TooltipProvider } from "@/ui/tooltip";
@@ -88,24 +89,26 @@ export function ProvidersWrapper({
       >
         <TooltipProvider delayDuration={200}>
           <ScreenRecordingProvider>
-            <NotificationProvider>
-              <DatabaseProvider>
-                <ProjectProvider>
-                  <SessionProvider>
-                    <BackgroundJobsProvider>
-                      <TerminalSessionsProvider>
-                        <BillingProvider>
-                          <TextImprovementProvider>
-                            <TerminalSessionModalGateway />
-                            {children}
-                          </TextImprovementProvider>
-                        </BillingProvider>
-                      </TerminalSessionsProvider>
-                    </BackgroundJobsProvider>
-                  </SessionProvider>
-                </ProjectProvider>
-              </DatabaseProvider>
-            </NotificationProvider>
+            <DeviceLinkProvider>
+              <NotificationProvider>
+                <DatabaseProvider>
+                  <ProjectProvider>
+                    <SessionProvider>
+                      <BackgroundJobsProvider>
+                        <TerminalSessionsProvider>
+                          <BillingProvider>
+                            <TextImprovementProvider>
+                              <TerminalSessionModalGateway />
+                              {children}
+                            </TextImprovementProvider>
+                          </BillingProvider>
+                        </TerminalSessionsProvider>
+                      </BackgroundJobsProvider>
+                    </SessionProvider>
+                  </ProjectProvider>
+                </DatabaseProvider>
+              </NotificationProvider>
+            </DeviceLinkProvider>
           </ScreenRecordingProvider>
         </TooltipProvider>
       </ErrorBoundary>

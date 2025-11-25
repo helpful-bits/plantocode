@@ -9,6 +9,7 @@ public struct JobCardView: View {
     let onApplyFiles: ((BackgroundJob) async -> Void)?
     let onContinueWorkflow: ((BackgroundJob) async -> Void)?
     let currentSessionId: String?
+    let currentIncludedFiles: [String]
     let hasContinuationJob: Bool
     let isWorkflowActive: Bool
 
@@ -26,6 +27,7 @@ public struct JobCardView: View {
         onApplyFiles: ((BackgroundJob) async -> Void)? = nil,
         onContinueWorkflow: ((BackgroundJob) async -> Void)? = nil,
         currentSessionId: String? = nil,
+        currentIncludedFiles: [String] = [],
         hasContinuationJob: Bool = false,
         isWorkflowActive: Bool = false
     ) {
@@ -36,6 +38,7 @@ public struct JobCardView: View {
         self.onApplyFiles = onApplyFiles
         self.onContinueWorkflow = onContinueWorkflow
         self.currentSessionId = currentSessionId
+        self.currentIncludedFiles = currentIncludedFiles
         self.hasContinuationJob = hasContinuationJob
         self.isWorkflowActive = isWorkflowActive
     }
@@ -145,6 +148,14 @@ public struct JobCardView: View {
             .joined(separator: " ")
     }
 
+    private var isWorkflowUmbrellaJob: Bool {
+        job.taskType == "file_finder_workflow" || job.taskType == "web_search_workflow"
+    }
+
+    private var isFileFinderStepJob: Bool {
+        ["extended_path_finder", "file_relevance_assessment", "path_correction", "regex_file_filter"].contains(job.taskType)
+    }
+
     private func formatTokenCount(_ count: Int32?) -> String {
         guard let count = count, count > 0 else { return "0" }
         if count >= 1000 {
@@ -195,6 +206,16 @@ public struct JobCardView: View {
                             .padding(.vertical, 3)
                             .background(Color.surfaceSecondary)
                             .cornerRadius(Theme.Radii.sm)
+
+                        if isWorkflowUmbrellaJob || isFileFinderStepJob {
+                            Text(isWorkflowUmbrellaJob ? "File Finder" : "File Finder Step")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(Color.successForeground)
+                                .padding(.horizontal, Theme.Spacing.xs)
+                                .padding(.vertical, 2)
+                                .background(Color.successBackground)
+                                .cornerRadius(Theme.Radii.sm)
+                        }
 
                         Text(job.formattedTimeAgo)
                             .font(.footnote)
@@ -591,9 +612,14 @@ public struct JobCardView: View {
     }
 
     private func shouldShowApplyButton() -> Bool {
-        // File finding tasks - only if files were found
+        // File finding tasks - only if files were found AND there are new files to add
         if ["extended_path_finder", "file_relevance_assessment", "path_correction", "regex_file_filter"].contains(job.taskType) {
-            return job.status == "completed" && hasFilesInResponse()
+            if job.status == "completed" && hasFilesInResponse() {
+                // Only show button if there are new files to add
+                let newFilesCount = calculateNewFilesCount()
+                return newFilesCount > 0 || newFilesCount == -1 // Show if new files exist or count is unknown
+            }
+            return false
         }
 
         // Video analysis with results
@@ -647,8 +673,36 @@ public struct JobCardView: View {
         case "video_analysis":
             return "Use Findings"
         default:
+            // Calculate new files count for file-related jobs
+            let newFilesCount = calculateNewFilesCount()
+            if newFilesCount > 0 {
+                return "Use Files (\(newFilesCount) new)"
+            } else if newFilesCount == 0 && hasFilesInResponse() {
+                return "All Selected"
+            }
             return "Use Files"
         }
+    }
+
+    private func calculateNewFilesCount() -> Int {
+        guard let response = job.response,
+              let data = response.data(using: .utf8),
+              let responseObj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return -1 // -1 indicates unknown
+        }
+
+        var files: [String] = []
+        if let filesArray = responseObj["files"] as? [String] {
+            files = filesArray
+        } else if let filesObjArray = responseObj["files"] as? [[String: Any]] {
+            files = filesObjArray.compactMap { $0["path"] as? String }
+        }
+
+        guard !files.isEmpty else { return -1 }
+
+        let currentSet = Set(currentIncludedFiles)
+        let newFiles = files.filter { !currentSet.contains($0) }
+        return newFiles.count
     }
 
     private func getApplyButtonIcon() -> String {

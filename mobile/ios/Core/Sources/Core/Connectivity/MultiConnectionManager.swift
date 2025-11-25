@@ -13,6 +13,13 @@ public enum ConnectionHealth {
     case dead
 }
 
+public enum WorkspaceConnectivityState {
+    case healthy
+    case transientReconnecting
+    case degradedDisconnected
+    case offlineModeCandidate
+}
+
 @MainActor
 public final class MultiConnectionManager: ObservableObject {
     public static let shared = MultiConnectionManager()
@@ -29,7 +36,7 @@ public final class MultiConnectionManager: ObservableObject {
     private var relayHandshakeByDevice = [UUID: ConnectionHandshake]()
     private var isHardResetInProgress = false
     private var hasRestoredOnce = false
-    private var healthGraceTimer: Timer?
+    private var healthGraceTask: Task<Void, Never>?
     private let healthGraceDelay: TimeInterval = 12.0
 
     private struct ReconnectPolicy {
@@ -69,8 +76,7 @@ public final class MultiConnectionManager: ObservableObject {
     private var reconnectStates = [UUID: DeviceReconnectState]()
     private let serverContextKey = "LastConnectedServerURL"
     private var lastConnectedServerURL: String?
-    private let pathMonitor = NWPathMonitor()
-    private let pathMonitorQueue = DispatchQueue(label: "com.plantocode.mcm.network")
+    private var pathObserverCancellable: AnyCancellable?
     private var lastPath: NWPath?
 
     private var connectedDeviceIds: [UUID] {
@@ -97,25 +103,40 @@ public final class MultiConnectionManager: ObservableObject {
             }
         }
 
-        pathMonitor.pathUpdateHandler = { [weak self] path in
-            guard let self = self else { return }
-            Task { @MainActor in
-                self.lastPath = path
+        pathObserverCancellable = NetworkPathObserver.shared.$currentPath
+            .sink { [weak self] path in
+                guard let self = self, let path = path else { return }
+                Task { @MainActor in
+                    self.lastPath = path
 
-                if path.status == .satisfied {
-                    self.connectionHealth = .stable
-                    for (deviceId, client) in self.storage {
-                        if client.isConnected {
-                            continue
+                    if path.status == .satisfied {
+                        if let activeId = self.activeDeviceId,
+                           let state = self.connectionStates[activeId],
+                           state.isConnected {
+                            self.connectionHealth = .healthy
+                        } else {
+                            self.connectionHealth = .stable
                         }
-                        _ = await self.addConnection(for: deviceId)
+                        for (deviceId, client) in self.storage {
+                            if client.isConnected {
+                                continue
+                            }
+                            _ = await self.addConnection(for: deviceId)
+                        }
+                    } else {
+                        self.connectionHealth = .unstable
                     }
-                } else {
-                    self.connectionHealth = .unstable
                 }
             }
+
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self else { return }
+            self.triggerAggressiveReconnect(reason: .appForeground)
         }
-        pathMonitor.start(queue: pathMonitorQueue)
 
         NotificationCenter.default.addObserver(
             forName: NSNotification.Name("auth-token-refreshed"),
@@ -152,8 +173,8 @@ public final class MultiConnectionManager: ObservableObject {
 
         stopAllReconnectTimers()
         cancelAllCancellables()
-        healthGraceTimer?.invalidate()
-        healthGraceTimer = nil
+        healthGraceTask?.cancel()
+        healthGraceTask = nil
         connectionHealth = .dead
 
         for (_, relay) in storage {
@@ -486,9 +507,8 @@ public final class MultiConnectionManager: ObservableObject {
         if activeDeviceId == deviceId {
             self.activeDeviceId = nil
             UserDefaults.standard.removeObject(forKey: activeDeviceKey)
-            // Clear health monitoring for removed active device
-            healthGraceTimer?.invalidate()
-            healthGraceTimer = nil
+            healthGraceTask?.cancel()
+            healthGraceTask = nil
             connectionHealth = .dead
         }
 
@@ -511,8 +531,8 @@ public final class MultiConnectionManager: ObservableObject {
         cancelAllCancellables()
         reconnectStates.removeAll()
         connectingTasks.removeAll()
-        healthGraceTimer?.invalidate()
-        healthGraceTimer = nil
+        healthGraceTask?.cancel()
+        healthGraceTask = nil
         connectionHealth = .dead
 
         for (_, relayClient) in storage {
@@ -547,13 +567,11 @@ public final class MultiConnectionManager: ObservableObject {
         activeDeviceId = deviceId
         if deviceId == nil {
             UserDefaults.standard.removeObject(forKey: activeDeviceKey)
-            // Clear health when no active device
-            healthGraceTimer?.invalidate()
-            healthGraceTimer = nil
+            healthGraceTask?.cancel()
+            healthGraceTask = nil
             connectionHealth = .dead
         } else {
             persistActiveDeviceId()
-            // Update health based on new active device's state
             if let state = connectionStates[deviceId!] {
                 updateConnectionHealth(for: deviceId!, state: state)
             }
@@ -624,7 +642,58 @@ public final class MultiConnectionManager: ObservableObject {
         return false
     }
 
-    // MARK: - Aggressive Reconnection
+    // MARK: - Workspace Connectivity Predicates
+
+    public var activeDeviceIsEffectivelyUsable: Bool {
+        if activeDeviceIsFullyConnected { return true }
+        if activeDeviceIsConnectedOrReconnecting, connectionHealth != .dead {
+            return true
+        }
+        return false
+    }
+
+    public var activeDeviceIsEffectivelyDead: Bool {
+        guard let activeId = activeDeviceId,
+              let state = connectionStates[activeId] else {
+            return true
+        }
+        switch state {
+        case .failed, .disconnected:
+            return connectionHealth == .dead
+        default:
+            return false
+        }
+    }
+
+    // MARK: - Workspace Connectivity Mapping
+
+    public func workspaceConnectivityState(forOfflineMode offlineMode: Bool) -> WorkspaceConnectivityState {
+        if offlineMode {
+            return .offlineModeCandidate
+        }
+
+        guard let activeId = activeDeviceId,
+              let state = connectionStates[activeId] else {
+            return .degradedDisconnected
+        }
+
+        switch state {
+        case .connected:
+            if connectionHealth == .healthy {
+                return .healthy
+            } else {
+                return .transientReconnecting
+            }
+        case .connecting, .handshaking, .authenticating, .reconnecting:
+            return .transientReconnecting
+        case .disconnected, .failed:
+            return .degradedDisconnected
+        case .closing:
+            return .transientReconnecting
+        }
+    }
+
+    // MARK: - Aggressive Reconnection Policy
 
     public func triggerAggressiveReconnect(reason: ReconnectReason, deviceIds: [UUID]? = nil) {
         var candidates: [UUID] = []
@@ -907,26 +976,22 @@ public final class MultiConnectionManager: ObservableObject {
     // MARK: - Connection Health Management
 
     private func updateConnectionHealth(for deviceId: UUID, state: ConnectionState) {
-        // Only track health for the active device
         guard deviceId == activeDeviceId else { return }
 
         switch state {
         case .connected:
-            // Connection is healthy - cancel any pending grace timer
-            healthGraceTimer?.invalidate()
-            healthGraceTimer = nil
+            healthGraceTask?.cancel()
+            healthGraceTask = nil
             connectionHealth = .healthy
 
         case .connecting, .handshaking, .authenticating, .reconnecting:
-            // Transient state - set unstable and start grace timer
-            healthGraceTimer?.invalidate()
+            healthGraceTask?.cancel()
             connectionHealth = .unstable
 
-            // Start grace timer - if still transient after delay, mark as dead
-            healthGraceTimer = Timer.scheduledTimer(withTimeInterval: healthGraceDelay, repeats: false) { [weak self] _ in
-                guard let self = self else { return }
-                Task { @MainActor in
-                    // Check if still in transient state
+            healthGraceTask = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(12.0 * 1_000_000_000))
+                guard let self = self, !Task.isCancelled else { return }
+                await MainActor.run {
                     if let currentState = self.connectionStates[deviceId], currentState.isTransient {
                         self.connectionHealth = .dead
                     }
@@ -934,24 +999,19 @@ public final class MultiConnectionManager: ObservableObject {
             }
 
         case .failed, .disconnected, .closing:
-            // Treat as transient initially (brief blips)
-            // This allows for quick recovery without immediately marking as dead
             if connectionHealth == .healthy {
                 connectionHealth = .unstable
 
-                // Start grace timer
-                healthGraceTimer?.invalidate()
-                healthGraceTimer = Timer.scheduledTimer(withTimeInterval: healthGraceDelay, repeats: false) { [weak self] _ in
-                    guard let self = self else { return }
-                    Task { @MainActor in
-                        // If still not connected after grace period, mark as dead
+                healthGraceTask?.cancel()
+                healthGraceTask = Task { [weak self] in
+                    try? await Task.sleep(nanoseconds: UInt64(12.0 * 1_000_000_000))
+                    guard let self = self, !Task.isCancelled else { return }
+                    await MainActor.run {
                         if let currentState = self.connectionStates[deviceId], !currentState.isConnected {
                             self.connectionHealth = .dead
                         }
                     }
                 }
-            } else {
-                // Already unstable or dead, keep current state
             }
         }
     }

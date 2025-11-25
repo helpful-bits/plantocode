@@ -91,7 +91,7 @@ public struct BackgroundJob: Codable, Identifiable {
     public var subStatusMessage: String?
 
     public var jobStatus: JobStatus {
-        JobStatus(rawValue: status) ?? .idle
+        JobStatus(rawValue: status) ?? .unknown
     }
 
     public var formattedCost: String {

@@ -11,9 +11,17 @@ public final class WorkflowNotificationCoordinator: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var lastStatuses = [String: String]() // jobId -> last known status
 
-    // Task type sets for matching different job types
-    private let fileFinderTypes: Set<String> = ["file_finder", "fileFinder", "find_files"]
-    private let planTypes: Set<String> = ["implementation_plan", "plan", "plan_stream"]
+    // Task type sets for matching different job types (normalized to lowercase)
+    private let fileFinderTypes: Set<String> = [
+        "file_finder_workflow",
+        "file_finder",
+        "filefinder",
+        "find_files"
+    ]
+    private let planTypes: Set<String> = [
+        "implementation_plan",
+        "implementation_plan_merge"
+    ]
 
     private init() {
         setupObservers()
@@ -53,7 +61,7 @@ public final class WorkflowNotificationCoordinator: ObservableObject {
     }
 
     private func handleJobCompletion(_ job: BackgroundJob) {
-        let taskType = job.taskType
+        let taskType = job.taskType.lowercased()
         let sessionId = job.sessionId
         let projectDirectory = PlanToCodeCore.shared.dataServices?.sessionService.currentSession?.projectDirectory
 

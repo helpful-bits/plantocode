@@ -97,28 +97,44 @@ public final class InitializationOrchestrator: ObservableObject {
         guard connected else {
             MultiConnectionManager.shared.setActive(nil)
             appState.setBootstrapNeedsConfig(.init(projectMissing: true, sessionsEmpty: true, activeSessionMissing: true))
-            log.warning("No active device connection established within timeout, routing to configuration")
+            log.warning("Device connection timeout - no active device available")
             return
         }
 
         do {
             // Step 3: Fetch project directory
             log.info("InitializationOrchestrator: fetching project directory via RPC")
-            guard let projectDir = try await repo.fetchProjectDirectory() else {
+            let projectDir: String?
+            do {
+                projectDir = try await repo.fetchProjectDirectory()
+            } catch {
+                log.error("Failed to fetch project directory: \(String(describing: error))")
+                appState.setBootstrapFailed("Failed to fetch project directory: \(error.localizedDescription)")
+                return
+            }
+
+            guard let projectDir = projectDir else {
                 appState.setBootstrapNeedsConfig(.init(projectMissing: true, sessionsEmpty: true, activeSessionMissing: true))
-                log.info("Missing project directory in desktop DB")
+                log.info("No project directory configured on desktop")
                 return
             }
             log.info("InitializationOrchestrator: project directory fetched successfully")
 
             // Step 4: Fetch sessions
             log.info("InitializationOrchestrator: fetching sessions via RPC")
-            let sessions = try await repo.fetchSessions(projectDirectory: projectDir)
+            let sessions: [Session]
+            do {
+                sessions = try await repo.fetchSessions(projectDirectory: projectDir)
+            } catch {
+                log.error("Failed to fetch sessions: \(String(describing: error))")
+                appState.setBootstrapFailed("Failed to fetch sessions: \(error.localizedDescription)")
+                return
+            }
             log.info("InitializationOrchestrator: sessions fetched successfully, count=\(sessions.count)")
 
             if sessions.isEmpty {
                 appState.setBootstrapNeedsConfig(.init(projectMissing: false, sessionsEmpty: true, activeSessionMissing: true))
-                log.info("Project present but sessions empty")
+                log.info("Project directory exists but no sessions available")
                 return
             }
 

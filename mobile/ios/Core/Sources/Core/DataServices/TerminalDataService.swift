@@ -81,9 +81,6 @@ public class TerminalDataService: ObservableObject {
     private var binarySubscriptionDeviceId: UUID?
     private var firstResizeCompleted = Set<String>()
     private var pendingUnbindTasks: [String: Task<Void, Never>] = [:]
-    private var binarySubscriptionEstablishing = false
-    private var isGlobalBinarySubscribed: Bool = false
-    private let binarySubscriptionQueue = DispatchQueue(label: "TerminalDataService.binarySubscription")
     private var bootstrapInFlight = false
     private var lastBootstrapAt: Date?
 
@@ -116,9 +113,6 @@ public class TerminalDataService: ObservableObject {
                                 self.subscribeToSessionOutputIfNeeded(sessionId: sessionId, deviceId: deviceId)
                             }
                         }
-
-                        // Binary subscription is now ONLY established via activeDeviceReconnectCancellable
-                        // to ensure single-source subscription setup and eliminate race conditions
                     }
                 }
             }
@@ -138,9 +132,7 @@ public class TerminalDataService: ObservableObject {
                             return
                         }
 
-                        // Bind ALL sessions that need binding (not just reconnect scenarios)
                         for sessionId in self.boundSessions where self.lifecycleBySession[sessionId] == .active {
-                            // Skip if already bound successfully
                             if self.readinessBySession[sessionId] == true {
                                 continue
                             }
@@ -569,28 +561,16 @@ public class TerminalDataService: ObservableObject {
     }
 
     private func ensureGlobalBinarySubscription(relayClient: ServerRelayClient, deviceId: UUID) {
-        if let currentId = binarySubscriptionDeviceId,
-           currentId == deviceId,
-           globalBinarySubscription != nil,
-           isGlobalBinarySubscribed {
+        if globalBinarySubscription != nil, binarySubscriptionDeviceId == deviceId {
             return
         }
 
-        let shouldEstablish = binarySubscriptionQueue.sync { () -> Bool in
-            if isGlobalBinarySubscribed, binarySubscriptionDeviceId == deviceId {
-                return false
-            }
-            if binarySubscriptionDeviceId != nil, binarySubscriptionDeviceId != deviceId {
-                globalBinarySubscription?.cancel()
-                globalBinarySubscription = nil
-                isGlobalBinarySubscribed = false
-            }
-            isGlobalBinarySubscribed = true
-            binarySubscriptionDeviceId = deviceId
-            return true
+        if binarySubscriptionDeviceId != nil, binarySubscriptionDeviceId != deviceId {
+            globalBinarySubscription?.cancel()
+            globalBinarySubscription = nil
         }
 
-        guard shouldEstablish else { return }
+        binarySubscriptionDeviceId = deviceId
 
         globalBinarySubscription = relayClient.terminalBytes
             .receive(on: DispatchQueue.main)
@@ -629,16 +609,12 @@ public class TerminalDataService: ObservableObject {
     }
 
     private func ensureGlobalBinarySubscriptionForActiveDevice() {
-        // Resolve active device/relay from MultiConnectionManager
         guard let activeDeviceId = connectionManager.activeDeviceId,
               let activeRelay = connectionManager.relayConnection(for: activeDeviceId) else {
             return
         }
 
-        if let currentId = binarySubscriptionDeviceId,
-           currentId == activeDeviceId,
-           globalBinarySubscription != nil,
-           isGlobalBinarySubscribed {
+        if globalBinarySubscription != nil, binarySubscriptionDeviceId == activeDeviceId {
             return
         }
 
@@ -929,7 +905,6 @@ public class TerminalDataService: ObservableObject {
         globalBinarySubscription?.cancel()
         globalBinarySubscription = nil
         binarySubscriptionDeviceId = nil
-        isGlobalBinarySubscribed = false
 
         eventSubscriptions.values.forEach { $0.cancel() }
         eventSubscriptions.removeAll()

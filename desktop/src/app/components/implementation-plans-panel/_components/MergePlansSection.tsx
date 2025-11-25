@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { Merge, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/ui/button";
 import { Card, CardContent } from "@/ui/card";
@@ -27,19 +27,55 @@ export const MergePlansSection = React.memo(function MergePlansSection({
   const [isOpen, setIsOpen] = useState(true);
   // Local state for immediate UI responsiveness (same pattern as FloatingMergeInstructions)
   const [localValue, setLocalValue] = useState(mergeInstructions);
+  const isFocusedRef = useRef(false);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Sync local value when prop changes from outside
+  // Sync local value when prop changes from outside, but only if not focused
   useEffect(() => {
+    // Skip sync if this editor or the floating editor is focused
+    if (isFocusedRef.current || (window as any).__mergeInstructionsEditorFocused) {
+      return;
+    }
     setLocalValue(mergeInstructions);
   }, [mergeInstructions]);
 
-  // Handle input changes - update local state only for instant feedback
-  const handleInstructionsChange = useCallback((value: string) => {
-    setLocalValue(value);
+  // Cleanup debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
   }, []);
 
-  // Flush on blur - send to parent
+  // Handle input changes - update local state and debounce sync to parent
+  const handleInstructionsChange = useCallback((value: string) => {
+    setLocalValue(value);
+
+    // Debounce sync to parent (500ms)
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    debounceTimerRef.current = setTimeout(() => {
+      onMergeInstructionsChange(value);
+    }, 500);
+  }, [onMergeInstructionsChange]);
+
+  // Set focus flag on focus
+  const handleFocus = useCallback(() => {
+    isFocusedRef.current = true;
+    (window as any).__mergeInstructionsEditorFocused = true;
+  }, []);
+
+  // Flush on blur - send to parent immediately
   const handleBlur = useCallback(() => {
+    isFocusedRef.current = false;
+    (window as any).__mergeInstructionsEditorFocused = false;
+    // Cancel pending debounce and flush immediately
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
     onMergeInstructionsChange(localValue);
   }, [localValue, onMergeInstructionsChange]);
 
@@ -75,6 +111,7 @@ export const MergePlansSection = React.memo(function MergePlansSection({
                   placeholder="Provide specific instructions for how to merge these plans..."
                   value={localValue}
                   onChange={(e) => handleInstructionsChange(e.target.value)}
+                  onFocus={handleFocus}
                   onBlur={handleBlur}
                   className="min-h-[80px] resize-y"
                 />

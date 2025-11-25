@@ -24,6 +24,7 @@ public struct PlanDetailView: View {
     @State private var hasUnsavedChanges = false
     @State private var showingSaveConfirmation = false
     @State private var isEditMode = false
+    @State private var isLoadingContent = false
 
     @State private var cancellables = Set<AnyCancellable>()
     @FocusState private var isEditorFocused: Bool
@@ -131,7 +132,10 @@ public struct PlanDetailView: View {
         .onChange(of: observedJob?.response) { newResponse in
             guard let response = newResponse, !response.isEmpty else { return }
             if response != content {
+                // Mark as loading to prevent triggering hasUnsavedChanges
+                isLoadingContent = true
                 content = response
+                isLoadingContent = false
             }
         }
     }
@@ -181,7 +185,7 @@ public struct PlanDetailView: View {
     @ViewBuilder
     private func editorView() -> some View {
         VStack(spacing: 0) {
-            // Minimal status bar with navigation (hidden in landscape for max space)
+            // Minimal status bar (hidden in landscape for max space)
             if !isLandscape {
                 HStack(spacing: 0) {
                     if let createdAt = observedJob?.createdAt {
@@ -190,7 +194,6 @@ public struct PlanDetailView: View {
                             .foregroundColor(Color.textMuted)
                     }
 
-                    // Merged marker
                     if observedJob?.taskType == "implementation_plan_merge" {
                         Text("Merged")
                             .font(.caption2)
@@ -203,56 +206,6 @@ public struct PlanDetailView: View {
                     }
 
                     Spacer()
-
-                    // Edit mode toggle
-                    Button {
-                        isEditMode.toggle()
-                        if !isEditMode {
-                            isEditorFocused = false
-                        }
-                    } label: {
-                        Image(systemName: isEditMode ? "pencil.circle.fill" : "pencil.circle")
-                            .font(.title3)
-                            .foregroundColor(Color.primary)
-                    }
-
-                    Spacer()
-                        .frame(width: 24)
-
-                    // Previous plan
-                    Button {
-                        navigateToPlan(direction: .previous)
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.title3)
-                            .foregroundColor(canGoPrevious ? Color.textPrimary : Color.textMuted)
-                    }
-                    .disabled(!canGoPrevious)
-
-                    Spacer()
-                        .frame(width: 24)
-
-                    // Next plan
-                    Button {
-                        navigateToPlan(direction: .next)
-                    } label: {
-                        Image(systemName: "chevron.right")
-                            .font(.title3)
-                            .foregroundColor(canGoNext ? Color.textPrimary : Color.textMuted)
-                    }
-                    .disabled(!canGoNext)
-
-                    Spacer()
-                        .frame(width: 40)
-
-                    // Terminal button - launch directly
-                    Button {
-                        showingTerminal = true
-                    } label: {
-                        Image(systemName: "terminal")
-                            .font(.title3)
-                            .foregroundColor(Color.primary)
-                    }
                 }
                 .padding(.horizontal)
                 .padding(.top, 4)
@@ -266,7 +219,6 @@ public struct PlanDetailView: View {
                 )
             }
 
-            // Maximum space for editor
             PlanRunestoneEditorView(
                 text: $content,
                 isReadOnly: isStreaming || !isEditMode,
@@ -276,77 +228,77 @@ public struct PlanDetailView: View {
             .ignoresSafeArea(.keyboard)
             .background(Color.codeBackground)
             .onChange(of: content) { newValue in
-                // Only mark as unsaved if not streaming
-                if !isStreaming {
+                if !isStreaming && !isLoadingContent {
                     hasUnsavedChanges = true
                 }
             }
-
-            // Keyboard toolbar (when keyboard is visible) - compact in landscape
-            if isEditorFocused {
-                HStack(spacing: 0) {
-                    // In landscape, add navigation controls here since they're hidden above
-                    if isLandscape {
-                        // Edit mode toggle
-                        Button {
-                            isEditMode.toggle()
-                            if !isEditMode {
-                                isEditorFocused = false
-                            }
-                        } label: {
-                            Image(systemName: isEditMode ? "pencil.circle.fill" : "pencil.circle")
-                                .font(.title3)
-                        }
-
-                        Spacer()
-                            .frame(width: 24)
-
-                        Button {
-                            navigateToPlan(direction: .previous)
-                        } label: {
-                            Image(systemName: "chevron.left")
-                                .font(.title3)
-                        }
-                        .disabled(!canGoPrevious)
-
-                        Spacer()
-                            .frame(width: 24)
-
-                        Button {
-                            navigateToPlan(direction: .next)
-                        } label: {
-                            Image(systemName: "chevron.right")
-                                .font(.title3)
-                        }
-                        .disabled(!canGoNext)
-
-                        Spacer()
-                            .frame(width: 40)
-
-                        Button {
-                            showingTerminal = true
-                        } label: {
-                            Image(systemName: "terminal")
-                                .font(.title3)
-                        }
+            .toolbar {
+                ToolbarItemGroup(placement: .bottomBar) {
+                    if !isLandscape {
+                        editorControls()
                     }
-
-                    Spacer()
-
-                    Button("Done") {
-                        isEditorFocused = false
-                    }
-                    .buttonStyle(PrimaryButtonStyle())
                 }
-                .padding(.horizontal)
-                .padding(.vertical, isLandscape ? 4 : 8)
-                .background(Color.surfacePrimary)
-                .overlay(
-                    Rectangle()
-                        .frame(height: 1)
-                        .foregroundColor(Color.border),
-                    alignment: .top
-                )
+                ToolbarItemGroup(placement: .keyboard) {
+                    if isLandscape {
+                        editorControls()
+                        Spacer()
+                        Button("Done") {
+                            isEditorFocused = false
+                        }
+                        .buttonStyle(PrimaryButtonStyle())
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func editorControls() -> some View {
+        HStack(spacing: 0) {
+            Button {
+                isEditMode.toggle()
+                if !isEditMode {
+                    isEditorFocused = false
+                }
+            } label: {
+                Image(systemName: isEditMode ? "pencil.circle.fill" : "pencil.circle")
+                    .font(.title3)
+                    .foregroundColor(Color.primary)
+            }
+
+            Spacer()
+                .frame(width: 24)
+
+            Button {
+                navigateToPlan(direction: .previous)
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.title3)
+                    .foregroundColor(canGoPrevious ? Color.textPrimary : Color.textMuted)
+            }
+            .disabled(!canGoPrevious)
+
+            Spacer()
+                .frame(width: 24)
+
+            Button {
+                navigateToPlan(direction: .next)
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.title3)
+                    .foregroundColor(canGoNext ? Color.textPrimary : Color.textMuted)
+            }
+            .disabled(!canGoNext)
+
+            Spacer()
+                .frame(width: 40)
+
+            Button {
+                showingTerminal = true
+            } label: {
+                Image(systemName: "terminal")
+                    .font(.title3)
+                    .foregroundColor(Color.primary)
             }
         }
     }
@@ -403,6 +355,7 @@ public struct PlanDetailView: View {
 
     private func loadPlanContent() {
         let jobId = currentJobId
+        isLoadingContent = true
 
         // 1) Local jobsService.jobs fast path
         if let localJob = container.jobsService.jobs.first(where: { $0.id == jobId }),
@@ -413,6 +366,7 @@ public struct PlanDetailView: View {
             }
             self.isLoading = false
             self.errorMessage = nil
+            self.isLoadingContent = false
             return
         }
 
@@ -425,6 +379,7 @@ public struct PlanDetailView: View {
             }
             self.isLoading = false
             self.errorMessage = nil
+            self.isLoadingContent = false
             return
         }
 
@@ -435,6 +390,7 @@ public struct PlanDetailView: View {
             .receive(on: DispatchQueue.main)
             .sink(receiveCompletion: { completion in
                 self.isLoading = false
+                self.isLoadingContent = false
                 if case let .failure(error) = completion {
                     self.errorMessage = error.localizedDescription
                 }
@@ -475,6 +431,7 @@ public struct PlanDetailView: View {
 // MARK: - Supporting Views
 // (None needed - all inline)
 
+#if DEBUG
 #Preview {
     let jobId = "job-1"
     let allPlanJobIds = ["job-1", "job-2", "job-3"]
@@ -482,3 +439,4 @@ public struct PlanDetailView: View {
     PlanDetailView(jobId: jobId, allPlanJobIds: allPlanJobIds)
         .environmentObject(AppContainer.preview)
 }
+#endif

@@ -563,7 +563,9 @@ public struct DeviceSelectionView: View {
                 case .failure(let error):
                     await MainActor.run {
                         // Map specific errors to user-friendly messages
-                        if let multiError = error as? MultiConnectionError {
+                        if let relayError = error as? ServerRelayError {
+                            errorMessage = ConnectivityDiagnostics.userFriendlyMessage(for: relayError)
+                        } else if let multiError = error as? MultiConnectionError {
                             switch multiError {
                             case .authenticationRequired:
                                 errorMessage = "Authentication required. Please sign in."
@@ -572,8 +574,6 @@ public struct DeviceSelectionView: View {
                             default:
                                 errorMessage = error.localizedDescription
                             }
-                        } else if let relayError = error as? ServerRelayError {
-                            errorMessage = ConnectivityDiagnostics.userFriendlyMessage(for: relayError)
                         } else {
                             errorMessage = error.localizedDescription
                         }
@@ -737,35 +737,41 @@ private struct DeviceRow: View {
 
     private func connectionErrorDetails(_ error: Error) -> (String, String) {
         if let relayError = error as? ServerRelayError {
+            let message = ConnectivityDiagnostics.userFriendlyMessage(for: relayError)
+
+            // Map to appropriate title based on error type
+            let title: String
             switch relayError {
             case .timeout:
-                return ("Connection Timed Out", "Server did not respond within 20 seconds. Check if desktop is running and authenticated with the same account.")
+                title = "Connection Timed Out"
             case .notConnected:
-                return ("Not Connected", "WebSocket connection failed. Check your internet connection.")
+                title = "Not Connected"
             case .invalidURL:
-                return ("Configuration Error", "Invalid server URL. Please check your settings.")
-            case .invalidState(let message):
-                return ("Invalid State", message)
-            case .networkError(let underlyingError):
-                return ("Network Error", underlyingError.localizedDescription)
+                title = "Configuration Error"
+            case .invalidState:
+                title = "Invalid State"
+            case .networkError:
+                title = "Network Error"
             case .encodingError:
-                return ("Data Error", "Failed to encode connection data. Try restarting the app.")
+                title = "Data Error"
             case .disconnected:
-                return ("Disconnected", "Connection closed by server. Tap to reconnect.")
-            case .serverError(let code, let message):
+                title = "Disconnected"
+            case .serverError(let code, _):
                 switch code {
                 case "device_ownership_failed":
-                    return ("Device Ownership Mismatch", "This device is registered to a different account. Sign in with the correct account on desktop.")
+                    title = "Device Ownership Mismatch"
                 case "auth_required":
-                    return ("Authentication Failed", "Desktop device authentication failed. Make sure you're signed in on desktop.")
+                    title = "Authentication Failed"
                 case "invalid_device_id", "missing_device_id":
-                    return ("Invalid Device", "Device ID format is invalid. Try reinstalling the app.")
+                    title = "Invalid Device"
                 case "missing_scope":
-                    return ("Permission Denied", "Missing required permissions. Make sure you're signed in correctly.")
+                    title = "Permission Denied"
                 default:
-                    return ("Server Error", message.isEmpty ? "Server returned error: \(code). Contact support if this persists." : message)
+                    title = "Server Error"
                 }
             }
+
+            return (title, message)
         } else if let multiError = error as? MultiConnectionError {
             switch multiError {
             case .authenticationRequired:
