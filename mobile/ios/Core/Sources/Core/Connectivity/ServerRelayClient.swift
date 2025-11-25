@@ -313,7 +313,6 @@ public class ServerRelayClient: NSObject, ObservableObject {
     /// Disconnect from the relay
     /// - Parameter isUserInitiated: If true, clears all queues and pending RPCs. If false (network drop), keeps state for reconnection.
     public func disconnect(isUserInitiated: Bool = true) {
-        // Idempotency guard to prevent duplicate disconnect calls
         if isDisconnecting { return }
         if webSocketTask == nil, connectionState == .disconnected {
             return
@@ -334,12 +333,10 @@ public class ServerRelayClient: NSObject, ObservableObject {
             stopReconnection()
         }
 
-        // Cancel registration timer
         registrationTimer?.invalidate()
         registrationTimer = nil
 
         if isUserInitiated {
-            // Clear session state for user-initiated disconnect
             self.sessionId = nil
             self.resumeToken = nil
         }
@@ -347,22 +344,17 @@ public class ServerRelayClient: NSObject, ObservableObject {
         webSocketTask?.cancel(with: .goingAway, reason: nil)
         webSocketTask = nil
 
-        if isUserInitiated {
-            // Fail all pending RPC calls and clear queues
-            executeSafelyOnRpcQueue {
-                let subjects = Array(self.pendingRPCCalls.values)
-                self.pendingRPCCalls.removeAll()
-                self.rpcMetrics.removeAll()
+        executeSafelyOnRpcQueue {
+            let subjects = Array(self.pendingRPCCalls.values)
+            self.pendingRPCCalls.removeAll()
+            self.rpcMetrics.removeAll()
 
-                for subject in subjects {
-                    subject.send(completion: .failure(.disconnected))
-                }
+            for subject in subjects {
+                subject.send(completion: .failure(.disconnected))
             }
-
-            // Clear message queue
-            pendingMessageQueue.removeAll()
         }
-        // If not user-initiated (network drop), keep pending RPCs and message queue
+
+        pendingMessageQueue.removeAll()
     }
 
     // MARK: - RPC Calls
@@ -1303,14 +1295,6 @@ public class ServerRelayClient: NSObject, ObservableObject {
         let payload = (json["payload"] as? [String: Any]) ?? [:]
         let event = RelayEvent(eventType: "device-status", data: payload, timestamp: Date(), sourceDeviceId: nil)
         eventPublisher.send(event)
-
-        if event.eventType.hasPrefix("job:") {
-            NotificationCenter.default.post(
-                name: Notification.Name("relay-event-job"),
-                object: self,
-                userInfo: ["event": event]
-            )
-        }
     }
 
     private func handleConnectionError(_ error: Error) {
@@ -1423,24 +1407,11 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
     private func setupApplicationLifecycleObservers() {
         #if canImport(UIKit)
-        NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)
-            .sink { [weak self] _ in
-                guard let self = self else { return }
-                if self.allowInternalReconnect && !self.isConnected && !self.isReconnecting, let token = self.jwtToken {
-                    self.logger.info("App became active, reconnecting to relay")
-                    self.connect(jwtToken: token)
-                        .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
-                        .store(in: &self.cancellables)
-                }
-            }
-            .store(in: &cancellables)
-
-        // Disconnect when app enters background
         NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)
             .sink { [weak self] _ in
                 guard let self = self else { return }
                 self.logger.info("App entered background, disconnecting from relay")
-                self.disconnect()
+                self.disconnect(isUserInitiated: false)
             }
             .store(in: &cancellables)
         #endif

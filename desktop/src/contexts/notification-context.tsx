@@ -8,6 +8,7 @@ import type { ButtonProps } from "@/ui/button";
 import { Button } from "@/ui/button";
 import { extractErrorInfo, createUserFriendlyErrorMessage, logError, ErrorType } from "@/utils/error-handling";
 import { useUILayout } from "@/contexts/ui-layout-context";
+import { useDeviceLink, type DeviceLinkConnectionState } from "@/contexts";
 
 export interface NotificationType {
   title: string;
@@ -60,6 +61,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const activeTimeoutsRef = useRef<Map<string, number>>(new Map());
 
   const { isUserPresent } = useUILayout();
+  const deviceLink = useDeviceLink();
+  const prevConnectionStateRef = useRef<DeviceLinkConnectionState | null>(null);
 
   const showNotification = useCallback(({
     title,
@@ -140,32 +143,36 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   }, [notifications]);
 
   const dismissNotificationsByTag = useCallback((tag: string) => {
-    const notificationsToDismiss = notifications.filter(n => n.duration === 0 && n.tag === tag);
+    setNotifications(prev => {
+      const notificationsToDismiss = prev.filter(n => n.duration === 0 && n.tag === tag);
 
-    notificationsToDismiss.forEach(notification => {
-      const timeoutId = activeTimeoutsRef.current.get(notification.id);
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        activeTimeoutsRef.current.delete(notification.id);
-      }
+      notificationsToDismiss.forEach(notification => {
+        const timeoutId = activeTimeoutsRef.current.get(notification.id);
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          activeTimeoutsRef.current.delete(notification.id);
+        }
+      });
+
+      return prev.filter(n => !(n.duration === 0 && n.tag === tag));
     });
-
-    setNotifications(prev => prev.filter(n => !(n.duration === 0 && n.tag === tag)));
-  }, [notifications]);
+  }, []);
 
   const dismissNotificationsByPredicate = useCallback((predicate: (n: ActiveNotification) => boolean) => {
-    const notificationsToDismiss = notifications.filter(n => n.duration === 0 && predicate(n));
+    setNotifications(prev => {
+      const notificationsToDismiss = prev.filter(n => n.duration === 0 && predicate(n));
 
-    notificationsToDismiss.forEach(notification => {
-      const timeoutId = activeTimeoutsRef.current.get(notification.id);
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        activeTimeoutsRef.current.delete(notification.id);
-      }
+      notificationsToDismiss.forEach(notification => {
+        const timeoutId = activeTimeoutsRef.current.get(notification.id);
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          activeTimeoutsRef.current.delete(notification.id);
+        }
+      });
+
+      return prev.filter(n => !(n.duration === 0 && predicate(n)));
     });
-
-    setNotifications(prev => prev.filter(n => !(n.duration === 0 && predicate(n))));
-  }, [notifications]);
+  }, []);
 
   // Cleanup all timeouts on unmount
   useEffect(() => {
@@ -229,6 +236,91 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('open-terminal-session', handleOpenTerminalSession);
     };
   }, [showNotification, showPersistentNotification, dismissNotificationsByPredicate]);
+
+  // Device-link connection state notifications
+  useEffect(() => {
+    // Wait for device link to initialize
+    if (!deviceLink.isInitialized) {
+      return;
+    }
+
+    // ALWAYS dismiss previous device-link notifications first (avoid duplicates)
+    dismissNotificationsByTag("device-link");
+
+    const { connectionState, rawStatus, lastErrorMessage } = deviceLink;
+    const prev = prevConnectionStateRef.current;
+
+    // Handle transition to connected (show success toast)
+    if (connectionState === "connected" && prev !== null && prev !== "connected") {
+      showNotification({
+        title: "Mobile device connected",
+        message: "You can now send plans to your mobile device",
+        type: "success",
+        duration: 3000,
+        tag: "device-link",
+      });
+      prevConnectionStateRef.current = connectionState;
+      return;
+    }
+
+    // Handle error state (persistent banner)
+    if (connectionState === "error") {
+      const isAuthError = lastErrorMessage?.includes("401") || lastErrorMessage?.includes("auth");
+      showPersistentNotification({
+        title: isAuthError ? "Device authentication failed" : "Device connection error",
+        message: isAuthError
+          ? "Please re-authenticate your mobile device in settings"
+          : lastErrorMessage || "An unexpected error occurred",
+        type: "error",
+        duration: 0,
+        tag: "device-link",
+      });
+      prevConnectionStateRef.current = connectionState;
+      return;
+    }
+
+    // Handle disconnected states
+    if (rawStatus === "reconnecting") {
+      // Keep silent during reconnecting to avoid spam
+      prevConnectionStateRef.current = connectionState;
+      return;
+    }
+
+    if (rawStatus === "disabled") {
+      showPersistentNotification({
+        title: "Mobile device link disabled",
+        message: "Enable in settings to send plans to your mobile device",
+        type: "info",
+        duration: 0,
+        tag: "device-link",
+      });
+      prevConnectionStateRef.current = connectionState;
+      return;
+    }
+
+    if (rawStatus === "disconnected") {
+      showPersistentNotification({
+        title: "Mobile device disconnected",
+        message: "Attempting to reconnect...",
+        type: "warning",
+        duration: 0,
+        tag: "device-link",
+      });
+      prevConnectionStateRef.current = connectionState;
+      return;
+    }
+
+    // Update previous state
+    prevConnectionStateRef.current = connectionState;
+  }, [
+    deviceLink.connectionState,
+    deviceLink.rawStatus,
+    deviceLink.lastErrorMessage,
+    deviceLink.isInitialized,
+    dismissNotificationsByTag,
+    showNotification,
+    showPersistentNotification,
+  ]);
 
   // Helper function to create action buttons for billing errors
   const getActionButton = useCallback((errorType: ErrorType, workflowContext?: any) => {

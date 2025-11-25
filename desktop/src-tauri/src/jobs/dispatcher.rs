@@ -494,6 +494,43 @@ async fn handle_job_success(
             } else {
                 debug!("Job {} has no metadata", job_id);
             }
+
+            // Check if this is a standalone implementation plan job and send push notification
+            // Only send if this is NOT part of a workflow (workflow jobs are handled by WorkflowOrchestrator)
+            let is_workflow_job = if let Some(metadata_str) = &completed_job.metadata {
+                if let Ok(metadata_json) = serde_json::from_str::<serde_json::Value>(metadata_str) {
+                    metadata_json.get("workflowId").is_some()
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            if !is_workflow_job
+                && matches!(
+                    TaskType::from_str(&completed_job.task_type).ok(),
+                    Some(TaskType::ImplementationPlan) | Some(TaskType::ImplementationPlanMerge)
+                )
+            {
+                // This is a standalone implementation plan job (not part of a workflow)
+                info!("Detected standalone implementation plan job completion: {}", job_id);
+                if let Err(e) = send_implementation_plan_notification(
+                    app_handle,
+                    &completed_job.session_id,
+                    job_id,
+                    &completed_job.task_type,
+                    completed_job.metadata.as_deref(),
+                    model_used,
+                )
+                .await
+                {
+                    warn!(
+                        "Failed to send implementation plan notification for job {}: {}",
+                        job_id, e
+                    );
+                }
+            }
         }
         JobStatus::Failed => {
             let error_message = result
@@ -1134,4 +1171,102 @@ fn extract_job_cost_data(job: &BackgroundJob) -> AppResult<(Option<f64>, serde_j
     }
 
     Ok((final_cost, token_counts))
+}
+
+/// Send push notification for standalone implementation plan job completion
+async fn send_implementation_plan_notification(
+    app_handle: &AppHandle,
+    session_id: &str,
+    job_id: &str,
+    task_type: &str,
+    metadata: Option<&str>,
+    model_used: Option<&str>,
+) -> AppResult<()> {
+    use crate::api_clients::client_factory;
+
+    // Get session info to extract project_directory
+    let pool = app_handle
+        .state::<Arc<sqlx::SqlitePool>>()
+        .inner()
+        .clone();
+    let session_repo = SessionRepository::new(pool.clone());
+
+    let session = match session_repo.get_session_by_id(session_id).await? {
+        Some(session) => session,
+        None => {
+            warn!("Session {} not found for implementation plan notification", session_id);
+            return Ok(()); // Don't fail if session not found
+        }
+    };
+
+    // Extract plan title from metadata if available
+    let plan_title = if let Some(metadata_str) = metadata {
+        if let Ok(metadata_json) = serde_json::from_str::<serde_json::Value>(metadata_str) {
+            metadata_json
+                .get("planTitle")
+                .and_then(|v| v.as_str())
+                .or_else(|| metadata_json.get("generated_title").and_then(|v| v.as_str()))
+                .map(|s| s.to_string())
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    // Get server_proxy_client
+    let server_proxy_client = match client_factory::get_server_proxy_client(app_handle).await {
+        Ok(client) => client,
+        Err(e) => {
+            warn!("Server proxy client not available for notification: {}", e);
+            return Ok(()); // Don't fail if client not available
+        }
+    };
+
+    // Construct custom_data JSON
+    let custom_data = json!({
+        "type": "implementation_plan_complete",
+        "jobId": job_id,
+        "sessionId": session_id,
+        "projectDirectory": session.project_directory,
+        "planTitle": plan_title,
+        "modelUsed": model_used,
+    });
+
+    // Build notification payload
+    let notification_title = "Implementation plan ready";
+    let notification_body = if let Some(title) = plan_title.as_ref() {
+        format!("Your implementation plan '{}' is ready for review", title)
+    } else {
+        "Your implementation plan is ready for review".to_string()
+    };
+
+    let payload = json!({
+        "job_id": job_id,
+        "title": notification_title,
+        "body": notification_body,
+        "custom_data": custom_data
+    });
+
+    // Send the notification via server proxy client
+    server_proxy_client
+        .send_job_completed_notification(payload.clone())
+        .await?;
+
+    info!(
+        "Implementation plan notification sent for job: {} (type: {})",
+        job_id, task_type
+    );
+
+    // Forward event to device link for real-time sync
+    let event_payload = json!({
+        "type": "job-completed",
+        "payload": payload
+    });
+
+    if let Err(e) = app_handle.emit("device-link-event", event_payload) {
+        warn!("Failed to emit device-link-event for implementation plan completion: {}", e);
+    }
+
+    Ok(())
 }

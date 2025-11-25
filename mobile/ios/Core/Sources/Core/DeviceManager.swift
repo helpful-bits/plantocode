@@ -1,5 +1,4 @@
 import Foundation
-import KeychainAccess
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -8,31 +7,21 @@ import UIKit
 public final class DeviceManager {
     public static let shared = DeviceManager()
 
-    private let keychain = Keychain(service: "com.plantocode.mobile.device")
-    private let deviceIDKey = "device_id"
-
     private init() {}
 
     /// Get or create a persistent device ID for device-binding headers (X-Device-ID, X-Token-Binding)
     public func getOrCreateDeviceID() -> String {
-        // Try to retrieve existing device ID from keychain
-        if let existingDeviceID = try? keychain.get(deviceIDKey),
+        if let existingDeviceID = try? KeychainManager.shared.retrieveString(for: .deviceIdentifier),
            !existingDeviceID.isEmpty {
             return existingDeviceID
         }
 
-        // Generate new device ID using UUID
         let deviceID = UUID().uuidString
 
-        // Store in keychain with high security
         do {
-            try keychain
-                .accessibility(.whenUnlockedThisDeviceOnly) // Most secure option
-                .synchronizable(false) // Don't sync to other devices
-                .set(deviceID, key: deviceIDKey)
+            try KeychainManager.shared.store(string: deviceID, for: .deviceIdentifier)
         } catch {
             print("Warning: Failed to store device ID in keychain: \(error)")
-            // Fall back to in-memory for this session
         }
 
         return deviceID
@@ -40,7 +29,7 @@ public final class DeviceManager {
 
     /// Clear stored device ID (for testing or reset purposes)
     public func clearDeviceID() throws {
-        try keychain.remove(deviceIDKey)
+        try KeychainManager.shared.delete(for: .deviceIdentifier)
     }
 
     /// Get device info for debugging and analytics

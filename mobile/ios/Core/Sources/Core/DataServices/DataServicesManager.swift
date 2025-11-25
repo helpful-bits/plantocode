@@ -690,6 +690,10 @@ public class DataServicesManager: ObservableObject {
                     .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
                     .store(in: &self.cancellables)
                 }
+
+                // Explicitly refresh data to catch any missed events while in background
+                self.jobsService.onConnectionRestored()
+                self.sessionService.onConnectionRestored()
             }
         }
     }
@@ -741,13 +745,12 @@ public class DataServicesManager: ObservableObject {
 
     @MainActor
     private func updateConnectionStatus(connected: Bool) {
-        let newStatus = ConnectionStatus(
+        connectionStatus = ConnectionStatus(
             mode: connected ? .direct(url: apiClient.endpoint) : .offline,
             isConnected: connected,
             lastConnectedAt: connected ? Date() : connectionStatus.lastConnectedAt,
-            latencyMs: nil // Would measure actual latency
+            latencyMs: nil
         )
-        connectionStatus = newStatus
     }
 
     private func gatherProjectData(_ project: ProjectInfo) async throws -> ProjectExportData {

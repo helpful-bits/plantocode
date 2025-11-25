@@ -2,13 +2,17 @@ import SwiftUI
 import UIKit
 import Core
 
-/// Reusable voice recording button with transcription functionality
-/// Extracts the working voice transcription logic from TaskInputView
+// MARK: - Voice Recording Button
+
+/// Premium voice recording button with beautiful animations and transcription functionality
+/// Features: Multi-phase UI (idle, recording, transcribing), audio-reactive waveform,
+/// shimmer effects, pulse animations, and smooth state transitions
 public struct VoiceRecordingButton: View {
-    // Input parameters
+    // MARK: - Input Parameters
     @Binding var text: String
     @Binding var selectedRange: NSRange
     @Binding var selectedLanguage: String
+    @Binding var externalStartRecording: Bool
 
     let transcriptionModel: String?
     let transcriptionPrompt: String?
@@ -16,15 +20,26 @@ public struct VoiceRecordingButton: View {
     let onError: (String) -> Void
     let onTranscriptionComplete: () -> Void
 
-    // Shared voice service (passed from parent to ensure state observation)
+    // MARK: - Observed Objects
     @ObservedObject var voiceService: VoiceDictationService
 
-    // Internal state
+    // MARK: - Internal State
     @State private var recordingDuration: TimeInterval = 0
     @State private var timer: Timer?
     @State private var capturedCursorPosition: NSRange? = nil
-    @State private var recordingPulse = false
+    @State private var animationNamespace: Namespace.ID?
 
+    // Animation states
+    @State private var isPressed = false
+    @State private var iconBounce: CGFloat = 1.0
+    @State private var containerScale: CGFloat = 1.0
+    @State private var glowIntensity: CGFloat = 0.0
+
+    // MARK: - Environment
+    @Environment(\.colorScheme) private var colorScheme
+    @Namespace private var buttonNamespace
+
+    // MARK: - Initializer
     public init(
         text: Binding<String>,
         selectedRange: Binding<NSRange>,
@@ -33,12 +48,14 @@ public struct VoiceRecordingButton: View {
         transcriptionModel: String? = nil,
         transcriptionPrompt: String? = nil,
         transcriptionTemperature: Double? = nil,
+        externalStartRecording: Binding<Bool> = .constant(false),
         onError: @escaping (String) -> Void = { _ in },
         onTranscriptionComplete: @escaping () -> Void = {}
     ) {
         self._text = text
         self._selectedRange = selectedRange
         self._selectedLanguage = selectedLanguage
+        self._externalStartRecording = externalStartRecording
         self.voiceService = voiceService
         self.transcriptionModel = transcriptionModel
         self.transcriptionPrompt = transcriptionPrompt
@@ -47,49 +64,64 @@ public struct VoiceRecordingButton: View {
         self.onTranscriptionComplete = onTranscriptionComplete
     }
 
+    // MARK: - Body
     public var body: some View {
         Button(action: toggleRecording) {
-            HStack(spacing: 8) {
-                micControl
+            HStack(spacing: 10) {
+                micControlView
+                    .matchedGeometryEffect(id: "micControl", in: buttonNamespace)
 
                 if phase != .idle {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(primaryLabel)
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(primaryLabelColor)
-                            .lineLimit(1)
-
-                        Text(secondaryLabel)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(secondaryLabelColor)
-                            .lineLimit(1)
-                    }
-
-                    Spacer(minLength: 4)
-
-                    trailingContent
+                    labelsAndTrailingView
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .move(edge: .leading)).animation(.spring(response: 0.4, dampingFraction: 0.8)),
+                            removal: .opacity.combined(with: .scale(scale: 0.9)).animation(.easeOut(duration: 0.2))
+                        ))
                 }
             }
             .padding(.horizontal, phase == .idle ? Theme.Spacing.cardSpacing : Theme.Spacing.md)
             .padding(.vertical, phase == .idle ? Theme.Spacing.cardSpacing : Theme.Spacing.sm)
-            .frame(height: 48)
-            .background(containerBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 999, style: .continuous))
+            .frame(height: 52)
+            .background(containerBackgroundView)
+            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .overlay(borderOverlay)
             .shadow(color: shadowColor, radius: shadowRadius, x: 0, y: shadowY)
+            .scaleEffect(containerScale)
         }
         .buttonStyle(PlainButtonStyle())
         .disabled(voiceService.isTranscribing)
-        .animation(.spring(response: 0.35, dampingFraction: 0.75), value: phase)
-        .onChange(of: voiceService.isRecording) { isRecording in
-            recordingPulse = isRecording
+        .animation(.spring(response: 0.4, dampingFraction: 0.75), value: phase)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    withAnimation(.easeInOut(duration: 0.1)) {
+                        containerScale = 0.97
+                    }
+                }
+                .onEnded { _ in
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                        containerScale = 1.0
+                    }
+                }
+        )
+        .onChange(of: externalStartRecording) { shouldStart in
+            if shouldStart && phase == .idle {
+                toggleRecording()
+                DispatchQueue.main.async {
+                    externalStartRecording = false
+                }
+            }
+        }
+        .onAppear {
+            startIdleAnimations()
         }
         .accessibilityLabel(accessibilityLabelText)
         .accessibilityHint(accessibilityHintText)
     }
 
-    // MARK: - Derived Phase
+    // MARK: - Recording Phase
 
-    private enum RecordingPhase {
+    private enum RecordingPhase: Equatable {
         case idle
         case recording
         case transcribing
@@ -105,152 +137,257 @@ public struct VoiceRecordingButton: View {
         }
     }
 
-    // MARK: - View Components
+    // MARK: - Mic Control View
 
     @ViewBuilder
-    private var micControl: some View {
+    private var micControlView: some View {
         ZStack {
+            // Pulse rings for recording state
             if phase == .recording {
-                Circle()
-                    .stroke(AppColors.destructiveForeground.opacity(0.3), lineWidth: 2)
-                    .frame(width: 36, height: 36)
-                    .scaleEffect(recordingPulse ? 1.3 : 1.0)
-                    .opacity(recordingPulse ? 0 : 1)
-                    .animation(.easeOut(duration: 1.5).repeatForever(autoreverses: false), value: recordingPulse)
+                PulseRingView(
+                    color: AppColors.destructiveForeground.opacity(0.5),
+                    ringCount: 3,
+                    isAnimating: true
+                )
+                .frame(width: 40, height: 40)
             }
 
-            Circle()
-                .fill(micControlBackgroundColor)
-                .frame(width: 32, height: 32)
+            // Glow effect for recording/transcribing
+            if phase != .idle {
+                Circle()
+                    .fill(micControlBackgroundColor.opacity(0.3))
+                    .frame(width: 44, height: 44)
+                    .blur(radius: 8)
+            }
 
-            micIcon
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(micIconColor)
+            // Main circle background
+            Circle()
+                .fill(micControlBackgroundGradient)
+                .frame(width: 36, height: 36)
+                .shadow(
+                    color: micControlBackgroundColor.opacity(phase == .idle ? 0.2 : 0.4),
+                    radius: phase == .idle ? 4 : 8,
+                    x: 0,
+                    y: phase == .idle ? 2 : 4
+                )
+
+            // Icon
+            micIconView
+                .scaleEffect(iconBounce)
         }
-        .frame(width: 36, height: 36)
+        .frame(width: 44, height: 44)
+        .breathing(isActive: phase == .idle, intensity: 0.02, duration: 2.5)
     }
 
     @ViewBuilder
-    private var micIcon: some View {
+    private var micIconView: some View {
+        Group {
+            switch phase {
+            case .idle:
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(AppColors.primaryForeground)
+                    .transition(.scale.combined(with: .opacity))
+
+            case .recording:
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(AppColors.destructiveForeground)
+                    .frame(width: 12, height: 12)
+                    .transition(.scale.combined(with: .opacity))
+
+            case .transcribing:
+                if #available(iOS 17.0, *) {
+                    Image(systemName: "waveform")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(.white)
+                        .symbolEffect(.variableColor.iterative, options: .repeating, value: voiceService.isTranscribing)
+                        .transition(.scale.combined(with: .opacity))
+                } else {
+                    Image(systemName: "waveform")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(.white)
+                        .transition(.scale.combined(with: .opacity))
+                }
+            }
+        }
+        .animation(.spring(response: 0.25, dampingFraction: 0.7), value: phase)
+    }
+
+    private var micControlBackgroundGradient: LinearGradient {
         switch phase {
         case .idle:
-            Image(systemName: "mic.fill")
+            return LinearGradient(
+                colors: [
+                    AppColors.primary,
+                    AppColors.primary.opacity(0.85)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
         case .recording:
-            RoundedRectangle(cornerRadius: 1.5)
-                .fill(AppColors.destructiveForeground)
-                .frame(width: 10, height: 10)
+            return LinearGradient(
+                colors: [
+                    AppColors.destructive,
+                    AppColors.destructive.opacity(0.85)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
         case .transcribing:
-            if #available(iOS 17.0, *) {
-                Image(systemName: "waveform")
-                    .symbolEffect(.pulse, options: .repeating, value: voiceService.isTranscribing)
-            } else {
-                Image(systemName: "waveform")
-            }
+            return LinearGradient(
+                colors: [
+                    AppColors.primary,
+                    AppColors.primary.opacity(0.85)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
         }
     }
 
     private var micControlBackgroundColor: Color {
         switch phase {
-        case .idle:
-            return AppColors.primary
-        case .recording:
-            return AppColors.destructive
-        case .transcribing:
-            return AppColors.primary
+        case .idle: return AppColors.primary
+        case .recording: return AppColors.destructive
+        case .transcribing: return AppColors.primary
         }
     }
 
-    private var micIconColor: Color {
-        switch phase {
-        case .idle:
-            return AppColors.primaryForeground
-        case .recording:
-            return AppColors.destructiveForeground
-        case .transcribing:
-            return AppColors.primaryForeground
+    // MARK: - Labels and Trailing Content
+
+    @ViewBuilder
+    private var labelsAndTrailingView: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            primaryLabelView
+            secondaryLabelView
         }
+
+        Spacer(minLength: 8)
+
+        trailingContentView
     }
 
-    private var primaryLabel: String {
-        switch phase {
-        case .idle:
-            return "Tap to record"
-        case .recording:
-            return formatDuration(recordingDuration)
-        case .transcribing:
-            return "Transcribing…"
+    @ViewBuilder
+    private var primaryLabelView: some View {
+        Group {
+            switch phase {
+            case .idle:
+                Text("Tap to record")
+            case .recording:
+                Text(formatDuration(recordingDuration))
+                    .monospacedDigit()
+            case .transcribing:
+                HStack(spacing: 6) {
+                    Text("Transcribing")
+                    TypingDotsView(color: .white.opacity(0.8))
+                }
+            }
         }
+        .font(.system(size: 15, weight: .semibold, design: .rounded))
+        .foregroundColor(primaryLabelColor)
+        .lineLimit(1)
+        .shimmer(isActive: phase == .transcribing, color: .white.opacity(0.3), duration: 2.0)
     }
 
+    @ViewBuilder
+    private var secondaryLabelView: some View {
+        Text(secondaryLabel)
+            .font(.system(size: 12, weight: .medium))
+            .foregroundColor(secondaryLabelColor)
+            .lineLimit(1)
+    }
+
+    // Note: For filled backgrounds (recording/transcribing), we need light text in both light and dark modes.
+    // `destructiveForeground` is light in both modes, while `primaryForeground` is dark in dark mode.
+    // Using white with high opacity ensures readable text on filled teal/red backgrounds.
     private var primaryLabelColor: Color {
         switch phase {
-        case .idle:
-            return AppColors.foreground
-        case .recording:
-            return AppColors.destructiveForeground
-        case .transcribing:
-            return AppColors.primaryForeground
+        case .idle: return AppColors.foreground
+        case .recording: return AppColors.destructiveForeground
+        case .transcribing: return .white
         }
     }
 
     private var secondaryLabel: String {
         switch phase {
-        case .idle:
-            return "Voice input"
-        case .recording:
-            return "Tap to stop"
-        case .transcribing:
-            return "Please wait"
+        case .idle: return "Voice input"
+        case .recording: return "Tap to stop"
+        case .transcribing: return "Please wait"
         }
     }
 
     private var secondaryLabelColor: Color {
         switch phase {
-        case .idle:
-            return AppColors.mutedForeground
-        case .recording:
-            return AppColors.destructiveForeground.opacity(0.85)
-        case .transcribing:
-            return AppColors.primaryForeground.opacity(0.9)
+        case .idle: return AppColors.mutedForeground
+        case .recording: return AppColors.destructiveForeground.opacity(0.8)
+        case .transcribing: return .white.opacity(0.85)
         }
     }
 
+    // MARK: - Trailing Content
+
     @ViewBuilder
-    private var trailingContent: some View {
+    private var trailingContentView: some View {
         switch phase {
         case .idle:
             EmptyView()
+
         case .recording:
-            AnimatedWaveform(
+            AudioReactiveWaveform(
                 isAnimating: voiceService.isRecording,
-                audioLevels: voiceService.audioLevels
+                audioLevels: voiceService.audioLevels,
+                primaryColor: AppColors.destructiveForeground,
+                secondaryColor: AppColors.destructiveForeground.opacity(0.6),
+                barCount: 10,
+                isMirrored: true
             )
-            .frame(width: 50, height: 16)
+            .frame(width: 60, height: 22)
+
         case .transcribing:
-            ProgressView()
-                .progressViewStyle(CircularProgressViewStyle(tint: AppColors.primaryForeground))
-                .scaleEffect(0.7)
+            ZStack {
+                // Animated circular progress
+                Circle()
+                    .stroke(Color.white.opacity(0.25), lineWidth: 2)
+                    .frame(width: 22, height: 22)
+
+                Circle()
+                    .trim(from: 0, to: 0.7)
+                    .stroke(
+                        Color.white,
+                        style: StrokeStyle(lineWidth: 2, lineCap: .round)
+                    )
+                    .frame(width: 22, height: 22)
+                    .rotationEffect(.degrees(-90))
+                    .modifier(SpinningModifier())
+            }
         }
     }
 
-    private var containerBackground: some View {
+    // MARK: - Container Background
+
+    @ViewBuilder
+    private var containerBackgroundView: some View {
         Group {
             switch phase {
             case .idle:
-                LinearGradient(
-                    colors: [AppColors.primary.opacity(0.08), AppColors.primary.opacity(0.04)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
+                idleBackgroundView
+
             case .recording:
                 LinearGradient(
-                    colors: [AppColors.destructive, AppColors.destructive.opacity(0.9)],
+                    colors: [
+                        AppColors.destructive,
+                        AppColors.destructive.opacity(0.92)
+                    ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
+
             case .transcribing:
                 LinearGradient(
-                    colors: [AppColors.primary, AppColors.primary.opacity(0.9)],
+                    colors: [
+                        AppColors.primary,
+                        AppColors.primary.opacity(0.92)
+                    ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
@@ -258,24 +395,81 @@ public struct VoiceRecordingButton: View {
         }
     }
 
+    @ViewBuilder
+    private var idleBackgroundView: some View {
+        ZStack {
+            // Base gradient
+            LinearGradient(
+                colors: [
+                    AppColors.primary.opacity(colorScheme == .dark ? 0.12 : 0.08),
+                    AppColors.primary.opacity(colorScheme == .dark ? 0.08 : 0.04)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            // Subtle shimmer overlay for premium feel
+            LinearGradient(
+                colors: [
+                    Color.white.opacity(0),
+                    Color.white.opacity(colorScheme == .dark ? 0.03 : 0.05),
+                    Color.white.opacity(0)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var borderOverlay: some View {
+        RoundedRectangle(cornerRadius: 26, style: .continuous)
+            .stroke(borderColor, lineWidth: borderWidth)
+    }
+
+    private var borderColor: Color {
+        switch phase {
+        case .idle:
+            return AppColors.primary.opacity(colorScheme == .dark ? 0.25 : 0.15)
+        case .recording:
+            return AppColors.destructiveForeground.opacity(0.3)
+        case .transcribing:
+            return Color.white.opacity(0.25)
+        }
+    }
+
+    private var borderWidth: CGFloat {
+        phase == .idle ? 1 : 1.5
+    }
+
+    // MARK: - Shadow Properties
+
     private var shadowColor: Color {
         switch phase {
         case .idle:
-            return AppColors.primary.opacity(0.12)
+            return AppColors.primary.opacity(colorScheme == .dark ? 0.2 : 0.15)
         case .recording:
-            return AppColors.destructive.opacity(0.4)
+            return AppColors.destructive.opacity(0.45)
         case .transcribing:
-            return AppColors.primary.opacity(0.4)
+            return AppColors.primary.opacity(0.45)
         }
     }
 
     private var shadowRadius: CGFloat {
-        phase == .idle ? 3 : 6
+        switch phase {
+        case .idle: return colorScheme == .dark ? 6 : 4
+        case .recording, .transcribing: return 10
+        }
     }
 
     private var shadowY: CGFloat {
-        phase == .idle ? 1 : 2
+        switch phase {
+        case .idle: return 2
+        case .recording, .transcribing: return 4
+        }
     }
+
+    // MARK: - Accessibility
 
     private var accessibilityLabelText: String {
         switch phase {
@@ -299,16 +493,46 @@ public struct VoiceRecordingButton: View {
         }
     }
 
+    // MARK: - Animations
+
+    private func startIdleAnimations() {
+        // Icon subtle bounce on appear
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.6).delay(0.2)) {
+            iconBounce = 1.05
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                iconBounce = 1.0
+            }
+        }
+    }
+
+    private func triggerIconBounce() {
+        withAnimation(.spring(response: 0.2, dampingFraction: 0.5)) {
+            iconBounce = 0.85
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.6)) {
+                iconBounce = 1.0
+            }
+        }
+    }
+
     // MARK: - Voice Recording Logic
 
     private func toggleRecording() {
         guard !voiceService.isTranscribing else { return }
 
+        triggerIconBounce()
+
         Task {
             do {
                 if voiceService.isRecording {
+                    // Stop recording
                     await MainActor.run {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        // Enhanced haptic feedback for stopping
+                        let generator = UIImpactFeedbackGenerator(style: .medium)
+                        generator.impactOccurred()
                     }
 
                     voiceService.stopRecording()
@@ -316,11 +540,8 @@ public struct VoiceRecordingButton: View {
                     timer = nil
                     recordingDuration = 0
 
-                    // Wait a bit for file writes to complete
-                    try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+                    try? await Task.sleep(nanoseconds: 100_000_000)
 
-                    // Transcribe the recording
-                    // Convert "en-US" to "en" for Whisper API
                     let languageCode = String(selectedLanguage.prefix(2))
 
                     for try await transcribedText in voiceService.transcribe(
@@ -330,72 +551,85 @@ public struct VoiceRecordingButton: View {
                         temperature: transcriptionTemperature
                     ) {
                         await MainActor.run {
-                            let nsString = text as NSString
+                            insertTranscribedText(transcribedText)
 
-                            // Use captured cursor position (from when recording started) instead of current position
-                            // This prevents the cursor from jumping to the end during recording
-                            let insertionRange = capturedCursorPosition ?? selectedRange
-
-                            let validRange: NSRange
-                            if insertionRange.location == NSNotFound || insertionRange.location > nsString.length {
-                                validRange = NSRange(location: nsString.length, length: 0)
-                            } else if insertionRange.location + insertionRange.length > nsString.length {
-                                validRange = NSRange(location: insertionRange.location, length: nsString.length - insertionRange.location)
-                            } else {
-                                validRange = insertionRange
-                            }
-
-                            let beforeCursor = nsString.substring(to: validRange.location)
-                            let afterCursor = nsString.substring(from: validRange.location + validRange.length)
-
-                            let prefix = beforeCursor.isEmpty ? "" : (beforeCursor.hasSuffix(" ") || beforeCursor.hasSuffix("\n") ? "" : " ")
-                            let trimmedText = transcribedText.trimmingCharacters(in: .whitespacesAndNewlines)
-
-                            text = beforeCursor + prefix + trimmedText + afterCursor
-
-                            let newCursorPosition = (beforeCursor as NSString).length + (prefix as NSString).length + (trimmedText as NSString).length
-                            selectedRange = NSRange(location: newCursorPosition, length: 0)
-
-                            // Clear captured position after use
-                            capturedCursorPosition = nil
+                            // Success haptic
+                            let generator = UINotificationFeedbackGenerator()
+                            generator.notificationOccurred(.success)
 
                             onTranscriptionComplete()
                         }
                     }
                 } else {
+                    // Start recording
                     await MainActor.run {
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    }
+                        // Enhanced haptic feedback for starting
+                        let generator = UIImpactFeedbackGenerator(style: .heavy)
+                        generator.impactOccurred()
 
-                    await MainActor.run {
                         capturedCursorPosition = selectedRange
                     }
 
                     try await voiceService.startRecording()
 
-                    // Start timer for duration display
                     await MainActor.run {
-                        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
+                        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [self] _ in
                             recordingDuration += 0.1
+
+                            // Milestone haptic feedback
+                            if recordingDuration.truncatingRemainder(dividingBy: 30.0) < 0.15 && recordingDuration > 1 {
+                                let generator = UIImpactFeedbackGenerator(style: .light)
+                                generator.impactOccurred()
+                            }
                         }
                     }
                 }
             } catch VoiceDictationError.permissionDenied {
-                await MainActor.run {
-                    capturedCursorPosition = nil // Clear on error
-                    onError("Microphone permission denied")
-                }
+                await handleError("Microphone permission denied")
             } catch VoiceDictationError.recordingInProgress {
-                await MainActor.run {
-                    capturedCursorPosition = nil // Clear on error
-                    onError("Recording already in progress")
-                }
+                await handleError("Recording already in progress")
             } catch {
-                await MainActor.run {
-                    capturedCursorPosition = nil // Clear on error
-                    onError("Voice dictation error: \(error.localizedDescription)")
-                }
+                await handleError("Voice dictation error: \(error.localizedDescription)")
             }
+        }
+    }
+
+    private func insertTranscribedText(_ transcribedText: String) {
+        let nsString = text as NSString
+        let insertionRange = capturedCursorPosition ?? selectedRange
+
+        let validRange: NSRange
+        if insertionRange.location == NSNotFound || insertionRange.location > nsString.length {
+            validRange = NSRange(location: nsString.length, length: 0)
+        } else if insertionRange.location + insertionRange.length > nsString.length {
+            validRange = NSRange(location: insertionRange.location, length: nsString.length - insertionRange.location)
+        } else {
+            validRange = insertionRange
+        }
+
+        let beforeCursor = nsString.substring(to: validRange.location)
+        let afterCursor = nsString.substring(from: validRange.location + validRange.length)
+
+        let prefix = beforeCursor.isEmpty ? "" : (beforeCursor.hasSuffix(" ") || beforeCursor.hasSuffix("\n") ? "" : " ")
+        let trimmedText = transcribedText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        text = beforeCursor + prefix + trimmedText + afterCursor
+
+        let newCursorPosition = (beforeCursor as NSString).length + (prefix as NSString).length + (trimmedText as NSString).length
+        selectedRange = NSRange(location: newCursorPosition, length: 0)
+
+        capturedCursorPosition = nil
+    }
+
+    private func handleError(_ message: String) async {
+        await MainActor.run {
+            capturedCursorPosition = nil
+
+            // Error haptic
+            let generator = UINotificationFeedbackGenerator()
+            generator.notificationOccurred(.error)
+
+            onError(message)
         }
     }
 
@@ -406,102 +640,212 @@ public struct VoiceRecordingButton: View {
     }
 }
 
-// MARK: - Animated Waveform Component
+// MARK: - Spinning Modifier
 
-private struct AnimatedWaveform: View {
-    let isAnimating: Bool
-    let audioLevels: [Float]
+private struct SpinningModifier: ViewModifier {
+    @State private var rotation: Double = 0
 
-    @State private var phase: CGFloat = 0
-
-    private let barWidth: CGFloat = 2
-    private let barSpacing: CGFloat = 2.5
-    private let minHeight: CGFloat = 3
-    private let maxHeight: CGFloat = 14
-
-    var body: some View {
-        HStack(spacing: barSpacing) {
-            ForEach(Array(audioLevels.enumerated()), id: \.offset) { index, level in
-                RoundedRectangle(cornerRadius: barWidth / 2)
-                    .fill(AppColors.destructiveForeground.opacity(barOpacity(for: index)))
-                    .frame(width: barWidth)
-                    .frame(height: barHeight(for: level))
-                    .scaleEffect(x: 1.0, y: barScale(for: index))
-                    .animation(.easeOut(duration: 0.08), value: level)
-            }
-        }
-        .onAppear {
-            if isAnimating {
-                withAnimation(.linear(duration: 2.0).repeatForever(autoreverses: false)) {
-                    phase = 2 * .pi
+    func body(content: Content) -> some View {
+        content
+            .rotationEffect(.degrees(rotation))
+            .onAppear {
+                withAnimation(
+                    .linear(duration: 1.0)
+                    .repeatForever(autoreverses: false)
+                ) {
+                    rotation = 360
                 }
             }
-        }
-        .onChange(of: isAnimating) { animating in
-            if animating {
-                withAnimation(.linear(duration: 2.0).repeatForever(autoreverses: false)) {
-                    phase = 2 * .pi
-                }
-            } else {
-                phase = 0
-            }
-        }
-    }
-
-    private func barHeight(for level: Float) -> CGFloat {
-        guard isAnimating else { return minHeight }
-        let normalizedLevel = CGFloat(level)
-        return minHeight + (maxHeight - minHeight) * normalizedLevel
-    }
-
-    private func barOpacity(for index: Int) -> Double {
-        let wave = sin(phase + Double(index) * 0.5)
-        let normalizedWave = (wave + 1.0) / 2.0
-        return 0.5 + 0.5 * normalizedWave
-    }
-
-    private func barScale(for index: Int) -> CGFloat {
-        let wave = sin(phase + Double(index) * 0.5)
-        let normalizedWave = (wave + 1.0) / 2.0
-        return 0.85 + 0.15 * normalizedWave
     }
 }
 
-#Preview {
-    @State var text = ""
-    @State var selectedRange = NSRange(location: 0, length: 0)
-    @State var language = "en-US"
+// MARK: - Preview
 
-    return VStack(spacing: 20) {
-        Text("Voice Recording Button - Compact Design")
+#Preview("Voice Recording Button States") {
+    VStack(spacing: 24) {
+        Text("Voice Recording Button")
             .font(.headline)
+            .foregroundColor(AppColors.foreground)
 
-        HStack(spacing: 12) {
-            VoiceRecordingButton(
-                text: $text,
-                selectedRange: $selectedRange,
-                selectedLanguage: $language
-            )
+        // Idle state preview
+        VStack(spacing: 8) {
+            Text("Idle State")
+                .font(.caption)
+                .foregroundColor(AppColors.mutedForeground)
 
-            Button {
-            } label: {
-                Image(systemName: "sparkles")
-            }
-            .buttonStyle(UtilityButtonStyle())
-
-            Button {
-            } label: {
-                Image(systemName: "wand.and.stars")
-            }
-            .buttonStyle(UtilityButtonStyle())
+            PreviewVoiceButton(simulatedPhase: .idle)
         }
 
-        if !text.isEmpty {
-            Text("Transcribed: \(text)")
+        // Recording state preview
+        VStack(spacing: 8) {
+            Text("Recording State")
                 .font(.caption)
-                .foregroundColor(.secondary)
-                .padding()
+                .foregroundColor(AppColors.mutedForeground)
+
+            PreviewVoiceButton(simulatedPhase: .recording)
+        }
+
+        // Transcribing state preview
+        VStack(spacing: 8) {
+            Text("Transcribing State")
+                .font(.caption)
+                .foregroundColor(AppColors.mutedForeground)
+
+            PreviewVoiceButton(simulatedPhase: .transcribing)
         }
     }
-    .padding()
+    .padding(24)
+    .background(AppColors.background)
+}
+
+// Preview helper
+private struct PreviewVoiceButton: View {
+    let simulatedPhase: SimulatedPhase
+
+    enum SimulatedPhase {
+        case idle, recording, transcribing
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            micControl
+            if simulatedPhase != .idle {
+                labels
+                Spacer(minLength: 8)
+                trailing
+            }
+        }
+        .padding(.horizontal, simulatedPhase == .idle ? Theme.Spacing.cardSpacing : Theme.Spacing.md)
+        .padding(.vertical, simulatedPhase == .idle ? Theme.Spacing.cardSpacing : Theme.Spacing.sm)
+        .frame(height: 52)
+        .background(background)
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .stroke(borderColor, lineWidth: simulatedPhase == .idle ? 1 : 1.5)
+        )
+        .shadow(color: shadowColor, radius: shadowRadius, x: 0, y: 2)
+    }
+
+    @ViewBuilder
+    private var micControl: some View {
+        ZStack {
+            if simulatedPhase == .recording {
+                PulseRingView(
+                    color: AppColors.destructiveForeground.opacity(0.5),
+                    ringCount: 3,
+                    isAnimating: true
+                )
+                .frame(width: 40, height: 40)
+            }
+
+            Circle()
+                .fill(micBackground)
+                .frame(width: 36, height: 36)
+
+            micIcon
+        }
+        .frame(width: 44, height: 44)
+    }
+
+    @ViewBuilder
+    private var micIcon: some View {
+        switch simulatedPhase {
+        case .idle:
+            Image(systemName: "mic.fill")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundColor(AppColors.primaryForeground)
+        case .recording:
+            RoundedRectangle(cornerRadius: 3)
+                .fill(AppColors.destructiveForeground)
+                .frame(width: 12, height: 12)
+        case .transcribing:
+            Image(systemName: "waveform")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundColor(.white)
+        }
+    }
+
+    private var micBackground: LinearGradient {
+        let color = simulatedPhase == .recording ? AppColors.destructive : AppColors.primary
+        return LinearGradient(
+            colors: [color, color.opacity(0.85)],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    @ViewBuilder
+    private var labels: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(simulatedPhase == .recording ? "0:05" : "Transcribing...")
+                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .foregroundColor(simulatedPhase == .recording ? AppColors.destructiveForeground : .white)
+
+            Text(simulatedPhase == .recording ? "Tap to stop" : "Please wait")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(simulatedPhase == .recording ? AppColors.destructiveForeground.opacity(0.8) : .white.opacity(0.85))
+        }
+    }
+
+    @ViewBuilder
+    private var trailing: some View {
+        if simulatedPhase == .recording {
+            AudioReactiveWaveform(
+                isAnimating: true,
+                audioLevels: [0.3, 0.6, 0.8, 0.5, 0.9],
+                primaryColor: AppColors.destructiveForeground,
+                secondaryColor: AppColors.destructiveForeground.opacity(0.6)
+            )
+            .frame(width: 60, height: 22)
+        } else {
+            ProgressView()
+                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                .scaleEffect(0.8)
+        }
+    }
+
+    @ViewBuilder
+    private var background: some View {
+        switch simulatedPhase {
+        case .idle:
+            LinearGradient(
+                colors: [AppColors.primary.opacity(0.1), AppColors.primary.opacity(0.05)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        case .recording:
+            LinearGradient(
+                colors: [AppColors.destructive, AppColors.destructive.opacity(0.92)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        case .transcribing:
+            LinearGradient(
+                colors: [AppColors.primary, AppColors.primary.opacity(0.92)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+    }
+
+    private var borderColor: Color {
+        switch simulatedPhase {
+        case .idle: return AppColors.primary.opacity(0.2)
+        case .recording: return AppColors.destructiveForeground.opacity(0.3)
+        case .transcribing: return Color.white.opacity(0.25)
+        }
+    }
+
+    private var shadowColor: Color {
+        switch simulatedPhase {
+        case .idle: return AppColors.primary.opacity(0.15)
+        case .recording: return AppColors.destructive.opacity(0.45)
+        case .transcribing: return AppColors.primary.opacity(0.45)
+        }
+    }
+
+    private var shadowRadius: CGFloat {
+        simulatedPhase == .idle ? 4 : 10
+    }
 }

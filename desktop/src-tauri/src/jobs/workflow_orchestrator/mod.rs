@@ -1313,12 +1313,26 @@ impl WorkflowOrchestrator {
                 }
             };
 
+        // Select notification type based on workflow definition name
+        let notification_type = if workflow_state.workflow_definition_name == "FileFinderWorkflow" {
+            "file_finder_complete"
+        } else {
+            "job_completed"
+        };
+
+        // Generate title and body based on workflow type
+        let (title, body) = if workflow_state.workflow_definition_name == "FileFinderWorkflow" {
+            ("File Finder complete".to_string(), "Relevant files have been selected for your project.".to_string())
+        } else {
+            ("Task Completed".to_string(), self.generate_completion_message(workflow_state))
+        };
+
         let payload = serde_json::json!({
             "job_id": workflow_id,
-            "title": "Task Completed",
-            "body": self.generate_completion_message(workflow_state),
+            "title": title,
+            "body": body,
             "custom_data": {
-                "type": "job_completed",
+                "type": notification_type,
                 "jobId": workflow_id,
                 "sessionId": workflow_state.session_id,
                 "projectDirectory": workflow_state.project_directory.clone(),

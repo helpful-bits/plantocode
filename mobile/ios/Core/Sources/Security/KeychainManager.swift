@@ -40,6 +40,22 @@ public class KeychainManager {
         }
     }
 
+    public enum KeychainAccessibility {
+        case whenUnlocked
+        case whenUnlockedThisDeviceOnly
+        case afterFirstUnlock
+        case afterFirstUnlockThisDeviceOnly
+
+        var cfString: CFString {
+            switch self {
+            case .whenUnlocked: return kSecAttrAccessibleWhenUnlocked
+            case .whenUnlockedThisDeviceOnly: return kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+            case .afterFirstUnlock: return kSecAttrAccessibleAfterFirstUnlock
+            case .afterFirstUnlockThisDeviceOnly: return kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            }
+        }
+    }
+
     public enum BiometricPolicy {
         case none
         case biometryAny
@@ -93,6 +109,7 @@ public class KeychainManager {
         let service: String
         let account: String
         let accessGroup: String?
+        let accessibility: KeychainAccessibility
         let biometricPolicy: BiometricPolicy
         let synchronizable: Bool
 
@@ -100,12 +117,14 @@ public class KeychainManager {
             service: String,
             account: String,
             accessGroup: String? = nil,
+            accessibility: KeychainAccessibility = .whenUnlockedThisDeviceOnly,
             biometricPolicy: BiometricPolicy = .none,
             synchronizable: Bool = false
         ) {
             self.service = service
             self.account = account
             self.accessGroup = accessGroup
+            self.accessibility = accessibility
             self.biometricPolicy = biometricPolicy
             self.synchronizable = synchronizable
         }
@@ -129,11 +148,10 @@ public class KeychainManager {
         var query = baseQuery(for: item)
         query[kSecValueData] = data
 
-        // Add access control for biometric protection
         if let accessControl = item.biometricPolicy.accessControl {
             query[kSecAttrAccessControl] = accessControl
         } else {
-            query[kSecAttrAccessible] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+            query[kSecAttrAccessible] = item.accessibility.cfString
         }
 
         let status = SecItemAdd(query as CFDictionary, nil)
@@ -312,6 +330,23 @@ public class KeychainManager {
 // MARK: - Predefined Keychain Items
 
 extension KeychainManager.KeychainItem {
+
+    public static let deviceIdentifier: KeychainManager.KeychainItem = .init(
+        service: "com.plantocode.mobile.device",
+        account: "device_identifier",
+        accessibility: .whenUnlockedThisDeviceOnly,
+        synchronizable: false
+    )
+
+    public static let appJWT: KeychainManager.KeychainItem = .init(
+        service: "com.plantocode.mobile.auth",
+        account: "app_jwt"
+    )
+
+    public static let appJWTExpiry: KeychainManager.KeychainItem = .init(
+        service: "com.plantocode.mobile.auth",
+        account: "app_jwt_exp"
+    )
 
     /// Authentication token storage
     public static func authToken(userId: String) -> KeychainManager.KeychainItem {

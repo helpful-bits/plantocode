@@ -21,6 +21,10 @@ public final class AppContainer: ObservableObject {
         manager.jobsService
     }
 
+    public var activeFileFinderWorkflowJobsForActiveSession: Int {
+        sessionActiveWorkflowJobs
+    }
+
     public var taskSyncService: TaskSyncDataService {
         manager.taskSyncService
     }
@@ -57,6 +61,7 @@ public final class AppContainer: ObservableObject {
     @Published public var currentProject: ProjectInfo?
     @Published public var isInitializing: Bool = false
     @Published public var hasCompletedInitialLoad: Bool = false
+    @Published public private(set) var sessionActiveWorkflowJobs: Int = 0
 
     public init(baseURL: URL, deviceId: String) {
         // Use the core-managed singleton if available, otherwise create a new one
@@ -82,6 +87,10 @@ public final class AppContainer: ObservableObject {
         manager.$hasCompletedInitialLoad
             .receive(on: DispatchQueue.main)
             .assign(to: &$hasCompletedInitialLoad)
+
+        manager.jobsService.$sessionActiveWorkflowJobs
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$sessionActiveWorkflowJobs)
     }
 
     public func setCurrentProject(_ project: ProjectInfo) {

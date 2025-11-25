@@ -25,9 +25,4 @@ public final class SpeechTextServices: ObservableObject {
         )
         return response.text
     }
-
-    public func enhanceText(_ text: String, sessionId: String, projectDirectory: String?, style: String? = nil) async throws -> String {
-        let response = try await serverFeatureService.enhanceText(text, sessionId: sessionId, projectDirectory: projectDirectory)
-        return response.enhancedText
-    }
 }

@@ -4,6 +4,7 @@ import Core
 struct ResponseFormatter {
     static func formattedView(
         for job: BackgroundJob,
+        currentIncludedFiles: [String] = [],
         onUseFiles: (([String]) -> Void)? = nil,
         onUseResearch: (([[String: Any]]) -> Void)? = nil,
         onUseFindings: (([String: Any]) -> Void)? = nil
@@ -27,7 +28,7 @@ struct ResponseFormatter {
             return formatRootFolderSelection(responseData)
 
         case "regex_file_filter", "file_relevance_assessment", "extended_path_finder", "path_correction":
-            return formatFileFinderTask(job, responseData, onUseFiles)
+            return formatFileFinderTask(job, responseData, currentIncludedFiles, onUseFiles)
 
         case "web_search_prompts_generation":
             return formatWebSearchPrompts(responseData)
@@ -94,11 +95,16 @@ struct ResponseFormatter {
     private static func formatFileFinderTask(
         _ job: BackgroundJob,
         _ data: [String: Any]?,
+        _ currentIncludedFiles: [String],
         _ onUseFiles: (([String]) -> Void)?
     ) -> AnyView {
         let summary = data?["summary"] as? String
         let files = data?["files"] as? [String] ?? []
         let isEmpty = data?["isEmptyResult"] as? Bool ?? false
+
+        // Calculate new files (diff from current selection)
+        let currentSet = Set(currentIncludedFiles)
+        let newFiles = files.filter { !currentSet.contains($0) }
 
         return AnyView(
             ScrollView {
@@ -123,18 +129,32 @@ struct ResponseFormatter {
                             .fontWeight(.medium)
 
                         ForEach(files, id: \.self) { file in
-                            Text(file)
-                                .font(.system(.caption, design: .monospaced))
-                                .textSelection(.enabled)
+                            HStack(spacing: 4) {
+                                Text(file)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .textSelection(.enabled)
+                                if currentSet.contains(file) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.caption2)
+                                        .foregroundColor(.green)
+                                }
+                            }
                         }
 
                         if job.status == "completed" && !files.isEmpty, let onUseFiles = onUseFiles {
-                            Button(action: { onUseFiles(files) }) {
-                                Label("Use Files", systemImage: "doc.on.doc")
-                                    .frame(maxWidth: .infinity)
+                            if newFiles.isEmpty {
+                                Text("All files already selected")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .padding(.top, 8)
+                            } else {
+                                Button(action: { onUseFiles(newFiles) }) {
+                                    Label("Use Files (\(newFiles.count) new)", systemImage: "doc.on.doc")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .padding(.top, 8)
                             }
-                            .buttonStyle(.borderedProminent)
-                            .padding(.top, 8)
                         }
                     }
                 }

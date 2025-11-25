@@ -11,6 +11,10 @@ public final class NetworkPathObserver: ObservableObject {
 
     @Published public private(set) var currentPath: NWPath?
 
+    public var isOnline: Bool {
+        currentPath?.status == .satisfied
+    }
+
     private init() {
         monitor.pathUpdateHandler = { [weak self] path in
             Task { @MainActor [weak self] in

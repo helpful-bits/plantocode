@@ -506,51 +506,51 @@ public struct RemoteTerminalView: View {
     }
 
     private func openCompose() {
-        // Resign first responder to avoid UIReparenting warnings
-        terminalController.terminalView?.resignFirstResponder()
-
-        // Clear the current terminal input line by sending Ctrl+U (clear line before cursor)
-        // This ensures no duplicate text between terminal and compose view
         Task {
+            // Resign keyboard
+            await MainActor.run {
+                terminalController.terminalView?.resignFirstResponder()
+            }
+
+            // Clear current line with Ctrl+U
             do {
-                try await container.terminalService.write(jobId: jobId, bytes: [0x15]) // Ctrl+U
-                // Small delay to ensure the terminal processes the clear before showing compose
-                try await Task.sleep(nanoseconds: 50_000_000) // 50ms
-                await MainActor.run {
-                    composeAutoStartRecording = false
-                    showCompose = true
-                }
+                try await container.terminalService.write(
+                    jobId: jobId,
+                    bytes: [0x15] // Ctrl+U
+                )
             } catch {
-                // If clearing fails, still show compose
-                await MainActor.run {
-                    composeAutoStartRecording = false
-                    showCompose = true
-                }
+                // Handle or log error if needed
+            }
+
+            // Present compose sheet
+            await MainActor.run {
+                composeAutoStartRecording = false
+                showCompose = true
             }
         }
     }
 
     private func openComposeWithVoice() {
-        // Resign first responder to avoid UIReparenting warnings
-        terminalController.terminalView?.resignFirstResponder()
-
-        // Clear the current terminal input line by sending Ctrl+U (clear line before cursor)
-        // This ensures no duplicate text between terminal and compose view
         Task {
+            // Resign keyboard
+            await MainActor.run {
+                terminalController.terminalView?.resignFirstResponder()
+            }
+
+            // Clear current line with Ctrl+U
             do {
-                try await container.terminalService.write(jobId: jobId, bytes: [0x15]) // Ctrl+U
-                // Small delay to ensure the terminal processes the clear before showing compose
-                try await Task.sleep(nanoseconds: 50_000_000) // 50ms
-                await MainActor.run {
-                    composeAutoStartRecording = true
-                    showCompose = true
-                }
+                try await container.terminalService.write(
+                    jobId: jobId,
+                    bytes: [0x15]
+                )
             } catch {
-                // If clearing fails, still show compose
-                await MainActor.run {
-                    composeAutoStartRecording = true
-                    showCompose = true
-                }
+                // Handle or log error if needed
+            }
+
+            // Present compose sheet with auto-start flag
+            await MainActor.run {
+                composeAutoStartRecording = true
+                showCompose = true
             }
         }
     }

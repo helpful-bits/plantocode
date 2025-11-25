@@ -26,6 +26,13 @@ export {
   UILayoutProvider,
   type UILayoutContextType as UILayoutContextValue,
 } from "./ui-layout-context";
+export {
+  DeviceLinkProvider,
+  useDeviceLink,
+  type DeviceLinkContextValue,
+  type DeviceLinkStatusRaw,
+  type DeviceLinkConnectionState,
+} from "./device-link-context";
 
 // Background jobs system
 export * from "./background-jobs";

@@ -36,6 +36,9 @@ public class PushNotificationManager: NSObject, ObservableObject {
 
         notificationCenter.delegate = self
 
+        // Register notification categories
+        registerNotificationCategories()
+
         // Check current authorization status
         Task {
             await checkAuthorizationStatus()
@@ -60,6 +63,39 @@ public class PushNotificationManager: NSObject, ObservableObject {
 
     deinit {
         NotificationCenter.default.removeObserver(self)
+    }
+
+    // MARK: - Private Setup Methods
+
+    private func registerNotificationCategories() {
+        let fileFinderCategory = UNNotificationCategory(
+            identifier: Self.FILE_FINDER_COMPLETE,
+            actions: [],
+            intentIdentifiers: [],
+            options: []
+        )
+
+        let implementationPlanCategory = UNNotificationCategory(
+            identifier: Self.IMPLEMENTATION_PLAN_COMPLETE,
+            actions: [],
+            intentIdentifiers: [],
+            options: []
+        )
+
+        let terminalInactivityCategory = UNNotificationCategory(
+            identifier: Self.TERMINAL_INACTIVITY_DETECTED,
+            actions: [],
+            intentIdentifiers: [],
+            options: []
+        )
+
+        notificationCenter.setNotificationCategories([
+            fileFinderCategory,
+            implementationPlanCategory,
+            terminalInactivityCategory
+        ])
+
+        logger.info("Registered notification categories")
     }
 
     // MARK: - Public Methods

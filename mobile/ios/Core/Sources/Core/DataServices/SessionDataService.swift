@@ -171,6 +171,17 @@ public final class SessionDataService: ObservableObject {
         }
     }
 
+    /// Called when connection is restored (e.g., app returns from background)
+    /// Refreshes current session to get latest includedFiles in case relay events were missed
+    public func onConnectionRestored() {
+        guard let sessionId = currentSession?.id else { return }
+
+        Task {
+            // Refresh current session to get latest file selections
+            _ = try? await getSession(id: sessionId)
+        }
+    }
+
     public func fetchSessions(projectDirectory: String) async throws -> [Session] {
         // Check if we fetched sessions for this project recently (within 15s)
         if let lastFetch = lastSessionsFetch[projectDirectory],
@@ -1193,19 +1204,21 @@ public final class SessionDataService: ObservableObject {
 
     private func handleSessionUpdated(dict: [String: Any]) {
         guard let sessionData = dict["session"] as? [String: Any],
-              let sessionId = sessionData["id"] as? String,
-              let index = sessionsIndex[sessionId] else {
+              let sessionId = sessionData["id"] as? String else {
             return
         }
 
         // Parse updated session
-        if let updatedSession = parseSession(from: sessionData) {
-            sessions[index] = updatedSession
+        guard let updatedSession = parseSession(from: sessionData) else { return }
 
-            // Update currentSession if it's the same
-            if currentSession?.id == sessionId {
-                currentSession = updatedSession
-            }
+        // Update currentSession even if not in sessionsIndex (same pattern as handleSessionFilesUpdated)
+        if currentSession?.id == sessionId {
+            currentSession = updatedSession
+        }
+
+        // Also update in sessions array if present
+        if let index = sessionsIndex[sessionId] {
+            sessions[index] = updatedSession
         }
     }
 
@@ -1275,55 +1288,83 @@ public final class SessionDataService: ObservableObject {
 
     private func handleSessionHistorySynced(dict: [String: Any]) {
         guard let sessionId = dict["sessionId"] as? String,
-              let taskDescription = dict["taskDescription"] as? String,
-              let index = sessionsIndex[sessionId] else {
+              let taskDescription = dict["taskDescription"] as? String else {
             return
         }
 
-        // Update task description in session
-        var session = sessions[index]
-        let updatedSession = Session(
-            id: session.id,
-            name: session.name,
-            projectDirectory: session.projectDirectory,
-            taskDescription: taskDescription,
-            mergeInstructions: session.mergeInstructions,
-            createdAt: session.createdAt,
-            updatedAt: session.updatedAt,
-            includedFiles: session.includedFiles,
-            forceExcludedFiles: session.forceExcludedFiles
-        )
-        sessions[index] = updatedSession
-
-        // Update current session if it's the same
+        // Update currentSession even if not in sessionsIndex (same pattern as handleSessionFilesUpdated)
         if currentSession?.id == sessionId {
+            let cs = currentSession!
+            let updatedSession = Session(
+                id: cs.id,
+                name: cs.name,
+                projectDirectory: cs.projectDirectory,
+                taskDescription: taskDescription,
+                mergeInstructions: cs.mergeInstructions,
+                createdAt: cs.createdAt,
+                updatedAt: cs.updatedAt,
+                includedFiles: cs.includedFiles,
+                forceExcludedFiles: cs.forceExcludedFiles
+            )
             currentSession = updatedSession
+        }
+
+        // Also update in sessions array if present
+        if let index = sessionsIndex[sessionId] {
+            let session = sessions[index]
+            let updatedSession = Session(
+                id: session.id,
+                name: session.name,
+                projectDirectory: session.projectDirectory,
+                taskDescription: taskDescription,
+                mergeInstructions: session.mergeInstructions,
+                createdAt: session.createdAt,
+                updatedAt: session.updatedAt,
+                includedFiles: session.includedFiles,
+                forceExcludedFiles: session.forceExcludedFiles
+            )
+            sessions[index] = updatedSession
         }
     }
 
     private func handleSessionAutoFilesApplied(dict: [String: Any]) {
         guard let sessionId = dict["sessionId"] as? String ?? dict["session_id"] as? String,
-              let files = dict["files"] as? [String],
-              let index = sessionsIndex[sessionId] else {
+              let files = dict["files"] as? [String] else {
             return
         }
 
-        var session = sessions[index]
-        let updatedSession = Session(
-            id: session.id,
-            name: session.name,
-            projectDirectory: session.projectDirectory,
-            taskDescription: session.taskDescription,
-            mergeInstructions: session.mergeInstructions,
-            createdAt: session.createdAt,
-            updatedAt: session.updatedAt,
-            includedFiles: files,
-            forceExcludedFiles: session.forceExcludedFiles
-        )
-        sessions[index] = updatedSession
-
+        // Update currentSession even if not in sessionsIndex (same pattern as handleSessionFilesUpdated)
         if currentSession?.id == sessionId {
+            let cs = currentSession!
+            let updatedSession = Session(
+                id: cs.id,
+                name: cs.name,
+                projectDirectory: cs.projectDirectory,
+                taskDescription: cs.taskDescription,
+                mergeInstructions: cs.mergeInstructions,
+                createdAt: cs.createdAt,
+                updatedAt: cs.updatedAt,
+                includedFiles: files,
+                forceExcludedFiles: cs.forceExcludedFiles
+            )
             currentSession = updatedSession
+        }
+
+        // Also update in sessions array if present
+        if let index = sessionsIndex[sessionId] {
+            let session = sessions[index]
+            let updatedSession = Session(
+                id: session.id,
+                name: session.name,
+                projectDirectory: session.projectDirectory,
+                taskDescription: session.taskDescription,
+                mergeInstructions: session.mergeInstructions,
+                createdAt: session.createdAt,
+                updatedAt: session.updatedAt,
+                includedFiles: files,
+                forceExcludedFiles: session.forceExcludedFiles
+            )
+            sessions[index] = updatedSession
         }
     }
 

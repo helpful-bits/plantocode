@@ -7,35 +7,15 @@ public struct ImplementationPlansView: View {
     @EnvironmentObject private var container: AppContainer
     @ObservedObject var jobsService: JobsDataService
     @StateObject private var multiConnectionManager = MultiConnectionManager.shared
-    @StateObject private var settingsService = SettingsDataService()
+    @StateObject private var planCreatorViewModel = ImplementationPlanCreatorViewModel()
     @ObservedObject private var appState = AppState.shared
     @State private var selectedPlanJobIdForNav: String? = nil
     @State private var selectedPlans: Set<String> = []
     @State private var mergeInstructions = ""
     @FocusState private var isMergeInstructionsFocused: Bool
     @State private var isMerging = false
-    @State private var localErrorMessage: String?
     @State private var currentPlanIndex = 0
-    @State private var selectedModel: String = ""
-    @State private var availableModels: [String] = []
-    @State private var projectTaskSettings: ProjectTaskSettings = [:]
-    @State private var providers: [ProviderWithModels] = []
-    @State private var isLoadingModels: Bool = false
-    @State private var loadedForSessionId: String? = nil
-    @State private var loadedForDeviceId: UUID? = nil
-    @State private var modelsLoadedAt: Date? = nil
-
-    // Cache duration: 3 minutes
-    private let modelsCacheDuration: TimeInterval = 180
-
-    // Desktop feature parity states
-    @State private var estimatedTokens: Int?
-    @State private var isEstimatingTokens = false
-    @State private var enableWebSearch = false
-    @State private var includeProjectStructure = true
     @State private var showingPromptPreview = false
-    @State private var promptContent: String?
-    @State private var isCreatingPlan = false
     @State private var refreshTrigger = UUID()
     @State private var deletingPlans = Set<String>()
     @State private var cancellables = Set<AnyCancellable>()
@@ -93,7 +73,7 @@ public struct ImplementationPlansView: View {
     }
 
     private var errorMessage: String? {
-        localErrorMessage ?? jobsService.error?.localizedDescription
+        planCreatorViewModel.localErrorMessage ?? jobsService.error?.localizedDescription
     }
 
     private var allPlanJobIds: [String] {
@@ -105,7 +85,7 @@ public struct ImplementationPlansView: View {
     private var actionBarSection: some View {
         VStack(spacing: Theme.Spacing.sectionSpacing) {
             // Token Estimation Display
-            if canCreatePlan, let tokens = estimatedTokens {
+            if canCreatePlan, let tokens = planCreatorViewModel.estimatedTokens {
                 tokenEstimationView(tokens: tokens)
             }
 
@@ -117,7 +97,7 @@ public struct ImplementationPlansView: View {
                 togglesSection
 
                 // Web Search Warning
-                if enableWebSearch && isOpenAIModel {
+                if planCreatorViewModel.enableWebSearch && planCreatorViewModel.isOpenAIModel {
                     webSearchWarningView
                 }
             }
@@ -152,7 +132,7 @@ public struct ImplementationPlansView: View {
             Text("\(tokens)")
                 .font(.footnote)
                 .fontWeight(.medium)
-                .foregroundColor(tokenCountColor(tokens))
+                .foregroundColor(planCreatorViewModel.tokenCountColor(tokens))
 
             Spacer()
         }
@@ -164,7 +144,7 @@ public struct ImplementationPlansView: View {
 
     @ViewBuilder
     private var modelSelectorView: some View {
-        if isLoadingModels {
+        if planCreatorViewModel.isLoadingModels {
             HStack(spacing: Theme.Spacing.xs) {
                 ProgressView()
                     .scaleEffect(0.6)
@@ -176,15 +156,13 @@ public struct ImplementationPlansView: View {
             .padding(.vertical, Theme.Spacing.itemSpacing)
             .background(Color.input)
             .cornerRadius(Theme.Radii.base)
-        } else if availableModelInfos.count > 1 {
+        } else if planCreatorViewModel.availableModelInfos.count > 1 {
             ScrollView(.horizontal, showsIndicators: false) {
                 ModelSelectorToggle(
-                    models: availableModelInfos,
-                    selectedModelId: selectedModel,
+                    models: planCreatorViewModel.availableModelInfos,
+                    selectedModelId: planCreatorViewModel.selectedModel,
                     onSelect: { modelId in
-                        selectedModel = modelId
-                        saveModelPreference(modelId)
-                        requestTokenEstimation()
+                        planCreatorViewModel.saveModelPreference(modelId)
                     }
                 )
                 .padding(.horizontal, 2)
@@ -197,8 +175,8 @@ public struct ImplementationPlansView: View {
     private var togglesSection: some View {
         VStack(spacing: Theme.Spacing.sm) {
             // Web Search Toggle
-            if isOpenAIModel {
-                Toggle(isOn: $enableWebSearch) {
+            if planCreatorViewModel.isOpenAIModel {
+                Toggle(isOn: $planCreatorViewModel.enableWebSearch) {
                     HStack(spacing: Theme.Spacing.itemSpacing) {
                         Image(systemName: "globe")
                             .font(.footnote)
@@ -210,13 +188,13 @@ public struct ImplementationPlansView: View {
                     }
                 }
                 .toggleStyle(SwitchToggleStyle(tint: Color.primary))
-                .onChange(of: enableWebSearch) { _ in
-                    requestTokenEstimation()
+                .onChange(of: planCreatorViewModel.enableWebSearch) { _ in
+                    planCreatorViewModel.requestTokenEstimation()
                 }
             }
 
             // Project Structure Toggle
-            Toggle(isOn: $includeProjectStructure) {
+            Toggle(isOn: $planCreatorViewModel.includeProjectStructure) {
                 HStack(spacing: Theme.Spacing.itemSpacing) {
                     Image(systemName: "folder.badge.gearshape")
                         .font(.footnote)
@@ -228,8 +206,8 @@ public struct ImplementationPlansView: View {
                 }
             }
             .toggleStyle(SwitchToggleStyle(tint: Color.primary))
-            .onChange(of: includeProjectStructure) { _ in
-                requestTokenEstimation()
+            .onChange(of: planCreatorViewModel.includeProjectStructure) { _ in
+                planCreatorViewModel.requestTokenEstimation()
             }
         }
     }
@@ -254,7 +232,7 @@ public struct ImplementationPlansView: View {
     @ViewBuilder
     private var createPlanButton: some View {
         VStack(spacing: Theme.Spacing.xs) {
-            Button(action: createPlan) {
+            Button(action: { planCreatorViewModel.createPlan() }) {
                 HStack {
                     Image(systemName: "sparkles")
                     Text("Create Implementation Plan")
@@ -262,7 +240,7 @@ public struct ImplementationPlansView: View {
                 .frame(maxWidth: .infinity)
             }
             .buttonStyle(PrimaryButtonStyle())
-            .disabled(!canCreatePlan || isCreatingPlan)
+            .disabled(!canCreatePlan || planCreatorViewModel.isCreatingPlan)
 
             // Hint text when button is disabled
             if let hintText = createPlanHintText {
@@ -420,7 +398,7 @@ public struct ImplementationPlansView: View {
             }
         }
         .sheet(isPresented: $showingPromptPreview) {
-            if let prompt = promptContent {
+            if let prompt = planCreatorViewModel.promptContent {
                 PromptPreviewSheet(
                     prompt: prompt,
                     onCopy: {
@@ -461,14 +439,14 @@ public struct ImplementationPlansView: View {
             container.jobsService.startSessionScopedSync(sessionId: session.id, projectDirectory: session.projectDirectory)
 
             // Load model settings when session changes
-            loadModelSettings()
+            planCreatorViewModel.loadModelSettings()
         }
         .onReceive(multiConnectionManager.$connectionStates) { states in
             guard let activeId = multiConnectionManager.activeDeviceId,
                   let state = states[activeId] else { return }
 
             if state.isConnected {
-                loadModelSettings()
+                planCreatorViewModel.loadModelSettings()
             }
         }
         .onReceive(container.jobsService.$jobs) { _ in
@@ -481,8 +459,7 @@ public struct ImplementationPlansView: View {
                     container.jobsService.setActiveSession(sessionId: session.id, projectDirectory: session.projectDirectory)
                     container.jobsService.startSessionScopedSync(sessionId: session.id, projectDirectory: session.projectDirectory)
                 }
-                // loadModelSettings() has internal caching, no need for redundant check
-                loadModelSettings()
+                planCreatorViewModel.loadModelSettings()
             }
         }
         .onAppear {
@@ -495,22 +472,15 @@ public struct ImplementationPlansView: View {
                 container.jobsService.startSessionScopedSync(sessionId: session.id, projectDirectory: session.projectDirectory)
             }
 
-            requestTokenEstimation()
+            planCreatorViewModel.setup(container: container, currentTaskDescription: currentTaskDescription)
+            planCreatorViewModel.requestTokenEstimation()
         }
         .onDisappear {
             container.setJobsViewActive(false)
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-            // Only invalidate cache if it has expired or is close to expiring
-            if let loadedAt = modelsLoadedAt {
-                let cacheAge = Date().timeIntervalSince(loadedAt)
-                // Invalidate if cache is older than 2 minutes (leaving 1 minute buffer)
-                if cacheAge > (modelsCacheDuration - 60) {
-                    modelsLoadedAt = nil
-                }
-            }
-            // loadModelSettings() will check cache freshness and only reload if needed
-            loadModelSettings()
+            planCreatorViewModel.invalidateModelCache()
+            planCreatorViewModel.loadModelSettings()
         }
     }
 
@@ -565,45 +535,7 @@ public struct ImplementationPlansView: View {
         return "Please " + missingItems.joined(separator: " and ")
     }
 
-    private var canEstimateTokens: Bool {
-        guard isConnected,
-              let session = container.sessionService.currentSession,
-              !session.id.isEmpty,
-              !session.projectDirectory.isEmpty,
-              let taskDescription = session.taskDescription, !taskDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              !selectedModel.isEmpty
-        else { return false }
-        return true
-    }
 
-    private var modelDisplayName: String {
-        if selectedModel.isEmpty {
-            return "Select Model"
-        }
-
-        // Find the model in the providers data
-        for provider in providers {
-            if let model = provider.models.first(where: { $0.id == selectedModel }) {
-                return model.name
-            }
-        }
-
-        // Fallback to showing the last component of the model ID
-        let components = selectedModel.split(separator: "/")
-        return String(components.last ?? "")
-    }
-
-    private var availableModelInfos: [ModelInfo] {
-        var modelInfos: [ModelInfo] = []
-        for provider in providers {
-            for model in provider.models {
-                if availableModels.contains(model.id) {
-                    modelInfos.append(model)
-                }
-            }
-        }
-        return modelInfos
-    }
 
     // STEP 13: Manual refresh function for pull-to-refresh
     private func refreshPlans() async {
@@ -629,7 +561,7 @@ public struct ImplementationPlansView: View {
         guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
               let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
             await MainActor.run {
-                localErrorMessage = "No active device connection"
+                planCreatorViewModel.localErrorMessage = "No active device connection"
             }
             return
         }
@@ -638,7 +570,6 @@ public struct ImplementationPlansView: View {
             isMerging = true
         }
 
-        // Get actual session ID from container
         guard let currentSessionId = container.sessionService.currentSession?.id else {
             await MainActor.run {
                 isMerging = false
@@ -672,12 +603,9 @@ public struct ImplementationPlansView: View {
             await MainActor.run {
                 isMerging = false
                 if let result = mergeResult {
-                    // Handle successful merge
                     if let _ = result["jobId"] as? String {
-                        // Clear selection and instructions
                         selectedPlans.removeAll()
                         mergeInstructions = ""
-                        // JobsDataService will automatically update via events
                     }
                 }
             }
@@ -685,196 +613,6 @@ public struct ImplementationPlansView: View {
         } catch {
             await MainActor.run {
                 isMerging = false
-            }
-        }
-    }
-
-    private func loadModelSettings() {
-        Task {
-            // Check if we've already loaded for this session and device
-            guard let currentSessionId = container.sessionService.currentSession?.id,
-                  let deviceId = multiConnectionManager.activeDeviceId else {
-                return
-            }
-
-            // Skip if already loaded for this session+device combo AND cache is fresh
-            let shouldSkip = await MainActor.run {
-                guard loadedForSessionId == currentSessionId && loadedForDeviceId == deviceId else {
-                    return false
-                }
-
-                // Check if cache is still fresh (within cache duration)
-                if let loadedAt = modelsLoadedAt {
-                    let cacheAge = Date().timeIntervalSince(loadedAt)
-                    return cacheAge < modelsCacheDuration
-                }
-
-                return false
-            }
-
-            if shouldSkip {
-                return
-            }
-
-            await MainActor.run {
-                isLoadingModels = true
-            }
-
-            defer {
-                Task { @MainActor in
-                    isLoadingModels = false
-                }
-            }
-
-            do {
-                // Load project directory from current session
-                guard let projectDirectory = container.sessionService.currentSession?.projectDirectory else { return }
-
-                // Fetch providers and models from server
-                try await settingsService.fetchProviders()
-
-                // Fetch project-specific settings
-                try await settingsService.fetchProjectTaskModelSettings(projectDirectory: projectDirectory)
-
-                await MainActor.run {
-                    // Store the providers data
-                    providers = settingsService.providers
-                    projectTaskSettings = settingsService.projectTaskSettings
-
-                    // Mark as loaded for this session+device combo with timestamp
-                    loadedForSessionId = currentSessionId
-                    loadedForDeviceId = deviceId
-                    modelsLoadedAt = Date()
-
-                    // Get the implementation plan settings
-                    if let planSettings = projectTaskSettings["implementationPlan"] {
-                        selectedModel = planSettings.model
-
-                        // If allowedModels is configured and non-empty, use it
-                        // Otherwise, use ALL models from providers (matches desktop behavior)
-                        if let allowed = planSettings.allowedModels, !allowed.isEmpty {
-                            availableModels = allowed
-                        } else {
-                            // No restrictions - show all models from all providers
-                            availableModels = providers.flatMap { $0.models.map { $0.id } }
-                        }
-                    } else {
-                        // Fall back to server defaults
-                        Task {
-                            do {
-                                let defaults = try await settingsService.fetchServerDefaults()
-                                await MainActor.run {
-                                    if let planSettings = defaults["implementationPlan"] {
-                                        selectedModel = planSettings.model
-
-                                        // Same logic for defaults
-                                        if let allowed = planSettings.allowedModels, !allowed.isEmpty {
-                                            availableModels = allowed
-                                        } else {
-                                            // No restrictions - show all models
-                                            availableModels = providers.flatMap { $0.models.map { $0.id } }
-                                        }
-                                    } else {
-                                        // No settings at all - use all available models
-                                        availableModels = providers.flatMap { $0.models.map { $0.id } }
-                                        // Set a reasonable default model if available
-                                        if let firstModel = availableModels.first {
-                                            selectedModel = firstModel
-                                        }
-                                    }
-                                }
-                            } catch {
-                                // Even on error, show all available models
-                                await MainActor.run {
-                                    availableModels = providers.flatMap { $0.models.map { $0.id } }
-                                }
-                            }
-                        }
-                    }
-                }
-            } catch {
-                // Failed to load model settings
-            }
-
-            // Trigger token estimation after loading model settings
-            await MainActor.run {
-                requestTokenEstimation()
-            }
-        }
-    }
-
-    private func saveModelPreference(_ model: String) {
-        Task {
-            do {
-                guard let projectDirectory = container.sessionService.currentSession?.projectDirectory else { return }
-
-                // Save the model preference for implementation plans
-                try await settingsService.setProjectTaskSetting(
-                    projectDirectory: projectDirectory,
-                    taskKey: "implementationPlan",
-                    settingKey: "model",
-                    value: model
-                )
-            } catch {
-                // Failed to save model preference
-            }
-        }
-    }
-
-    private func createPlan() {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId),
-              let currentSessionId = container.sessionService.currentSession?.id,
-              let projectDirectory = container.sessionService.currentSession?.projectDirectory else {
-            localErrorMessage = "Missing session information. Please select a session first."
-            return
-        }
-
-        let taskText = (currentTaskDescription ?? container.sessionService.currentSession?.taskDescription) ?? ""
-        let files = container.sessionService.currentSession?.includedFiles ?? []
-
-        isCreatingPlan = true
-        Task {
-            do {
-                defer { Task { @MainActor in self.isCreatingPlan = false } }
-
-                var params: [String: Any] = [
-                    "sessionId": currentSessionId,
-                    "taskDescription": taskText,
-                    "projectDirectory": projectDirectory,
-                    "relevantFiles": files,
-                    "includeProjectStructure": includeProjectStructure
-                ]
-
-                if !selectedModel.isEmpty && selectedModel != "Select Model" {
-                    params["model"] = selectedModel
-                }
-
-                if enableWebSearch && isOpenAIModel {
-                    params["enableWebSearch"] = true
-                }
-
-                let request = RpcRequest(
-                    method: "actions.createImplementationPlan",
-                    params: params
-                )
-
-                for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
-                    if let error = response.error {
-                        await MainActor.run {
-                            localErrorMessage = "Create plan error: \(error.message)"
-                        }
-                        return
-                    }
-
-                    if response.isFinal {
-                        break
-                    }
-                }
-            } catch {
-                await MainActor.run {
-                    localErrorMessage = error.localizedDescription
-                }
             }
         }
     }
@@ -955,7 +693,7 @@ public struct ImplementationPlansView: View {
                     receiveCompletion: { completion in
                         self.deletingPlans.remove(plan.id)
                         if case .failure(let error) = completion {
-                            self.localErrorMessage = error.localizedDescription
+                            self.planCreatorViewModel.localErrorMessage = error.localizedDescription
                         }
                     },
                     receiveValue: { _ in
@@ -993,7 +731,7 @@ public struct ImplementationPlansView: View {
                 receiveCompletion: { completion in
                     self.deletingPlans.remove(plan.id)
                     if case .failure(let error) = completion {
-                        self.localErrorMessage = error.localizedDescription
+                        self.planCreatorViewModel.localErrorMessage = error.localizedDescription
                     }
                 },
                 receiveValue: { _ in
@@ -1377,147 +1115,6 @@ private struct ModelSelectorToggle: View {
     }
 }
 
-// MARK: - ImplementationPlansView Extension - Desktop Parity Functions
-
-extension ImplementationPlansView {
-    // Computed properties
-    private var isOpenAIModel: Bool {
-        let modelLower = selectedModel.lowercased()
-        return modelLower.contains("gpt-") ||
-               modelLower.contains("o1-") ||
-               modelLower.contains("openai/")
-    }
-
-    private var isTokenLimitExceeded: Bool {
-        guard let tokens = estimatedTokens else { return false }
-        let modelInfo = availableModelInfos.first { $0.id == selectedModel }
-        let contextWindow = modelInfo?.contextWindow ?? 128000
-        let maxOutputTokens = projectTaskSettings["implementationPlan"]?.maxTokens ?? 8000
-        return (tokens + maxOutputTokens) > contextWindow
-    }
-
-    private func tokenCountColor(_ count: Int) -> Color {
-        let modelInfo = availableModelInfos.first { $0.id == selectedModel }
-        let contextWindow = modelInfo?.contextWindow ?? 128000
-        let maxOutputTokens = projectTaskSettings["implementationPlan"]?.maxTokens ?? 8000
-        let ratio = Double(count + maxOutputTokens) / Double(contextWindow)
-
-        if ratio > 0.9 {
-            return .red
-        } else if ratio > 0.7 {
-            return .orange
-        } else {
-            return .primary
-        }
-    }
-
-    // Action functions
-    private func requestTokenEstimation() {
-        guard canEstimateTokens else {
-            estimatedTokens = nil
-            return
-        }
-
-        Task {
-            await performTokenEstimation()
-        }
-    }
-
-    private func performTokenEstimation() async {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId),
-              let session = container.sessionService.currentSession else {
-            return
-        }
-
-        await MainActor.run {
-            isEstimatingTokens = true
-        }
-
-        defer {
-            Task { @MainActor in
-                isEstimatingTokens = false
-            }
-        }
-
-        do {
-            let params: [String: Any] = [
-                "sessionId": session.id,
-                "taskDescription": session.taskDescription ?? "",
-                "projectDirectory": session.projectDirectory,
-                "relevantFiles": session.includedFiles ?? [],
-                "taskType": "implementation_plan",
-                "model": selectedModel,
-                "includeProjectStructure": includeProjectStructure,
-                "enableWebSearch": enableWebSearch && isOpenAIModel
-            ]
-
-            let request = RpcRequest(
-                method: "actions.estimatePromptTokens",
-                params: params
-            )
-
-            for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
-                if let result = response.result?.value as? [String: Any],
-                   let totalTokens = result["totalTokens"] as? Int {
-                    await MainActor.run {
-                        self.estimatedTokens = totalTokens
-                    }
-                }
-
-                if response.isFinal {
-                    break
-                }
-            }
-        } catch {
-            // Failed to estimate tokens
-        }
-    }
-
-    private func viewPrompt() {
-        guard canCreatePlan else { return }
-
-        Task {
-            await fetchPromptContent()
-            if promptContent != nil {
-                showingPromptPreview = true
-            }
-        }
-    }
-
-    private func copyPrompt() {
-        guard canCreatePlan else { return }
-
-        Task {
-            await fetchPromptContent()
-            if let prompt = promptContent {
-                UIPasteboard.general.string = prompt
-                // Could show a toast notification here
-            }
-        }
-    }
-
-    private func fetchPromptContent() async {
-        guard let session = container.sessionService.currentSession else { return }
-
-        do {
-            let result = try await container.sessionService.getPlanPrompt(
-                sessionId: session.id,
-                taskDescription: session.taskDescription ?? "",
-                projectDirectory: session.projectDirectory,
-                relevantFiles: session.includedFiles
-            )
-
-            await MainActor.run {
-                self.promptContent = result.combinedPrompt
-            }
-        } catch {
-            await MainActor.run {
-                self.localErrorMessage = error.localizedDescription
-            }
-        }
-    }
-}
 
 // MARK: - Prompt Preview Sheet
 

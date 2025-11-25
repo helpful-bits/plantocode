@@ -13,6 +13,7 @@ public class JobsDataService: ObservableObject {
     @Published public var error: DataServiceError?
     @Published public var syncStatus: JobSyncStatus?
     @Published public private(set) var sessionActiveWorkflowJobs: Int = 0
+    @Published public private(set) var sessionActiveImplementationPlans: Int = 0
 
     // MARK: - Private Properties
     private let apiClient: APIClientProtocol
@@ -29,9 +30,12 @@ public class JobsDataService: ObservableObject {
     private var lastCoalescedResyncAt: Date?
     private var activeWorkflowJobsBySession: [String: Int] = [:]
     private var workflowJobsCache: [String: BackgroundJob] = [:]
+    private var activeImplementationPlansBySession: [String: Int] = [:]
+    private var implementationPlanCache: [String: BackgroundJob] = [:]
     private var relayJobEventObserver: NSObjectProtocol?
     private var viewedImplementationPlanId: String? = nil
     private var cacheValidationTimer: Timer?
+    private var lastCacheValidationAt: Date?
 
     private var deviceKey: String {
         MultiConnectionManager.shared.activeDeviceId?.uuidString ?? "no_device"
@@ -85,6 +89,9 @@ public class JobsDataService: ObservableObject {
         activeWorkflowJobsBySession.removeAll()
         sessionActiveWorkflowJobs = 0
         workflowJobsCache.removeAll()
+        activeImplementationPlansBySession.removeAll()
+        sessionActiveImplementationPlans = 0
+        implementationPlanCache.removeAll()
         cacheValidationTimer?.invalidate()
         cacheValidationTimer = nil
 
@@ -283,8 +290,25 @@ public class JobsDataService: ObservableObject {
         activeWorkflowJobsBySession.removeAll()
         sessionActiveWorkflowJobs = 0
         workflowJobsCache.removeAll()
+        lastCacheValidationAt = nil  // Allow immediate validation after device change
+
+        // Reset implementation plan tracking
+        activeImplementationPlansBySession.removeAll()
+        sessionActiveImplementationPlans = 0
+        implementationPlanCache.removeAll()
 
         logger.info("Jobs state reset for device change")
+    }
+
+    /// Called when connection is restored (e.g., app returns from background)
+    /// Triggers immediate workflow cache validation to catch any missed events
+    @MainActor
+    public func onConnectionRestored() {
+        logger.info("Connection restored - validating workflow cache")
+
+        // Only validate cache - don't call refreshActiveJobs() which can cause race conditions.
+        // validateWorkflowCache() does a full job fetch which is more comprehensive.
+        validateWorkflowCache()
     }
 
     /// Get status updates for specific jobs
@@ -449,6 +473,7 @@ public class JobsDataService: ObservableObject {
 
                     self.mergeJobs(fetchedJobs: response.jobs)
                     self.updateWorkflowCountsFromJobs(self.jobs)
+                    self.updateImplementationPlanCountsFromJobs(self.jobs)
 
                     self.syncStatus = JobSyncStatus(
                         activeJobs: response.jobs.count,
@@ -467,17 +492,17 @@ public class JobsDataService: ObservableObject {
         mutateJobs {
             for fetchedJob in fetchedJobs {
                 if let existingIndex = jobsIndex[fetchedJob.id] {
-                    // Update existing job - the server data is source of truth
-                    // Any event-based updates between fetch and now will be corrected by next event
                     jobs[existingIndex] = fetchedJob
                 } else {
-                    // Add new job that we didn't know about
                     jobs.append(fetchedJob)
                     jobsIndex[fetchedJob.id] = jobs.count - 1
                 }
             }
 
-            // Rebuild index to ensure consistency after any additions
+            jobs.sort {
+                ($0.updatedAt ?? $0.createdAt ?? 0) > ($1.updatedAt ?? $1.createdAt ?? 0)
+            }
+
             jobsIndex = Dictionary(uniqueKeysWithValues: jobs.enumerated().map { ($1.id, $0) })
         }
     }
@@ -495,7 +520,7 @@ public class JobsDataService: ObservableObject {
 
         // Update sync status
         syncStatus = JobSyncStatus(
-            activeJobs: jobs.filter { JobStatus(rawValue: $0.status)?.isActive == true }.count,
+            activeJobs: jobs.filter { $0.jobStatus.isActive }.count,
             lastUpdate: Date(),
             isConnected: true
         )
@@ -582,6 +607,7 @@ public class JobsDataService: ObservableObject {
                             if shouldReplace && token == self.currentListJobsRequestToken {
                                 self.replaceJobsArray(with: response.jobs)
                                 self.updateWorkflowCountsFromJobs(response.jobs)
+                                self.updateImplementationPlanCountsFromJobs(response.jobs)
                                 self.hasLoadedOnce = true
                             }
                         }
@@ -796,9 +822,19 @@ public class JobsDataService: ObservableObject {
 
     private let workflowUmbrellaTypes: Set<String> = ["file_finder_workflow", "web_search_workflow"]
     private let fileFinderStepTypes: Set<String> = ["extended_path_finder", "file_relevance_assessment", "path_correction", "regex_file_filter"]
+    private let implementationPlanTypes: Set<String> = ["implementation_plan", "implementation_plan_merge"]
+
+    private var activeFileFinderWorkflowJobsForActiveSession: Int {
+        guard let sessionId = activeSessionId else { return 0 }
+        return activeWorkflowJobsBySession[sessionId] ?? 0
+    }
 
     private func isWorkflowUmbrella(_ job: BackgroundJob) -> Bool {
         workflowUmbrellaTypes.contains(job.taskType)
+    }
+
+    private func isImplementationPlan(_ job: BackgroundJob) -> Bool {
+        implementationPlanTypes.contains(job.taskType)
     }
 
     private func isFileFinderStep(_ job: BackgroundJob) -> Bool {
@@ -817,51 +853,176 @@ public class JobsDataService: ObservableObject {
         status.isActive
     }
 
+    public func activeWorkflowJobsCount(for sessionId: String?) -> Int {
+        guard let sessionId = sessionId else { return 0 }
+        return activeWorkflowJobsBySession[sessionId] ?? 0
+    }
+
+    public func activeImplementationPlansCount(for sessionId: String?) -> Int {
+        guard let sessionId = sessionId else { return 0 }
+        return activeImplementationPlansBySession[sessionId] ?? 0
+    }
+
+    public func isWorkflowUmbrellaJob(_ job: BackgroundJob) -> Bool {
+        return isWorkflowUmbrella(job)
+    }
+
+    public func isImplementationPlanJob(_ job: BackgroundJob) -> Bool {
+        return isImplementationPlan(job)
+    }
+
     private func bumpWorkflowCount(sessionId: String, delta: Int) {
         let current = activeWorkflowJobsBySession[sessionId] ?? 0
-        let next = max(0, current + delta)
+        var next = current + delta
+        if next < 0 { next = 0 }
 
-        // Defensive: sanity check for suspiciously high counts
         if next > 10 {
-            logger.error("Workflow counter suspiciously high: \(next) for session \(sessionId) - triggering cache validation")
+            next = 10
+            activeWorkflowJobsBySession[sessionId] = next
+            if activeSessionId == sessionId {
+                sessionActiveWorkflowJobs = next
+            }
             scheduleCoalescedListJobsForActiveSession()
             return
         }
 
-        // Defensive: warn about negative transitions
-        if next == 0 && current > 1 && delta < 0 {
-            logger.warning("Workflow counter dropped from \(current) to 0 - possible missed events")
-        }
-
         activeWorkflowJobsBySession[sessionId] = next
-        if self.activeSessionId == sessionId {
-            self.sessionActiveWorkflowJobs = next
+        if activeSessionId == sessionId {
+            sessionActiveWorkflowJobs = next
         }
     }
 
-    private func recomputeSessionWorkflowCount(for sessionId: String) {
+    private func bumpImplementationPlanCount(sessionId: String, delta: Int) {
+        let current = activeImplementationPlansBySession[sessionId] ?? 0
+        var next = current + delta
+        if next < 0 { next = 0 }
+
+        if next > 10 {
+            next = 10
+            activeImplementationPlansBySession[sessionId] = next
+            if activeSessionId == sessionId {
+                sessionActiveImplementationPlans = next
+            }
+            scheduleCoalescedListJobsForActiveSession()
+            return
+        }
+
+        activeImplementationPlansBySession[sessionId] = next
+        if activeSessionId == sessionId {
+            sessionActiveImplementationPlans = next
+        }
+    }
+
+    private func recomputeSessionWorkflowCount(for sessionId: String?) {
+        guard let sessionId = sessionId else {
+            self.sessionActiveWorkflowJobs = 0
+            return
+        }
         self.sessionActiveWorkflowJobs = activeWorkflowJobsBySession[sessionId] ?? 0
     }
 
-    private func updateWorkflowCountsFromJobs(_ jobs: [BackgroundJob]) {
-        var newCache: [String: BackgroundJob] = [:]
-        var countsBySession: [String: Int] = [:]
+    private func recomputeSessionImplementationPlanCount(for sessionId: String?) {
+        guard let sessionId = sessionId else {
+            self.sessionActiveImplementationPlans = 0
+            return
+        }
+        self.sessionActiveImplementationPlans = activeImplementationPlansBySession[sessionId] ?? 0
+    }
 
-        for job in jobs {
-            if isWorkflowUmbrella(job) {
-                newCache[job.id] = job
-                if isActiveStatus(job.jobStatus) {
-                    countsBySession[job.sessionId, default: 0] += 1
-                }
+    private func updateWorkflowCountsFromJobs(_ jobs: [BackgroundJob]) {
+        // Only update from jobs that ARE workflow umbrella jobs
+        let workflowJobs = jobs.filter { isWorkflowUmbrella($0) }
+
+        // If no workflow jobs in the response:
+        // - If cache is also empty, we can safely keep counts at 0 (no-op)
+        // - If cache has jobs, the response might be incomplete (eventual consistency)
+        //   so we should NOT reset counts - relay events are more authoritative
+        if workflowJobs.isEmpty {
+            if workflowJobsCache.isEmpty {
+                // Both empty - safe to reset (though likely already 0)
+                activeWorkflowJobsBySession.removeAll()
+                recomputeSessionWorkflowCount(for: activeSessionId)
+            }
+            // Otherwise keep existing cache - response might be stale/incomplete
+            return
+        }
+
+        // MERGE response with existing cache rather than replacing.
+        // Jobs in response get updated with server data (authoritative for existing jobs).
+        // Jobs in cache but NOT in response are kept (might be newer than response).
+        let responseJobIds = Set(workflowJobs.map { $0.id })
+        var mergedCache = workflowJobsCache
+
+        for job in workflowJobs {
+            mergedCache[job.id] = job
+        }
+
+        // Clean up cached jobs that are in terminal state AND confirmed by server response.
+        // If a job is in cache, not in response, and was already inactive, it's safe to remove.
+        // This prevents cache bloat while preserving newly created jobs.
+        for (jobId, cachedJob) in workflowJobsCache {
+            if !responseJobIds.contains(jobId) && !isActiveStatus(cachedJob.jobStatus) {
+                mergedCache.removeValue(forKey: jobId)
             }
         }
 
-        workflowJobsCache = newCache
-        activeWorkflowJobsBySession = countsBySession
-
-        if let activeSessionId = activeSessionId {
-            sessionActiveWorkflowJobs = countsBySession[activeSessionId] ?? 0
+        // Recompute counts from merged cache
+        var countsBySession: [String: Int] = [:]
+        for (_, job) in mergedCache {
+            if isActiveStatus(job.jobStatus) {
+                countsBySession[job.sessionId, default: 0] += 1
+            }
         }
+
+        workflowJobsCache = mergedCache
+        activeWorkflowJobsBySession = countsBySession
+        recomputeSessionWorkflowCount(for: activeSessionId)
+    }
+
+    private func updateImplementationPlanCountsFromJobs(_ jobs: [BackgroundJob]) {
+        // Only update from jobs that ARE implementation plans
+        let planJobs = jobs.filter { isImplementationPlan($0) }
+
+        // If no plan jobs in the response:
+        // - If cache is also empty, we can safely keep counts at 0 (no-op)
+        // - If cache has jobs, the response might be incomplete (eventual consistency)
+        //   so we should NOT reset counts - relay events are more authoritative
+        if planJobs.isEmpty {
+            if implementationPlanCache.isEmpty {
+                // Both empty - safe to reset (though likely already 0)
+                activeImplementationPlansBySession.removeAll()
+                recomputeSessionImplementationPlanCount(for: activeSessionId)
+            }
+            // Otherwise keep existing cache - response might be stale/incomplete
+            return
+        }
+
+        // MERGE response with existing cache rather than replacing.
+        let responseJobIds = Set(planJobs.map { $0.id })
+        var mergedCache = implementationPlanCache
+
+        for job in planJobs {
+            mergedCache[job.id] = job
+        }
+
+        // Clean up cached jobs that are in terminal state AND confirmed by server response.
+        for (jobId, cachedJob) in implementationPlanCache {
+            if !responseJobIds.contains(jobId) && !isActiveStatus(cachedJob.jobStatus) {
+                mergedCache.removeValue(forKey: jobId)
+            }
+        }
+
+        // Recompute counts from merged cache
+        var countsBySession: [String: Int] = [:]
+        for (_, job) in mergedCache {
+            if isActiveStatus(job.jobStatus) {
+                countsBySession[job.sessionId, default: 0] += 1
+            }
+        }
+
+        implementationPlanCache = mergedCache
+        activeImplementationPlansBySession = countsBySession
+        recomputeSessionImplementationPlanCount(for: activeSessionId)
     }
 
     private func startCacheValidationTimer() {
@@ -876,6 +1037,15 @@ public class JobsDataService: ObservableObject {
 
     private func validateWorkflowCache() {
         guard let sessionId = activeSessionId, let projectDirectory = activeProjectDirectory else { return }
+
+        // Debounce: don't validate more than once every 3 seconds to avoid race conditions
+        // with rapid job creation. Relay events are authoritative for real-time updates.
+        if let lastValidation = lastCacheValidationAt,
+           Date().timeIntervalSince(lastValidation) < 3.0 {
+            logger.debug("Skipping cache validation - too recent (debounce)")
+            return
+        }
+        lastCacheValidationAt = Date()
 
         logger.debug("Validating workflow cache for session \(sessionId)")
 
@@ -1052,6 +1222,7 @@ public class JobsDataService: ObservableObject {
                             guard let self = self else { return }
                             self.mergeJobs(fetchedJobs: response.jobs)
                             self.updateWorkflowCountsFromJobs(self.jobs)
+                            self.updateImplementationPlanCountsFromJobs(self.jobs)
                         }
                     )
                     .store(in: &self.cancellables)
@@ -1092,45 +1263,99 @@ public class JobsDataService: ObservableObject {
 
         switch event.eventType {
         case "job:created":
-            if let jobData = payload["job"] as? [String: Any],
-               let job = decodeJob(from: jobData) {
-                if isWorkflowUmbrella(job) {
+            var jobData: [String: Any]?
+            if let dict = payload["job"] as? [String: Any] {
+                jobData = dict
+            } else if let dict = (payload["job"] as? NSDictionary) as? [String: Any] {
+                jobData = dict
+            } else if let anyCodable = payload["job"] as? AnyCodable,
+                      let dict = anyCodable.value as? [String: Any] {
+                jobData = dict
+            } else if let payloadDict = payload["payload"] as? [String: Any],
+                      let dict = payloadDict["job"] as? [String: Any] {
+                jobData = dict
+            }
+
+            if let jobData = jobData, let job = decodeJob(from: jobData) {
+                let isUmbrella = isWorkflowUmbrella(job)
+                let isActive = isActiveStatus(job.jobStatus)
+
+                if isUmbrella {
+                    // Only bump count if this is a NEW job (not already in cache)
+                    let isNewJob = workflowJobsCache[job.id] == nil
                     workflowJobsCache[job.id] = job
-                    if isActiveStatus(job.jobStatus) {
+                    if isNewJob && isActive {
                         bumpWorkflowCount(sessionId: job.sessionId, delta: +1)
                     }
                 }
+            } else {
+                scheduleCoalescedListJobsForActiveSession()
             }
         case "job:status-changed":
-            let jobId = payload["jobId"] as? String ?? payload["id"] as? String
+            // Extract jobId (may be wrapped in AnyCodable)
+            var jobId: String?
+            if let id = payload["jobId"] as? String {
+                jobId = id
+            } else if let anyCodable = payload["jobId"] as? AnyCodable, let id = anyCodable.value as? String {
+                jobId = id
+            } else if let id = payload["id"] as? String {
+                jobId = id
+            } else if let anyCodable = payload["id"] as? AnyCodable, let id = anyCodable.value as? String {
+                jobId = id
+            }
             guard let jobId = jobId else { return }
 
             guard let job = workflowJobsCache[jobId] else {
-                logger.warning("Workflow job \(jobId) not in cache during status change - attempting hydration")
-
-                // Lazy cache population: fetch missing job and retry
                 hydrateJob(jobId: jobId, force: true, onReady: { [weak self] in
                     guard let self = self else { return }
-                    // Retry processing the status change with hydrated job
-                    self.updateWorkflowJobCounts(from: event)
+                    if let hydratedJob = self.job(byId: jobId), self.isWorkflowUmbrella(hydratedJob) {
+                        self.workflowJobsCache[jobId] = hydratedJob
+                        self.updateWorkflowJobCounts(from: event)
+                    }
                 })
                 return
             }
 
-            if let statusString = payload["status"] as? String,
+            // Extract status (may be wrapped in AnyCodable)
+            var statusString: String?
+            if let s = payload["status"] as? String {
+                statusString = s
+            } else if let anyCodable = payload["status"] as? AnyCodable, let s = anyCodable.value as? String {
+                statusString = s
+            }
+
+            if let statusString = statusString,
                let newStatus = JobStatus(rawValue: statusString) {
                 let newActive = isActiveStatus(newStatus)
                 let oldActive = isActiveStatus(job.jobStatus)
                 if newActive != oldActive {
                     bumpWorkflowCount(sessionId: job.sessionId, delta: newActive ? +1 : -1)
+                    // When workflow completes (transitions from active to inactive), notify to refresh session
+                    if !newActive && job.taskType == "file_finder_workflow" {
+                        NotificationCenter.default.post(
+                            name: Notification.Name("workflow-completed"),
+                            object: nil,
+                            userInfo: ["sessionId": job.sessionId, "taskType": job.taskType]
+                        )
+                    }
                 }
                 var updatedJob = job
                 updatedJob.status = statusString
                 workflowJobsCache[jobId] = updatedJob
             }
         case "job:deleted":
-            let jobId = payload["jobId"] as? String ?? payload["id"] as? String
-            guard let jobId = jobId else { return }
+            // Extract jobId (may be wrapped in AnyCodable)
+            var deletedJobId: String?
+            if let id = payload["jobId"] as? String {
+                deletedJobId = id
+            } else if let anyCodable = payload["jobId"] as? AnyCodable, let id = anyCodable.value as? String {
+                deletedJobId = id
+            } else if let id = payload["id"] as? String {
+                deletedJobId = id
+            } else if let anyCodable = payload["id"] as? AnyCodable, let id = anyCodable.value as? String {
+                deletedJobId = id
+            }
+            guard let jobId = deletedJobId else { return }
 
             guard let job = workflowJobsCache[jobId] else {
                 logger.debug("Workflow job \(jobId) not in cache during deletion - already removed or never tracked")
@@ -1146,14 +1371,118 @@ public class JobsDataService: ObservableObject {
         }
     }
 
+    private func updateImplementationPlanCounts(from event: RelayEvent) {
+        let payload = event.data.mapValues { $0.value }
+
+        switch event.eventType {
+        case "job:created":
+            var jobData: [String: Any]?
+            if let dict = payload["job"] as? [String: Any] {
+                jobData = dict
+            } else if let dict = (payload["job"] as? NSDictionary) as? [String: Any] {
+                jobData = dict
+            } else if let anyCodable = payload["job"] as? AnyCodable,
+                      let dict = anyCodable.value as? [String: Any] {
+                jobData = dict
+            } else if let payloadDict = payload["payload"] as? [String: Any],
+                      let dict = payloadDict["job"] as? [String: Any] {
+                jobData = dict
+            }
+
+            if let jobData = jobData, let job = decodeJob(from: jobData) {
+                let isPlan = isImplementationPlan(job)
+                let isActive = isActiveStatus(job.jobStatus)
+
+                if isPlan {
+                    // Only bump count if this is a NEW job (not already in cache)
+                    let isNewJob = implementationPlanCache[job.id] == nil
+                    implementationPlanCache[job.id] = job
+                    if isNewJob && isActive {
+                        bumpImplementationPlanCount(sessionId: job.sessionId, delta: +1)
+                    }
+                }
+            }
+        case "job:status-changed":
+            // Extract jobId (may be wrapped in AnyCodable)
+            var jobId: String?
+            if let id = payload["jobId"] as? String {
+                jobId = id
+            } else if let anyCodable = payload["jobId"] as? AnyCodable, let id = anyCodable.value as? String {
+                jobId = id
+            } else if let id = payload["id"] as? String {
+                jobId = id
+            } else if let anyCodable = payload["id"] as? AnyCodable, let id = anyCodable.value as? String {
+                jobId = id
+            }
+            guard let jobId = jobId else { return }
+
+            guard let job = implementationPlanCache[jobId] else {
+                // Try to hydrate and re-check if it's an implementation plan
+                hydrateJob(jobId: jobId, force: true, onReady: { [weak self] in
+                    guard let self = self else { return }
+                    if let hydratedJob = self.job(byId: jobId), self.isImplementationPlan(hydratedJob) {
+                        self.implementationPlanCache[jobId] = hydratedJob
+                        self.updateImplementationPlanCounts(from: event)
+                    }
+                })
+                return
+            }
+
+            // Extract status (may be wrapped in AnyCodable)
+            var statusString: String?
+            if let s = payload["status"] as? String {
+                statusString = s
+            } else if let anyCodable = payload["status"] as? AnyCodable, let s = anyCodable.value as? String {
+                statusString = s
+            }
+
+            if let statusString = statusString,
+               let newStatus = JobStatus(rawValue: statusString) {
+                let newActive = isActiveStatus(newStatus)
+                let oldActive = isActiveStatus(job.jobStatus)
+                if newActive != oldActive {
+                    bumpImplementationPlanCount(sessionId: job.sessionId, delta: newActive ? +1 : -1)
+                }
+                var updatedJob = job
+                updatedJob.status = statusString
+                implementationPlanCache[jobId] = updatedJob
+            }
+        case "job:deleted":
+            // Extract jobId (may be wrapped in AnyCodable)
+            var deletedJobId: String?
+            if let id = payload["jobId"] as? String {
+                deletedJobId = id
+            } else if let anyCodable = payload["jobId"] as? AnyCodable, let id = anyCodable.value as? String {
+                deletedJobId = id
+            } else if let id = payload["id"] as? String {
+                deletedJobId = id
+            } else if let anyCodable = payload["id"] as? AnyCodable, let id = anyCodable.value as? String {
+                deletedJobId = id
+            }
+            guard let jobId = deletedJobId else { return }
+
+            guard let job = implementationPlanCache[jobId] else {
+                return
+            }
+
+            if isActiveStatus(job.jobStatus) {
+                bumpImplementationPlanCount(sessionId: job.sessionId, delta: -1)
+            }
+            implementationPlanCache.removeValue(forKey: jobId)
+        default:
+            break
+        }
+    }
+
     @MainActor
     public func applyRelayEvent(_ event: RelayEvent) {
         // Handle job:* events and plan events
         guard event.eventType.hasPrefix("job:") || event.eventType == "PlanCreated" || event.eventType == "PlanModified" else { return }
 
-        // Update workflow job counters (only for job:* events)
+        // Update job counters (only for job:* events)
         if event.eventType.hasPrefix("job:") {
             updateWorkflowJobCounts(from: event)
+            updateImplementationPlanCounts(from: event)
         }
 
         // Early guard: coalesced fallback for job:* events missing jobId
