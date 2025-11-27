@@ -226,7 +226,8 @@ public struct AuthFlowCoordinator: View {
       return
     case .needsConfiguration(let missing):
       if missing.projectMissing {
-        if shouldAllowWorkspaceAccess() {
+        // For folder selection, we need a FULLY CONNECTED device to browse folders
+        if multiConnectionManager.activeDeviceIsFullyConnected {
           route = .projectFolderSelection
         } else {
           route = .deviceSelection
@@ -239,7 +240,12 @@ public struct AuthFlowCoordinator: View {
     case .ready:
       if shouldAllowWorkspaceAccess() {
         if appState.selectedProjectDirectory == nil {
-          route = .projectFolderSelection
+          // For folder selection, we need a FULLY CONNECTED device to browse folders
+          if multiConnectionManager.activeDeviceIsFullyConnected {
+            route = .projectFolderSelection
+          } else {
+            route = .deviceSelection
+          }
         } else {
           route = .workspace
         }

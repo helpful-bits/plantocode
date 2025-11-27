@@ -164,7 +164,7 @@ export async function createMergedImplementationPlanAction(
         mergeInstructions,
       }
     );
-    
+
     return {
       isSuccess: true,
       message: "Merge implementation plan started",
@@ -173,5 +173,34 @@ export async function createMergedImplementationPlanAction(
   } catch (error) {
     console.error("Failed to create merged implementation plan:", error);
     return handleActionError(error) as ActionState<{ jobId: string }>;
+  }
+}
+
+export interface PlanMarkdownResponse {
+  jobId: string;
+  markdown: string;
+  xmlContent: string;
+}
+
+export async function generatePlanMarkdownAction(
+  jobId: string
+): Promise<ActionState<PlanMarkdownResponse>> {
+  try {
+    if (!jobId) {
+      throw new Error("jobId is required");
+    }
+
+    const data = await invoke<PlanMarkdownResponse>(
+      "generate_plan_markdown_command",
+      { jobId }
+    );
+
+    return {
+      isSuccess: true,
+      message: "Markdown generated successfully",
+      data,
+    };
+  } catch (err) {
+    return handleActionError(err) as ActionState<PlanMarkdownResponse>;
   }
 }

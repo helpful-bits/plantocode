@@ -90,6 +90,15 @@ public final class FilesDataService: ObservableObject {
             return self.files
         }
 
+        if let activeId = MultiConnectionManager.shared.activeDeviceId {
+            let state = MultiConnectionManager.shared.connectionStates[activeId]
+            guard state?.isConnected == true else {
+                throw DataServiceError.connectionError("No active device connection")
+            }
+        } else {
+            throw DataServiceError.connectionError("No active device connection")
+        }
+
         guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
               let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
             throw DataServiceError.invalidState("Not connected to desktop")
@@ -477,6 +486,12 @@ public final class FilesDataService: ObservableObject {
                     self.files = results
                 }
             } catch {
+                if case ServerRelayError.notConnected = error {
+                    return
+                }
+                if case DataServiceError.connectionError = error {
+                    return
+                }
                 logger.error("Search failed: \(error.localizedDescription)")
             }
         }

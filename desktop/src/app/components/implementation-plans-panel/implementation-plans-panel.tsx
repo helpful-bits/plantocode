@@ -302,20 +302,22 @@ export function ImplementationPlansPanel({
           const allowedModelIds = planConfig.allowedModels || [];
           const uniqueAllowedModelIds = [...new Set(allowedModelIds)];
           
+          // Build a map of model id -> model info for quick lookup
           const availableModels = runtimeConfig.providers?.flatMap(p => p.models) || [];
-          const filteredModels = availableModels
-            .filter(model => uniqueAllowedModelIds.includes(model.id))
-            .reduce((acc, model) => {
-              if (!acc.some(m => m.id === model.id)) {
-                acc.push(model);
+          const modelMap = new Map(availableModels.map(m => [m.id, m]));
+
+          // Preserve the order from allowedModels by iterating in that order
+          const seenIds = new Set<string>();
+          const filteredModels: typeof availableModels = [];
+          for (const modelId of uniqueAllowedModelIds) {
+            if (!seenIds.has(modelId)) {
+              const model = modelMap.get(modelId);
+              if (model) {
+                filteredModels.push(model);
+                seenIds.add(modelId);
               }
-              return acc;
-            }, [] as typeof availableModels)
-            .sort((a, b) => {
-              const providerCompare = a.providerName.localeCompare(b.providerName);
-              if (providerCompare !== 0) return providerCompare;
-              return a.name.localeCompare(b.name);
-            });
+            }
+          }
           
           setSelectedModelId(currentModel);
           setAllowedModelsForPlan(filteredModels);

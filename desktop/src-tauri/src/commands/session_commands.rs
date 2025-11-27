@@ -56,8 +56,11 @@ pub async fn create_session_command(
     // Create the session in DB first (DB-first for safety)
     repo.create_session(&session).await?;
 
-    // After DB insert, update cache (cache will emit events)
+    // After DB insert, update cache (cache will emit session-updated)
     cache.upsert_session(&app_handle, &session).await?;
+
+    // Emit session-created event
+    crate::events::session_events::emit_session_created(&app_handle, &session)?;
 
     // Return the created session
     Ok(session)
@@ -377,8 +380,11 @@ pub async fn duplicate_session_command(
     // Create the new session in DB first (DB-first for safety)
     repo.create_session(&new_session).await?;
 
-    // After DB insert, update cache (cache will emit events)
+    // After DB insert, update cache (cache will emit session-updated)
     cache.upsert_session(&app_handle, &new_session).await?;
+
+    // Emit session-created event
+    crate::events::session_events::emit_session_created(&app_handle, &new_session)?;
 
     Ok(new_session)
 }

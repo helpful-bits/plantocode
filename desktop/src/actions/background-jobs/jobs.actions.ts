@@ -76,12 +76,14 @@ export async function getBackgroundJobAction(
  */
 export async function getAllVisibleJobsAction(
   projectDirectory?: string,
-  sessionId?: string
+  sessionId?: string,
+  bypassCache: boolean = false
 ): Promise<ActionState<BackgroundJob[]>> {
   try {
     const jobs = await invoke("get_all_visible_jobs_command", {
       projectDirectory: projectDirectory || null,
-      sessionId: sessionId || null
+      sessionId: sessionId || null,
+      bypassCache
     });
     return {
       isSuccess: true,

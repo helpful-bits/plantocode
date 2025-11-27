@@ -5,13 +5,13 @@ VALUES (
     "tasks": {
       "implementation_plan": {
         "model": "openai/gpt-5.1-2025-11-13",
-        "allowed_models": ["openai/gpt-5.1-2025-11-13", "deepseek/deepseek-r1-0528", "google/gemini-2.5-pro", "google/gemini-3-pro-preview", "xai/grok-4"],
+        "allowed_models": ["openai/gpt-5.1-2025-11-13", "google/gemini-3-pro-preview", "google/gemini-2.5-pro", "xai/grok-4", "openai/gpt-5-pro-2025-10-06", "deepseek/deepseek-r1-0528"],
         "max_tokens": 23000,
         "temperature": 0.7,
         "copy_buttons": [
           {
             "label": "Parallel Claude Coding Agents",
-            "content": "Original Task: {{TASK_DESCRIPTION}}\n\n{{IMPLEMENTATION_PLAN}}\n\nUnderstand the implementation plan above thoroughly. Study the architecture, data flows, sequence of events, and timing relationships in the existing code. Launch parallel Claude coding agents that execute simultaneously to save time. Each agent should implement a specific aspect of the plan precisely and systematically based on their deep understanding of how the system works.\n\nProvide each agent with explicit, detailed instructions about their exact responsibilities. Do NOT instruct agents to run git, cargo, or TypeScript check commands or add logging/debugging code.\n\nCRITICAL: Remove all deprecated features completely - no deprecated comments, annotations, or fallback implementations. The codebase should only contain modern, forward-looking code."
+            "content": "{{IMPLEMENTATION_PLAN}}\n\nUnderstand the implementation plan above thoroughly. Analyze the architecture, data flows, and sequence of events, then launch parallel Claude coding agents that execute simultaneously to save time. Each agent should implement a specific aspect of the plan precisely and systematically.\n\nProvide each agent with explicit, detailed instructions about their exact responsibilities. Do NOT instruct agents to run git, cargo, or TypeScript check commands."
           },
           {
             "label": "Investigate Results",
@@ -39,7 +39,7 @@ VALUES (
       },
       "implementation_plan_merge": {
         "model": "openai/gpt-5.1-2025-11-13",
-        "allowed_models": ["google/gemini-2.5-flash", "openai/gpt-5.1-2025-11-13", "google/gemini-2.5-pro", "google/gemini-3-pro-preview", "openai/o4-mini", "xai/grok-4"],
+        "allowed_models": ["openai/gpt-5.1-2025-11-13", "google/gemini-3-pro-preview", "google/gemini-2.5-pro", "xai/grok-4", "openai/gpt-5-pro-2025-10-06"],
         "max_tokens": 35000,
         "temperature": 0.35
       },
@@ -57,7 +57,7 @@ VALUES (
       },
       "regex_file_filter": {
         "model": "anthropic/claude-sonnet-4-5-20250929",
-        "allowed_models": ["anthropic/claude-sonnet-4-5-20250929", "google/gemini-2.5-flash"],
+        "allowed_models": ["anthropic/claude-sonnet-4-5-20250929", "google/gemini-2.5-flash", "openai/gpt-5-mini"],
         "max_tokens": 35000,
         "temperature": 0.2
       },

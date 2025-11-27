@@ -68,7 +68,13 @@ class PlanToCodeAppDelegate: NSObject, UIApplicationDelegate {
   }
 
   func applicationWillTerminate(_ application: UIApplication) {
-      // Clean up all connections on termination
+      Task { @MainActor in
+          VoiceDictationService.shared.cancelTranscription()
+          if VoiceDictationService.shared.isRecording {
+              VoiceDictationService.shared.stopRecording()
+          }
+      }
+
       Task { @MainActor in
           MultiConnectionManager.shared.removeAllConnections()
       }

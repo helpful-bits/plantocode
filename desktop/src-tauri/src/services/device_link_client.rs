@@ -24,6 +24,8 @@ static LAST_WARN_MS: AtomicU64 = AtomicU64::new(0);
 // Maximum pending bytes per terminal session before trimming
 const MAX_PENDING_BYTES: usize = 1_048_576; // 1 MiB cap
 
+const MAX_TERMINAL_SNAPSHOT_BYTES: usize = 256 * 1024;
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RelayEnvelope {
@@ -123,6 +125,8 @@ pub enum ServerMessage {
     Relay {
         #[serde(rename = "clientId")]
         client_id: String,
+        #[serde(rename = "userId")]
+        user_id: Option<String>,
         request: RpcRequest,
     },
     #[serde(rename = "ping")]
@@ -465,34 +469,6 @@ impl DeviceLinkClient {
             while let Some(msg) = ws_receiver.next().await {
                 match msg {
                     Ok(Message::Text(text)) => {
-                        // Rate-limited validation for missing "type", "messageType", or "message_type" field with diagnostic context
-                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
-                            if json.get("type").is_none() && json.get("messageType").is_none() && json.get("message_type").is_none() {
-                                static LAST_TYPE_WARN: AtomicU64 = AtomicU64::new(0);
-                                let now = std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap()
-                                    .as_millis() as u64;
-                                let last = LAST_TYPE_WARN.load(Ordering::Relaxed);
-                                if now - last > 10000 {  // 10 seconds
-                                    // Collect first-level keys for diagnostics
-                                    let available_keys: Vec<String> = if let Some(obj) = json.as_object() {
-                                        obj.keys().take(6).cloned().collect()
-                                    } else {
-                                        vec![]
-                                    };
-                                    let text_prefix: String = text.chars().take(128).collect();
-                                    warn!(
-                                        "Dropping relay frame: missing 'type', 'messageType', or 'message_type' field. Available keys: {:?}, Prefix: {}",
-                                        available_keys, text_prefix
-                                    );
-                                    LAST_TYPE_WARN.store(now, Ordering::Relaxed);
-                                }
-                                continue;  // Drop invalid frame
-                            }
-                        }
-
-                        // Try parsing as ServerMessage first (RPC responses and connection management)
                         if let Ok(server_msg) = serde_json::from_str::<ServerMessage>(&text) {
                             if let Err(e) = Self::handle_server_message(
                                 &app_handle,
@@ -506,7 +482,6 @@ impl DeviceLinkClient {
                             continue;
                         }
 
-                        // Fall back to RelayEnvelope parsing (handles both "type" and "message_type")
                         if let Ok(env) = serde_json::from_str::<RelayEnvelope>(&text) {
                             if env.kind == "terminal.binary.bind" {
                                 let session_id_opt = env.payload.get("sessionId").and_then(|v| v.as_str());
@@ -522,7 +497,7 @@ impl DeviceLinkClient {
 
                                     if include_snapshot {
                                         if let Some(terminal_mgr) = app_handle.try_state::<std::sync::Arc<crate::services::TerminalManager>>() {
-                                            if let Some(snapshot) = terminal_mgr.get_buffer_snapshot(&session_id, None) {
+                                            if let Some(snapshot) = terminal_mgr.get_buffer_snapshot(&session_id, Some(MAX_TERMINAL_SNAPSHOT_BYTES)) {
                                                 if !snapshot.is_empty() {
                                                     info!("Binary uplink: sending snapshot for session {}, {} bytes", session_id, snapshot.len());
                                                     let _ = bin_tx_for_receiver.send(snapshot);
@@ -531,16 +506,14 @@ impl DeviceLinkClient {
                                         }
                                     }
 
-                                    // 3) Resolve pending deterministically to avoid duplicates or loss
                                     let mut pending = this.pending_binary_by_session.lock().unwrap();
-                                    if let Some(buffer) = pending.remove(&session_id) {
+                                    let buffer = pending.remove(&session_id);
+                                    if let Some(buffer) = buffer {
                                         if include_snapshot {
-                                            // Snapshot already contains this data - drop pending to avoid duplication
                                             if !buffer.is_empty() {
                                                 info!("Binary uplink: dropping {} pending bytes for session {} (covered by snapshot)", buffer.len(), session_id);
                                             }
                                         } else {
-                                            // No snapshot - flush pending to ensure no data loss
                                             if !buffer.is_empty() {
                                                 info!("Binary uplink: flushing {} pending bytes for session {}", buffer.len(), session_id);
                                                 let _ = bin_tx_for_receiver.send(buffer);
@@ -635,16 +608,16 @@ impl DeviceLinkClient {
                             continue;
                         }
 
-                        // If neither ServerMessage nor RelayEnvelope parsed successfully, log a warning
                         let now = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap()
                             .as_millis() as u64;
                         let last = LAST_WARN_MS.load(Ordering::Relaxed);
-                        if now - last > 200 {
-                            warn!("Failed to parse message as ServerMessage or RelayEnvelope");
+                        if now - last > 10000 {
+                            warn!("DeviceLinkClient: Unrecognized server message: {}", text);
                             LAST_WARN_MS.store(now, Ordering::Relaxed);
                         }
+                        continue;
                     },
                     Ok(Message::Close(_)) => {
                         info!("WebSocket connection closed by server");
@@ -827,34 +800,41 @@ impl DeviceLinkClient {
             //     "correlationId": "<correlation-id>"
             //   }
             // }
-            ServerMessage::Relay { client_id, request } => {
+            ServerMessage::Relay { client_id, user_id, request } => {
                 debug!("Received relay request from client {}: method={}", client_id, request.method);
 
-                // Emit relay-request-received event
                 let _ = app_handle.emit("relay-request-received", serde_json::json!({
                     "method": request.method
                 }));
 
-                // VALIDATION: Ensure client_id is non-empty before sending response
                 if client_id.trim().is_empty() {
                     warn!("Invalid client_id in relay request; dropping response");
                     return Ok(());
                 }
 
-                // Build user context from relay request
-                let user_id = "remote_user".to_string(); // Could be extracted from request if available
-                let device_id = device_id_manager::get_or_create(app_handle).unwrap_or_else(|_| "unknown".to_string());
-                let user_context = UserContext {
-                    user_id,
-                    device_id,
-                    permissions: vec!["rpc".to_string()],
-                };
+                let app_handle_clone = app_handle.clone();
+                let tx_clone = tx.clone();
+                tokio::spawn(async move {
+                    let user_ctx_id = user_id.unwrap_or_else(|| "remote_user".to_string());
+                    let device_id = device_id_manager::get_or_create(&app_handle_clone)
+                        .unwrap_or_else(|_| "unknown".to_string());
+                    let user_context = UserContext {
+                        user_id: user_ctx_id,
+                        device_id,
+                        permissions: vec!["rpc".to_string()],
+                    };
 
-                let response = desktop_command_handler::dispatch_remote_command(app_handle, request, &user_context).await;
-                let relay_response = DeviceLinkMessage::RelayResponse { client_id, response };
-                if let Err(e) = tx.send(relay_response) {
-                    error!("Failed to send relay response: {}", e);
-                }
+                    let response = desktop_command_handler::dispatch_remote_command(
+                        &app_handle_clone,
+                        request,
+                        &user_context
+                    ).await;
+
+                    let relay_response = DeviceLinkMessage::RelayResponse { client_id, response };
+                    if let Err(e) = tx_clone.send(relay_response) {
+                        error!("Failed to send relay response: {}", e);
+                    }
+                });
                 Ok(())
             }
             ServerMessage::Ping => {

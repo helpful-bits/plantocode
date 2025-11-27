@@ -12,8 +12,6 @@ public struct TerminalComposeView: View {
     @State private var selectedRange: NSRange = NSRange(location: 0, length: 0)
     @State private var isEditing: Bool = false
     @State private var forceSelectionApply: Bool = false
-    @State private var autoStartTrigger: Bool = false
-    @State private var hasAutoStarted: Bool = false
 
     @State private var errorMessage: String?
     @State private var isSending = false
@@ -69,7 +67,7 @@ public struct TerminalComposeView: View {
                     selectedRange: $selectedRange,
                     isEditing: $isEditing,
                     forceSelectionApply: $forceSelectionApply,
-                    autoStartRecordingTrigger: $autoStartTrigger,
+                    autoStartRecording: autoStartRecording,
                     placeholder: "Compose text to send to terminal...",
                     sessionId: container.sessionService.currentSession?.id ?? "unknown",
                     projectDirectory: container.sessionService.currentSession?.projectDirectory,
@@ -108,12 +106,6 @@ public struct TerminalComposeView: View {
             }
             .onAppear {
                 loadComposedText()
-
-                // Handle auto-start recording if requested
-                if autoStartRecording && !hasAutoStarted {
-                    hasAutoStarted = true
-                    autoStartTrigger = true
-                }
             }
         }
     }

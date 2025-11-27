@@ -36,12 +36,21 @@ final class ImplementationPlanCreatorViewModel: ObservableObject {
     }
 
     var availableModelInfos: [ModelInfo] {
-        var modelInfos: [ModelInfo] = []
+        // Build a map of model id -> model info for quick lookup
+        var modelMap: [String: ModelInfo] = [:]
         for provider in providers {
             for model in provider.models {
-                if availableModels.contains(model.id) {
-                    modelInfos.append(model)
-                }
+                modelMap[model.id] = model
+            }
+        }
+
+        // Preserve the order from availableModels by iterating in that order
+        var modelInfos: [ModelInfo] = []
+        var seenIds: Set<String> = []
+        for modelId in availableModels {
+            if !seenIds.contains(modelId), let model = modelMap[modelId] {
+                modelInfos.append(model)
+                seenIds.insert(modelId)
             }
         }
         return modelInfos

@@ -288,12 +288,12 @@ Analyze the task and create an ARRAY of targeted pattern groups. Each group shou
 
 ## STRATEGY:
 1. **Decompose** the task into logical functionality areas
-2. **Create focused groups** - each targeting specific file types/functionality
+2. **Create focused groups** - each targeting specific file types/functionality - but only the minimum required amount
 3. **Use precise patterns** - narrow and specific within each group
 4. **Path-based exclusion** - exclude irrelevant file paths per group
 
 ## PATTERN GROUP RULES:
-- **Title**: Clear description of what this group targets
+- **Title**: Clear description of what this group targets - max 3-4 words
 - **Path Pattern**: Specific file paths/directories for this functionality
 - **Content Pattern**: Specific code keywords/functions for this functionality
 - **Negative Path Pattern**: Exclude file paths not relevant to this group

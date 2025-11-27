@@ -9,14 +9,14 @@ use crate::models::AuthenticatedUser;
 use crate::models::runtime_config::{AppState, TaskSpecificModelConfig};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderInfo {
     pub code: String,
     pub name: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderWithModels {
     pub provider: ProviderInfo,
@@ -24,7 +24,7 @@ pub struct ProviderWithModels {
 }
 
 // Runtime config response format that matches the Tauri backend expectations
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DesktopRuntimeAIConfig {
     pub tasks: BTreeMap<String, TaskSpecificModelConfig>,
@@ -32,7 +32,7 @@ pub struct DesktopRuntimeAIConfig {
     pub max_concurrent_jobs: Option<u32>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DesktopModelInfo {
     /// Unique model identifier
@@ -202,14 +202,37 @@ pub async fn load_desktop_runtime_ai_config(
 
 /// Handler for GET /api/config/desktop-runtime-config endpoint for desktop app
 ///
-/// **PERFORMANCE OPTIMIZED**: Uses cached config from AppState instead of database queries
+/// **PERFORMANCE OPTIMIZED**: Uses cached config with 2-minute TTL and background refresh
 #[instrument(skip(app_state))]
 pub async fn get_desktop_runtime_ai_config(
     _user: web::ReqData<AuthenticatedUser>,
     app_state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
-    // Use cached configuration from AppState instead of database queries
-    let response = app_state.runtime_ai_config.as_ref().clone();
+    let cache = &app_state.runtime_ai_config;
+
+    // Check if cache is stale and trigger background refresh if needed
+    if cache.is_stale().await && cache.try_start_refresh() {
+        let settings_repo = app_state.settings_repository.clone();
+        let model_repo = app_state.model_repository.clone();
+        let cache_clone = app_state.runtime_ai_config.clone();
+
+        // Spawn background task to refresh cache
+        tokio::spawn(async move {
+            match load_desktop_runtime_ai_config(&settings_repo, &model_repo).await {
+                Ok(new_config) => {
+                    info!("Background refresh: runtime AI config updated successfully");
+                    cache_clone.update(new_config).await;
+                }
+                Err(e) => {
+                    tracing::error!("Background refresh failed: {}", e);
+                    cache_clone.finish_refresh();
+                }
+            }
+        });
+    }
+
+    // Return current cached config immediately (stale-while-revalidate)
+    let response = cache.get().await;
     Ok(HttpResponse::Ok().json(response))
 }
 

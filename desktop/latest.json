@@ -1,11 +1,11 @@
 {
-  "version": "1.2.3",
-  "notes": "Version 1.2.3 Release\n\n- iOS app sync improvements\n- Website internationalization updates\n- Model configuration enhancements\n- Bug fixes and stability improvements",
-  "pub_date": "2025-11-20T14:20:00Z",
+  "version": "1.2.4",
+  "notes": "Version 1.2.4 Release\n\n- Implementation plan improvements\n- Session management enhancements\n- Mobile app stability improvements\n- Bug fixes and performance optimizations",
+  "pub_date": "2025-11-26T21:10:00Z",
   "platforms": {
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUXZZN0JwS05DN25vbXZHejJnYUlyZk9zdmY1R0l6akdNRmp5YjR5Vk56b2VKWmlXbEsvWDQvQ1FPNWdDODI3KzdQMlBydE1OQlNxVUlmY2p6TGxjN0Jpa0xrMjNkUGdzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzYzNjQ4NDE5CWZpbGU6UGxhblRvQ29kZV8xLjIuM19hYXJjaDY0LmFwcC50YXIuZ3oKZTNpbjRuczRBK3NvUHRQcmszd1I1MnhpdktCSDdndmVXMzNVa3FrVkc0OW1kby80RW1QbHZBaUdvRDA0WjFtV1hiMVJkZmdSbWx3dWpMOVJYZnlXQ1E9PQo=",
-      "url": "https://d2tyb0wucqqf48.cloudfront.net/desktop/mac/v1.2.3/PlanToCode-1.2.3.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUXZZN0JwS05DN2c5ZTFjOVFWbWFnNVZ5dU5ZM3FkbjJCOStsQ1Qza2ZXOVdkMGtDR05BWHlDRjZwK2xTZlhIQWtmVXRKWVpLRFFBc3ZkWVBSK3FKZTJCdFQwMEhCVWdBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzY0MTkxMjA5CWZpbGU6UGxhblRvQ29kZV8xLjIuNF9hYXJjaDY0LmFwcC50YXIuZ3oKTGtacm1nWHJrSVJxN2laWGQxRWl1bG9paHVXM2NsQWdoWnlBcklrL1RDUGdoTVozNDYzbWtmczZNaWZmQVMzb2cwRWxuQ1ZES1JISE5XZCt0cklQQ1E9PQo=",
+      "url": "https://d2tyb0wucqqf48.cloudfront.net/desktop/mac/v1.2.4/PlanToCode-1.2.4.tar.gz"
     }
   }
 }

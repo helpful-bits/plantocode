@@ -1,6 +1,9 @@
 import Foundation
 import Combine
 import AVFoundation
+#if canImport(UIKit)
+import UIKit
+#endif
 
 @MainActor
 public final class VoiceDictationService: ObservableObject {
@@ -8,7 +11,9 @@ public final class VoiceDictationService: ObservableObject {
 
     @Published public private(set) var isRecording = false
     @Published public private(set) var isTranscribing = false
-    @Published public private(set) var audioLevels: [Float] = [0, 0, 0, 0, 0] // 5 bars for waveform
+    @Published public private(set) var audioLevels: [Float] = [0, 0, 0, 0, 0]
+    @Published public private(set) var lastTranscriptionJob: TranscriptionJob?
+    @Published public private(set) var lastTranscriptionError: Error?
 
     private let engine = AVAudioEngine()
     private var audioFileURL: URL?
@@ -17,8 +22,51 @@ public final class VoiceDictationService: ObservableObject {
     private let audioQueue = DispatchQueue(label: "com.plantocode.audio", qos: .userInitiated)
     private var recordingStartTime: Date?
     private var levelUpdateTimer: Timer?
+    private var hasCompletedRecording: Bool = false
+    private var lastRecordingDurationMs: Int64?
+    private var transcriptionTask: Task<Void, Never>?
+    #if canImport(UIKit)
+    private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
+    #endif
 
-    private init() {}
+    public var hasRecordableAudio: Bool {
+        audioFileURL != nil && hasCompletedRecording
+    }
+
+    public var canRetryLastTranscription: Bool {
+        lastTranscriptionJob != nil && hasRecordableAudio && !isRecording && !isTranscribing
+    }
+
+    private init() {
+        #if canImport(UIKit)
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.willResignActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                if self?.isRecording == true {
+                    self?.stopRecording()
+                }
+            }
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                // Stop recording if active - user can't record in background
+                if self?.isRecording == true {
+                    self?.stopRecording()
+                }
+                // NOTE: We intentionally do NOT cancel transcription here.
+                // Transcription should complete in background using background task.
+            }
+        }
+        #endif
+    }
 
     public func startRecording() async throws {
         guard !isRecording else {
@@ -45,23 +93,35 @@ public final class VoiceDictationService: ObservableObject {
 
         try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
 
-        // Create temporary WAV file URL
-        let tempDirectory = FileManager.default.temporaryDirectory
-        audioFileURL = tempDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("wav")
+        hasCompletedRecording = false
+        lastRecordingDurationMs = nil
+
+        let recordingsDir = FileManager.default.temporaryDirectory.appendingPathComponent("VoiceRecordings", isDirectory: true)
+        try? FileManager.default.createDirectory(at: recordingsDir, withIntermediateDirectories: true)
+
+        audioFileURL = recordingsDir.appendingPathComponent(UUID().uuidString).appendingPathExtension("wav")
 
         guard let audioFileURL = audioFileURL else {
             throw VoiceDictationError.fileCreationFailed
         }
 
-        // Get input node first to check its format
+        if engine.isRunning {
+            engine.stop()
+        }
+
         let inputNode = engine.inputNode
         let recordingFormat = inputNode.outputFormat(forBus: 0)
 
-        // Use the input format's sample rate for better compatibility
-        // Most iOS devices use 48kHz or 44.1kHz
+        guard recordingFormat.channelCount > 0 else {
+            throw VoiceDictationError.audioFormatNotSupported
+        }
+
+        guard recordingFormat.sampleRate > 0 else {
+            throw VoiceDictationError.audioFormatNotSupported
+        }
+
         let targetSampleRate = recordingFormat.sampleRate > 0 ? recordingFormat.sampleRate : 48000.0
 
-        // Set up audio format to match device capabilities
         let audioFormat = AVAudioFormat(
             commonFormat: .pcmFormatInt16,
             sampleRate: targetSampleRate,
@@ -73,7 +133,6 @@ public final class VoiceDictationService: ObservableObject {
             throw VoiceDictationError.audioFormatNotSupported
         }
 
-        // Create audio file for writing
         do {
             audioFile = try AVAudioFile(
                 forWriting: audioFileURL,
@@ -83,15 +142,6 @@ public final class VoiceDictationService: ObservableObject {
             )
         } catch {
             throw VoiceDictationError.fileCreationFailed
-        }
-
-        // Verify engine.inputNode.outputFormat(forBus: 0) has channelCount > 0 and valid sampleRate
-        guard recordingFormat.channelCount > 0 else {
-            throw VoiceDictationError.audioFormatNotSupported
-        }
-
-        guard recordingFormat.sampleRate > 0 else {
-            throw VoiceDictationError.audioFormatNotSupported
         }
 
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
@@ -180,15 +230,18 @@ public final class VoiceDictationService: ObservableObject {
         engine.stop()
         engine.inputNode.removeTap(onBus: 0)
         isRecording = false
-        audioLevels = [0, 0, 0, 0, 0] // Reset levels
+        audioLevels = [0, 0, 0, 0, 0]
 
-        // Wait for any pending audio writes to complete
+        if let startTime = recordingStartTime {
+            lastRecordingDurationMs = Int64(Date().timeIntervalSince(startTime) * 1000)
+        }
+
+        hasCompletedRecording = true
+
         audioQueue.sync {
-            // Close the audio file properly
             audioFile = nil
         }
 
-        // Deactivate audio session
         do {
             try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         } catch {
@@ -224,6 +277,41 @@ public final class VoiceDictationService: ObservableObject {
         audioLevels = newLevels
     }
 
+    public func cleanupOrphanedRecordings(olderThan: TimeInterval = 24 * 3600) {
+        let recordingsDir = FileManager.default.temporaryDirectory.appendingPathComponent("VoiceRecordings", isDirectory: true)
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: recordingsDir,
+            includingPropertiesForKeys: [.creationDateKey],
+            options: .skipsHiddenFiles
+        ) else { return }
+
+        let cutoffDate = Date().addingTimeInterval(-olderThan)
+        for fileURL in files {
+            guard let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
+                  let creationDate = attributes[.creationDate] as? Date,
+                  creationDate < cutoffDate else { continue }
+            try? FileManager.default.removeItem(at: fileURL)
+        }
+    }
+
+    private func performTranscription(
+        job: TranscriptionJob,
+        timeoutSeconds: TimeInterval = 60
+    ) async throws -> String {
+        let audioData = try Data(contentsOf: job.audioFileURL)
+
+        let response = try await serverFeatureService.transcribeAudio(
+            audioData,
+            durationMs: job.durationMs,
+            model: job.model,
+            language: job.language,
+            prompt: job.prompt,
+            temperature: job.temperature
+        )
+
+        return response.text
+    }
+
     public func transcribe(
         model: String? = nil,
         language: String? = nil,
@@ -231,32 +319,36 @@ public final class VoiceDictationService: ObservableObject {
         temperature: Double? = nil
     ) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
-            Task {
+            let task = Task {
+                // Begin background task to ensure transcription completes even if app is backgrounded
+                await MainActor.run {
+                    self.beginBackgroundTask()
+                }
+
+                defer {
+                    Task { @MainActor in
+                        self.isTranscribing = false
+                        self.transcriptionTask = nil
+                        self.endBackgroundTaskIfNeeded()
+                    }
+                }
+
                 await MainActor.run {
                     isTranscribing = true
                 }
 
                 do {
                     guard let audioFileURL = audioFileURL else {
-                        await MainActor.run {
-                            isTranscribing = false
-                        }
                         continuation.finish(throwing: VoiceDictationError.noRecordingFound)
                         return
                     }
 
-                    let audioData = try Data(contentsOf: audioFileURL)
+                    let durationMs = lastRecordingDurationMs ?? 1000
 
-                    let durationMs: Int64
-                    if let startTime = recordingStartTime {
-                        let duration = Date().timeIntervalSince(startTime)
-                        durationMs = Int64(duration * 1000)
-                    } else {
-                        durationMs = 1000
-                    }
-
-                    let response = try await serverFeatureService.transcribeAudio(
-                        audioData,
+                    let job = TranscriptionJob(
+                        id: UUID(),
+                        audioFileURL: audioFileURL,
+                        createdAt: Date(),
                         durationMs: durationMs,
                         model: model,
                         language: language,
@@ -264,24 +356,203 @@ public final class VoiceDictationService: ObservableObject {
                         temperature: temperature
                     )
 
-                    continuation.yield(response.text)
+                    await MainActor.run {
+                        self.lastTranscriptionJob = job
+                        self.lastTranscriptionError = nil
+                    }
+
+                    let text = try await performTranscription(job: job)
+
+                    if Task.isCancelled {
+                        continuation.finish(throwing: VoiceDictationError.transcriptionCancelled)
+                        return
+                    }
+
+                    continuation.yield(text)
                     continuation.finish()
 
                     try? FileManager.default.removeItem(at: audioFileURL)
-                    self.audioFileURL = nil
-
                     await MainActor.run {
-                        isTranscribing = false
+                        self.audioFileURL = nil
+                        self.hasCompletedRecording = false
+                        self.lastRecordingDurationMs = nil
+                        self.lastTranscriptionJob = nil
                     }
 
+                } catch let error as DataServiceError {
+                    if case .timeout = error {
+                        await MainActor.run {
+                            self.lastTranscriptionError = VoiceDictationError.transcriptionTimeout
+                        }
+                        continuation.finish(throwing: VoiceDictationError.transcriptionTimeout)
+                    } else {
+                        await MainActor.run {
+                            self.lastTranscriptionError = error
+                        }
+                        continuation.finish(throwing: error)
+                    }
                 } catch {
                     await MainActor.run {
-                        isTranscribing = false
+                        self.lastTranscriptionError = error
                     }
                     continuation.finish(throwing: error)
                 }
             }
+
+            Task { @MainActor in
+                self.transcriptionTask = task
+            }
         }
+    }
+
+    public func retryLastTranscription(
+        model: String? = nil,
+        language: String? = nil,
+        prompt: String? = nil,
+        temperature: Double? = nil
+    ) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                // Begin background task to ensure transcription completes even if app is backgrounded
+                await MainActor.run {
+                    self.beginBackgroundTask()
+                }
+
+                defer {
+                    Task { @MainActor in
+                        self.isTranscribing = false
+                        self.transcriptionTask = nil
+                        self.endBackgroundTaskIfNeeded()
+                    }
+                }
+
+                await MainActor.run {
+                    isTranscribing = true
+                }
+
+                do {
+                    guard let previousJob = await MainActor.run(body: { lastTranscriptionJob }) else {
+                        continuation.finish(throwing: VoiceDictationError.noRecordingFound)
+                        return
+                    }
+
+                    let job = TranscriptionJob(
+                        id: UUID(),
+                        audioFileURL: previousJob.audioFileURL,
+                        createdAt: Date(),
+                        durationMs: previousJob.durationMs,
+                        model: model ?? previousJob.model,
+                        language: language ?? previousJob.language,
+                        prompt: prompt ?? previousJob.prompt,
+                        temperature: temperature ?? previousJob.temperature
+                    )
+
+                    await MainActor.run {
+                        self.lastTranscriptionJob = job
+                        self.lastTranscriptionError = nil
+                    }
+
+                    let text = try await performTranscription(job: job)
+
+                    if Task.isCancelled {
+                        continuation.finish(throwing: VoiceDictationError.transcriptionCancelled)
+                        return
+                    }
+
+                    continuation.yield(text)
+                    continuation.finish()
+
+                    try? FileManager.default.removeItem(at: job.audioFileURL)
+                    await MainActor.run {
+                        self.audioFileURL = nil
+                        self.hasCompletedRecording = false
+                        self.lastRecordingDurationMs = nil
+                        self.lastTranscriptionJob = nil
+                    }
+
+                } catch let error as DataServiceError {
+                    if case .timeout = error {
+                        await MainActor.run {
+                            self.lastTranscriptionError = VoiceDictationError.transcriptionTimeout
+                        }
+                        continuation.finish(throwing: VoiceDictationError.transcriptionTimeout)
+                    } else {
+                        await MainActor.run {
+                            self.lastTranscriptionError = error
+                        }
+                        continuation.finish(throwing: error)
+                    }
+                } catch {
+                    await MainActor.run {
+                        self.lastTranscriptionError = error
+                    }
+                    continuation.finish(throwing: error)
+                }
+            }
+
+            Task { @MainActor in
+                self.transcriptionTask = task
+            }
+        }
+    }
+
+    public func discardLastRecording() {
+        if let url = audioFileURL {
+            try? FileManager.default.removeItem(at: url)
+        }
+        audioFileURL = nil
+        hasCompletedRecording = false
+        lastRecordingDurationMs = nil
+        lastTranscriptionJob = nil
+        lastTranscriptionError = nil
+    }
+
+    public func cancelTranscription() {
+        transcriptionTask?.cancel()
+        transcriptionTask = nil
+        endBackgroundTaskIfNeeded()
+        Task { @MainActor in
+            self.isTranscribing = false
+        }
+    }
+
+    // MARK: - Background Task Handling
+
+    #if canImport(UIKit)
+    private func beginBackgroundTask() {
+        guard backgroundTaskID == .invalid else { return }
+
+        backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "VoiceTranscription") { [weak self] in
+            // Expiration handler - iOS is forcing us to stop
+            // The transcription network request will continue server-side,
+            // but we won't receive the result. User can retry when app resumes.
+            self?.endBackgroundTaskIfNeeded()
+        }
+    }
+
+    private func endBackgroundTaskIfNeeded() {
+        guard backgroundTaskID != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(backgroundTaskID)
+        backgroundTaskID = .invalid
+    }
+    #else
+    private func beginBackgroundTask() {}
+    private func endBackgroundTaskIfNeeded() {}
+    #endif
+}
+
+// MARK: - Supporting Types
+
+extension VoiceDictationService {
+    public struct TranscriptionJob {
+        let id: UUID
+        let audioFileURL: URL
+        let createdAt: Date
+        let durationMs: Int64
+        let model: String?
+        let language: String?
+        let prompt: String?
+        let temperature: Double?
     }
 }
 
@@ -329,6 +600,8 @@ public enum VoiceDictationError: Error, LocalizedError {
     case noRecordingFound
     case recordingInProgress
     case permissionDenied
+    case transcriptionCancelled
+    case transcriptionTimeout
 
     public var errorDescription: String? {
         switch self {
@@ -342,6 +615,10 @@ public enum VoiceDictationError: Error, LocalizedError {
             return "Recording is already in progress"
         case .permissionDenied:
             return "Microphone permission denied."
+        case .transcriptionCancelled:
+            return "Transcription was cancelled"
+        case .transcriptionTimeout:
+            return "Transcription request timed out"
         }
     }
 }

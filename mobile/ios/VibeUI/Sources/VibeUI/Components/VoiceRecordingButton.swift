@@ -12,11 +12,11 @@ public struct VoiceRecordingButton: View {
     @Binding var text: String
     @Binding var selectedRange: NSRange
     @Binding var selectedLanguage: String
-    @Binding var externalStartRecording: Bool
 
     let transcriptionModel: String?
     let transcriptionPrompt: String?
     let transcriptionTemperature: Double?
+    let autoStartRecording: Bool
     let onError: (String) -> Void
     let onTranscriptionComplete: () -> Void
 
@@ -28,6 +28,9 @@ public struct VoiceRecordingButton: View {
     @State private var timer: Timer?
     @State private var capturedCursorPosition: NSRange? = nil
     @State private var animationNamespace: Namespace.ID?
+    @State private var lastTranscriptionErrorMessage: String? = nil
+    @State private var hasPendingRetry: Bool = false
+    @State private var hasTriggeredAutoStart: Bool = false
 
     // Animation states
     @State private var isPressed = false
@@ -48,18 +51,18 @@ public struct VoiceRecordingButton: View {
         transcriptionModel: String? = nil,
         transcriptionPrompt: String? = nil,
         transcriptionTemperature: Double? = nil,
-        externalStartRecording: Binding<Bool> = .constant(false),
+        autoStartRecording: Bool = false,
         onError: @escaping (String) -> Void = { _ in },
         onTranscriptionComplete: @escaping () -> Void = {}
     ) {
         self._text = text
         self._selectedRange = selectedRange
         self._selectedLanguage = selectedLanguage
-        self._externalStartRecording = externalStartRecording
         self.voiceService = voiceService
         self.transcriptionModel = transcriptionModel
         self.transcriptionPrompt = transcriptionPrompt
         self.transcriptionTemperature = transcriptionTemperature
+        self.autoStartRecording = autoStartRecording
         self.onError = onError
         self.onTranscriptionComplete = onTranscriptionComplete
     }
@@ -104,16 +107,20 @@ public struct VoiceRecordingButton: View {
                     }
                 }
         )
-        .onChange(of: externalStartRecording) { shouldStart in
-            if shouldStart && phase == .idle {
-                toggleRecording()
-                DispatchQueue.main.async {
-                    externalStartRecording = false
-                }
-            }
-        }
         .onAppear {
             startIdleAnimations()
+        }
+        .task {
+            // .task runs ONCE after view appears - autoStartRecording is already set
+            if autoStartRecording && !hasTriggeredAutoStart && phase == .idle {
+                hasTriggeredAutoStart = true
+                toggleRecording()
+            }
+        }
+        .onReceive(voiceService.$isTranscribing) { isTranscribing in
+            if !isTranscribing {
+                hasPendingRetry = voiceService.canRetryLastTranscription
+            }
         }
         .accessibilityLabel(accessibilityLabelText)
         .accessibilityHint(accessibilityHintText)
@@ -125,6 +132,7 @@ public struct VoiceRecordingButton: View {
         case idle
         case recording
         case transcribing
+        case error(String)
     }
 
     private var phase: RecordingPhase {
@@ -132,6 +140,8 @@ public struct VoiceRecordingButton: View {
             return .transcribing
         } else if voiceService.isRecording {
             return .recording
+        } else if let msg = lastTranscriptionErrorMessage {
+            return .error(msg)
         } else {
             return .idle
         }
@@ -184,10 +194,17 @@ public struct VoiceRecordingButton: View {
         Group {
             switch phase {
             case .idle:
-                Image(systemName: "mic.fill")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(AppColors.primaryForeground)
-                    .transition(.scale.combined(with: .opacity))
+                if hasPendingRetry {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(AppColors.primaryForeground)
+                        .transition(.scale.combined(with: .opacity))
+                } else {
+                    Image(systemName: "mic.fill")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(AppColors.primaryForeground)
+                        .transition(.scale.combined(with: .opacity))
+                }
 
             case .recording:
                 RoundedRectangle(cornerRadius: 3)
@@ -208,6 +225,12 @@ public struct VoiceRecordingButton: View {
                         .foregroundColor(.white)
                         .transition(.scale.combined(with: .opacity))
                 }
+
+            case .error:
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(AppColors.destructiveForeground)
+                    .transition(.scale.combined(with: .opacity))
             }
         }
         .animation(.spring(response: 0.25, dampingFraction: 0.7), value: phase)
@@ -242,6 +265,15 @@ public struct VoiceRecordingButton: View {
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
+        case .error:
+            return LinearGradient(
+                colors: [
+                    AppColors.destructive,
+                    AppColors.destructive.opacity(0.85)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
         }
     }
 
@@ -250,6 +282,7 @@ public struct VoiceRecordingButton: View {
         case .idle: return AppColors.primary
         case .recording: return AppColors.destructive
         case .transcribing: return AppColors.primary
+        case .error: return AppColors.destructive
         }
     }
 
@@ -272,7 +305,11 @@ public struct VoiceRecordingButton: View {
         Group {
             switch phase {
             case .idle:
-                Text("Tap to record")
+                if hasPendingRetry {
+                    Text("Retry transcription")
+                } else {
+                    Text("Tap to record")
+                }
             case .recording:
                 Text(formatDuration(recordingDuration))
                     .monospacedDigit()
@@ -281,6 +318,8 @@ public struct VoiceRecordingButton: View {
                     Text("Transcribing")
                     TypingDotsView(color: .white.opacity(0.8))
                 }
+            case .error:
+                Text("Transcription failed")
             }
         }
         .font(.system(size: 15, weight: .semibold, design: .rounded))
@@ -305,14 +344,20 @@ public struct VoiceRecordingButton: View {
         case .idle: return AppColors.foreground
         case .recording: return AppColors.destructiveForeground
         case .transcribing: return .white
+        case .error: return AppColors.destructiveForeground
         }
     }
 
     private var secondaryLabel: String {
         switch phase {
-        case .idle: return "Voice input"
-        case .recording: return "Tap to stop"
-        case .transcribing: return "Please wait"
+        case .idle:
+            return hasPendingRetry ? "Use last recording" : "Voice input"
+        case .recording:
+            return "Tap to stop"
+        case .transcribing:
+            return "Please wait"
+        case .error:
+            return "Tap to retry"
         }
     }
 
@@ -321,6 +366,7 @@ public struct VoiceRecordingButton: View {
         case .idle: return AppColors.mutedForeground
         case .recording: return AppColors.destructiveForeground.opacity(0.8)
         case .transcribing: return .white.opacity(0.85)
+        case .error: return AppColors.destructiveForeground.opacity(0.8)
         }
     }
 
@@ -330,7 +376,13 @@ public struct VoiceRecordingButton: View {
     private var trailingContentView: some View {
         switch phase {
         case .idle:
-            EmptyView()
+            if hasPendingRetry {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(AppColors.foreground)
+            } else {
+                EmptyView()
+            }
 
         case .recording:
             AudioReactiveWaveform(
@@ -345,7 +397,6 @@ public struct VoiceRecordingButton: View {
 
         case .transcribing:
             ZStack {
-                // Animated circular progress
                 Circle()
                     .stroke(Color.white.opacity(0.25), lineWidth: 2)
                     .frame(width: 22, height: 22)
@@ -360,6 +411,11 @@ public struct VoiceRecordingButton: View {
                     .rotationEffect(.degrees(-90))
                     .modifier(SpinningModifier())
             }
+
+        case .error:
+            Image(systemName: "arrow.clockwise")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(AppColors.destructiveForeground)
         }
     }
 
@@ -387,6 +443,16 @@ public struct VoiceRecordingButton: View {
                     colors: [
                         AppColors.primary,
                         AppColors.primary.opacity(0.92)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+
+            case .error:
+                LinearGradient(
+                    colors: [
+                        AppColors.destructive,
+                        AppColors.destructive.opacity(0.92)
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
@@ -435,6 +501,8 @@ public struct VoiceRecordingButton: View {
             return AppColors.destructiveForeground.opacity(0.3)
         case .transcribing:
             return Color.white.opacity(0.25)
+        case .error:
+            return AppColors.destructiveForeground.opacity(0.3)
         }
     }
 
@@ -452,20 +520,22 @@ public struct VoiceRecordingButton: View {
             return AppColors.destructive.opacity(0.45)
         case .transcribing:
             return AppColors.primary.opacity(0.45)
+        case .error:
+            return AppColors.destructive.opacity(0.45)
         }
     }
 
     private var shadowRadius: CGFloat {
         switch phase {
         case .idle: return colorScheme == .dark ? 6 : 4
-        case .recording, .transcribing: return 10
+        case .recording, .transcribing, .error: return 10
         }
     }
 
     private var shadowY: CGFloat {
         switch phase {
         case .idle: return 2
-        case .recording, .transcribing: return 4
+        case .recording, .transcribing, .error: return 4
         }
     }
 
@@ -474,22 +544,26 @@ public struct VoiceRecordingButton: View {
     private var accessibilityLabelText: String {
         switch phase {
         case .idle:
-            return "Voice recording button"
+            return hasPendingRetry ? "Retry transcription button" : "Voice recording button"
         case .recording:
             return "Recording in progress, duration \(formatDuration(recordingDuration))"
         case .transcribing:
             return "Transcribing audio"
+        case .error:
+            return "Transcription failed"
         }
     }
 
     private var accessibilityHintText: String {
         switch phase {
         case .idle:
-            return "Double tap to start recording"
+            return hasPendingRetry ? "Double tap to retry transcription" : "Double tap to start recording"
         case .recording:
             return "Double tap to stop recording and transcribe"
         case .transcribing:
             return "Transcription in progress, please wait"
+        case .error:
+            return "Double tap to retry transcription"
         }
     }
 
@@ -523,14 +597,17 @@ public struct VoiceRecordingButton: View {
     private func toggleRecording() {
         guard !voiceService.isTranscribing else { return }
 
+        if phase == .idle && hasPendingRetry && voiceService.canRetryLastTranscription {
+            retryTranscriptionFromButton()
+            return
+        }
+
         triggerIconBounce()
 
         Task {
             do {
                 if voiceService.isRecording {
-                    // Stop recording
                     await MainActor.run {
-                        // Enhanced haptic feedback for stopping
                         let generator = UIImpactFeedbackGenerator(style: .medium)
                         generator.impactOccurred()
                     }
@@ -544,26 +621,36 @@ public struct VoiceRecordingButton: View {
 
                     let languageCode = String(selectedLanguage.prefix(2))
 
-                    for try await transcribedText in voiceService.transcribe(
-                        model: transcriptionModel,
-                        language: languageCode,
-                        prompt: transcriptionPrompt,
-                        temperature: transcriptionTemperature
-                    ) {
-                        await MainActor.run {
-                            insertTranscribedText(transcribedText)
+                    do {
+                        for try await transcribedText in voiceService.transcribe(
+                            model: transcriptionModel,
+                            language: languageCode,
+                            prompt: transcriptionPrompt,
+                            temperature: transcriptionTemperature
+                        ) {
+                            await MainActor.run {
+                                insertTranscribedText(transcribedText)
+                                lastTranscriptionErrorMessage = nil
 
-                            // Success haptic
-                            let generator = UINotificationFeedbackGenerator()
-                            generator.notificationOccurred(.success)
+                                let generator = UINotificationFeedbackGenerator()
+                                generator.notificationOccurred(.success)
 
-                            onTranscriptionComplete()
+                                onTranscriptionComplete()
+                            }
                         }
+                    } catch {
+                        let message = mapErrorToMessage(error)
+                        await MainActor.run {
+                            lastTranscriptionErrorMessage = message
+                            hasPendingRetry = voiceService.canRetryLastTranscription
+                        }
+                        await handleError(message)
                     }
                 } else {
-                    // Start recording
                     await MainActor.run {
-                        // Enhanced haptic feedback for starting
+                        hasPendingRetry = false
+                        lastTranscriptionErrorMessage = nil
+
                         let generator = UIImpactFeedbackGenerator(style: .heavy)
                         generator.impactOccurred()
 
@@ -576,7 +663,6 @@ public struct VoiceRecordingButton: View {
                         timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [self] _ in
                             recordingDuration += 0.1
 
-                            // Milestone haptic feedback
                             if recordingDuration.truncatingRemainder(dividingBy: 30.0) < 0.15 && recordingDuration > 1 {
                                 let generator = UIImpactFeedbackGenerator(style: .light)
                                 generator.impactOccurred()
@@ -591,6 +677,51 @@ public struct VoiceRecordingButton: View {
             } catch {
                 await handleError("Voice dictation error: \(error.localizedDescription)")
             }
+        }
+    }
+
+    private func retryTranscriptionFromButton() {
+        guard voiceService.canRetryLastTranscription else { return }
+
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(.warning)
+        hasPendingRetry = false
+
+        Task { [weak voiceService] in
+            guard let voiceService = voiceService else { return }
+            do {
+                let languageCode = String(selectedLanguage.prefix(2))
+                for try await text in voiceService.transcribe(
+                    model: transcriptionModel,
+                    language: languageCode,
+                    prompt: transcriptionPrompt,
+                    temperature: transcriptionTemperature
+                ) {
+                    await MainActor.run {
+                        insertTranscribedText(text)
+                        lastTranscriptionErrorMessage = nil
+                    }
+                    generator.notificationOccurred(.success)
+                    onTranscriptionComplete()
+                }
+            } catch {
+                let message = mapErrorToMessage(error)
+                await MainActor.run {
+                    lastTranscriptionErrorMessage = message
+                    hasPendingRetry = voiceService.canRetryLastTranscription
+                }
+                await handleError(message)
+            }
+        }
+    }
+
+    private func mapErrorToMessage(_ error: Error) -> String {
+        if let vError = error as? VoiceDictationError {
+            return vError.errorDescription ?? "Voice dictation error"
+        } else if let dsError = error as? DataServiceError {
+            return dsError.errorDescription ?? "Network error during transcription"
+        } else {
+            return "Transcription failed: \(error.localizedDescription)"
         }
     }
 

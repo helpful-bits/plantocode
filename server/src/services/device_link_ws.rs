@@ -1275,240 +1275,126 @@ impl Handler<HandleRelayMessageInternal> for DeviceLinkWs {
     type Result = ();
 
     fn handle(&mut self, msg: HandleRelayMessageInternal, ctx: &mut Self::Context) -> Self::Result {
-        // Touch relay session to extend TTL on each RPC frame
         if let (Some(session_id), Some(relay_store)) = (&self.session_id, &self.relay_store) {
             relay_store.touch(session_id);
         }
 
-        // STEP 16: Strict relay envelope parsing (optional/staged)
-        let strict_envelope = std::env::var("STRICT_RELAY_ENVELOPE").ok().as_deref() == Some("1");
-        if strict_envelope {
-            #[derive(Deserialize)]
-            #[serde(rename_all = "camelCase")]
-            struct RelayRpcRequest {
-                method: String,
-                params: serde_json::Value,
-                correlation_id: String,
-                idempotency_key: Option<String>,
-            }
-
-            #[derive(Deserialize)]
-            #[serde(rename_all = "camelCase")]
-            struct RelayRequestPayload {
-                target_device_id: String,
-                user_id: String,
-                request: RelayRpcRequest,
-            }
-
-            #[derive(Deserialize)]
-            #[serde(rename_all = "camelCase")]
-            struct RelayMessageEnvelope {
-                payload: RelayRequestPayload,
-            }
-
-            // Attempt strict deserialization
-            if let Err(e) = serde_json::from_value::<RelayMessageEnvelope>(msg.payload.clone()) {
-                warn!(
-                    connection_id = %self.connection_id,
-                    error = %e,
-                    "Strict relay envelope validation failed"
-                );
-                self.send_error(
-                    "invalid_relay_envelope",
-                    &format!("Relay envelope does not match expected schema: {}", e),
-                    ctx,
-                );
+        let root = match msg.payload.as_object() {
+            Some(obj) => obj,
+            None => {
+                self.send_error("invalid_payload", "Root must be an object", ctx);
                 return;
             }
-        }
+        };
 
-        // 1. Resolve outer payload object
-        let root_obj = msg.payload.as_object();
-        if root_obj.is_none() {
-            self.send_error("invalid_payload", "Missing or invalid root object", ctx);
-            return;
-        }
-        let root_obj = root_obj.unwrap();
+        let outer = match root.get("payload").and_then(|v| v.as_object()) {
+            Some(obj) => obj,
+            None => {
+                self.send_error("invalid_payload", "Missing payload object", ctx);
+                return;
+            }
+        };
 
-        let outer = msg.payload.get("payload")
-            .and_then(|v| v.as_object())
-            .or_else(|| msg.payload.as_object());
+        let target_device_id = match outer.get("targetDeviceId").and_then(|v| v.as_str()) {
+            Some(id) if !id.trim().is_empty() => id,
+            _ => {
+                self.send_error("missing_target_device_id", "Missing or empty targetDeviceId", ctx);
+                return;
+            }
+        };
 
-        if outer.is_none() {
-            self.send_error("invalid_payload", "Relay envelope must contain a payload object", ctx);
-            return;
-        }
-        let outer = outer.unwrap();
+        let request_obj = match outer.get("request").and_then(|v| v.as_object()) {
+            Some(obj) => obj,
+            None => {
+                self.send_error("invalid_rpc_payload", "Missing request object", ctx);
+                return;
+            }
+        };
 
-        // 2. Extract targetDeviceId with canonical path and fallbacks
-        let target_device_id = outer.get("targetDeviceId")
+        let method = match request_obj.get("method").and_then(|v| v.as_str()) {
+            Some(m) if !m.trim().is_empty() => m,
+            _ => {
+                self.send_error("missing_method", "Missing or empty method", ctx);
+                return;
+            }
+        };
+
+        let mut params = request_obj.get("params").cloned().unwrap_or_else(|| serde_json::json!({}));
+
+        let correlation_id = request_obj.get("correlationId")
             .and_then(|v| v.as_str())
-            .or_else(|| root_obj.get("targetDeviceId").and_then(|v| v.as_str()))
-            .or_else(|| {
-                // snake_case fallback with warning
-                let snake = outer.get("target_device_id")
-                    .or(root_obj.get("target_device_id"))
-                    .and_then(|v| v.as_str());
-                if snake.is_some() {
-                    // Rate-limited warning
-                    static LAST_SNAKE_WARN: AtomicU64 = AtomicU64::new(0);
-                    let now = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs();
-                    let last = LAST_SNAKE_WARN.load(Ordering::Relaxed);
-                    if now - last > 60 {
-                        warn!(
-                            log_stage = "relay:contract_violation",
-                            code = "non_canonical_field",
-                            field = "target_device_id",
-                            "snake_case target_device_id detected"
-                        );
-                        LAST_SNAKE_WARN.store(now, Ordering::Relaxed);
-                    }
-                }
-                snake
-            });
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
 
-        if target_device_id.is_none() || target_device_id.unwrap().trim().is_empty() {
-            let available_root_keys: Vec<String> = root_obj.keys().cloned().collect();
-            let available_payload_keys: Vec<String> = outer.keys().cloned().collect();
-            let error_msg = format!(
-                "Missing targetDeviceId in relay message (expected at payload.targetDeviceId). Available root keys: {:?}, Available payload keys: {:?}",
-                available_root_keys, available_payload_keys
-            );
-            warn!(
-                connection_id = %self.connection_id,
-                user_id = ?self.user_id,
-                log_stage = "relay:validation_failed",
-                code = "missing_target_device_id",
-                available_root_keys = ?available_root_keys,
-                available_payload_keys = ?available_payload_keys,
-                "Missing targetDeviceId"
-            );
-            self.send_error("missing_target_device_id", &error_msg, ctx);
-            return;
-        }
-        let target_device_id = target_device_id.unwrap();
+        let idempotency_key = request_obj.get("idempotencyKey").cloned();
 
-        // 3. Extract RPC inner payload
-        let inner = outer.get("payload")
-            .and_then(|v| v.as_object())
-            .or_else(|| outer.get("request").and_then(|v| v.as_object()));
-
-        if inner.is_none() {
-            let error_msg = format!(
-                "Missing or invalid payload.payload object. Available outer keys: {:?}",
-                outer.keys().collect::<Vec<_>>()
-            );
-            warn!(
-                connection_id = %self.connection_id,
-                log_stage = "relay:validation_failed",
-                code = "invalid_rpc_payload",
-                "Missing RPC payload"
-            );
-            self.send_error("invalid_rpc_payload", &error_msg, ctx);
-            return;
-        }
-        let inner = inner.unwrap();
-
-        // 4. Validate required fields
-        let method = inner.get("method")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.trim().is_empty());
-
-        if method.is_none() {
-            let error_msg = format!(
-                "Missing or invalid payload.payload.method. Available inner keys: {:?}",
-                inner.keys().collect::<Vec<_>>()
-            );
-            warn!(
-                connection_id = %self.connection_id,
-                log_stage = "relay:validation_failed",
-                code = "missing_method",
-                "Missing method"
-            );
-            self.send_error("missing_method", &error_msg, ctx);
-            return;
-        }
-        let method = method.unwrap();
-
-        let mut params = inner.get("params").cloned().unwrap_or(serde_json::json!({}));
-
-        // Validate params is valid JSON
-        if !params.is_object() && !params.is_array() && !params.is_null() && !params.is_string() && !params.is_number() && !params.is_boolean() {
-            self.send_error("invalid_params", "Params must be valid JSON", ctx);
-            return;
-        }
-
-        // Defensive coercion for session.syncHistoryState expectedVersion
         if method == "session.syncHistoryState" {
-            if let Some(params_obj) = params.as_object_mut() {
-                if let Some(ev) = params_obj.remove("expectedVersion") {
-                    let coerced = match ev {
-                        serde_json::Value::Bool(b) => serde_json::Value::from(if b { 1i64 } else { 0i64 }),
-                        serde_json::Value::String(s) => {
-                            s.parse::<i64>()
-                                .map(serde_json::Value::from)
-                                .unwrap_or_else(|_| serde_json::Value::from(0i64))
-                        }
-                        serde_json::Value::Number(n) => {
-                            n.as_i64()
-                                .map(serde_json::Value::from)
-                                .unwrap_or_else(|| serde_json::Value::from(0i64))
-                        }
-                        v => {
-                            // Try best-effort double -> i64
-                            v.as_f64()
-                                .map(|f| serde_json::Value::from(f as i64))
-                                .unwrap_or_else(|| serde_json::Value::from(0i64))
-                        }
-                    };
-                    params_obj.insert("expectedVersion".to_string(), coerced);
-                } else {
-                    // If missing, default to 0
-                    params_obj.insert("expectedVersion".to_string(), serde_json::Value::from(0i64));
+            let params_obj = match params.as_object() {
+                Some(obj) => obj,
+                None => {
+                    self.send_error("invalid_rpc_payload", "params must be an object for session.syncHistoryState", ctx);
+                    return;
                 }
+            };
+
+            let state_value = match params_obj.get("state") {
+                Some(val) => val,
+                None => {
+                    self.send_error("invalid_rpc_payload", "Missing state field", ctx);
+                    return;
+                }
+            };
+
+            if !state_value.is_object() {
+                self.send_error("invalid_rpc_payload", "state must be an object", ctx);
+                return;
+            }
+
+            if let Some(params_obj_mut) = params.as_object_mut() {
+                let expected_version = params_obj_mut.get("expectedVersion").cloned();
+                let coerced = match expected_version {
+                    Some(serde_json::Value::Bool(b)) => serde_json::Value::from(if b { 1i64 } else { 0i64 }),
+                    Some(serde_json::Value::String(s)) => {
+                        s.parse::<i64>()
+                            .map(serde_json::Value::from)
+                            .unwrap_or_else(|_| serde_json::Value::from(0i64))
+                    }
+                    Some(serde_json::Value::Number(n)) => {
+                        n.as_i64()
+                            .map(serde_json::Value::from)
+                            .unwrap_or_else(|| serde_json::Value::from(0i64))
+                    }
+                    Some(v) => {
+                        v.as_f64()
+                            .map(|f| serde_json::Value::from(f as i64))
+                            .unwrap_or_else(|| serde_json::Value::from(0i64))
+                    }
+                    None => serde_json::Value::from(0i64),
+                };
+                params_obj_mut.insert("expectedVersion".to_string(), coerced);
             }
         }
 
-        let correlation_id = inner.get("correlationId")
-            .and_then(|v| v.as_str())
-            .or_else(|| inner.get("id").and_then(|v| v.as_str()))
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-
-        // Extract idempotencyKey for forwarding
-        let idempotency_key = inner.get("idempotencyKey")
-            .or_else(|| inner.get("idempotency_key"))
-            .cloned();
-
-        // 5. Build and forward desktop envelope
         let authenticated_user_id = self.user_id.map(|id| id.to_string()).unwrap_or_default();
 
-        let mut request_obj = serde_json::json!({
+        let mut request = serde_json::json!({
             "method": method,
             "params": params,
             "correlationId": correlation_id
         });
 
-        // Preserve idempotencyKey in request if present
         if let Some(key) = idempotency_key {
-            if let Some(req_obj) = request_obj.as_object_mut() {
+            if let Some(req_obj) = request.as_object_mut() {
                 req_obj.insert("idempotencyKey".to_string(), key);
             }
         }
 
-        let mut forward = serde_json::json!({
+        let forward = serde_json::json!({
             "type": "relay",
             "clientId": self.device_id.clone().unwrap_or_default(),
-            "request": request_obj
+            "userId": authenticated_user_id,
+            "request": request
         });
-
-        // Inject authenticated userId into the message payload
-        if let Some(obj) = forward.as_object_mut() {
-            obj.insert("userId".to_string(), serde_json::Value::String(authenticated_user_id));
-        }
 
         let envelope_str = forward.to_string();
 

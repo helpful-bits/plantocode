@@ -49,6 +49,7 @@ pub async fn dispatch(app_handle: AppHandle, req: RpcRequest) -> RpcResult<Value
         "actions.readImplementationPlan" => handle_actions_read_implementation_plan(&app_handle, req).await,
         "actions.getImplementationPlanPrompt" => handle_actions_get_implementation_plan_prompt(&app_handle, req).await,
         "actions.estimatePromptTokens" => handle_actions_estimate_prompt_tokens(&app_handle, req).await,
+        "plan.generateMarkdown" => handle_generate_plan_markdown(&app_handle, req).await,
         _ => Err(RpcError::method_not_found(&req.method)),
     }
 }
@@ -413,4 +414,29 @@ async fn handle_actions_estimate_prompt_tokens(
     let total_tokens = system_tokens + user_tokens;
 
     Ok(json!({ "totalTokens": total_tokens }))
+}
+
+async fn handle_generate_plan_markdown(
+    app_handle: &AppHandle,
+    request: RpcRequest,
+) -> RpcResult<Value> {
+    let job_id = request
+        .params
+        .get("jobId")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| RpcError::invalid_params("Missing param: jobId"))?
+        .to_string();
+
+    let resp = implementation_plan_commands::generate_plan_markdown_command(
+        app_handle.clone(),
+        job_id,
+    )
+    .await
+    .map_err(RpcError::from)?;
+
+    Ok(json!({
+        "jobId": resp.job_id,
+        "xmlContent": resp.xml_content,
+        "markdown": resp.markdown,
+    }))
 }

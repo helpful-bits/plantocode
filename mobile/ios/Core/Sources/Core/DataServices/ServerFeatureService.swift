@@ -223,7 +223,8 @@ public class ServerFeatureService: ObservableObject {
         model: String? = nil,
         language: String? = nil,
         prompt: String? = nil,
-        temperature: Double? = nil
+        temperature: Double? = nil,
+        timeoutSeconds: Double = 90
     ) async throws -> TranscriptionResponse {
         guard !audioData.isEmpty else {
             throw DataServiceError.invalidRequest("Audio data cannot be empty")
@@ -237,13 +238,14 @@ public class ServerFeatureService: ObservableObject {
         defer { isLoading = false }
 
         do {
-            return try await uploadAudioForTranscription(
+            return try await performTranscriptionRequestWithRetry(
                 audioData,
                 durationMs: durationMs,
                 model: model,
                 language: language,
                 prompt: prompt,
-                temperature: temperature
+                temperature: temperature,
+                timeoutSeconds: timeoutSeconds
             )
         } catch {
             let serviceError = mapToDataServiceError(error)
@@ -253,6 +255,68 @@ public class ServerFeatureService: ObservableObject {
     }
 
     // MARK: - Private Methods
+
+    private func withTimeout<T>(_ seconds: Double, operation: @escaping () async throws -> T) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask {
+                try await operation()
+            }
+
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw DataServiceError.timeout
+            }
+
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
+        }
+    }
+
+    private func performTranscriptionRequestWithRetry(
+        _ audioData: Data,
+        durationMs: Int64,
+        model: String?,
+        language: String?,
+        prompt: String?,
+        temperature: Double?,
+        timeoutSeconds: Double,
+        maxAttempts: Int = 3
+    ) async throws -> TranscriptionResponse {
+        var lastError: Error?
+
+        for attempt in 1...maxAttempts {
+            do {
+                return try await withTimeout(timeoutSeconds) {
+                    try await self.uploadAudioForTranscription(
+                        audioData,
+                        durationMs: durationMs,
+                        model: model,
+                        language: language,
+                        prompt: prompt,
+                        temperature: temperature
+                    )
+                }
+            } catch {
+                lastError = error
+                let serviceError = mapToDataServiceError(error)
+
+                switch serviceError {
+                case .timeout, .networkError, .serviceUnavailable:
+                    if attempt < maxAttempts {
+                        let delay = pow(2.0, Double(attempt - 1)) * 0.8
+                        try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                        continue
+                    }
+                    throw serviceError
+                default:
+                    throw serviceError
+                }
+            }
+        }
+
+        throw mapToDataServiceError(lastError!)
+    }
 
     private func uploadAudioForTranscription(
         _ audioData: Data,
@@ -317,9 +381,10 @@ public class ServerFeatureService: ObservableObject {
         request.httpMethod = "POST"
         request.setValue(contentType, forHTTPHeaderField: "Content-Type")
 
-        if let token = await getCurrentAuthToken() {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        guard let token = await getCurrentAuthToken() else {
+            throw DataServiceError.authenticationError("Missing authentication token")
         }
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
         let deviceId = DeviceManager.shared.getOrCreateDeviceID()
         request.setValue(deviceId, forHTTPHeaderField: "X-Device-ID")
@@ -327,7 +392,12 @@ public class ServerFeatureService: ObservableObject {
 
         request.httpBody = bodyData
 
-        let (responseData, httpResponse) = try await URLSession.shared.data(for: request)
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 90
+        config.timeoutIntervalForResource = 240
+        let session = URLSession(configuration: config)
+
+        let (responseData, httpResponse) = try await session.data(for: request)
 
         guard let httpResponse = httpResponse as? HTTPURLResponse else {
             throw DataServiceError.networkError(URLError(.badServerResponse))
@@ -347,7 +417,14 @@ public class ServerFeatureService: ObservableObject {
     }
 
     private func mapToDataServiceError(_ error: Error) -> DataServiceError {
-        if let apiError = error as? APIError {
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .timedOut, .networkConnectionLost, .notConnectedToInternet:
+                return .timeout
+            default:
+                return .networkError(urlError)
+            }
+        } else if let apiError = error as? APIError {
             switch apiError {
             case .invalidURL:
                 return .invalidRequest("Invalid URL")

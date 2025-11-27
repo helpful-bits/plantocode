@@ -3,6 +3,7 @@ import Core
 import Combine
 import SwiftTerm
 import OSLog
+import QuartzCore
 
 public struct RemoteTerminalView: View {
     let jobId: String
@@ -13,8 +14,7 @@ public struct RemoteTerminalView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var isSessionActive = false
-    @State private var showCompose = false
-    @State private var composeAutoStartRecording = false
+    @State private var composePresentation: ComposePresentation? = nil
     @StateObject private var settingsService = SettingsDataService()
     @StateObject private var terminalController = SwiftTermController()
     @StateObject private var pathObserver = NetworkPathObserver.shared
@@ -202,10 +202,8 @@ public struct RemoteTerminalView: View {
         }
         .background(Color.background)
         .navigationBarTitleDisplayMode(.inline)
-        .fullScreenCover(isPresented: $showCompose, onDismiss: {
-            composeAutoStartRecording = false
-        }) {
-            TerminalComposeView(jobId: jobId, autoStartRecording: composeAutoStartRecording)
+        .fullScreenCover(item: $composePresentation) { presentation in
+            TerminalComposeView(jobId: jobId, autoStartRecording: presentation.autoStartRecording)
                 .environmentObject(container)
         }
         .toolbar {
@@ -376,6 +374,8 @@ public struct RemoteTerminalView: View {
         .background(Color.background.opacity(0.8))
     }
 
+    private static let sessionStartTimeout: TimeInterval = 30.0
+
     private func startTerminalSession() {
         // Validate jobId is not empty
         guard !jobId.isEmpty else {
@@ -392,14 +392,16 @@ public struct RemoteTerminalView: View {
                 // Get working directory from current session
                 let workingDirectory = container.sessionService.currentSession?.projectDirectory
 
-                // Fetch preferred shell from settings
+                // Fetch preferred shell from settings with timeout
                 let settingsService = SettingsDataService()
                 var preferredShell: String?
                 do {
-                    try await settingsService.loadPreferredTerminal()
+                    try await withTimeout(seconds: 5.0) {
+                        try await settingsService.loadPreferredTerminal()
+                    }
                     preferredShell = settingsService.preferredTerminal
                 } catch {
-                    // Failed to fetch shell preference
+                    // Shell preference fetch failed - use default
                 }
 
                 // Capture service and jobId before entering MainActor scope
@@ -414,12 +416,15 @@ public struct RemoteTerminalView: View {
                     jobId: capturedJobId
                 )
 
-                let session = try await terminalService.startSession(
-                    jobId: capturedJobId,
-                    shell: preferredShell,
-                    context: contextBinding
-                )
-                await MainActor.run {
+                // Start session with timeout to prevent hanging
+                let session = try await withTimeout(seconds: Self.sessionStartTimeout) {
+                    try await terminalService.startSession(
+                        jobId: capturedJobId,
+                        shell: preferredShell,
+                        context: contextBinding
+                    )
+                }
+                await MainActor.run { [self] in
                     terminalSession = session
                     sessionIdForReadiness = session.id
                     isTerminalReady = container.terminalService.isSessionReady(session.id)
@@ -428,11 +433,7 @@ public struct RemoteTerminalView: View {
 
                     terminalController.onSend = { bytes in
                         Task {
-                            do {
-                                try await terminalService.write(jobId: capturedJobId, bytes: bytes)
-                            } catch {
-                                // Failed to send bytes
-                            }
+                            try? await terminalService.write(jobId: capturedJobId, bytes: bytes)
                         }
                     }
 
@@ -442,11 +443,13 @@ public struct RemoteTerminalView: View {
                             do {
                                 try await terminalService.resize(jobId: capturedJobId, cols: cols, rows: rows)
 
-                                if !hasInitialResize {
-                                    hasInitialResize = true
+                                if hasInitialResize == false {
+                                    await MainActor.run {
+                                        hasInitialResize = true
+                                    }
                                 }
                             } catch {
-                                // Failed to resize
+                                // Resize failures are usually transient - PTY will use last known size
                             }
                         }
                     }
@@ -457,9 +460,6 @@ public struct RemoteTerminalView: View {
                         .receive(on: DispatchQueue.main)
                         .sink { data in
                             terminalController.feedBytes(data: data)
-                            DispatchQueue.main.async {
-                                // UI flush barrier after feedBytes
-                            }
                         }
 
                     // CRITICAL: Manually trigger first resize immediately!
@@ -473,11 +473,9 @@ public struct RemoteTerminalView: View {
                         // ONLY resize if we have valid dimensions (not 0x0)
                         if cols > 0 && rows > 0 {
                             Task {
-                                do {
-                                    try await terminalService.resize(jobId: capturedJobId, cols: cols, rows: rows)
+                                try? await terminalService.resize(jobId: capturedJobId, cols: cols, rows: rows)
+                                await MainActor.run {
                                     hasInitialResize = true
-                                } catch {
-                                    // Failed manual resize
                                 }
                             }
                         }
@@ -512,20 +510,12 @@ public struct RemoteTerminalView: View {
                 terminalController.terminalView?.resignFirstResponder()
             }
 
-            // Clear current line with Ctrl+U
-            do {
-                try await container.terminalService.write(
-                    jobId: jobId,
-                    bytes: [0x15] // Ctrl+U
-                )
-            } catch {
-                // Handle or log error if needed
-            }
+            // Clear current line with Ctrl+U (non-critical if fails)
+            try? await container.terminalService.write(jobId: jobId, bytes: [0x15])
 
             // Present compose sheet
             await MainActor.run {
-                composeAutoStartRecording = false
-                showCompose = true
+                composePresentation = ComposePresentation(autoStartRecording: false)
             }
         }
     }
@@ -537,20 +527,12 @@ public struct RemoteTerminalView: View {
                 terminalController.terminalView?.resignFirstResponder()
             }
 
-            // Clear current line with Ctrl+U
-            do {
-                try await container.terminalService.write(
-                    jobId: jobId,
-                    bytes: [0x15]
-                )
-            } catch {
-                // Handle or log error if needed
-            }
+            // Clear current line with Ctrl+U (non-critical if fails)
+            try? await container.terminalService.write(jobId: jobId, bytes: [0x15])
 
             // Present compose sheet with auto-start flag
             await MainActor.run {
-                composeAutoStartRecording = true
-                showCompose = true
+                composePresentation = ComposePresentation(autoStartRecording: true)
             }
         }
     }
@@ -587,24 +569,29 @@ public struct RemoteTerminalView: View {
         outputCancellable = nil
         readinessCancellable?.cancel()
         readinessCancellable = nil
+        terminalController.cleanup()
     }
 }
 
 // MARK: - SwiftTerm Controller
 
-class SwiftTermController: ObservableObject {
+class SwiftTermController: NSObject, ObservableObject {
     weak var terminalView: TerminalView? {
         didSet {
-            // When terminal view becomes available, flush any buffered data
-            if terminalView != nil && !pendingData.isEmpty {
+            guard let terminalView = terminalView else { return }
+
+            if !pendingData.isEmpty {
                 for buffered in pendingData {
                     let buffer = ArraySlice([UInt8](buffered))
-                    terminalView?.feed(byteArray: buffer)
+                    terminalView.feed(byteArray: buffer)
                 }
-                terminalView?.setNeedsDisplay()
-                terminalView?.layoutIfNeeded()
                 pendingData.removeAll()
-                objectWillChange.send()
+            }
+
+            if !batchBuffer.isEmpty {
+                let buffer = ArraySlice([UInt8](batchBuffer))
+                terminalView.feed(byteArray: buffer)
+                batchBuffer.removeAll(keepingCapacity: true)
             }
         }
     }
@@ -612,6 +599,73 @@ class SwiftTermController: ObservableObject {
     var onResize: ((Int, Int) -> Void)?
     var isFirstResize = true
     private var pendingData: [Data] = []
+
+    private var batchBuffer = Data()
+    private var displayLink: CADisplayLink?
+    private var needsFlush = false
+
+    // Burst detection for adaptive frame rate
+    private var lastDataReceivedAt: Date = .distantPast
+    private var burstStartedAt: Date?
+    private var framesSinceLastData: Int = 0
+    private static let burstThreshold: TimeInterval = 0.05 // 50ms between chunks = burst mode
+    private static let burstCooldown: TimeInterval = 0.3 // Stay in burst mode for 300ms after last data
+    private static let minFlushInterval: TimeInterval = 0.05 // Max 20fps during bursts
+    private var lastFlushAt: Date = .distantPast
+
+    // Escape sequence buffering to avoid flushing mid-sequence
+    private static let escapeChar: UInt8 = 0x1B // ESC
+
+    deinit {
+        displayLink?.invalidate()
+    }
+
+    func cleanup() {
+        displayLink?.invalidate()
+        displayLink = nil
+        pendingData.removeAll(keepingCapacity: false)
+        batchBuffer.removeAll(keepingCapacity: false)
+        burstStartedAt = nil
+        terminalView = nil
+    }
+
+    private func setupDisplayLinkIfNeeded() {
+        guard displayLink == nil else { return }
+        let link = CADisplayLink(target: self, selector: #selector(displayLinkFired))
+        // Lower frame rate to reduce flicker - 15-20fps is sufficient for terminal
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 15, maximum: 20, preferred: 20)
+        link.add(to: .main, forMode: .common)
+        link.isPaused = true
+        displayLink = link
+    }
+
+    @objc private func displayLinkFired() {
+        guard needsFlush else {
+            displayLink?.isPaused = true
+            return
+        }
+
+        let now = Date()
+
+        // Check if we're in burst mode (rapid updates from Claude's TUI)
+        let isInBurst = burstStartedAt != nil && now.timeIntervalSince(burstStartedAt!) < Self.burstCooldown
+
+        if isInBurst {
+            // During bursts, enforce minimum flush interval to coalesce more updates
+            let timeSinceLastFlush = now.timeIntervalSince(lastFlushAt)
+            if timeSinceLastFlush < Self.minFlushInterval {
+                // Don't flush yet - wait for more data to coalesce
+                framesSinceLastData += 1
+
+                // But don't wait forever - flush after 3 frames even in burst mode
+                if framesSinceLastData < 3 {
+                    return
+                }
+            }
+        }
+
+        flushBatchBuffer()
+    }
 
     func feed(data: String) {
         guard let terminalView = terminalView else {
@@ -632,8 +686,25 @@ class SwiftTermController: ObservableObject {
     func feedBytes(data: Data) {
         guard !data.isEmpty else { return }
 
+        let now = Date()
+
+        // Burst detection: if data arrives rapidly, enter burst mode
+        let timeSinceLastData = now.timeIntervalSince(lastDataReceivedAt)
+        if timeSinceLastData < Self.burstThreshold {
+            if burstStartedAt == nil {
+                burstStartedAt = now
+            }
+        }
+        lastDataReceivedAt = now
+        framesSinceLastData = 0
+
+        // Exit burst mode after cooldown
+        if let burstStart = burstStartedAt, now.timeIntervalSince(burstStart) > Self.burstCooldown {
+            burstStartedAt = nil
+        }
+
         // If terminal view not ready, buffer the data
-        guard let terminalView = terminalView else {
+        guard terminalView != nil else {
             pendingData.append(data)
 
             // Prevent unbounded buffering
@@ -643,7 +714,23 @@ class SwiftTermController: ObservableObject {
             return
         }
 
-        // Feed any buffered data first
+        // Accumulate data in batch buffer
+        batchBuffer.append(data)
+
+        // Mark that we need a flush and unpause display link
+        needsFlush = true
+        setupDisplayLinkIfNeeded()
+        displayLink?.isPaused = false
+    }
+
+    private func flushBatchBuffer() {
+        needsFlush = false
+        lastFlushAt = Date()
+
+        guard let terminalView = terminalView else { return }
+        guard !batchBuffer.isEmpty || !pendingData.isEmpty else { return }
+
+        // Feed any pre-terminal buffered data first
         if !pendingData.isEmpty {
             for buffered in pendingData {
                 let buffer = ArraySlice([UInt8](buffered))
@@ -652,19 +739,68 @@ class SwiftTermController: ObservableObject {
             pendingData.removeAll()
         }
 
-        // Feed current data
-        let buffer = ArraySlice([UInt8](data))
-        terminalView.feed(byteArray: buffer)
+        // Feed batched data
+        if !batchBuffer.isEmpty {
+            // Check if buffer ends with incomplete escape sequence
+            // If so, hold back the incomplete part for next flush
+            let holdbackData = extractIncompleteEscapeSequence()
 
-        // Force IMMEDIATE display update (we're already on main thread from sink)
-        // Note: SwiftTerm's feed() method automatically handles cursor visibility
-        // and scrolling through its internal ensureCaretIsVisible() call
-        terminalView.setNeedsDisplay()
-        terminalView.layoutIfNeeded()
+            if !batchBuffer.isEmpty {
+                let buffer = ArraySlice([UInt8](batchBuffer))
+                terminalView.feed(byteArray: buffer)
+                batchBuffer.removeAll(keepingCapacity: true)
+            }
 
-        // CRITICAL: Notify SwiftUI that the view needs updating
-        // This triggers updateUIView() which refreshes the SwiftUI wrapper
-        objectWillChange.send()
+            // Put back the incomplete escape sequence for next flush
+            if let holdback = holdbackData {
+                batchBuffer.append(holdback)
+            }
+        }
+
+        // Don't call setNeedsDisplay() - SwiftTerm's feed() handles display updates internally
+        // Explicit setNeedsDisplay() can cause extra redraws and visible flicker during
+        // escape sequence processing (clear line + redraw shows intermediate state)
+    }
+
+    /// Extract incomplete escape sequence from end of buffer to avoid mid-sequence flush
+    /// Returns the incomplete portion to hold back, and modifies batchBuffer in place
+    private func extractIncompleteEscapeSequence() -> Data? {
+        guard batchBuffer.count > 0 else { return nil }
+
+        // Look for ESC character in last 32 bytes (escape sequences are typically short)
+        let searchStart = max(0, batchBuffer.count - 32)
+        let searchRange = searchStart..<batchBuffer.count
+
+        // Find last ESC character
+        guard let escIndex = batchBuffer[searchRange].lastIndex(of: Self.escapeChar) else {
+            return nil
+        }
+
+        // Check if this escape sequence is complete
+        // Most escape sequences end with a letter (a-zA-Z) or specific terminators
+        let sequenceData = batchBuffer[escIndex...]
+
+        // If sequence is just ESC or ESC[, it's definitely incomplete
+        if sequenceData.count <= 2 {
+            let holdback = Data(batchBuffer[escIndex...])
+            batchBuffer.removeSubrange(escIndex...)
+            return holdback
+        }
+
+        // Check if CSI sequence (ESC [) - these end with a letter
+        if sequenceData.count >= 2 && sequenceData[sequenceData.startIndex + 1] == 0x5B { // '['
+            // CSI sequence - check if terminated
+            let lastByte = sequenceData[sequenceData.endIndex - 1]
+            let isTerminated = (lastByte >= 0x40 && lastByte <= 0x7E) // @ to ~
+
+            if !isTerminated {
+                let holdback = Data(batchBuffer[escIndex...])
+                batchBuffer.removeSubrange(escIndex...)
+                return holdback
+            }
+        }
+
+        return nil
     }
 
     func send(data: [UInt8]) {
@@ -816,6 +952,12 @@ struct SwiftTerminalView: UIViewRepresentable {
         // Use SwiftTerm's default TerminalAccessory keyboard (includes ESC, Tab, Ctrl, arrows)
         // Do NOT override inputAccessoryView - SwiftTerm sets it up in setup()
 
+        // Note: We tried layer.drawsAsynchronously and layer.shouldRasterize
+        // but they interfere with SwiftTerm's dynamic updates (typed characters don't appear).
+        // The status line flicker is a SwiftTerm limitation - it renders escape sequences
+        // (clear line + redraw) as separate visible states rather than atomically.
+        // xterm.js doesn't have this issue because it uses proper double-buffering.
+
         // Store reference to terminal view in controller
         controller.terminalView = terminalView
 
@@ -882,16 +1024,69 @@ final class FirstResponderTerminalView: TerminalView {
         // Increase scrollback after initialization
         let terminal = getTerminal()
         terminal.options.scrollback = 50_000
+        terminal.silentLog = true
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         let terminal = getTerminal()
         terminal.options.scrollback = 50_000
+        terminal.silentLog = true
     }
 
     // Keyboard management is handled by updateUIView watching shouldShowKeyboard binding
     // No special lifecycle handling needed here
+}
+
+// MARK: - Compose Presentation Model
+
+/// Identifiable wrapper for compose sheet presentation to ensure correct state capture
+struct ComposePresentation: Identifiable {
+    let id = UUID()
+    let autoStartRecording: Bool
+}
+
+// MARK: - Timeout Helper
+
+/// Error thrown when an async operation times out
+enum TimeoutError: Error, LocalizedError {
+    case timedOut(seconds: TimeInterval)
+
+    var errorDescription: String? {
+        switch self {
+        case .timedOut(let seconds):
+            return "Operation timed out after \(Int(seconds)) seconds"
+        }
+    }
+}
+
+/// Execute an async operation with a timeout
+/// - Parameters:
+///   - seconds: Maximum time to wait
+///   - operation: The async operation to execute
+/// - Returns: The result of the operation
+/// - Throws: TimeoutError if the operation takes too long, or any error from the operation
+func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
+    try await withThrowingTaskGroup(of: T.self) { group in
+        group.addTask {
+            try await operation()
+        }
+
+        group.addTask {
+            try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            throw TimeoutError.timedOut(seconds: seconds)
+        }
+
+        // Return the first result (either success or timeout)
+        guard let result = try await group.next() else {
+            throw TimeoutError.timedOut(seconds: seconds)
+        }
+
+        // Cancel the other task
+        group.cancelAll()
+
+        return result
+    }
 }
 
 #Preview {
