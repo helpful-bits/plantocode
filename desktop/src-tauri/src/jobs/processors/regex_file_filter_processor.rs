@@ -591,6 +591,7 @@ impl JobProcessor for RegexFileFilterProcessor {
         let mut total_prompt_tokens = 0u32;
         let mut total_completion_tokens = 0u32;
         let mut total_cost = 0.0f64;
+        let mut all_pattern_groups: Vec<PatternGroup> = Vec::new();
 
         for result in root_results {
             match result {
@@ -600,6 +601,9 @@ impl JobProcessor for RegexFileFilterProcessor {
                         root_dir,
                         pattern_groups.len()
                     );
+
+                    // Collect pattern groups for inclusion in result
+                    all_pattern_groups.extend(pattern_groups);
 
                     // Update token usage
                     if let Some(usage) = usage {
@@ -643,7 +647,8 @@ impl JobProcessor for RegexFileFilterProcessor {
                     "count": 0,
                     "summary": "No matching files found",
                     "message": message,
-                    "isEmptyResult": true
+                    "isEmptyResult": true,
+                    "patternGroups": all_pattern_groups
                 })),
             )
             .with_tokens(Some(total_prompt_tokens), Some(total_completion_tokens))
@@ -652,7 +657,7 @@ impl JobProcessor for RegexFileFilterProcessor {
             return Ok(result);
         }
 
-        // Return success result with filtered files as JSON, including token usage
+        // Return success result with filtered files as JSON, including token usage and pattern groups
         let summary = format!("Found {} files", filtered_files.len());
 
         let result = JobProcessResult::success(
@@ -660,7 +665,8 @@ impl JobProcessor for RegexFileFilterProcessor {
             JobResultData::Json(json!({
                 "files": filtered_files,
                 "count": filtered_files.len(),
-                "summary": summary
+                "summary": summary,
+                "patternGroups": all_pattern_groups
             })),
         )
         .with_tokens(Some(total_prompt_tokens), Some(total_completion_tokens))
