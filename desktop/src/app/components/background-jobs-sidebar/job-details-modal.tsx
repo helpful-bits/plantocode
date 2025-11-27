@@ -1,4 +1,4 @@
-import { Loader2 } from "lucide-react";
+import { Loader2, ChevronDown } from "lucide-react";
 import { type BackgroundJob } from "@/types/session-types";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
@@ -10,6 +10,11 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/ui/dialog";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/ui/collapsible";
 import { getParsedMetadata } from "./utils";
 import { useState, useMemo, useCallback, useEffect, lazy, Suspense } from "react";
 import { type TaskModelSettings } from "@/types/task-settings-types";
@@ -205,6 +210,93 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
           break;
 
         case 'regex_file_filter':
+          if (response.files && Array.isArray(response.files)) {
+            const patternGroups = response.patternGroups || [];
+            const files = response.files;
+            const isEmptyResult = response.isEmptyResult && response.message;
+
+            return (
+              <div className="space-y-3">
+                {/* Summary */}
+                <div className="font-semibold">
+                  {isEmptyResult ? (
+                    <span className="text-amber-600 dark:text-amber-400">No files found</span>
+                  ) : (
+                    response.summary || `${response.count || 0} files found`
+                  )}
+                </div>
+
+                {/* Empty result message */}
+                {isEmptyResult && (
+                  <div className="text-sm text-muted-foreground whitespace-pre-wrap bg-muted/50 p-3 rounded">
+                    {response.message}
+                  </div>
+                )}
+
+                {/* Regex Patterns Accordion */}
+                {patternGroups.length > 0 && (
+                  <Collapsible defaultOpen={false}>
+                    <CollapsibleTrigger className="flex items-center justify-between w-full p-3 bg-muted/50 hover:bg-muted rounded-lg border border-border transition-colors group">
+                      <span className="font-medium text-sm">
+                        Generated Regex Patterns ({patternGroups.length})
+                      </span>
+                      <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <div className="mt-2 max-h-64 overflow-y-auto space-y-2 pl-1">
+                        {patternGroups.map((group: { title: string; pathPattern?: string; contentPattern?: string; negativePathPattern?: string }, index: number) => (
+                          <div key={index} className="bg-muted/30 p-3 rounded border border-border/50">
+                            <div className="font-medium text-sm mb-2 text-foreground">{group.title}</div>
+                            {group.pathPattern && (
+                              <div className="text-xs mb-1">
+                                <span className="text-muted-foreground">Path: </span>
+                                <code className="text-cyan-500 dark:text-cyan-400 break-all">{group.pathPattern}</code>
+                              </div>
+                            )}
+                            {group.contentPattern && (
+                              <div className="text-xs mb-1">
+                                <span className="text-muted-foreground">Content: </span>
+                                <code className="text-cyan-500 dark:text-cyan-400 break-all">{group.contentPattern}</code>
+                              </div>
+                            )}
+                            {group.negativePathPattern && (
+                              <div className="text-xs">
+                                <span className="text-muted-foreground">Exclude: </span>
+                                <code className="text-red-500 dark:text-red-400 break-all">{group.negativePathPattern}</code>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                )}
+
+                {/* Matched Files Accordion */}
+                {files.length > 0 && (
+                  <Collapsible defaultOpen={true}>
+                    <CollapsibleTrigger className="flex items-center justify-between w-full p-3 bg-muted/50 hover:bg-muted rounded-lg border border-border transition-colors group">
+                      <span className="font-medium text-sm">
+                        Matched Files ({files.length})
+                      </span>
+                      <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <div className="mt-2 max-h-80 overflow-y-auto space-y-1 pl-1">
+                        {files.map((file: string, index: number) => (
+                          <div key={index} className="text-sm font-mono bg-muted/30 p-2 rounded border border-border/50">
+                            {file}
+                          </div>
+                        ))}
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                )}
+              </div>
+            );
+          }
+          break;
+
         case 'file_relevance_assessment':
         case 'extended_path_finder':
           if (response.files && Array.isArray(response.files)) {
@@ -221,7 +313,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
                 </div>
               );
             }
-            
+
             // Normal case with files
             return (
               <div className="space-y-2">
