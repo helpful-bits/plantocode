@@ -20,6 +20,7 @@ pub mod path_extraction;
 pub mod path_utils;
 pub mod title_generation;
 pub mod token_estimator;
+pub mod xml_markdown_converter;
 pub mod xml_utils;
 
 pub use config_helpers::{

@@ -556,10 +556,8 @@ pub async fn device_link_ws_handler(
         client_type,
     );
 
-    // Wrap ws::start in match for robust error handling
-    // Configure WebSocket with larger frame size (10MB) to handle large session lists
     match ws::WsResponseBuilder::new(ws_actor, &req, stream)
-        .frame_size(10 * 1024 * 1024) // 10MB max frame size
+        .frame_size(32 * 1024 * 1024)
         .start() {
         Ok(resp) => {
             info!(

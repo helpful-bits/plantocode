@@ -316,10 +316,96 @@ public class PlanContentParser {
         return modelId
     }
 
+    /// Extract model name from metadata JSON string
+    /// - Parameter metadata: Optional JSON string containing metadata
+    /// - Returns: Extracted model name or nil if not found
+    public static func extractModelName(metadata: String?) -> String? {
+        guard let metadata = metadata,
+              !metadata.isEmpty,
+              let data = metadata.data(using: .utf8) else {
+            return nil
+        }
+
+        // Best-effort JSON parsing; tolerate schema changes
+        guard let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
+            return nil
+        }
+
+        // Direct top-level fields
+        if let model = json["modelName"] as? String, !model.isEmpty {
+            return model
+        }
+        if let model = json["model"] as? String, !model.isEmpty {
+            return model
+        }
+        if let model = json["model_id"] as? String, !model.isEmpty {
+            return model
+        }
+
+        // Nested under taskData or similar
+        if let taskData = json["taskData"] as? [String: Any] {
+            if let model = taskData["modelName"] as? String, !model.isEmpty {
+                return model
+            }
+            if let model = taskData["model"] as? String, !model.isEmpty {
+                return model
+            }
+            if let model = taskData["model_id"] as? String, !model.isEmpty {
+                return model
+            }
+        }
+
+        return nil
+    }
+
     // MARK: - Private Methods
 
     private static func extractTitle(from stepContent: String) -> String? {
         return extractTagContent("title", from: stepContent)
+    }
+
+    public static func extractMarkdownResponse(from metadata: String?) -> String? {
+        guard
+            let metadata,
+            let data = metadata.data(using: .utf8),
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+
+        return json["markdownResponse"] as? String
+    }
+
+    public static func extractMarkdownConversionStatus(from metadata: String?) -> String? {
+        guard
+            let metadata,
+            let data = metadata.data(using: .utf8),
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+
+        return json["markdownConversionStatus"] as? String
+    }
+
+    /// Check if task is currently streaming based on metadata
+    /// - Parameter metadata: Optional JSON string containing metadata
+    /// - Returns: true if task is streaming, false otherwise
+    public static func isTaskStreaming(from metadata: String?) -> Bool {
+        guard
+            let metadata,
+            let data = metadata.data(using: .utf8),
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return false }
+
+        // Check nested under taskData
+        if let taskData = json["taskData"] as? [String: Any],
+           let isStreaming = taskData["isStreaming"] as? Bool {
+            return isStreaming
+        }
+
+        // Fallback: check for flat isStreaming key
+        if let isStreaming = json["isStreaming"] as? Bool {
+            return isStreaming
+        }
+
+        return false
     }
 
     private static func extractTagContent(_ tagName: String, from content: String) -> String? {

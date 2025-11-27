@@ -54,6 +54,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
         let isHeartbeat: Bool
     }
     private var pendingMessageQueue: [QueuedMessage] = []
+    private let maxPendingMessages = 200
 
     // Connection monitoring
     private var lastMessageReceivedAt: Date = Date()
@@ -104,6 +105,9 @@ public class ServerRelayClient: NSObject, ObservableObject {
     private var currentBinaryBind: (sessionId: String, producerDeviceId: String)?
     private var cancellables = Set<AnyCancellable>()
     private var isDisconnecting = false
+
+    // Single owner for internal reconnect subscription; prevents accumulating reconnect sinks.
+    private var reconnectionCancellable: AnyCancellable?
 
     // MARK: - Public Interface
 
@@ -257,14 +261,29 @@ public class ServerRelayClient: NSObject, ObservableObject {
             request.setValue("mobile", forHTTPHeaderField: "X-Client-Type")
 
             self.logger.info("Connecting to server relay: \(wsURL)")
+
+            if let existingTask = self.webSocketTask {
+                if existingTask.state == .running || existingTask.state == .suspended {
+                    existingTask.cancel(with: .goingAway, reason: nil)
+                    self.heartbeatTimer?.invalidate()
+                    self.heartbeatTimer = nil
+                    self.watchdogTimer?.invalidate()
+                    self.watchdogTimer = nil
+                    self.publishOnMain {
+                        self.connectionState = .disconnected
+                        self.isConnected = false
+                    }
+                }
+                self.webSocketTask = nil
+            }
+
             self.publishOnMain {
                 self.connectionState = .connecting
                 self.isConnected = false
             }
 
             self.webSocketTask = self.urlSession.webSocketTask(with: request)
-            // Increase maximum message size to 10MB to handle large session lists
-            self.webSocketTask?.maximumMessageSize = 10 * 1024 * 1024
+            self.webSocketTask?.maximumMessageSize = 32 * 1024 * 1024
             self.webSocketTask?.resume()
 
             // Start receiving messages
@@ -279,8 +298,6 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
                 // Start registration timeout timer
                 DispatchQueue.main.async { [weak self] in
-                    // Reduced timeout for faster failure detection: 20s → 15s → 10s
-                    // Most registrations complete in 1-3s, so 10s is generous but prevents long hangs
                     self?.registrationTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: false) { [weak self] _ in
                         guard let self = self else { return }
                         if self.registrationPromise != nil {
@@ -290,10 +307,9 @@ public class ServerRelayClient: NSObject, ObservableObject {
                                 self.isConnected = false
                                 self.lastError = .timeout
                             }
-                            self.webSocketTask?.cancel(with: .abnormalClosure, reason: nil)
+                            self.disconnect(isUserInitiated: false)
                             self.registrationPromise?(.failure(.timeout))
                             self.registrationPromise = nil
-                            self.scheduleReconnection()
                         }
                     }
                 }
@@ -345,12 +361,12 @@ public class ServerRelayClient: NSObject, ObservableObject {
         webSocketTask = nil
 
         executeSafelyOnRpcQueue {
+            let pendingIds = Array(self.pendingRPCCalls.keys)
             let subjects = Array(self.pendingRPCCalls.values)
-            self.pendingRPCCalls.removeAll()
-            self.rpcMetrics.removeAll()
 
-            for subject in subjects {
+            for (id, subject) in zip(pendingIds, subjects) {
                 subject.send(completion: .failure(.disconnected))
+                self.removePendingCall(id: id)
             }
         }
 
@@ -384,6 +400,14 @@ public class ServerRelayClient: NSObject, ObservableObject {
         } else {
             // Not on rpcQueue, use sync
             rpcQueue.sync(execute: block)
+        }
+    }
+
+    // Centralized cleanup for per-RPC state: always use this to remove pendingRPCCalls/rpcMetrics entries.
+    private func removePendingCall(id: String) {
+        executeSafelyOnRpcQueue {
+            self.pendingRPCCalls.removeValue(forKey: id)
+            self.rpcMetrics.removeValue(forKey: id)
         }
     }
 
@@ -453,14 +477,21 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
             // Subscribe to responses and stream them
             let cancellable = responseSubject
-                .timeout(.seconds(timeout), scheduler: DispatchQueue.main, options: nil)
+                .timeout(.seconds(timeout), scheduler: DispatchQueue.main, options: nil, customError: {
+                    self.rpcQueue.async {
+                        if let metrics = self.rpcMetrics[req.id] {
+                            let shortTargetId = String(metrics.targetDeviceId.prefix(8))
+                            self.logger.warning("[RPC] \(metrics.method) -> \(shortTargetId) | Timeout after \(timeout)s")
+                        }
+                    }
+                    return ServerRelayError.timeout
+                })
                 .sink(
                     receiveCompletion: { completion in
                         switch completion {
                         case .finished:
                             continuation.finish()
                         case .failure(let error):
-                            // Log metrics for failed/timeout RPCs
                             self.rpcQueue.async {
                                 if let metrics = self.rpcMetrics[req.id] {
                                     let duration = Date().timeIntervalSince(metrics.startTime)
@@ -473,16 +504,11 @@ public class ServerRelayClient: NSObject, ObservableObject {
                             continuation.finish(throwing: error)
                         }
 
-                        // Clean up
-                        self.rpcQueue.async {
-                            self.pendingRPCCalls.removeValue(forKey: req.id)
-                            self.rpcMetrics.removeValue(forKey: req.id)
-                        }
+                        self.removePendingCall(id: req.id)
                     },
                     receiveValue: { response in
                         continuation.yield(response)
 
-                        // If this is the final response, finish the stream
                         if response.isFinal {
                             continuation.finish()
                         }
@@ -491,41 +517,22 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
             continuation.onTermination = { _ in
                 cancellable.cancel()
-                self.rpcQueue.async {
-                    self.pendingRPCCalls.removeValue(forKey: req.id)
-                    self.rpcMetrics.removeValue(forKey: req.id)
-                }
+                self.removePendingCall(id: req.id)
             }
 
-            // Build canonical envelope with ONLY camelCase
             var rpcPayload: [String: Any] = [
                 "method": req.method,
                 "params": req.params.mapValues { $0.jsonValue },
                 "correlationId": req.id
             ]
-            // Add idempotencyKey if present
             if let key = idempotencyKey {
                 rpcPayload["idempotencyKey"] = key
             }
 
-            // Build payload based on strictRelayEnvelope flag
-            let payload: [String: Any]
-            if Config.Flags.strictRelayEnvelope {
-                // Strict envelope: {"type":"relay","payload":{"targetDeviceId":"...","userId":"...","request":{...}}}
-                // For now, we'll use the authenticated user's ID (if available)
-                payload = [
-                    "targetDeviceId": targetDeviceId,
-                    "userId": "", // Note: userId may need to be obtained from AuthService
-                    "request": rpcPayload
-                ]
-            } else {
-                // Legacy envelope format
-                payload = [
-                    "targetDeviceId": targetDeviceId,
-                    "messageType": "rpc",
-                    "payload": rpcPayload
-                ]
-            }
+            var payload: [String: Any] = [
+                "targetDeviceId": targetDeviceId,
+                "request": rpcPayload
+            ]
 
             // 5. Validate encodability and wait for connection
             Task { [weak self] in
@@ -533,6 +540,10 @@ public class ServerRelayClient: NSObject, ObservableObject {
                     continuation.finish(throwing: ServerRelayError.invalidState("Client deallocated"))
                     return
                 }
+
+                let userId = await MainActor.run { AuthService.shared.currentUser?.id }
+                payload["userId"] = userId ?? ""
+
                 do {
                     // Wait for connection if not already connected
                     if case .disconnected = self.connectionState {
@@ -556,15 +567,20 @@ public class ServerRelayClient: NSObject, ObservableObject {
                         try await self.waitForConnection(timeout: 3.0)
                     }
 
-                    // Validate JSON serializability using existing encodeForWebSocket
                     let envelope: [String: Any] = [
                         "type": "relay",
                         "payload": payload
                     ]
-                    let encodedString = try self.encodeForWebSocket(envelope)
+                    let encodedString: String
+                    do {
+                        encodedString = try self.encodeForWebSocket(envelope)
+                    } catch {
+                        self.removePendingCall(id: req.id)
+                        continuation.finish(throwing: ServerRelayError.encodingError(error))
+                        return
+                    }
                     let requestSize = encodedString.utf8.count
 
-                    // Track metrics for this RPC call
                     let metrics = RpcMetrics(
                         method: req.method,
                         targetDeviceId: targetDeviceId,
@@ -575,9 +591,9 @@ public class ServerRelayClient: NSObject, ObservableObject {
                         self.rpcMetrics[req.id] = metrics
                     }
 
-                    // Send the message
                     try await self.sendMessage(type: "relay", payload: payload)
                 } catch {
+                    self.removePendingCall(id: req.id)
                     continuation.finish(throwing: error)
                 }
             }
@@ -746,10 +762,24 @@ public class ServerRelayClient: NSObject, ObservableObject {
             }
 
         case .connecting, .handshaking, .authenticating, .reconnecting:
+            if pendingMessageQueue.count >= maxPendingMessages {
+                if let idx = pendingMessageQueue.firstIndex(where: { $0.isHeartbeat }) {
+                    pendingMessageQueue.remove(at: idx)
+                } else {
+                    pendingMessageQueue.removeFirst()
+                }
+            }
             let queuedMessage = QueuedMessage(data: messageData, isHeartbeat: isHeartbeat)
             pendingMessageQueue.append(queuedMessage)
 
         case .disconnected, .closing, .failed, .connected:
+            if pendingMessageQueue.count >= maxPendingMessages {
+                if let idx = pendingMessageQueue.firstIndex(where: { $0.isHeartbeat }) {
+                    pendingMessageQueue.remove(at: idx)
+                } else {
+                    pendingMessageQueue.removeFirst()
+                }
+            }
             let queuedMessage = QueuedMessage(data: messageData, isHeartbeat: isHeartbeat)
             pendingMessageQueue.append(queuedMessage)
         }
@@ -791,16 +821,18 @@ public class ServerRelayClient: NSObject, ObservableObject {
     /// Send control message to bind this mobile device to a desktop producer for binary terminal output
     public func sendBinaryBind(producerDeviceId: String, sessionId: String, includeSnapshot: Bool = true) async throws {
         if case .connected = connectionState, hasSessionCredentials {
+            // Already connected with credentials - proceed
         } else {
             do {
                 try await waitForConnection(timeout: 5.0)
             } catch {
-                logger.error("sendBinaryBind: Connection timeout, cannot bind")
-                return
+                logger.error("sendBinaryBind: Connection timeout, cannot bind sessionId=\(sessionId)")
+                throw ServerRelayError.timeout
             }
         }
 
         self.currentBinaryBind = (sessionId, producerDeviceId)
+        logger.info("sendBinaryBind: binding to sessionId=\(sessionId), producerDeviceId=\(producerDeviceId.prefix(8)), includeSnapshot=\(includeSnapshot)")
 
         let payload: [String: Any] = [
             "producerDeviceId": producerDeviceId,
@@ -1159,12 +1191,10 @@ public class ServerRelayClient: NSObject, ObservableObject {
             // Complete stream if final or error
             if rpcError != nil {
                 responseSubject.send(completion: .failure(.serverError("rpc_error", errorMsg ?? "Unknown RPC error")))
-                self.pendingRPCCalls.removeValue(forKey: correlationId)
-                self.rpcMetrics.removeValue(forKey: correlationId)
+                self.removePendingCall(id: correlationId)
             } else if isFinal {
                 responseSubject.send(completion: .finished)
-                self.pendingRPCCalls.removeValue(forKey: correlationId)
-                self.rpcMetrics.removeValue(forKey: correlationId)
+                self.removePendingCall(id: correlationId)
             }
         }
     }
@@ -1241,14 +1271,14 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
         logger.error("Received relay error: \(errorMessage)")
 
-        // Extended non-retryable errors including server validation codes
-        let nonRetryableCodes = [
+        let nonRetryableCodes: Set<String> = [
             "auth_required",
             "invalid_device_id",
             "missing_scope",
             "device_ownership_failed",
-            "invalid_payload",
             "missing_target_device_id",
+            "invalid_relay_envelope",
+            "invalid_payload",
             "invalid_rpc_payload",
             "missing_method",
             "invalid_params"
@@ -1265,6 +1295,9 @@ public class ServerRelayClient: NSObject, ObservableObject {
             stopReconnection()
             registrationPromise?(.failure(.serverError(errorCode, errorMessage)))
             registrationPromise = nil
+            if !allowInternalReconnect {
+                return
+            }
             return
         }
 
@@ -1294,7 +1327,9 @@ public class ServerRelayClient: NSObject, ObservableObject {
     private func handleDeviceStatusMessage(_ json: [String: Any]) {
         let payload = (json["payload"] as? [String: Any]) ?? [:]
         let event = RelayEvent(eventType: "device-status", data: payload, timestamp: Date(), sourceDeviceId: nil)
-        eventPublisher.send(event)
+        publishOnMain {
+            self.eventPublisher.send(event)
+        }
     }
 
     private func handleConnectionError(_ error: Error) {
@@ -1308,6 +1343,17 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
         stopHeartbeat()
         stopWatchdog()
+
+        // Fail all pending RPCs
+        executeSafelyOnRpcQueue {
+            let pendingIds = Array(self.pendingRPCCalls.keys)
+            let subjects = Array(self.pendingRPCCalls.values)
+
+            for (id, subject) in zip(pendingIds, subjects) {
+                subject.send(completion: .failure(.networkError(error)))
+                self.removePendingCall(id: id)
+            }
+        }
 
         if shouldReconnect() {
             scheduleReconnection()
@@ -1370,6 +1416,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
     }
 
     private func scheduleReconnection() {
+        guard allowInternalReconnect else { return }
         guard !isReconnecting else { return }
 
         isReconnecting = true
@@ -1389,12 +1436,16 @@ public class ServerRelayClient: NSObject, ObservableObject {
             self.isReconnecting = false
 
             if let token = self.jwtToken {
-                self.connect(jwtToken: token)
+                self.reconnectionCancellable?.cancel()
+                self.reconnectionCancellable = self.connect(jwtToken: token)
                     .sink(
-                        receiveCompletion: { _ in },
-                        receiveValue: { _ in }
+                        receiveCompletion: { [weak self] _ in
+                            self?.reconnectionCancellable = nil
+                        },
+                        receiveValue: { [weak self] _ in
+                            self?.reconnectionCancellable = nil
+                        }
                     )
-                    .store(in: &self.cancellables)
             }
         }
     }
@@ -1403,6 +1454,8 @@ public class ServerRelayClient: NSObject, ObservableObject {
         reconnectionTimer?.invalidate()
         reconnectionTimer = nil
         isReconnecting = false
+        reconnectionCancellable?.cancel()
+        reconnectionCancellable = nil
     }
 
     private func setupApplicationLifecycleObservers() {

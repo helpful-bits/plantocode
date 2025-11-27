@@ -19,6 +19,8 @@ export interface JobMetadata {
   jobPayloadForWorker?: any;
   workflowId?: string;
   taskData?: Record<string, any>;
+  markdownResponse?: string;
+  markdownConversionStatus?: 'pending' | 'completed' | 'failed';
   [key: string]: unknown;
 }
 

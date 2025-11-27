@@ -112,6 +112,22 @@ pub fn emit_session_field_validated(
     Ok(())
 }
 
+pub fn emit_session_created(app: &AppHandle, session: &crate::models::Session) -> Result<(), String> {
+    let session_json = serde_json::to_value(session).map_err(|e| format!("serialization failed: {e}"))?;
+    let payload = serde_json::json!({
+        "sessionId": session.id,
+        "session": session_json
+    });
+
+    app.emit("session-created", &payload)
+        .map_err(|e| format!("local emit failed: {e}"))?;
+    app.emit("device-link-event", serde_json::json!({
+        "type": "session-created",
+        "payload": payload
+    })).map_err(|e| format!("relay emit failed: {e}"))?;
+    Ok(())
+}
+
 pub fn emit_session_deleted(app: &AppHandle, session_id: &str) -> Result<(), String> {
     let payload = SessionDeletedEventPayload {
         session_id,

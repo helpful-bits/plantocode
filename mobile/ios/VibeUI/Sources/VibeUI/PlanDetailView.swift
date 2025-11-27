@@ -1,6 +1,7 @@
 import SwiftUI
 import Core
 import Combine
+import MarkdownUI
 
 private func dynamicColor(_ pair: Theme.DynamicColorPair) -> Color {
     Color(UIColor { traitCollection in
@@ -15,7 +16,10 @@ public struct PlanDetailView: View {
     @EnvironmentObject private var container: AppContainer
     @Environment(\.dismiss) private var dismiss
 
-    @State private var content: String = ""
+    @State private var xmlContent: String = ""
+    @State private var markdownContent: String = ""
+    @State private var isConvertingToMarkdown: Bool = false
+    @State private var showingMarkdown: Bool = true
     @State private var isLoading = false
     @State private var isSaving = false
     @State private var errorMessage: String?
@@ -25,6 +29,7 @@ public struct PlanDetailView: View {
     @State private var showingSaveConfirmation = false
     @State private var isEditMode = false
     @State private var isLoadingContent = false
+    @State private var hasInitializedContent = false
 
     @State private var cancellables = Set<AnyCancellable>()
     @FocusState private var isEditorFocused: Bool
@@ -45,14 +50,38 @@ public struct PlanDetailView: View {
 
     private var isStreaming: Bool {
         let status = observedJob?.status.lowercased() ?? ""
-        if status == "running" || status == "processingstream" { return true }
-        if let job = observedJob,
-           let md = job.metadata,
-           let data = md.data(using: .utf8),
-           let dict = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
-           let taskData = dict["taskData"] as? [String: Any],
-           let flag = taskData["isStreaming"] as? Bool, flag { return true }
+        let streamingStatuses: Set<String> = ["running", "processingstream", "generatingstream"]
+
+        if streamingStatuses.contains(status) {
+            return true
+        }
+
+        // Fallback to metadata check
+        if PlanContentParser.isTaskStreaming(from: observedJob?.metadata) {
+            return true
+        }
+
         return false
+    }
+
+    private var markdownConversionStatus: String? {
+        PlanContentParser.extractMarkdownConversionStatus(from: observedJob?.metadata)
+    }
+
+    private enum PlanDisplayStatus {
+        case streamingXml
+        case convertingToMarkdown
+        case ready
+    }
+
+    private var currentPlanStatus: PlanDisplayStatus {
+        if isStreaming {
+            return .streamingXml
+        }
+        if isConvertingToMarkdown || markdownConversionStatus == "pending" {
+            return .convertingToMarkdown
+        }
+        return .ready
     }
 
     public init(jobId: String, allPlanJobIds: [String]) {
@@ -71,7 +100,39 @@ public struct PlanDetailView: View {
             } else if let error = errorMessage {
                 errorView(message: error)
             } else {
-                editorView()
+                switch currentPlanStatus {
+                case .streamingXml:
+                    VStack(spacing: 12) {
+                        ProgressView()
+                            .tint(Color.primary)
+                        Text("Streaming XML plan...")
+                            .font(.body)
+                            .fontWeight(.medium)
+                            .foregroundColor(Color.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .convertingToMarkdown:
+                    VStack(spacing: 12) {
+                        ProgressView()
+                            .tint(Color.primary)
+                        Text("Converting to Markdown...")
+                            .font(.body)
+                            .fontWeight(.medium)
+                            .foregroundColor(Color.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .ready:
+                    editorView()
+                }
+            }
+
+            // Bottom overlay: floating toolbar + metadata strip (hidden in landscape)
+            if !isLandscape {
+                VStack(spacing: 0) {
+                    Spacer()
+                    bottomOverlay()
+                }
+                .ignoresSafeArea(.keyboard, edges: .bottom)
             }
         }
         .navigationTitle(
@@ -124,18 +185,21 @@ public struct PlanDetailView: View {
         }
         .onAppear {
             container.jobsService.setViewedImplementationPlanId(currentJobId)
+            hasInitializedContent = false
+            xmlContent = ""
+            hasUnsavedChanges = false
+            isEditMode = false
             loadPlanContent()
         }
         .onDisappear {
             container.jobsService.setViewedImplementationPlanId(nil)
         }
-        .onChange(of: observedJob?.response) { newResponse in
-            guard let response = newResponse, !response.isEmpty else { return }
-            if response != content {
-                // Mark as loading to prevent triggering hasUnsavedChanges
-                isLoadingContent = true
-                content = response
-                isLoadingContent = false
+        .onChange(of: observedJob?.response) { _ in
+            loadPlanContent()
+        }
+        .onChange(of: isStreaming) { newValue in
+            if newValue == false {
+                triggerMarkdownConversionIfNeeded()
             }
         }
     }
@@ -184,69 +248,43 @@ public struct PlanDetailView: View {
 
     @ViewBuilder
     private func editorView() -> some View {
-        VStack(spacing: 0) {
-            // Minimal status bar (hidden in landscape for max space)
-            if !isLandscape {
-                HStack(spacing: 0) {
-                    if let createdAt = observedJob?.createdAt {
-                        Text(formatDate(createdAt))
-                            .small()
-                            .foregroundColor(Color.textMuted)
-                    }
-
-                    if observedJob?.taskType == "implementation_plan_merge" {
-                        Text("Merged")
-                            .font(.caption2)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(dynamicColor(Theme.Semantic.Status.infoBackground))
-                            .foregroundColor(Color.info)
-                            .clipShape(Capsule())
-                            .padding(.leading, 8)
-                    }
-
-                    Spacer()
-                }
-                .padding(.horizontal)
-                .padding(.top, 4)
-                .padding(.bottom, 8)
-                .background(Color.surfacePrimary)
-                .overlay(
-                    Rectangle()
-                        .frame(height: 1)
-                        .foregroundColor(Color.border),
-                    alignment: .bottom
-                )
-            }
-
+        // Landscape → always XML editor
+        if isLandscape {
             PlanRunestoneEditorView(
-                text: $content,
+                text: $xmlContent,
                 isReadOnly: isStreaming || !isEditMode,
                 languageHint: "xml"
             )
             .focused($isEditorFocused)
             .ignoresSafeArea(.keyboard)
             .background(Color.codeBackground)
-            .onChange(of: content) { newValue in
-                if !isStreaming && !isLoadingContent {
+            .onChange(of: xmlContent) { _ in
+                if hasInitializedContent && !isStreaming && !isLoadingContent {
                     hasUnsavedChanges = true
                 }
             }
-            .toolbar {
-                ToolbarItemGroup(placement: .bottomBar) {
-                    if !isLandscape {
-                        editorControls()
-                    }
-                }
-                ToolbarItemGroup(placement: .keyboard) {
-                    if isLandscape {
-                        editorControls()
-                        Spacer()
-                        Button("Done") {
-                            isEditorFocused = false
-                        }
-                        .buttonStyle(PrimaryButtonStyle())
-                    }
+        }
+        // Portrait with showingMarkdown == true and markdown exists → markdown view
+        else if showingMarkdown && !markdownContent.isEmpty {
+            ScrollView {
+                Markdown(markdownContent)
+                    .textSelection(.enabled)
+                    .padding()
+            }
+        }
+        // Otherwise → XML editor
+        else {
+            PlanRunestoneEditorView(
+                text: $xmlContent,
+                isReadOnly: isStreaming || !isEditMode,
+                languageHint: "xml"
+            )
+            .focused($isEditorFocused)
+            .ignoresSafeArea(.keyboard)
+            .background(Color.codeBackground)
+            .onChange(of: xmlContent) { _ in
+                if hasInitializedContent && !isStreaming && !isLoadingContent {
+                    hasUnsavedChanges = true
                 }
             }
         }
@@ -300,9 +338,108 @@ public struct PlanDetailView: View {
                     .font(.title3)
                     .foregroundColor(Color.primary)
             }
+
+            if !isLandscape && !markdownContent.isEmpty {
+                Spacer()
+                    .frame(width: 24)
+
+                Button(showingMarkdown ? "Show Original" : "Show Markdown") {
+                    showingMarkdown.toggle()
+                }
+                .font(.caption)
+                .foregroundColor(Color.primary)
+            }
         }
     }
 
+    @ViewBuilder
+    private func bottomOverlay() -> some View {
+        VStack(spacing: 0) {
+            floatingEditorToolbar()
+            bottomMetadataView()
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
+        .background(
+            LinearGradient(
+                gradient: Gradient(colors: [
+                    Color.backgroundPrimary.opacity(0.0),
+                    Color.backgroundPrimary.opacity(0.9)
+                ]),
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea(edges: .bottom)
+        )
+    }
+
+    @ViewBuilder
+    private func floatingEditorToolbar() -> some View {
+        HStack(spacing: 0) {
+            editorControls()
+
+            if isLandscape {
+                Spacer()
+                Button("Done") {
+                    isEditorFocused = false
+                }
+                .buttonStyle(PrimaryButtonStyle())
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            Color.surfacePrimary
+                .opacity(0.96)
+        )
+        .overlay(
+            Rectangle()
+                .frame(height: 1)
+                .foregroundColor(Color.border),
+            alignment: .top
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .shadow(color: Color.black.opacity(0.18), radius: 10, x: 0, y: 4)
+    }
+
+    @ViewBuilder
+    private func bottomMetadataView() -> some View {
+        HStack(spacing: 6) {
+            if let job = observedJob {
+                Text(formatDate(job.createdAt))
+                    .font(.caption2)
+                    .foregroundColor(Color.textMuted)
+
+                if job.taskType == "implementation_plan_merge" {
+                    Text("Merged")
+                        .font(.caption2)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(dynamicColor(Theme.Semantic.Status.infoBackground))
+                        .foregroundColor(Color.info)
+                        .clipShape(Capsule())
+                }
+
+                if let modelName = PlanContentParser.extractModelName(metadata: job.metadata) {
+                    Text("•")
+                        .font(.caption2)
+                        .foregroundColor(Color.textMuted.opacity(0.6))
+                    Text(modelName)
+                        .font(.caption2)
+                        .foregroundColor(Color.textMuted)
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(
+            Color.surfacePrimary
+                .opacity(0.85)
+        )
+        .clipShape(Capsule())
+        .padding(.top, 6)
+        .padding(.bottom, 4)
+    }
 
     // MARK: - Computed Properties
 
@@ -344,6 +481,8 @@ public struct PlanDetailView: View {
 
         currentIndex = newIndex
         container.jobsService.setViewedImplementationPlanId(currentJobId)
+        hasInitializedContent = false
+        xmlContent = ""
         hasUnsavedChanges = false
         isEditMode = false
         isEditorFocused = false
@@ -354,54 +493,34 @@ public struct PlanDetailView: View {
     // MARK: - Data Loading
 
     private func loadPlanContent() {
-        let jobId = currentJobId
+        guard let job = observedJob else { return }
+
+        // Prevent onChange from marking as unsaved during load
         isLoadingContent = true
 
-        // 1) Local jobsService.jobs fast path
-        if let localJob = container.jobsService.jobs.first(where: { $0.id == jobId }),
-           let localResponse = localJob.response,
-           !localResponse.isEmpty {
-            if localResponse.count > content.count {
-                self.content = localResponse
-            }
-            self.isLoading = false
-            self.errorMessage = nil
-            self.isLoadingContent = false
-            return
+        // Read XML from job.response
+        xmlContent = job.response ?? xmlContent
+
+        // Read markdown from PlanContentParser
+        if let md = PlanContentParser.extractMarkdownResponse(from: job.metadata) {
+            markdownContent = md
         }
 
-        // 2) Observed job fast path
-        if let job = observedJob,
-           let response = job.response,
-           !response.isEmpty {
-            if response.count > content.count {
-                self.content = response
-            }
-            self.isLoading = false
-            self.errorMessage = nil
-            self.isLoadingContent = false
-            return
+        isLoadingContent = false
+
+        // Set showingMarkdown based on orientation
+        if isLandscape {
+            showingMarkdown = false
+        } else {
+            // Portrait: show markdown if it exists
+            showingMarkdown = !markdownContent.isEmpty
         }
 
-        // 3) Fallback to single getJobFast RPC
-        self.isLoading = true
-        container.jobsService
-            .getJobFast(jobId: jobId)
-            .receive(on: DispatchQueue.main)
-            .sink(receiveCompletion: { completion in
-                self.isLoading = false
-                self.isLoadingContent = false
-                if case let .failure(error) = completion {
-                    self.errorMessage = error.localizedDescription
-                }
-            }, receiveValue: { job in
-                self.errorMessage = nil
-                let response = job.response ?? ""
-                if response.count > self.content.count {
-                    self.content = response
-                }
-            })
-            .store(in: &cancellables)
+        // Mark content as initialized AFTER the current run loop completes
+        // This ensures onChange fires first (with hasInitializedContent still false)
+        DispatchQueue.main.async {
+            self.hasInitializedContent = true
+        }
     }
 
     private func savePlan() {
@@ -410,8 +529,7 @@ public struct PlanDetailView: View {
 
         Task {
             do {
-                for try await _ in jobsService.updateJobContent(jobId: currentJobId, newContent: content) {
-                    // Consume stream
+                for try await _ in jobsService.updateJobContent(jobId: currentJobId, newContent: xmlContent) {
                 }
                 await MainActor.run {
                     self.isSaving = false
@@ -422,6 +540,42 @@ public struct PlanDetailView: View {
                     self.isSaving = false
                     self.errorMessage = "Save failed: \(error.localizedDescription)"
                 }
+            }
+        }
+    }
+
+    private func triggerMarkdownConversionIfNeeded() {
+        guard let job = observedJob else { return }
+
+        // Early return if markdown already exists in metadata
+        if PlanContentParser.extractMarkdownResponse(from: job.metadata) != nil {
+            return
+        }
+
+        // Early return if markdownContent is already populated
+        if !markdownContent.isEmpty {
+            return
+        }
+
+        isConvertingToMarkdown = true
+        Task {
+            // Call generatePlanMarkdown
+            await jobsService.generatePlanMarkdown(jobId: job.id)
+
+            await MainActor.run {
+                // Refresh markdown from updated job
+                if let updated = self.container.jobsService.jobs.first(where: { $0.id == job.id }) {
+                    let extractedMarkdown = PlanContentParser.extractMarkdownResponse(from: updated.metadata)
+                    if let md = extractedMarkdown {
+                        self.markdownContent = md
+
+                        // In portrait, show markdown when available
+                        if !self.isLandscape {
+                            self.showingMarkdown = true
+                        }
+                    }
+                }
+                self.isConvertingToMarkdown = false
             }
         }
     }

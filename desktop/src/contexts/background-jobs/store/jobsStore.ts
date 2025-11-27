@@ -263,9 +263,11 @@ class JobsStore {
     }
 
     try {
+      const bypassCache = opts.isManualRefresh || false;
       const result = await getAllVisibleJobsAction(
         this.projectDirectory,
-        this.sessionId
+        this.sessionId,
+        bypassCache
       );
 
       if (!result.isSuccess) {

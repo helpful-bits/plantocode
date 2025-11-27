@@ -37,7 +37,7 @@ use crate::middleware::{
     api_key_middleware, auth_middleware, create_ip_rate_limiter, create_rate_limit_storage,
     create_strict_rate_limiter, create_user_rate_limiter, start_memory_store_cleanup_task,
 };
-use crate::models::runtime_config::AppState;
+use crate::models::runtime_config::{AppState, RuntimeConfigCache};
 use crate::routes::{configure_public_auth_routes, configure_routes, configure_webhook_routes};
 use crate::services::audit_service::AuditService;
 use crate::services::auth::jwt;
@@ -379,6 +379,7 @@ async fn main() -> std::io::Result<()> {
     let app_settings_for_server = app_settings.clone();
 
     // Load runtime AI config during startup for performance optimization (before server factory)
+    // Uses RuntimeConfigCache for automatic background refresh every 2 minutes
     let runtime_ai_config = {
         let settings_repository = Arc::new(SettingsRepository::new(db_pools.system_pool.clone()));
         let model_repository =
@@ -392,10 +393,10 @@ async fn main() -> std::io::Result<()> {
         {
             Ok(config) => {
                 log::info!(
-                    "Runtime AI configuration loaded successfully with {} providers",
+                    "Runtime AI configuration loaded successfully with {} providers (2-min cache TTL)",
                     config.providers.len()
                 );
-                Arc::new(config)
+                Arc::new(RuntimeConfigCache::new(config))
             }
             Err(e) => {
                 log::error!("Failed to load runtime AI configuration: {}", e);

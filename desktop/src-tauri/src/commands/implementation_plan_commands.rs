@@ -724,6 +724,77 @@ pub async fn mark_implementation_plan_signed_off_command(
     Ok(())
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanMarkdownResponse {
+    pub job_id: String,
+    pub xml_content: String,
+    pub markdown: String,
+}
+
+#[command]
+pub async fn generate_plan_markdown_command(
+    app_handle: AppHandle,
+    job_id: String,
+) -> AppResult<PlanMarkdownResponse> {
+    info!("Generating Markdown for plan: {}", job_id);
+
+    let repo = app_handle
+        .state::<Arc<BackgroundJobRepository>>()
+        .inner()
+        .clone();
+
+    let job = repo
+        .get_job_by_id(&job_id)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to get job: {}", e)))?
+        .ok_or_else(|| AppError::NotFoundError(format!("Job not found: {}", job_id)))?;
+
+    if job.task_type != "implementation_plan" && job.task_type != "implementation_plan_merge" {
+        return Err(AppError::ValidationError(format!(
+            "Job is not an implementation plan: {}",
+            job_id
+        )));
+    }
+
+    let xml_content = job.response.clone().unwrap_or_default();
+    if xml_content.is_empty() {
+        return Err(AppError::ValidationError(
+            "Implementation plan has no content".to_string(),
+        ));
+    }
+
+    repo.update_job_metadata(
+        &job_id,
+        &serde_json::json!({"markdownConversionStatus": "pending"}),
+    )
+    .await?;
+
+    let markdown =
+        crate::utils::xml_markdown_converter::convert_xml_plan_to_markdown(
+            &app_handle,
+            &xml_content,
+        )
+        .await?;
+
+    repo.update_job_metadata(
+        &job_id,
+        &serde_json::json!({
+            "markdownResponse": markdown.clone(),
+            "markdownConversionStatus": "completed"
+        }),
+    )
+    .await?;
+
+    info!("Successfully generated Markdown for plan: {}", job_id);
+
+    Ok(PlanMarkdownResponse {
+        job_id: job_id.clone(),
+        xml_content,
+        markdown,
+    })
+}
+
 /// Creates a merged implementation plan from multiple source plans
 #[command]
 pub async fn create_merged_implementation_plan_command(
