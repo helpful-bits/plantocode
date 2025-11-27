@@ -28,10 +28,10 @@ type BackgroundPrefs = {
 export default function BackgroundSettings() {
   const { showNotification } = useNotification();
   const [prefs, setPrefs] = useState<BackgroundPrefs>({
-    background_run_enabled: true,
+    background_run_enabled: false,
     start_with_system: false,
-    show_notifications: true,
-    minimize_to_tray_on_close: true,
+    show_notifications: false,
+    minimize_to_tray_on_close: false,
     launch_minimized: false,
   });
   const [deviceSettings, setDeviceSettings] = useState<DeviceSettings>({

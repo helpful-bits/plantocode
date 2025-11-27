@@ -849,10 +849,10 @@ pub async fn get_background_prefs_command(
         .inner()
         .clone();
     Ok(BackgroundPrefs {
-        background_run_enabled: settings_repo.get_bool_setting("background_run_enabled").await.unwrap_or(Some(true)).unwrap_or(true),
+        background_run_enabled: settings_repo.get_bool_setting("background_run_enabled").await.unwrap_or(Some(false)).unwrap_or(false),
         start_with_system: settings_repo.get_bool_setting("start_with_system").await.unwrap_or(Some(false)).unwrap_or(false),
-        show_notifications: settings_repo.get_bool_setting("show_notifications").await.unwrap_or(Some(true)).unwrap_or(true),
-        minimize_to_tray_on_close: settings_repo.get_bool_setting("minimize_to_tray_on_close").await.unwrap_or(Some(true)).unwrap_or(true),
+        show_notifications: settings_repo.get_bool_setting("show_notifications").await.unwrap_or(Some(false)).unwrap_or(false),
+        minimize_to_tray_on_close: settings_repo.get_bool_setting("minimize_to_tray_on_close").await.unwrap_or(Some(false)).unwrap_or(false),
         launch_minimized: settings_repo.get_bool_setting("launch_minimized").await.unwrap_or(Some(false)).unwrap_or(false),
     })
 }
