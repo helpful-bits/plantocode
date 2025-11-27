@@ -20,6 +20,7 @@ use crate::jobs::types::{Job, JobPayload, JobProcessResult, JobResultData, Patte
 use crate::utils::directory_tree::get_directory_tree_with_defaults;
 use crate::utils::git_utils;
 use crate::utils::markdown_utils::extract_json_from_markdown;
+use crate::utils::path_utils::to_forward_slashes;
 
 #[derive(Debug)]
 struct CompiledPatternGroup {
@@ -240,9 +241,11 @@ impl RegexFileFilterProcessor {
                 let mut content_matches = true;
 
                 // Check path pattern (if specified) - works with absolute paths
+                // Normalize path separators to forward slashes for cross-platform regex matching
                 if let Some(ref path_regex) = path_regex {
+                    let normalized_path = to_forward_slashes(&file_path);
                     // fancy-regex returns Result, handle potential errors
-                    path_matches = match path_regex.is_match(&file_path) {
+                    path_matches = match path_regex.is_match(&normalized_path) {
                         Ok(matches) => matches,
                         Err(e) => {
                             debug!("Path regex matching error for {}: {}", file_path, e);
@@ -274,16 +277,22 @@ impl RegexFileFilterProcessor {
         let positive_matches: Vec<String> =
             positive_results.into_iter().filter_map(|x| x).collect();
 
-        // Apply negative path filtering
+        // Apply negative path filtering (normalize separators for cross-platform matching)
         let negative_filtered = if let Some(ref neg_path_regex) = compiled_group.negative_path_regex
         {
             let excluded_count = positive_matches
                 .iter()
-                .filter(|file_path| neg_path_regex.is_match(file_path).unwrap_or(false))
+                .filter(|file_path| {
+                    let normalized = to_forward_slashes(file_path);
+                    neg_path_regex.is_match(&normalized).unwrap_or(false)
+                })
                 .count();
             let filtered: Vec<String> = positive_matches
                 .into_iter()
-                .filter(|file_path| !neg_path_regex.is_match(file_path).unwrap_or(false))
+                .filter(|file_path| {
+                    let normalized = to_forward_slashes(&file_path);
+                    !neg_path_regex.is_match(&normalized).unwrap_or(false)
+                })
                 .collect();
             if excluded_count > 0 {}
             filtered
@@ -552,7 +561,7 @@ impl JobProcessor for RegexFileFilterProcessor {
                         root_matches.extend(matches);
                     }
 
-                    // Normalize paths relative to project directory
+                    // Normalize paths relative to project directory (always use forward slashes for consistency)
                     let mut normalized_matches = Vec::new();
                     let mut absolute_paths_kept = 0;
 
@@ -562,14 +571,14 @@ impl JobProcessor for RegexFileFilterProcessor {
                             std::path::Path::new(&file_path).canonicalize()
                         ) {
                             if let Ok(relative) = file_path_buf.strip_prefix(&project_path) {
-                                relative.to_string_lossy().replace('\\', "/")
+                                to_forward_slashes(&relative.to_string_lossy())
                             } else {
                                 absolute_paths_kept += 1;
-                                file_path.replace('\\', "/")
+                                to_forward_slashes(&file_path)
                             }
                         } else {
                             absolute_paths_kept += 1;
-                            file_path.replace('\\', "/")
+                            to_forward_slashes(&file_path)
                         };
                         normalized_matches.push(normalized);
                     }
