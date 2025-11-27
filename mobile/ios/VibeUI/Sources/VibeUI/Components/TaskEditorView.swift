@@ -10,9 +10,9 @@ public struct TaskEditorView: View {
     @Binding var selectedRange: NSRange
     @Binding var isEditing: Bool
     @Binding var forceSelectionApply: Bool
-    @Binding var autoStartRecordingTrigger: Bool
 
     // MARK: - Parameters
+    let autoStartRecording: Bool
     let placeholder: String
     let sessionId: String
     let projectDirectory: String?
@@ -37,7 +37,7 @@ public struct TaskEditorView: View {
     @State private var transcriptionPrompt: String?
     @State private var transcriptionTemperature: Double?
     @State private var didLoadVoiceSettings = false
-    @State private var voiceAutoStartTrigger = false
+    @State private var voiceError: String?
 
     // MARK: - Initializer
     public init(
@@ -45,7 +45,7 @@ public struct TaskEditorView: View {
         selectedRange: Binding<NSRange>,
         isEditing: Binding<Bool>,
         forceSelectionApply: Binding<Bool>,
-        autoStartRecordingTrigger: Binding<Bool> = .constant(false),
+        autoStartRecording: Bool = false,
         placeholder: String = "Describe your task...",
         sessionId: String,
         projectDirectory: String?,
@@ -60,7 +60,7 @@ public struct TaskEditorView: View {
         self._selectedRange = selectedRange
         self._isEditing = isEditing
         self._forceSelectionApply = forceSelectionApply
-        self._autoStartRecordingTrigger = autoStartRecordingTrigger
+        self.autoStartRecording = autoStartRecording
         self.placeholder = placeholder
         self.sessionId = sessionId
         self.projectDirectory = projectDirectory
@@ -75,6 +75,26 @@ public struct TaskEditorView: View {
     // MARK: - Body
     public var body: some View {
         VStack(spacing: Theme.Spacing.sm) {
+            // Voice error banner
+            if let error = voiceError {
+                HStack {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(AppColors.destructive)
+                    Text(error)
+                        .font(.system(size: 13))
+                        .foregroundColor(AppColors.destructive)
+                    Spacer()
+                    Button(action: { voiceError = nil }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(AppColors.mutedForeground)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(AppColors.destructive.opacity(0.1))
+                .cornerRadius(8)
+            }
+
             // Text Editor
             SelectableTextView(
                 text: $text,
@@ -102,9 +122,9 @@ public struct TaskEditorView: View {
                         transcriptionModel: transcriptionModel,
                         transcriptionPrompt: transcriptionPrompt,
                         transcriptionTemperature: transcriptionTemperature,
-                        externalStartRecording: $voiceAutoStartTrigger,
+                        autoStartRecording: autoStartRecording,
                         onError: { error in
-                            // Error handling could be added here
+                            voiceError = error
                         },
                         onTranscriptionComplete: {
                             // Force-apply the selection set by voice transcription
@@ -202,9 +222,6 @@ public struct TaskEditorView: View {
         }
         .task(id: projectDirectory) {
             await loadVoiceSettingsTask()
-        }
-        .onChange(of: autoStartRecordingTrigger) { newValue in
-            handleAutoStartTrigger(newValue)
         }
     }
 
@@ -345,14 +362,6 @@ public struct TaskEditorView: View {
         }
     }
 
-    // MARK: - Auto-start Trigger
-
-    private func handleAutoStartTrigger(_ newValue: Bool) {
-        if newValue {
-            // Trigger voice recording start via VoiceRecordingButton's external binding
-            voiceAutoStartTrigger = true
-        }
-    }
 }
 
 #Preview {
@@ -360,14 +369,13 @@ public struct TaskEditorView: View {
     @State var selectedRange = NSRange(location: 0, length: 0)
     @State var isEditing = false
     @State var forceApply = false
-    @State var autoStart = false
 
     return TaskEditorView(
         text: $text,
         selectedRange: $selectedRange,
         isEditing: $isEditing,
         forceSelectionApply: $forceApply,
-        autoStartRecordingTrigger: $autoStart,
+        autoStartRecording: false,
         sessionId: "preview-session",
         projectDirectory: "/path/to/project"
     )

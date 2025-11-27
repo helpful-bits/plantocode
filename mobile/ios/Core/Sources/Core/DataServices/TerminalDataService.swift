@@ -122,28 +122,44 @@ public class TerminalDataService: ObservableObject {
                 guard let self = self else { return }
                 guard let activeId = self.connectionManager.activeDeviceId else { return }
 
-                if case .connected = states[activeId] {
-                    Task { @MainActor in
-                        self.ensureGlobalBinarySubscriptionForActiveDevice()
+                // Clear readiness on disconnection so we rebind on reconnect
+                switch states[activeId] {
+                case .disconnected, .reconnecting, .failed:
+                    Task { @MainActor [weak self] in
+                        guard let self = self else { return }
+                        if !self.readinessBySession.isEmpty {
+                            self.logger.info("Connection lost - clearing readinessBySession for rebind on reconnect")
+                            self.readinessBySession.removeAll()
+                        }
+                    }
+                    return
+                case .connected:
+                    break
+                default:
+                    return
+                }
 
-                        guard let relayClient = self.connectionManager.relayConnection(for: activeId),
-                              relayClient.isConnected,
-                              relayClient.hasSessionCredentials else {
-                            return
+                Task { @MainActor in
+                    self.ensureGlobalBinarySubscriptionForActiveDevice()
+
+                    guard let relayClient = self.connectionManager.relayConnection(for: activeId),
+                          relayClient.isConnected,
+                          relayClient.hasSessionCredentials else {
+                        return
+                    }
+
+                    for sessionId in self.boundSessions where self.lifecycleBySession[sessionId] == .active {
+                        if self.readinessBySession[sessionId] == true {
+                            self.logger.debug("Session \(sessionId) already ready, skipping rebind")
+                            continue
                         }
 
-                        for sessionId in self.boundSessions where self.lifecycleBySession[sessionId] == .active {
-                            if self.readinessBySession[sessionId] == true {
-                                continue
-                            }
-
-                            do {
-                                self.logger.info("terminal.bind sid=\(sessionId) (ready=\(self.readinessBySession[sessionId] ?? false))")
-                                try await relayClient.sendBinaryBind(producerDeviceId: activeId.uuidString, sessionId: sessionId, includeSnapshot: true)
-                                self.readinessBySession[sessionId] = true
-                            } catch {
-                                self.logger.error("Failed to bind session \(sessionId): \(error)")
-                            }
+                        do {
+                            self.logger.info("terminal.rebind sid=\(sessionId) after reconnect")
+                            try await relayClient.sendBinaryBind(producerDeviceId: activeId.uuidString, sessionId: sessionId, includeSnapshot: true)
+                            self.readinessBySession[sessionId] = true
+                        } catch {
+                            self.logger.error("Failed to rebind session \(sessionId): \(error)")
                         }
                     }
                 }
@@ -166,10 +182,7 @@ public class TerminalDataService: ObservableObject {
         self.isLoading = true
         defer { self.isLoading = false }
 
-        var params: [String: Any] = [:]
-        if jobId.hasPrefix("task-terminal-") == false {
-            params["jobId"] = jobId
-        }
+        var params: [String: Any] = ["jobId": jobId]
         if let shell = shell {
             params["shell"] = shell
         }
@@ -218,6 +231,16 @@ public class TerminalDataService: ObservableObject {
             self.activeSessions[sessionId] = session
             self.jobToSessionId[jobId] = sessionId
 
+            // Remove stale bootstrapped sessions with same jobId but different id
+            // This prevents ensureSession from finding old sessions via .first()
+            let staleKeys = self.activeSessions.keys.filter { key in
+                key != sessionId && self.activeSessions[key]?.jobId == jobId
+            }
+            for staleKey in staleKeys {
+                self.logger.info("Removing stale session \(staleKey) superseded by \(sessionId)")
+                self.activeSessions.removeValue(forKey: staleKey)
+            }
+
             // Save binding to persistent store
             let binding = TerminalBinding(
                 terminalSessionId: session.id,
@@ -251,8 +274,8 @@ public class TerminalDataService: ObservableObject {
     }
 
     /// Write text to a terminal session
-    public func write(jobId: String, data: String) async throws {
-        guard let textData = data.data(using: .utf8) else {
+    public func write(jobId: String, text: String) async throws {
+        guard let textData = text.data(using: .utf8) else {
             throw DataServiceError.invalidState("Failed to encode text as UTF-8")
         }
         try await write(jobId: jobId, data: textData)
@@ -307,55 +330,66 @@ public class TerminalDataService: ObservableObject {
     }
 
 
-    private func writeViaRelay(session: TerminalSession, data: String) async throws {
-        do {
-            for try await response in CommandRouter.terminalWrite(sessionId: session.id, text: data) {
-                if let error = response.error {
-                    throw DataServiceError.serverError("RPC Error \(error.code): \(error.message)")
-                }
-                if response.isFinal {
-                    break
-                }
-            }
-        } catch {
-            self.lastError = error as? DataServiceError ?? DataServiceError.networkError(error)
-            throw error
-        }
-    }
+    /// Maximum retry attempts for transient write errors
+    private static let maxWriteRetries = 3
+    /// Base delay between retries (exponential backoff)
+    private static let retryBaseDelay: TimeInterval = 0.1
 
     private func writeViaRelay(session: TerminalSession, data: Data) async throws {
         if let binding = self.bindingStore.getByTerminalSessionId(session.id) {
             self.logger.info("terminal.write sessionId=\(session.id) appSessionId=\(binding.appSessionId) contextType=\(binding.contextType.rawValue) jobId=\(binding.jobId ?? "nil") bytes=\(data.count)")
         }
 
-        guard self.connectionManager.activeDeviceId != nil,
-              self.connectionManager.relayConnection(for: session.deviceId) != nil else {
-            throw DataServiceError.connectionError("No active relay connection")
+        var lastError: Error?
+
+        for attempt in 0..<Self.maxWriteRetries {
+            // Check connection before each attempt
+            guard self.connectionManager.activeDeviceId != nil,
+                  self.connectionManager.relayConnection(for: session.deviceId) != nil else {
+                throw DataServiceError.connectionError("No active relay connection")
+            }
+
+            do {
+                let base64 = data.base64EncodedString()
+                for try await response in CommandRouter.terminalWriteData(sessionId: session.id, base64Data: base64) {
+                    if let error = response.error {
+                        throw DataServiceError.serverError("RPC Error \(error.code): \(error.message)")
+                    }
+                    if response.isFinal {
+                        return // Success
+                    }
+                }
+                return // Success
+            } catch let error as ServerRelayError {
+                lastError = error
+
+                // Check if this is a retryable error
+                let isRetryable: Bool
+                switch error {
+                case .notConnected, .timeout, .disconnected, .networkError:
+                    isRetryable = true
+                default:
+                    isRetryable = false
+                }
+
+                if !isRetryable || attempt == Self.maxWriteRetries - 1 {
+                    self.lastError = DataServiceError.networkError(error)
+                    throw error
+                }
+
+                // Exponential backoff before retry
+                let delay = Self.retryBaseDelay * pow(2.0, Double(attempt))
+                try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+
+            } catch {
+                // Non-ServerRelayError - don't retry
+                self.lastError = error as? DataServiceError ?? DataServiceError.networkError(error)
+                throw error
+            }
         }
 
-        do {
-            let base64 = data.base64EncodedString()
-            for try await response in CommandRouter.terminalWriteData(sessionId: session.id, base64Data: base64) {
-                if let error = response.error {
-                    throw DataServiceError.serverError("RPC Error \(error.code): \(error.message)")
-                }
-                if response.isFinal {
-                    break
-                }
-            }
-        } catch let error as ServerRelayError {
-            if case .notConnected = error {
-                self.logger.warning("Write failed: relay not connected (transient error)")
-                throw error
-            } else if case .timeout = error {
-                self.logger.warning("Write failed: relay timeout (transient error)")
-                throw error
-            } else {
-                self.lastError = DataServiceError.networkError(error)
-                throw error
-            }
-        } catch {
-            self.lastError = error as? DataServiceError ?? DataServiceError.networkError(error)
+        // Should not reach here, but handle just in case
+        if let error = lastError {
             throw error
         }
     }
@@ -498,16 +532,9 @@ public class TerminalDataService: ObservableObject {
     ///   - jobId: The terminal job ID
     ///   - includeSnapshot: Whether to include ring buffer snapshot in the bind call (default true)
     public func attachLiveBinary(for jobId: String, includeSnapshot: Bool = true) {
-        guard let session = activeSessions.values.first(where: { $0.jobId == jobId }) else {
+        guard let sessionId = jobToSessionId[jobId] else {
             self.logger.warning("Cannot attach: no session for job \(jobId)")
             return
-        }
-
-        let sessionId = session.id
-
-        if let pending = pendingUnbindTasks.removeValue(forKey: sessionId) {
-            pending.cancel()
-            self.logger.info("Cancelled deferred unbind for session \(sessionId)")
         }
 
         if readinessBySession[sessionId] == true {
@@ -515,17 +542,12 @@ public class TerminalDataService: ObservableObject {
             return
         }
 
-        boundSessions.insert(sessionId)
-
-        // Ensure publishers and ring exist BEFORE binding
         _ = ensureBytesPublisher(for: sessionId)
         if outputRings[sessionId] == nil {
             outputRings[sessionId] = ByteRing(maxBytes: MOBILE_TERMINAL_RING_MAX_BYTES)
         }
 
-        // Bind to this session (enforces single active bind)
         bindBinary(to: sessionId, includeSnapshot: includeSnapshot)
-        boundSessions.insert(sessionId)
 
         self.logger.info("Attached binary stream for session \(sessionId) with includeSnapshot=\(includeSnapshot)")
     }
@@ -537,13 +559,6 @@ public class TerminalDataService: ObservableObject {
             return
         }
 
-        // Don't send unbind - let the new bind overwrite the old route on server
-        // Sending unbind here causes a race where it clears ALL routes, including the new one being established
-        if let current = currentBoundSessionId, current != sessionId {
-            self.logger.info("Switching bind from session \(current) to \(sessionId) - server will overwrite route")
-        }
-
-        // Set new binding
         currentBoundSessionId = sessionId
         ensureGlobalBinarySubscription(relayClient: relayClient, deviceId: deviceId)
 
@@ -561,60 +576,51 @@ public class TerminalDataService: ObservableObject {
     }
 
     private func ensureGlobalBinarySubscription(relayClient: ServerRelayClient, deviceId: UUID) {
-        if globalBinarySubscription != nil, binarySubscriptionDeviceId == deviceId {
+        globalBinarySubscription?.cancel()
+        globalBinarySubscription = relayClient.terminalBytes
+            .sink { [weak self] bytesEvent in
+                self?.handleTerminalBytes(bytesEvent)
+            }
+        binarySubscriptionDeviceId = deviceId
+
+        self.logger.info("Global binary subscription established for device \(deviceId)")
+    }
+
+    private func handleTerminalBytes(_ event: ServerRelayClient.TerminalBytesEvent) {
+        guard let sessionId = event.sessionId ?? currentBoundSessionId else {
+            self.logger.warning("handleTerminalBytes: dropping \(event.data.count) bytes - no sessionId (event.sessionId=\(event.sessionId ?? "nil"), currentBoundSessionId=\(self.currentBoundSessionId ?? "nil"))")
             return
         }
 
-        if binarySubscriptionDeviceId != nil, binarySubscriptionDeviceId != deviceId {
-            globalBinarySubscription?.cancel()
-            globalBinarySubscription = nil
+        if outputRings[sessionId] == nil {
+            outputRings[sessionId] = ByteRing(maxBytes: MOBILE_TERMINAL_RING_MAX_BYTES)
         }
+        outputRings[sessionId]!.append(event.data)
 
-        binarySubscriptionDeviceId = deviceId
+        let bytesPublisher = outputBytesPublishers[sessionId] ?? ensureBytesPublisher(for: sessionId)
+        let hasSubscribers = outputBytesPublishers[sessionId] != nil
+        if !hasSubscribers {
+            self.logger.warning("handleTerminalBytes: no subscribers for session \(sessionId) - data may be lost")
+        }
+        bytesPublisher.send(event.data)
 
-        globalBinarySubscription = relayClient.terminalBytes
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] evt in
-                guard let self = self else { return }
+        lastActivityBySession[sessionId] = event.timestamp
 
-                let sid = evt.sessionId ?? self.currentBoundSessionId
-                guard let sid = sid else {
-                    self.logger.debug("Dropping binary bytes: no sessionId in event or binding")
-                    return
-                }
-
-                if self.outputRings[sid] == nil {
-                    self.outputRings[sid] = ByteRing(maxBytes: MOBILE_TERMINAL_RING_MAX_BYTES)
-                }
-                self.outputRings[sid]!.append(evt.data)
-
-                let pub = self.outputBytesPublishers[sid] ?? self.ensureBytesPublisher(for: sid)
-                pub.send(evt.data)
-
-                self.lastActivityBySession[sid] = Date()
-
-                if let decoded = String(data: evt.data, encoding: .utf8),
-                   let textPublisher = self.outputPublishers[sid] {
-                    let output = TerminalOutput(
-                        sessionId: sid,
-                        data: decoded,
-                        timestamp: evt.timestamp,
-                        outputType: .stdout
-                    )
-                    textPublisher.send(output)
-                }
-            }
-
-        self.logger.info("Global binary subscription established for device \(deviceId)")
+        if let textPublisher = outputPublishers[sessionId],
+           let decoded = String(data: event.data, encoding: .utf8) {
+            let output = TerminalOutput(
+                sessionId: sessionId,
+                data: decoded,
+                timestamp: event.timestamp,
+                outputType: .stdout
+            )
+            textPublisher.send(output)
+        }
     }
 
     private func ensureGlobalBinarySubscriptionForActiveDevice() {
         guard let activeDeviceId = connectionManager.activeDeviceId,
               let activeRelay = connectionManager.relayConnection(for: activeDeviceId) else {
-            return
-        }
-
-        if globalBinarySubscription != nil, binarySubscriptionDeviceId == activeDeviceId {
             return
         }
 

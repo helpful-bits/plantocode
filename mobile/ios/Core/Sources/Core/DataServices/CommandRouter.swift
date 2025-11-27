@@ -5,6 +5,13 @@ import OSLog
 @MainActor
 public struct CommandRouter {
 
+    /// Helper to create a "not connected" stream
+    private static func failStreamNotConnected<T>() -> AsyncThrowingStream<T, Error> {
+        return AsyncThrowingStream { continuation in
+            continuation.finish(throwing: ServerRelayError.notConnected)
+        }
+    }
+
     /// Resolves a usable relay connection: prefers active device, falls back to single connected device
     private static func getUsableRelay() -> (deviceId: UUID, relay: ServerRelayClient)? {
         // First, try active device - return it REGARDLESS of connection state
@@ -40,9 +47,7 @@ public struct CommandRouter {
         timeoutMs: Int
     ) -> AsyncThrowingStream<RpcResponse, Error> {
         guard let usable = getUsableRelay() else {
-            return AsyncThrowingStream { continuation in
-                continuation.finish(throwing: ServerRelayError.notConnected)
-            }
+            return failStreamNotConnected()
         }
         let (deviceId, relayClient) = usable
 
@@ -67,9 +72,7 @@ public struct CommandRouter {
         timeoutMs: Int
     ) -> AsyncThrowingStream<RpcResponse, Error> {
         guard let usable = getUsableRelay() else {
-            return AsyncThrowingStream { continuation in
-                continuation.finish(throwing: ServerRelayError.notConnected)
-            }
+            return failStreamNotConnected()
         }
         let (deviceId, relayClient) = usable
 
@@ -93,9 +96,7 @@ public struct CommandRouter {
         maxResults: Int
     ) -> AsyncThrowingStream<RpcResponse, Error> {
         guard let usable = getUsableRelay() else {
-            return AsyncThrowingStream { continuation in
-                continuation.finish(throwing: ServerRelayError.notConnected)
-            }
+            return failStreamNotConnected()
         }
         let (deviceId, relayClient) = usable
 
@@ -126,7 +127,7 @@ public struct CommandRouter {
         let (deviceId, relayClient) = usable
 
         var params: [String: Any] = [:]
-        if let jobId = jobId {
+        if let jobId = jobId, !jobId.isEmpty {
             params["jobId"] = jobId
         }
         if let shell = shell {
@@ -1444,6 +1445,26 @@ public struct CommandRouter {
                 "sourceJobIds": sourceJobIds,
                 "mergeInstructions": mergeInstructions
             ]
+        )
+
+        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+    }
+
+    public static func planGenerateMarkdown(jobId: String) -> AsyncThrowingStream<RpcResponse, Error> {
+        guard let usable = getUsableRelay() else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: ServerRelayError.notConnected)
+            }
+        }
+        let (deviceId, relayClient) = usable
+
+        let params: [String: Any] = [
+            "jobId": jobId
+        ]
+
+        let request = RpcRequest(
+            method: "plan.generateMarkdown",
+            params: params
         )
 
         return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)

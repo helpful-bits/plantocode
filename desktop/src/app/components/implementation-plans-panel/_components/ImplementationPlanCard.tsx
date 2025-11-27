@@ -58,6 +58,7 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
   const terminalSession = getSession(plan.id);
   const attention = getAttention(plan.id);
   const parsedMeta = getParsedMetadata(plan.metadata);
+  const markdownStatus = parsedMeta?.markdownConversionStatus;
 
   const planTitle = String(parsedMeta?.planTitle || parsedMeta?.generated_title || "Implementation Plan");
 
@@ -204,6 +205,9 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
                     <Check className="h-3 w-3 mr-1" />
                     Reviewed
                   </Badge>
+                )}
+                {markdownStatus === "completed" && (
+                  <Badge variant="outline">Markdown ready</Badge>
                 )}
               </div>
               <CardDescription className="flex flex-wrap gap-x-2 text-xs mt-1">

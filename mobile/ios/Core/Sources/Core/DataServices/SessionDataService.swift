@@ -60,10 +60,11 @@ public final class SessionDataService: ObservableObject {
                     let stateData = try JSONSerialization.data(withJSONObject: stateDict)
                     let historyState = try JSONDecoder().decode(HistoryState.self, from: stateData)
 
-                    if let lastVer = self.lastHistoryVersionBySession[sessionId], historyState.version < lastVer {
+                    let key = "\(sessionId)::\(kind)"
+                    if let lastVer = self.lastHistoryVersionBySession[key], historyState.version < lastVer {
                         return
                     }
-                    if let lastChecksum = self.lastHistoryChecksumBySession[sessionId], historyState.checksum == lastChecksum {
+                    if let lastChecksum = self.lastHistoryChecksumBySession[key], historyState.checksum == lastChecksum {
                         return
                     }
 
@@ -85,8 +86,8 @@ public final class SessionDataService: ObservableObject {
                         }
                     }
 
-                    self.lastHistoryVersionBySession[sessionId] = historyState.version
-                    self.lastHistoryChecksumBySession[sessionId] = historyState.checksum
+                    self.lastHistoryVersionBySession[key] = historyState.version
+                    self.lastHistoryChecksumBySession[key] = historyState.checksum
 
                     NotificationCenter.default.post(
                         name: NSNotification.Name("apply-history-state"),
@@ -1105,7 +1106,11 @@ public final class SessionDataService: ObservableObject {
 
     /// Sync history state to desktop
     public func syncHistoryState(sessionId: String, kind: String, state: HistoryState, expectedVersion: Int64) async throws -> HistoryState {
-        return try await CommandRouter.sessionSyncHistoryState(sessionId: sessionId, kind: kind, state: state, expectedVersion: expectedVersion)
+        do {
+            return try await CommandRouter.sessionSyncHistoryState(sessionId: sessionId, kind: kind, state: state, expectedVersion: expectedVersion)
+        } catch {
+            throw DataServiceError.serverError("Failed to sync history state: \(error.localizedDescription)")
+        }
     }
 
     public func lastNonEmptyHistoryValue(_ state: HistoryState) -> String? {
@@ -1116,7 +1121,11 @@ public final class SessionDataService: ObservableObject {
 
     /// Merge history state with desktop
     public func mergeHistoryState(sessionId: String, kind: String, remoteState: HistoryState) async throws -> HistoryState {
-        return try await CommandRouter.sessionMergeHistoryState(sessionId: sessionId, kind: kind, remoteState: remoteState)
+        do {
+            return try await CommandRouter.sessionMergeHistoryState(sessionId: sessionId, kind: kind, remoteState: remoteState)
+        } catch {
+            throw DataServiceError.serverError("Failed to merge history state: \(error.localizedDescription)")
+        }
     }
 
     public func loadSessionById(sessionId: String, projectDirectory: String) async throws {

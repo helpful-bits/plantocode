@@ -14,6 +14,21 @@ public struct OnboardingFlowView: View {
         self.onComplete = onComplete
     }
 
+    /// Returns the number of video pages available (0-4 means pages 0,1,2,3 have videos)
+    private var availableVideoPages: Int {
+        var count = 0
+        if container.onboardingService.videoURL(for: "intro") != nil { count += 1 }
+        if container.onboardingService.videoURL(for: "workflow") != nil { count += 1 }
+        if container.onboardingService.videoURL(for: "voice") != nil { count += 1 }
+        if container.onboardingService.videoURL(for: "plan") != nil { count += 1 }
+        return count
+    }
+
+    /// Whether we're on the subscription page (page 4 or no video pages available)
+    private var isOnSubscriptionPage: Bool {
+        return page >= availableVideoPages
+    }
+
     private func handleComplete() {
         Task {
             await container.ensureFreshSubscriptionStatus()
@@ -43,21 +58,23 @@ public struct OnboardingFlowView: View {
             .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Skip Button (top-right)
-                HStack {
-                    Spacer()
-                    Button(action: {
-                        handleSkip()
-                    }) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 18, weight: .medium))
-                            .foregroundColor(.primary)
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
+                // Skip Button (top-right) - hidden on subscription page which has its own skip
+                if !isOnSubscriptionPage {
+                    HStack {
+                        Spacer()
+                        Button(action: {
+                            handleSkip()
+                        }) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 18, weight: .medium))
+                                .foregroundColor(.primary)
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
+                        }
                     }
+                    .padding(.horizontal, Theme.Spacing.lg)
+                    .padding(.top, Theme.Spacing.md)
                 }
-                .padding(.horizontal, Theme.Spacing.lg)
-                .padding(.top, Theme.Spacing.md)
 
                 if isLoadingManifest {
                     // Loading state
@@ -128,29 +145,42 @@ public struct OnboardingFlowView: View {
                         )
                         .tag(3)
                     }
+
+                    // Page 4: Subscription
+                    SubscriptionPaywallView(
+                        configuration: .init(
+                            context: .onboarding,
+                            allowsDismiss: false,
+                            showsCloseIcon: false,
+                            showsSkipButton: false,
+                            primaryActionTitle: nil,
+                            onPrimaryAction: { handleComplete() },
+                            onSkip: { handleSkip() },
+                            useOwnBackground: false
+                        )
+                    )
+                    .tag(4)
                     }
                     .tabViewStyle(.page(indexDisplayMode: .automatic))
 
-                    // Bottom Continue Button
-                    Button(action: {
-                        if page < 3 {
+                    // Bottom Continue Button (hidden on subscription page which has its own CTA)
+                    if !isOnSubscriptionPage {
+                        Button(action: {
                             withAnimation {
                                 page += 1
                             }
-                        } else {
-                            handleComplete()
+                        }) {
+                            Text("Continue")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 56)
+                                .background(Color.primary)
+                                .cornerRadius(Theme.Radii.lg)
                         }
-                    }) {
-                        Text(page == 3 ? "Get Started" : "Continue")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 56)
-                            .background(Color.primary)
-                            .cornerRadius(Theme.Radii.lg)
+                        .padding(.horizontal, Theme.Spacing.lg)
+                        .padding(.bottom, Theme.Spacing.xxl)
                     }
-                    .padding(.horizontal, Theme.Spacing.lg)
-                    .padding(.bottom, Theme.Spacing.xxl)
                 }
             }
         }
@@ -158,11 +188,14 @@ public struct OnboardingFlowView: View {
             // Preload onboarding manifest on appear
             do {
                 _ = try await container.onboardingService.load()
-                isLoadingManifest = false
             } catch {
                 // If loading fails, still show onboarding with skip option
-                isLoadingManifest = false
             }
+            // Set initial page: if no videos, go straight to subscription (page 4)
+            if availableVideoPages == 0 {
+                page = 4
+            }
+            isLoadingManifest = false
         }
     }
 }

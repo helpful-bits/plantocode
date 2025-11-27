@@ -12,7 +12,8 @@ let package = Package(
     .package(url: "https://github.com/simonbs/Runestone.git", from: "0.5.1"),
     .package(url: "https://github.com/simonbs/TreeSitterLanguages.git", from: "0.1.10"),
     .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", from: "1.2.5"),
-    .package(url: "https://github.com/apple/swift-syntax.git", from: "600.0.0")
+    .package(url: "https://github.com/apple/swift-syntax.git", from: "600.0.0"),
+    .package(url: "https://github.com/gonzalezreal/swift-markdown-ui", from: "2.0.0")
   ],
   targets: [
     .target(
@@ -32,7 +33,8 @@ let package = Package(
         .product(name: "TreeSitterGoRunestone", package: "TreeSitterLanguages"),
         .product(name: "SwiftTerm", package: "SwiftTerm"),
         .product(name: "SwiftSyntax", package: "swift-syntax"),
-        .product(name: "SwiftParser", package: "swift-syntax")
+        .product(name: "SwiftParser", package: "swift-syntax"),
+        .product(name: "MarkdownUI", package: "swift-markdown-ui")
       ],
       path: "Sources/VibeUI"
     )

@@ -14,12 +14,13 @@ import { Progress } from "@/ui/progress";
 import { VirtualizedCodeViewer } from "@/ui/virtualized-code-viewer";
 import { Badge } from "@/ui/badge";
 
-import { getStreamingStatus } from "../../background-jobs-sidebar/utils";
+import { getStreamingStatus, getParsedMetadata } from "../../background-jobs-sidebar/utils";
 import { getContentForStep } from "../_utils/plan-content-parser";
 import { replacePlaceholders } from "@/utils/placeholder-utils";
 import { normalizeJobResponse } from '@/utils/response-utils';
 import { FloatingMergeInstructions } from './FloatingMergeInstructions';
 import { useLiveProgress } from "@/hooks/use-live-progress";
+import { generatePlanMarkdownAction } from "@/actions/ai/implementation-plan.actions";
 
 interface PlanContentModalProps {
   plan?: BackgroundJob;
@@ -75,6 +76,10 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
   const [baselineReady, setBaselineReady] = React.useState(false);
   const [editorKey, setEditorKey] = React.useState<string>("");
   const { showNotification } = useNotification();
+
+  const [viewMode, setViewMode] = React.useState<"xml" | "markdown">("xml");
+  const [isGeneratingMarkdown, setIsGeneratingMarkdown] = React.useState(false);
+  const [markdownContentOverride, setMarkdownContentOverride] = React.useState<string | null>(null);
 
   // Track streaming state for detecting transitions
   const wasStreaming = React.useRef(false);
@@ -164,18 +169,14 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
 
   if (!displayPlan) return null;
 
-  const parsedMeta = useMemo(() => {
-    if (!displayPlan) return null;
-    let metadata: any = displayPlan.metadata;
-    if (typeof metadata === 'string') {
-      try {
-        metadata = JSON.parse(metadata);
-      } catch {
-        metadata = {};
-      }
-    }
-    return metadata || {};
-  }, [displayPlan?.metadata]);
+  // Derived state for markdown - parse metadata and combine with local override
+  const parsedMeta = useMemo(
+    () => getParsedMetadata(displayPlan.metadata),
+    [displayPlan.metadata]
+  );
+
+  const markdownFromMeta = parsedMeta?.markdownResponse as string | undefined;
+  const effectiveMarkdown = markdownContentOverride ?? markdownFromMeta;
 
   const planTitle = parsedMeta?.planTitle || parsedMeta?.generated_title || "Implementation Plan";
 
@@ -193,13 +194,15 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
   // Get streamed content from the live plan during streaming
   const streamedContent = useMemo(() => {
     if (!isStreaming || !displayPlan) return "";
-    // Use raw string if available to avoid parsing overhead
     if (typeof displayPlan.response === "string") return displayPlan.response;
     return normalizeJobResponse(displayPlan.response).content;
   }, [isStreaming, displayPlan?.response]);
 
-  // Use consistent language for both states
-  const viewerLanguage = "xml";
+  const viewerLanguage = viewMode === "markdown" ? "markdown" : "xml";
+  const viewerContent =
+    viewMode === "markdown" && effectiveMarkdown
+      ? effectiveMarkdown
+      : isStreaming ? streamedContent : editedContent;
 
   // Determine if we should show the loading indicator
   // Only show loading when streaming AND no content has arrived yet
@@ -379,6 +382,48 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
 
             {/* Buttons container with wrapping - separate from status */}
             <div className="flex flex-wrap gap-2 justify-end">
+              {/* Markdown Toggle Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isStreaming}
+                onClick={async () => {
+                  // If markdown already exists (from metadata or override), just toggle view
+                  if (effectiveMarkdown) {
+                    setViewMode((prev) => (prev === "xml" ? "markdown" : "xml"));
+                    return;
+                  }
+
+                  // Only generate markdown if it doesn't exist yet
+                  try {
+                    setIsGeneratingMarkdown(true);
+                    const result = await generatePlanMarkdownAction(displayPlan.id);
+                    if (result.isSuccess && result.data) {
+                      setMarkdownContentOverride(result.data.markdown);
+                      setViewMode("markdown");
+                    } else {
+                      showNotification({
+                        title: "Markdown generation failed",
+                        message: result.message || "Failed to generate markdown",
+                        type: "error",
+                        duration: 3000,
+                      });
+                    }
+                  } finally {
+                    setIsGeneratingMarkdown(false);
+                  }
+                }}
+                className="text-xs h-7"
+              >
+                {isGeneratingMarkdown
+                  ? "Generating Markdown..."
+                  : effectiveMarkdown
+                    ? viewMode === "xml"
+                      ? "View Markdown"
+                      : "View XML"
+                    : "Generate Markdown"}
+              </Button>
+
               {/* Save Button */}
               {!isStreaming && hasUnsavedChanges && (
                 <Button
@@ -447,7 +492,7 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
           {baselineReady && (
             <VirtualizedCodeViewer
               key={editorKey}
-              content={isStreaming ? streamedContent : editedContent}
+              content={viewerContent}
               height="100%"
               showCopy={false}
               showContentSize={true}
@@ -455,11 +500,11 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
               placeholder="No implementation plan content available yet"
               language={viewerLanguage}
               className=""
-              readOnly={isStreaming}
+              readOnly={isStreaming || viewMode === "markdown"}
               streamOptimized={isStreaming}
               showFollowToggle={true}
               followStreamingDefault={true}
-              onChange={isStreaming ? undefined : handleContentChange}
+              onChange={viewMode === "xml" && !isStreaming ? handleContentChange : undefined}
               loadingIndicator={
                 <div className="flex items-center justify-center h-full">
                   <div className="flex items-center gap-2">

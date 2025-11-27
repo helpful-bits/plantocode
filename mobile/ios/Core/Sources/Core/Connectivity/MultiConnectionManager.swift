@@ -30,7 +30,12 @@ public final class MultiConnectionManager: ObservableObject {
     @Published public private(set) var isActivelyReconnecting: Bool = false
     private let connectedDevicesKey = "vm_connected_devices"
     private let activeDeviceKey = "ActiveDesktopDeviceId"
-    private var cancellables = Set<AnyCancellable>()
+    // globalCancellables holds app-wide subscriptions.
+    // deviceCancellables/connectionStateSubscriptions track per-device ServerRelayClient sinks
+    // so we can cancel them deterministically on device removal/switch.
+    private var globalCancellables = Set<AnyCancellable>()
+    private var deviceCancellables = [UUID: Set<AnyCancellable>]()
+    private var connectionStateSubscriptions: [UUID: AnyCancellable] = [:]
     private var connectingTasks: [UUID: Task<Result<UUID, Error>, Never>] = [:]
     private var verifyingDevices = Set<UUID>()
     private var relayHandshakeByDevice = [UUID: ConnectionHandshake]()
@@ -76,6 +81,7 @@ public final class MultiConnectionManager: ObservableObject {
     private var reconnectStates = [UUID: DeviceReconnectState]()
     private let serverContextKey = "LastConnectedServerURL"
     private var lastConnectedServerURL: String?
+    private var lastAddConnectionAt: [UUID: Date] = [:]
     private var pathObserverCancellable: AnyCancellable?
     private var lastPath: NWPath?
 
@@ -103,7 +109,7 @@ public final class MultiConnectionManager: ObservableObject {
             }
         }
 
-        pathObserverCancellable = NetworkPathObserver.shared.$currentPath
+        NetworkPathObserver.shared.$currentPath
             .sink { [weak self] path in
                 guard let self = self, let path = path else { return }
                 Task { @MainActor in
@@ -128,6 +134,7 @@ public final class MultiConnectionManager: ObservableObject {
                     }
                 }
             }
+            .store(in: &globalCancellables)
 
         NotificationCenter.default.addObserver(
             forName: UIApplication.didBecomeActiveNotification,
@@ -159,7 +166,18 @@ public final class MultiConnectionManager: ObservableObject {
     }
 
     private func cancelAllCancellables() {
-        cancellables.removeAll()
+        for (_, bag) in deviceCancellables {
+            var mutableBag = bag
+            mutableBag.removeAll()
+        }
+        deviceCancellables.removeAll()
+
+        for (_, sub) in connectionStateSubscriptions {
+            sub.cancel()
+        }
+        connectionStateSubscriptions.removeAll()
+
+        globalCancellables.removeAll()
     }
 
     @MainActor
@@ -173,13 +191,17 @@ public final class MultiConnectionManager: ObservableObject {
 
         stopAllReconnectTimers()
         cancelAllCancellables()
+        for (_, sub) in connectionStateSubscriptions {
+            sub.cancel()
+        }
+        connectionStateSubscriptions.removeAll()
         healthGraceTask?.cancel()
         healthGraceTask = nil
         connectionHealth = .dead
 
         for (_, relay) in storage {
             relay.clearResumeToken()
-            relay.disconnect()
+            relay.disconnect(isUserInitiated: true)
         }
 
         let persistedDeviceIds = (UserDefaults.standard.array(forKey: connectedDevicesKey) as? [String] ?? [])
@@ -299,8 +321,10 @@ public final class MultiConnectionManager: ObservableObject {
         }
 
         // Disconnect all other devices
-        for otherDeviceId in storage.keys where otherDeviceId != deviceId {
+        let devicesToRemove = storage.keys.filter { $0 != deviceId }
+        for otherDeviceId in devicesToRemove {
             removeConnection(deviceId: otherDeviceId)
+            clearReconnectState(for: otherDeviceId)
         }
 
         // Set as active and persist
@@ -368,6 +392,18 @@ public final class MultiConnectionManager: ObservableObject {
             return await existingTask.value
         }
 
+        // Cooldown check
+        if let last = lastAddConnectionAt[deviceId],
+           Date().timeIntervalSince(last) <= 1.0 {
+            if let state = connectionStates[deviceId],
+               state == .connecting || state == .handshaking || state == .reconnecting {
+                return .failure(MultiConnectionError.connectionFailed("Connection attempt in progress"))
+            }
+        }
+
+        // Set last connection attempt timestamp
+        lastAddConnectionAt[deviceId] = Date()
+
         // Create new connection task
         let task = Task<Result<UUID, Error>, Never> { [weak self] in
             guard let self = self else {
@@ -410,7 +446,19 @@ public final class MultiConnectionManager: ObservableObject {
                 }
 
                 await MainActor.run {
-                    relayClient.$connectionState
+                    // Cancel any existing subscription for this device
+                    if let old = self.connectionStateSubscriptions[deviceId] {
+                        old.cancel()
+                        self.connectionStateSubscriptions.removeValue(forKey: deviceId)
+                    }
+                    if var existingBag = self.deviceCancellables[deviceId] {
+                        existingBag.removeAll()
+                    }
+                    self.deviceCancellables[deviceId] = Set<AnyCancellable>()
+
+                    var deviceBag = self.deviceCancellables[deviceId] ?? Set<AnyCancellable>()
+                    // At most one connectionState sink per deviceId; old sink is canceled when a new client is created.
+                    let stateCancellable = relayClient.$connectionState
                         .sink { [weak self] state in
                             guard let self = self else { return }
                             Task { @MainActor in
@@ -456,7 +504,9 @@ public final class MultiConnectionManager: ObservableObject {
                                 }
                             }
                         }
-                        .store(in: &self.cancellables)
+                    deviceBag.insert(stateCancellable)
+                    self.deviceCancellables[deviceId] = deviceBag
+                    self.connectionStateSubscriptions[deviceId] = stateCancellable
                 }
 
                 do {
@@ -524,6 +574,16 @@ public final class MultiConnectionManager: ObservableObject {
             relayClient.disconnect()
             storage.removeValue(forKey: deviceId)
         }
+
+        // Clean up per-device subscriptions
+        if var bag = deviceCancellables[deviceId] {
+            bag.removeAll()
+            deviceCancellables.removeValue(forKey: deviceId)
+        }
+        if let sub = connectionStateSubscriptions[deviceId] {
+            sub.cancel()
+            connectionStateSubscriptions.removeValue(forKey: deviceId)
+        }
     }
 
     public func removeAllConnections() {
@@ -544,6 +604,20 @@ public final class MultiConnectionManager: ObservableObject {
         verifyingDevices.removeAll()
         relayHandshakeByDevice.removeAll()
         activeDeviceId = nil
+
+        // Clear all per-device state
+        for (deviceId, var bag) in deviceCancellables {
+            bag.removeAll()
+        }
+        deviceCancellables.removeAll()
+
+        for (_, sub) in connectionStateSubscriptions {
+            sub.cancel()
+        }
+        connectionStateSubscriptions.removeAll()
+
+        stopAllReconnectTimers()
+        reconnectStates.removeAll()
 
         UserDefaults.standard.removeObject(forKey: connectedDevicesKey)
         UserDefaults.standard.removeObject(forKey: activeDeviceKey)
@@ -695,6 +769,10 @@ public final class MultiConnectionManager: ObservableObject {
 
     // MARK: - Aggressive Reconnection Policy
 
+    private func clearReconnectState(for deviceId: UUID) {
+        reconnectStates.removeValue(forKey: deviceId)
+    }
+
     public func triggerAggressiveReconnect(reason: ReconnectReason, deviceIds: [UUID]? = nil) {
         var candidates: [UUID] = []
 
@@ -716,6 +794,15 @@ public final class MultiConnectionManager: ObservableObject {
         }
 
         for deviceId in candidates {
+            // Guard against redundant reconnection attempts
+            if let st = connectionStates[deviceId] {
+                if st.isConnected || st == .connecting || st == .handshaking || st == .reconnecting {
+                    continue
+                }
+            }
+            if connectingTasks[deviceId] != nil {
+                continue
+            }
             if reconnectStates[deviceId]?.isAggressiveActive == true {
                 continue
             }
@@ -753,10 +840,10 @@ public final class MultiConnectionManager: ObservableObject {
     }
 
     private func scheduleNextReconnectAttempt(for deviceId: UUID) async {
+        // Early exit if already connected or connecting
         if let state = connectionStates[deviceId], state.isConnected {
             return
         }
-
         if connectingTasks[deviceId] != nil {
             return
         }

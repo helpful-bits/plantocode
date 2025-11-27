@@ -42,6 +42,7 @@ public class DataServicesManager: ObservableObject {
     private var lastSwitchAt: Date?
     private var orchestratorTriggerInFlight = false
     private var authStateCancellable: AnyCancellable?
+    private var lastReconnectionSyncAt: Date?
 
     // MARK: - Initialization
     public init(baseURL: URL, deviceId: String) {
@@ -181,7 +182,6 @@ public class DataServicesManager: ObservableObject {
 
     /// Test connection to desktop app
     public func testConnection() -> AnyPublisher<Bool, Never> {
-        // Use terminal default shell as lightweight connectivity probe
         guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
               let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
             return Just(false)
@@ -196,7 +196,7 @@ public class DataServicesManager: ObservableObject {
         return Future<Bool, Never> { promise in
             Task {
                 do {
-                    for try await response in CommandRouter.terminalGetDefaultShell() {
+                    for try await response in CommandRouter.systemPing() {
                         if response.error != nil {
                             promise(.success(false))
                             return
@@ -567,13 +567,10 @@ public class DataServicesManager: ObservableObject {
 
                 case "session-created", "session-updated", "session-deleted",
                      "session-history-synced", "session:auto-files-applied":
-                    // Use incremental updates instead of full refetch
                     self.sessionService.applyRelayEvent(event)
 
                 case "session-files-updated":
-                    // Use incremental updates
                     self.sessionService.applyRelayEvent(event)
-                    // Trigger files refresh after session-files-updated to update the "Selected" area in the Files tab
                     self.filesService.performSearch(query: self.filesService.currentSearchTerm)
 
                 case "active-session-changed":
@@ -631,6 +628,12 @@ public class DataServicesManager: ObservableObject {
         if connected {
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
+
+                if let last = lastReconnectionSyncAt,
+                   Date().timeIntervalSince(last) < 3.0 {
+                    return
+                }
+                lastReconnectionSyncAt = Date()
 
                 // Early guards: prevent connection handler from running during initial bootstrap
                 if AppState.shared.bootstrapState == .running {
