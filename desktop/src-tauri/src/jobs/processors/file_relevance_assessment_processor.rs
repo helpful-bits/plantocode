@@ -17,7 +17,7 @@ use crate::jobs::types::{
     FileRelevanceAssessmentQualityDetails, FileRelevanceAssessmentResponse, Job, JobPayload,
     JobProcessResult, JobResultData,
 };
-use crate::utils::path_utils::make_relative_to;
+use crate::utils::path_utils::{make_relative_to, to_forward_slashes};
 use std::path::PathBuf;
 
 pub struct FileRelevanceAssessmentProcessor;
@@ -542,21 +542,22 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
             match tokio::fs::metadata(&absolute_path).await {
                 Ok(metadata) if metadata.is_file() => {
                     // Normalize the path: convert to relative if within project, keep absolute if external
+                    // Always use forward slashes for cross-platform consistency
                     let normalized_path = if absolute_path.starts_with(&project_dir) {
                         // File is within project directory - convert to relative path
                         match make_relative_to(&absolute_path, &project_dir) {
-                            Ok(rel_path) => rel_path.to_string_lossy().to_string(),
+                            Ok(rel_path) => to_forward_slashes(&rel_path.to_string_lossy()),
                             Err(_) => {
                                 // Fallback: use strip_prefix
                                 absolute_path
                                     .strip_prefix(&project_dir)
-                                    .map(|p| p.to_string_lossy().to_string())
+                                    .map(|p| to_forward_slashes(&p.to_string_lossy()))
                                     .unwrap_or_else(|_| path_from_llm.clone())
                             }
                         }
                     } else {
-                        // File is external - keep as absolute path
-                        absolute_path.to_string_lossy().to_string()
+                        // File is external - keep as absolute path (still normalize slashes)
+                        to_forward_slashes(&absolute_path.to_string_lossy())
                     };
 
                     validated_relevant_paths.push(normalized_path);

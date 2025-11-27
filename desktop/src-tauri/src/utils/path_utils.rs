@@ -8,6 +8,26 @@ use uuid::Uuid;
 use crate::error::{AppError, AppResult};
 use crate::utils::{fs_utils, git_utils};
 
+/// Convert path separators to forward slashes for cross-platform consistency.
+///
+/// This is essential for:
+/// - Regex pattern matching (LLMs generate patterns with forward slashes)
+/// - Consistent path display in UI across all platforms
+/// - Database storage of paths
+///
+/// On Windows, converts `C:\Users\foo\bar.ts` to `C:/Users/foo/bar.ts`
+/// On Unix, paths are unchanged (already use forward slashes)
+#[inline]
+pub fn to_forward_slashes(path: &str) -> String {
+    path.replace('\\', "/")
+}
+
+/// Convert a PathBuf to a string with forward slashes
+#[inline]
+pub fn path_to_forward_slashes(path: &Path) -> String {
+    to_forward_slashes(&path.to_string_lossy())
+}
+
 /// Normalize a path (sync version)
 ///
 /// This function canonicalizes the path to resolve symlinks and get the absolute path.

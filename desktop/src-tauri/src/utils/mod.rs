@@ -56,7 +56,8 @@ pub use path_utils::{
     get_app_data_root_dir, get_app_output_files_directory, get_file_extension, get_file_name,
     get_parent_directory, get_project_custom_directory, get_project_implementation_plans_directory,
     get_project_output_files_directory, is_absolute_path, is_ignored_by_git, join_paths,
-    make_relative_to, matches_any_pattern, normalize_path, sanitize_filename,
+    make_relative_to, matches_any_pattern, normalize_path, path_to_forward_slashes, sanitize_filename,
+    to_forward_slashes,
 };
 pub use token_estimator::estimate_tokens;
 pub use xml_utils::{
