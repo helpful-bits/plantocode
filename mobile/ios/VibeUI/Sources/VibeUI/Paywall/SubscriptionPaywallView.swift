@@ -278,6 +278,17 @@ public struct SubscriptionPaywallView: View {
         .subscriptionStorePickerItemBackground(Color.card)
         .backgroundStyle(Color.background)
         .tint(Color.primary)
+        .onInAppPurchaseCompletion { _, result in
+            // Handle purchase completion - transition to next screen on success
+            if case .success(.success(_)) = result {
+                Task {
+                    await manager.refreshStatus()
+                    if manager.status.isActive {
+                        configuration.onPrimaryAction?()
+                    }
+                }
+            }
+        }
         .frame(minHeight: 260)
         .padding()
         .background(Color.card)
