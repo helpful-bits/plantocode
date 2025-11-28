@@ -545,25 +545,55 @@ public final class FilesDataService: ObservableObject {
     }
 
     public func undoFileSelection(sessionId: String) async throws {
+        // Must use raw dict approach for "files" because file history entries have
+        // included_files/force_excluded_files fields, NOT a "value" field like generic HistoryEntry
         var state = try await getFileHistoryState(sessionId: sessionId)
         let entries = (state["entries"] as? [Any]) ?? []
-        var current = (state["currentIndex"] as? Int) ?? Int(state["currentIndex"] as? Int64 ?? 0)
-        guard current > 0 else { return }
-        current -= 1
-        state["currentIndex"] = Int64(current)
+        guard !entries.isEmpty else { return }
+        let rawIndex: Int
+        if let idx = state["currentIndex"] as? Int {
+            rawIndex = idx
+        } else if let idx64 = state["currentIndex"] as? Int64 {
+            rawIndex = Int(idx64)
+        } else {
+            rawIndex = 0
+        }
+        let clampedCurrent = max(0, min(rawIndex, entries.count - 1))
+        guard clampedCurrent > 0 else { return }
+        state["currentIndex"] = Int64(clampedCurrent - 1)
         let version = (state["version"] as? Int64) ?? Int64(state["version"] as? Int ?? 0)
-        _ = try await CommandRouter.sessionSyncHistoryStateRaw(sessionId: sessionId, kind: "files", state: state, expectedVersion: version)
+        _ = try await CommandRouter.sessionSyncHistoryStateRaw(
+            sessionId: sessionId,
+            kind: "files",
+            state: state,
+            expectedVersion: version
+        )
     }
 
     public func redoFileSelection(sessionId: String) async throws {
+        // Must use raw dict approach for "files" because file history entries have
+        // included_files/force_excluded_files fields, NOT a "value" field like generic HistoryEntry
         var state = try await getFileHistoryState(sessionId: sessionId)
         let entries = (state["entries"] as? [Any]) ?? []
-        var current = (state["currentIndex"] as? Int) ?? Int(state["currentIndex"] as? Int64 ?? 0)
-        guard current < max(0, entries.count - 1) else { return }
-        current += 1
-        state["currentIndex"] = Int64(current)
+        guard !entries.isEmpty else { return }
+        let rawIndex: Int
+        if let idx = state["currentIndex"] as? Int {
+            rawIndex = idx
+        } else if let idx64 = state["currentIndex"] as? Int64 {
+            rawIndex = Int(idx64)
+        } else {
+            rawIndex = 0
+        }
+        let clampedCurrent = max(0, min(rawIndex, entries.count - 1))
+        guard clampedCurrent < entries.count - 1 else { return }
+        state["currentIndex"] = Int64(clampedCurrent + 1)
         let version = (state["version"] as? Int64) ?? Int64(state["version"] as? Int ?? 0)
-        _ = try await CommandRouter.sessionSyncHistoryStateRaw(sessionId: sessionId, kind: "files", state: state, expectedVersion: version)
+        _ = try await CommandRouter.sessionSyncHistoryStateRaw(
+            sessionId: sessionId,
+            kind: "files",
+            state: state,
+            expectedVersion: version
+        )
     }
 }
 

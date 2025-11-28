@@ -12,7 +12,7 @@ use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
-use tauri::{AppHandle, Manager, State, command};
+use tauri::{AppHandle, Emitter, Manager, State, command};
 use url::Url;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -289,6 +289,11 @@ pub async fn check_auth_status_and_exchange_token(
 
     // Store app JWT
     token_manager.set(Some(auth_response.token.clone())).await?;
+
+    // Emit auth-token-refreshed event to notify listeners (including DeviceLinkClient)
+    if let Err(e) = app_handle.emit("auth-token-refreshed", ()) {
+        warn!("Failed to emit auth-token-refreshed event: {}", e);
+    }
 
     // Re-register device to ensure server has up-to-date record
     let app_handle_clone = app_handle.clone();

@@ -29,7 +29,9 @@ public struct TaskEditorView: View {
     // MARK: - State Objects
     @StateObject private var voiceService = VoiceDictationService.shared
     @StateObject private var enhancementService = TextEnhancementService.shared
-    @StateObject private var undoRedoManager = UndoRedoManager()
+
+    // MARK: - Observed Objects (passed from parent)
+    @ObservedObject var undoRedoManager: UndoRedoManager
 
     // MARK: - Internal State
     @State private var selectedLanguage = "en-US"
@@ -45,6 +47,7 @@ public struct TaskEditorView: View {
         selectedRange: Binding<NSRange>,
         isEditing: Binding<Bool>,
         forceSelectionApply: Binding<Bool>,
+        undoRedoManager: UndoRedoManager,
         autoStartRecording: Bool = false,
         placeholder: String = "Describe your task...",
         sessionId: String,
@@ -60,6 +63,7 @@ public struct TaskEditorView: View {
         self._selectedRange = selectedRange
         self._isEditing = isEditing
         self._forceSelectionApply = forceSelectionApply
+        self.undoRedoManager = undoRedoManager
         self.autoStartRecording = autoStartRecording
         self.placeholder = placeholder
         self.sessionId = sessionId
@@ -217,9 +221,6 @@ public struct TaskEditorView: View {
                 }
             }
         }
-        .onAppear {
-            undoRedoManager.saveState(text)
-        }
         .task(id: projectDirectory) {
             await loadVoiceSettingsTask()
         }
@@ -369,12 +370,14 @@ public struct TaskEditorView: View {
     @State var selectedRange = NSRange(location: 0, length: 0)
     @State var isEditing = false
     @State var forceApply = false
+    @StateObject var undoRedoManager = UndoRedoManager()
 
     return TaskEditorView(
         text: $text,
         selectedRange: $selectedRange,
         isEditing: $isEditing,
         forceSelectionApply: $forceApply,
+        undoRedoManager: undoRedoManager,
         autoStartRecording: false,
         sessionId: "preview-session",
         projectDirectory: "/path/to/project"

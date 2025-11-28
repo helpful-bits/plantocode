@@ -25,53 +25,45 @@ export const MergePlansSection = React.memo(function MergePlansSection({
   onClearSelection,
 }: MergePlansSectionProps) {
   const [isOpen, setIsOpen] = useState(true);
-  // Local state for immediate UI responsiveness (same pattern as FloatingMergeInstructions)
   const [localValue, setLocalValue] = useState(mergeInstructions);
   const isFocusedRef = useRef(false);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Sync local value when prop changes from outside, but only if not focused
   useEffect(() => {
-    // Skip sync if this editor or the floating editor is focused
-    if (isFocusedRef.current || (window as any).__mergeInstructionsEditorFocused) {
-      return;
-    }
+    if (isFocusedRef.current) return;
     setLocalValue(mergeInstructions);
   }, [mergeInstructions]);
 
-  // Cleanup debounce timer on unmount
   useEffect(() => {
     return () => {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
+      if (isFocusedRef.current && typeof window !== "undefined") {
+        (window as any).__mergeInstructionsEditorFocused = false;
       }
     };
   }, []);
 
-  // Handle input changes - update local state and debounce sync to parent
   const handleInstructionsChange = useCallback((value: string) => {
     setLocalValue(value);
-
-    // Debounce sync to parent (500ms)
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
     }
     debounceTimerRef.current = setTimeout(() => {
       onMergeInstructionsChange(value);
-    }, 500);
+    }, 300);
   }, [onMergeInstructionsChange]);
 
-  // Set focus flag on focus
   const handleFocus = useCallback(() => {
     isFocusedRef.current = true;
-    (window as any).__mergeInstructionsEditorFocused = true;
+    if (typeof window !== "undefined") {
+      (window as any).__mergeInstructionsEditorFocused = true;
+    }
   }, []);
 
-  // Flush on blur - send to parent immediately
   const handleBlur = useCallback(() => {
     isFocusedRef.current = false;
-    (window as any).__mergeInstructionsEditorFocused = false;
-    // Cancel pending debounce and flush immediately
+    if (typeof window !== "undefined") {
+      (window as any).__mergeInstructionsEditorFocused = false;
+    }
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = null;

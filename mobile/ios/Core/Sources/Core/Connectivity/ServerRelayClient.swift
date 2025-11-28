@@ -2,6 +2,7 @@ import Foundation
 import Combine
 import OSLog
 import Security
+import UIKit
 
 /// WebSocket client for connecting to server relay endpoint for device-to-device communication
 public class ServerRelayClient: NSObject, ObservableObject {
@@ -96,18 +97,11 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
     // Connection management
     private var heartbeatTimer: Timer?
-    private var reconnectionTimer: Timer?
     private var registrationTimer: Timer?
-    private var isReconnecting = false
-    private var reconnectAttempts = 0
-    private let maxReconnectAttempts = 0  // 0 = unlimited reconnection attempts
 
     private var currentBinaryBind: (sessionId: String, producerDeviceId: String)?
     private var cancellables = Set<AnyCancellable>()
     private var isDisconnecting = false
-
-    // Single owner for internal reconnect subscription; prevents accumulating reconnect sinks.
-    private var reconnectionCancellable: AnyCancellable?
 
     // MARK: - Public Interface
 
@@ -344,10 +338,6 @@ public class ServerRelayClient: NSObject, ObservableObject {
         }
         stopHeartbeat()
         stopWatchdog()
-
-        if isUserInitiated {
-            stopReconnection()
-        }
 
         registrationTimer?.invalidate()
         registrationTimer = nil
@@ -889,6 +879,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
         case .data(let data):
             // Binary frames are raw terminal output - publish as-is without inspection
             let sessionId = self.currentBinaryBind?.sessionId
+            logger.debug("WebSocket binary frame received: \(data.count) bytes, currentBinaryBind=\(sessionId ?? "nil")")
             publishOnMain {
                 self.terminalBytesSubject.send(
                     TerminalBytesEvent(
@@ -1020,7 +1011,6 @@ public class ServerRelayClient: NSObject, ObservableObject {
             self.connectionState = .connected(handshake)
             self.isConnected = true
         }
-        reconnectAttempts = 0
         startHeartbeat()
         startWatchdog()
 
@@ -1082,7 +1072,6 @@ public class ServerRelayClient: NSObject, ObservableObject {
             self.connectionState = .connected(handshake)
             self.isConnected = true
         }
-        reconnectAttempts = 0
         startHeartbeat()
         startWatchdog()
 
@@ -1247,7 +1236,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
         let relayEvent = RelayEvent(
             eventType: eventType,
-            data: payload.mapValues { AnyCodable(any: $0) },
+            data: payload,
             timestamp: Date(),
             sourceDeviceId: sourceDeviceId
         )
@@ -1260,6 +1249,15 @@ public class ServerRelayClient: NSObject, ObservableObject {
             NotificationCenter.default.post(
                 name: Notification.Name("relay-event-job"),
                 object: self,
+                userInfo: ["event": relayEvent]
+            )
+        }
+
+        // Forward history-state-changed events from DeviceMessage path
+        if relayEvent.eventType == "history-state-changed" {
+            NotificationCenter.default.post(
+                name: NSNotification.Name("relay-event-history-state-changed"),
+                object: nil,
                 userInfo: ["event": relayEvent]
             )
         }
@@ -1291,13 +1289,8 @@ public class ServerRelayClient: NSObject, ObservableObject {
                 self.isConnected = false
                 self.lastError = .serverError(errorCode, errorMessage)
             }
-            isReconnecting = false
-            stopReconnection()
             registrationPromise?(.failure(.serverError(errorCode, errorMessage)))
             registrationPromise = nil
-            if !allowInternalReconnect {
-                return
-            }
             return
         }
 
@@ -1336,7 +1329,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
         logger.error("Connection error: \(error)")
 
         publishOnMain {
-            self.connectionState = .reconnecting
+            self.connectionState = .failed(ServerRelayError.networkError(error))
             self.isConnected = false
             self.lastError = .networkError(error)
         }
@@ -1353,10 +1346,6 @@ public class ServerRelayClient: NSObject, ObservableObject {
                 subject.send(completion: .failure(.networkError(error)))
                 self.removePendingCall(id: id)
             }
-        }
-
-        if shouldReconnect() {
-            scheduleReconnection()
         }
     }
 
@@ -1409,65 +1398,8 @@ public class ServerRelayClient: NSObject, ObservableObject {
         watchdogTimer = nil
     }
 
-    // MARK: - Reconnection
-
-    private func shouldReconnect() -> Bool {
-        return allowInternalReconnect && (maxReconnectAttempts <= 0 || reconnectAttempts < maxReconnectAttempts) && !isReconnecting
-    }
-
-    private func scheduleReconnection() {
-        guard allowInternalReconnect else { return }
-        guard !isReconnecting else { return }
-
-        isReconnecting = true
-        reconnectAttempts += 1
-
-        // Add exponential backoff for reconnect (1s, 2s, 4s, up to 30s)
-        let delay = min(pow(2.0, Double(self.reconnectAttempts - 1)), 30.0)
-        logger.info("Scheduling reconnection in \(delay) seconds (attempt \(self.reconnectAttempts))")
-
-        publishOnMain {
-            self.connectionState = .reconnecting
-        }
-
-        reconnectionTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
-            guard let self = self else { return }
-
-            self.isReconnecting = false
-
-            if let token = self.jwtToken {
-                self.reconnectionCancellable?.cancel()
-                self.reconnectionCancellable = self.connect(jwtToken: token)
-                    .sink(
-                        receiveCompletion: { [weak self] _ in
-                            self?.reconnectionCancellable = nil
-                        },
-                        receiveValue: { [weak self] _ in
-                            self?.reconnectionCancellable = nil
-                        }
-                    )
-            }
-        }
-    }
-
-    private func stopReconnection() {
-        reconnectionTimer?.invalidate()
-        reconnectionTimer = nil
-        isReconnecting = false
-        reconnectionCancellable?.cancel()
-        reconnectionCancellable = nil
-    }
-
     private func setupApplicationLifecycleObservers() {
-        #if canImport(UIKit)
-        NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)
-            .sink { [weak self] _ in
-                guard let self = self else { return }
-                self.logger.info("App entered background, disconnecting from relay")
-                self.disconnect(isUserInitiated: false)
-            }
-            .store(in: &cancellables)
-        #endif
+        // Background/foreground handling is managed by AppDelegate and MultiConnectionManager
     }
 }
 
@@ -1676,8 +1608,3 @@ public extension RpcResponse {
 
 // Type alias for response subjects
 private typealias RpcResponseSubject = PassthroughSubject<RpcResponse, ServerRelayError>
-
-// Import UIKit for application lifecycle
-#if canImport(UIKit)
-import UIKit
-#endif

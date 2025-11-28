@@ -148,6 +148,9 @@ impl DeviceConnectionManager {
                 }
             }
         }
+
+        // Clear binary routes for this device
+        self.clear_binary_routes_for_device(user_id, device_id);
     }
 
     /// Get a device connection

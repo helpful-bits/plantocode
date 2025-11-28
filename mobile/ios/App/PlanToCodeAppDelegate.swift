@@ -3,6 +3,9 @@ import UserNotifications
 import Core
 
 class PlanToCodeAppDelegate: NSObject, UIApplicationDelegate {
+  private var backgroundTaskId: UIBackgroundTaskIdentifier = .invalid
+  private var backgroundDisconnectTimer: Timer?
+
   func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
     // Configure TabBar appearance
     configureTabBarAppearance()
@@ -67,16 +70,49 @@ class PlanToCodeAppDelegate: NSObject, UIApplicationDelegate {
     }
   }
 
-  func applicationWillTerminate(_ application: UIApplication) {
-      Task { @MainActor in
-          VoiceDictationService.shared.cancelTranscription()
-          if VoiceDictationService.shared.isRecording {
-              VoiceDictationService.shared.stopRecording()
+  func applicationDidEnterBackground(_ application: UIApplication) {
+      backgroundTaskId = application.beginBackgroundTask(withName: "GracefulDisconnect") { [weak self] in
+          guard let self = self else { return }
+          self.backgroundDisconnectTimer?.invalidate()
+          self.backgroundDisconnectTimer = nil
+          Task { @MainActor in
+              await MultiConnectionManager.shared.hardReset(reason: .manual)
+          }
+          if self.backgroundTaskId != .invalid {
+              application.endBackgroundTask(self.backgroundTaskId)
+              self.backgroundTaskId = .invalid
           }
       }
 
+      backgroundDisconnectTimer?.invalidate()
+      backgroundDisconnectTimer = Timer.scheduledTimer(withTimeInterval: 25, repeats: false) { [weak self] _ in
+          guard let self = self else { return }
+          Task { @MainActor in
+              await MultiConnectionManager.shared.hardReset(reason: .manual)
+          }
+          if self.backgroundTaskId != .invalid {
+              application.endBackgroundTask(self.backgroundTaskId)
+              self.backgroundTaskId = .invalid
+          }
+      }
+  }
+
+  func applicationWillEnterForeground(_ application: UIApplication) {
+      backgroundDisconnectTimer?.invalidate()
+      backgroundDisconnectTimer = nil
+      if backgroundTaskId != .invalid {
+          application.endBackgroundTask(backgroundTaskId)
+          backgroundTaskId = .invalid
+      }
       Task { @MainActor in
-          MultiConnectionManager.shared.removeAllConnections()
+          MultiConnectionManager.shared.triggerAggressiveReconnect(reason: .appForeground)
+      }
+  }
+
+  func applicationWillTerminate(_ application: UIApplication) {
+      Task { @MainActor in
+          await MultiConnectionManager.shared.hardReset(reason: .manual)
+          VoiceDictationService.shared.cancelTranscription()
       }
   }
 
