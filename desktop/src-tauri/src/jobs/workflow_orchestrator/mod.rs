@@ -347,6 +347,7 @@ impl WorkflowOrchestrator {
     pub async fn recover_orphaned_jobs(&self) -> AppResult<()> {
         use crate::db_utils::BackgroundJobRepository;
         use std::sync::Arc;
+        use chrono::{Utc, Duration as ChronoDuration};
 
         let background_job_repo = match self.app_handle.try_state::<Arc<BackgroundJobRepository>>()
         {
@@ -366,6 +367,62 @@ impl WorkflowOrchestrator {
                 crate::models::JobStatus::Completed,
             ])
             .await?;
+
+        // Dead-man's switch: Check for zombie jobs running longer than 1 hour
+        let now = Utc::now();
+        let max_age = ChronoDuration::hours(1);
+        let now_millis = now.timestamp_millis();
+
+        for job in &active_jobs {
+            // Only check Running jobs for zombie detection
+            if job.status == crate::models::JobStatus::Running.to_string() {
+                if let Some(start_time) = job.start_time {
+                    let job_age_ms = now_millis - start_time;
+
+                    // Check if job has exceeded the maximum age (1 hour = 3,600,000 ms)
+                    if job_age_ms > max_age.num_milliseconds() {
+                        warn!(
+                            "Marking zombie job {} as failed due to excessive duration ({} ms)",
+                            job.id, job_age_ms
+                        );
+
+                        let error_message = format!(
+                            "Job timed out due to excessive duration ({:.1} hours)",
+                            job_age_ms as f64 / 3_600_000.0
+                        );
+
+                        // Mark the job as failed in the database
+                        if let Err(e) = background_job_repo
+                            .mark_job_failed(
+                                &job.id,
+                                &error_message,
+                                None,  // metadata
+                                None,  // tokens_sent
+                                None,  // tokens_received
+                                None,  // model_used
+                                None,  // actual_cost
+                            )
+                            .await
+                        {
+                            error!("Failed to mark zombie job {} as failed in database: {}", job.id, e);
+                            continue;
+                        }
+
+                        // Update job status in the workflow orchestrator if it exists
+                        if let Err(e) = self.update_job_status(
+                            &job.id,
+                            crate::models::JobStatus::Failed,
+                            Some(error_message),
+                            None,  // job_result_data
+                            None,  // actual_cost
+                        ).await {
+                            // Log but don't fail - the job might not be in a workflow
+                            debug!("Job {} not found in workflow state (expected for non-workflow jobs): {}", job.id, e);
+                        }
+                    }
+                }
+            }
+        }
 
         let mut recovered_count = 0;
 

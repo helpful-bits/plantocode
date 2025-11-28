@@ -18,11 +18,10 @@ import UIKit
 
 private let MOBILE_TERMINAL_RING_MAX_BYTES = 32 * 1_048_576
 
-private enum TerminalSessionLifecycle {
+private enum TerminalSessionLifecycle: Equatable {
     case initializing
     case active
-    case tearingDown
-    case dead
+    case inactive(reason: String)
 }
 
 private struct ByteRing {
@@ -83,6 +82,7 @@ public class TerminalDataService: ObservableObject {
     private var pendingUnbindTasks: [String: Task<Void, Never>] = [:]
     private var bootstrapInFlight = false
     private var lastBootstrapAt: Date?
+    private var lastKnownSizeBySession: [String: (cols: Int, rows: Int)] = [:]
 
     // MARK: - Initialization
     public init() {
@@ -314,8 +314,8 @@ public class TerminalDataService: ObservableObject {
 
         let session = try await self.ensureSession(jobId: jobId, autostartIfNeeded: true)
 
-        let finalText = appendCarriageReturn ? text + "\n" : text
-        let data = Data(finalText.utf8)
+        // Send the text content (without carriage return embedded)
+        let data = Data(text.utf8)
 
         var offset = 0
         while offset < data.count {
@@ -326,6 +326,11 @@ public class TerminalDataService: ObservableObject {
 
             offset = endIndex
             await Task.yield()
+        }
+
+        // Send newline as a separate write to ensure it triggers Enter
+        if appendCarriageReturn {
+            try await self.writeViaRelay(session: session, data: Data([0x0A]))  // LF byte (newline)
         }
     }
 
@@ -397,6 +402,18 @@ public class TerminalDataService: ObservableObject {
     /// Resize terminal window
     public func resize(jobId: String, cols: Int, rows: Int) async throws {
         let session = try await ensureSession(jobId: jobId, autostartIfNeeded: true)
+        let sessionId = session.id
+
+        // Track last known size for resize coalescing during reconnection
+        lastKnownSizeBySession[sessionId] = (cols: cols, rows: rows)
+
+        // Only coalesce subsequent resizes if session is not ready AND first resize already completed
+        // We must let the first resize through to trigger the initial binary bind
+        let isFirstResize = !firstResizeCompleted.contains(sessionId)
+        if !isFirstResize && readinessBySession[sessionId] != true {
+            self.logger.info("terminal.resize coalesced (session not ready): sessionId=\(sessionId) cols=\(cols) rows=\(rows)")
+            return
+        }
 
         if let binding = bindingStore.getByJobId(jobId) {
             self.logger.info("terminal.resize sessionId=\(session.id) appSessionId=\(binding.appSessionId) contextType=\(binding.contextType.rawValue) jobId=\(binding.jobId ?? "nil") cols=\(cols) rows=\(rows)")
@@ -412,8 +429,7 @@ public class TerminalDataService: ObservableObject {
                 }
             }
 
-            let sessionId = session.id
-            if !firstResizeCompleted.contains(sessionId) && cols > 10 && rows > 5 {
+            if isFirstResize && cols > 10 && rows > 5 {
                 firstResizeCompleted.insert(sessionId)
                 scheduleInitialBindIfReady(sessionId: sessionId, jobId: jobId)
             }
@@ -427,7 +443,7 @@ public class TerminalDataService: ObservableObject {
         let session = try await ensureSession(jobId: jobId, autostartIfNeeded: false)
 
         do {
-            lifecycleBySession[session.id] = .tearingDown
+            lifecycleBySession[session.id] = .inactive(reason: "Killing")
 
             for try await response in CommandRouter.terminalKill(sessionId: session.id) {
                 if let error = response.error {
@@ -442,7 +458,7 @@ public class TerminalDataService: ObservableObject {
             self.logger.info("Terminal session killed: \(session.id)")
 
             finalizeBinding(sessionId: session.id)
-            lifecycleBySession[session.id] = .dead
+            lifecycleBySession[session.id] = .inactive(reason: "Killed")
 
             // Remove binding from persistent store
             if let sid = jobToSessionId[jobId] {
@@ -566,13 +582,30 @@ public class TerminalDataService: ObservableObject {
             do {
                 try await relayClient.sendBinaryBind(producerDeviceId: deviceId.uuidString, sessionId: sessionId, includeSnapshot: includeSnapshot)
                 await MainActor.run {
-                    self.readinessBySession[sessionId] = true
+                    self.handleBindAck(sessionId: sessionId)
                 }
             } catch {
                 self.logger.error("Failed to send binary bind: \(error)")
             }
         }
         self.logger.info("Bound binary stream to session: \(sessionId)")
+    }
+
+    /// Handle bind acknowledgement and reissue last-known size
+    private func handleBindAck(sessionId: String) {
+        readinessBySession[sessionId] = true
+
+        // Reissue last-known terminal size if available
+        if let size = lastKnownSizeBySession[sessionId] {
+            self.logger.info("Reissuing terminal size after bind ack: sessionId=\(sessionId) cols=\(size.cols) rows=\(size.rows)")
+
+            // Find jobId for this session to call resize properly
+            if let jobId = jobToSessionId.first(where: { $0.value == sessionId })?.key {
+                Task {
+                    try? await self.resize(jobId: jobId, cols: size.cols, rows: size.rows)
+                }
+            }
+        }
     }
 
     private func ensureGlobalBinarySubscription(relayClient: ServerRelayClient, deviceId: UUID) {
@@ -587,6 +620,8 @@ public class TerminalDataService: ObservableObject {
     }
 
     private func handleTerminalBytes(_ event: ServerRelayClient.TerminalBytesEvent) {
+        self.logger.debug("handleTerminalBytes: received \(event.data.count) bytes, event.sessionId=\(event.sessionId ?? "nil")")
+
         guard let sessionId = event.sessionId ?? currentBoundSessionId else {
             self.logger.warning("handleTerminalBytes: dropping \(event.data.count) bytes - no sessionId (event.sessionId=\(event.sessionId ?? "nil"), currentBoundSessionId=\(self.currentBoundSessionId ?? "nil"))")
             return
@@ -859,6 +894,9 @@ public class TerminalDataService: ObservableObject {
                 if response.isFinal { break }
             }
 
+            let remoteSet = Set(sessionIds)
+
+            // Create missing sessions from remote
             for sessionId in sessionIds {
                 guard activeSessions[sessionId] == nil else { continue }
 
@@ -900,6 +938,15 @@ public class TerminalDataService: ObservableObject {
 
                 self.logger.info("Bootstrapped session: \(sessionId)")
             }
+
+            // Mark stale sessions as inactive if they're not on remote
+            for (id, _) in activeSessions {
+                if case .active = lifecycleBySession[id], !remoteSet.contains(id) {
+                    lifecycleBySession[id] = .inactive(reason: "Disconnected")
+                    activeSessions[id]?.isActive = false
+                    self.logger.info("Marked session \(id) as inactive - not found on remote")
+                }
+            }
         } catch {
             self.logger.warning("Bootstrap failed: \(error)")
         }
@@ -933,6 +980,7 @@ public class TerminalDataService: ObservableObject {
 
         lifecycleBySession.removeAll()
         readinessBySession.removeAll()
+        lastKnownSizeBySession.removeAll()
 
         lastError = nil
         isLoading = false
@@ -1093,7 +1141,8 @@ public class TerminalDataService: ObservableObject {
                 guard let sid = dict["sessionId"] as? String, sid == sessionId else { return nil }
                 let code = dict["code"] as? Int
                 let line = code != nil ? "[Session exited (code \(code!))]" : "[Session exited]"
-                self.lifecycleBySession[sid] = .dead
+                let exitReason = code != nil ? "Exited (code \(code!))" : "Exited"
+                self.lifecycleBySession[sid] = .inactive(reason: exitReason)
                 self.activeSessions[sid]?.isActive = false
                 self.finalizeBinding(sessionId: sid)
 

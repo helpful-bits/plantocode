@@ -274,13 +274,6 @@ impl Actor for DeviceLinkWs {
         // Session will be cleaned up by TTL expiration if not resumed
         // relay_store.invalidate_session() is NO LONGER called here
 
-        // Clear binary routes for this device
-        if let (Some(user_id), Some(device_id), Some(connection_manager)) =
-            (self.user_id, &self.device_id, &self.connection_manager)
-        {
-            connection_manager.clear_binary_routes_for_device(&user_id, device_id);
-        }
-
         // Set device offline
         if let (Some(device_id), Some(device_repo)) = (&self.device_id, &self.device_repository) {
             if let Ok(device_uuid) = Uuid::parse_str(device_id) {

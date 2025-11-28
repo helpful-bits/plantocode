@@ -4,6 +4,7 @@ import Combine
 import SwiftTerm
 import OSLog
 import QuartzCore
+import Network
 
 public struct RemoteTerminalView: View {
     let jobId: String
@@ -120,212 +121,247 @@ public struct RemoteTerminalView: View {
     }
 
     public var body: some View {
+        bodyWithModifiers
+    }
+
+    @ViewBuilder
+    private var bodyWithModifiers: some View {
+        let base = mainContent
+            .background(Color.background)
+            .navigationBarTitleDisplayMode(.inline)
+            .fullScreenCover(item: $composePresentation, content: composeSheet)
+            .onChange(of: composePresentation, perform: handleComposePresentationChange)
+            .toolbar { toolbarContent }
+            .onAppear(perform: handleOnAppear)
+            .onDisappear(perform: cleanupSession)
+            .onChange(of: terminalSession?.id, perform: handleSessionIdChange)
+            .onChange(of: isTerminalReady, perform: handleTerminalReadyChange)
+
+        base
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+                isKeyboardVisible = true
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                isKeyboardVisible = false
+            }
+            .onReceive(pathObserver.$currentPath.compactMap { $0 }, perform: handlePathChange)
+    }
+
+    private func composeSheet(presentation: ComposePresentation) -> some View {
+        TerminalComposeView(jobId: jobId, autoStartRecording: presentation.autoStartRecording)
+            .environmentObject(container)
+    }
+
+    private func handleTerminalReadyChange(_ ready: Bool) {
+        if ready { shouldShowKeyboard = true }
+    }
+
+    private func handlePathChange(_ path: NWPath) {
+        if path.status == .satisfied {
+            reattachToExistingSessionIfNeeded()
+        }
+    }
+
+    // MARK: - Extracted View Components
+
+    @ViewBuilder
+    private var mainContent: some View {
         VStack(spacing: 0) {
-            // Error/Loading overlay
             if let error = errorMessage {
-                VStack(spacing: 16) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 48))
-                        .foregroundColor(Color.destructive)
-                    Text("Terminal Error")
-                        .font(.headline)
-                        .foregroundColor(Color.textPrimary)
-                    Text(error)
-                        .font(.body)
-                        .foregroundColor(Color.muted)
-                        .multilineTextAlignment(.center)
-                        .padding(EdgeInsets(top: 0, leading: 32, bottom: 0, trailing: 32))
-                    Button("Retry") {
-                        errorMessage = nil
-                        Task {
-                            await MainActor.run {
-                                startTerminalSession()
-                            }
-                        }
-                    }
-                    .buttonStyle(PrimaryButtonStyle())
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.background)
+                errorView(error: error)
             } else if isLoading {
-                VStack(spacing: 16) {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: Color.success))
-                        .scaleEffect(1.5)
-                    Text("Starting terminal...")
-                        .font(.body)
-                        .foregroundColor(Color.muted)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.background)
+                loadingView
             } else {
-                // Compose + Copy buttons toolbar - only visible when Actions is expanded
-                if isActionsExpanded {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            Button("Compose") {
-                                openCompose()
-                            }
-                            .buttonStyle(PrimaryButtonStyle())
-
-                            // Show "Task" button for task description context
-                            if contextType == .taskDescription && !taskDescriptionContent.isEmpty {
-                                Button("Task") {
-                                    Task { await pasteTaskDescription() }
-                                }
-                                .buttonStyle(SecondaryButtonStyle())
-                            }
-
-                            // Show copy buttons for implementation plan context
-                            if contextType == .implementationPlan && !copyButtons.isEmpty && !planContentForJob.isEmpty {
-                                ForEach(copyButtons, id: \.id) { btn in
-                                    Button(btn.label) {
-                                        Task { await paste(using: btn, jobId: jobId) }
-                                    }
-                                    .buttonStyle(SecondaryButtonStyle())
-                                    .disabled(planContentForJob.isEmpty)
-                                }
-                            }
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                    }
-                    .background(Color.backgroundSecondary)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                }
-
-                // SwiftTerm terminal view - handles input, output, and keyboard accessories
-                SwiftTerminalView(controller: terminalController, shouldShowKeyboard: $shouldShowKeyboard)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.black)
+                terminalContentView
             }
         }
+    }
+
+    @ViewBuilder
+    private func errorView(error: String) -> some View {
+        VStack(spacing: 16) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 48))
+                .foregroundColor(Color.destructive)
+            Text("Terminal Error")
+                .font(.headline)
+                .foregroundColor(Color.textPrimary)
+            Text(error)
+                .font(.body)
+                .foregroundColor(Color.muted)
+                .multilineTextAlignment(.center)
+                .padding(EdgeInsets(top: 0, leading: 32, bottom: 0, trailing: 32))
+            Button("Retry") {
+                errorMessage = nil
+                Task {
+                    await MainActor.run { startTerminalSession() }
+                }
+            }
+            .buttonStyle(PrimaryButtonStyle())
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.background)
-        .navigationBarTitleDisplayMode(.inline)
-        .fullScreenCover(item: $composePresentation) { presentation in
-            TerminalComposeView(jobId: jobId, autoStartRecording: presentation.autoStartRecording)
-                .environmentObject(container)
+    }
+
+    @ViewBuilder
+    private var loadingView: some View {
+        VStack(spacing: 16) {
+            ProgressView()
+                .progressViewStyle(CircularProgressViewStyle(tint: Color.success))
+                .scaleEffect(1.5)
+            Text("Starting terminal...")
+                .font(.body)
+                .foregroundColor(Color.muted)
         }
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                HStack(spacing: 12) {
-                    // Microphone button - quick access to voice compose
-                    Button(action: {
-                        openComposeWithVoice()
-                    }) {
-                        Image(systemName: "mic.circle.fill")
-                            .font(.system(size: 20))
-                    }
-                    .buttonStyle(ToolbarButtonStyle())
-                    .accessibilityLabel("Voice Compose")
-                    .accessibilityHint("Opens compose view and starts voice recording")
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.background)
+    }
 
-                    if shouldShowKeyboard {
-                        Button(action: {
-                            shouldShowKeyboard = false
-                        }) {
-                            Image(systemName: "keyboard.chevron.compact.down")
-                                .font(.system(size: 16))
-                        }
-                        .buttonStyle(ToolbarButtonStyle())
-                        .accessibilityLabel("Hide Terminal Keyboard")
-                        .accessibilityHint("Dismisses the on-screen keyboard")
-                    } else {
-                        Button(action: {
-                            shouldShowKeyboard = true
-                        }) {
-                            Image(systemName: "keyboard")
-                                .font(.system(size: 16))
-                        }
-                        .buttonStyle(ToolbarButtonStyle())
-                        .accessibilityLabel("Show Terminal Keyboard")
-                        .accessibilityHint("Shows the on-screen keyboard")
-                    }
+    @ViewBuilder
+    private var terminalContentView: some View {
+        if isActionsExpanded {
+            actionsToolbar
+        }
+        SwiftTerminalView(controller: terminalController, shouldShowKeyboard: $shouldShowKeyboard)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.black)
+    }
 
-                    Button(action: {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            isActionsExpanded.toggle()
-                        }
-                    }) {
-                        HStack(spacing: 4) {
-                            Text("Actions")
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 12, weight: .medium))
-                                .rotationEffect(.degrees(isActionsExpanded ? 180 : 0))
-                        }
-                    }
-                    .buttonStyle(ToolbarButtonStyle())
-                    .accessibilityLabel(isActionsExpanded ? "Hide Actions" : "Show Actions")
-                    .accessibilityHint("Toggle terminal actions toolbar")
+    @ViewBuilder
+    private var actionsToolbar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                Button("Compose") { openCompose() }
+                    .buttonStyle(PrimaryButtonStyle())
 
-                    if isSessionActive {
-                        Button("Stop") {
-                            killSession()
-                        }
-                        .buttonStyle(CompactDestructiveButtonStyle())
-                        .accessibilityLabel("Stop Process")
-                        .accessibilityHint("Terminates the current process")
+                if contextType == .taskDescription && !taskDescriptionContent.isEmpty {
+                    Button("Task") {
+                        Task { await pasteTaskDescription() }
                     }
+                    .buttonStyle(SecondaryButtonStyle())
+                }
 
-                    Button {
-                        cleanupSession()
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
+                if contextType == .implementationPlan && !copyButtons.isEmpty && !planContentForJob.isEmpty {
+                    ForEach(copyButtons, id: \.id) { btn in
+                        Button(btn.label) {
+                            Task { await paste(using: btn, jobId: jobId) }
+                        }
+                        .buttonStyle(SecondaryButtonStyle())
+                        .disabled(planContentForJob.isEmpty)
                     }
-                    .buttonStyle(ToolbarButtonStyle())
-                    .accessibilityLabel("Close")
-                    .accessibilityHint("Closes the terminal view")
                 }
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
         }
-        .onAppear {
-            readinessCancellable = container.terminalService.$readinessBySession
-                .receive(on: DispatchQueue.main)
-                .sink { readinessMap in
-                    if let sid = self.sessionIdForReadiness {
-                        self.isTerminalReady = readinessMap[sid] ?? false
-                    }
-                }
+        .background(Color.backgroundSecondary)
+        .transition(.move(edge: .top).combined(with: .opacity))
+    }
 
-            Task {
-                let connectionManager = MultiConnectionManager.shared
-                if !connectionManager.isActiveDeviceConnected {
-                    await MainActor.run {
-                        connectionManager.triggerAggressiveReconnect(reason: .appForeground)
-                    }
-                }
-                await MainActor.run {
-                    startTerminalSession()
-                }
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .navigationBarTrailing) {
+            HStack(spacing: 12) {
+                micButton
+                keyboardToggleButton
+                actionsToggleButton
+                if isSessionActive { stopButton }
+                closeButton
             }
         }
-        .onDisappear {
+    }
+
+    private var micButton: some View {
+        Button(action: { openComposeWithVoice() }) {
+            Image(systemName: "mic.circle.fill")
+                .font(.system(size: 20))
+        }
+        .buttonStyle(ToolbarButtonStyle())
+        .accessibilityLabel("Voice Compose")
+        .accessibilityHint("Opens compose view and starts voice recording")
+    }
+
+    @ViewBuilder
+    private var keyboardToggleButton: some View {
+        if shouldShowKeyboard {
+            Button(action: { shouldShowKeyboard = false }) {
+                Image(systemName: "keyboard.chevron.compact.down")
+                    .font(.system(size: 16))
+            }
+            .buttonStyle(ToolbarButtonStyle())
+            .accessibilityLabel("Hide Terminal Keyboard")
+        } else {
+            Button(action: { shouldShowKeyboard = true }) {
+                Image(systemName: "keyboard")
+                    .font(.system(size: 16))
+            }
+            .buttonStyle(ToolbarButtonStyle())
+            .accessibilityLabel("Show Terminal Keyboard")
+        }
+    }
+
+    private var actionsToggleButton: some View {
+        Button(action: {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                isActionsExpanded.toggle()
+            }
+        }) {
+            HStack(spacing: 4) {
+                Text("Actions")
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 12, weight: .medium))
+                    .rotationEffect(.degrees(isActionsExpanded ? 180 : 0))
+            }
+        }
+        .buttonStyle(ToolbarButtonStyle())
+        .accessibilityLabel(isActionsExpanded ? "Hide Actions" : "Show Actions")
+    }
+
+    private var stopButton: some View {
+        Button("Stop") { killSession() }
+            .buttonStyle(CompactDestructiveButtonStyle())
+            .accessibilityLabel("Stop Process")
+    }
+
+    private var closeButton: some View {
+        Button {
             cleanupSession()
+            dismiss()
+        } label: {
+            Image(systemName: "xmark")
         }
-        .onChange(of: terminalSession?.id) { newSessionId in
-            sessionIdForReadiness = newSessionId
-            if let sid = newSessionId {
-                isTerminalReady = container.terminalService.isSessionReady(sid)
-            } else {
-                isTerminalReady = false
+        .buttonStyle(ToolbarButtonStyle())
+        .accessibilityLabel("Close")
+    }
+
+    // MARK: - Lifecycle Handlers
+
+    private func handleOnAppear() {
+        readinessCancellable = container.terminalService.$readinessBySession
+            .receive(on: DispatchQueue.main)
+            .sink { readinessMap in
+                if let sid = self.sessionIdForReadiness {
+                    self.isTerminalReady = readinessMap[sid] ?? false
+                }
             }
-        }
-        .onChange(of: isTerminalReady) { ready in
-            if ready {
-                shouldShowKeyboard = true
+
+        Task {
+            let connectionManager = MultiConnectionManager.shared
+            if !connectionManager.isActiveDeviceConnected {
+                await MainActor.run {
+                    connectionManager.triggerAggressiveReconnect(reason: .appForeground)
+                }
             }
+            await MainActor.run { startTerminalSession() }
         }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
-            isKeyboardVisible = true
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-            isKeyboardVisible = false
-        }
-        .onReceive(pathObserver.$currentPath.compactMap { $0 }) { path in
-            if path.status == .satisfied {
-                reattachToExistingSessionIfNeeded()
-            }
+    }
+
+    private func handleSessionIdChange(_ newSessionId: String?) {
+        sessionIdForReadiness = newSessionId
+        if let sid = newSessionId {
+            isTerminalReady = container.terminalService.isSessionReady(sid)
+        } else {
+            isTerminalReady = false
         }
     }
 
@@ -500,6 +536,14 @@ public struct RemoteTerminalView: View {
                     isLoading = false
                 }
             }
+        }
+    }
+
+    private func handleComposePresentationChange(_ newValue: ComposePresentation?) {
+        // Hide keyboard when compose sheet dismisses
+        if newValue == nil {
+            shouldShowKeyboard = false
+            terminalController.terminalView?.resignFirstResponder()
         }
     }
 
@@ -1041,7 +1085,7 @@ final class FirstResponderTerminalView: TerminalView {
 // MARK: - Compose Presentation Model
 
 /// Identifiable wrapper for compose sheet presentation to ensure correct state capture
-struct ComposePresentation: Identifiable {
+struct ComposePresentation: Identifiable, Equatable {
     let id = UUID()
     let autoStartRecording: Bool
 }

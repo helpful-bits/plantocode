@@ -341,6 +341,20 @@ pub fn run() {
                 });
             }
 
+            // Setup auth-token-refreshed event listener to restart DeviceLinkClient
+            {
+                let app_handle = app.handle().clone();
+                app.listen("auth-token-refreshed", move |_| {
+                    info!("Auth token refreshed, restarting DeviceLinkClient");
+                    let app_handle_clone = app_handle.clone();
+                    tauri::async_runtime::spawn(async move {
+                        if let Err(e) = crate::app_setup::services::initialize_device_link_connection(&app_handle_clone).await {
+                            error!("Failed to restart DeviceLinkClient after token refresh: {:?}", e);
+                        }
+                    });
+                });
+            }
+
             let auth0_store = app.state::<AppState>().auth0_state_store.clone();
             tauri::async_runtime::spawn(async move {
                 use tokio::time::{Duration, interval};
