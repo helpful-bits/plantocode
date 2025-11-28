@@ -31,40 +31,44 @@ const FloatingMergeInstructionsComponent: React.FC<FloatingMergeInstructionsProp
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Sync local value when prop changes from outside, but only if not focused
   useEffect(() => {
-    // Skip sync if this editor is focused (global flag covers both editors)
-    if (isFocusedRef.current || (window as any).__mergeInstructionsEditorFocused) {
-      return;
-    }
+    if (isFocusedRef.current) return;
     setLocalValue(mergeInstructions);
   }, [mergeInstructions]);
 
-  // Cleanup debounce timer on unmount
-  useEffect(() => {
-    return () => {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
-    };
-  }, []);
-
-  // Add enhancement event listeners
   useEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
 
-    const handleEnhancementEvent = () => {
-      // Immediately flush current text
+    const handleLocalFlush = () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
       onMergeInstructionsChange(localValue);
     };
 
-    textarea.addEventListener('flush-pending-changes', handleEnhancementEvent);
-    textarea.addEventListener('enhancement-applied', handleEnhancementEvent);
+    textarea.addEventListener('flush-pending-changes', handleLocalFlush as any);
+    textarea.addEventListener('enhancement-applied', handleLocalFlush as any);
+
+    const handleGlobalFlush = () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+      onMergeInstructionsChange(localValue);
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("flush-merge-instructions-editors", handleGlobalFlush);
+    }
 
     return () => {
-      textarea.removeEventListener('flush-pending-changes', handleEnhancementEvent);
-      textarea.removeEventListener('enhancement-applied', handleEnhancementEvent);
+      textarea.removeEventListener('flush-pending-changes', handleLocalFlush as any);
+      textarea.removeEventListener('enhancement-applied', handleLocalFlush as any);
+      if (typeof window !== "undefined") {
+        window.removeEventListener("flush-merge-instructions-editors", handleGlobalFlush);
+      }
     };
   }, [localValue, onMergeInstructionsChange]);
 
@@ -89,30 +93,28 @@ const FloatingMergeInstructionsComponent: React.FC<FloatingMergeInstructionsProp
     };
   }, [getWindowDimensions]);
 
-  // Handle input changes - update local state and debounce sync to parent
   const handleInstructionsChange = useCallback((value: string) => {
     setLocalValue(value);
-
-    // Debounce sync to parent (500ms)
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
     }
     debounceTimerRef.current = setTimeout(() => {
       onMergeInstructionsChange(value);
-    }, 500);
+    }, 300);
   }, [onMergeInstructionsChange]);
 
   const handleFocus = useCallback(() => {
-    // Set local and global flag to prevent backend updates while editing
     isFocusedRef.current = true;
-    (window as any).__mergeInstructionsEditorFocused = true;
+    if (typeof window !== "undefined") {
+      (window as any).__mergeInstructionsEditorFocused = true;
+    }
   }, []);
 
   const handleBlur = useCallback(() => {
-    // Clear local and global flag
     isFocusedRef.current = false;
-    (window as any).__mergeInstructionsEditorFocused = false;
-    // Cancel pending debounce and flush immediately
+    if (typeof window !== "undefined") {
+      (window as any).__mergeInstructionsEditorFocused = false;
+    }
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = null;
@@ -180,34 +182,25 @@ const FloatingMergeInstructionsComponent: React.FC<FloatingMergeInstructionsProp
     return undefined;
   }, [isDragging, isResizing, handleMouseMove, handleMouseUp]);
 
-  // Reset position and size when modal opens with smart positioning
   useEffect(() => {
     if (isOpen) {
-      // Position at fixed distance from right edge, but cap at reasonable max
       const windowDims = getWindowDimensions();
       const maxRightDistance = Math.min(windowDims.width - 450, 800);
       const smartPosition = constrainPosition(maxRightDistance, 20);
       setPosition(smartPosition);
-      // Reset height to default
       setHeight(128);
     } else {
-      // Clear focus flags when closing and flush pending changes
       isFocusedRef.current = false;
-      (window as any).__mergeInstructionsEditorFocused = false;
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-        debounceTimerRef.current = null;
+      if (typeof window !== "undefined") {
+        (window as any).__mergeInstructionsEditorFocused = false;
       }
     }
   }, [isOpen, getWindowDimensions, constrainPosition]);
 
-  // Cleanup focus flag and debounce timer on unmount
   useEffect(() => {
     return () => {
-      isFocusedRef.current = false;
-      (window as any).__mergeInstructionsEditorFocused = false;
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
+      if (isFocusedRef.current && typeof window !== "undefined") {
+        (window as any).__mergeInstructionsEditorFocused = false;
       }
     };
   }, []);

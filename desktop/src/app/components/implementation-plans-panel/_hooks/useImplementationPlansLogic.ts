@@ -49,13 +49,15 @@ export function useImplementationPlansLogic({
   const [selectedPlanIds, setSelectedPlanIds] = useState<string[]>([]);
   const [isMerging, setIsMerging] = useState(false);
 
-  const mergeInstructions = sessionState.currentSession?.mergeInstructions || "";
+  const mergeInstructions = sessionState.currentSession?.mergeInstructions ?? "";
 
-  const handleMergeInstructionsChange = useCallback((content: string) => {
-    if (!sessionId) return;
-    // Update session state - will be persisted via normal session update mechanism
-    updateCurrentSessionFields({ mergeInstructions: content });
-  }, [sessionId, updateCurrentSessionFields]);
+  const handleMergeInstructionsChange = useCallback(
+    (content: string) => {
+      if (!sessionId) return;
+      updateCurrentSessionFields({ mergeInstructions: content });
+    },
+    [sessionId, updateCurrentSessionFields],
+  );
 
   // Filter implementation plans for the current project and optionally session
   const implementationPlans = useMemo(() => {
@@ -135,14 +137,14 @@ export function useImplementationPlansLogic({
     setIsMerging(true);
 
     try {
-      // CRITICAL: Flush any pending session changes to backend BEFORE creating the merge job
-      // This ensures the job will see the latest merge instructions and session state
       await flushSaves();
+
+      const latestMergeInstructions = sessionState.currentSession?.mergeInstructions ?? "";
 
       const result = await createMergedImplementationPlanAction(
         sessionId,
         selectedPlanIds,
-        mergeInstructions || undefined
+        latestMergeInstructions || undefined
       );
 
       if (result.isSuccess) {
@@ -154,7 +156,6 @@ export function useImplementationPlansLogic({
 
         setSelectedPlanIds([]);
 
-        // Clear merge instructions
         updateCurrentSessionFields({ mergeInstructions: "" });
 
         await refreshJobs();
@@ -174,7 +175,15 @@ export function useImplementationPlansLogic({
     } finally {
       setIsMerging(false);
     }
-  }, [sessionId, selectedPlanIds, mergeInstructions, showNotification, refreshJobs, flushSaves]);
+  }, [
+    sessionId,
+    selectedPlanIds,
+    sessionState.currentSession?.mergeInstructions,
+    showNotification,
+    refreshJobs,
+    flushSaves,
+    updateCurrentSessionFields,
+  ]);
 
   // Delete implementation plan job
   const handleDeletePlan = useCallback(

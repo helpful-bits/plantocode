@@ -11,7 +11,7 @@ use crate::db_utils::terminal_repository::RestorableSession;
 use crate::error::{AppError, AppResult};
 use base64::Engine;
 use dashmap::DashMap;
-use portable_pty::{CommandBuilder, PtySize, native_pty_system};
+use portable_pty::{CommandBuilder, PtySize, native_pty_system, MasterPty, Child};
 use serde_json::json;
 use std::{
     collections::HashMap,
@@ -25,6 +25,32 @@ use tauri::{AppHandle, Emitter, Manager};
 const TERMINAL_IN_MEMORY_BUFFER_BYTES: usize = 32 * 1_048_576;
 const FLUSH_INTERVAL_SECS: u64 = 10;
 const FLUSH_SCAN_TICK_MILLIS: u64 = 1000;
+const MAX_TERMINAL_SNAPSHOT_BYTES: usize = 256 * 1024;
+
+enum TerminalState {
+    Initializing,
+    Running {
+        writer: Box<dyn Write + Send>,
+        pty: Box<dyn MasterPty + Send>,
+        child: Box<dyn Child + Send + Sync>,
+    },
+    Suspended {
+        child_exit_code: Option<i32>,
+    },
+    Exited {
+        code: i32,
+    },
+    Killed,
+    Error {
+        message: String,
+    },
+    Zombie,
+    CleaningUp,
+    Restored {
+        exited: bool,
+        exit_code: Option<i32>,
+    },
+}
 
 pub struct TerminalManager {
     app: AppHandle,
@@ -36,17 +62,29 @@ pub struct TerminalManager {
 struct SessionHandle {
     buffer: Mutex<Vec<u8>>,
     subscribers: Mutex<Vec<Channel<Vec<u8>>>>,
-    writer: Mutex<Option<Box<dyn std::io::Write + Send>>>,
-    resizer: Mutex<Option<Box<dyn portable_pty::MasterPty>>>,
-    child_stopper: Mutex<Option<Box<dyn portable_pty::Child + Send>>>,
+    state: Mutex<TerminalState>,
+    last_requested_size: Mutex<Option<(u16, u16)>>,
     started_at: i64,
     working_dir: Option<String>,
-    status: Mutex<&'static str>,
-    exit_code: Mutex<Option<i32>>,
     last_flushed_len: Mutex<usize>,
     last_flush_at: Mutex<i64>,
     next_flush_allowed_at: Mutex<i64>,
     flush_backoff_secs: Mutex<u64>,
+}
+
+impl SessionHandle {
+    fn set_state_if<F>(&self, predicate: F, new_state: TerminalState) -> bool
+    where
+        F: FnOnce(&TerminalState) -> bool,
+    {
+        let mut state_guard = self.state.lock().unwrap();
+        if predicate(&*state_guard) {
+            *state_guard = new_state;
+            true
+        } else {
+            false
+        }
+    }
 }
 
 impl TerminalManager {
@@ -71,10 +109,9 @@ impl TerminalManager {
         let now = now_secs();
 
         if let Some(existing_handle) = self.sessions.get(&session_id) {
-            let writer_exists = existing_handle.writer.lock().unwrap().is_some();
-            let resizer_exists = existing_handle.resizer.lock().unwrap().is_some();
+            let is_running = matches!(&*existing_handle.state.lock().unwrap(), TerminalState::Running { .. });
 
-            if writer_exists || resizer_exists {
+            if is_running {
                 log::info!("✅ Session {} already has active PTY, attaching new subscriber", session_id);
                 if let Some(output_channel) = output {
                     let snapshot = existing_handle.buffer.lock().unwrap().clone();
@@ -214,13 +251,14 @@ impl TerminalManager {
         let handle = Arc::new(SessionHandle {
             buffer: Mutex::new(Vec::new()),
             subscribers: Mutex::new(if let Some(ch) = output { vec![ch] } else { Vec::new() }),
-            writer: Mutex::new(Some(writer)),
-            resizer: Mutex::new(Some(pair.master)),
-            child_stopper: Mutex::new(Some(child)),
+            state: Mutex::new(TerminalState::Running {
+                writer,
+                pty: pair.master,
+                child,
+            }),
+            last_requested_size: Mutex::new(None),
             started_at: now,
             working_dir,
-            status: Mutex::new("running"),
-            exit_code: Mutex::new(None),
             last_flushed_len: Mutex::new(0),
             last_flush_at: Mutex::new(now),
             next_flush_allowed_at: Mutex::new(now),
@@ -235,7 +273,8 @@ impl TerminalManager {
             let handle_for_init = handle.clone();
             tokio::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                if let Some(writer) = handle_for_init.writer.lock().unwrap().as_mut() {
+                let mut state_guard = handle_for_init.state.lock().unwrap();
+                if let TerminalState::Running { writer, .. } = &mut *state_guard {
                     let command_with_newline = format!("{}\n", init_cmd);
                     let _ = writer.write_all(command_with_newline.as_bytes());
                     let _ = writer.flush();
@@ -303,8 +342,16 @@ impl TerminalManager {
 
                         // Send raw binary to mobile via device link client
                         if let Some(client) = app.try_state::<Arc<crate::services::device_link_client::DeviceLinkClient>>() {
-                            if client.is_connected() && client.is_session_bound(&sid) {
-                                let _ = client.send_terminal_output_binary(&sid, &chunk);
+                            let connected = client.is_connected();
+                            let bound = client.is_session_bound(&sid);
+                            if connected && bound {
+                                if let Err(e) = client.send_terminal_output_binary(&sid, &chunk) {
+                                    log::warn!("Failed to send terminal binary for session {}: {}", sid, e);
+                                } else {
+                                    log::debug!("PTY output {} bytes forwarded for session {}", chunk.len(), sid);
+                                }
+                            } else {
+                                log::debug!("Binary uplink skipped: session={} connected={} bound={}", sid, connected, bound);
                             }
                         }
                     }
@@ -315,26 +362,29 @@ impl TerminalManager {
                 }
             }
 
-            let exit_code = if let Some(mut child) = handle.child_stopper.lock().unwrap().take() {
-                match child.wait() {
-                    Ok(status) => status.exit_code() as i32,
-                    Err(_) => -1,
+            // Take the child from the state and wait for it
+            let exit_code = {
+                let mut state_guard = handle.state.lock().unwrap();
+                match std::mem::replace(&mut *state_guard, TerminalState::CleaningUp) {
+                    TerminalState::Running { mut child, .. } => {
+                        drop(state_guard); // Release lock before blocking wait
+                        match child.wait() {
+                            Ok(status) => status.exit_code() as i32,
+                            Err(_) => -1,
+                        }
+                    }
+                    TerminalState::Exited { code } => code,
+                    TerminalState::Killed => -1,
+                    _ => {
+                        // If not in expected state, mark as zombie
+                        *state_guard = TerminalState::Zombie;
+                        -1
+                    }
                 }
-            } else {
-                handle.exit_code.lock().unwrap().unwrap_or(0)
             };
 
-            // Set final status based on exit code
-            let final_status = match exit_code {
-                0 => "completed",
-                _ => "failed",
-            };
-            *handle.status.lock().unwrap() = final_status;
-            *handle.exit_code.lock().unwrap() = Some(exit_code);
-
-            // Clear writer and resizer
-            handle.writer.lock().unwrap().take();
-            handle.resizer.lock().unwrap().take();
+            // Transition to final Exited state
+            *handle.state.lock().unwrap() = TerminalState::Exited { code: exit_code };
 
             // Emit device-link-event for terminal exit
             app.emit(
@@ -385,9 +435,9 @@ impl TerminalManager {
 
     pub fn write_input(&self, session_id: &str, data: Vec<u8>) -> AppResult<()> {
         if let Some(h) = self.sessions.get(session_id) {
-            log::debug!("📝 Writing input: session={} bytes={} has_writer={}",
-                session_id, data.len(), h.writer.lock().unwrap().is_some());
-            if let Some(writer) = h.writer.lock().unwrap().as_mut() {
+            let mut state_guard = h.state.lock().unwrap();
+            if let TerminalState::Running { writer, .. } = &mut *state_guard {
+                log::debug!("📝 Writing input: session={} bytes={}", session_id, data.len());
                 writer.write_all(&data).map_err(|e| {
                     AppError::ExternalServiceError(format!("Failed to write to terminal: {}", e))
                 })?;
@@ -397,16 +447,30 @@ impl TerminalManager {
                         e
                     ))
                 })?;
+            } else {
+                log::warn!("❌ Write input failed: session {} not in Running state", session_id);
+                return Err(AppError::TerminalStateError(format!(
+                    "Terminal session {} is not running",
+                    session_id
+                )));
             }
         } else {
             log::warn!("❌ Write input failed: session {} not found", session_id);
+            return Err(AppError::TerminalSessionNotFound(format!(
+                "Terminal session {} not found",
+                session_id
+            )));
         }
         Ok(())
     }
 
     pub fn resize(&self, session_id: &str, cols: u16, rows: u16) -> AppResult<()> {
         if let Some(h) = self.sessions.get(session_id) {
-            if let Some(pty) = h.resizer.lock().unwrap().as_mut() {
+            // Store requested size for coalescing
+            *h.last_requested_size.lock().unwrap() = Some((cols, rows));
+
+            let mut state_guard = h.state.lock().unwrap();
+            if let TerminalState::Running { pty, .. } = &mut *state_guard {
                 pty.resize(PtySize {
                     rows,
                     cols,
@@ -423,55 +487,69 @@ impl TerminalManager {
 
     pub fn kill(&self, session_id: &str) -> AppResult<()> {
         if let Some(h) = self.sessions.get(session_id) {
-            // Drop writer/resizer so no further input is sent to the PTY after kill
-            h.writer.lock().unwrap().take();
-            h.resizer.lock().unwrap().take();
-
-            {
-                let mut child_guard = h.child_stopper.lock().unwrap();
-                if let Some(child) = child_guard.as_mut() {
+            let mut state_guard = h.state.lock().unwrap();
+            match &mut *state_guard {
+                TerminalState::Running { child, .. } => {
+                    // Kill the child process
                     child.kill().map_err(|e| {
                         AppError::ExternalServiceError(format!(
                             "Failed to kill terminal process: {}",
                             e
                         ))
                     })?;
+                    // Transition to Killed state (drop writer, pty, child)
+                    *state_guard = TerminalState::Killed;
+                }
+                TerminalState::Exited { .. } | TerminalState::Killed | TerminalState::Error { .. }
+                | TerminalState::CleaningUp | TerminalState::Zombie => {
+                    // Already terminated - idempotent
+                    log::debug!("Session {} already terminated, kill is no-op", session_id);
+                }
+                _ => {
+                    // Unexpected state - transition to Error
+                    *state_guard = TerminalState::Error {
+                        message: format!("Kill called in unexpected state"),
+                    };
                 }
             }
-
-            // Mark the session as stopped immediately; final exit bookkeeping
-            // (exit code, DB persistence) is handled by the async reader task.
-            *h.status.lock().unwrap() = "stopped";
         }
         Ok(())
     }
 
     pub fn status(&self, session_id: &str) -> serde_json::Value {
         if let Some(h) = self.sessions.get(session_id) {
-            // Determine accurate status based on session state
-            let (status, exit_code) = {
-                let writer_exists = h.writer.lock().unwrap().is_some();
-                let resizer_exists = h.resizer.lock().unwrap().is_some();
-                let exit_code = *h.exit_code.lock().unwrap();
-                let current_status = *h.status.lock().unwrap();
-
-                // Check if writer/resizer exist → "running"
-                let computed_status = if writer_exists || resizer_exists {
-                    "running"
-                } else if let Some(code) = exit_code {
-                    // exit_code exists: 0 → "completed", non-zero → "failed"
-                    if code == 0 {
-                        "completed"
+            // Derive status directly from TerminalState
+            let state_guard = h.state.lock().unwrap();
+            let (status, exit_code) = match &*state_guard {
+                TerminalState::Initializing => ("initializing", None),
+                TerminalState::Running { .. } => ("running", None),
+                TerminalState::Suspended { child_exit_code } => ("suspended", *child_exit_code),
+                TerminalState::Exited { code } => {
+                    if *code == 0 {
+                        ("completed", Some(*code))
                     } else {
-                        "failed"
+                        ("failed", Some(*code))
                     }
-                } else if current_status == "restored" {
-                    "restored"
-                } else {
-                    "stopped"
-                };
-
-                (computed_status, exit_code)
+                }
+                TerminalState::Killed => ("stopped", None),
+                TerminalState::Error { .. } => ("error", None),
+                TerminalState::Zombie => ("zombie", None),
+                TerminalState::CleaningUp => ("cleaning_up", None),
+                TerminalState::Restored { exited, exit_code } => {
+                    if *exited {
+                        if let Some(code) = exit_code {
+                            if *code == 0 {
+                                ("completed", Some(*code))
+                            } else {
+                                ("failed", Some(*code))
+                            }
+                        } else {
+                            ("restored", None)
+                        }
+                    } else {
+                        ("restored", None)
+                    }
+                }
             };
 
             serde_json::json!({
@@ -484,16 +562,18 @@ impl TerminalManager {
     }
 
     pub fn get_active_sessions(&self) -> Vec<String> {
-        // Returns list of ONLY truly running session IDs
-        // Filters out restored, completed, failed, and stopped sessions
+        // Returns list of ONLY truly running session IDs (Running state or non-exited Restored)
+        // Filters out exited/restored, completed, failed, and stopped sessions
         self.sessions
             .iter()
             .filter(|entry| {
                 let handle = entry.value();
-                let writer_exists = handle.writer.lock().unwrap().is_some();
-                let resizer_exists = handle.resizer.lock().unwrap().is_some();
-                // Only include if running (writer or resizer exists)
-                writer_exists || resizer_exists
+                let state_guard = handle.state.lock().unwrap();
+                match &*state_guard {
+                    TerminalState::Running { .. } => true,
+                    TerminalState::Restored { exited, .. } => !exited,
+                    _ => false,
+                }
             })
             .map(|entry| entry.key().clone())
             .collect()
@@ -512,12 +592,14 @@ impl TerminalManager {
     ) -> AppResult<bool> {
         // Try to reconnect to an existing session (used for page reloads)
         if let Some(h) = self.sessions.get(session_id) {
-            // Check if session is actually running (writer or resizer exists)
-            let writer_exists = h.writer.lock().unwrap().is_some();
-            let resizer_exists = h.resizer.lock().unwrap().is_some();
+            // Check if session is running based on state
+            let is_running = {
+                let state_guard = h.state.lock().unwrap();
+                matches!(&*state_guard, TerminalState::Running { .. })
+            };
 
             // Refuse non-running sessions
-            if !writer_exists && !resizer_exists {
+            if !is_running {
                 return Ok(false);
             }
 
@@ -552,120 +634,93 @@ impl TerminalManager {
                 // This ensures best-effort durability on app shutdown
                 self.flush_all_pending_for_session(&session_id, &handle).await;
 
-                // Prevent any additional IO on the PTY while we shut it down
-                handle.writer.lock().unwrap().take();
-                handle.resizer.lock().unwrap().take();
-
-                // Attempt a graceful kill before we wait; if the process already
-                // exited this will no-op.
-                {
-                    let mut child_guard = handle.child_stopper.lock().unwrap();
-                    if let Some(child) = child_guard.as_mut() {
-                        if let Err(e) = child.kill() {
-                            eprintln!("Failed to signal terminal kill during app shutdown: {}", e);
-                        }
-                    }
-                }
-
-                // Save final state with max data preservation
+                // Save final buffer state with max data preservation
                 let final_log = String::from_utf8_lossy(&handle.buffer.lock().unwrap()).to_string();
-                let exit_code = *handle.exit_code.lock().unwrap();
 
-                // Finish reaping the PTY child process (if it is still running)
-                let child_opt = handle.child_stopper.lock().unwrap().take();
-                if let Some(child) = child_opt {
-                    // Store child handle for potential force kill
-                    let mut child_handle = Some(child);
+                // Extract old state and release lock before any async operations
+                // This avoids holding MutexGuard across await points
+                let old_state = {
+                    let mut state_guard = handle.state.lock().unwrap();
+                    std::mem::replace(&mut *state_guard, TerminalState::CleaningUp)
+                };
 
-                    // Give process 2 seconds to terminate gracefully
-                    let wait_result = tokio::time::timeout(
-                        std::time::Duration::from_secs(2),
-                        tokio::task::spawn_blocking(move || {
-                            let mut c = child_handle.take().unwrap();
-                            let result = c.wait();
-                            (result, c)
-                        }),
-                    )
-                    .await;
+                match old_state {
+                    TerminalState::Running { mut child, .. } => {
+                        // Attempt graceful kill
+                        if let Err(e) = child.kill() {
+                            log::warn!("Failed to signal terminal kill during app shutdown: {}", e);
+                        }
 
-                    match wait_result {
-                        Ok(Ok((Ok(status), _))) => {
-                            // Process terminated gracefully
-                            let final_exit_code = status.exit_code() as i32;
-                            *handle.exit_code.lock().unwrap() = Some(final_exit_code);
-                            *handle.status.lock().unwrap() = "stopped";
-                            self.repo
-                                .save_session_result(
-                                    &session_id,
-                                    now,
-                                    Some(final_exit_code as i64),
-                                    Some(final_log.clone()),
-                                    handle.working_dir.clone(),
-                                )
-                                .await?;
-                        }
-                        Ok(Ok((Err(_), mut child))) => {
-                            // Wait failed but we have the child handle - force kill
-                            let _ = child.kill();
-                            // Save with current exit code or -1 for forced termination
-                            let recorded_exit = exit_code.unwrap_or(-1);
-                            *handle.exit_code.lock().unwrap() = Some(recorded_exit);
-                            *handle.status.lock().unwrap() = "stopped";
-                            self.repo
-                                .save_session_result(
-                                    &session_id,
-                                    now,
-                                    Some(recorded_exit as i64),
-                                    Some(final_log.clone()),
-                                    handle.working_dir.clone(),
-                                )
-                                .await?;
-                        }
-                        Err(_) => {
-                            // Timeout - child is still in blocking task, already being cleaned up
-                            let recorded_exit = exit_code.unwrap_or(-1);
-                            *handle.exit_code.lock().unwrap() = Some(recorded_exit);
-                            *handle.status.lock().unwrap() = "stopped";
-                            self.repo
-                                .save_session_result(
-                                    &session_id,
-                                    now,
-                                    Some(recorded_exit as i64),
-                                    Some(final_log.clone()),
-                                    handle.working_dir.clone(),
-                                )
-                                .await?;
-                        }
-                        Ok(Err(_)) => {
-                            // spawn_blocking failed
-                            let recorded_exit = exit_code.unwrap_or(-1);
-                            *handle.exit_code.lock().unwrap() = Some(recorded_exit);
-                            *handle.status.lock().unwrap() = "stopped";
-                            self.repo
-                                .save_session_result(
-                                    &session_id,
-                                    now,
-                                    Some(recorded_exit as i64),
-                                    Some(final_log.clone()),
-                                    handle.working_dir.clone(),
-                                )
-                                .await?;
-                        }
-                    }
-                } else {
-                    // Process already terminated, just save the data
-                    let recorded_exit = exit_code.unwrap_or(0);
-                    *handle.exit_code.lock().unwrap() = Some(recorded_exit);
-                    *handle.status.lock().unwrap() = "stopped";
-                    self.repo
-                        .save_session_result(
-                            &session_id,
-                            now,
-                            Some(recorded_exit as i64),
-                            Some(final_log),
-                            handle.working_dir.clone(),
+                        // Give process 2 seconds to terminate gracefully
+                        let wait_result = tokio::time::timeout(
+                            std::time::Duration::from_secs(2),
+                            tokio::task::spawn_blocking(move || child.wait()),
                         )
-                        .await?;
+                        .await;
+
+                        let final_exit_code = match wait_result {
+                            Ok(Ok(Ok(status))) => status.exit_code() as i32,
+                            Ok(Ok(Err(_))) | Ok(Err(_)) | Err(_) => -1,
+                        };
+
+                        *handle.state.lock().unwrap() = TerminalState::Killed;
+                        self.repo
+                            .save_session_result(
+                                &session_id,
+                                now,
+                                Some(final_exit_code as i64),
+                                Some(final_log),
+                                handle.working_dir.clone(),
+                            )
+                            .await?;
+                    }
+                    TerminalState::Exited { code } => {
+                        self.repo
+                            .save_session_result(
+                                &session_id,
+                                now,
+                                Some(code as i64),
+                                Some(final_log),
+                                handle.working_dir.clone(),
+                            )
+                            .await?;
+                    }
+                    TerminalState::Suspended { child_exit_code } => {
+                        *handle.state.lock().unwrap() = TerminalState::Killed;
+                        self.repo
+                            .save_session_result(
+                                &session_id,
+                                now,
+                                child_exit_code.map(|c| c as i64),
+                                Some(final_log),
+                                handle.working_dir.clone(),
+                            )
+                            .await?;
+                    }
+                    TerminalState::Zombie => {
+                        *handle.state.lock().unwrap() = TerminalState::Killed;
+                        self.repo
+                            .save_session_result(
+                                &session_id,
+                                now,
+                                None,
+                                Some(final_log),
+                                handle.working_dir.clone(),
+                            )
+                            .await?;
+                    }
+                    _ => {
+                        // Already CleaningUp, Killed, or in Error state - just save
+                        self.repo
+                            .save_session_result(
+                                &session_id,
+                                now,
+                                None,
+                                Some(final_log),
+                                handle.working_dir.clone(),
+                            )
+                            .await?;
+                    }
                 }
             }
 
@@ -684,20 +739,19 @@ impl TerminalManager {
             // Create a read-only terminal session that displays the preserved output
             let restored_output = session.output_log.unwrap_or_default().into_bytes();
             let restored_len = restored_output.len();
+            let exited = session.ended_at.is_some();
+            let exit_code = session.exit_code.map(|c| c as i32);
+
             let handle = Arc::new(SessionHandle {
                 buffer: Mutex::new(restored_output),
                 subscribers: Mutex::new(Vec::new()),
-                writer: Mutex::new(None),
-                resizer: Mutex::new(None),
-                child_stopper: Mutex::new(None),
+                state: Mutex::new(TerminalState::Restored {
+                    exited,
+                    exit_code,
+                }),
+                last_requested_size: Mutex::new(None),
                 started_at: session.created_at,
                 working_dir: session.working_directory,
-                status: Mutex::new(if session.ended_at.is_some() {
-                    "completed"
-                } else {
-                    "restored"
-                }),
-                exit_code: Mutex::new(session.exit_code.map(|c| c as i32)),
                 last_flushed_len: Mutex::new(restored_len),
                 last_flush_at: Mutex::new(now_secs()),
                 next_flush_allowed_at: Mutex::new(now_secs()),
@@ -736,19 +790,53 @@ impl TerminalManager {
 
     pub fn get_metadata(&self, session_id: &str) -> Option<serde_json::Value> {
         self.sessions.get(session_id).map(|h| {
+            let state_guard = h.state.lock().unwrap();
+            let (status, exit_code) = match &*state_guard {
+                TerminalState::Initializing => ("initializing", None),
+                TerminalState::Running { .. } => ("running", None),
+                TerminalState::Suspended { child_exit_code } => ("suspended", *child_exit_code),
+                TerminalState::Exited { code } => {
+                    if *code == 0 {
+                        ("completed", Some(*code))
+                    } else {
+                        ("failed", Some(*code))
+                    }
+                }
+                TerminalState::Killed => ("stopped", None),
+                TerminalState::Error { .. } => ("error", None),
+                TerminalState::Zombie => ("zombie", None),
+                TerminalState::CleaningUp => ("cleaning_up", None),
+                TerminalState::Restored { exited, exit_code } => {
+                    if *exited {
+                        if let Some(code) = exit_code {
+                            if *code == 0 {
+                                ("completed", Some(*code))
+                            } else {
+                                ("failed", Some(*code))
+                            }
+                        } else {
+                            ("restored", None)
+                        }
+                    } else {
+                        ("restored", None)
+                    }
+                }
+            };
+
             serde_json::json!({
                 "sessionId": session_id,
                 "workingDirectory": h.working_dir,
                 "startedAt": h.started_at,
-                "status": *h.status.lock().unwrap(),
-                "exitCode": *h.exit_code.lock().unwrap()
+                "status": status,
+                "exitCode": exit_code
             })
         })
     }
 
     pub fn graceful_exit(&self, session_id: &str) -> AppResult<()> {
         if let Some(h) = self.sessions.get(session_id) {
-            if let Some(writer) = h.writer.lock().unwrap().as_mut() {
+            let mut state_guard = h.state.lock().unwrap();
+            if let TerminalState::Running { writer, .. } = &mut *state_guard {
                 // Send exit sequence twice with 75ms delay for reliability
                 if cfg!(windows) {
                     // Windows: send "exit\r\n" twice

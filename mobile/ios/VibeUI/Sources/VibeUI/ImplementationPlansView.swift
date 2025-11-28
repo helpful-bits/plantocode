@@ -12,7 +12,7 @@ public struct ImplementationPlansView: View {
     @State private var selectedPlanJobIdForNav: String? = nil
     @State private var selectedPlans: Set<String> = []
     @State private var mergeInstructions = ""
-    @FocusState private var isMergeInstructionsFocused: Bool
+    @State private var showMergeInstructionsCompose = false
     @State private var isMerging = false
     @State private var currentPlanIndex = 0
     @State private var showingPromptPreview = false
@@ -301,22 +301,35 @@ public struct ImplementationPlansView: View {
                             Divider()
 
                             VStack(spacing: Theme.Spacing.md) {
-                                TextField("Merge instructions (optional)...", text: $mergeInstructions, axis: .vertical)
-                                    .lineLimit(2...3)
-                                    .textFieldStyle(PlainTextFieldStyle())
+                                // Tappable merge instructions preview
+                                Button(action: { showMergeInstructionsCompose = true }) {
+                                    HStack(spacing: Theme.Spacing.sm) {
+                                        Image(systemName: "note.text")
+                                            .font(.system(size: 14))
+                                            .foregroundColor(Color.primary)
+
+                                        if mergeInstructions.isEmpty {
+                                            Text("Add merge instructions (optional)...")
+                                                .small()
+                                                .foregroundColor(Color.mutedForeground)
+                                        } else {
+                                            Text(mergeInstructions)
+                                                .small()
+                                                .foregroundColor(Color.foreground)
+                                                .lineLimit(2)
+                                        }
+
+                                        Spacer()
+
+                                        Image(systemName: "chevron.right")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(Color.mutedForeground)
+                                    }
                                     .padding(Theme.Spacing.md)
                                     .background(Color.input)
                                     .cornerRadius(Theme.Radii.base)
-                                    .submitLabel(.done)
-                                    .focused($isMergeInstructionsFocused)
-                                    .toolbar {
-                                        ToolbarItemGroup(placement: .keyboard) {
-                                            Spacer()
-                                            Button("Done") {
-                                                isMergeInstructionsFocused = false
-                                            }
-                                        }
-                                    }
+                                }
+                                .buttonStyle(PlainButtonStyle())
 
                                 Button(action: mergePlans) {
                                     HStack {
@@ -416,6 +429,12 @@ public struct ImplementationPlansView: View {
                     RemoteTerminalView(jobId: jobId)
                 }
             }
+        }
+        .sheet(isPresented: $showMergeInstructionsCompose) {
+            MergeInstructionsComposeView(
+                mergeInstructions: $mergeInstructions,
+                selectedPlanCount: selectedPlans.count
+            )
         }
         .refreshable {
             // JobsDataService handles automatic refresh via reactive updates

@@ -19,6 +19,7 @@ public struct ServerModelSettings: Codable {
 public final class SettingsDataService: ObservableObject {
     @Published public private(set) var providers: [ProviderWithModels] = []
     @Published public var projectTaskSettings: ProjectTaskSettings = [:]
+    @Published public private(set) var projectTaskSettingsLoadedFor: String?
     @Published public private(set) var currentSystemPrompt: String?
     @Published public private(set) var isSystemPromptCustom: Bool = false
     @Published public private(set) var preferredTerminal: String?
@@ -82,6 +83,7 @@ public final class SettingsDataService: ObservableObject {
                     let data = try JSONSerialization.data(withJSONObject: sanitized)
                     self.projectTaskSettings = try decoder.decode(ProjectTaskSettings.self, from: data)
                 }
+                self.projectTaskSettingsLoadedFor = projectDirectory
             }
         }
     }

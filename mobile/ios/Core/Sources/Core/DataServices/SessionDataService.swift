@@ -40,7 +40,6 @@ public final class SessionDataService: ObservableObject {
 
     /// Setup listener for history-state-changed events from relay
     private func setupHistoryStateListener() {
-        // Subscribe to relay events
         NotificationCenter.default.addObserver(
             forName: NSNotification.Name("relay-event-history-state-changed"),
             object: nil,
@@ -54,52 +53,110 @@ public final class SessionDataService: ObservableObject {
                 return
             }
 
-            // Apply history state change without recording
             Task { @MainActor in
-                do {
-                    let stateData = try JSONSerialization.data(withJSONObject: stateDict)
-                    let historyState = try JSONDecoder().decode(HistoryState.self, from: stateData)
+                let key = "\(sessionId)::\(kind)"
 
-                    let key = "\(sessionId)::\(kind)"
-                    if let lastVer = self.lastHistoryVersionBySession[key], historyState.version < lastVer {
-                        return
-                    }
-                    if let lastChecksum = self.lastHistoryChecksumBySession[key], historyState.checksum == lastChecksum {
+                if kind == "files" {
+                    // For files, parse directly from stateDict since desktop uses
+                    // included_files/force_excluded_files as separate TEXT fields
+                    guard let entriesAny = stateDict["entries"] as? [Any], !entriesAny.isEmpty else {
                         return
                     }
 
-                    if kind == "files" {
-                        guard let currentIndex = Int(exactly: historyState.currentIndex),
-                              currentIndex >= 0,
-                              currentIndex < historyState.entries.count else {
+                    let version: Int64
+                    if let v = stateDict["version"] as? Int64 {
+                        version = v
+                    } else if let v = stateDict["version"] as? Int {
+                        version = Int64(v)
+                    } else {
+                        version = 0
+                    }
+
+                    let checksum = stateDict["checksum"] as? String
+
+                    // Dedup based on version/checksum
+                    if let lastVer = self.lastHistoryVersionBySession[key], version < lastVer {
+                        return
+                    }
+                    if let lastChecksum = self.lastHistoryChecksumBySession[key], checksum == lastChecksum {
+                        return
+                    }
+
+                    // Get current index
+                    let rawIndex: Int
+                    if let idx = stateDict["currentIndex"] as? Int {
+                        rawIndex = idx
+                    } else if let idx64 = stateDict["currentIndex"] as? Int64 {
+                        rawIndex = Int(idx64)
+                    } else {
+                        rawIndex = 0
+                    }
+                    let clampedIndex = max(0, min(rawIndex, entriesAny.count - 1))
+
+                    guard let entryDict = entriesAny[clampedIndex] as? [String: Any] else {
+                        return
+                    }
+
+                    // Parse included_files and force_excluded_files from entry
+                    // These are stored as JSON-serialized arrays (e.g. "[\"file1.txt\", \"file2.txt\"]")
+                    let includedText = entryDict["included_files"] as? String ?? "[]"
+                    let excludedText = entryDict["force_excluded_files"] as? String ?? "[]"
+
+                    let includedFiles: [String]
+                    let forceExcludedFiles: [String]
+
+                    if let data = includedText.data(using: .utf8),
+                       let arr = try? JSONDecoder().decode([String].self, from: data) {
+                        includedFiles = arr
+                    } else {
+                        includedFiles = []
+                    }
+
+                    if let data = excludedText.data(using: .utf8),
+                       let arr = try? JSONDecoder().decode([String].self, from: data) {
+                        forceExcludedFiles = arr
+                    } else {
+                        forceExcludedFiles = []
+                    }
+
+                    self.updateSessionFilesInMemory(
+                        sessionId: sessionId,
+                        includedFiles: includedFiles,
+                        forceExcludedFiles: forceExcludedFiles
+                    )
+
+                    self.lastHistoryVersionBySession[key] = version
+                    if let cs = checksum {
+                        self.lastHistoryChecksumBySession[key] = cs
+                    }
+                } else {
+                    // For other kinds (e.g., "task"), use generic HistoryState decoding
+                    do {
+                        let stateData = try JSONSerialization.data(withJSONObject: stateDict)
+                        let historyState = try JSONDecoder().decode(HistoryState.self, from: stateData)
+
+                        if let lastVer = self.lastHistoryVersionBySession[key], historyState.version < lastVer {
+                            return
+                        }
+                        if let lastChecksum = self.lastHistoryChecksumBySession[key], historyState.checksum == lastChecksum {
                             return
                         }
 
-                        let currentEntry = historyState.entries[currentIndex]
-                        if let entryData = currentEntry.value.data(using: .utf8),
-                           let filesState = try? JSONDecoder().decode(FilesHistoryState.self, from: entryData) {
-                            self.updateSessionFilesInMemory(
-                                sessionId: sessionId,
-                                includedFiles: filesState.includedFiles,
-                                forceExcludedFiles: filesState.forceExcludedFiles
-                            )
-                        }
+                        self.lastHistoryVersionBySession[key] = historyState.version
+                        self.lastHistoryChecksumBySession[key] = historyState.checksum
+
+                        NotificationCenter.default.post(
+                            name: NSNotification.Name("apply-history-state"),
+                            object: nil,
+                            userInfo: [
+                                "sessionId": sessionId,
+                                "kind": kind,
+                                "state": historyState
+                            ]
+                        )
+                    } catch {
+                        print("Failed to decode history state: \(error)")
                     }
-
-                    self.lastHistoryVersionBySession[key] = historyState.version
-                    self.lastHistoryChecksumBySession[key] = historyState.checksum
-
-                    NotificationCenter.default.post(
-                        name: NSNotification.Name("apply-history-state"),
-                        object: nil,
-                        userInfo: [
-                            "sessionId": sessionId,
-                            "kind": kind,
-                            "state": historyState
-                        ]
-                    )
-                } catch {
-                    print("Failed to decode history state: \(error)")
                 }
             }
         }

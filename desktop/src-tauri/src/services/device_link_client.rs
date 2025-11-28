@@ -120,7 +120,11 @@ pub enum ServerMessage {
         expires_at: Option<String>,
     },
     #[serde(rename = "error")]
-    Error { message: String },
+    Error {
+        message: String,
+        #[serde(default)]
+        code: Option<String>,
+    },
     #[serde(rename = "relay")]
     Relay {
         #[serde(rename = "clientId")]
@@ -218,13 +222,21 @@ fn delete_session(app_handle: &tauri::AppHandle) {
 
 // ==================================================
 
+/// Global bound session ID - shared across all DeviceLinkClient instances
+/// This is necessary because restart_device_link_client creates a new client instance
+/// but terminal_manager may still reference the old one from app state
+static BOUND_SESSION_ID: std::sync::OnceLock<Mutex<Option<String>>> = std::sync::OnceLock::new();
+
+fn get_bound_session_id() -> &'static Mutex<Option<String>> {
+    BOUND_SESSION_ID.get_or_init(|| Mutex::new(None))
+}
+
 pub struct DeviceLinkClient {
     app_handle: AppHandle,
     server_url: String,
     sender: Mutex<Option<mpsc::UnboundedSender<DeviceLinkMessage>>>,
     binary_sender: Mutex<Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>>,
     event_listener_id: Mutex<Option<tauri::EventId>>,
-    bound_session_id: Mutex<Option<String>>,
     pending_binary_by_session: Mutex<std::collections::HashMap<String, Vec<u8>>>,
 }
 
@@ -236,7 +248,6 @@ impl DeviceLinkClient {
             sender: Mutex::new(None),
             binary_sender: Mutex::new(None),
             event_listener_id: Mutex::new(None),
-            bound_session_id: Mutex::new(None),
             pending_binary_by_session: Mutex::new(std::collections::HashMap::new()),
         }
     }
@@ -445,10 +456,12 @@ impl DeviceLinkClient {
                         }
                         // Binary messages (terminal output)
                         Some(bytes) = bin_rx.recv() => {
+                            let len = bytes.len();
                             if let Err(e) = ws_sender.send(Message::Binary(bytes.into())).await {
                                 error!("Failed to send WebSocket binary message: {}", e);
                                 break;
                             }
+                            debug!("WebSocket: sent {} bytes as binary frame", len);
                         }
                         else => {
                             // Both channels closed
@@ -469,6 +482,15 @@ impl DeviceLinkClient {
             while let Some(msg) = ws_receiver.next().await {
                 match msg {
                     Ok(Message::Text(text)) => {
+                        // Log message type for debugging (rate limited)
+                        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&text) {
+                            if let Some(msg_type) = parsed.get("type").and_then(|v| v.as_str()) {
+                                if msg_type.contains("terminal") || msg_type.contains("binary") {
+                                    debug!("WebSocket received message type: {}", msg_type);
+                                }
+                            }
+                        }
+
                         if let Ok(server_msg) = serde_json::from_str::<ServerMessage>(&text) {
                             if let Err(e) = Self::handle_server_message(
                                 &app_handle,
@@ -484,15 +506,19 @@ impl DeviceLinkClient {
 
                         if let Ok(env) = serde_json::from_str::<RelayEnvelope>(&text) {
                             if env.kind == "terminal.binary.bind" {
+                                info!("Received terminal.binary.bind message: {:?}", env.payload);
                                 let session_id_opt = env.payload.get("sessionId").and_then(|v| v.as_str());
                                 let include_snapshot = env.payload.get("includeSnapshot").and_then(|v| v.as_bool()).unwrap_or(true);
 
                                 if let Some(session_id_str) = session_id_opt {
                                     let session_id = session_id_str.to_string();
 
-                                    if let Ok(mut bound) = this.bound_session_id.lock() {
+                                    if let Ok(mut bound) = get_bound_session_id().lock() {
+                                        info!("Setting bound_session_id from {:?} to {}", *bound, session_id);
                                         *bound = Some(session_id.clone());
                                         info!("Bound terminal output to session: {}", session_id);
+                                    } else {
+                                        error!("Failed to lock bound_session_id mutex");
                                     }
 
                                     if include_snapshot {
@@ -528,7 +554,7 @@ impl DeviceLinkClient {
                                 let session_id = env.payload.get("sessionId").and_then(|v| v.as_str());
                                 info!("Bound terminal: unbind requested for sessionId={:?}", session_id);
 
-                                if let Ok(mut bound) = this.bound_session_id.lock() {
+                                if let Ok(mut bound) = get_bound_session_id().lock() {
                                     *bound = None;
                                     info!("Bound terminal: cleared bound session");
                                 }
@@ -779,11 +805,15 @@ impl DeviceLinkClient {
                 }
                 Ok(())
             }
-            ServerMessage::Error { message } => {
+            ServerMessage::Error { message, code } => {
                 error!("Server error: {}", message);
 
                 // Check if this is an invalid_resume error and delete persisted session
-                if message.contains("invalid_resume") || message.contains("Invalid resume token") {
+                let is_invalid_resume = code.as_deref() == Some("invalid_resume")
+                    || message.contains("invalid_resume")
+                    || message.contains("Invalid resume token");
+
+                if is_invalid_resume {
                     warn!("Session resume failed, deleting persisted session");
                     delete_session(app_handle);
                 }
@@ -952,11 +982,17 @@ impl DeviceLinkClient {
 
     /// Check if a session is bound for binary streaming
     pub fn is_session_bound(&self, session_id: &str) -> bool {
-        self.bound_session_id
-            .lock()
-            .unwrap()
-            .as_deref()
-            == Some(session_id)
+        let bound = get_bound_session_id().lock().unwrap();
+        let result = bound.as_deref() == Some(session_id);
+        if !result && bound.is_some() {
+            // Log mismatch for debugging
+            debug!(
+                "is_session_bound mismatch: bound={:?} requested={}",
+                bound.as_deref(),
+                session_id
+            );
+        }
+        result
     }
 
     /// Send raw terminal output bytes without any header or encoding
@@ -999,10 +1035,11 @@ impl DeviceLinkClient {
                         warn!("Binary uplink: channel closed for session {}", session_id);
                         AppError::NetworkError("Binary uplink channel closed".into())
                     })?;
-                log::trace!("Binary uplink: enqueued {} bytes for session {}", data.len(), session_id);
+                debug!("Binary uplink: enqueued {} bytes for session {}", data.len(), session_id);
                 Ok(())
             }
             None => {
+                warn!("Binary uplink: no sender available for session {}", session_id);
                 Ok(())
             }
         }
@@ -1078,7 +1115,7 @@ impl DeviceLinkClient {
             }
         }
 
-        if let Ok(mut bound) = self.bound_session_id.lock() {
+        if let Ok(mut bound) = get_bound_session_id().lock() {
             *bound = None;
         }
 
@@ -1106,6 +1143,17 @@ pub async fn start_device_link_client(
 
     // This will run indefinitely, reconnecting as needed with exponential backoff
     loop {
+        // Pre-check: ensure we still have an auth token before attempting connection
+        let token_manager = app_handle.state::<Arc<TokenManager>>();
+        if token_manager.get().await.is_none() {
+            info!("DeviceLinkClient: no auth token available, stopping reconnection loop");
+            let _ = app_handle.emit("device-link-status", serde_json::json!({
+                "status": "disconnected",
+                "message": "No authentication token available"
+            }));
+            break;
+        }
+
         match client.clone().start().await {
             Ok(_) => {
                 info!("Device link client completed normally");

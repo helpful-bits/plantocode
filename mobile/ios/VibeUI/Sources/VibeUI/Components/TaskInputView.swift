@@ -49,6 +49,7 @@ public struct TaskInputView: View {
                 selectedRange: $selectedRange,
                 isEditing: $isEditing,
                 forceSelectionApply: $forceSelectionApply,
+                undoRedoManager: undoRedoManager,
                 placeholder: placeholder,
                 sessionId: sessionId,
                 projectDirectory: projectDirectory,

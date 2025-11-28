@@ -472,6 +472,10 @@ public final class MultiConnectionManager: ObservableObject {
                                         self.connectionStates[deviceId] = .connected(handshake)
                                         self.updateConnectionHealth(for: deviceId, state: .connected(handshake))
                                         self.persistConnectedDevice(deviceId)
+                                        // Clear reconnection state and persist server URL on successful connection
+                                        self.reconnectStates.removeValue(forKey: deviceId)
+                                        self.lastConnectedServerURL = Config.serverURL
+                                        UserDefaults.standard.set(self.lastConnectedServerURL, forKey: self.serverContextKey)
                                         // Clear reconnection flag if this is the active device
                                         if deviceId == self.activeDeviceId {
                                             self.isActivelyReconnecting = false

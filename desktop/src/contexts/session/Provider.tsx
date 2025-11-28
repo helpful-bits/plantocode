@@ -439,8 +439,31 @@ export function SessionProvider({ children }: SessionProviderProps) {
               mergeInstructions: preservedMergeInstructions,
             });
           } else {
-            // Trust authoritative backend state when not editing merge instructions
-            sessionStateHook.setCurrentSession(session);
+            const localMerge = sessionStateHook.currentSession?.mergeInstructions;
+            const remoteMerge = session.mergeInstructions;
+
+            let nextSession = session;
+
+            if (localMerge !== undefined && remoteMerge === undefined) {
+              nextSession = {
+                ...session,
+                mergeInstructions: localMerge,
+              };
+            }
+
+            if (
+              typeof remoteMerge === "string" &&
+              remoteMerge.trim() === "" &&
+              typeof localMerge === "string" &&
+              localMerge.trim() !== ""
+            ) {
+              nextSession = {
+                ...session,
+                mergeInstructions: localMerge,
+              };
+            }
+
+            sessionStateHook.setCurrentSession(nextSession);
           }
           sessionStateHook.setSessionModified(false);
         }

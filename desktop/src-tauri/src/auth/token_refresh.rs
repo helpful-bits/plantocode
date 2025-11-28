@@ -4,7 +4,7 @@ use crate::models::AuthDataResponse;
 use crate::AppState;
 use log::{debug, error, info, warn};
 use std::sync::Arc;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
 use once_cell::sync::Lazy;
@@ -82,6 +82,11 @@ pub async fn refresh_app_jwt_via_server(app_handle: &AppHandle) -> AppResult<()>
         token_manager.set(Some(auth_response.token)).await?;
 
         info!("Token refreshed successfully");
+
+        // Emit auth-token-refreshed event to trigger DeviceLinkClient restart
+        if let Err(e) = app_handle.emit("auth-token-refreshed", ()) {
+            warn!("Failed to emit auth-token-refreshed event: {}", e);
+        }
 
         return Ok(());
     }

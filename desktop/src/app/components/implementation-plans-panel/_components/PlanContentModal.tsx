@@ -171,7 +171,7 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
 
   // Derived state for markdown - parse metadata and combine with local override
   const parsedMeta = useMemo(
-    () => getParsedMetadata(displayPlan.metadata),
+    () => getParsedMetadata(displayPlan.metadata) as Record<string, any>,
     [displayPlan.metadata]
   );
 
@@ -588,7 +588,7 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
           <FloatingMergeInstructions
             mergeInstructions={mergeInstructions}
             onMergeInstructionsChange={onMergeInstructionsChange}
-            isOpen={true}
+            isOpen={open && selectedCount > 0}
           />
         )}
 

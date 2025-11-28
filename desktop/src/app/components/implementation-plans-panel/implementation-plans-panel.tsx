@@ -123,6 +123,11 @@ export function ImplementationPlansPanel({
     handleMergePlans,
   } = useImplementationPlansLogic({ sessionId });
 
+  const flushMergeInstructionsEditors = useCallback(() => {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(new CustomEvent("flush-merge-instructions-editors"));
+  }, []);
+
   // State for plan content modal - now only stores the jobId
   const [openedPlanJobId, setOpenedPlanJobId] = useState<string | null>(null);
 
@@ -846,7 +851,10 @@ export function ImplementationPlansPanel({
           mergeInstructions={mergeInstructions}
           isMerging={isMerging}
           onMergeInstructionsChange={handleMergeInstructionsChange}
-          onMerge={handleMergePlans}
+          onMerge={() => {
+            flushMergeInstructionsEditors();
+            handleMergePlans();
+          }}
           onClearSelection={handleClearSelection}
         />
       )}
@@ -893,6 +901,7 @@ export function ImplementationPlansPanel({
           open={openedPlanJobId !== null}
           onOpenChange={(open: boolean) => {
             if (!open) {
+              flushMergeInstructionsEditors();
               handleClosePlanContentModal();
               setSelectedStepNumber(null);
             }

@@ -20,8 +20,11 @@ final class ImplementationPlanCreatorViewModel: ObservableObject {
 
     private var container: AppContainer?
     private var currentTaskDescription: String?
-    private var settingsService = SettingsDataService()
     private var multiConnectionManager = MultiConnectionManager.shared
+
+    private var settingsService: SettingsDataService? {
+        container?.settingsService
+    }
 
     private var loadedForSessionId: String? = nil
     private var loadedForDeviceId: UUID? = nil
@@ -101,7 +104,8 @@ final class ImplementationPlanCreatorViewModel: ObservableObject {
     func loadModelSettings() {
         Task {
             guard let currentSessionId = container?.sessionService.currentSession?.id,
-                  let deviceId = multiConnectionManager.activeDeviceId else {
+                  let deviceId = multiConnectionManager.activeDeviceId,
+                  let settingsService = settingsService else {
                 return
             }
 
@@ -110,10 +114,31 @@ final class ImplementationPlanCreatorViewModel: ObservableObject {
                            modelsLoadedAt.map { Date().timeIntervalSince($0) < modelsCacheDuration } ?? false
 
             if shouldSkip {
+                // Even if skipping model load, ensure we have token estimate
+                if estimatedTokens == nil && canEstimateTokens() {
+                    requestTokenEstimation()
+                }
                 return
             }
 
-            isLoadingModels = true
+            guard let projectDirectory = container?.sessionService.currentSession?.projectDirectory else { return }
+
+            // Check if shared service already has preloaded data for this project
+            let hasPreloadedProviders = !settingsService.providers.isEmpty
+            let hasPreloadedSettings = settingsService.projectTaskSettingsLoadedFor == projectDirectory
+
+            // If we already have a model selected, start token estimation immediately in parallel
+            let previousModel = selectedModel
+            if canEstimateTokens() {
+                Task {
+                    await performTokenEstimation()
+                }
+            }
+
+            // Only show loading if we actually need to fetch
+            if !hasPreloadedProviders || !hasPreloadedSettings {
+                isLoadingModels = true
+            }
 
             defer {
                 Task { @MainActor in
@@ -122,10 +147,17 @@ final class ImplementationPlanCreatorViewModel: ObservableObject {
             }
 
             do {
-                guard let projectDirectory = container?.sessionService.currentSession?.projectDirectory else { return }
-
-                try await settingsService.fetchProviders()
-                try await settingsService.fetchProjectTaskModelSettings(projectDirectory: projectDirectory)
+                // Only fetch what's not already loaded
+                if !hasPreloadedProviders && !hasPreloadedSettings {
+                    // Run both fetches in parallel to reduce latency
+                    async let providersTask: () = settingsService.fetchProviders()
+                    async let settingsTask: () = settingsService.fetchProjectTaskModelSettings(projectDirectory: projectDirectory)
+                    _ = try await (providersTask, settingsTask)
+                } else if !hasPreloadedProviders {
+                    try await settingsService.fetchProviders()
+                } else if !hasPreloadedSettings {
+                    try await settingsService.fetchProjectTaskModelSettings(projectDirectory: projectDirectory)
+                }
 
                 providers = settingsService.providers
                 projectTaskSettings = settingsService.projectTaskSettings
@@ -160,16 +192,23 @@ final class ImplementationPlanCreatorViewModel: ObservableObject {
                                     selectedModel = firstModel
                                 }
                             }
+                            // Re-estimate if model changed after fetching defaults
+                            if selectedModel != previousModel {
+                                requestTokenEstimation()
+                            }
                         } catch {
                             availableModels = providers.flatMap { $0.models.map { $0.id } }
                         }
                     }
                 }
+
+                // Re-estimate if model changed after fetching settings
+                if selectedModel != previousModel && !selectedModel.isEmpty {
+                    requestTokenEstimation()
+                }
             } catch {
                 // Failed to load model settings
             }
-
-            requestTokenEstimation()
         }
     }
 
@@ -181,7 +220,8 @@ final class ImplementationPlanCreatorViewModel: ObservableObject {
         selectedModel = model
         Task {
             do {
-                guard let projectDirectory = container?.sessionService.currentSession?.projectDirectory else { return }
+                guard let projectDirectory = container?.sessionService.currentSession?.projectDirectory,
+                      let settingsService = settingsService else { return }
 
                 try await settingsService.setProjectTaskSetting(
                     projectDirectory: projectDirectory,

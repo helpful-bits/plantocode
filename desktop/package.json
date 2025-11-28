@@ -1,7 +1,7 @@
 {
   "name": "plantocode-desktop",
   "private": true,
-  "version": "1.2.4",
+  "version": "1.2.5",
   "type": "module",
   "scripts": {
     "dev": "vite --config src/vite.config.mts",

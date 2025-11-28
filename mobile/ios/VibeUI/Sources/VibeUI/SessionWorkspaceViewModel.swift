@@ -292,6 +292,11 @@ final class SessionWorkspaceViewModel: ObservableObject {
             projectDirectory: session.projectDirectory
         )
 
+        // Preload model settings for Plans tab - runs in background
+        Task {
+            await preloadModelSettings(projectDirectory: session.projectDirectory)
+        }
+
         Task {
             do {
                 if let fullSession = try await container?.sessionService.getSession(id: session.id) {
@@ -308,6 +313,20 @@ final class SessionWorkspaceViewModel: ObservableObject {
             } catch {
                 container?.sessionService.currentSession = session
             }
+        }
+    }
+
+    /// Preloads model providers and project settings for the Plans tab
+    private func preloadModelSettings(projectDirectory: String) async {
+        guard let settingsService = container?.settingsService else { return }
+
+        do {
+            // Fetch providers and project settings in parallel
+            async let providersTask: () = settingsService.fetchProviders()
+            async let settingsTask: () = settingsService.fetchProjectTaskModelSettings(projectDirectory: projectDirectory)
+            _ = try await (providersTask, settingsTask)
+        } catch {
+            // Preloading failed - Plans tab will fetch on demand
         }
     }
 
