@@ -328,9 +328,10 @@ public class TerminalDataService: ObservableObject {
             await Task.yield()
         }
 
-        // Send newline as a separate write to ensure it triggers Enter
+        // Send carriage return as a separate write to trigger Enter
+        // Terminals expect CR (0x0D) not LF (0x0A) for the Enter key
         if appendCarriageReturn {
-            try await self.writeViaRelay(session: session, data: Data([0x0A]))  // LF byte (newline)
+            try await self.writeViaRelay(session: session, data: Data([0x0D]))  // CR byte (carriage return)
         }
     }
 

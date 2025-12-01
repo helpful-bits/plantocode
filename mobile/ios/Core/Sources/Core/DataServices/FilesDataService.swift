@@ -671,9 +671,10 @@ public struct FileInfo: Codable, Identifiable, Equatable {
         self.path = path
         self.relativePath = dict["relativePath"] as? String ?? path
         self.name = name
-        self.size = (dict["size"] as? UInt64) ?? 0
-        self.modifiedAt = (dict["modifiedAt"] as? Int64) ?? 0
-        self.createdAt = dict["createdAt"] as? Int64
+        // NSNumber from JSON doesn't directly cast to UInt64/Int64, need to use NSNumber.uint64Value
+        self.size = (dict["size"] as? NSNumber)?.uint64Value ?? 0
+        self.modifiedAt = (dict["modifiedAt"] as? NSNumber)?.int64Value ?? 0
+        self.createdAt = (dict["createdAt"] as? NSNumber)?.int64Value
         self.fileType = (dict["fileType"] as? String) ?? "file"
         self.fileExtension = dict["fileExtension"] as? String
         self.isDirectory = (dict["isDirectory"] as? Bool) ?? false
@@ -723,7 +724,8 @@ public struct FileInfo: Codable, Identifiable, Equatable {
     }
 
     public var formattedDate: String {
-        let date = Date(timeIntervalSince1970: TimeInterval(modifiedAt))
+        // modifiedAt is in milliseconds from desktop, convert to seconds
+        let date = Date(timeIntervalSince1970: TimeInterval(modifiedAt) / 1000.0)
         return DateFormatter.medium.string(from: date)
     }
 

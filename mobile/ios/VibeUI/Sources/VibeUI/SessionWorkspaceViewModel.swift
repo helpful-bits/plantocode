@@ -185,6 +185,9 @@ final class SessionWorkspaceViewModel: ObservableObject {
             Task { @MainActor in
                 container?.sessionService.currentSession = nil
             }
+            taskText = ""
+            pendingRemoteTaskDescription = nil
+            lastSyncedSessionId = nil
         }
         loadMostRecentSession()
     }

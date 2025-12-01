@@ -102,14 +102,18 @@ public class DataServicesManager: ObservableObject {
         self.currentProject = project
         self.objectWillChange.send()
 
-        // Clear project-scoped state to prevent cross-project leakage
-        sessionService.currentSession = nil
-        sessionService.sessions = []
+        // Clear project-scoped session state thoroughly
+        sessionService.resetState()
 
         // Invalidate caches
         filesService.invalidateCache()
         filesService.files = []
         jobsService.clearJobs()
+
+        // Clear task sync state (tasks, conflicts, syncStatus)
+        taskSyncService.tasks.removeAll()
+        taskSyncService.conflicts.removeAll()
+        taskSyncService.syncStatus = .disconnected
 
         // Preload data for the new project
         preloadProjectData(project)
@@ -550,7 +554,6 @@ public class DataServicesManager: ObservableObject {
                     }
 
                 case "project-directory-updated":
-                    // Handle project directory changes from desktop/other devices
                     if let projectDir = dict["projectDirectory"] as? String, !projectDir.isEmpty {
                         if self.currentProject?.directory == projectDir {
                             break
@@ -559,10 +562,7 @@ public class DataServicesManager: ObservableObject {
                         let hash = String(projectDir.hashValue)
                         let project = ProjectInfo(name: name, directory: projectDir, hash: hash)
                         self.setCurrentProject(project)
-                        // Also update AppState for consistency
-                        Task { @MainActor in
-                            AppState.shared.setSelectedProjectDirectory(projectDir)
-                        }
+                        AppState.shared.setSelectedProjectDirectory(projectDir)
                     }
 
                 case "session-created", "session-updated", "session-deleted",

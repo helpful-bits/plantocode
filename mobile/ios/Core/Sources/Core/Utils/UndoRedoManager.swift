@@ -149,8 +149,12 @@ public class UndoRedoManager: ObservableObject {
         // Convert entries to history
         history = state.entries.map { $0.value }
 
-        // Set current index (clamp to valid range)
-        currentIndex = min(max(0, Int(state.currentIndex)), history.count - 1)
+        // Set current index (clamp to valid range, handle empty case)
+        if history.isEmpty {
+            currentIndex = -1
+        } else {
+            currentIndex = min(max(0, Int(state.currentIndex)), history.count - 1)
+        }
 
         // Update version
         version = state.version

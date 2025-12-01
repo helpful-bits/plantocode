@@ -28,8 +28,13 @@ public struct TerminalComposeView: View {
     }
 
     private func loadComposedText() {
-        if let saved = UserDefaults.standard.string(forKey: storageKey), !saved.isEmpty {
+        let saved = UserDefaults.standard.string(forKey: storageKey)
+        if let saved = saved, !saved.isEmpty {
             composedText = saved
+            undoRedoManager.reset(with: saved)
+        } else {
+            composedText = ""
+            undoRedoManager.reset(with: "")
         }
     }
 
@@ -74,6 +79,7 @@ public struct TerminalComposeView: View {
                     sessionId: container.sessionService.currentSession?.id ?? "unknown",
                     projectDirectory: container.sessionService.currentSession?.projectDirectory,
                     onInteraction: {
+                        undoRedoManager.saveState(composedText)
                         saveComposedText()
                     },
                     onTextChanged: {
