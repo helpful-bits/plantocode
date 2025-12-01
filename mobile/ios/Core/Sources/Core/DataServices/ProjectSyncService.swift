@@ -45,29 +45,16 @@ public final class ProjectSyncService {
                 guard let self else { return }
                 guard event.eventType == "project-directory-updated" else { return }
 
-                // Expect payload: { "projectDirectory": "<absolute path>" }
-                if let dir = event.data["projectDirectory"]?.value as? String,
-                   !dir.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                if let dir = event.data["projectDirectory"]?.value as? String {
+                    let trimmed = dir.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty else { return }
 
-                    // Deduplicate identical values (avoid echo/reloads)
-                    if AppState.shared.selectedProjectDirectory == dir || lastAppliedDirectory == dir {
+                    if AppState.shared.selectedProjectDirectory == trimmed || lastAppliedDirectory == trimmed {
                         return
                     }
 
-                    AppState.shared.selectedProjectDirectory = dir
-                    self.lastAppliedDirectory = dir
-
-                    // Build ProjectInfo consistently
-                    let name = URL(fileURLWithPath: dir).lastPathComponent
-                    let project = ProjectInfo(name: name, directory: dir, hash: String(dir.hashValue))
-
-                    // Apply domain state and fetch sessions
-                    if let manager = PlanToCodeCore.shared.dataServices {
-                        manager.setCurrentProject(project)
-                        Task {
-                            try? await manager.sessionService.fetchSessions(projectDirectory: dir)
-                        }
-                    }
+                    AppState.shared.selectedProjectDirectory = trimmed
+                    self.lastAppliedDirectory = trimmed
                 }
             }
     }

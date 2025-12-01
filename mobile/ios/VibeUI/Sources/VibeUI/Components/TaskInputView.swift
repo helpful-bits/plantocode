@@ -21,6 +21,7 @@ public struct TaskInputView: View {
     @State private var forceSelectionApply: Bool = false
     @State private var prevRemoteVersion: Int64?
     @State private var prevRemoteChecksum: String?
+    @State private var isApplyingRemoteMerge: Bool = false
 
     let placeholder: String
     let onInteraction: () -> Void
@@ -112,27 +113,67 @@ public struct TaskInputView: View {
             }
             let remote = remoteValue
 
+            let trimmedLocal = local.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedRemote = remote.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if trimmedRemote.isEmpty || trimmedRemote == trimmedLocal {
+                prevRemoteVersion = remoteState.version
+                prevRemoteChecksum = remoteState.checksum
+
+                Task {
+                    do {
+                        let mergedState = try await container.sessionService.mergeHistoryState(
+                            sessionId: sessionId,
+                            kind: kind,
+                            remoteState: remoteState
+                        )
+                        await MainActor.run {
+                            undoRedoManager.applyRemoteHistoryState(mergedState, suppressRecording: true)
+                        }
+                    } catch {}
+                }
+                return
+            }
+
+            isApplyingRemoteMerge = true
+
             let cursorPos = selectedRange.location
-            let mergeResult = TextMerger.merge(base: base, local: local, remote: remote, cursorOffset: cursorPos)
+            let mergeResult = TextMerger.merge(
+                base: base,
+                local: local,
+                remote: remote,
+                cursorOffset: cursorPos
+            )
+
+            if mergeResult.mergedText == taskDescription {
+                prevRemoteVersion = remoteState.version
+                prevRemoteChecksum = remoteState.checksum
+                isApplyingRemoteMerge = false
+                return
+            }
+
             taskDescription = mergeResult.mergedText
             selectedRange = NSRange(location: mergeResult.newCursorOffset, length: 0)
-            forceSelectionApply = true
+            if !isEditing {
+                forceSelectionApply = true
+            }
 
             prevRemoteVersion = remoteState.version
             prevRemoteChecksum = remoteState.checksum
 
             Task {
                 do {
-                    let localState = undoRedoManager.exportState()
-                    let merged = try await container.sessionService.mergeHistoryState(
+                    let mergedState = try await container.sessionService.mergeHistoryState(
                         sessionId: sessionId,
                         kind: kind,
                         remoteState: remoteState
                     )
                     await MainActor.run {
-                        undoRedoManager.applyRemoteHistoryState(merged, suppressRecording: true)
+                        undoRedoManager.applyRemoteHistoryState(mergedState, suppressRecording: true)
                     }
-                } catch {
+                } catch {}
+                await MainActor.run {
+                    self.isApplyingRemoteMerge = false
                 }
             }
         }
@@ -229,10 +270,15 @@ public struct TaskInputView: View {
         // Reset caret/selection state after text replacement on session change
         let newCount = trimmed.count
         selectedRange = NSRange(location: newCount, length: 0)
-        forceSelectionApply = true
+        if !isEditing {
+            forceSelectionApply = true
+        }
     }
 
     private func debouncedSync() {
+        if isApplyingRemoteMerge {
+            return
+        }
         undoRedoManager.saveState(taskDescription)
         debounceTask?.cancel()
         debounceTask = Task {
