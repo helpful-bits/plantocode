@@ -37,12 +37,32 @@ public enum TextMerger {
         }
 
         let prefix = String(local.prefix(prefixLen))
-        let suffix = String(local.suffix(suffixLen))
+
+        // Work on remote as authoritative "other" side
+        let remoteChars = Array(remote)
+        let remoteLen = remoteChars.count
+
+        // Clamp suffixLen to remote length
+        let safeSuffixLen = min(suffixLen, remoteLen)
+
+        // Ensure prefix and suffix do not overlap in remote
+        // If prefixLen + safeSuffixLen > remoteLen, shrink suffix so that
+        // prefixLen + nonOverlappingSuffixLen <= remoteLen
+        let nonOverlappingSuffixLen = max(0, min(safeSuffixLen, remoteLen - prefixLen))
+
+        let suffix: String
+        if nonOverlappingSuffixLen > 0 {
+            let startIndex = remoteLen - nonOverlappingSuffixLen
+            suffix = String(remoteChars[startIndex ..< remoteLen])
+        } else {
+            suffix = ""
+        }
+
         let merged = prefix + mergedMiddle + suffix
 
         let localLen = local.count
-        let remoteLen = remote.count
-        let delta = remoteLen - localLen
+        let remoteTotalLen = remote.count
+        let delta = remoteTotalLen - localLen
         let newCursor = max(0, min(merged.count, cursorOffset + delta))
 
         return TextMergeResult(mergedText: merged, newCursorOffset: newCursor)

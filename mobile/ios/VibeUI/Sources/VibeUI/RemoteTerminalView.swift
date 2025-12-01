@@ -10,6 +10,7 @@ public struct RemoteTerminalView: View {
     let jobId: String
     @EnvironmentObject private var container: AppContainer
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var terminalSession: TerminalSession?
     @State private var isLoading = false
@@ -136,6 +137,7 @@ public struct RemoteTerminalView: View {
             .onDisappear(perform: cleanupSession)
             .onChange(of: terminalSession?.id, perform: handleSessionIdChange)
             .onChange(of: isTerminalReady, perform: handleTerminalReadyChange)
+            .onChange(of: scenePhase, perform: handleScenePhaseChange)
 
         base
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
@@ -145,6 +147,20 @@ public struct RemoteTerminalView: View {
                 isKeyboardVisible = false
             }
             .onReceive(pathObserver.$currentPath.compactMap { $0 }, perform: handlePathChange)
+    }
+
+    /// Handle app background/foreground transitions to prevent "endless scrolling" after background return.
+    /// When backgrounded, terminal output is buffered instead of fed immediately.
+    /// When foregrounded, buffered data is fed without animation to avoid scroll jumping.
+    private func handleScenePhaseChange(_ phase: ScenePhase) {
+        switch phase {
+        case .active:
+            terminalController.resumeFeeding()
+        case .inactive, .background:
+            terminalController.pauseFeeding()
+        @unknown default:
+            break
+        }
     }
 
     private func composeSheet(presentation: ComposePresentation) -> some View {
@@ -654,11 +670,24 @@ class SwiftTermController: NSObject, ObservableObject {
     private var framesSinceLastData: Int = 0
     private static let burstThreshold: TimeInterval = 0.05 // 50ms between chunks = burst mode
     private static let burstCooldown: TimeInterval = 0.3 // Stay in burst mode for 300ms after last data
-    private static let minFlushInterval: TimeInterval = 0.05 // Max 20fps during bursts
+    private static let minFlushInterval: TimeInterval = 0.016 // ~60fps - minimal delay to reduce scroll jumping
     private var lastFlushAt: Date = .distantPast
 
     // Escape sequence buffering to avoid flushing mid-sequence
     private static let escapeChar: UInt8 = 0x1B // ESC
+
+    // Scroll pinning: only auto-scroll when user is at bottom
+    // Prevents "endless scrolling" when user scrolls up to read history
+    private var isPinnedToBottom: Bool = true
+
+    // Background/foreground handling: pause feeding when app is backgrounded
+    private var isFeedingPaused: Bool = false
+    private var backgroundBuffer: [Data] = []
+    private static let maxBackgroundChunks = 50
+
+    // Resize deduplication: track last sent dimensions
+    private var lastSentCols: Int = 0
+    private var lastSentRows: Int = 0
 
     deinit {
         displayLink?.invalidate()
@@ -669,15 +698,72 @@ class SwiftTermController: NSObject, ObservableObject {
         displayLink = nil
         pendingData.removeAll(keepingCapacity: false)
         batchBuffer.removeAll(keepingCapacity: false)
+        backgroundBuffer.removeAll(keepingCapacity: false)
         burstStartedAt = nil
+        isFeedingPaused = false
+        isPinnedToBottom = true
+        lastSentCols = 0
+        lastSentRows = 0
         terminalView = nil
+    }
+
+    // MARK: - Background/Foreground Handling
+
+    /// Pause feeding terminal data when app enters background.
+    /// Data will be buffered and fed when resumed.
+    func pauseFeeding() {
+        isFeedingPaused = true
+        displayLink?.isPaused = true
+    }
+
+    /// Resume feeding terminal data when app enters foreground.
+    /// Buffered data is fed immediately without animation.
+    func resumeFeeding() {
+        isFeedingPaused = false
+
+        // Feed background-buffered data without animation to avoid scroll jumping
+        if !backgroundBuffer.isEmpty {
+            UIView.performWithoutAnimation { [self] in
+                for chunk in backgroundBuffer {
+                    feedBytesImmediate(data: chunk)
+                }
+            }
+            backgroundBuffer.removeAll()
+            // Ensure we scroll to bottom after bulk feed
+            scrollToBottomIfPinned()
+        }
+
+        // Resume display link if we have pending data
+        if needsFlush {
+            displayLink?.isPaused = false
+        }
+    }
+
+    private func feedBytesImmediate(data: Data) {
+        guard let terminalView = terminalView, !data.isEmpty else { return }
+        let buffer = ArraySlice([UInt8](data))
+        terminalView.feed(byteArray: buffer)
+    }
+
+    private func scrollToBottomIfPinned() {
+        guard isPinnedToBottom, let terminalView = terminalView else { return }
+
+        let contentHeight = terminalView.contentSize.height
+        let frameHeight = terminalView.bounds.height
+        let targetOffsetY = max(contentHeight - frameHeight, 0)
+
+        // Avoid tiny corrections that cause visual jumping
+        if abs(terminalView.contentOffset.y - targetOffsetY) > 1.0 {
+            terminalView.contentOffset = CGPoint(x: 0, y: targetOffsetY)
+        }
     }
 
     private func setupDisplayLinkIfNeeded() {
         guard displayLink == nil else { return }
         let link = CADisplayLink(target: self, selector: #selector(displayLinkFired))
-        // Lower frame rate to reduce flicker - 15-20fps is sufficient for terminal
-        link.preferredFrameRateRange = CAFrameRateRange(minimum: 15, maximum: 20, preferred: 20)
+        // High frame rate to minimize delay between SwiftTerm scroll calculations and display updates
+        // This reduces scroll jumping when processing rapid sub-agent output
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
         link.add(to: .main, forMode: .common)
         link.isPaused = true
         displayLink = link
@@ -729,6 +815,16 @@ class SwiftTermController: NSObject, ObservableObject {
 
     func feedBytes(data: Data) {
         guard !data.isEmpty else { return }
+
+        // If paused (app backgrounded), buffer instead of feeding
+        if isFeedingPaused {
+            backgroundBuffer.append(data)
+            // Prevent unbounded memory growth during background
+            if backgroundBuffer.count > Self.maxBackgroundChunks {
+                backgroundBuffer.removeFirst(backgroundBuffer.count - Self.maxBackgroundChunks)
+            }
+            return
+        }
 
         let now = Date()
 
@@ -801,9 +897,9 @@ class SwiftTermController: NSObject, ObservableObject {
             }
         }
 
-        // Don't call setNeedsDisplay() - SwiftTerm's feed() handles display updates internally
-        // Explicit setNeedsDisplay() can cause extra redraws and visible flicker during
-        // escape sequence processing (clear line + redraw shows intermediate state)
+        // Only scroll to bottom if user was already at the bottom
+        // This prevents "endless scrolling" when user scrolls up to read history
+        scrollToBottomIfPinned()
     }
 
     /// Extract incomplete escape sequence from end of buffer to avoid mid-sequence flush
@@ -870,16 +966,30 @@ extension SwiftTermController: TerminalViewDelegate {
             return
         }
 
+        // Skip if dimensions haven't actually changed (prevents duplicate resize calls during layout thrash)
+        guard newCols != lastSentCols || newRows != lastSentRows else {
+            return
+        }
+
         // First resize must be immediate to set correct PTY size before output rendering
         // Subsequent resizes are debounced to handle keyboard show/hide and rotation smoothly
         if isFirstResize {
             isFirstResize = false
+            lastSentCols = newCols
+            lastSentRows = newRows
             onResize?(newCols, newRows)
         } else {
             // More aggressive debounce (400ms) to handle rapid keyboard show/hide cycles
             resizeDebouncer?.cancel()
+            let capturedCols = newCols
+            let capturedRows = newRows
             resizeDebouncer = DispatchWorkItem { [weak self] in
-                self?.onResize?(newCols, newRows)
+                guard let self = self else { return }
+                // Double-check dimensions still different before sending
+                guard capturedCols != self.lastSentCols || capturedRows != self.lastSentRows else { return }
+                self.lastSentCols = capturedCols
+                self.lastSentRows = capturedRows
+                self.onResize?(capturedCols, capturedRows)
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: resizeDebouncer!)
         }
@@ -916,7 +1026,9 @@ extension SwiftTermController: TerminalViewDelegate {
     }
 
     func scrolled(source: TerminalView, position: Double) {
-        // Handle scroll position changes
+        // Track if user is pinned to bottom (position 1.0 = bottom, 0.0 = top)
+        // Consider "pinned" if within 1% of bottom to handle floating point imprecision
+        isPinnedToBottom = position >= 0.99
     }
 }
 
@@ -987,8 +1099,8 @@ struct SwiftTerminalView: UIViewRepresentable {
             terminalView.setValue(true, forKey: "applicationCursor")
         }
 
-        // Note: SwiftTerm handles cursor visibility through ensureCaretIsVisible()
-        // which we call after each feed operation in feedBytes()
+        // Note: We call ensureCaretIsVisible() after each batch flush in flushBatchBuffer()
+        // to keep the terminal scrolled to the latest output
 
         // Enable keyboard input
         terminalView.isUserInteractionEnabled = true
@@ -1065,16 +1177,18 @@ final class FirstResponderTerminalView: TerminalView {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        // Increase scrollback after initialization
+        // Mobile-optimized scrollback: 2,000 lines reduces layout work when
+        // coming back from background with large output buffers.
+        // Higher values (e.g., 50,000) cause "endless scrolling" issues.
         let terminal = getTerminal()
-        terminal.options.scrollback = 50_000
+        terminal.options.scrollback = 2_000
         terminal.silentLog = true
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         let terminal = getTerminal()
-        terminal.options.scrollback = 50_000
+        terminal.options.scrollback = 2_000
         terminal.silentLog = true
     }
 

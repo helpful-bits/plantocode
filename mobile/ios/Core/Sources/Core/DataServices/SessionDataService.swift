@@ -33,6 +33,16 @@ public final class SessionDataService: ObservableObject {
         MultiConnectionManager.shared.activeDeviceId?.uuidString ?? "no_device"
     }
 
+    /// Safely get a valid index for a session ID, checking bounds and ID match
+    private func validSessionIndex(for sessionId: String) -> Int? {
+        guard let index = sessionsIndex[sessionId],
+              index < sessions.count,
+              sessions[index].id == sessionId else {
+            return nil
+        }
+        return index
+    }
+
     public init() {
         self.currentSessionId = "mobile-session-\(UUID().uuidString)"
         setupHistoryStateListener()
@@ -140,6 +150,26 @@ public final class SessionDataService: ObservableObject {
                         }
                         if let lastChecksum = self.lastHistoryChecksumBySession[key], historyState.checksum == lastChecksum {
                             return
+                        }
+
+                        let newValue = self.lastNonEmptyHistoryValue(historyState) ?? ""
+
+                        if kind == "task" {
+                            var currentText = ""
+                            if let current = self.currentSession, current.id == sessionId {
+                                currentText = current.taskDescription ?? ""
+                            } else if let index = self.sessions.firstIndex(where: { $0.id == sessionId }) {
+                                currentText = self.sessions[index].taskDescription ?? ""
+                            }
+
+                            let trimmedCurrent = currentText.trimmingCharacters(in: .whitespacesAndNewlines)
+                            let trimmedNew = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                            if !trimmedNew.isEmpty && trimmedNew == trimmedCurrent {
+                                self.lastHistoryVersionBySession[key] = historyState.version
+                                self.lastHistoryChecksumBySession[key] = historyState.checksum
+                                return
+                            }
                         }
 
                         self.lastHistoryVersionBySession[key] = historyState.version
@@ -1283,14 +1313,14 @@ public final class SessionDataService: ObservableObject {
         }
 
         // Also update in sessions array if present
-        if let index = sessionsIndex[sessionId] {
+        if let index = validSessionIndex(for: sessionId) {
             sessions[index] = updatedSession
         }
     }
 
     private func handleSessionDeleted(dict: [String: Any]) {
         guard let sessionId = dict["sessionId"] as? String ?? dict["id"] as? String,
-              let index = sessionsIndex[sessionId] else {
+              let index = validSessionIndex(for: sessionId) else {
             return
         }
 
@@ -1335,8 +1365,8 @@ public final class SessionDataService: ObservableObject {
         }
 
         // Also update in sessions array if present
-        if let index = sessionsIndex[sessionId] {
-            var session = sessions[index]
+        if let index = validSessionIndex(for: sessionId) {
+            let session = sessions[index]
             let updatedSession = Session(
                 id: session.id,
                 name: session.name,
@@ -1376,7 +1406,7 @@ public final class SessionDataService: ObservableObject {
         }
 
         // Also update in sessions array if present
-        if let index = sessionsIndex[sessionId] {
+        if let index = validSessionIndex(for: sessionId) {
             let session = sessions[index]
             let updatedSession = Session(
                 id: session.id,
@@ -1417,7 +1447,7 @@ public final class SessionDataService: ObservableObject {
         }
 
         // Also update in sessions array if present
-        if let index = sessionsIndex[sessionId] {
+        if let index = validSessionIndex(for: sessionId) {
             let session = sessions[index]
             let updatedSession = Session(
                 id: session.id,
