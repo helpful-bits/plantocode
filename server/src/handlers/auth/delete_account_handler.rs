@@ -4,6 +4,7 @@ use crate::models::AuthenticatedUser;
 use crate::services::billing_service::BillingService;
 use actix_web::{HttpResponse, web};
 use log::{error, info};
+use std::sync::Arc;
 
 /// Handler for deleting a user account
 /// This will delete all user data including devices, API keys, credit transactions,
@@ -11,7 +12,7 @@ use log::{error, info};
 pub async fn delete_account(
     user: web::ReqData<AuthenticatedUser>,
     db_pools: web::Data<DatabasePools>,
-    billing_service: web::Data<BillingService>,
+    billing_service: web::Data<Arc<BillingService>>,
 ) -> Result<HttpResponse, AppError> {
     let user_id = user.user_id;
 
