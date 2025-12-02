@@ -131,7 +131,20 @@ impl CustomerBillingRepository {
         Ok(record)
     }
 
-    // Get customer billing by user ID
+    /// Load CustomerBilling for a user by starting a new transaction on this
+    /// repository's pool and explicitly setting `app.current_user_id` for RLS.
+    ///
+    /// IMPORTANT:
+    /// - This is intended for normal user-facing flows using the user_pool
+    ///   under RLS (e.g. dashboards, billing pages).
+    /// - It opens its own transaction and manipulates RLS context via
+    ///   `set_config('app.current_user_id', ...)`.
+    /// - It is NOT suitable for privileged, system-level operations such as
+    ///   account deletion. For those, prefer:
+    ///     - a system-pool query (using db_pools.system_pool) with explicit
+    ///       WHERE user_id = $1 filters, or
+    ///     - the `get_by_user_id_with_executor` variant using a
+    ///       system-level transaction that does not rely on RLS.
     pub async fn get_by_user_id(
         &self,
         user_id: &Uuid,
@@ -156,7 +169,13 @@ impl CustomerBillingRepository {
         Ok(result)
     }
 
-    // Get customer billing by user ID with custom executor
+    /// Like `get_by_user_id`, but uses an existing transaction as executor.
+    ///
+    /// - This function does NOT set `app.current_user_id` itself; it assumes
+    ///   the caller has already established any required RLS or is using a
+    ///   system-level transaction where RLS is not needed.
+    /// - Suitable for system-pool transactions in privileged flows, provided
+    ///   queries use explicit user_id filters.
     pub async fn get_by_user_id_with_executor(
         &self,
         user_id: &Uuid,

@@ -493,7 +493,13 @@ TO plantocode
 USING (true)
 WITH CHECK (true);  -- App service needs to update user details from Auth0
 
--- Note: DELETE is typically handled by backend/service roles, not direct user RLS.
+-- Policy allowing plantocode to DELETE users for account deletion
+DROP POLICY IF EXISTS "App can delete users" ON users;
+CREATE POLICY "App can delete users"
+ON users FOR DELETE
+TO plantocode
+USING (true);  -- App service needs to delete users for account deletion
+
 -- Ensure users.id is indexed (Primary Key implicitly creates an index).
 
 -- RLS for refresh_tokens table
@@ -718,9 +724,9 @@ GRANT SELECT ON model_provider_mappings TO plantocode;
 GRANT SELECT ON application_configurations TO plantocode;
 GRANT SELECT ON default_system_prompts TO plantocode;
 
--- Grant permissions needed for authentication flow
+-- Grant permissions needed for authentication flow and account deletion
 GRANT SELECT ON users TO plantocode;
-GRANT INSERT, UPDATE ON users TO plantocode;
+GRANT INSERT, UPDATE, DELETE ON users TO plantocode;
 GRANT SELECT, INSERT, UPDATE, DELETE ON refresh_tokens TO plantocode;
 
 -- Grant permissions needed for billing and credit operations
